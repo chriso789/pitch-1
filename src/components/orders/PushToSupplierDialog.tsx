@@ -826,17 +826,29 @@ export function PushToSupplierDialog({
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <div>
                     <Label htmlFor="branch">
-                      Branch code <span className="text-destructive">*</span>
+                      {selected === 'abc' ? 'ABC Branch Number' : 'Branch code'}{' '}
+                      <span className="text-destructive">*</span>
                     </Label>
                     <Input
                       id="branch"
                       value={branchCode}
-                      onChange={e => setBranchCode(e.target.value.toUpperCase())}
-                      placeholder="e.g. SROCA"
+                      onChange={e =>
+                        setBranchCode(
+                          selected === 'abc' ? e.target.value : e.target.value.toUpperCase()
+                        )
+                      }
+                      placeholder={
+                        selected === 'abc'
+                          ? allowSandboxDefaults
+                            ? '1209'
+                            : 'e.g. 1209'
+                          : 'e.g. SROCA'
+                      }
                       aria-invalid={selected === 'srs' && !branchCode.trim()}
                       className={selected === 'srs' && !branchCode.trim() ? 'border-destructive' : ''}
                     />
                   </div>
+
                   <div>
                     <Label htmlFor="dmethod">Delivery method</Label>
                     <Select value={deliveryMethod} onValueChange={(v: any) => setDeliveryMethod(v)}>
