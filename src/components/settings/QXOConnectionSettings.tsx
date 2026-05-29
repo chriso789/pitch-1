@@ -196,6 +196,8 @@ export function QXOConnectionSettings() {
                 </div>
               </div>
             </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {canChangeEnvironment && (
               <div className="space-y-2">
@@ -210,8 +212,6 @@ export function QXOConnectionSettings() {
               </div>
             )}
 
-              </Select>
-            </div>
 
             <div className="space-y-2">
               <Label>Site / Realm</Label>
