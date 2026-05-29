@@ -32,7 +32,7 @@ export interface MappingFixture {
   key: string;
   description: string;
   raw_payload: Record<string, unknown>;
-  import: MeasurementImport;
+  import: MeasurementImportFixtureRow;
   segments: MeasurementSegment[];
   features: MeasurementFeature[];
   expected: {
