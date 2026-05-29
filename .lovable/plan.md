@@ -1,85 +1,162 @@
 
-# ABC v2 — Step 2 (Recommended: Option C, scoped)
+# Section-Aware Measurement Import — Phase 1 Plan
 
-Recommendation: **C, but with a hard scope line** — stand up the entire `abc-api` route surface in one pass so the frontend has stable contracts to build against, but only OAuth + accounts are *real* in this chunk. Catalog/availability/price/orders return well-typed stubs backed by the new tables (empty arrays, `price_pending: true`, etc.) so UI work in later steps doesn't block on backend, and we never accidentally ship a fake price or fake order to a tenant.
+Scope: **Foundation + template rules + mapping engine. No override UI.** Goal is to prove deterministic flat-vs-sloped routing end-to-end while keeping every existing template and the current `generate-estimate-from-measurement` aggregate path working unchanged.
 
-Why not A: A leaves the frontend guessing at response shapes for 7 more routes, which causes churn when we wire the order modal and materials table later.
-Why not B: order-modal refactor depends on `/accounts` + `/catalog/family` shapes existing; doing it first means rework.
+Hard policy (locked from your answer):
+- Class-scoped items (`applies_to.surface_classes` set) **never silently fall back** to global totals. When the import lacks a per-class measurement, the item becomes an `unresolved` assignment with reason code, not a guessed line.
+- Legacy items with `measurement_scope = "global"` continue to read `global.*` and `roof.*` and stay working.
+- `class.flat.area_sqft` etc. resolve to a sentinel `unavailable` (not `0`) when no evidence exists. The formula evaluator surfaces a structured `missing_class_measurement` conflict instead of evaluating to zero.
+- Manual JSON split is supported now (no UI): an admin can POST a `manual_measurement_split` payload and the mapper materializes synthetic reviewed segments.
 
-## Scope of this chunk
+## What already exists (verified)
 
-### 1. `abc-api` edge function (single routed Hono function, per EDGE_FUNCTION_RULES)
+- `roof_measurements` already has `total_area_flat_sqft`, `predominant_pitch`, `pitch_degrees`, `facet_count`, linear totals (eave/rake/hip/valley/ridge/wall flashing). No per-segment table yet.
+- `estimate_calc_template_items` has `qty_formula`, `measurement_type`, `coverage_per_unit` but **no `applies_to` / surface-class rule**.
+- `estimate_calc_template_groups` has `group_type` but no section-rule table.
+- `generate-estimate-from-measurement` reads aggregate totals only and emits a flat list.
+- `roof-report-ingest` parses provider PDFs but does not currently persist a `pitched_area_sqft` / `flat_area_sqft` split into a typed segment row — confirmed via repo search (`rg pitched_area_sqft` → no hits in TS). The split exists only inside the AI extraction schema and is dropped on the way to `roof_measurements`.
 
-Routes mounted under `abc-api`, all `requireAuth` + `requireTenant` except `/oauth/callback` (public, validates `state`):
-
-| Route | Status this chunk | Notes |
-|---|---|---|
-| `POST /oauth/start` | **real** | Generates PKCE verifier+challenge, stores in `abc_oauth_state` (new tiny table, tenant+user scoped, TTL 10 min), returns ABC Okta authorize URL with `offline_access` scope |
-| `GET  /oauth/callback` | **real** | Public route. Validates `state`, exchanges code → tokens, encrypts refresh_token, upserts `abc_user_connections`, then calls ABC `GET /accounts` to discover ship-tos and `GET /accounts/{id}/branches` to populate `abc_ship_to_accounts` + `abc_account_branches`. Marks `is_default` / `is_home_branch`. Redirects back to `/settings/integrations?abc=connected` |
-| `POST /oauth/disconnect` | **real** | Revokes ABC token, deletes connection + ship-tos + branches for this user |
-| `GET  /accounts` | **real** | Returns ship-tos + branches for current user from DB |
-| `GET  /catalog/search` | **stub** | Returns `{ items: [], total: 0 }` with correct typed shape; full-text query parsed but no rows yet (catalog sync is Step 3) |
-| `GET  /catalog/family/:itemNumber` | **stub** | Returns `{ family: null, members: [] }` |
-| `POST /availability` | **stub** | Returns `{ items: [{ itemNumber, available: null, pending: true }] }` |
-| `POST /price` | **stub** | Returns `{ items: [{ itemNumber, uom, unitPrice: null, price_pending: true, reason: "catalog_not_synced" }] }` — never `$0.00`, never silently zero |
-| `POST /orders/submit` | **stub** | Returns HTTP 501 `{ ok:false, code:"abc_orders_not_enabled" }` until Step 6 — order modal must surface this as "Coming soon", never silently succeed |
-| `GET  /orders/:id` | **stub** | Same 501 |
-
-All responses use the standard envelope `{ ok, data?, error?, code?, requestId }`.
-
-### 2. New tiny table: `abc_oauth_state`
+## Architecture (Phase 1)
 
 ```text
-abc_oauth_state(
-  state TEXT PK,
-  tenant_id UUID, user_id UUID,
-  code_verifier TEXT, redirect_uri TEXT,
-  created_at, expires_at  -- 10 min TTL
-)
+roof-report-ingest / ai-measurement / manual import
+        │
+        ▼
+  measurement_imports          one row per import batch (provider, source, raw payload, quality)
+        │
+        ├──► measurement_segments    surface segments (flat/low_slope/sloped/other), area, pitch, class, confidence, source
+        └──► measurement_features    linear/count features (ridge/valley/eave/rake/drain/boot) optionally linked to a segment
+        │
+        ▼
+  classifier (deterministic)   pitch + provider flags → surface_class + confidence + reason
+        │
+        ▼
+  context builder              { global.*, class.flat.*, class.sloped.*, class.low_slope.*, class.other.*, section.*  with unavailable sentinels }
+        │
+        ▼
+  mapping engine               section rules → item rules → formula eval → assignments | unresolved | conflicts
+        │
+        ▼
+  estimate_measurement_assignments   audit row per item (segment_ids, formula_evaluated, confidence, status, reason_code)
 ```
-RLS: user can only see their own rows; service role full. Cleanup via `expires_at < now()` in callback.
 
-### 3. Secrets needed (will request via secrets tool before deploying)
+## Database changes (one migration)
 
-- `ABC_CLIENT_ID` (per environment)
-- `ABC_CLIENT_SECRET`
-- `ABC_OKTA_BASE_URL` (sandbox vs prod)
-- `ABC_API_BASE_URL`
-- `ABC_TOKEN_ENCRYPTION_KEY` (for refresh_token at rest)
+New tables (all `tenant_id`-scoped, RLS via `has_tenant_access(tenant_id)`, GRANTs to `authenticated` + `service_role`, none to `anon`):
 
-Server-token-only secrets (`ABC_PARTNER_TOKEN`) stay as-is — used later by `abc-worker` for catalog sync.
+| Table | Purpose | Key columns |
+|---|---|---|
+| `measurement_imports` | one import batch | `tenant_id`, `roof_measurement_id`, `job_id`, `provider`, `source_doc_id`, `import_status`, `quality_score`, `raw_payload jsonb` |
+| `measurement_segments` | surface planes | `measurement_import_id`, `provider_segment_key`, `name`, `geometry_geojson jsonb`, `area_sqft`, `pitch_rise_over_12`, `pitch_scope` (`segment`\|`global`\|`none`), `surface_class` (`flat`\|`low_slope`\|`sloped`\|`other`\|`unknown`), `classification_confidence`, `classification_reason`, `is_synthetic_split`, `reviewed bool` |
+| `measurement_features` | linear/count | `measurement_import_id`, `feature_type` (`ridge`/`hip`/`valley`/`eave`/`rake`/`drip_edge`/`step_flashing`/`wall_flashing`/`parapet`/`drain`/`pipe_boot`/`vent`/`skylight`/`chimney`), `length_ft`, `count_value`, `primary_segment_id`, `confidence` |
+| `template_section_rules` | per-group applicability | `group_id` (FK `estimate_calc_template_groups`), `surface_classes text[]`, `feature_types text[]`, `min_pitch numeric`, `max_pitch numeric`, `allow_unknown bool`, `priority int` |
+| `template_item_rules` | per-item applicability | `item_id` (FK `estimate_calc_template_items`), `surface_classes text[]`, `feature_types text[]`, `measurement_scope text` (`global`\|`class`\|`section`), `allow_global_fallback bool`, `exclusive_group text` |
+| `estimate_measurement_assignments` | mapping result audit | `estimate_id`, `template_group_id`, `template_item_id`, `segment_ids uuid[]`, `feature_ids uuid[]`, `quantity numeric`, `unit text`, `formula_evaluated text`, `confidence numeric`, `status text` (`assigned`\|`unresolved`\|`conflict`\|`manual`), `reason_code text`, `matched_by jsonb` |
 
-### 4. Frontend changes (narrow, UI-only this chunk)
+Constraints:
+- `surface_class` check constraint on the 5 enum values above.
+- `status` check constraint on the 4 values above.
+- `template_item_rules.measurement_scope` check on the 3 values.
+- Indexes on `tenant_id`, `(measurement_import_id, surface_class)`, `(estimate_id, status)`.
 
-- **Replace `AbcConnectCard`** (the legacy "branch code + account number" form) with:
-  - If `useSupplierDeveloperMode().showAdvanced` → existing dev panel stays (sandbox login, env selector, raw audit), gated behind a "Developer" tab.
-  - Normal tenant view → single big **"Sign in with ABC Supply"** button → calls `/oauth/start`, redirects to ABC Okta.
-  - After callback, card shows: connection status, signed-in user email, list of ship-to accounts (default badge), home branch per ship-to, and a "Disconnect" button.
-- Add `useAbcConnection()` hook backed by `abc_user_connections` + `abc_ship_to_accounts` + `abc_account_branches`, tenant-scoped via `useEffectiveTenantId()`.
-- No changes to order modal or materials table yet — those land in Steps 5–6 once catalog/pricing are real.
+Compatibility:
+- Items with **no** `template_item_rules` row default to `measurement_scope='global'`, `allow_global_fallback=true` — every existing template behaves exactly as today.
+- `generate-estimate-from-measurement` stays in place as the v1 generator; v2 mapper is opt-in per template via a new boolean `estimate_calculation_templates.use_section_mapping`.
 
-### 5. Guardrails honored
+Migration ends with `NOTIFY pgrst, 'reload schema';`.
 
-- Hard rules: no fake geometry, no fake measurements — extended here to **no fake pricing and no fake orders**. Stubs are explicitly typed as `pending` / 501 so UI cannot render a misleading $0.00 or "order placed".
-- Edge function rules: one routed `abc-api`, not one function per route. `abc-oauth-callback` is the one allowed standalone (public redirect URL) and is listed in `EDGE_FUNCTION_RULES.md` exceptions — but here we keep callback as a route on `abc-api` with `verify_jwt = false` for just that path, which is simpler and already permitted (state param is the auth). If ABC's redirect URI registration requires a fixed standalone path, we'll split `abc-oauth-callback` out as a documented exception — flagged for confirmation below.
-- Multi-tenancy: every query uses `useEffectiveTenantId()` + explicit `.eq('tenant_id', ...)`.
-- Architecture guard: no new standalone functions beyond the (possibly) one OAuth callback.
+## Edge function work
 
-### 6. Out of scope this chunk (queued for next chunks)
+Group everything under existing **`measurement-api`** (no new function folders, per the architecture guard):
 
-- Step 3: `abc-worker` full-sync + delta-sync (populates `abc_catalog_items`, `abc_item_family_members`)
-- Step 4: live pricing hook + price cache writes
-- Step 5: materials table color-aware mapping UI (`abc_material_sku_mappings`)
-- Step 6: order modal refactor (ship-to + branch + delivery override) + real `/orders/submit`
-- Step 7: `abc-webhook` order-status → unified inbox
-- Step 8: developer-mode gating rollout to SRS + QXO
-- Step 9: per-tenant `abc_v2_enabled` flag + legacy form removal
+- `POST /measurement-imports/normalize` — takes a `roof_measurement_id` (or raw ingest payload), creates `measurement_imports` + `measurement_segments` + `measurement_features`. For records that only have aggregate `total_area_adjusted_sqft` it creates **one** `unknown`-class segment marked `pitch_scope='global'`. For records with `total_area_flat_sqft > 0` and a non-zero residual it creates two segments: one `flat` (explicit) and one `sloped` candidate marked `is_split_residual=true`, with classification reason and lower confidence.
+- `POST /measurement-imports/{id}/classify` — runs the deterministic classifier (rules in your message: `<2/12 flat`, `2–4 low_slope`, `≥4 sloped`, provider explicit-flat beats pitch). Idempotent.
+- `POST /measurement-imports/{id}/manual-split` — accepts `{ flat: { area_sqft }, sloped: { area_sqft }, low_slope?: { area_sqft } }`, creates synthetic `reviewed=true` segments, archives prior auto-classified rows for that import.
+- `POST /estimate-templates/{id}/map-measurements` — runs the matcher: section rules → item rules → scoped context → formula eval → write `estimate_measurement_assignments` rows. Returns `{ assignments, unresolved, conflicts }`. Does **not** mutate `estimate_line_items` yet — that wiring is gated behind a small follow-up so we can compare against today's generator first.
 
-## One question before I build
+All routes: `requireAuth` + `requireTenant` middleware; tenant resolved server-side; `company_id` from JWT membership, never the body.
 
-**OAuth callback shape** — do you want me to:
+## Shared TypeScript
 
-- **(i)** Keep callback as a route on `abc-api` (`GET /oauth/callback` with `verify_jwt = false` for that path only) — simpler, one function, but ABC's registered redirect URI will be `https://<project>.functions.supabase.co/abc-api/oauth/callback`.
-- **(ii)** Split it out as a dedicated `abc-oauth-callback` standalone function (already listed as an approved exception in `EDGE_FUNCTION_RULES.md`), so the redirect URI is the cleaner `https://<project>.functions.supabase.co/abc-oauth-callback`.
+New `supabase/functions/_shared/measurement-mapping/`:
+- `classifier.ts` — `classifySurface(seg) -> { surface_class, confidence, reason }`.
+- `context.ts` — `buildScopedContext(import, segments, features)` returns the namespaced object with the `Unavailable` sentinel, not `0`, when a class has no segments.
+- `formula.ts` — thin wrapper around the existing formula evaluator that recognizes `class.*` / `section.*` paths and emits `missing_class_measurement` structured errors instead of `NaN`/`0`.
+- `mapper.ts` — `mapMeasurementsToTemplate(importId, templateId, policy)`.
+- `types.ts` — `SurfaceClass`, `MeasurementSegment`, `Assignment`, `Conflict`, `ReasonCode` unions.
 
-If ABC's developer portal has already had a redirect URI registered for the legacy integration, tell me which one and I'll match it. Otherwise I'll default to **(ii)** because it matches the doc and is what ABC's TPA guide expects.
+Mirror the types in `src/lib/measurement-mapping/types.ts` for the frontend (read-only consumers).
+
+## Frontend (read-only this phase)
+
+No new pages. Two minimal hooks under `src/lib/measurement-mapping/`:
+- `useMeasurementImport(roofMeasurementId)` — fetches normalized segments + features (tenant-filtered).
+- `useTemplateMappingPreview(templateId, importId)` — calls `/estimate-templates/{id}/map-measurements` in dry-run mode and returns `{ assignments, unresolved, conflicts }`.
+
+Add a small **debug-only** read panel inside the existing measurement details view (gated behind `isDeveloperMode`) that lists segments with their class + confidence, and shows a dry-run mapping against the currently selected template. No edit controls — that is Phase 2.
+
+## Policy details (locked)
+
+Classifier thresholds (overridable per request, defaults locked):
+- `pitch < 2/12` → `flat`
+- `2/12 ≤ pitch < 4/12` → `low_slope`
+- `pitch ≥ 4/12` → `sloped`
+- explicit provider flat flag → `flat` (beats pitch)
+- pitch unknown and no provider flag → `unknown` (never `flat`, never `sloped`)
+
+Unresolved reason codes (enum):
+- `global_only_import` — class-scoped item, import has no per-class split.
+- `missing_class_measurement` — formula references `class.flat.*` but `class.flat` is unavailable.
+- `unknown_pitch` — segment classification is `unknown` and item disallows unknown.
+- `low_confidence` — below configurable threshold (default 0.7).
+- `no_matching_segment` — feature item references a feature type not present.
+
+Conflict resolution precedence (in code, no UI yet):
+1. Manual lock on assignment (future-proofed; nothing locks rows yet in Phase 1)
+2. Explicit `template_item_rules` match
+3. Explicit `template_section_rules` match
+4. Provider-explicit class
+5. Pitch-derived class
+6. Global fallback (only if item allows it)
+
+## Testing
+
+Deno tests in `supabase/functions/measurement-api/`:
+- Classifier table tests for every threshold boundary, provider flag override, missing pitch.
+- Context builder: `unavailable` sentinel on missing class, no silent zero, no class total > global total.
+- Mapper:
+  - Flat-only import → only flat sections populate.
+  - Sloped-only import → only sloped sections populate, steep charge applies.
+  - Mixed flat + sloped explicit → flat items consume flat area, shingles consume sloped area, no double counting.
+  - Aggregate-only import → class-scoped items become `unresolved/global_only_import`, global items still resolve.
+  - Manual split → synthetic reviewed segments win over prior auto rows.
+  - Legacy template (no rule rows) → identical output to today's aggregate generator (regression).
+  - Re-run is idempotent for unchanged inputs.
+
+Frontend unit tests for the dry-run hook (mocked edge response).
+
+## Migration / rollout
+
+1. Ship the migration with `NOTIFY pgrst, 'reload schema';`.
+2. Backfill `measurement_imports` + one `unknown`-class segment per existing `roof_measurements` row so the new schema isn't empty. Where `total_area_flat_sqft > 0`, backfill the split as `is_split_residual=true` with low confidence.
+3. Deploy `measurement-api` routes.
+4. Turn on the developer-only debug panel.
+5. Keep `use_section_mapping=false` on every template by default — no customer-visible behavior change until Phase 2 flips a template over.
+
+## Out of scope (Phase 2)
+
+- Override UI: reassign / split / lock / explainability drawer.
+- Writing mapper output into `estimate_line_items` (replacing the v1 generator).
+- Incremental recompute on segment edits.
+- Sub-segment geometry (per-facet polygons) — Phase 1 uses one segment per class unless the import already provides per-facet rows.
+- Unit conversion beyond the existing canonical feet/sqft used today.
+
+## Risks & mitigations
+
+| Risk | Mitigation |
+|---|---|
+| Repeating "fake fallback geometry" mistake from prior measurement work | Classifier refuses to invent class splits. Aggregate-only imports produce one `unknown` segment, not a fabricated flat/sloped breakdown. |
+| Legacy templates regress | Default `measurement_scope='global'` + `allow_global_fallback=true` when no `template_item_rules` row exists; regression test asserts byte-identical output vs current generator on a known fixture. |
+| Schema cache drift | Single migration ends with `NOTIFY pgrst, 'reload schema';`. Edge writes use strip-and-retry on optional columns and persist stripped fields under `raw_payload.schema_drift_stripped_columns`. |
+| Tenant leakage on new tables | Every new table: RLS via `has_tenant_access(tenant_id)`, GRANT only to `authenticated` + `service_role`, mapper always filters `.eq('tenant_id', resolvedTenantId)`. |
