@@ -100,10 +100,12 @@ async function writePlanned(
   const importRow = {
     tenant_id: plan.tenant_id,
     source: "backfill",
-    source_roof_measurement_id: plan.source_roof_measurement_id,
+    roof_measurement_id: plan.source_roof_measurement_id,
     backfill_run_id: backfillRunId,
     aggregate_only: plan.aggregate_only,
     total_area_sqft: plan.total_area_sqft,
+    provider: "backfill",
+    import_status: "ready",
   };
   const { data: imp, error: impErr } = await sb
     .from("measurement_imports")
