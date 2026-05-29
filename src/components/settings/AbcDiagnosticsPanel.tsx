@@ -15,6 +15,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { format, formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
+import { useSupplierDeveloperMode } from '@/lib/supplierAccess';
 
 interface Props {
   projectId?: string;
@@ -78,10 +79,10 @@ function mapRejectMessage(o: AbcOrderRow): string | null {
   if (o.audit?.error_code) return `${o.audit.error_code} (HTTP ${o.audit.status_code ?? '—'})`;
   return `HTTP ${o.raw_payload?.response?.status ?? '—'}`;
 }
-
 export function AbcDiagnosticsPanel({ projectId }: Props) {
   const tenantId = useEffectiveTenantId();
   const { toast } = useToast();
+  const { showAdvanced } = useSupplierDeveloperMode();
   const [loading, setLoading] = useState(true);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [orders, setOrders] = useState<AbcOrderRow[]>([]);
@@ -328,7 +329,7 @@ export function AbcDiagnosticsPanel({ projectId }: Props) {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="flex items-center gap-2 text-base">
-          <Bug className="h-4 w-4" /> ABC Submit Diagnostics
+          <Bug className="h-4 w-4" /> {showAdvanced ? 'ABC Submit Diagnostics' : 'ABC Order Status'}
         </CardTitle>
         <Button size="sm" variant="ghost" onClick={load} disabled={loading}>
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
@@ -379,8 +380,9 @@ export function AbcDiagnosticsPanel({ projectId }: Props) {
               if (wafBlocked) {
                 banner = {
                   tone: 'err',
-                  text:
-                    'ABC WAF blocked sandbox API call (Imperva/Incapsula). Sandbox egress IP likely not on ABC allowlist — see docs/ABC_WAF_ALLOWLIST.md.',
+                  text: showAdvanced
+                    ? 'ABC WAF blocked sandbox API call (Imperva/Incapsula). Sandbox egress IP likely not on ABC allowlist — see docs/ABC_WAF_ALLOWLIST.md.'
+                    : 'ABC could not process this order right now. Please try again shortly or contact support.',
                 };
               } else if (apiErrored) {
                 banner = { tone: 'err', text: 'ABC API rejected request — inspect response.' };
@@ -540,7 +542,7 @@ export function AbcDiagnosticsPanel({ projectId }: Props) {
                             orderNumber: Not returned by ABC {o.source || 'sandbox'} response
                           </div>
                         ) : null}
-                        {o.request_id && (
+                        {showAdvanced && o.request_id && (
                           <div className="flex items-center gap-1">
                             requestId: <code className="text-[11px]">{o.request_id}</code>
                             <button onClick={() => copy(o.request_id!, 'requestId')}>
@@ -556,7 +558,7 @@ export function AbcDiagnosticsPanel({ projectId }: Props) {
                             </button>
                           </div>
                         )}
-                        {transactionID && (
+                        {showAdvanced && transactionID && (
                           <div className="flex items-center gap-1">
                             transactionID: <code className="text-[11px]">{transactionID}</code>
                             <button onClick={() => copy(String(transactionID), 'transactionID')}>
@@ -600,62 +602,79 @@ export function AbcDiagnosticsPanel({ projectId }: Props) {
 
                   {isExpanded && (
                     <div className="mt-3 space-y-3 border-t pt-3">
-                      {/* A. Sent Request */}
+                      {/* A. Sent Request (advanced only — endpoint + raw payload) */}
+                      {showAdvanced && (
+                        <div className="rounded border p-2 text-xs space-y-1">
+                          <div className="font-medium">A. Sent Request</div>
+                          {o.audit ? (
+                            <>
+                              <div>Endpoint: <code className="text-[11px]">{o.audit.endpoint || '—'}</code></div>
+                              <div>Action: <code className="text-[11px]">{o.audit.action}</code></div>
+                              <div className="text-muted-foreground">
+                                {format(new Date(o.audit.created_at), 'MMM d, h:mm:ss a')}
+                              </div>
+                            </>
+                          ) : (
+                            <div className="text-muted-foreground">No audit row matched this order.</div>
+                          )}
+                          <div className="mt-1 font-medium">Request payload</div>
+                          <pre className="max-h-48 overflow-auto rounded bg-muted p-2 text-[11px]">
+                            {JSON.stringify(
+                              o.audit?.request_body_redacted ??
+                                o.raw_payload?.request ?? { note: 'no request captured' },
+                              null,
+                              2,
+                            )}
+                          </pre>
+                        </div>
+                      )}
+
+                      {/* B. API Response — clean summary for everyone; raw JSON advanced-only */}
                       <div className="rounded border p-2 text-xs space-y-1">
-                        <div className="font-medium">A. Sent Request</div>
-                        {o.audit ? (
-                          <>
-                            <div>Endpoint: <code className="text-[11px]">{o.audit.endpoint || '—'}</code></div>
-                            <div>Action: <code className="text-[11px]">{o.audit.action}</code></div>
-                            <div className="text-muted-foreground">
-                              {format(new Date(o.audit.created_at), 'MMM d, h:mm:ss a')}
-                            </div>
-                          </>
+                        <div className="font-medium">
+                          {showAdvanced ? 'B. API Response' : 'Order Response'}
+                        </div>
+                        {showAdvanced ? (
+                          <div>
+                            HTTP {httpStatus ?? '—'}
+                            {o.audit?.duration_ms != null && ` · ${o.audit.duration_ms}ms`}
+                            {o.audit?.error_code ? ` · ${o.audit.error_code}` : ''}
+                          </div>
                         ) : (
-                          <div className="text-muted-foreground">No audit row matched this order.</div>
+                          <div className="text-muted-foreground">
+                            {apiAccepted
+                              ? 'ABC accepted the order.'
+                              : apiErrored
+                              ? 'ABC rejected the order.'
+                              : 'Waiting for ABC response.'}
+                          </div>
                         )}
-                        <div className="mt-1 font-medium">Request payload</div>
-                        <pre className="max-h-48 overflow-auto rounded bg-muted p-2 text-[11px]">
-                          {JSON.stringify(
-                            o.audit?.request_body_redacted ??
-                              o.raw_payload?.request ?? { note: 'no request captured' },
-                            null,
-                            2,
-                          )}
-                        </pre>
-                      </div>
-
-                      {/* B. API Response */}
-                      <div className="rounded border p-2 text-xs space-y-1">
-                        <div className="font-medium">B. API Response</div>
-                        <div>
-                          HTTP {httpStatus ?? '—'}
-                          {o.audit?.duration_ms != null && ` · ${o.audit.duration_ms}ms`}
-                          {o.audit?.error_code ? ` · ${o.audit.error_code}` : ''}
-                        </div>
                         <div className="flex flex-wrap gap-x-3 text-muted-foreground">
-                          <span>confirmationNumber: {o.confirmation_number || '—'}</span>
-                          <span>orderNumber: {o.order_number || '—'}</span>
-                          <span>transactionID: {transactionID || '—'}</span>
+                          <span>Confirmation #: {o.confirmation_number || '—'}</span>
+                          <span>Order #: {o.order_number || '—'}</span>
                         </div>
-                        <pre className="max-h-48 overflow-auto rounded bg-muted p-2 text-[11px]">
-                          {JSON.stringify(
-                            o.audit?.response_body ??
-                              o.raw_payload?.response?.body ?? { note: 'no response captured' },
-                            null,
-                            2,
-                          )}
-                        </pre>
+                        {showAdvanced && (
+                          <pre className="max-h-48 overflow-auto rounded bg-muted p-2 text-[11px]">
+                            {JSON.stringify(
+                              o.audit?.response_body ??
+                                o.raw_payload?.response?.body ?? { note: 'no response captured' },
+                              null,
+                              2,
+                            )}
+                          </pre>
+                        )}
                       </div>
 
-                      {/* C. Webhook / Status Timeline */}
+                      {/* C. Webhook / Status Timeline — event list visible to all; raw payloads advanced-only */}
                       <div className="rounded border p-2 text-xs space-y-2">
                         <div className="font-medium">
-                          C. Webhook / Status Timeline ({o.webhooks.length})
+                          {showAdvanced
+                            ? `C. Webhook / Status Timeline (${o.webhooks.length})`
+                            : `Status Updates (${o.webhooks.length})`}
                         </div>
                         {o.webhooks.length === 0 ? (
                           <div className="text-muted-foreground">
-                            No ABC webhook events received for this order yet.
+                            No status updates received for this order yet.
                           </div>
                         ) : (
                           <div className="space-y-2">
@@ -663,13 +682,15 @@ export function AbcDiagnosticsPanel({ projectId }: Props) {
                               <div key={w.id} className="rounded border p-2">
                                 <div className="flex items-center justify-between gap-2">
                                   <code className="font-semibold">
-                                    Webhook received: {w.event_type || '—'}
+                                    {showAdvanced
+                                      ? `Webhook received: ${w.event_type || '—'}`
+                                      : w.event_type || 'Update'}
                                   </code>
                                   <span className="text-muted-foreground">
                                     {format(new Date(w.received_at), 'MMM d, h:mm:ss a')}
                                   </span>
                                 </div>
-                                {w.payload && (
+                                {showAdvanced && w.payload && (
                                   <details className="mt-1">
                                     <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
                                       raw payload
@@ -696,16 +717,18 @@ export function AbcDiagnosticsPanel({ projectId }: Props) {
                             <div className="flex items-center justify-between gap-2">
                               <span className="font-medium">
                                 Status lookup {lookup.ok ? 'succeeded' : 'failed'}
-                                {lookup.status ? ` (HTTP ${lookup.status})` : ''}
+                                {showAdvanced && lookup.status ? ` (HTTP ${lookup.status})` : ''}
                               </span>
                               <span className="text-muted-foreground">
                                 {format(new Date(lookup.at), 'MMM d, h:mm:ss a')}
                               </span>
                             </div>
                             {lookup.error && (
-                              <div className="text-destructive mt-1">{lookup.error}</div>
+                              <div className="text-destructive mt-1">
+                                {showAdvanced ? lookup.error : 'Could not refresh status. Please try again.'}
+                              </div>
                             )}
-                            {lookup.body !== undefined && (
+                            {showAdvanced && lookup.body !== undefined && (
                               <pre className="mt-1 max-h-40 overflow-auto rounded bg-muted p-2 text-[10px]">
                                 {JSON.stringify(lookup.body, null, 2)}
                               </pre>
