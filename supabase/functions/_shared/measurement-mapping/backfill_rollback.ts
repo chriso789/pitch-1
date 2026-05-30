@@ -10,6 +10,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { logMappingEvent } from "./events.ts";
+import { enforceEnvironmentGuards, hasFlag } from "./guards.ts";
 
 interface Args {
   backfillRunId?: string;
