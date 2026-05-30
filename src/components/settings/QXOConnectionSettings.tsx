@@ -154,8 +154,16 @@ export function QXOConnectionSettings() {
   const isConnected = connection?.connection_status === 'connected';
   const hasCredentials = !!connection?.has_credentials;
 
+  // Normal tenants see ONLY the clean connect card. The full legacy panel
+  // (env selector, raw credentials, browser, AR dashboard, activity log) is
+  // gated behind `canSeeRawDiagnostics` so contractors never see it.
+  if (!canSeeRawDiagnostics) {
+    return <QxoTenantConnectCard />;
+  }
+
   return (
     <div className="space-y-6">
+      <QxoTenantConnectCard />
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
