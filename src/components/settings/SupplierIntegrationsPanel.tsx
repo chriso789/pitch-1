@@ -393,14 +393,16 @@ export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
                   ) : (
                     <Button
                       size="sm"
+                      className="w-full min-w-0"
                       onClick={() => openConnect(key)}
                       disabled={key === 'abc' && startingAbcOAuth}
                     >
                       {key === 'abc' && startingAbcOAuth && (
-                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                        <Loader2 className="h-3 w-3 mr-1 shrink-0 animate-spin" />
                       )}
-                      Connect {meta.name} Account
+                      <span className="truncate">Connect {meta.name}</span>
                     </Button>
+
                   )}
                 </div>
               </CardContent>
