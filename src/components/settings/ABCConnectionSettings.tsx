@@ -38,6 +38,7 @@ import {
 import { AbcDiagnosticsPanel } from './AbcDiagnosticsPanel';
 import { useSupplierDeveloperMode } from '@/lib/supplierAccess';
 import { AbcWebhookPanel } from '@/components/settings/abc/AbcWebhookPanel';
+import { AbcTenantConnectCard } from './AbcTenantConnectCard';
 
 const ABC_CONFIG = {
   authBase: {
