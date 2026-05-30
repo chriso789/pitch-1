@@ -28,16 +28,15 @@ const META: Record<SupplierKey, { name: string; help: string }> = {
   },
   qxo: {
     name: 'QXO / Beacon',
-    help: 'Enter your QXO/Beacon API username, password, and Client ID provided by your QXO partner integrations rep.',
+    help: "Sign in with your QXO account. Pitch links this company to your QXO account so we can pull pricing and submit orders — you don't need any QXO developer keys.",
   },
 };
 
 /**
- * Normal-tenant Connect dialog. SRS uses Pitch's platform OAuth client
- * (server-side SRS_CLIENT_ID/SRS_CLIENT_SECRET) per the SRS SIPS docs.
- * The tenant only supplies their SRS account number; Pitch then calls
- * /customers/validate server-side and only marks the connection
- * "connected" when validIndicator === "Y".
+ * Normal-tenant Connect dialog. QXO uses a two-step in-app flow:
+ *   1. Tenant signs in with their QXO email/password.
+ *   2. Tenant picks the QXO account + default branch to use for this company.
+ * Platform-level partner secrets (client_id/site_id) stay server-side.
  */
 export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, onConnected }: Props) {
   const { toast } = useToast();
@@ -52,10 +51,13 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
   const [srsInvoiceNumber, setSrsInvoiceNumber] = useState('');
   const [srsInvoiceDate, setSrsInvoiceDate] = useState('');
 
-  // QXO
+  // QXO — two-step
+  const [qxoStep, setQxoStep] = useState<'auth' | 'map'>('auth');
   const [qxoUsername, setQxoUsername] = useState('');
   const [qxoPassword, setQxoPassword] = useState('');
-  const [qxoClientId, setQxoClientId] = useState('');
+  const [qxoAccounts, setQxoAccounts] = useState<Array<{ id: string; label: string }>>([]);
+  const [qxoAccountId, setQxoAccountId] = useState('');
+  const [qxoBranchCode, setQxoBranchCode] = useState('');
 
   if (!supplier) return null;
   const meta = META[supplier];
@@ -63,7 +65,14 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
   const reset = () => {
     setAbcAccount(''); setAbcBranch('');
     setSrsCustomerCode(''); setSrsInvoiceNumber(''); setSrsInvoiceDate('');
-    setQxoUsername(''); setQxoPassword(''); setQxoClientId('');
+    setQxoStep('auth'); setQxoUsername(''); setQxoPassword('');
+    setQxoAccounts([]); setQxoAccountId(''); setQxoBranchCode('');
+  };
+
+  const closeAndReset = (success: boolean) => {
+    reset();
+    onOpenChange(false);
+    if (success) onConnected?.();
   };
 
   const handleSubmit = async () => {
@@ -81,12 +90,12 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
         });
         if (error) throw error;
         if (!data?.success) throw new Error(data?.error || 'Save failed');
+        toast({ title: `${meta.name} connected`, description: 'Account verified and connected.' });
+        closeAndReset(true);
       } else if (supplier === 'srs') {
         const customerCode = srsCustomerCode.trim();
         if (!customerCode) throw new Error('SRS Account Number is required.');
 
-        // 1) Persist the tenant's SRS account number. Partner OAuth client
-        //    (SRS_CLIENT_ID / SRS_CLIENT_SECRET) is loaded server-side.
         const saveRes = await supabase.functions.invoke('srs-api-proxy', {
           body: {
             action: 'save_credentials',
@@ -96,13 +105,8 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
           },
         });
         if (saveRes.error) throw saveRes.error;
-        if (!saveRes.data?.success) {
-          throw new Error(saveRes.data?.error || 'Save failed');
-        }
+        if (!saveRes.data?.success) throw new Error(saveRes.data?.error || 'Save failed');
 
-        // 2) Validate via SRS /customers/validate. Account number is the
-        //    only required input per SRS SIPS docs; invoice fields are an
-        //    optional stronger proof of account ownership.
         const validateBody: Record<string, unknown> = {
           action: 'validate_connection',
           tenant_id: tenantId,
@@ -114,41 +118,65 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
           body: validateBody,
         });
         if (validateRes.error) throw validateRes.error;
-        const ok = (validateRes.data as any)?.success ?? false;
-        if (!ok) {
+        if (!(validateRes.data as any)?.success) {
           throw new Error(
             (validateRes.data as any)?.error
               || 'SRS could not validate this account number. Double-check it and try again, or add a recent invoice.',
           );
         }
 
-        // 3) Sync branches so the tenant's Project → Send to Supplier
-        //    picker is populated immediately.
         await supabase.functions.invoke('srs-api-proxy', {
           body: { action: 'sync_branches', tenant_id: tenantId },
-        }).catch(() => { /* non-fatal — they can re-sync from the card */ });
-      } else if (supplier === 'qxo') {
-        if (!qxoUsername.trim() || !qxoPassword.trim()) {
-          throw new Error('QXO username and password are required.');
-        }
-        const { data, error } = await supabase.functions.invoke('qxo-save-credentials', {
-          body: {
-            tenant_id: tenantId,
-            username: qxoUsername.trim(),
-            password: qxoPassword,
-            client_id: qxoClientId.trim() || null,
-            site_id: 'dealersChoice',
-            environment: 'production',
-          },
-        });
-        if (error) throw error;
-        if (!data?.success) throw new Error(data?.error || 'Save failed');
-      }
+        }).catch(() => { /* non-fatal */ });
 
-      toast({ title: `${meta.name} connected`, description: 'Account verified and connected.' });
-      reset();
-      onOpenChange(false);
-      onConnected?.();
+        toast({ title: `${meta.name} connected`, description: 'Account verified and connected.' });
+        closeAndReset(true);
+      } else if (supplier === 'qxo') {
+        if (qxoStep === 'auth') {
+          if (!qxoUsername.trim() || !qxoPassword) {
+            throw new Error('QXO email and password are required.');
+          }
+          const { data, error } = await supabase.functions.invoke('qxo-api-proxy', {
+            body: {
+              action: 'authenticate',
+              tenant_id: tenantId,
+              username: qxoUsername.trim(),
+              password: qxoPassword,
+            },
+          });
+          if (error) throw error;
+          if (!(data as any)?.success) {
+            throw new Error((data as any)?.error || "We couldn't sign you in to QXO.");
+          }
+          const accounts: Array<{ id: string; label: string }> =
+            (data as any)?.accounts ?? [];
+          const defaultAccountId = (data as any)?.default_account_id ?? accounts[0]?.id ?? '';
+          const defaultBranch = (data as any)?.default_branch ?? '';
+          setQxoAccounts(accounts);
+          setQxoAccountId(String(defaultAccountId || ''));
+          setQxoBranchCode(String(defaultBranch || ''));
+          setQxoStep('map');
+        } else {
+          if (!qxoAccountId) throw new Error('Choose a QXO account.');
+          const { data, error } = await supabase.functions.invoke('qxo-api-proxy', {
+            body: {
+              action: 'finalize_connection',
+              tenant_id: tenantId,
+              account_id: qxoAccountId,
+              branch_code: qxoBranchCode.trim() || null,
+            },
+          });
+          if (error) throw error;
+          if (!(data as any)?.success) {
+            throw new Error((data as any)?.error || 'Could not save QXO mapping.');
+          }
+          await supabase.functions.invoke('qxo-api-proxy', {
+            body: { action: 'sync_branches', tenant_id: tenantId },
+          }).catch(() => { /* non-fatal */ });
+          toast({ title: 'QXO connected', description: 'Account linked and ready for orders.' });
+          closeAndReset(true);
+        }
+      }
     } catch (e: any) {
       toast({ title: 'Connection failed', description: e?.message || 'Unknown error', variant: 'destructive' });
     } finally {
@@ -156,12 +184,20 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
     }
   };
 
+  const qxoTitle = supplier === 'qxo' && qxoStep === 'map'
+    ? 'Choose your QXO account'
+    : `Connect ${meta.name}`;
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o) reset(); onOpenChange(o); }}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Connect {meta.name}</DialogTitle>
-          <DialogDescription className="text-xs">{meta.help}</DialogDescription>
+          <DialogTitle>{qxoTitle}</DialogTitle>
+          <DialogDescription className="text-xs">
+            {supplier === 'qxo' && qxoStep === 'map'
+              ? 'Pick the QXO account and default branch Pitch should use for pricing and order submission.'
+              : meta.help}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3 py-2">
@@ -218,19 +254,66 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
             </>
           )}
 
-          {supplier === 'qxo' && (
+          {supplier === 'qxo' && qxoStep === 'auth' && (
             <>
               <div className="space-y-1">
-                <Label className="text-xs">Username / Email</Label>
-                <Input value={qxoUsername} onChange={(e) => setQxoUsername(e.target.value)} placeholder="you@company.com" />
+                <Label className="text-xs">QXO Email / Username</Label>
+                <Input
+                  value={qxoUsername}
+                  onChange={(e) => setQxoUsername(e.target.value)}
+                  placeholder="you@company.com"
+                  autoComplete="username"
+                />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Password</Label>
-                <Input type="password" value={qxoPassword} onChange={(e) => setQxoPassword(e.target.value)} autoComplete="new-password" />
+                <Label className="text-xs">QXO Password</Label>
+                <Input
+                  type="password"
+                  value={qxoPassword}
+                  onChange={(e) => setQxoPassword(e.target.value)}
+                  autoComplete="current-password"
+                />
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Use the QXO account that owns the company's pricing and ordering.
+                For best results, use a long-lived owner or "integrations" QXO user.
+              </p>
+            </>
+          )}
+
+          {supplier === 'qxo' && qxoStep === 'map' && (
+            <>
+              <div className="space-y-1">
+                <Label className="text-xs">QXO Account</Label>
+                {qxoAccounts.length > 1 ? (
+                  <select
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={qxoAccountId}
+                    onChange={(e) => setQxoAccountId(e.target.value)}
+                  >
+                    <option value="">Select an account…</option>
+                    {qxoAccounts.map((a) => (
+                      <option key={a.id} value={a.id}>{a.label} ({a.id})</option>
+                    ))}
+                  </select>
+                ) : (
+                  <Input
+                    value={qxoAccountId}
+                    onChange={(e) => setQxoAccountId(e.target.value)}
+                    placeholder="Account number"
+                  />
+                )}
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">API Client ID</Label>
-                <Input value={qxoClientId} onChange={(e) => setQxoClientId(e.target.value)} placeholder="From QXO partner integrations" />
+                <Label className="text-xs">Default Branch (optional)</Label>
+                <Input
+                  value={qxoBranchCode}
+                  onChange={(e) => setQxoBranchCode(e.target.value)}
+                  placeholder="Branch code"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Used as the default branch for pricing and orders. You can override per order.
+                </p>
               </div>
             </>
           )}
@@ -241,10 +324,18 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
         </div>
 
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
+          {supplier === 'qxo' && qxoStep === 'map' ? (
+            <Button variant="ghost" onClick={() => setQxoStep('auth')} disabled={saving}>Back</Button>
+          ) : (
+            <Button variant="ghost" onClick={() => { reset(); onOpenChange(false); }} disabled={saving}>Cancel</Button>
+          )}
           <Button onClick={handleSubmit} disabled={saving}>
             {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            {supplier === 'srs' ? 'Validate & Connect' : 'Connect'}
+            {supplier === 'srs'
+              ? 'Validate & Connect'
+              : supplier === 'qxo'
+                ? (qxoStep === 'auth' ? 'Sign in to QXO' : 'Finish & Connect')
+                : 'Connect'}
           </Button>
         </DialogFooter>
       </DialogContent>
