@@ -80,6 +80,9 @@ interface Props {
 export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
   const tenantId = useEffectiveTenantId();
   const { toast } = useToast();
+  const abcStatus = useAbcConnectionStatus();
+  const srsStatus = useSrsConnectionStatus();
+  const qxoStatus = useQxoConnectionStatus();
   const [loading, setLoading] = useState(true);
   const [statuses, setStatuses] = useState<Record<SupplierKey, SupplierStatus>>({
     abc: EMPTY_STATUS,
@@ -90,6 +93,7 @@ export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
   const [connectOpen, setConnectOpen] = useState(false);
   const [connectSupplier, setConnectSupplier] = useState<SupplierKey | null>(null);
   const [disconnecting, setDisconnecting] = useState<SupplierKey | null>(null);
+  const [startingAbcOAuth, setStartingAbcOAuth] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
