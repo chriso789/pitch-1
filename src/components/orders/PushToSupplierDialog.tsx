@@ -13,6 +13,13 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { useAbcConnectionStatus } from '@/hooks/useAbcConnectionStatus';
+import { useAbcCatalog } from '@/hooks/useAbcCatalog';
+import {
+  AbcCatalogSearchPopover,
+  AbcPriceButton,
+  AbcPriceCell,
+  type AbcLineState,
+} from './AbcCatalogControls';
 
 type SupplierKey = 'srs' | 'qxo' | 'abc';
 
@@ -25,7 +32,7 @@ interface SupplierOption {
   statusNote?: string;
 }
 
-interface MaterialItem {
+interface MaterialItem extends AbcLineState {
   id?: string;
   item_name: string;
   description?: string;
