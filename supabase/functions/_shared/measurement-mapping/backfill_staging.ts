@@ -19,6 +19,7 @@
 //     --write --tenant-id <uuid> --limit 25
 
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { enforceEnvironmentGuards, hasFlag } from "./guards.ts";
 import { classifySurface } from "./classifier.ts";
 import { logMappingEvent } from "./events.ts";
 
@@ -170,12 +171,15 @@ async function writePlanned(
 async function main() {
   const args = parseArgs(Deno.args);
 
+  enforceEnvironmentGuards({
+    scriptName: "backfill_staging",
+    wantsWrite: args.write,
+    allowStagingWrite: hasFlag(Deno.args, "--allow-staging-write"),
+    argv: Deno.args,
+  });
+
   if (!args.write) {
-    console.error("REFUSED: staging backfill requires --write (and runs only in staging).");
-    Deno.exit(2);
-  }
-  if (!isStagingEnv()) {
-    console.error("REFUSED: DEPLOY_ENV is not staging/development. Production backfill is forbidden.");
+    console.error("REFUSED: staging backfill requires --write.");
     Deno.exit(2);
   }
   if (!args.tenantId) {

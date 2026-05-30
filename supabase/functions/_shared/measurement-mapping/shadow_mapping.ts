@@ -122,6 +122,13 @@ async function loadTemplateBundle(sb: SupabaseClient, templateId: string) {
 
 async function main() {
   const args = parseArgs(Deno.args);
+  const { enforceEnvironmentGuards } = await import("./guards.ts");
+  enforceEnvironmentGuards({
+    scriptName: "shadow_mapping",
+    wantsWrite: false,
+    allowStagingWrite: false,
+    argv: Deno.args,
+  });
   if (!args.tenantId) {
     console.error("REFUSED: --tenant-id required.");
     Deno.exit(2);

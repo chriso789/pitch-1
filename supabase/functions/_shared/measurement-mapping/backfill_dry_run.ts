@@ -123,6 +123,13 @@ function planRow(row: RoofMeasurementRow, issues: SafetyIssue[]): {
 
 async function main() {
   const args = parseArgs(Deno.args);
+  const { enforceEnvironmentGuards } = await import("./guards.ts");
+  enforceEnvironmentGuards({
+    scriptName: "backfill_dry_run",
+    wantsWrite: false,
+    allowStagingWrite: false,
+    argv: Deno.args,
+  });
 
   if (args.write) {
     // Phase 1.5 explicitly forbids production backfill writes.

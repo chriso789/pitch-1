@@ -1,6 +1,7 @@
 {
-  "//": "Task aliases for Phase 1.6 measurement-mapping tooling. These tasks DO NOT run automatically — they only define convenient command names. Every task requires explicit invocation by an operator with the correct env vars set. Production write/backfill/rollback is forbidden; see RUNBOOK.md.",
+  "//": "Task aliases for Phase 1.6 measurement-mapping tooling. Tasks DO NOT run automatically. Every script calls enforceEnvironmentGuards() at startup; mutating runs additionally require --write --allow-staging-write AND DEPLOY_ENV in {staging,development,dev} AND a SUPABASE_URL that does NOT point at the production project (alxelfrbjzkmtnsulcei). See RUNBOOK.md.",
   "tasks": {
+    "measurement-mapping:validate-schema": "deno run --allow-env --allow-net validate_schema.ts",
     "measurement-mapping:shadow":          "deno run --allow-env --allow-net shadow_mapping.ts",
     "measurement-mapping:legacy-compare":  "deno run --allow-env --allow-net legacy_comparison.ts",
     "measurement-mapping:rollout-report":  "deno run --allow-env --allow-net rollout_report.ts",
