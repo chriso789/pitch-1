@@ -161,18 +161,36 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
             (data as any)?.accounts ?? [];
           const defaultAccountId = (data as any)?.default_account_id ?? accounts[0]?.id ?? '';
           const defaultBranch = (data as any)?.default_branch ?? '';
+          const templates: Array<{ id: string; name: string }> =
+            (data as any)?.templates ?? [];
           setQxoAccounts(accounts);
           setQxoAccountId(String(defaultAccountId || ''));
           setQxoBranchCode(String(defaultBranch || ''));
+          setQxoTemplates(templates);
+          setQxoTemplateId('');
           setQxoStep('map');
         } else {
           if (!qxoAccountId) throw new Error('Choose a QXO account.');
+          if (!qxoBranchCode.trim()) throw new Error('Default branch is required.');
+          if (!qxoBranchContactName.trim()) {
+            throw new Error('Branch contact name is required.');
+          }
+          if (!qxoBranchContactPhone.trim() && !qxoBranchContactEmail.trim()) {
+            throw new Error('Provide a branch contact phone or email.');
+          }
+          const selectedTemplate = qxoTemplates.find((t) => t.id === qxoTemplateId);
           const { data, error } = await supabase.functions.invoke('qxo-api-proxy', {
             body: {
               action: 'finalize_connection',
               tenant_id: tenantId,
               account_id: qxoAccountId,
-              branch_code: qxoBranchCode.trim() || null,
+              branch_code: qxoBranchCode.trim(),
+              job_account: qxoJobAccount.trim() || null,
+              branch_contact_name: qxoBranchContactName.trim(),
+              branch_contact_phone: qxoBranchContactPhone.trim() || null,
+              branch_contact_email: qxoBranchContactEmail.trim() || null,
+              template_id: selectedTemplate?.id || null,
+              template_name: selectedTemplate?.name || null,
             },
           });
           if (error) throw error;
