@@ -374,22 +374,33 @@ export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
                         {disconnecting === key && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
                         Disconnect
                       </Button>
-                    </>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      <Button size="sm" onClick={() => openConnect(key)}>
-                        Connect Account
-                      </Button>
+                      {/* Optional secondary link to the supplier's own portal.
+                          Only shown AFTER the tenant has connected, never as
+                          the connect action itself — the portal carries
+                          whatever public browser session the user happens to
+                          have, which is how Cox previously landed in
+                          O'Brien's ABC account. */}
                       <Button
                         size="sm"
                         variant="ghost"
+                        className="text-muted-foreground"
                         onClick={() => window.open(meta.loginUrl, '_blank', 'noopener,noreferrer')}
                       >
+                        <ExternalLink className="h-3 w-3 mr-1" />
                         Open {meta.name} portal
                       </Button>
-                    </div>
-
-
+                    </>
+                  ) : (
+                    <Button
+                      size="sm"
+                      onClick={() => openConnect(key)}
+                      disabled={key === 'abc' && startingAbcOAuth}
+                    >
+                      {key === 'abc' && startingAbcOAuth && (
+                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                      )}
+                      Connect {meta.name} Account
+                    </Button>
                   )}
                 </div>
               </CardContent>
