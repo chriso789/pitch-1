@@ -320,10 +320,8 @@ export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
                       >
                         Connect Account
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => openConnect(key)}>
-                        Enter credentials
-                      </Button>
                     </div>
+
                   )}
                 </div>
               </CardContent>
