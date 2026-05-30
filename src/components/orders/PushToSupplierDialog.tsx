@@ -900,14 +900,31 @@ export function PushToSupplierDialog({
                 {selected === 'abc' && (
                   <div>
                     <Label htmlFor="abc-shipto">
-                      ABC Ship-To account # {allowSandboxDefaults ? <span className="text-muted-foreground text-xs">(sandbox default 2010466-2)</span> : null}
+                      ABC Ship-To <span className="text-destructive">*</span>
                     </Label>
-                    <Input
-                      id="abc-shipto"
-                      value={abcShipToNumber}
-                      onChange={e => setAbcShipToNumber(e.target.value)}
-                      placeholder="e.g. 2010466-2"
-                    />
+                    {abcCatalog.shipTos.length > 0 ? (
+                      <Select value={abcShipToNumber} onValueChange={(v) => setAbcShipToNumber(v)}>
+                        <SelectTrigger id="abc-shipto">
+                          <SelectValue placeholder="Select ship-to…" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {abcCatalog.shipTos.map((s) => (
+                            <SelectItem key={s.ship_to_number} value={s.ship_to_number}>
+                              {s.ship_to_number}
+                              {s.name ? ` — ${s.name}` : ''}
+                              {s.city ? ` (${s.city}${s.state ? `, ${s.state}` : ''})` : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        id="abc-shipto"
+                        value={abcShipToNumber}
+                        onChange={e => setAbcShipToNumber(e.target.value)}
+                        placeholder="e.g. 2010466-2"
+                      />
+                    )}
                   </div>
                 )}
 
