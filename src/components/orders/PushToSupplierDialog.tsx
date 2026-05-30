@@ -185,6 +185,7 @@ export function PushToSupplierDialog({
   const { toast } = useToast();
   const tenantId = useEffectiveTenantId();
   const abcConnection = useAbcConnectionStatus();
+  const abcCatalog = useAbcCatalog(tenantId);
   const [loadingSuppliers, setLoadingSuppliers] = useState(false);
   const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
   const [selected, setSelected] = useState<SupplierKey | null>(null);
