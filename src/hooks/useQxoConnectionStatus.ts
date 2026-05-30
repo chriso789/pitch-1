@@ -87,7 +87,7 @@ export function useQxoConnectionStatus(): QxoConnectionStatus {
       const { data } = await (supabase as any)
         .from('qxo_connections')
         .select(
-          'site_id, account_id, profile_id, default_branch_code, connection_status, last_validated_at, environment, has_credentials',
+          'site_id, account_id, account_number, profile_id, default_branch_code, job_account, branch_contact_name, branch_contact_phone, branch_contact_email, template_id, template_name, connection_status, last_validated_at, last_sync_at, environment, has_credentials',
         )
         .eq('tenant_id', tenantId)
         .maybeSingle();
@@ -116,6 +116,7 @@ export function useQxoConnectionStatus(): QxoConnectionStatus {
     return {
       state,
       isConnected: state === 'connected',
+      needsMapping: state === 'needs_mapping',
       hasCredentials: !!row?.has_credentials,
       row,
       branchCount,
