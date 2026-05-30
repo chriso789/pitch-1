@@ -16,10 +16,13 @@ export type SrsConnectionState =
 
 export interface SrsConnectionRow {
   customer_code: string | null;
+  customer_name: string | null;
   default_branch_code: string | null;
+  home_branch_code: string | null;
   job_account_number: number | null;
   connection_status: string | null;
   last_validated_at: string | null;
+  last_sync_at: string | null;
   environment: string | null;
   client_secret_last_four: string | null;
 }
@@ -65,7 +68,7 @@ export function useSrsConnectionStatus(): SrsConnectionStatus {
       const { data } = await (supabase as any)
         .from('srs_connections')
         .select(
-          'customer_code, default_branch_code, job_account_number, connection_status, last_validated_at, environment, client_secret_last_four',
+          'customer_code, customer_name, default_branch_code, home_branch_code, job_account_number, connection_status, last_validated_at, last_sync_at, environment, client_secret_last_four',
         )
         .eq('tenant_id', tenantId)
         .maybeSingle();

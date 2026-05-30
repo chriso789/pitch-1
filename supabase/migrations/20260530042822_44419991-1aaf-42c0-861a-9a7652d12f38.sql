@@ -1,0 +1,4 @@
+ALTER TABLE public.srs_connections
+  ADD COLUMN IF NOT EXISTS customer_name TEXT,
+  ADD COLUMN IF NOT EXISTS home_branch_code TEXT,
+  ADD COLUMN IF NOT EXISTS last_sync_at TIMESTAMP WITH TIME ZONE;

@@ -45519,12 +45519,15 @@ export type Database = {
           connection_status: string
           created_at: string
           customer_code: string | null
+          customer_name: string | null
           default_branch_code: string | null
           environment: string
+          home_branch_code: string | null
           id: string
           integration_key: string | null
           job_account_number: number | null
           last_error: string | null
+          last_sync_at: string | null
           last_validated_at: string | null
           tenant_id: string
           token_expires_at: string | null
@@ -45540,12 +45543,15 @@ export type Database = {
           connection_status?: string
           created_at?: string
           customer_code?: string | null
+          customer_name?: string | null
           default_branch_code?: string | null
           environment?: string
+          home_branch_code?: string | null
           id?: string
           integration_key?: string | null
           job_account_number?: number | null
           last_error?: string | null
+          last_sync_at?: string | null
           last_validated_at?: string | null
           tenant_id: string
           token_expires_at?: string | null
@@ -45561,12 +45567,15 @@ export type Database = {
           connection_status?: string
           created_at?: string
           customer_code?: string | null
+          customer_name?: string | null
           default_branch_code?: string | null
           environment?: string
+          home_branch_code?: string | null
           id?: string
           integration_key?: string | null
           job_account_number?: number | null
           last_error?: string | null
+          last_sync_at?: string | null
           last_validated_at?: string | null
           tenant_id?: string
           token_expires_at?: string | null

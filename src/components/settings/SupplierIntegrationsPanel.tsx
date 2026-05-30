@@ -331,26 +331,69 @@ export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
                 </div>
               </CardHeader>
               <CardContent className="flex-1 flex flex-col gap-2 text-xs">
-                <div className="flex justify-between text-muted-foreground">
-                  <span>Last sync</span>
-                  <span>
-                    {status.lastValidatedAt
-                      ? formatDistanceToNow(new Date(status.lastValidatedAt), { addSuffix: true })
-                      : '—'}
-                  </span>
-                </div>
-                <div className="flex justify-between text-muted-foreground">
-                  <span>Last order</span>
-                  <span>
-                    {status.lastOrderAt
-                      ? `${status.lastOrderStatus || 'pending'} · ${formatDistanceToNow(new Date(status.lastOrderAt), { addSuffix: true })}`
-                      : '—'}
-                  </span>
-                </div>
-                <div className="flex justify-between text-muted-foreground">
-                  <span>Recent orders</span>
-                  <span>{status.ordersCount}</span>
-                </div>
+                {key === 'srs' && status.connected ? (
+                  <>
+                    {srsStatus.row?.customer_name && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Customer</span>
+                        <span className="font-medium text-right truncate ml-2">{srsStatus.row.customer_name}</span>
+                      </div>
+                    )}
+                    {srsStatus.row?.customer_code && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Account #</span>
+                        <span className="font-mono">{srsStatus.row.customer_code}</span>
+                      </div>
+                    )}
+                    {(srsStatus.row?.home_branch_code || srsStatus.row?.default_branch_code) && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Home branch</span>
+                        <span className="font-mono">{srsStatus.row?.home_branch_code || srsStatus.row?.default_branch_code}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Branches</span>
+                      <span>{srsStatus.branchCount}</span>
+                    </div>
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Last sync</span>
+                      <span>
+                        {srsStatus.row?.last_sync_at
+                          ? formatDistanceToNow(new Date(srsStatus.row.last_sync_at), { addSuffix: true })
+                          : status.lastValidatedAt
+                            ? formatDistanceToNow(new Date(status.lastValidatedAt), { addSuffix: true })
+                            : '—'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Recent orders</span>
+                      <span>{status.ordersCount}</span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Last sync</span>
+                      <span>
+                        {status.lastValidatedAt
+                          ? formatDistanceToNow(new Date(status.lastValidatedAt), { addSuffix: true })
+                          : '—'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Last order</span>
+                      <span>
+                        {status.lastOrderAt
+                          ? `${status.lastOrderStatus || 'pending'} · ${formatDistanceToNow(new Date(status.lastOrderAt), { addSuffix: true })}`
+                          : '—'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Recent orders</span>
+                      <span>{status.ordersCount}</span>
+                    </div>
+                  </>
+                )}
                 {status.lastError && (
                   <div className="rounded-md border border-destructive/30 bg-destructive/10 text-destructive text-[11px] p-2">
                     {status.lastError}
