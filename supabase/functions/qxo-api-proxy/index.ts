@@ -208,37 +208,38 @@ Deno.serve(async (req) => {
       // QXO siteId is platform-level; tenants never see it.
       const siteId = Deno.env.get('QXO_SITE_ID') || 'dealersChoice';
 
-      let loginRes: any;
+      let authRes: QxoAuthResult;
       try {
-        loginRes = await legacyLogin(username, password, siteId);
+        authRes = await qxoAuthenticate(username, password, siteId);
       } catch (e: any) {
         return json({ success: false, error: e?.message || 'QXO sign-in failed.' }, 200);
       }
 
-      // Persist secrets under tenant_id; invalidate any cached OAuth tokens.
+      // Persist secrets under tenant_id. In session mode we keep the password
+      // because re-auth is required when the session expires; in token mode the
+      // password can be dropped once we have a refresh_token.
       await admin.from('qxo_credentials').upsert(
         {
           tenant_id,
           username,
-          password,
-          // Platform client_id (if any) is read from env at order time, not
-          // stored per tenant.
+          password: authRes.mode === 'token' && authRes.refreshToken ? null : password,
           client_id: null,
-          access_token: null,
-          refresh_token: null,
-          token_expires_at: null,
+          access_token: authRes.accessToken ?? null,
+          refresh_token: authRes.refreshToken ?? null,
+          token_expires_at: authRes.tokenExpiresAt ?? null,
+          auth_mode: authRes.mode,
         },
         { onConflict: 'tenant_id' },
       );
 
-      // Mirror non-sensitive flags. Stay "pending" until finalize_connection.
+      // Mirror non-sensitive flags. "needs_mapping" until finalize_connection.
       await admin.from('qxo_connections').upsert(
         {
           tenant_id,
           site_id: siteId,
           environment: 'production',
           has_credentials: true,
-          connection_status: 'pending',
+          connection_status: 'needs_mapping',
           valid_indicator: false,
           last_error: null,
           last_validated_at: new Date().toISOString(),
@@ -246,8 +247,8 @@ Deno.serve(async (req) => {
         { onConflict: 'tenant_id' },
       );
 
-      const info = loginRes?.messageInfo ?? {};
-      const accounts = extractAccounts(loginRes);
+      const info = authRes.userInfo ?? {};
+      const accounts = extractAccounts(authRes.raw);
       const defaultAccountId =
         info?.lastSelectedAccount?.accountId ||
         info?.lastSelectedAccount?.id ||
@@ -259,40 +260,81 @@ Deno.serve(async (req) => {
         info?.defaultBranch ||
         null;
 
+      // Templates: not exposed by the public session login. Surface anything the
+      // upstream actually returned so the UI can render an optional selector;
+      // otherwise an empty list keeps the field hidden.
+      const templatesRaw = Array.isArray(info?.templates)
+        ? info.templates
+        : Array.isArray(info?.orderTemplates)
+          ? info.orderTemplates
+          : [];
+      const templates = templatesRaw
+        .map((t: any) => ({
+          id: String(t?.id ?? t?.templateId ?? t?.code ?? ''),
+          name: String(t?.name ?? t?.templateName ?? t?.label ?? t?.id ?? ''),
+        }))
+        .filter((t: any) => t.id);
+
       return json({
         success: true,
         accounts,
         default_account_id: defaultAccountId,
         default_branch: defaultBranch,
         profile_id: info?.profileId ?? null,
+        templates,
+        state: 'needs_mapping',
       });
     }
 
-    // ----- 2. finalize_connection: tenant picks account/branch/job account -----
+    // ----- 2. finalize_connection: tenant picks account/branch/job + contact -----
     if (action === 'finalize_connection') {
       const accountId = body.account_id ? String(body.account_id) : null;
+      const accountNumber = body.account_number ? String(body.account_number) : null;
       const branchCode = body.branch_code ? String(body.branch_code) : null;
-      // job_account isn't a stable DB column yet — keep accepting it but
-      // only persist what schema supports today.
+      const jobAccount = body.job_account ? String(body.job_account) : null;
+      const branchContactName = body.branch_contact_name ? String(body.branch_contact_name).trim() : null;
+      const branchContactPhone = body.branch_contact_phone ? String(body.branch_contact_phone).trim() : null;
+      const branchContactEmail = body.branch_contact_email ? String(body.branch_contact_email).trim() : null;
+      const templateId = body.template_id ? String(body.template_id) : null;
+      const templateName = body.template_name ? String(body.template_name) : null;
+
       if (!accountId) {
         return json({ success: false, error: 'Account selection is required.' }, 400);
+      }
+      if (!branchCode) {
+        return json({ success: false, error: 'Default branch is required.' }, 400);
+      }
+      if (!branchContactName || (!branchContactPhone && !branchContactEmail)) {
+        return json(
+          { success: false, error: 'Branch contact name and phone or email are required.' },
+          400,
+        );
       }
 
       const { error: updErr } = await admin
         .from('qxo_connections')
         .update({
           account_id: accountId,
+          account_number: accountNumber ?? accountId,
           default_branch_code: branchCode,
+          job_account: jobAccount,
+          branch_contact_name: branchContactName,
+          branch_contact_phone: branchContactPhone,
+          branch_contact_email: branchContactEmail,
+          template_id: templateId,
+          template_name: templateName,
           connection_status: 'connected',
           valid_indicator: true,
           last_validated_at: new Date().toISOString(),
+          last_sync_at: new Date().toISOString(),
           last_error: null,
         })
         .eq('tenant_id', tenant_id);
       if (updErr) throw updErr;
 
-      return json({ success: true });
+      return json({ success: true, state: 'connected' });
     }
+
 
     // ----- 3. sync_branches (stub — branch discovery happens at login today) -----
     if (action === 'sync_branches') {
