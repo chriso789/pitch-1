@@ -736,6 +736,7 @@ Deno.serve(async (req) => {
           connectionPatch.connection_status = "connected";
           connectionPatch.last_error = null;
         }
+        connectionPatch.last_sync_at = new Date().toISOString();
         await supabase.from("srs_connections").update(connectionPatch).eq("id", connection.id);
 
         result = { success: true, branchCount: branches.length, jobAccountNumber, defaultBranch };
