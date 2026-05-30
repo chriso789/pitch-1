@@ -295,13 +295,31 @@ Deno.serve(async (req) => {
     // ------------------------------------------------------------------
     if (action === "save_credentials" || action === "rotate_credentials") {
       const { client_id, client_secret, customer_code, environment, integration_key, default_branch_code } = params as Record<string, string>;
-      if (!client_id || !client_secret) {
-        await audit({ tenant_id, action, success: false, error: "missing client_id/client_secret" });
-        return new Response(JSON.stringify({ error: "client_id and client_secret required" }), {
+
+      // Partner-level Pitch SRS OAuth client (one set of credentials for the
+      // whole platform). Per-tenant rows only need customer_code +
+      // integration_key (or invoice validation). Developer mode may still
+      // pass per-tenant client_id/client_secret to override.
+      const envClientId = (Deno.env.get("SRS_CLIENT_ID") || "").trim();
+      const envClientSecret = (Deno.env.get("SRS_CLIENT_SECRET") || "").trim();
+
+      const effectiveClientId = (client_id && client_id.trim()) || envClientId;
+      const effectiveClientSecret = (client_secret && client_secret.trim()) || envClientSecret;
+
+      if (!effectiveClientId || !effectiveClientSecret) {
+        await audit({ tenant_id, action, success: false, error: "missing partner SRS client credentials" });
+        return new Response(JSON.stringify({
+          error: "SRS partner credentials are not configured. Ask your Pitch admin to set SRS_CLIENT_ID and SRS_CLIENT_SECRET.",
+        }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      if (!customer_code || !customer_code.trim()) {
+        await audit({ tenant_id, action, success: false, error: "missing customer_code" });
+        return new Response(JSON.stringify({ error: "Customer Code is required." }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      const last4 = client_secret.trim().slice(-4);
+
+      const last4 = effectiveClientSecret.slice(-4);
       const nowIso = new Date().toISOString();
 
       const { data: existing } = await supabase
@@ -309,12 +327,12 @@ Deno.serve(async (req) => {
 
       const payload: Record<string, unknown> = {
         tenant_id,
-        client_id: client_id.trim(),
-        client_secret: client_secret.trim(),
+        client_id: effectiveClientId,
+        client_secret: effectiveClientSecret,
         client_secret_last_four: last4,
         client_secret_rotated_at: nowIso,
-        customer_code: (customer_code || "").trim() || null,
-        environment: environment || "staging",
+        customer_code: customer_code.trim(),
+        environment: environment || "production",
         connection_status: "disconnected",
         access_token: null,
         token_expires_at: null,
@@ -322,8 +340,6 @@ Deno.serve(async (req) => {
         last_error: null,
       };
 
-      // Preserve the integration key across rotations; only overwrite if a new
-      // one was explicitly supplied. Same for default branch.
       if (typeof integration_key === "string" && integration_key.trim()) {
         payload.integration_key = integration_key.trim();
       } else if (existing?.integration_key) {
@@ -344,11 +360,12 @@ Deno.serve(async (req) => {
         if (error) throw error;
         connId = data.id;
       }
-      await audit({ tenant_id, connection_id: connId, action, success: true, metadata: { last_four: last4, environment, integration_key_saved: !!payload.integration_key, default_branch_code: payload.default_branch_code } });
+      await audit({ tenant_id, connection_id: connId, action, success: true, metadata: { last_four: last4, environment: payload.environment, integration_key_saved: !!payload.integration_key, default_branch_code: payload.default_branch_code, partner_credentials: !client_id } });
       return new Response(JSON.stringify({ success: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
 
     // Lightweight settings update — does not touch credentials.
     if (action === "update_connection_settings") {
