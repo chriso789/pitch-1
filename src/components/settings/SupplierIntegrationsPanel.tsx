@@ -36,7 +36,7 @@ const SUPPLIER_META: Record<SupplierKey, { name: string; description: string; ic
     description: 'Live pricing and orders for shingles, underlayment, and accessories.',
     icon: Building2,
     color: 'text-orange-500 bg-orange-500/10',
-    loginUrl: 'https://www.abcsupply.com/myabc/',
+    loginUrl: 'https://account.abcsupply.com/orderdraft/login',
   },
   srs: {
     name: 'SRS Distribution',
