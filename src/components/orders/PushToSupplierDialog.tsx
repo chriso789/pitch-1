@@ -830,27 +830,49 @@ export function PushToSupplierDialog({
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <div>
                     <Label htmlFor="branch">
-                      {selected === 'abc' ? 'ABC Branch Number' : 'Branch code'}{' '}
+                      {selected === 'abc' ? 'ABC Branch' : 'Branch code'}{' '}
                       <span className="text-destructive">*</span>
                     </Label>
-                    <Input
-                      id="branch"
-                      value={branchCode}
-                      onChange={e =>
-                        setBranchCode(
-                          selected === 'abc' ? e.target.value : e.target.value.toUpperCase()
-                        )
-                      }
-                      placeholder={
-                        selected === 'abc'
-                          ? allowSandboxDefaults
-                            ? '1209'
-                            : 'e.g. 1209'
-                          : 'e.g. SROCA'
-                      }
-                      aria-invalid={selected === 'srs' && !branchCode.trim()}
-                      className={selected === 'srs' && !branchCode.trim() ? 'border-destructive' : ''}
-                    />
+                    {selected === 'abc' && abcCatalog.branches.length > 0 ? (
+                      <Select value={branchCode} onValueChange={(v) => setBranchCode(v)}>
+                        <SelectTrigger id="branch">
+                          <SelectValue placeholder="Select branch…" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {abcCatalog.branches.map((b) => (
+                            <SelectItem key={b.branch_number} value={b.branch_number}>
+                              {b.branch_number}
+                              {b.name ? ` — ${b.name}` : ''}
+                              {b.city ? ` (${b.city}${b.state ? `, ${b.state}` : ''})` : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        id="branch"
+                        value={branchCode}
+                        onChange={e =>
+                          setBranchCode(
+                            selected === 'abc' ? e.target.value : e.target.value.toUpperCase()
+                          )
+                        }
+                        placeholder={
+                          selected === 'abc'
+                            ? allowSandboxDefaults
+                              ? '1209'
+                              : 'e.g. 1209'
+                            : 'e.g. SROCA'
+                        }
+                        aria-invalid={selected === 'srs' && !branchCode.trim()}
+                        className={selected === 'srs' && !branchCode.trim() ? 'border-destructive' : ''}
+                      />
+                    )}
+                    {selected === 'abc' && abcCatalog.branches.length === 0 && !abcCatalog.loading && (
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        No branches synced yet — reconnect ABC in Settings → Integrations to populate.
+                      </p>
+                    )}
                   </div>
 
                   <div>
