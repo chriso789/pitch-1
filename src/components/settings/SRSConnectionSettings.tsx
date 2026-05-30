@@ -11,6 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { SrsDiagnosticsPanel } from '@/components/orders/SrsDiagnosticsPanel';
 import { SRSReconciliationPanel } from '@/components/orders/SRSReconciliationPanel';
 import { useSupplierDeveloperMode } from '@/lib/supplierAccess';
+import { SrsTenantConnectCard } from './SrsTenantConnectCard';
 import { Loader2, CheckCircle, XCircle, Link2, Unlink, Truck, RefreshCw, AlertTriangle, ShieldCheck } from 'lucide-react';
 
 
@@ -328,8 +329,16 @@ export function SRSConnectionSettings() {
   const rotationDueSoon = daysSinceRotation !== null && daysSinceRotation >= ROTATION_RECOMMENDED_DAYS && !rotationOverdue;
   const canSubmitTestOrder = isConnected && !!connection?.customer_code;
 
+  // Normal tenants see ONLY the clean connect card. The full legacy panel
+  // (env selector, raw credentials, audit log, diagnostics, test orders)
+  // is gated behind `canSeeRawDiagnostics` so contractors never see it.
+  if (!canSeeRawDiagnostics) {
+    return <SrsTenantConnectCard />;
+  }
+
   return (
     <div className="space-y-6">
+      <SrsTenantConnectCard />
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">

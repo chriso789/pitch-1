@@ -13,6 +13,7 @@ import { QXOArDashboard } from './QXOArDashboard';
 import { QXOActivityPanel } from './QXOActivityPanel';
 import { QXOBrowser } from './QXOBrowser';
 import { useSupplierDeveloperMode } from '@/lib/supplierAccess';
+import { QxoTenantConnectCard } from './QxoTenantConnectCard';
 
 // NOTE: Secrets (username/password/client_id/tokens) are stored in the
 // service-role-only `qxo_credentials` table and are never read by the
@@ -34,7 +35,7 @@ interface QXOConnection {
 
 export function QXOConnectionSettings() {
   const { activeCompanyId } = useCompanySwitcher();
-  const { canChangeEnvironment } = useSupplierDeveloperMode();
+  const { canChangeEnvironment, canSeeRawDiagnostics } = useSupplierDeveloperMode();
   const { toast } = useToast();
 
   const [connection, setConnection] = useState<QXOConnection | null>(null);
@@ -153,8 +154,16 @@ export function QXOConnectionSettings() {
   const isConnected = connection?.connection_status === 'connected';
   const hasCredentials = !!connection?.has_credentials;
 
+  // Normal tenants see ONLY the clean connect card. The full legacy panel
+  // (env selector, raw credentials, browser, AR dashboard, activity log) is
+  // gated behind `canSeeRawDiagnostics` so contractors never see it.
+  if (!canSeeRawDiagnostics) {
+    return <QxoTenantConnectCard />;
+  }
+
   return (
     <div className="space-y-6">
+      <QxoTenantConnectCard />
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
