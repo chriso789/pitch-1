@@ -1287,20 +1287,35 @@ export function ABCConnectionSettings() {
     </Card>
   );
 
+  // Normal tenants get a single, clean Connect card driven entirely by
+  // OAuth + post-callback sync. No account number, branch, or ship-to
+  // inputs are ever shown — ABC tells us those after login.
+  //
+  // Developers/admins (and the O'Brien sandbox tenant) additionally see
+  // the legacy diagnostics surface: platform OAuth client setup, sandbox
+  // test console, raw audit, webhook tools, etc.
+  if (!canSeeRawDiagnostics) {
+    return (
+      <div className="space-y-6">
+        <AbcTenantConnectCard />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
+      <AbcTenantConnectCard />
       {HeaderCard}
       {/* Connection Setup card asks for Pitch's OAuth client_id/secret with ABC.
           These are platform credentials, NOT customer credentials — they must
-          stay behind the developer/admin gate. Normal tenants connect via
-          OAuth using Pitch's already-registered platform credentials. */}
-      {canSeeRawDiagnostics && ConnectionSetupCard}
+          stay behind the developer/admin gate. */}
+      {ConnectionSetupCard}
       {ReadinessStrip}
       {DemoWorkflowCard}
-      {canSeeRawDiagnostics && TestConsoleCard}
-      {canSeeRawDiagnostics && LatestResultCard}
-      {canSeeRawDiagnostics && DiagnosticsCard}
-      {canSeeRawDiagnostics && AdvancedSection}
+      {TestConsoleCard}
+      {LatestResultCard}
+      {DiagnosticsCard}
+      {AdvancedSection}
     </div>
   );
 }
