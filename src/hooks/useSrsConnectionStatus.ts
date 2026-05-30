@@ -68,7 +68,7 @@ export function useSrsConnectionStatus(): SrsConnectionStatus {
       const { data } = await (supabase as any)
         .from('srs_connections')
         .select(
-          'customer_code, default_branch_code, job_account_number, connection_status, last_validated_at, environment, client_secret_last_four',
+          'customer_code, customer_name, default_branch_code, home_branch_code, job_account_number, connection_status, last_validated_at, last_sync_at, environment, client_secret_last_four',
         )
         .eq('tenant_id', tenantId)
         .maybeSingle();
