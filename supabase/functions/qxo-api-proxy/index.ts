@@ -376,15 +376,17 @@ Deno.serve(async (req) => {
           .eq('id', conn.id);
         return json({ success: true, profileId, accountId });
       } catch (e: any) {
+        const msg = String(e?.message || '');
+        const looksExpired = /401|unauthor|expired|invalid_token|invalid token|session/i.test(msg);
         await admin
           .from('qxo_connections')
           .update({
-            connection_status: 'error',
+            connection_status: looksExpired ? 'expired' : 'error',
             last_error: e.message,
             valid_indicator: false,
           })
           .eq('id', conn.id);
-        return json({ success: false, error: e.message });
+        return json({ success: false, error: e.message, state: looksExpired ? 'expired' : 'error' });
       }
     }
 
