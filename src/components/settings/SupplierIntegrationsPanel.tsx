@@ -314,13 +314,18 @@ export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
                     </>
                   ) : (
                     <div className="flex flex-wrap gap-2">
-                      <Button
-                        size="sm"
-                        onClick={() => window.open(meta.loginUrl, '_blank', 'noopener,noreferrer')}
-                      >
+                      <Button size="sm" onClick={() => openConnect(key)}>
                         Connect Account
                       </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => window.open(meta.loginUrl, '_blank', 'noopener,noreferrer')}
+                      >
+                        Open {meta.name} portal
+                      </Button>
                     </div>
+
 
                   )}
                 </div>
