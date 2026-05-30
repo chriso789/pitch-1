@@ -309,8 +309,10 @@ Deno.serve(async (req) => {
       if (!effectiveClientId || !effectiveClientSecret) {
         await audit({ tenant_id, action, success: false, error: "missing partner SRS client credentials" });
         return new Response(JSON.stringify({
-          error: "SRS partner credentials are not configured. Ask your Pitch admin to set SRS_CLIENT_ID and SRS_CLIENT_SECRET.",
-        }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          error: "SRS connection is temporarily unavailable. Contact support.",
+          dev_error: "Pitch SRS platform credentials are not configured. Set SRS_CLIENT_ID and SRS_CLIENT_SECRET in Supabase function secrets.",
+          code: "srs_platform_credentials_missing",
+        }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
       if (!customer_code || !customer_code.trim()) {
         await audit({ tenant_id, action, success: false, error: "missing customer_code" });
