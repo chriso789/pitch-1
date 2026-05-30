@@ -19,6 +19,7 @@
 //     --write --tenant-id <uuid> --limit 25
 
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { enforceEnvironmentGuards, hasFlag } from "./guards.ts";
 import { classifySurface } from "./classifier.ts";
 import { logMappingEvent } from "./events.ts";
 
