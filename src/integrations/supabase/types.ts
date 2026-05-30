@@ -36989,48 +36989,72 @@ export type Database = {
       qxo_connections: {
         Row: {
           account_id: string | null
+          account_number: string | null
+          branch_contact_email: string | null
+          branch_contact_name: string | null
+          branch_contact_phone: string | null
           connection_status: string
           created_at: string
           default_branch_code: string | null
           environment: string
           has_credentials: boolean
           id: string
+          job_account: string | null
           last_error: string | null
+          last_sync_at: string | null
           last_validated_at: string | null
           profile_id: string | null
           site_id: string | null
+          template_id: string | null
+          template_name: string | null
           tenant_id: string
           updated_at: string
           valid_indicator: boolean
         }
         Insert: {
           account_id?: string | null
+          account_number?: string | null
+          branch_contact_email?: string | null
+          branch_contact_name?: string | null
+          branch_contact_phone?: string | null
           connection_status?: string
           created_at?: string
           default_branch_code?: string | null
           environment?: string
           has_credentials?: boolean
           id?: string
+          job_account?: string | null
           last_error?: string | null
+          last_sync_at?: string | null
           last_validated_at?: string | null
           profile_id?: string | null
           site_id?: string | null
+          template_id?: string | null
+          template_name?: string | null
           tenant_id: string
           updated_at?: string
           valid_indicator?: boolean
         }
         Update: {
           account_id?: string | null
+          account_number?: string | null
+          branch_contact_email?: string | null
+          branch_contact_name?: string | null
+          branch_contact_phone?: string | null
           connection_status?: string
           created_at?: string
           default_branch_code?: string | null
           environment?: string
           has_credentials?: boolean
           id?: string
+          job_account?: string | null
           last_error?: string | null
+          last_sync_at?: string | null
           last_validated_at?: string | null
           profile_id?: string | null
           site_id?: string | null
+          template_id?: string | null
+          template_name?: string | null
           tenant_id?: string
           updated_at?: string
           valid_indicator?: boolean
@@ -37040,6 +37064,7 @@ export type Database = {
       qxo_credentials: {
         Row: {
           access_token: string | null
+          auth_mode: string | null
           client_id: string | null
           created_at: string
           id: string
@@ -37052,6 +37077,7 @@ export type Database = {
         }
         Insert: {
           access_token?: string | null
+          auth_mode?: string | null
           client_id?: string | null
           created_at?: string
           id?: string
@@ -37064,6 +37090,7 @@ export type Database = {
         }
         Update: {
           access_token?: string | null
+          auth_mode?: string | null
           client_id?: string | null
           created_at?: string
           id?: string

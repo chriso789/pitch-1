@@ -58,6 +58,12 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
   const [qxoAccounts, setQxoAccounts] = useState<Array<{ id: string; label: string }>>([]);
   const [qxoAccountId, setQxoAccountId] = useState('');
   const [qxoBranchCode, setQxoBranchCode] = useState('');
+  const [qxoJobAccount, setQxoJobAccount] = useState('');
+  const [qxoBranchContactName, setQxoBranchContactName] = useState('');
+  const [qxoBranchContactPhone, setQxoBranchContactPhone] = useState('');
+  const [qxoBranchContactEmail, setQxoBranchContactEmail] = useState('');
+  const [qxoTemplates, setQxoTemplates] = useState<Array<{ id: string; name: string }>>([]);
+  const [qxoTemplateId, setQxoTemplateId] = useState('');
 
   if (!supplier) return null;
   const meta = META[supplier];
@@ -67,6 +73,9 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
     setSrsCustomerCode(''); setSrsInvoiceNumber(''); setSrsInvoiceDate('');
     setQxoStep('auth'); setQxoUsername(''); setQxoPassword('');
     setQxoAccounts([]); setQxoAccountId(''); setQxoBranchCode('');
+    setQxoJobAccount(''); setQxoBranchContactName('');
+    setQxoBranchContactPhone(''); setQxoBranchContactEmail('');
+    setQxoTemplates([]); setQxoTemplateId('');
   };
 
   const closeAndReset = (success: boolean) => {
@@ -152,18 +161,36 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
             (data as any)?.accounts ?? [];
           const defaultAccountId = (data as any)?.default_account_id ?? accounts[0]?.id ?? '';
           const defaultBranch = (data as any)?.default_branch ?? '';
+          const templates: Array<{ id: string; name: string }> =
+            (data as any)?.templates ?? [];
           setQxoAccounts(accounts);
           setQxoAccountId(String(defaultAccountId || ''));
           setQxoBranchCode(String(defaultBranch || ''));
+          setQxoTemplates(templates);
+          setQxoTemplateId('');
           setQxoStep('map');
         } else {
           if (!qxoAccountId) throw new Error('Choose a QXO account.');
+          if (!qxoBranchCode.trim()) throw new Error('Default branch is required.');
+          if (!qxoBranchContactName.trim()) {
+            throw new Error('Branch contact name is required.');
+          }
+          if (!qxoBranchContactPhone.trim() && !qxoBranchContactEmail.trim()) {
+            throw new Error('Provide a branch contact phone or email.');
+          }
+          const selectedTemplate = qxoTemplates.find((t) => t.id === qxoTemplateId);
           const { data, error } = await supabase.functions.invoke('qxo-api-proxy', {
             body: {
               action: 'finalize_connection',
               tenant_id: tenantId,
               account_id: qxoAccountId,
-              branch_code: qxoBranchCode.trim() || null,
+              branch_code: qxoBranchCode.trim(),
+              job_account: qxoJobAccount.trim() || null,
+              branch_contact_name: qxoBranchContactName.trim(),
+              branch_contact_phone: qxoBranchContactPhone.trim() || null,
+              branch_contact_email: qxoBranchContactEmail.trim() || null,
+              template_id: selectedTemplate?.id || null,
+              template_name: selectedTemplate?.name || null,
             },
           });
           if (error) throw error;
@@ -305,7 +332,7 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
                 )}
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Default Branch (optional)</Label>
+                <Label className="text-xs">Default Branch</Label>
                 <Input
                   value={qxoBranchCode}
                   onChange={(e) => setQxoBranchCode(e.target.value)}
@@ -315,6 +342,58 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
                   Used as the default branch for pricing and orders. You can override per order.
                 </p>
               </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Branch Contact Name</Label>
+                <Input
+                  value={qxoBranchContactName}
+                  onChange={(e) => setQxoBranchContactName(e.target.value)}
+                  placeholder="Contact at this QXO branch"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label className="text-xs">Contact Phone</Label>
+                  <Input
+                    value={qxoBranchContactPhone}
+                    onChange={(e) => setQxoBranchContactPhone(e.target.value)}
+                    placeholder="(555) 555-5555"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Contact Email</Label>
+                  <Input
+                    value={qxoBranchContactEmail}
+                    onChange={(e) => setQxoBranchContactEmail(e.target.value)}
+                    placeholder="branch@example.com"
+                  />
+                </div>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Provide at least one — phone or email — so QXO can reach the branch about your orders.
+              </p>
+              <div className="space-y-1">
+                <Label className="text-xs">Job Account (optional)</Label>
+                <Input
+                  value={qxoJobAccount}
+                  onChange={(e) => setQxoJobAccount(e.target.value)}
+                  placeholder="Job account number"
+                />
+              </div>
+              {qxoTemplates.length > 0 && (
+                <div className="space-y-1">
+                  <Label className="text-xs">Default Order Template (optional)</Label>
+                  <select
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={qxoTemplateId}
+                    onChange={(e) => setQxoTemplateId(e.target.value)}
+                  >
+                    <option value="">None — choose at order time</option>
+                    {qxoTemplates.map((t) => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </>
           )}
 

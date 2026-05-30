@@ -372,16 +372,34 @@ export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
                   </>
                 ) : key === 'qxo' && status.connected ? (
                   <>
-                    {qxoStatus.row?.account_id && (
+                    {(qxoStatus.row?.account_number || qxoStatus.row?.account_id) && (
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Account #</span>
-                        <span className="font-mono">{qxoStatus.row.account_id}</span>
+                        <span className="font-mono">{qxoStatus.row?.account_number || qxoStatus.row?.account_id}</span>
                       </div>
                     )}
                     {qxoStatus.row?.default_branch_code && (
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Default branch</span>
                         <span className="font-mono">{qxoStatus.row.default_branch_code}</span>
+                      </div>
+                    )}
+                    {qxoStatus.row?.job_account && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Job account</span>
+                        <span className="font-mono">{qxoStatus.row.job_account}</span>
+                      </div>
+                    )}
+                    {qxoStatus.row?.branch_contact_name && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Branch contact</span>
+                        <span className="text-right truncate ml-2">{qxoStatus.row.branch_contact_name}</span>
+                      </div>
+                    )}
+                    {qxoStatus.row?.template_name && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Default template</span>
+                        <span className="text-right truncate ml-2">{qxoStatus.row.template_name}</span>
                       </div>
                     )}
                     <div className="flex justify-between text-muted-foreground">
@@ -391,8 +409,8 @@ export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
                     <div className="flex justify-between text-muted-foreground">
                       <span>Last sync</span>
                       <span>
-                        {qxoStatus.row?.last_validated_at
-                          ? formatDistanceToNow(new Date(qxoStatus.row.last_validated_at), { addSuffix: true })
+                        {(qxoStatus.row?.last_sync_at || qxoStatus.row?.last_validated_at)
+                          ? formatDistanceToNow(new Date(qxoStatus.row.last_sync_at || qxoStatus.row.last_validated_at!), { addSuffix: true })
                           : '—'}
                       </span>
                     </div>
@@ -401,6 +419,12 @@ export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
                       <span>{status.ordersCount}</span>
                     </div>
                   </>
+                ) : key === 'qxo' && (qxoStatus.state === 'needs_mapping' || qxoStatus.state === 'expired') ? (
+                  <div className="rounded-md border border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[11px] p-2">
+                    {qxoStatus.state === 'needs_mapping'
+                      ? 'Sign-in succeeded. Finish picking your QXO account and default branch to start ordering.'
+                      : 'Your QXO sign-in expired. Reconnect to resume pricing and orders.'}
+                  </div>
                 ) : (
                   <>
                     <div className="flex justify-between text-muted-foreground">
