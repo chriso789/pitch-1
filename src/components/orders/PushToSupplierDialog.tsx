@@ -954,6 +954,7 @@ export function PushToSupplierDialog({
                           <th className="p-2 text-right">Qty</th>
                           <th className="p-2 text-left">UoM</th>
                           <th className="p-2 text-left">Color</th>
+                          {selected === 'abc' && <th className="p-2 text-left">Price</th>}
                         </tr>
                       </thead>
                       <tbody>
