@@ -6,6 +6,7 @@ import { useEffectiveTenantId } from './useEffectiveTenantId';
 
 export type QxoConnectionState =
   | 'connected'
+  | 'needs_mapping'
   | 'disconnected'
   | 'pending'
   | 'expired'
@@ -15,10 +16,18 @@ export type QxoConnectionState =
 export interface QxoConnectionRow {
   site_id: string | null;
   account_id: string | null;
+  account_number: string | null;
   profile_id: string | null;
   default_branch_code: string | null;
+  job_account: string | null;
+  branch_contact_name: string | null;
+  branch_contact_phone: string | null;
+  branch_contact_email: string | null;
+  template_id: string | null;
+  template_name: string | null;
   connection_status: string | null;
   last_validated_at: string | null;
+  last_sync_at: string | null;
   environment: string | null;
   has_credentials: boolean | null;
 }
@@ -26,6 +35,7 @@ export interface QxoConnectionRow {
 export interface QxoConnectionStatus {
   state: QxoConnectionState;
   isConnected: boolean;
+  needsMapping: boolean;
   hasCredentials: boolean;
   row: QxoConnectionRow | null;
   branchCount: number;
@@ -38,6 +48,7 @@ function deriveState(row: QxoConnectionRow | null): QxoConnectionState {
   if (!row) return 'disconnected';
   const s = (row.connection_status || '').toLowerCase();
   if (s === 'connected') return 'connected';
+  if (s === 'needs_mapping') return 'needs_mapping';
   if (s === 'pending' || s === '') return 'pending';
   if (s === 'expired') return 'expired';
   if (s === 'error' || s === 'failed') return 'error';
