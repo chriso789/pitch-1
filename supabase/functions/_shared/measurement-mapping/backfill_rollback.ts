@@ -34,10 +34,12 @@ function isStagingEnv(): boolean {
 
 async function main() {
   const args = parseArgs(Deno.args);
-  if (!isStagingEnv()) {
-    console.error("REFUSED: rollback only runs in staging/development.");
-    Deno.exit(2);
-  }
+  enforceEnvironmentGuards({
+    scriptName: "backfill_rollback",
+    wantsWrite: true, // rollback always mutates
+    allowStagingWrite: hasFlag(Deno.args, "--allow-staging-write"),
+    argv: Deno.args,
+  });
   if (!args.backfillRunId) {
     console.error("REFUSED: --backfill-run-id required.");
     Deno.exit(2);
