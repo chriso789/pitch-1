@@ -3,7 +3,6 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -25,7 +24,7 @@ const META: Record<SupplierKey, { name: string; help: string }> = {
   },
   srs: {
     name: 'SRS Distribution',
-    help: "Connect your SRS account to Pitch. Enter your SRS Customer Code and Integration Key, or verify with a recent invoice. Need credentials? Email APISupportTeam@srsdistribution.com.",
+    help: "Enter your SRS Account Number. Optionally add a recent invoice for stronger account verification. Pitch validates and connects your SRS account securely server-side — you don't need any SRS developer keys.",
   },
   qxo: {
     name: 'QXO / Beacon',
@@ -34,18 +33,11 @@ const META: Record<SupplierKey, { name: string; help: string }> = {
 };
 
 /**
- * Normal-tenant Connect dialog. Captures the minimum fields each supplier
- * needs and saves them via the same edge functions used by the developer
- * panel — environment is always `production`. No sandbox / OAuth URL /
- * webhook tooling is exposed here.
- *
- * SRS specifically:
- *   - Tenants supply Customer Code + Integration Key OR validate with a
- *     recent invoice (Invoice #, Invoice Date, Billed Amount).
- *   - The Pitch partner OAuth client (SRS_CLIENT_ID / SRS_CLIENT_SECRET)
- *     is configured server-side; tenants never see it.
- *   - Save is chained with a server-side `validate` call so the connection
- *     only flips to "Connected" after SRS confirms the customer code.
+ * Normal-tenant Connect dialog. SRS uses Pitch's platform OAuth client
+ * (server-side SRS_CLIENT_ID/SRS_CLIENT_SECRET) per the SRS SIPS docs.
+ * The tenant only supplies their SRS account number; Pitch then calls
+ * /customers/validate server-side and only marks the connection
+ * "connected" when validIndicator === "Y".
  */
 export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, onConnected }: Props) {
   const { toast } = useToast();
@@ -55,13 +47,10 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
   const [abcAccount, setAbcAccount] = useState('');
   const [abcBranch, setAbcBranch] = useState('');
 
-  // SRS
-  const [srsMode, setSrsMode] = useState<'key' | 'invoice'>('key');
+  // SRS — tenant supplies only their own account info
   const [srsCustomerCode, setSrsCustomerCode] = useState('');
-  const [srsIntegrationKey, setSrsIntegrationKey] = useState('');
   const [srsInvoiceNumber, setSrsInvoiceNumber] = useState('');
   const [srsInvoiceDate, setSrsInvoiceDate] = useState('');
-  const [srsBilledAmount, setSrsBilledAmount] = useState('');
 
   // QXO
   const [qxoUsername, setQxoUsername] = useState('');
@@ -73,9 +62,7 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
 
   const reset = () => {
     setAbcAccount(''); setAbcBranch('');
-    setSrsMode('key');
-    setSrsCustomerCode(''); setSrsIntegrationKey('');
-    setSrsInvoiceNumber(''); setSrsInvoiceDate(''); setSrsBilledAmount('');
+    setSrsCustomerCode(''); setSrsInvoiceNumber(''); setSrsInvoiceDate('');
     setQxoUsername(''); setQxoPassword(''); setQxoClientId('');
   };
 
@@ -96,58 +83,50 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
         if (!data?.success) throw new Error(data?.error || 'Save failed');
       } else if (supplier === 'srs') {
         const customerCode = srsCustomerCode.trim();
-        if (!customerCode) throw new Error('SRS Customer Code is required.');
+        if (!customerCode) throw new Error('SRS Account Number is required.');
 
-        if (srsMode === 'key') {
-          if (!srsIntegrationKey.trim()) {
-            throw new Error('Integration Key is required (or switch to invoice validation).');
-          }
-        } else {
-          if (!srsInvoiceNumber.trim() || !srsInvoiceDate.trim() || !srsBilledAmount.trim()) {
-            throw new Error('Invoice #, Invoice Date, and Billed Amount are required.');
-          }
-        }
-
-        // 1) Save tenant-scoped credentials (partner client_id/secret come
-        //    from server env; never sent from the browser).
+        // 1) Persist the tenant's SRS account number. Partner OAuth client
+        //    (SRS_CLIENT_ID / SRS_CLIENT_SECRET) is loaded server-side.
         const saveRes = await supabase.functions.invoke('srs-api-proxy', {
           body: {
             action: 'save_credentials',
             tenant_id: tenantId,
             customer_code: customerCode,
             environment: 'production',
-            integration_key: srsMode === 'key' ? srsIntegrationKey.trim() : undefined,
           },
         });
         if (saveRes.error) throw saveRes.error;
-        if (!saveRes.data?.success) throw new Error(saveRes.data?.error || 'Save failed');
+        if (!saveRes.data?.success) {
+          throw new Error(saveRes.data?.error || 'Save failed');
+        }
 
-        // 2) Validate against SRS so the connection only flips to
-        //    "Connected" after SRS confirms the customer.
+        // 2) Validate via SRS /customers/validate. Account number is the
+        //    only required input per SRS SIPS docs; invoice fields are an
+        //    optional stronger proof of account ownership.
+        const validateBody: Record<string, unknown> = {
+          action: 'validate_connection',
+          tenant_id: tenantId,
+        };
+        if (srsInvoiceNumber.trim()) validateBody.invoice_number = srsInvoiceNumber.trim();
+        if (srsInvoiceDate.trim()) validateBody.invoice_date = srsInvoiceDate.trim();
+
         const validateRes = await supabase.functions.invoke('srs-api-proxy', {
-          body: srsMode === 'key'
-            ? {
-                action: 'validate',
-                tenant_id: tenantId,
-                integration_key: srsIntegrationKey.trim(),
-              }
-            : {
-                action: 'validate',
-                tenant_id: tenantId,
-                invoice_number: srsInvoiceNumber.trim(),
-                invoice_date: srsInvoiceDate.trim(),
-                billed_amount: srsBilledAmount.trim(),
-              },
+          body: validateBody,
         });
         if (validateRes.error) throw validateRes.error;
-        const ok = (validateRes.data as any)?.success ?? (validateRes.data as any)?.valid ?? false;
+        const ok = (validateRes.data as any)?.success ?? false;
         if (!ok) {
           throw new Error(
             (validateRes.data as any)?.error
-              || (validateRes.data as any)?.message
-              || 'SRS rejected the credentials. Double-check your Customer Code and try again.',
+              || 'SRS could not validate this account number. Double-check it and try again, or add a recent invoice.',
           );
         }
+
+        // 3) Sync branches so the tenant's Project → Send to Supplier
+        //    picker is populated immediately.
+        await supabase.functions.invoke('srs-api-proxy', {
+          body: { action: 'sync_branches', tenant_id: tenantId },
+        }).catch(() => { /* non-fatal — they can re-sync from the card */ });
       } else if (supplier === 'qxo') {
         if (!qxoUsername.trim() || !qxoPassword.trim()) {
           throw new Error('QXO username and password are required.');
@@ -166,7 +145,7 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
         if (!data?.success) throw new Error(data?.error || 'Save failed');
       }
 
-      toast({ title: `${meta.name} connected`, description: 'Credentials saved and verified.' });
+      toast({ title: `${meta.name} connected`, description: 'Account verified and connected.' });
       reset();
       onOpenChange(false);
       onConnected?.();
@@ -202,63 +181,40 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
           {supplier === 'srs' && (
             <>
               <div className="space-y-1">
-                <Label className="text-xs">Customer Code</Label>
+                <Label className="text-xs">SRS Account Number</Label>
                 <Input
                   value={srsCustomerCode}
                   onChange={(e) => setSrsCustomerCode(e.target.value)}
-                  placeholder="e.g. ABC123"
+                  placeholder="e.g. S046834"
                   autoComplete="off"
                 />
+                <p className="text-[11px] text-muted-foreground">
+                  Find this on any SRS invoice or in your SRS portal account profile.
+                </p>
               </div>
 
-              <Tabs value={srsMode} onValueChange={(v) => setSrsMode(v as 'key' | 'invoice')}>
-                <TabsList className="grid grid-cols-2 w-full">
-                  <TabsTrigger value="key">Integration Key</TabsTrigger>
-                  <TabsTrigger value="invoice">Verify with invoice</TabsTrigger>
-                </TabsList>
-                <TabsContent value="key" className="pt-3 space-y-1">
-                  <Label className="text-xs">Integration Key</Label>
+              <div className="pt-2 border-t border-border/50 space-y-3">
+                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                  Optional — verify with a recent invoice
+                </p>
+                <div className="space-y-1">
+                  <Label className="text-xs">Invoice #</Label>
                   <Input
-                    value={srsIntegrationKey}
-                    onChange={(e) => setSrsIntegrationKey(e.target.value)}
-                    placeholder="Issued by SRS"
+                    value={srsInvoiceNumber}
+                    onChange={(e) => setSrsInvoiceNumber(e.target.value)}
+                    placeholder="e.g. INV-123456"
                     autoComplete="off"
                   />
-                  <p className="text-[11px] text-muted-foreground">
-                    Get your Integration Key from your SRS rep or by emailing APISupportTeam@srsdistribution.com.
-                  </p>
-                </TabsContent>
-                <TabsContent value="invoice" className="pt-3 space-y-3">
-                  <div className="space-y-1">
-                    <Label className="text-xs">Recent Invoice #</Label>
-                    <Input
-                      value={srsInvoiceNumber}
-                      onChange={(e) => setSrsInvoiceNumber(e.target.value)}
-                      placeholder="e.g. INV-123456"
-                      autoComplete="off"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Invoice Date</Label>
-                    <Input
-                      type="date"
-                      value={srsInvoiceDate}
-                      onChange={(e) => setSrsInvoiceDate(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Billed Amount (USD)</Label>
-                    <Input
-                      type="number"
-                      inputMode="decimal"
-                      step="0.01"
-                      value={srsBilledAmount}
-                      onChange={(e) => setSrsBilledAmount(e.target.value)}
-                      placeholder="e.g. 1234.56"
-                    />
-                  </div>
-                </TabsContent>
-              </Tabs>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Invoice Date</Label>
+                  <Input
+                    type="date"
+                    value={srsInvoiceDate}
+                    onChange={(e) => setSrsInvoiceDate(e.target.value)}
+                  />
+                </div>
+              </div>
             </>
           )}
 
@@ -288,7 +244,7 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
           <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
           <Button onClick={handleSubmit} disabled={saving}>
             {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            {supplier === 'srs' ? 'Connect SRS Account' : 'Connect'}
+            {supplier === 'srs' ? 'Validate & Connect' : 'Connect'}
           </Button>
         </DialogFooter>
       </DialogContent>
