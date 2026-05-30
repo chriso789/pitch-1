@@ -13,6 +13,13 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { useAbcConnectionStatus } from '@/hooks/useAbcConnectionStatus';
+import { useAbcCatalog } from '@/hooks/useAbcCatalog';
+import {
+  AbcCatalogSearchPopover,
+  AbcPriceButton,
+  AbcPriceCell,
+  type AbcLineState,
+} from './AbcCatalogControls';
 
 type SupplierKey = 'srs' | 'qxo' | 'abc';
 
@@ -25,7 +32,7 @@ interface SupplierOption {
   statusNote?: string;
 }
 
-interface MaterialItem {
+interface MaterialItem extends AbcLineState {
   id?: string;
   item_name: string;
   description?: string;
@@ -178,6 +185,7 @@ export function PushToSupplierDialog({
   const { toast } = useToast();
   const tenantId = useEffectiveTenantId();
   const abcConnection = useAbcConnectionStatus();
+  const abcCatalog = useAbcCatalog(tenantId);
   const [loadingSuppliers, setLoadingSuppliers] = useState(false);
   const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
   const [selected, setSelected] = useState<SupplierKey | null>(null);
@@ -822,27 +830,49 @@ export function PushToSupplierDialog({
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <div>
                     <Label htmlFor="branch">
-                      {selected === 'abc' ? 'ABC Branch Number' : 'Branch code'}{' '}
+                      {selected === 'abc' ? 'ABC Branch' : 'Branch code'}{' '}
                       <span className="text-destructive">*</span>
                     </Label>
-                    <Input
-                      id="branch"
-                      value={branchCode}
-                      onChange={e =>
-                        setBranchCode(
-                          selected === 'abc' ? e.target.value : e.target.value.toUpperCase()
-                        )
-                      }
-                      placeholder={
-                        selected === 'abc'
-                          ? allowSandboxDefaults
-                            ? '1209'
-                            : 'e.g. 1209'
-                          : 'e.g. SROCA'
-                      }
-                      aria-invalid={selected === 'srs' && !branchCode.trim()}
-                      className={selected === 'srs' && !branchCode.trim() ? 'border-destructive' : ''}
-                    />
+                    {selected === 'abc' && abcCatalog.branches.length > 0 ? (
+                      <Select value={branchCode} onValueChange={(v) => setBranchCode(v)}>
+                        <SelectTrigger id="branch">
+                          <SelectValue placeholder="Select branch…" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {abcCatalog.branches.map((b) => (
+                            <SelectItem key={b.branch_number} value={b.branch_number}>
+                              {b.branch_number}
+                              {b.name ? ` — ${b.name}` : ''}
+                              {b.city ? ` (${b.city}${b.state ? `, ${b.state}` : ''})` : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        id="branch"
+                        value={branchCode}
+                        onChange={e =>
+                          setBranchCode(
+                            selected === 'abc' ? e.target.value : e.target.value.toUpperCase()
+                          )
+                        }
+                        placeholder={
+                          selected === 'abc'
+                            ? allowSandboxDefaults
+                              ? '1209'
+                              : 'e.g. 1209'
+                            : 'e.g. SROCA'
+                        }
+                        aria-invalid={selected === 'srs' && !branchCode.trim()}
+                        className={selected === 'srs' && !branchCode.trim() ? 'border-destructive' : ''}
+                      />
+                    )}
+                    {selected === 'abc' && abcCatalog.branches.length === 0 && !abcCatalog.loading && (
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        No branches synced yet — reconnect ABC in Settings → Integrations to populate.
+                      </p>
+                    )}
                   </div>
 
                   <div>
@@ -870,14 +900,31 @@ export function PushToSupplierDialog({
                 {selected === 'abc' && (
                   <div>
                     <Label htmlFor="abc-shipto">
-                      ABC Ship-To account # {allowSandboxDefaults ? <span className="text-muted-foreground text-xs">(sandbox default 2010466-2)</span> : null}
+                      ABC Ship-To <span className="text-destructive">*</span>
                     </Label>
-                    <Input
-                      id="abc-shipto"
-                      value={abcShipToNumber}
-                      onChange={e => setAbcShipToNumber(e.target.value)}
-                      placeholder="e.g. 2010466-2"
-                    />
+                    {abcCatalog.shipTos.length > 0 ? (
+                      <Select value={abcShipToNumber} onValueChange={(v) => setAbcShipToNumber(v)}>
+                        <SelectTrigger id="abc-shipto">
+                          <SelectValue placeholder="Select ship-to…" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {abcCatalog.shipTos.map((s) => (
+                            <SelectItem key={s.ship_to_number} value={s.ship_to_number}>
+                              {s.ship_to_number}
+                              {s.name ? ` — ${s.name}` : ''}
+                              {s.city ? ` (${s.city}${s.state ? `, ${s.state}` : ''})` : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        id="abc-shipto"
+                        value={abcShipToNumber}
+                        onChange={e => setAbcShipToNumber(e.target.value)}
+                        placeholder="e.g. 2010466-2"
+                      />
+                    )}
                   </div>
                 )}
 
@@ -907,6 +954,7 @@ export function PushToSupplierDialog({
                           <th className="p-2 text-right">Qty</th>
                           <th className="p-2 text-left">UoM</th>
                           <th className="p-2 text-left">Color</th>
+                          {selected === 'abc' && <th className="p-2 text-left">Price</th>}
                         </tr>
                       </thead>
                       <tbody>
@@ -925,11 +973,17 @@ export function PushToSupplierDialog({
                               <td className="p-2">
                                 <div className="flex items-center gap-1">
                                   <Input
-                                    value={it.srs_item_code || ''}
-                                    onChange={e => updateItem(i, { srs_item_code: e.target.value.trim() || null })}
-                                    onBlur={async e => persistSku(it, e.target.value.trim() || null)}
-                                    placeholder={selected === 'srs' ? 'productId (e.g. 3473)' : 'SKU'}
-                                    className={`h-7 w-36 font-mono text-xs ${!it.srs_item_code ? 'border-amber-400' : ''}`}
+                                    value={(selected === 'abc' ? (it.abc_item_number || '') : (it.srs_item_code || ''))}
+                                    onChange={e => {
+                                      const v = e.target.value.trim() || null;
+                                      if (selected === 'abc') updateItem(i, { abc_item_number: v });
+                                      else updateItem(i, { srs_item_code: v });
+                                    }}
+                                    onBlur={async e => {
+                                      if (selected !== 'abc') persistSku(it, e.target.value.trim() || null);
+                                    }}
+                                    placeholder={selected === 'srs' ? 'productId (e.g. 3473)' : selected === 'abc' ? 'ABC item #' : 'SKU'}
+                                    className={`h-7 w-36 font-mono text-xs ${(selected === 'abc' ? !it.abc_item_number : !it.srs_item_code) ? 'border-amber-400' : ''}`}
                                   />
                                   {selected === 'srs' && (
                                     <CatalogSearchPopover
@@ -941,6 +995,27 @@ export function PushToSupplierDialog({
                                       onPick={(pid) => {
                                         updateItem(i, { srs_item_code: pid });
                                         persistSku(it, pid);
+                                      }}
+                                    />
+                                  )}
+                                  {selected === 'abc' && tenantId && (
+                                    <AbcCatalogSearchPopover
+                                      tenantId={tenantId}
+                                      environment={(suppliers.find(s => s.key === 'abc')?.environment === 'production' ? 'production' : 'sandbox')}
+                                      branchNumber={branchCode}
+                                      initialQuery={it.item_name}
+                                      onPick={(picked) => {
+                                        updateItem(i, {
+                                          abc_item_number: picked.itemNumber,
+                                          abc_color: picked.color || it.abc_color || null,
+                                          abc_uom: picked.uom || it.abc_uom || it.unit || null,
+                                          color_specs: picked.color || it.color_specs,
+                                          // Reset stale price when item changes
+                                          abc_price: null,
+                                          abc_price_status: null,
+                                          abc_availability: null,
+                                          abc_price_timestamp: null,
+                                        });
                                       }}
                                     />
                                   )}
