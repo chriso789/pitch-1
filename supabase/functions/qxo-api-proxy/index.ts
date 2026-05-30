@@ -31,14 +31,83 @@ function json(body: unknown, status = 200) {
   });
 }
 
-async function legacyLogin(username: string, password: string, siteId: string) {
+// Public Beacon/QXO docs confirm two adjacent auth contracts:
+//   - Legacy session login: POST {base}/v1/rest/com/becn/login
+//   - OAuth token service:  POST {base}/rest/model/REST/oauth/token  (refresh-only is publicly documented)
+// We do NOT hard-code an "authenticate" path beyond these. The contract used at
+// runtime is selected by the server-side QXO_AUTH_MODE env (default: 'session').
+// Tenants never see this switch.
+type QxoAuthMode = 'session' | 'token';
+
+function getQxoAuthMode(): QxoAuthMode {
+  const v = (Deno.env.get('QXO_AUTH_MODE') || 'session').toLowerCase();
+  return v === 'token' ? 'token' : 'session';
+}
+
+interface QxoAuthResult {
+  mode: QxoAuthMode;
+  raw: any;
+  /** Discovery payload normalized by extractAccounts/etc; raw upstream user info if available. */
+  userInfo: any;
+  accessToken?: string | null;
+  refreshToken?: string | null;
+  tokenExpiresAt?: string | null;
+}
+
+async function qxoAuthenticate(
+  username: string,
+  password: string,
+  siteId: string,
+): Promise<QxoAuthResult> {
+  const mode = getQxoAuthMode();
+
+  if (mode === 'token') {
+    // Partner-issued OAuth password/credentials exchange.
+    // The exact form (grant_type, client_id, client_secret, scope) lives behind
+    // platform secrets and is configured per the live QXO partner contract.
+    const clientId = Deno.env.get('QXO_CLIENT_ID') || '';
+    const clientSecret = Deno.env.get('QXO_CLIENT_SECRET') || '';
+    const tokenPath = Deno.env.get('QXO_TOKEN_PATH') || '/rest/model/REST/oauth/token';
+    const form = new URLSearchParams();
+    form.set('grant_type', 'password');
+    form.set('username', username);
+    form.set('password', password);
+    if (clientId) form.set('client_id', clientId);
+    if (clientSecret) form.set('client_secret', clientSecret);
+    if (siteId) form.set('siteId', siteId);
+
+    const data = await qxoFetch<any>(tokenPath, {
+      method: 'POST',
+      raw: form.toString(),
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    }).catch((e) => {
+      if (e instanceof QxoHttpError) throw new Error(e.message || `QXO token exchange failed (${e.status})`);
+      throw e;
+    });
+    const access = data?.access_token || data?.accessToken || null;
+    if (!access) {
+      throw new Error("We couldn't sign you in to QXO. Confirm your QXO username and password.");
+    }
+    const expiresIn = Number(data?.expires_in ?? data?.expiresIn ?? 0);
+    const expiresAt = expiresIn > 0
+      ? new Date(Date.now() + expiresIn * 1000).toISOString()
+      : null;
+    return {
+      mode: 'token',
+      raw: data,
+      userInfo: data,
+      accessToken: access,
+      refreshToken: data?.refresh_token || data?.refreshToken || null,
+      tokenExpiresAt: expiresAt,
+    };
+  }
+
+  // Default: legacy session login (publicly documented Beacon v1 contract).
   const data = await qxoFetch<any>('/v1/rest/com/becn/login', {
     method: 'POST',
     body: { username, password, siteId },
   }).catch((e) => {
-    if (e instanceof QxoHttpError) {
-      throw new Error(e.message || `QXO login failed (${e.status})`);
-    }
+    if (e instanceof QxoHttpError) throw new Error(e.message || `QXO login failed (${e.status})`);
     throw e;
   });
   const info = data?.messageInfo;
@@ -49,7 +118,7 @@ async function legacyLogin(username: string, password: string, siteId: string) {
   if (!info?.profileId && !info?.lastSelectedAccount) {
     throw new Error("We couldn't sign you in to QXO. Confirm your QXO username and password.");
   }
-  return data;
+  return { mode: 'session', raw: data, userInfo: info };
 }
 
 /** Pull the list of account options the user can choose from. QXO returns
