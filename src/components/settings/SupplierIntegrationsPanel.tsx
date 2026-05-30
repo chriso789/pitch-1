@@ -2,9 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, CheckCircle2, XCircle, Truck, Building2, Package, FileText, CreditCard } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Truck, Building2, Package, FileText, CreditCard, ExternalLink } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { useAbcConnectionStatus } from '@/hooks/useAbcConnectionStatus';
+import { useSrsConnectionStatus } from '@/hooks/useSrsConnectionStatus';
+import { useQxoConnectionStatus } from '@/hooks/useQxoConnectionStatus';
 import { useToast } from '@/hooks/use-toast';
 import { formatDistanceToNow } from 'date-fns';
 import { ConnectSupplierDialog } from './ConnectSupplierDialog';
@@ -77,6 +80,9 @@ interface Props {
 export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
   const tenantId = useEffectiveTenantId();
   const { toast } = useToast();
+  const abcStatus = useAbcConnectionStatus();
+  const srsStatus = useSrsConnectionStatus();
+  const qxoStatus = useQxoConnectionStatus();
   const [loading, setLoading] = useState(true);
   const [statuses, setStatuses] = useState<Record<SupplierKey, SupplierStatus>>({
     abc: EMPTY_STATUS,
@@ -87,6 +93,7 @@ export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
   const [connectOpen, setConnectOpen] = useState(false);
   const [connectSupplier, setConnectSupplier] = useState<SupplierKey | null>(null);
   const [disconnecting, setDisconnecting] = useState<SupplierKey | null>(null);
+  const [startingAbcOAuth, setStartingAbcOAuth] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
@@ -181,7 +188,42 @@ export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
     };
   }, [tenantId, reloadKey]);
 
+  const startAbcOAuth = async () => {
+    if (!tenantId) return;
+    setStartingAbcOAuth(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
+        body: {
+          action: 'start_oauth',
+          tenant_id: tenantId,
+          return_origin: window.location.origin,
+        },
+      });
+      if (error) throw error;
+      const url = (data as any)?.authorization_url;
+      if (!url) {
+        const msg = (data as any)?.human_message || 'ABC OAuth did not return an authorization URL.';
+        throw new Error(msg);
+      }
+      // Full-page redirect into ABC's hosted Okta login. The callback edge
+      // function writes the tenant-scoped abc_connections row.
+      window.location.href = url;
+    } catch (e: any) {
+      toast({
+        title: 'Could not start ABC connection',
+        description: e?.message || 'Unknown error',
+        variant: 'destructive',
+      });
+      setStartingAbcOAuth(false);
+    }
+  };
+
   const openConnect = (supplier: SupplierKey) => {
+    // ABC uses the OAuth flow; SRS/QXO still use the credentials dialog.
+    if (supplier === 'abc') {
+      void startAbcOAuth();
+      return;
+    }
     setConnectSupplier(supplier);
     setConnectOpen(true);
   };
@@ -209,6 +251,9 @@ export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
       }
       toast({ title: `${SUPPLIER_META[supplier].name} disconnected` });
       setReloadKey((k) => k + 1);
+      if (supplier === 'abc') void abcStatus.refresh();
+      if (supplier === 'srs') void srsStatus.refresh();
+      if (supplier === 'qxo') void qxoStatus.refresh();
     } catch (e: any) {
       toast({ title: 'Disconnect failed', description: e?.message || 'Unknown error', variant: 'destructive' });
     } finally {
@@ -216,7 +261,25 @@ export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
     }
   };
 
-  const cards = useMemo(() => (['abc', 'srs', 'qxo'] as SupplierKey[]).map((k) => ({ key: k, meta: SUPPLIER_META[k], status: statuses[k] })), [statuses]);
+  // Merge order-history-derived metadata (from `load()` above) with the
+  // shared connection hooks so card "Connected/Not connected" badge is
+  // the SAME value rendered in ABCConnectionSettings, AbcDiagnosticsPanel,
+  // and PushToSupplierDialog. No more "Cox sees O'Brien connected".
+  const mergedStatuses: Record<SupplierKey, SupplierStatus> = {
+    abc: { ...statuses.abc, connected: abcStatus.isConnected },
+    srs: { ...statuses.srs, connected: srsStatus.isConnected },
+    qxo: { ...statuses.qxo, connected: qxoStatus.isConnected },
+  };
+
+  const cards = useMemo(
+    () => (['abc', 'srs', 'qxo'] as SupplierKey[]).map((k) => ({
+      key: k,
+      meta: SUPPLIER_META[k],
+      status: mergedStatuses[k],
+    })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [statuses, abcStatus.isConnected, srsStatus.isConnected, qxoStatus.isConnected],
+  );
 
 
   if (!tenantId) {
@@ -311,22 +374,33 @@ export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
                         {disconnecting === key && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
                         Disconnect
                       </Button>
-                    </>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      <Button size="sm" onClick={() => openConnect(key)}>
-                        Connect Account
-                      </Button>
+                      {/* Optional secondary link to the supplier's own portal.
+                          Only shown AFTER the tenant has connected, never as
+                          the connect action itself — the portal carries
+                          whatever public browser session the user happens to
+                          have, which is how Cox previously landed in
+                          O'Brien's ABC account. */}
                       <Button
                         size="sm"
                         variant="ghost"
+                        className="text-muted-foreground"
                         onClick={() => window.open(meta.loginUrl, '_blank', 'noopener,noreferrer')}
                       >
+                        <ExternalLink className="h-3 w-3 mr-1" />
                         Open {meta.name} portal
                       </Button>
-                    </div>
-
-
+                    </>
+                  ) : (
+                    <Button
+                      size="sm"
+                      onClick={() => openConnect(key)}
+                      disabled={key === 'abc' && startingAbcOAuth}
+                    >
+                      {key === 'abc' && startingAbcOAuth && (
+                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                      )}
+                      Connect {meta.name} Account
+                    </Button>
                   )}
                 </div>
               </CardContent>

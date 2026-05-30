@@ -1,62 +1,76 @@
+# Plan: Supplier Connection Unification + ABC Row Pricing
 
-# Supplier Onboarding Overhaul — Phased Plan
+## Priority 1 — Unify supplier connection state (hooks first)
 
-This spec is a full product surface rewrite across 4 suppliers + a new unified hub + project ordering + live pricing. It's too large for one pass without splitting; the prior message thread already established the order: unify connection state → hide dev surfaces → OAuth → pricing rows. ABC tenant card is done. The remaining work is split into 5 phases below.
+**Goal:** One tenant-scoped source of truth per supplier. No public-portal session ever drives "connected" status. Connect button starts OAuth (ABC) not portal link.
 
-## Phase A — SRS & QXO tenant connect cards (next, this turn)
+### 1a. Shared hooks (single source of truth)
+- `src/hooks/useSupplierDeveloperMode.ts` — returns `{ isDeveloper }` based on `useCurrentUser().is_developer` OR master role. Used to gate all dev surfaces.
+- `src/hooks/useAbcConnectionStatus.ts` — already exists. Audit: confirm it's the only ABC status reader; export a `connect()` helper that invokes `abc-api-proxy` action `start_oauth` with tenant-scoped `state` and redirects.
+- `src/hooks/useSrsConnectionStatus.ts` — already exists. Audit consistency with ABC shape (`state`, `isConnected`, `refresh`).
+- `src/hooks/useQxoConnectionStatus.ts` — already exists. Same audit.
 
-Mirror what was done for ABC. Hide every developer surface behind `useSupplierDeveloperMode().canSeeRawDiagnostics`.
+### 1b. Refactor every supplier surface to consume those hooks
+ABC consumers that must switch to `useAbcConnectionStatus`:
+- `src/components/settings/SupplierIntegrationsPanel.tsx` (card)
+- `src/components/settings/ABCConnectionSettings.tsx`
+- `src/components/settings/AbcTenantConnectCard.tsx` (if present)
+- `src/components/settings/AbcDiagnosticsPanel.tsx`
+- `src/components/orders/PushToSupplierDialog.tsx`
 
-- Create `src/components/settings/SrsTenantConnectCard.tsx`
-  - Minimal onboarding modal: Customer Code + Integration Key (required), optional invoice trio
-  - Calls existing `srs-api` validate/sync route; on success shows: Customer Code, Branch Count, Ship-To Count, Last Sync, View Orders, Disconnect
-- Create `src/components/settings/QxoTenantConnectCard.tsx`
-  - Minimal account-link modal: Customer Number, Account Number, optional API Key
-  - Same connected-state surface
-- Gate `SRSConnectionSettings.tsx` and `QXOConnectionSettings.tsx`: normal tenants see only the new card; dev/O'Brien sees the legacy panel underneath.
-- Add a `useSrsConnectionStatus` and `useQxoConnectionStatus` hook pair next to `useAbcConnectionStatus` so all three cards share the same state shape.
+For each: remove any local `supabase.from('abc_connections').select(...)`, local `useEffect` status fetchers, or session-based heuristics. Render strictly off the hook.
 
-## Phase B — Unified Suppliers hub route
+### 1c. ABC Connect = OAuth, not portal
+In `SupplierIntegrationsPanel.tsx`:
+- Replace the ABC `Connect Account` `onClick` with `await startAbcOAuth(effectiveTenantId)` which calls edge function `abc-api-proxy` `{ action: 'start_oauth', tenant_id }` and `window.location.href = data.authorize_url`.
+- "Open ABC Supply portal" link: render only when `isConnected === true`, styled as secondary link, never as Connect.
+- SRS/QXO: same shape — Connect calls a tenant-scoped credential modal/OAuth (existing). Portal link only after connect.
 
-- New page `src/pages/SuppliersHub.tsx` at `/settings/integrations/suppliers`
-- Renders ABC / SRS / QXO / QuickBooks / Billtrust (coming soon) cards in a grid
-- Uses the tenant connect cards from Phase A + the existing ABC card
-- Add row in `IntegrationsSettings` tab list pointing here (or replace Suppliers section in Settings.tsx)
+### 1d. Disconnected vs connected UI per card
+- Disconnected: show single primary `Connect <Supplier> Account`.
+- Connected: hide Connect; show `Disconnect`, `Refresh`, `View Orders`, and optional secondary `Open Supplier Portal`.
 
-## Phase C — Supplier Orders page
+## Priority 2 — Finish ABC row-level SKU / color / availability / pricing in `PushToSupplierDialog`
 
-- Route `/settings/integrations/suppliers/orders`
-- Read-only table unioning `abc_orders`, `srs_orders`, `qxo_orders`, scoped by `useEffectiveTenantId()`
-- Columns: Supplier, Project, PO, Order #, Confirmation #, Status, Submitted, Last Updated, Total, Inspect
-- "Inspect" opens existing diagnostics dialogs (dev-only details still gated)
+Files:
+- `src/components/orders/PushToSupplierDialog.tsx`
+- `src/components/orders/AbcCatalogControls.tsx` (already exists — extend)
+- `src/lib/abc/abcApi.ts` (wrappers exist)
+- `src/lib/abc/useAbcConnection.ts` (catalog hooks exist)
 
-## Phase D — QuickBooks OAuth-only card
+Add per-row when supplier === ABC:
+1. **Catalog search cell** — `AbcCatalogControls` shows search → list of `{ item_number, description, color, uom }` scoped to selected branch (familyItems=true). Selecting a color writes the exact `abc_item_number`/`abc_color`/`abc_uom` to the row.
+2. **Availability cell** — calls `getAbcAvailability([{ item_number }])` on item/branch change; renders `available | pending | unavailable | error`.
+3. **Price cell (`AbcPriceCell` + `AbcPriceButton`)** — Button calls `getAbcPrice({ purpose: 'ordering', branch_number, ship_to_number, items: [{ item_number, uom }] })`. Render states:
+   - priced → live unit + extended
+   - `unit_price === 0 && !price_pending` → "$0.00 returned by ABC — price may be pending at branch"
+   - `price_pending` → "Price pending"
+   - unavailable / error → explicit messages
+4. **Persist to `estimate_line_items`** on every change: `abc_item_number`, `abc_color`, `abc_uom`, `abc_price`, `abc_price_timestamp`, `abc_branch`, `abc_ship_to`, `abc_availability`, `abc_price_status`.
+5. **Empty-row colSpan** bump to 6 when ABC selected.
+6. **Submit gating:**
+   - Disable until every ABC line has `abc_item_number`.
+   - Zero/unavailable price → allow only with explicit confirm dialog.
+   - Error → block unless developer override (`useSupplierDeveloperMode`).
+7. **Submit payload:** include `abc_item_code`, selected `branch_number`, `ship_to_number`, color/uom (in dedicated fields or line comments).
 
-- Remove Realm ID / Company ID / Client ID / Client Secret inputs from `QuickBooksSettings.tsx` for normal tenants
-- Replace with a single "Connect QuickBooks" button → existing Intuit OAuth start route → callback persists tokens
-- Connected state surface: Company Name, Last Sync, Sync Status, Disconnect
-- Keep dev-mode legacy panel under the same `canSeeRawDiagnostics` gate
+## Priority 3 — Hide dev surfaces for normal tenants
 
-## Phase E — PushToSupplierDialog: row-level live pricing
+Wrap each of these in `{ isDeveloper && ... }` from `useSupplierDeveloperMode`:
+- `AbcDiagnosticsPanel` raw payload / callback log / WAF log sections
+- Sandbox/staging environment labels in `SupplierIntegrationsPanel`, `ABCConnectionSettings`, `SRSConnectionSettings`, `QXOConnectionSettings`
+- OAuth/token/callback URL displays
+- Any "Enter credentials" manual paths surviving on ABC (should already be gone)
 
-- Per-line item: SKU search (`searchAbcCatalog`), color variant select, availability check, then `getAbcPrice({purpose:'ordering', branch, ship_to, items})`
-- Persist `abc_item_number`, `abc_color`, `abc_uom`, `abc_price`, `abc_price_timestamp` on the estimate line
-- Branch + Ship-To dropdowns sourced from `useAbcAccounts()` — no manual numeric entry
-- Mirror flow for SRS/QXO once their catalog routes exist; until then show "Pricing not available for <supplier>" instead of $0.00
-- Per the prior agreement: this phase only starts after Phases A–D land and connection state is proven stable
+O'Brien tenant + master role: panels remain visible (developer mode true).
 
 ## Technical notes
 
-- All new cards consume `useSupplierDeveloperMode()` and share the existing `useAbcConnectionStatus` shape.
-- No backend / edge-function changes in Phases A–C; everything routes through existing `abc-api`, `srs-api`, `qxo-api`.
-- Phase D requires confirming the existing `quickbooks-oauth-start` / `-callback` functions are wired (will verify before editing UI).
-- Phase E is the only phase that touches estimate-line-item persistence; will require a migration to add the `abc_*` columns if they don't exist.
+- `abc-api-proxy` `start_oauth` action: confirm it exists in `supabase/functions/abc-api-proxy/index.ts`; if not, add it — generate Okta authorize URL with `state = { tenant_id, nonce }`, persist nonce to `abc_oauth_state` table, return `{ authorize_url }`.
+- Tenant scoping invariant: every ABC supabase read passes `.eq('tenant_id', effectiveTenantId)`; every edge call relies on the function's `requireTenant` (server-side) — never trust client tenant.
+- No DB migration needed if `estimate_line_items` already has the `abc_*` columns from the prior migration `20260530025254_*`. Verify and add only missing columns.
 
-## Out of scope for this plan
-
-- Tenant allowlist rollout for the measurement-mapping work (separate track, still NO-GO per prior memory).
-- Any production write against `alxelfrbjzkmtnsulcei` from the measurement-mapping scripts.
-
-## Proposed execution
-
-Approve Phase A now; I'll implement it this turn (2 new cards + 2 hooks + 2 settings-page edits). Phases B–E follow in subsequent turns so each lands reviewable.
+## Out of scope (deferred)
+- QuickBooks OAuth onboarding (Phase C)
+- Unified Supplier Order History (Phase D)
+- Suppliers Hub route cleanup (Phase E)
