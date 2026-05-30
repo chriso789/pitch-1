@@ -370,6 +370,37 @@ export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
                       <span>{status.ordersCount}</span>
                     </div>
                   </>
+                ) : key === 'qxo' && status.connected ? (
+                  <>
+                    {qxoStatus.row?.account_id && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Account #</span>
+                        <span className="font-mono">{qxoStatus.row.account_id}</span>
+                      </div>
+                    )}
+                    {qxoStatus.row?.default_branch_code && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Default branch</span>
+                        <span className="font-mono">{qxoStatus.row.default_branch_code}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Branches</span>
+                      <span>{qxoStatus.branchCount}</span>
+                    </div>
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Last sync</span>
+                      <span>
+                        {qxoStatus.row?.last_validated_at
+                          ? formatDistanceToNow(new Date(qxoStatus.row.last_validated_at), { addSuffix: true })
+                          : '—'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Recent orders</span>
+                      <span>{status.ordersCount}</span>
+                    </div>
+                  </>
                 ) : (
                   <>
                     <div className="flex justify-between text-muted-foreground">

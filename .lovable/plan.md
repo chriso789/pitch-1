@@ -1,76 +1,81 @@
-# Plan: Supplier Connection Unification + ABC Row Pricing
+# Plan: Tenant-Scoped QXO Connect Flow
 
-## Priority 1 — Unify supplier connection state (hooks first)
+Align QXO with the same model we just landed for SRS: contractors authenticate as a QXO user, then map account / branch / job-account. No `client_id`, `siteId`, or partner secrets shown to normal tenants. Platform-level partner config (if any) stays server-side.
 
-**Goal:** One tenant-scoped source of truth per supplier. No public-portal session ever drives "connected" status. Connect button starts OAuth (ABC) not portal link.
+## 1. Frontend — `ConnectSupplierDialog.tsx` (QXO branch)
 
-### 1a. Shared hooks (single source of truth)
-- `src/hooks/useSupplierDeveloperMode.ts` — returns `{ isDeveloper }` based on `useCurrentUser().is_developer` OR master role. Used to gate all dev surfaces.
-- `src/hooks/useAbcConnectionStatus.ts` — already exists. Audit: confirm it's the only ABC status reader; export a `connect()` helper that invokes `abc-api-proxy` action `start_oauth` with tenant-scoped `state` and redirects.
-- `src/hooks/useSrsConnectionStatus.ts` — already exists. Audit consistency with ABC shape (`state`, `isConnected`, `refresh`).
-- `src/hooks/useQxoConnectionStatus.ts` — already exists. Same audit.
+Replace the current 4-field form (Site/Realm, Username, Password, API Client ID) with a two-step in-app flow:
 
-### 1b. Refactor every supplier surface to consume those hooks
-ABC consumers that must switch to `useAbcConnectionStatus`:
-- `src/components/settings/SupplierIntegrationsPanel.tsx` (card)
-- `src/components/settings/ABCConnectionSettings.tsx`
-- `src/components/settings/AbcTenantConnectCard.tsx` (if present)
-- `src/components/settings/AbcDiagnosticsPanel.tsx`
-- `src/components/orders/PushToSupplierDialog.tsx`
+**Step A — Authenticate**
 
-For each: remove any local `supabase.from('abc_connections').select(...)`, local `useEffect` status fetchers, or session-based heuristics. Render strictly off the hook.
+- Inputs: QXO Email/Username, QXO Password only.
+- Submit → `qxo-api-proxy { action: 'authenticate' }` (renamed from `save_credentials` + `validate_connection`).
+- Backend acquires bearer token via `/v1/rest/com/becn/oauth` using platform-held `QXO_CLIENT_ID` (server env) + the user-supplied credentials, stores tokens in `qxo_credentials`, returns the list of accessible accounts / branches / job-accounts.
 
-### 1c. ABC Connect = OAuth, not portal
-In `SupplierIntegrationsPanel.tsx`:
-- Replace the ABC `Connect Account` `onClick` with `await startAbcOAuth(effectiveTenantId)` which calls edge function `abc-api-proxy` `{ action: 'start_oauth', tenant_id }` and `window.location.href = data.authorize_url`.
-- "Open ABC Supply portal" link: render only when `isConnected === true`, styled as secondary link, never as Connect.
-- SRS/QXO: same shape — Connect calls a tenant-scoped credential modal/OAuth (existing). Portal link only after connect.
+**Step B — Map account**
 
-### 1d. Disconnected vs connected UI per card
-- Disconnected: show single primary `Connect <Supplier> Account`.
-- Connected: hide Connect; show `Disconnect`, `Refresh`, `View Orders`, and optional secondary `Open Supplier Portal`.
+- If multiple accounts → Account selector.
+- Branch selector (required) → becomes `default_branch_code`.
+- Optional Job Account selector if QXO returns any.
+- Submit → `qxo-api-proxy { action: 'finalize_connection', account_id, branch_code, job_account }` writes non-sensitive mapping to `qxo_connections` and runs initial `sync_branches`.
 
-## Priority 2 — Finish ABC row-level SKU / color / availability / pricing in `PushToSupplierDialog`
+No environment toggle, no client_id field, no realm/site field for normal tenants. Developer-mode (master/O'Brien) keeps the existing advanced fields behind `useSupplierDeveloperMode`.
 
-Files:
-- `src/components/orders/PushToSupplierDialog.tsx`
-- `src/components/orders/AbcCatalogControls.tsx` (already exists — extend)
-- `src/lib/abc/abcApi.ts` (wrappers exist)
-- `src/lib/abc/useAbcConnection.ts` (catalog hooks exist)
+## 2. Backend — `supabase/functions/qxo-api-proxy/index.ts`
 
-Add per-row when supplier === ABC:
-1. **Catalog search cell** — `AbcCatalogControls` shows search → list of `{ item_number, description, color, uom }` scoped to selected branch (familyItems=true). Selecting a color writes the exact `abc_item_number`/`abc_color`/`abc_uom` to the row.
-2. **Availability cell** — calls `getAbcAvailability([{ item_number }])` on item/branch change; renders `available | pending | unavailable | error`.
-3. **Price cell (`AbcPriceCell` + `AbcPriceButton`)** — Button calls `getAbcPrice({ purpose: 'ordering', branch_number, ship_to_number, items: [{ item_number, uom }] })`. Render states:
-   - priced → live unit + extended
-   - `unit_price === 0 && !price_pending` → "$0.00 returned by ABC — price may be pending at branch"
-   - `price_pending` → "Price pending"
-   - unavailable / error → explicit messages
-4. **Persist to `estimate_line_items`** on every change: `abc_item_number`, `abc_color`, `abc_uom`, `abc_price`, `abc_price_timestamp`, `abc_branch`, `abc_ship_to`, `abc_availability`, `abc_price_status`.
-5. **Empty-row colSpan** bump to 6 when ABC selected.
-6. **Submit gating:**
-   - Disable until every ABC line has `abc_item_number`.
-   - Zero/unavailable price → allow only with explicit confirm dialog.
-   - Error → block unless developer override (`useSupplierDeveloperMode`).
-7. **Submit payload:** include `abc_item_code`, selected `branch_number`, `ship_to_number`, color/uom (in dedicated fields or line comments).
+Add/refactor actions, all tenant-scoped via `_shared/tenant.ts`:
 
-## Priority 3 — Hide dev surfaces for normal tenants
+- `authenticate` — accepts `{ username, password }`; reads `QXO_CLIENT_ID` from env (already present per repo `qxo-auth.ts`); calls `/v1/rest/com/becn/oauth`; persists `access_token`, `refresh_token`, `token_expires_at`, `username`, `password` into `qxo_credentials` keyed by `tenant_id`; calls QXO account-discovery endpoints; returns `{ accounts[], branches[], job_accounts[] }`. Never echoes secrets back to client.
+- `finalize_connection` — accepts `{ account_id, branch_code, job_account? }`; updates `qxo_connections` with `account_id`, `profile_id`, `default_branch_code`, `connection_status='connected'`, `last_validated_at`; triggers `sync_branches` inline.
+- `sync_branches` — unchanged behavior, but uses bearer from `qxo_credentials` for the active tenant only.
+- Keep `disconnect` as-is (already deletes credential row + flips status).
 
-Wrap each of these in `{ isDeveloper && ... }` from `useSupplierDeveloperMode`:
-- `AbcDiagnosticsPanel` raw payload / callback log / WAF log sections
-- Sandbox/staging environment labels in `SupplierIntegrationsPanel`, `ABCConnectionSettings`, `SRSConnectionSettings`, `QXOConnectionSettings`
-- OAuth/token/callback URL displays
-- Any "Enter credentials" manual paths surviving on ABC (should already be gone)
+Legacy `validate_connection` (uses `/login` + `siteId`) is removed from the normal-tenant path; kept only behind a `developer_mode: true` flag for debugging.
 
-O'Brien tenant + master role: panels remain visible (developer mode true).
+## 3. Connected-state card (`SupplierIntegrationsPanel.tsx`)
 
-## Technical notes
+Mirror the SRS connected card shape:
 
-- `abc-api-proxy` `start_oauth` action: confirm it exists in `supabase/functions/abc-api-proxy/index.ts`; if not, add it — generate Okta authorize URL with `state = { tenant_id, nonce }`, persist nonce to `abc_oauth_state` table, return `{ authorize_url }`.
-- Tenant scoping invariant: every ABC supabase read passes `.eq('tenant_id', effectiveTenantId)`; every edge call relies on the function's `requireTenant` (server-side) — never trust client tenant.
-- No DB migration needed if `estimate_line_items` already has the `abc_*` columns from the prior migration `20260530025254_*`. Verify and add only missing columns.
+- Status pill, Account #, Default Branch, Job Account (if set), Branch Count, Last Sync, View Orders.
+- Disconnect button.
+- No "Open QXO Portal" link as the Connect action — only a secondary link shown after `isConnected`.
 
-## Out of scope (deferred)
-- QuickBooks OAuth onboarding (Phase C)
-- Unified Supplier Order History (Phase D)
-- Suppliers Hub route cleanup (Phase E)
+## 4. Hook — `useQxoConnectionStatus.ts`
+
+Extend `QxoConnectionRow` to surface `account_id`, `default_branch_code`, `last_validated_at` to the UI (already in the select — confirm and ensure they reach the card). No schema change needed; existing columns cover it.
+
+## 5. Security / tenancy invariants
+
+- `qxo_credentials` stays service-role-only (already enforced).
+- `qxo-api-proxy` resolves `tenant_id` from JWT via `_shared/tenant.ts`; never trusts body `tenant_id`.
+- Partner `QXO_CLIENT_ID` (and `QXO_CLIENT_SECRET` if required by QXO) read from `Deno.env.get(...)` only — never returned to browser, never exposed in tenant UI. Platform secret config is out of scope for this plan (no `add_secret` call requested).
+- All writes to `qxo_connections` / `qxo_credentials` filter by resolved `tenant_id`.
+
+## 6. Out of scope
+
+- True browser-redirect SSO to a QXO-hosted authorize URL (QXO has not published one; the fallback embedded-credentials form is what we ship).
+- Order-time pricing / availability per-row controls (covered by Priority 2 in `.lovable/plan.md`).
+- Schema migrations — current `qxo_connections` / `qxo_credentials` columns are sufficient.
+
+## Files to edit
+
+- `src/components/settings/ConnectSupplierDialog.tsx` — QXO form → 2-step flow
+- `src/components/settings/SupplierIntegrationsPanel.tsx` — connected QXO card
+- `src/hooks/useQxoConnectionStatus.ts` — expose mapping fields if missing
+- `supabase/functions/qxo-api-proxy/index.ts` — new `authenticate` / `finalize_connection` actions, gate legacy `validate_connection` behind developer mode  
+  
+Implement the QXO integration exactly as a tenant-scoped customer account connection flow.
+  For all normal tenant/company users, hide all developer/backend fields including client_id, client_secret, siteId, realm, environment, API URLs, diagnostic tools, backend health checks, and platform supplier credentials.
+  Normal tenant QXO flow must only show:
+  1. Connect QXO Account button
+  2. QXO Email/Username
+  3. QXO Password
+  4. Account selector if QXO returns multiple accounts
+  5. Default Branch selector
+  6. Optional Job Account selector
+  7. Connected status card with Account #, Default Branch, Job Account, Branch Count, Last Sync, View Orders, Disconnect
+  Do not expose platform-level QXO_CLIENT_ID, QXO_CLIENT_SECRET, partner credentials, backend tests, or integration diagnostics to any tenant outside the developer/master account.
+  Developer/master access must remain separate and only available to Chris O’Brien / [chrisobrien91@gmail.com](mailto:chrisobrien91@gmail.com) or users with master/developer role. That developer mode is where backend supplier setup, environment config, health checks, raw API diagnostics, and advanced validation tools live.
+  All tenant writes must resolve tenant_id from the authenticated JWT/session only. Never trust tenant_id from the request body. All QXO credentials/tokens must be saved in service-role-only qxo_credentials. Tenant-readable qxo_connections may only store non-sensitive mapping/status fields.
+  Normal users should feel like they are simply linking their QXO account so Pitch can send orders, pull pricing, sync branches, and receive order/status updates. They should never see or manage the developer integration layer.
+- &nbsp;
