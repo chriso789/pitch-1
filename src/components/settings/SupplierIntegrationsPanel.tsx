@@ -30,24 +30,27 @@ interface OrderRow {
   branch: string | null;
 }
 
-const SUPPLIER_META: Record<SupplierKey, { name: string; description: string; icon: any; color: string }> = {
+const SUPPLIER_META: Record<SupplierKey, { name: string; description: string; icon: any; color: string; loginUrl: string }> = {
   abc: {
     name: 'ABC Supply',
     description: 'Live pricing and orders for shingles, underlayment, and accessories.',
     icon: Building2,
     color: 'text-orange-500 bg-orange-500/10',
+    loginUrl: 'https://www.abcsupply.com/myabc/',
   },
   srs: {
     name: 'SRS Distribution',
     description: 'Order materials and track deliveries from SRS branches.',
     icon: Truck,
     color: 'text-emerald-500 bg-emerald-500/10',
+    loginUrl: 'https://myportal.srsdistribution.com/',
   },
   qxo: {
     name: 'QXO / Beacon',
     description: 'Pricing, orders, and invoice sync from QXO (Beacon) accounts.',
     icon: Package,
     color: 'text-blue-500 bg-blue-500/10',
+    loginUrl: 'https://my.becn.com/',
   },
 };
 
