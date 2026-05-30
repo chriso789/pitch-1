@@ -352,15 +352,16 @@ Deno.serve(async (req) => {
         return json({ success: false, error: 'No saved QXO credentials.' }, 400);
       }
       try {
-        const loginRes = await legacyLogin(
+        const authRes = await qxoAuthenticate(
           conn.username,
           conn.password,
           conn.site_id || 'dealersChoice',
         );
-        const profileId = loginRes?.messageInfo?.profileId ?? null;
+        const info = authRes.userInfo ?? {};
+        const profileId = info?.profileId ?? null;
         const accountId =
-          loginRes?.messageInfo?.lastSelectedAccount?.accountId ??
-          loginRes?.messageInfo?.lastSelectedAccount?.id ??
+          info?.lastSelectedAccount?.accountId ??
+          info?.lastSelectedAccount?.id ??
           null;
         await admin
           .from('qxo_connections')
