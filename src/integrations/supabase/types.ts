@@ -15880,8 +15880,14 @@ export type Database = {
       }
       estimate_line_items: {
         Row: {
+          abc_availability: string | null
+          abc_branch: string | null
           abc_color: string | null
           abc_item_number: string | null
+          abc_price: number | null
+          abc_price_status: string | null
+          abc_price_timestamp: string | null
+          abc_ship_to: string | null
           abc_uom: string | null
           created_at: string
           description: string | null
@@ -15908,8 +15914,14 @@ export type Database = {
           vendor_id: string | null
         }
         Insert: {
+          abc_availability?: string | null
+          abc_branch?: string | null
           abc_color?: string | null
           abc_item_number?: string | null
+          abc_price?: number | null
+          abc_price_status?: string | null
+          abc_price_timestamp?: string | null
+          abc_ship_to?: string | null
           abc_uom?: string | null
           created_at?: string
           description?: string | null
@@ -15936,8 +15948,14 @@ export type Database = {
           vendor_id?: string | null
         }
         Update: {
+          abc_availability?: string | null
+          abc_branch?: string | null
           abc_color?: string | null
           abc_item_number?: string | null
+          abc_price?: number | null
+          abc_price_status?: string | null
+          abc_price_timestamp?: string | null
+          abc_ship_to?: string | null
           abc_uom?: string | null
           created_at?: string
           description?: string | null
