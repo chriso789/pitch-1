@@ -58,6 +58,12 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
   const [qxoAccounts, setQxoAccounts] = useState<Array<{ id: string; label: string }>>([]);
   const [qxoAccountId, setQxoAccountId] = useState('');
   const [qxoBranchCode, setQxoBranchCode] = useState('');
+  const [qxoJobAccount, setQxoJobAccount] = useState('');
+  const [qxoBranchContactName, setQxoBranchContactName] = useState('');
+  const [qxoBranchContactPhone, setQxoBranchContactPhone] = useState('');
+  const [qxoBranchContactEmail, setQxoBranchContactEmail] = useState('');
+  const [qxoTemplates, setQxoTemplates] = useState<Array<{ id: string; name: string }>>([]);
+  const [qxoTemplateId, setQxoTemplateId] = useState('');
 
   if (!supplier) return null;
   const meta = META[supplier];
@@ -67,6 +73,9 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
     setSrsCustomerCode(''); setSrsInvoiceNumber(''); setSrsInvoiceDate('');
     setQxoStep('auth'); setQxoUsername(''); setQxoPassword('');
     setQxoAccounts([]); setQxoAccountId(''); setQxoBranchCode('');
+    setQxoJobAccount(''); setQxoBranchContactName('');
+    setQxoBranchContactPhone(''); setQxoBranchContactEmail('');
+    setQxoTemplates([]); setQxoTemplateId('');
   };
 
   const closeAndReset = (success: boolean) => {
