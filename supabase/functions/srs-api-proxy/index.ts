@@ -626,12 +626,25 @@ Deno.serve(async (req) => {
             }
           }
 
+          // Extract customer/home-branch metadata from SRS validate response.
+          const customerNameFromSrs: string | null =
+            validateData?.customerName
+              || validateData?.customer?.customerName
+              || validateData?.name
+              || null;
+
           const connectionUpdate: Record<string, unknown> = {
             connection_status: isValid ? "connected" : "error",
             valid_indicator: isValid,
             last_validated_at: new Date().toISOString(),
             last_error: isValid ? null : validationDetail,
           };
+          if (isValid && customerNameFromSrs) {
+            connectionUpdate.customer_name = String(customerNameFromSrs).trim();
+          }
+          if (isValid && defaultBranch) {
+            connectionUpdate.home_branch_code = defaultBranch;
+          }
           // Persist the integration_key on a successful validation so it
           // can be reused without re-typing.
           if (isValid && ikRaw && ikRaw.trim()) {
