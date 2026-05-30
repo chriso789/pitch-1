@@ -581,16 +581,10 @@ Deno.serve(async (req) => {
           const { invoice_number, invoice_date, billed_amount, integration_key: ikRaw } = params as Record<string, string>;
           // Use the supplied key first, fall back to whatever was previously
           // saved on the connection so users don't have to re-paste it.
+          // Per SRS SIPS docs, accountNumber alone is sufficient to validate;
+          // invoice fields and IntegrationKey are optional sharper proofs of
+          // ownership. We no longer require either here — let SRS decide.
           const integration_key = (ikRaw && ikRaw.trim()) || (connection.integration_key && String(connection.integration_key).trim()) || "";
-          if (!integration_key && (!invoice_number || (!invoice_date && !billed_amount))) {
-            const msg = "SRS requires either an Integration Key OR Invoice # plus Invoice Date/Billed Amount to validate the customer account.";
-            await supabase.from("srs_connections").update({
-              connection_status: "error", last_error: msg, last_validated_at: new Date().toISOString(),
-            }).eq("id", connection.id);
-            await audit({ tenant_id, connection_id: connection.id, action: "validate", success: false, error: msg });
-            result = { success: false, error: msg };
-            break;
-          }
 
 
           // Validate customer (SRS accepts IntegrationKey OR invoice proof of ownership)
