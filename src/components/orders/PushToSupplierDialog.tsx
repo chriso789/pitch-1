@@ -973,11 +973,17 @@ export function PushToSupplierDialog({
                               <td className="p-2">
                                 <div className="flex items-center gap-1">
                                   <Input
-                                    value={it.srs_item_code || ''}
-                                    onChange={e => updateItem(i, { srs_item_code: e.target.value.trim() || null })}
-                                    onBlur={async e => persistSku(it, e.target.value.trim() || null)}
-                                    placeholder={selected === 'srs' ? 'productId (e.g. 3473)' : 'SKU'}
-                                    className={`h-7 w-36 font-mono text-xs ${!it.srs_item_code ? 'border-amber-400' : ''}`}
+                                    value={(selected === 'abc' ? (it.abc_item_number || '') : (it.srs_item_code || ''))}
+                                    onChange={e => {
+                                      const v = e.target.value.trim() || null;
+                                      if (selected === 'abc') updateItem(i, { abc_item_number: v });
+                                      else updateItem(i, { srs_item_code: v });
+                                    }}
+                                    onBlur={async e => {
+                                      if (selected !== 'abc') persistSku(it, e.target.value.trim() || null);
+                                    }}
+                                    placeholder={selected === 'srs' ? 'productId (e.g. 3473)' : selected === 'abc' ? 'ABC item #' : 'SKU'}
+                                    className={`h-7 w-36 font-mono text-xs ${(selected === 'abc' ? !it.abc_item_number : !it.srs_item_code) ? 'border-amber-400' : ''}`}
                                   />
                                   {selected === 'srs' && (
                                     <CatalogSearchPopover
@@ -989,6 +995,27 @@ export function PushToSupplierDialog({
                                       onPick={(pid) => {
                                         updateItem(i, { srs_item_code: pid });
                                         persistSku(it, pid);
+                                      }}
+                                    />
+                                  )}
+                                  {selected === 'abc' && tenantId && (
+                                    <AbcCatalogSearchPopover
+                                      tenantId={tenantId}
+                                      environment={(suppliers.find(s => s.key === 'abc')?.environment === 'production' ? 'production' : 'sandbox')}
+                                      branchNumber={branchCode}
+                                      initialQuery={it.item_name}
+                                      onPick={(picked) => {
+                                        updateItem(i, {
+                                          abc_item_number: picked.itemNumber,
+                                          abc_color: picked.color || it.abc_color || null,
+                                          abc_uom: picked.uom || it.abc_uom || it.unit || null,
+                                          color_specs: picked.color || it.color_specs,
+                                          // Reset stale price when item changes
+                                          abc_price: null,
+                                          abc_price_status: null,
+                                          abc_availability: null,
+                                          abc_price_timestamp: null,
+                                        });
                                       }}
                                     />
                                   )}
