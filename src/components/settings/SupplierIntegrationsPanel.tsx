@@ -313,9 +313,17 @@ export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
                       </Button>
                     </>
                   ) : (
-                    <Button size="sm" onClick={() => openConnect(key)}>
-                      Connect Account
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        onClick={() => window.open(meta.loginUrl, '_blank', 'noopener,noreferrer')}
+                      >
+                        Connect Account
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => openConnect(key)}>
+                        Enter credentials
+                      </Button>
+                    </div>
                   )}
                 </div>
               </CardContent>
