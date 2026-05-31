@@ -198,33 +198,32 @@ Deno.serve(async (req) => {
     const tenant_id = body?.tenant_id as string | undefined;
     if (!action || !tenant_id) throw new Error('action and tenant_id required');
 
-    // Authn for tenant-write actions (authenticate / finalize_connection).
-    const needsAuthn = action === 'authenticate' || action === 'finalize_connection';
-    if (needsAuthn) {
-      const authHeader = req.headers.get('Authorization') || '';
-      const token = authHeader.replace(/^Bearer\s+/i, '');
-      if (!token) return json({ success: false, error: 'Missing Authorization header' }, 401);
+    // Auth mode: authenticated tenant route. Every action uses the service role
+    // below, so the caller must belong to the requested tenant before any DB or
+    // QXO work runs.
+    const authHeader = req.headers.get('Authorization') || '';
+    const token = authHeader.replace(/^Bearer\s+/i, '');
+    if (!token) return json({ success: false, error: 'Missing Authorization header' }, 401);
 
-      const userClient = createClient(SUPABASE_URL, ANON_KEY, {
-        global: { headers: { Authorization: `Bearer ${token}` } },
+    const userClient = createClient(SUPABASE_URL, ANON_KEY, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+    });
+    const { data: userRes, error: userErr } = await userClient.auth.getUser();
+    if (userErr || !userRes?.user) return json({ success: false, error: 'Invalid session' }, 401);
+    const user = userRes.user;
+
+    const { data: access } = await admin
+      .from('user_company_access')
+      .select('user_id')
+      .eq('user_id', user.id)
+      .eq('company_id', tenant_id)
+      .maybeSingle();
+    if (!access) {
+      const { data: isMaster } = await admin.rpc('has_role', {
+        _user_id: user.id,
+        _role: 'master',
       });
-      const { data: userRes, error: userErr } = await userClient.auth.getUser();
-      if (userErr || !userRes?.user) return json({ success: false, error: 'Invalid session' }, 401);
-      const user = userRes.user;
-
-      const { data: access } = await admin
-        .from('user_company_access')
-        .select('user_id')
-        .eq('user_id', user.id)
-        .eq('company_id', tenant_id)
-        .maybeSingle();
-      if (!access) {
-        const { data: isMaster } = await admin.rpc('has_role', {
-          _user_id: user.id,
-          _role: 'master',
-        });
-        if (!isMaster) return json({ success: false, error: 'Not authorized for this tenant' }, 403);
-      }
+      if (!isMaster) return json({ success: false, error: 'Not authorized for this tenant' }, 403);
     }
 
     // ----- 1. authenticate: tenant signs into their QXO user account -----
