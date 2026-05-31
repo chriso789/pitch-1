@@ -22,6 +22,7 @@ import { useCalcTemplateEditor, CalcTemplateItem, CalcTemplateGroup } from './ho
 import { CalcTemplateItemGroup } from './CalcTemplateItemGroup';
 import { CalcItemDetailsPanel } from './CalcItemDetailsPanel';
 import { CalcTemplateDetailsPanel } from './CalcTemplateDetailsPanel';
+import { TemplateLivePricingPanel } from './TemplateLivePricingPanel';
 import { AddGroupDialog } from './AddGroupDialog';
 import { AddItemDialog } from './AddItemDialog';
 import { MaterialCheatSheet } from './MaterialCheatSheet';
