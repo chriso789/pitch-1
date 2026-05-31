@@ -55,6 +55,7 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
   const [qxoStep, setQxoStep] = useState<'auth' | 'map'>('auth');
   const [qxoUsername, setQxoUsername] = useState('');
   const [qxoPassword, setQxoPassword] = useState('');
+  const [qxoSiteId, setQxoSiteId] = useState('');
   const [qxoAccounts, setQxoAccounts] = useState<Array<{ id: string; label: string }>>([]);
   const [qxoAccountId, setQxoAccountId] = useState('');
   const [qxoBranchCode, setQxoBranchCode] = useState('');
@@ -71,7 +72,7 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
   const reset = () => {
     setAbcAccount(''); setAbcBranch('');
     setSrsCustomerCode(''); setSrsInvoiceNumber(''); setSrsInvoiceDate('');
-    setQxoStep('auth'); setQxoUsername(''); setQxoPassword('');
+    setQxoStep('auth'); setQxoUsername(''); setQxoPassword(''); setQxoSiteId('');
     setQxoAccounts([]); setQxoAccountId(''); setQxoBranchCode('');
     setQxoJobAccount(''); setQxoBranchContactName('');
     setQxoBranchContactPhone(''); setQxoBranchContactEmail('');
@@ -151,6 +152,7 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
               tenant_id: tenantId,
               username: qxoUsername.trim(),
               password: qxoPassword,
+              site_id: qxoSiteId.trim() || undefined,
             },
           });
           if (error) throw error;
@@ -300,6 +302,18 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
                   onChange={(e) => setQxoPassword(e.target.value)}
                   autoComplete="current-password"
                 />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">QXO Site ID <span className="text-muted-foreground">(optional)</span></Label>
+                <Input
+                  value={qxoSiteId}
+                  onChange={(e) => setQxoSiteId(e.target.value)}
+                  placeholder="e.g. dealersChoice, beaconBuildingProducts (leave blank for default)"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Only needed if your QXO account lives on a non-default site (e.g. a developer / staging site).
+                  QXO support or your account rep can tell you the exact value.
+                </p>
               </div>
               <p className="text-[11px] text-muted-foreground">
                 Use the QXO account that owns the company's pricing and ordering.

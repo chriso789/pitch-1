@@ -57,94 +57,102 @@ interface QxoAuthResult {
 async function qxoAuthenticate(
   username: string,
   password: string,
-  siteId: string,
-): Promise<QxoAuthResult> {
+  siteIds: string[],
+): Promise<QxoAuthResult & { siteId: string }> {
   const mode = getQxoAuthMode();
 
+  // De-dupe candidates, preserve order, append an empty-string "no siteId" attempt as last resort.
+  const candidates = Array.from(new Set([...siteIds.filter(Boolean), '']));
+
   if (mode === 'token') {
-    // Partner-issued OAuth password/credentials exchange.
-    // The exact form (grant_type, client_id, client_secret, scope) lives behind
-    // platform secrets and is configured per the live QXO partner contract.
     const clientId = Deno.env.get('QXO_CLIENT_ID') || '';
     const clientSecret = Deno.env.get('QXO_CLIENT_SECRET') || '';
     const tokenPath = Deno.env.get('QXO_TOKEN_PATH') || '/rest/model/REST/oauth/token';
-    const form = new URLSearchParams();
-    form.set('grant_type', 'password');
-    form.set('username', username);
-    form.set('password', password);
-    if (clientId) form.set('client_id', clientId);
-    if (clientSecret) form.set('client_secret', clientSecret);
-    if (siteId) form.set('siteId', siteId);
 
-    const data = await qxoFetch<any>(tokenPath, {
-      method: 'POST',
-      raw: form.toString(),
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    }).catch((e) => {
-      if (e instanceof QxoHttpError) throw new Error(e.message || `QXO token exchange failed (${e.status})`);
-      throw e;
-    });
-    const access = data?.access_token || data?.accessToken || null;
-    if (!access) {
-      throw new Error("We couldn't sign you in to QXO. Confirm your QXO username and password.");
+    let lastErr = '';
+    for (const siteId of candidates) {
+      const form = new URLSearchParams();
+      form.set('grant_type', 'password');
+      form.set('username', username);
+      form.set('password', password);
+      if (clientId) form.set('client_id', clientId);
+      if (clientSecret) form.set('client_secret', clientSecret);
+      if (siteId) form.set('siteId', siteId);
+
+      try {
+        const data = await qxoFetch<any>(tokenPath, {
+          method: 'POST',
+          raw: form.toString(),
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        });
+        const access = data?.access_token || data?.accessToken || null;
+        if (access) {
+          const expiresIn = Number(data?.expires_in ?? data?.expiresIn ?? 0);
+          const expiresAt = expiresIn > 0
+            ? new Date(Date.now() + expiresIn * 1000).toISOString()
+            : null;
+          return {
+            mode: 'token',
+            raw: data,
+            userInfo: data,
+            accessToken: access,
+            refreshToken: data?.refresh_token || data?.refreshToken || null,
+            tokenExpiresAt: expiresAt,
+            siteId,
+          };
+        }
+      } catch (e: any) {
+        lastErr = e instanceof QxoHttpError ? e.message : String(e?.message || e);
+        if (/site|invalid|required/i.test(lastErr)) continue;
+        throw new Error(lastErr || 'QXO token exchange failed');
+      }
     }
-    const expiresIn = Number(data?.expires_in ?? data?.expiresIn ?? 0);
-    const expiresAt = expiresIn > 0
-      ? new Date(Date.now() + expiresIn * 1000).toISOString()
-      : null;
-    return {
-      mode: 'token',
-      raw: data,
-      userInfo: data,
-      accessToken: access,
-      refreshToken: data?.refresh_token || data?.refreshToken || null,
-      tokenExpiresAt: expiresAt,
-    };
+    throw new Error(lastErr || "We couldn't sign you in to QXO. Confirm your QXO username and password.");
   }
 
-  // Default: documented QXO customer session login. QXO's public docs and
-  // gateway behavior vary by account, so try the richer payload first and fall
-  // back to older documented variants before failing.
-  const loginBodies = [
-    {
-      username,
-      password,
-      siteId,
-      persistentLoginType: 'RememberMe',
-      userAgent: 'desktop',
-      apiSiteId: null,
-    },
-    { username, password, siteId },
-    { username, password },
-  ];
-
+  // Default: documented QXO customer session login.
   let lastMessage = '';
-  for (const body of loginBodies) {
-    const data = await qxoFetch<any>('/v1/rest/com/becn/login', {
-      method: 'POST',
-      body,
-    }).catch((e) => {
-      if (e instanceof QxoHttpError) throw new Error(e.message || `QXO login failed (${e.status})`);
-      throw e;
-    });
+  for (const siteId of candidates) {
+    const loginBodies = siteId
+      ? [
+          { username, password, siteId, persistentLoginType: 'RememberMe', userAgent: 'desktop', apiSiteId: null },
+          { username, password, siteId },
+        ]
+      : [{ username, password }];
 
-    const info = data?.messageInfo;
-    if (info && typeof info === 'object' && (info.profileId || info.lastSelectedAccount)) {
-      return { mode: 'session', raw: data, userInfo: info };
+    for (const body of loginBodies) {
+      let data: any;
+      try {
+        data = await qxoFetch<any>('/v1/rest/com/becn/login', { method: 'POST', body });
+      } catch (e: any) {
+        lastMessage = e instanceof QxoHttpError ? e.message : String(e?.message || e);
+        if (/site|invalid|required|not equal/i.test(lastMessage)) continue;
+        throw new Error(lastMessage);
+      }
+
+      const info = data?.messageInfo;
+      if (info && typeof info === 'object' && (info.profileId || info.lastSelectedAccount)) {
+        return { mode: 'session', raw: data, userInfo: info, siteId };
+      }
+
+      lastMessage = String(
+        typeof info === 'string'
+          ? info
+          : data?.error || data?.errorMessage || data?.message || data?.messages?.[0]?.value || '',
+      );
+      // Site mismatch / required / invalid → try next candidate
+      if (!/site|required|invalid|not equal/i.test(lastMessage)) break;
     }
-
-    lastMessage = String(
-      typeof info === 'string'
-        ? info
-        : data?.error || data?.errorMessage || data?.message || data?.messages?.[0]?.value || '',
-    );
-
-    if (/site id|required|invalid/i.test(lastMessage)) continue;
   }
 
   if (/invalid token/i.test(lastMessage)) {
     throw new Error(
       'QXO rejected the login with "Invalid token". This usually means QXO has not enabled partner API access for this user/account yet, even if the same credentials work in the QXO portal.',
+    );
+  }
+  if (/not equal to current site|site id/i.test(lastMessage)) {
+    throw new Error(
+      'QXO: this account is bound to a different site than the ones Pitch tried (dealersChoice, beaconBuildingProducts, becn). Enter your QXO Site ID in the Advanced field and try again — it\'s the value QXO support gave you for your developer/staging account.',
     );
   }
   if (lastMessage) throw new Error(`QXO: ${lastMessage}`);
@@ -234,15 +242,25 @@ Deno.serve(async (req) => {
         return json({ success: false, error: 'QXO username and password are required.' }, 400);
       }
 
-      // QXO siteId is platform-level; tenants never see it.
-      const siteId = Deno.env.get('QXO_SITE_ID') || 'dealersChoice';
+      // Site candidates: user-provided (from dialog) → env override → known QXO/Beacon defaults.
+      const userSiteId = String((body as any).site_id || '').trim();
+      const envSiteId = Deno.env.get('QXO_SITE_ID') || '';
+      const siteCandidates = [
+        userSiteId,
+        envSiteId,
+        'dealersChoice',
+        'beaconBuildingProducts',
+        'becn',
+        'beacon',
+      ];
 
-      let authRes: QxoAuthResult;
+      let authRes: QxoAuthResult & { siteId: string };
       try {
-        authRes = await qxoAuthenticate(username, password, siteId);
+        authRes = await qxoAuthenticate(username, password, siteCandidates);
       } catch (e: any) {
         return json({ success: false, error: e?.message || 'QXO sign-in failed.' }, 200);
       }
+      const siteId = authRes.siteId || userSiteId || envSiteId || 'dealersChoice';
 
       // Persist secrets under tenant_id. In session mode we keep the password
       // because re-auth is required when the session expires; in token mode the
