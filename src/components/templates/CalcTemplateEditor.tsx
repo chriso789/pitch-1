@@ -287,6 +287,7 @@ const CalcTemplateEditor: React.FC = () => {
                 onUpdate={saveTemplate}
                 saving={saving}
               />
+              <TemplateLivePricingPanel templateId={template.id} />
               <MaterialCheatSheet 
                 defaultRoofType={template.roof_type === 'metal' ? 'metal-5v' : template.roof_type}
                 compact 
