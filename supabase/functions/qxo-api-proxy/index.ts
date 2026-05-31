@@ -242,15 +242,25 @@ Deno.serve(async (req) => {
         return json({ success: false, error: 'QXO username and password are required.' }, 400);
       }
 
-      // QXO siteId is platform-level; tenants never see it.
-      const siteId = Deno.env.get('QXO_SITE_ID') || 'dealersChoice';
+      // Site candidates: user-provided (from dialog) → env override → known QXO/Beacon defaults.
+      const userSiteId = String((body as any).site_id || '').trim();
+      const envSiteId = Deno.env.get('QXO_SITE_ID') || '';
+      const siteCandidates = [
+        userSiteId,
+        envSiteId,
+        'dealersChoice',
+        'beaconBuildingProducts',
+        'becn',
+        'beacon',
+      ];
 
-      let authRes: QxoAuthResult;
+      let authRes: QxoAuthResult & { siteId: string };
       try {
-        authRes = await qxoAuthenticate(username, password, siteId);
+        authRes = await qxoAuthenticate(username, password, siteCandidates);
       } catch (e: any) {
         return json({ success: false, error: e?.message || 'QXO sign-in failed.' }, 200);
       }
+      const siteId = authRes.siteId || userSiteId || envSiteId || 'dealersChoice';
 
       // Persist secrets under tenant_id. In session mode we keep the password
       // because re-auth is required when the session expires; in token mode the
