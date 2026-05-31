@@ -55,6 +55,7 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
   const [qxoStep, setQxoStep] = useState<'auth' | 'map'>('auth');
   const [qxoUsername, setQxoUsername] = useState('');
   const [qxoPassword, setQxoPassword] = useState('');
+  const [qxoSiteId, setQxoSiteId] = useState('');
   const [qxoAccounts, setQxoAccounts] = useState<Array<{ id: string; label: string }>>([]);
   const [qxoAccountId, setQxoAccountId] = useState('');
   const [qxoBranchCode, setQxoBranchCode] = useState('');
