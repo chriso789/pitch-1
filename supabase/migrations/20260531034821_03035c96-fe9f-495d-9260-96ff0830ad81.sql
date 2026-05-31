@@ -1,0 +1,21 @@
+
+UPDATE public.estimate_calc_template_items SET srs_sku='GAF7563920',   unit_cost=800.00,  updated_at=now() WHERE id='d51bcac5-aa88-4228-a8c5-40e1ac1a0bbe';
+UPDATE public.estimate_calc_template_items SET srs_sku='GAFEGTDMN',    unit_cost=475.00,  updated_at=now() WHERE id='61eab6ba-ef9f-4af4-b31a-3135d56ed88f';
+UPDATE public.estimate_calc_template_items SET srs_sku='GAFEGTEFS8',   unit_cost=241.00,  updated_at=now() WHERE id='395c0eb0-cbc9-479a-ba9f-b8f2e58a11cf';
+UPDATE public.estimate_calc_template_items SET srs_sku='GAF7732920',   unit_cost=13.40,   updated_at=now() WHERE id='56eb49b5-2b72-42e2-b96e-c4f6abe63e2a';
+UPDATE public.estimate_calc_template_items SET srs_sku='GAFEGTIC',     unit_cost=24.40,   updated_at=now() WHERE id='36df65a0-86b8-4d42-933c-5813d374685b';
+UPDATE public.estimate_calc_template_items SET srs_sku='GAFEGTIA',     unit_cost=13.55,   updated_at=now() WHERE id='8883a95c-326e-4db7-81c4-278caee0d162';
+UPDATE public.estimate_calc_template_items SET srs_sku='GAFSR4812',    unit_cost=28.25,   updated_at=now() WHERE id='5ca3365c-5731-46e7-9da3-ed8cbd042770';
+UPDATE public.estimate_calc_template_items SET srs_sku='GAF2POB500CK', unit_cost=1570.00, updated_at=now() WHERE id='6de7d0d1-20c8-4fd3-b5c1-f66ff708c5e1';
+UPDATE public.estimate_calc_template_items SET srs_sku='GAF457N',      unit_cost=435.00,  updated_at=now() WHERE id='48e7c05e-f44a-455b-8949-1ed58a8cb82a';
+UPDATE public.estimate_calc_template_items SET srs_sku='GAFFP238EGX',  unit_cost=420.00,  updated_at=now() WHERE id='68ad4fa2-615f-484e-b15e-fc3e3c7abea2';
+UPDATE public.estimate_calc_template_items SET srs_sku='GAFEGPBAAM5',  unit_cost=365.00,  updated_at=now() WHERE id='36ea993f-cd3e-4a2e-a88c-1a84ad9c1030';
+UPDATE public.estimate_calc_template_items SET srs_sku='GAFEGTCESCL',  unit_cost=26.75,   updated_at=now() WHERE id='03dbedbc-bba2-4f1f-a09c-e162776b77c4';
+UPDATE public.estimate_calc_template_items SET srs_sku='GAFEGTTPR1',   unit_cost=61.50,   updated_at=now() WHERE id='8e88eb42-fe2b-4b2b-8cef-7f73d15b49c9';
+UPDATE public.estimate_calc_template_items SET srs_sku='CARTMPFWH',    unit_cost=40.25,   updated_at=now() WHERE id='c34c9db9-e217-4318-a392-9cbdea9598e1';
+UPDATE public.estimate_calc_template_items SET srs_sku='DMI9RTBK10A',  unit_cost=10.03,   updated_at=now() WHERE id='40636dab-e950-4600-9ba5-1860cc237592';
+UPDATE public.estimate_calc_template_items SET srs_sku='LUCJTSBK',     unit_cost=8.05,    updated_at=now() WHERE id='d0741fa4-4688-4462-b1e0-64d874419a0c';
+UPDATE public.estimate_calc_template_items SET srs_sku='GAFEGTCM410',  unit_cost=485.00,  updated_at=now() WHERE id='7c316325-3290-4d9a-990d-72163f0aee6f';
+UPDATE public.estimate_calc_template_items SET srs_sku='GAF8523R',     unit_cost=665.00,  updated_at=now() WHERE id='507078df-a8cc-4c31-baca-24bef41c96ab';
+UPDATE public.estimate_calc_template_items SET srs_sku='GENT3050WH',   unit_cost=595.00,  updated_at=now() WHERE id='ea0a44d7-2856-4584-8c7a-5b177171dfbb';
+UPDATE public.estimate_calc_template_items SET srs_sku='GAFPS6CS',     unit_cost=390.00,  updated_at=now() WHERE id='e9c2fe60-e628-4f0c-af9c-d2417655e5cf';
