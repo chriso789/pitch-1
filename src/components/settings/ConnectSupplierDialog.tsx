@@ -152,6 +152,7 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
               tenant_id: tenantId,
               username: qxoUsername.trim(),
               password: qxoPassword,
+              site_id: qxoSiteId.trim() || undefined,
             },
           });
           if (error) throw error;
