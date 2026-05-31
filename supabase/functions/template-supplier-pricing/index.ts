@@ -154,7 +154,10 @@ Deno.serve(async (req) => {
     const results: PriceRow[] = [];
 
     // ---------------- SRS ----------------
-    const srsItems = materialItems
+    // Build the working SRS item list. Items whose stored srs_sku isn't found
+    // in the live catalog are auto-resolved by item name and the real
+    // productNumber is written back to estimate_calc_template_items.
+    let srsItems = materialItems
       .map((it: any) => ({ it, sku: skuFor(it, "srs") }))
       .filter((x: any) => !!x.sku);
 
@@ -168,6 +171,73 @@ Deno.serve(async (req) => {
       }
     } else if (srsItems.length) {
       try {
+        // 1) Pull the active branch catalog so we can resolve placeholder
+        //    SKUs to real SRS productNumbers by item name.
+        let catalog: any[] = [];
+        try {
+          const { data: prodRes } = await admin.functions.invoke("srs-api-proxy", {
+            body: { action: "get_products", tenant_id: tenantId, branch_code: srsConn.default_branch_code },
+            headers: { Authorization: authHeader },
+          });
+          catalog = Array.isArray(prodRes?.products) ? prodRes.products : [];
+        } catch (_e) {
+          catalog = [];
+        }
+
+        const catKey = (p: any) =>
+          String(p.productNumber ?? p.product_number ?? p.itemNumber ?? p.sku ?? "").trim().toUpperCase();
+        const catalogByNumber = new Map<string, any>();
+        for (const p of catalog) {
+          const k = catKey(p);
+          if (k) catalogByNumber.set(k, p);
+        }
+        const norm = (s: string) =>
+          s.toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+        const tokens = (s: string) =>
+          new Set(norm(s).split(" ").filter((t) => t && t.length > 2));
+        const scoreMatch = (itemName: string, candidate: any) => {
+          const candText = [
+            candidate.productName, candidate.product_name, candidate.description,
+            candidate.longDescription, candidate.shortDescription,
+          ].filter(Boolean).join(" ");
+          const a = tokens(itemName);
+          const b = tokens(candText);
+          if (!a.size || !b.size) return 0;
+          let hit = 0;
+          for (const t of a) if (b.has(t)) hit++;
+          return hit / a.size;
+        };
+
+        const updates: Array<{ id: string; srs_sku: string }> = [];
+        srsItems = srsItems.map((x: any) => {
+          const known = catalogByNumber.has(String(x.sku).toUpperCase());
+          if (known) return x;
+          let best: { p: any; s: number } | null = null;
+          for (const p of catalog) {
+            const s = scoreMatch(x.it.item_name || "", p);
+            if (!best || s > best.s) best = { p, s };
+          }
+          if (best && best.s >= 0.6) {
+            const realSku = catKey(best.p);
+            updates.push({ id: x.it.id, srs_sku: realSku });
+            return { it: x.it, sku: realSku };
+          }
+          return x;
+        });
+
+        if (updates.length) {
+          await Promise.all(
+            updates.map((u) =>
+              admin
+                .from("estimate_calc_template_items")
+                .update({ srs_sku: u.srs_sku })
+                .eq("id", u.id)
+                .eq("tenant_id", tenantId),
+            ),
+          );
+        }
+
+        // 2) Request pricing for the (resolved) SKUs.
         const productList = srsItems.map((x: any) => ({
           productNumber: x.sku,
           quantity: 1,
@@ -207,7 +277,10 @@ Deno.serve(async (req) => {
               raw_response: match,
             });
           } else {
-            results.push(emptyRow(x.it.id, "srs", x.sku, "not_mapped", "SRS did not return a line for this SKU"));
+            const reason = catalog.length
+              ? "No catalog match found for this item name on your SRS branch"
+              : "SRS did not return a line for this SKU";
+            results.push(emptyRow(x.it.id, "srs", x.sku, "not_mapped", reason));
           }
         }
       } catch (e: any) {
