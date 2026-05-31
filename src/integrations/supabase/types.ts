@@ -15551,6 +15551,7 @@ export type Database = {
       }
       estimate_calc_template_items: {
         Row: {
+          abc_sku: string | null
           active: boolean
           calc_template_id: string
           coverage_per_unit: number | null
@@ -15565,15 +15566,18 @@ export type Database = {
           material_id: string | null
           measurement_type: string | null
           qty_formula: string
+          qxo_sku: string | null
           requires_color: boolean
           sku_pattern: string | null
           sort_order: number
+          srs_sku: string | null
           tenant_id: string
           unit: string
           unit_cost: number
           updated_at: string
         }
         Insert: {
+          abc_sku?: string | null
           active?: boolean
           calc_template_id: string
           coverage_per_unit?: number | null
@@ -15588,15 +15592,18 @@ export type Database = {
           material_id?: string | null
           measurement_type?: string | null
           qty_formula?: string
+          qxo_sku?: string | null
           requires_color?: boolean
           sku_pattern?: string | null
           sort_order?: number
+          srs_sku?: string | null
           tenant_id: string
           unit?: string
           unit_cost?: number
           updated_at?: string
         }
         Update: {
+          abc_sku?: string | null
           active?: boolean
           calc_template_id?: string
           coverage_per_unit?: number | null
@@ -15611,9 +15618,11 @@ export type Database = {
           material_id?: string | null
           measurement_type?: string | null
           qty_formula?: string
+          qxo_sku?: string | null
           requires_color?: boolean
           sku_pattern?: string | null
           sort_order?: number
+          srs_sku?: string | null
           tenant_id?: string
           unit?: string
           unit_cost?: number
@@ -49510,6 +49519,80 @@ export type Database = {
             columns: ["group_id"]
             isOneToOne: true
             referencedRelation: "estimate_calc_template_groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      template_supplier_prices: {
+        Row: {
+          account_number: string | null
+          availability: string | null
+          branch: string | null
+          checked_at: string
+          color: string | null
+          created_at: string
+          id: string
+          raw_response: Json | null
+          reason: string | null
+          status: string
+          supplier: string
+          supplier_item_name: string | null
+          supplier_sku: string | null
+          template_id: string
+          template_item_id: string
+          tenant_id: string
+          unit_price: number | null
+          uom: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_number?: string | null
+          availability?: string | null
+          branch?: string | null
+          checked_at?: string
+          color?: string | null
+          created_at?: string
+          id?: string
+          raw_response?: Json | null
+          reason?: string | null
+          status?: string
+          supplier: string
+          supplier_item_name?: string | null
+          supplier_sku?: string | null
+          template_id: string
+          template_item_id: string
+          tenant_id: string
+          unit_price?: number | null
+          uom?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_number?: string | null
+          availability?: string | null
+          branch?: string | null
+          checked_at?: string
+          color?: string | null
+          created_at?: string
+          id?: string
+          raw_response?: Json | null
+          reason?: string | null
+          status?: string
+          supplier?: string
+          supplier_item_name?: string | null
+          supplier_sku?: string | null
+          template_id?: string
+          template_item_id?: string
+          tenant_id?: string
+          unit_price?: number | null
+          uom?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "template_supplier_prices_template_item_id_fkey"
+            columns: ["template_item_id"]
+            isOneToOne: false
+            referencedRelation: "estimate_calc_template_items"
             referencedColumns: ["id"]
           },
         ]
