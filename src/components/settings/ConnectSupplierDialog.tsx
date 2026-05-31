@@ -303,6 +303,18 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
                   autoComplete="current-password"
                 />
               </div>
+              <div className="space-y-1">
+                <Label className="text-xs">QXO Site ID <span className="text-muted-foreground">(optional)</span></Label>
+                <Input
+                  value={qxoSiteId}
+                  onChange={(e) => setQxoSiteId(e.target.value)}
+                  placeholder="e.g. dealersChoice, beaconBuildingProducts (leave blank for default)"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Only needed if your QXO account lives on a non-default site (e.g. a developer / staging site).
+                  QXO support or your account rep can tell you the exact value.
+                </p>
+              </div>
               <p className="text-[11px] text-muted-foreground">
                 Use the QXO account that owns the company's pricing and ordering.
                 For best results, use a long-lived owner or "integrations" QXO user.
