@@ -102,23 +102,53 @@ async function qxoAuthenticate(
     };
   }
 
-  // Default: legacy session login (publicly documented Beacon v1 contract).
-  const data = await qxoFetch<any>('/v1/rest/com/becn/login', {
-    method: 'POST',
-    body: { username, password, siteId },
-  }).catch((e) => {
-    if (e instanceof QxoHttpError) throw new Error(e.message || `QXO login failed (${e.status})`);
-    throw e;
-  });
-  const info = data?.messageInfo;
-  if (typeof info === 'string') throw new Error(`QXO: ${info}`);
-  if (data?.error || data?.errorMessage) {
-    throw new Error(`QXO: ${data.error || data.errorMessage}`);
+  // Default: documented QXO customer session login. QXO's public docs and
+  // gateway behavior vary by account, so try the richer payload first and fall
+  // back to older documented variants before failing.
+  const loginBodies = [
+    {
+      username,
+      password,
+      siteId,
+      persistentLoginType: 'RememberMe',
+      userAgent: 'desktop',
+      apiSiteId: null,
+    },
+    { username, password, siteId },
+    { username, password },
+  ];
+
+  let lastMessage = '';
+  for (const body of loginBodies) {
+    const data = await qxoFetch<any>('/v1/rest/com/becn/login', {
+      method: 'POST',
+      body,
+    }).catch((e) => {
+      if (e instanceof QxoHttpError) throw new Error(e.message || `QXO login failed (${e.status})`);
+      throw e;
+    });
+
+    const info = data?.messageInfo;
+    if (info && typeof info === 'object' && (info.profileId || info.lastSelectedAccount)) {
+      return { mode: 'session', raw: data, userInfo: info };
+    }
+
+    lastMessage = String(
+      typeof info === 'string'
+        ? info
+        : data?.error || data?.errorMessage || data?.message || data?.messages?.[0]?.value || '',
+    );
+
+    if (/site id|required|invalid/i.test(lastMessage)) continue;
   }
-  if (!info?.profileId && !info?.lastSelectedAccount) {
-    throw new Error("We couldn't sign you in to QXO. Confirm your QXO username and password.");
+
+  if (/invalid token/i.test(lastMessage)) {
+    throw new Error(
+      'QXO rejected the login with "Invalid token". This usually means QXO has not enabled partner API access for this user/account yet, even if the same credentials work in the QXO portal.',
+    );
   }
-  return { mode: 'session', raw: data, userInfo: info };
+  if (lastMessage) throw new Error(`QXO: ${lastMessage}`);
+  throw new Error("We couldn't sign you in to QXO. Confirm your QXO username and password.");
 }
 
 /** Pull the list of account options the user can choose from. QXO returns
