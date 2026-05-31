@@ -72,7 +72,7 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
   const reset = () => {
     setAbcAccount(''); setAbcBranch('');
     setSrsCustomerCode(''); setSrsInvoiceNumber(''); setSrsInvoiceDate('');
-    setQxoStep('auth'); setQxoUsername(''); setQxoPassword('');
+    setQxoStep('auth'); setQxoUsername(''); setQxoPassword(''); setQxoSiteId('');
     setQxoAccounts([]); setQxoAccountId(''); setQxoBranchCode('');
     setQxoJobAccount(''); setQxoBranchContactName('');
     setQxoBranchContactPhone(''); setQxoBranchContactEmail('');
