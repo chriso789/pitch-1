@@ -291,9 +291,11 @@ Deno.serve(async (req) => {
     }
 
     // ---------------- ABC ----------------
-    const abcItems = materialItems
-      .map((it: any) => ({ it, sku: skuFor(it, "abc") }))
-      .filter((x: any) => !!x.sku);
+    // Items without a known abc_sku are resolved by name through
+    // abc-api-proxy `search_products` (POST /product/v1/search/items) and
+    // the discovered itemNumber is written back to estimate_calc_template_items.
+    let abcItems = materialItems
+      .map((it: any) => ({ it, sku: skuFor(it, "abc") as string | null }));
 
     if (!abcConn) {
       for (const x of abcItems) {
@@ -306,57 +308,126 @@ Deno.serve(async (req) => {
         for (const x of abcItems) {
           results.push(emptyRow(x.it.id, "abc", x.sku, "pending", "ABC ship-to / branch not synced — open ABC settings"));
         }
-      } else if (abcItems.length) {
-        try {
-          const lines = abcItems.map((x: any, i: number) => ({
-            itemNumber: x.sku,
-            quantity: 1,
-            unitOfMeasure: (x.it.unit || "EA").toUpperCase(),
-          }));
-          const { data: abcRes, error: abcErr } = await admin.functions.invoke("abc-api-proxy", {
-            body: {
-              action: "price_items",
-              tenant_id: tenantId,
-              shipToNumber: shipTo,
-              branchNumber,
-              purpose: "estimating",
-              lines,
-            },
-            headers: { Authorization: authHeader },
-          });
-          if (abcErr) throw abcErr;
-          const abcLines = extractAbcLines(abcRes);
-          for (const x of abcItems) {
-            const m = abcLines.find((p: any) =>
-              String(p.itemNumber || p.item_number || "").trim() === String(x.sku).trim()
-            );
-            if (m) {
-              results.push({
-                template_item_id: x.it.id,
-                supplier: "abc",
-                supplier_sku: x.sku,
-                supplier_item_name: m.itemDescription || m.description || null,
-                color: m.color || null,
-                branch: branchNumber,
-                account_number: shipTo,
-                unit_price: toNum(m.unitPrice ?? m.price ?? m.netPrice),
-                uom: m.uom || m.unitOfMeasure || x.it.unit || null,
-                availability: m.availability || null,
-                status: toNum(m.unitPrice ?? m.price ?? m.netPrice) != null ? "ok" : "pending",
-                reason: m.message || null,
-                raw_response: m,
-              });
-            } else {
-              results.push(emptyRow(x.it.id, "abc", x.sku, "not_mapped", "ABC did not return a line for this SKU"));
+      } else {
+        // Resolve unknown SKUs via catalog search (one call per unresolved item).
+        const tokenize = (s: string) =>
+          new Set(
+            s.toLowerCase().replace(/[^a-z0-9]+/g, " ").split(" ").filter((t) => t && t.length > 2),
+          );
+        const scoreCandidate = (itemName: string, cand: any) => {
+          const text = [cand.itemDescription, cand.description, cand.longDescription, cand.shortDescription]
+            .filter(Boolean).join(" ");
+          const a = tokenize(itemName);
+          const b = tokenize(text);
+          if (!a.size || !b.size) return 0;
+          let hit = 0;
+          for (const t of a) if (b.has(t)) hit++;
+          return hit / a.size;
+        };
+
+        const abcUpdates: Array<{ id: string; abc_sku: string }> = [];
+        const unresolved = abcItems.filter((x: any) => !x.sku);
+        for (const x of unresolved) {
+          try {
+            const { data: searchRes } = await admin.functions.invoke("abc-api-proxy", {
+              body: {
+                action: "search_products",
+                tenant_id: tenantId,
+                query: x.it.item_name,
+                branchNumber,
+              },
+              headers: { Authorization: authHeader },
+            });
+            const body = searchRes?.body ?? searchRes;
+            const candidates: any[] = body?.items || body?.results || body?.data || [];
+            let best: { sku: string; s: number } | null = null;
+            for (const c of candidates) {
+              const sku = String(c.itemNumber || c.item_number || c.sku || "").trim();
+              if (!sku) continue;
+              const s = scoreCandidate(x.it.item_name || "", c);
+              if (!best || s > best.s) best = { sku, s };
             }
+            if (best && best.s >= 0.5) {
+              x.sku = best.sku;
+              abcUpdates.push({ id: x.it.id, abc_sku: best.sku });
+            }
+          } catch (_e) {
+            // swallow per-item search errors; item stays unresolved.
           }
-        } catch (e: any) {
-          for (const x of abcItems) {
-            results.push(emptyRow(x.it.id, "abc", x.sku, "error", e?.message || "ABC pricing call failed"));
+        }
+
+        if (abcUpdates.length) {
+          await Promise.all(
+            abcUpdates.map((u) =>
+              admin
+                .from("estimate_calc_template_items")
+                .update({ abc_sku: u.abc_sku })
+                .eq("id", u.id)
+                .eq("tenant_id", tenantId),
+            ),
+          );
+        }
+
+        const priceable = abcItems.filter((x: any) => !!x.sku);
+        const unpriceable = abcItems.filter((x: any) => !x.sku);
+
+        for (const x of unpriceable) {
+          results.push(emptyRow(x.it.id, "abc", null, "not_mapped", "No ABC catalog match found for this item name"));
+        }
+
+        if (priceable.length) {
+          try {
+            const lines = priceable.map((x: any) => ({
+              itemNumber: x.sku,
+              quantity: 1,
+              unitOfMeasure: (x.it.unit || "EA").toUpperCase(),
+            }));
+            const { data: abcRes, error: abcErr } = await admin.functions.invoke("abc-api-proxy", {
+              body: {
+                action: "price_items",
+                tenant_id: tenantId,
+                shipToNumber: shipTo,
+                branchNumber,
+                purpose: "estimating",
+                lines,
+              },
+              headers: { Authorization: authHeader },
+            });
+            if (abcErr) throw abcErr;
+            const abcLines = extractAbcLines(abcRes);
+            for (const x of priceable) {
+              const m = abcLines.find((p: any) =>
+                String(p.itemNumber || p.item_number || "").trim() === String(x.sku).trim()
+              );
+              if (m) {
+                results.push({
+                  template_item_id: x.it.id,
+                  supplier: "abc",
+                  supplier_sku: x.sku,
+                  supplier_item_name: m.itemDescription || m.description || null,
+                  color: m.color || null,
+                  branch: branchNumber,
+                  account_number: shipTo,
+                  unit_price: toNum(m.unitPrice ?? m.price ?? m.netPrice),
+                  uom: m.uom || m.unitOfMeasure || x.it.unit || null,
+                  availability: m.availability || null,
+                  status: toNum(m.unitPrice ?? m.price ?? m.netPrice) != null ? "ok" : "pending",
+                  reason: m.message || null,
+                  raw_response: m,
+                });
+              } else {
+                results.push(emptyRow(x.it.id, "abc", x.sku, "not_mapped", "ABC did not return a line for this SKU"));
+              }
+            }
+          } catch (e: any) {
+            for (const x of priceable) {
+              results.push(emptyRow(x.it.id, "abc", x.sku, "error", e?.message || "ABC pricing call failed"));
+            }
           }
         }
       }
     }
+
 
     // ---------------- QXO ----------------
     const qxoItems = materialItems
