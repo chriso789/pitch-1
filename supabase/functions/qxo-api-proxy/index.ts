@@ -102,23 +102,53 @@ async function qxoAuthenticate(
     };
   }
 
-  // Default: legacy session login (publicly documented Beacon v1 contract).
-  const data = await qxoFetch<any>('/v1/rest/com/becn/login', {
-    method: 'POST',
-    body: { username, password, siteId },
-  }).catch((e) => {
-    if (e instanceof QxoHttpError) throw new Error(e.message || `QXO login failed (${e.status})`);
-    throw e;
-  });
-  const info = data?.messageInfo;
-  if (typeof info === 'string') throw new Error(`QXO: ${info}`);
-  if (data?.error || data?.errorMessage) {
-    throw new Error(`QXO: ${data.error || data.errorMessage}`);
+  // Default: documented QXO customer session login. QXO's public docs and
+  // gateway behavior vary by account, so try the richer payload first and fall
+  // back to older documented variants before failing.
+  const loginBodies = [
+    {
+      username,
+      password,
+      siteId,
+      persistentLoginType: 'RememberMe',
+      userAgent: 'desktop',
+      apiSiteId: null,
+    },
+    { username, password, siteId },
+    { username, password },
+  ];
+
+  let lastMessage = '';
+  for (const body of loginBodies) {
+    const data = await qxoFetch<any>('/v1/rest/com/becn/login', {
+      method: 'POST',
+      body,
+    }).catch((e) => {
+      if (e instanceof QxoHttpError) throw new Error(e.message || `QXO login failed (${e.status})`);
+      throw e;
+    });
+
+    const info = data?.messageInfo;
+    if (info && typeof info === 'object' && (info.profileId || info.lastSelectedAccount)) {
+      return { mode: 'session', raw: data, userInfo: info };
+    }
+
+    lastMessage = String(
+      typeof info === 'string'
+        ? info
+        : data?.error || data?.errorMessage || data?.message || data?.messages?.[0]?.value || '',
+    );
+
+    if (/site id|required|invalid/i.test(lastMessage)) continue;
   }
-  if (!info?.profileId && !info?.lastSelectedAccount) {
-    throw new Error("We couldn't sign you in to QXO. Confirm your QXO username and password.");
+
+  if (/invalid token/i.test(lastMessage)) {
+    throw new Error(
+      'QXO rejected the login with "Invalid token". This usually means QXO has not enabled partner API access for this user/account yet, even if the same credentials work in the QXO portal.',
+    );
   }
-  return { mode: 'session', raw: data, userInfo: info };
+  if (lastMessage) throw new Error(`QXO: ${lastMessage}`);
+  throw new Error("We couldn't sign you in to QXO. Confirm your QXO username and password.");
 }
 
 /** Pull the list of account options the user can choose from. QXO returns
@@ -168,33 +198,32 @@ Deno.serve(async (req) => {
     const tenant_id = body?.tenant_id as string | undefined;
     if (!action || !tenant_id) throw new Error('action and tenant_id required');
 
-    // Authn for tenant-write actions (authenticate / finalize_connection).
-    const needsAuthn = action === 'authenticate' || action === 'finalize_connection';
-    if (needsAuthn) {
-      const authHeader = req.headers.get('Authorization') || '';
-      const token = authHeader.replace(/^Bearer\s+/i, '');
-      if (!token) return json({ success: false, error: 'Missing Authorization header' }, 401);
+    // Auth mode: authenticated tenant route. Every action uses the service role
+    // below, so the caller must belong to the requested tenant before any DB or
+    // QXO work runs.
+    const authHeader = req.headers.get('Authorization') || '';
+    const token = authHeader.replace(/^Bearer\s+/i, '');
+    if (!token) return json({ success: false, error: 'Missing Authorization header' }, 401);
 
-      const userClient = createClient(SUPABASE_URL, ANON_KEY, {
-        global: { headers: { Authorization: `Bearer ${token}` } },
+    const userClient = createClient(SUPABASE_URL, ANON_KEY, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+    });
+    const { data: userRes, error: userErr } = await userClient.auth.getUser();
+    if (userErr || !userRes?.user) return json({ success: false, error: 'Invalid session' }, 401);
+    const user = userRes.user;
+
+    const { data: access } = await admin
+      .from('user_company_access')
+      .select('user_id')
+      .eq('user_id', user.id)
+      .eq('company_id', tenant_id)
+      .maybeSingle();
+    if (!access) {
+      const { data: isMaster } = await admin.rpc('has_role', {
+        _user_id: user.id,
+        _role: 'master',
       });
-      const { data: userRes, error: userErr } = await userClient.auth.getUser();
-      if (userErr || !userRes?.user) return json({ success: false, error: 'Invalid session' }, 401);
-      const user = userRes.user;
-
-      const { data: access } = await admin
-        .from('user_company_access')
-        .select('user_id')
-        .eq('user_id', user.id)
-        .eq('company_id', tenant_id)
-        .maybeSingle();
-      if (!access) {
-        const { data: isMaster } = await admin.rpc('has_role', {
-          _user_id: user.id,
-          _role: 'master',
-        });
-        if (!isMaster) return json({ success: false, error: 'Not authorized for this tenant' }, 403);
-      }
+      if (!isMaster) return json({ success: false, error: 'Not authorized for this tenant' }, 403);
     }
 
     // ----- 1. authenticate: tenant signs into their QXO user account -----
