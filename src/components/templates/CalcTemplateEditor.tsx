@@ -22,6 +22,7 @@ import { useCalcTemplateEditor, CalcTemplateItem, CalcTemplateGroup } from './ho
 import { CalcTemplateItemGroup } from './CalcTemplateItemGroup';
 import { CalcItemDetailsPanel } from './CalcItemDetailsPanel';
 import { CalcTemplateDetailsPanel } from './CalcTemplateDetailsPanel';
+import { TemplateLivePricingPanel } from './TemplateLivePricingPanel';
 import { AddGroupDialog } from './AddGroupDialog';
 import { AddItemDialog } from './AddItemDialog';
 import { MaterialCheatSheet } from './MaterialCheatSheet';
@@ -286,6 +287,7 @@ const CalcTemplateEditor: React.FC = () => {
                 onUpdate={saveTemplate}
                 saving={saving}
               />
+              <TemplateLivePricingPanel templateId={template.id} />
               <MaterialCheatSheet 
                 defaultRoofType={template.roof_type === 'metal' ? 'metal-5v' : template.roof_type}
                 compact 
