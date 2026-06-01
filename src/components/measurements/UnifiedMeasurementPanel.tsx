@@ -150,7 +150,14 @@ const isPlausibleRoofSqft = (value: unknown): boolean => {
 
 const isPlausibleSavedMeasurement = (measurement: SavedMeasurement): boolean => {
   const tags = measurement.saved_tags || {};
-  return isPlausibleRoofSqft(tags['roof.total_sqft'] || tags['roof.plan_area']);
+  const sqft = Number(tags['roof.total_sqft'] || tags['roof.plan_area'] || 0);
+  if (sqft <= 0) return false;
+  // Imported vendor reports (Roofr/EagleView/Xactimate) can be commercial-scale;
+  // only apply the auto-sanity cap to AI-pulled measurements.
+  const source = String(tags['source'] || '').toLowerCase();
+  const isImported = source.startsWith('imported_') || source.includes('roofr') || source.includes('eagleview') || source.includes('xactimate');
+  if (isImported) return true;
+  return isPlausibleRoofSqft(sqft);
 };
 
 const isPlausibleRoofMeasurement = (measurement: any): boolean => (
