@@ -635,7 +635,9 @@ export function PushToSupplierDialog({
           order_id: orderRow.id,
           srs_product_id: Number(i.srs_item_code),
           product_name: i.item_name,
-          product_description: i.description || i.item_name,
+          product_description: i.color_specs
+            ? `${i.description || i.item_name} — Color: ${i.color_specs}`
+            : (i.description || i.item_name),
           quantity: Number(i.quantity),
           uom: (i.unit || 'EA').toUpperCase(),
           unit_price: Number(i.unit_cost || 0),
