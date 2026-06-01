@@ -230,6 +230,15 @@ export function PushToSupplierDialog({
   }, [projectAddress]);
 
   useEffect(() => {
+    // Prefill jobsite contact name from the project's primary contact when
+    // the dialog opens. Phone/email left blank for the user to fill in — we
+    // intentionally don't auto-pull personal phones to avoid leaking the
+    // homeowner's number onto an order without an explicit confirmation.
+    if (open) setJobsiteContactName((prev) => prev || customerName || '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, customerName]);
+
+  useEffect(() => {
     if (!open || !tenantId) return;
     // Wait for ABC connection status to load so we don't briefly tell the
     // user ABC is disconnected when it isn't.
