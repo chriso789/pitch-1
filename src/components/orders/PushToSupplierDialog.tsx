@@ -935,6 +935,46 @@ export function PushToSupplierDialog({
                 </div>
 
                 {selected === 'abc' && (
+                  <div className="rounded-md border border-border bg-muted/30 p-3 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm font-medium">Jobsite delivery contact</Label>
+                      <span className="text-[11px] text-muted-foreground">Required by ABC branches</span>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <div>
+                        <Label htmlFor="jc-name" className="text-xs">Name</Label>
+                        <Input
+                          id="jc-name"
+                          value={jobsiteContactName}
+                          onChange={e => setJobsiteContactName(e.target.value)}
+                          placeholder="Driver calls this person"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="jc-phone" className="text-xs">Phone</Label>
+                        <Input
+                          id="jc-phone"
+                          type="tel"
+                          value={jobsiteContactPhone}
+                          onChange={e => setJobsiteContactPhone(e.target.value)}
+                          placeholder="(555) 555-5555"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="jc-email" className="text-xs">Email</Label>
+                        <Input
+                          id="jc-email"
+                          type="email"
+                          value={jobsiteContactEmail}
+                          onChange={e => setJobsiteContactEmail(e.target.value)}
+                          placeholder="optional"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {selected === 'abc' && (
                   <div>
                     <Label htmlFor="abc-shipto">
                       ABC Ship-To <span className="text-destructive">*</span>
