@@ -203,12 +203,12 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
     const action = body?.action as string | undefined;
-    const tenant_id = body?.tenant_id as string | undefined;
-    if (!action || !tenant_id) throw new Error('action and tenant_id required');
+    if (!action) throw new Error('action required');
 
-    // Auth mode: authenticated tenant route. Every action uses the service role
-    // below, so the caller must belong to the requested tenant before any DB or
-    // QXO work runs.
+    // Auth mode: authenticated tenant route. The tenant_id is resolved server-side
+    // from the caller's JWT (profiles.tenant_id). A body-provided tenant_id is
+    // only honored when the caller explicitly belongs to it (multi-tenant master
+    // users); we never trust an arbitrary client-supplied tenant_id.
     const authHeader = req.headers.get('Authorization') || '';
     const token = authHeader.replace(/^Bearer\s+/i, '');
     if (!token) return json({ success: false, error: 'Missing Authorization header' }, 401);
@@ -220,18 +220,35 @@ Deno.serve(async (req) => {
     if (userErr || !userRes?.user) return json({ success: false, error: 'Invalid session' }, 401);
     const user = userRes.user;
 
-    const { data: access } = await admin
-      .from('user_company_access')
-      .select('user_id')
-      .eq('user_id', user.id)
-      .eq('company_id', tenant_id)
+    // Default to the caller's own tenant from profiles; fall back to body only
+    // when the caller is a master OR an explicit member of that tenant.
+    const { data: profile } = await admin
+      .from('profiles')
+      .select('tenant_id')
+      .eq('id', user.id)
       .maybeSingle();
-    if (!access) {
-      const { data: isMaster } = await admin.rpc('has_role', {
-        _user_id: user.id,
-        _role: 'master',
-      });
-      if (!isMaster) return json({ success: false, error: 'Not authorized for this tenant' }, 403);
+    const callerTenantId = (profile as any)?.tenant_id ?? null;
+    const requestedTenantId = (body?.tenant_id as string | undefined) || callerTenantId;
+    if (!requestedTenantId) {
+      return json({ success: false, error: 'No tenant context for this user.' }, 400);
+    }
+    const tenant_id = requestedTenantId;
+
+    if (tenant_id !== callerTenantId) {
+      // Cross-tenant request: require explicit membership or master role.
+      const { data: access } = await admin
+        .from('user_company_access')
+        .select('user_id')
+        .eq('user_id', user.id)
+        .eq('company_id', tenant_id)
+        .maybeSingle();
+      if (!access) {
+        const { data: isMaster } = await admin.rpc('has_role', {
+          _user_id: user.id,
+          _role: 'master',
+        });
+        if (!isMaster) return json({ success: false, error: 'Not authorized for this tenant' }, 403);
+      }
     }
 
     // ----- 1. authenticate: tenant signs into their QXO user account -----

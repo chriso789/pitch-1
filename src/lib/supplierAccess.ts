@@ -56,6 +56,8 @@ export function useSupplierDeveloperMode() {
     canManageWebhooks: isDeveloper,
     /** sandbox/production environment selector visibility */
     canChangeEnvironment: isDeveloper,
+    /** advanced supplier connect fields (QXO Site ID, manual ABC account #, etc.) */
+    canEnterAdvancedConnectFields: showAdvanced,
   };
 }
 

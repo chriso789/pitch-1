@@ -3,9 +3,10 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ExternalLink } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useSupplierDeveloperMode } from '@/lib/supplierAccess';
 
 type SupplierKey = 'abc' | 'srs' | 'qxo';
 
@@ -20,7 +21,7 @@ interface Props {
 const META: Record<SupplierKey, { name: string; help: string }> = {
   abc: {
     name: 'ABC Supply',
-    help: 'Enter the ABC Supply account number provided by your ABC rep. Pitch will request production API access on your behalf.',
+    help: "Sign in with your myABCSupply account. ABC will redirect you back to Pitch once you approve access — Pitch then pulls your account, ship-to, and branch list automatically. You don't need any ABC developer keys.",
   },
   srs: {
     name: 'SRS Distribution',
@@ -40,6 +41,7 @@ const META: Record<SupplierKey, { name: string; help: string }> = {
  */
 export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, onConnected }: Props) {
   const { toast } = useToast();
+  const { canEnterAdvancedConnectFields } = useSupplierDeveloperMode();
   const [saving, setSaving] = useState(false);
 
   // ABC
@@ -89,19 +91,43 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
     setSaving(true);
     try {
       if (supplier === 'abc') {
-        if (!abcAccount.trim()) throw new Error('ABC account number is required.');
-        const { data, error } = await supabase.functions.invoke('abc-save-account', {
-          body: {
-            tenant_id: tenantId,
-            account_number: abcAccount.trim(),
-            default_branch_code: abcBranch.trim() || null,
-            environment: 'production',
-          },
-        });
-        if (error) throw error;
-        if (!data?.success) throw new Error(data?.error || 'Save failed');
-        toast({ title: `${meta.name} connected`, description: 'Account verified and connected.' });
-        closeAndReset(true);
+        // Documented ABC third-party aggregator flow: redirect the tenant to
+        // myABCSupply (Okta) so they consent under their own ABC identity.
+        // The OAuth callback then persists the user-linked tokens and triggers
+        // account/ship-to/branch hydration. Advanced/dev users can still fall
+        // back to manual entry below.
+        if (canEnterAdvancedConnectFields && abcAccount.trim()) {
+          const { data, error } = await supabase.functions.invoke('abc-save-account', {
+            body: {
+              tenant_id: tenantId,
+              account_number: abcAccount.trim(),
+              default_branch_code: abcBranch.trim() || null,
+              environment: 'production',
+            },
+          });
+          if (error) throw error;
+          if (!data?.success) throw new Error(data?.error || 'Save failed');
+          toast({ title: `${meta.name} connected`, description: 'Account saved (developer manual entry).' });
+          closeAndReset(true);
+        } else {
+          const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
+            body: {
+              action: 'start_oauth',
+              tenant_id: tenantId,
+              environment: 'production',
+              return_origin: window.location.origin,
+            },
+          });
+          if (error) throw error;
+          if (!data?.success || !data?.authorization_url) {
+            throw new Error(
+              data?.human_message || data?.error || 'Could not start ABC OAuth flow.',
+            );
+          }
+          // Hand off to ABC/Okta. Callback returns to /settings?...&abc=connected.
+          window.location.assign(data.authorization_url);
+          return;
+        }
       } else if (supplier === 'srs') {
         const customerCode = srsCustomerCode.trim();
         if (!customerCode) throw new Error('SRS Account Number is required.');
@@ -232,14 +258,30 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
         <div className="space-y-3 py-2">
           {supplier === 'abc' && (
             <>
-              <div className="space-y-1">
-                <Label className="text-xs">ABC Account #</Label>
-                <Input value={abcAccount} onChange={(e) => setAbcAccount(e.target.value)} placeholder="e.g. 1234567" />
+              <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground space-y-1">
+                <p className="flex items-center gap-1 font-medium text-foreground">
+                  <ExternalLink className="h-3.5 w-3.5" /> You'll be redirected to myABCSupply
+                </p>
+                <p>
+                  Sign in with the ABC customer account that owns your pricing and ordering.
+                  After you approve access, Pitch will pull your ship-to accounts and branches automatically.
+                </p>
               </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Default Branch / Ship-To (optional)</Label>
-                <Input value={abcBranch} onChange={(e) => setAbcBranch(e.target.value)} placeholder="Branch code" />
-              </div>
+              {canEnterAdvancedConnectFields && (
+                <div className="pt-2 border-t border-border/50 space-y-3">
+                  <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                    Developer — manual account entry (bypasses OAuth)
+                  </p>
+                  <div className="space-y-1">
+                    <Label className="text-xs">ABC Account #</Label>
+                    <Input value={abcAccount} onChange={(e) => setAbcAccount(e.target.value)} placeholder="e.g. 1234567" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Default Branch / Ship-To (optional)</Label>
+                    <Input value={abcBranch} onChange={(e) => setAbcBranch(e.target.value)} placeholder="Branch code" />
+                  </div>
+                </div>
+              )}
             </>
           )}
 
@@ -303,18 +345,19 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
                   autoComplete="current-password"
                 />
               </div>
-              <div className="space-y-1">
-                <Label className="text-xs">QXO Site ID <span className="text-muted-foreground">(optional)</span></Label>
-                <Input
-                  value={qxoSiteId}
-                  onChange={(e) => setQxoSiteId(e.target.value)}
-                  placeholder="e.g. dealersChoice, beaconBuildingProducts (leave blank for default)"
-                />
-                <p className="text-[11px] text-muted-foreground">
-                  Only needed if your QXO account lives on a non-default site (e.g. a developer / staging site).
-                  QXO support or your account rep can tell you the exact value.
-                </p>
-              </div>
+              {canEnterAdvancedConnectFields && (
+                <div className="space-y-1">
+                  <Label className="text-xs">QXO Site ID <span className="text-muted-foreground">(developer)</span></Label>
+                  <Input
+                    value={qxoSiteId}
+                    onChange={(e) => setQxoSiteId(e.target.value)}
+                    placeholder="e.g. dealersChoice, beaconBuildingProducts (leave blank for default)"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Developer-only. Tenants on the default QXO site never need this.
+                  </p>
+                </div>
+              )}
               <p className="text-[11px] text-muted-foreground">
                 Use the QXO account that owns the company's pricing and ordering.
                 For best results, use a long-lived owner or "integrations" QXO user.
@@ -428,7 +471,9 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
               ? 'Validate & Connect'
               : supplier === 'qxo'
                 ? (qxoStep === 'auth' ? 'Sign in to QXO' : 'Finish & Connect')
-                : 'Connect'}
+                : (canEnterAdvancedConnectFields && abcAccount.trim()
+                    ? 'Save manual entry'
+                    : 'Continue to myABCSupply')}
           </Button>
         </DialogFooter>
       </DialogContent>
