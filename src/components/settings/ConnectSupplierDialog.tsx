@@ -471,7 +471,9 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
               ? 'Validate & Connect'
               : supplier === 'qxo'
                 ? (qxoStep === 'auth' ? 'Sign in to QXO' : 'Finish & Connect')
-                : 'Connect'}
+                : (canEnterAdvancedConnectFields && abcAccount.trim()
+                    ? 'Save manual entry'
+                    : 'Continue to myABCSupply')}
           </Button>
         </DialogFooter>
       </DialogContent>
