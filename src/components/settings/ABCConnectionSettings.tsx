@@ -173,6 +173,8 @@ export function ABCConnectionSettings() {
   const effectiveTenantId = useEffectiveTenantId();
   const { toast } = useToast();
   const { allowSandboxDefaults, canChangeEnvironment, canSeeRawDiagnostics } = useSupplierDeveloperMode();
+  const { isConnected: abcConnected } = useAbcConnectionStatus();
+
 
   const [connection, setConnection] = useState<ABCConnection | null>(null);
   const [loading, setLoading] = useState(true);
