@@ -328,10 +328,40 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
                   />
                 </div>
               </div>
+
+              <div className="pt-2 border-t border-border/50 space-y-3">
+                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                  SRS API Integration Key
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  Paste the Client ID and Integration Key (client secret) issued by your SRS API representative. Required for live pricing, ordering, and invoice sync. Stored server-side, encrypted, never returned to the browser.
+                </p>
+                <div className="space-y-1">
+                  <Label className="text-xs">SRS Client ID</Label>
+                  <Input
+                    value={srsClientId}
+                    onChange={(e) => setSrsClientId(e.target.value)}
+                    placeholder="srs-client-id"
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">SRS Integration Key</Label>
+                  <Input
+                    type="password"
+                    value={srsIntegrationKey}
+                    onChange={(e) => setSrsIntegrationKey(e.target.value)}
+                    placeholder="Paste integration key (client secret)"
+                    autoComplete="off"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Last 4 characters will be shown for reference after save.
+                  </p>
+                </div>
+              </div>
             </>
           )}
 
-          {supplier === 'qxo' && qxoStep === 'auth' && (
             <>
               <div className="space-y-1">
                 <Label className="text-xs">QXO Email / Username</Label>
