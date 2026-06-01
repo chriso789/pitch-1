@@ -52,6 +52,8 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
   const [srsCustomerCode, setSrsCustomerCode] = useState('');
   const [srsInvoiceNumber, setSrsInvoiceNumber] = useState('');
   const [srsInvoiceDate, setSrsInvoiceDate] = useState('');
+  const [srsClientId, setSrsClientId] = useState('');
+  const [srsIntegrationKey, setSrsIntegrationKey] = useState('');
 
   // QXO — two-step
   const [qxoStep, setQxoStep] = useState<'auth' | 'map'>('auth');
