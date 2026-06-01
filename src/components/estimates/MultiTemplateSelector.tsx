@@ -746,13 +746,16 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         salesTaxRate: estimate.sales_tax_rate || 0,
       });
 
-      // Handle fixed price - explicitly clear if not fixed price
-      // Also auto-detect when rep manually adjusted selling_price without toggling fixed price mode
-      if (estimate.is_fixed_price && estimate.fixed_selling_price) {
-        setFixedPrice(estimate.fixed_selling_price);
-      } else if (estimate.selling_price && estimate.selling_price > 0) {
-        // If a selling_price was saved, preserve it as fixed to prevent recomputation drift
+      // Handle fixed price - explicitly clear if not fixed price.
+      // `selling_price` is the canonical, most-recently-updated total (the
+      // financial profit bar writes to it directly). `fixed_selling_price` can
+      // drift behind it, so prefer `selling_price` whenever it's present and
+      // non-zero. Fall back to `fixed_selling_price` only when selling_price
+      // is missing.
+      if (estimate.selling_price && estimate.selling_price > 0) {
         setFixedPrice(estimate.selling_price);
+      } else if (estimate.is_fixed_price && estimate.fixed_selling_price) {
+        setFixedPrice(estimate.fixed_selling_price);
       } else {
         setFixedPrice(null);
       }
