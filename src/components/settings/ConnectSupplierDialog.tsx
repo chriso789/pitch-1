@@ -134,13 +134,17 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
         const customerCode = srsCustomerCode.trim();
         if (!customerCode) throw new Error('SRS Account Number is required.');
 
+        const saveBody: Record<string, unknown> = {
+          action: 'save_credentials',
+          tenant_id: tenantId,
+          customer_code: customerCode,
+          environment: 'production',
+        };
+        if (srsClientId.trim()) saveBody.client_id = srsClientId.trim();
+        if (srsIntegrationKey.trim()) saveBody.client_secret = srsIntegrationKey.trim();
+
         const saveRes = await supabase.functions.invoke('srs-api-proxy', {
-          body: {
-            action: 'save_credentials',
-            tenant_id: tenantId,
-            customer_code: customerCode,
-            environment: 'production',
-          },
+          body: saveBody,
         });
         if (saveRes.error) throw saveRes.error;
         if (!saveRes.data?.success) throw new Error(saveRes.data?.error || 'Save failed');
