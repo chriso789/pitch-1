@@ -224,8 +224,38 @@ export const Settings = () => {
     if (abcCallback) {
       resolvedTab = "supplier-connections";
       setSupplierSubTab("abc");
+
+      // Post-OAuth hydration: pull accounts/ship-tos/branches once on return.
+      if (abcCallback === 'connected' && activeCompanyId) {
+        (async () => {
+          try {
+            const { supabase } = await import('@/integrations/supabase/client');
+            const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
+              body: {
+                action: 'sync_accounts',
+                tenant_id: activeCompanyId,
+                environment: 'production',
+              },
+            });
+            if (error || !(data as any)?.success) {
+              console.warn('abc sync_accounts failed', error || data);
+              toast({
+                title: 'ABC connected',
+                description: "Couldn't auto-sync ship-tos. You can retry from Supplier Connections.",
+              });
+            } else {
+              toast({
+                title: 'ABC Supply connected',
+                description: `Synced ${(data as any).ship_to_count ?? 0} ship-to(s) and ${(data as any).branch_count ?? 0} branch(es).`,
+              });
+            }
+          } catch (e) {
+            console.error('abc sync_accounts error', e);
+          }
+        })();
+      }
     }
-    
+
     if (resolvedTab) {
       // If user navigated to an old product tab key, redirect to consolidated view
       if (PRODUCT_TAB_KEYS.includes(resolvedTab)) {
@@ -236,11 +266,11 @@ export const Settings = () => {
       if (subFromUrl) setProductSubTab(subFromUrl);
       if (supplierFromUrl) setSupplierSubTab(supplierFromUrl);
     }
-    
+
     if (locationState?.activeTab) {
       window.history.replaceState({}, document.title);
     }
-  }, [searchParams, locationState?.activeTab]);
+  }, [searchParams, locationState?.activeTab, activeCompanyId, toast]);
 
   // Reset sub-tab when main tab changes
   useEffect(() => {
