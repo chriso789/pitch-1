@@ -362,6 +362,7 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
             </>
           )}
 
+          {supplier === 'qxo' && qxoStep === 'auth' && (
             <>
               <div className="space-y-1">
                 <Label className="text-xs">QXO Email / Username</Label>
