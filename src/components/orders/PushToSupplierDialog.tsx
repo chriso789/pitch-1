@@ -205,6 +205,12 @@ export function PushToSupplierDialog({
   });
   const [shipAddress, setShipAddress] = useState(projectAddress || '');
   const [notes, setNotes] = useState('');
+  // Jobsite delivery contact (functionCode "DC" on ABC orders). Branches
+  // require this so the driver knows who to call on delivery — submitting
+  // without it triggers vendor-side rework.
+  const [jobsiteContactName, setJobsiteContactName] = useState(customerName || '');
+  const [jobsiteContactPhone, setJobsiteContactPhone] = useState('');
+  const [jobsiteContactEmail, setJobsiteContactEmail] = useState('');
   const [editableItems, setEditableItems] = useState<MaterialItem[]>(items);
   const [submitting, setSubmitting] = useState(false);
   const [srsCatalog, setSrsCatalog] = useState<any[]>([]);
