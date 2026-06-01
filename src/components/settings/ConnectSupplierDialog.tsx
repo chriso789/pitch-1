@@ -21,7 +21,7 @@ interface Props {
 const META: Record<SupplierKey, { name: string; help: string }> = {
   abc: {
     name: 'ABC Supply',
-    help: 'Enter the ABC Supply account number provided by your ABC rep. Pitch will request production API access on your behalf.',
+    help: "Sign in with your myABCSupply account. ABC will redirect you back to Pitch once you approve access — Pitch then pulls your account, ship-to, and branch list automatically. You don't need any ABC developer keys.",
   },
   srs: {
     name: 'SRS Distribution',
