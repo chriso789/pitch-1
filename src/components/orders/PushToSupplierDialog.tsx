@@ -694,7 +694,8 @@ export function PushToSupplierDialog({
               unit: i.unit,
               unit_cost: Number(i.unit_cost),
               unit_price: Number(i.unit_cost),
-              notes: i.description,
+              notes: i.color_specs ? `${i.description || ''}${i.description ? ' — ' : ''}Color: ${i.color_specs}` : i.description,
+              color_specs: i.color_specs || null,
             })),
           },
         });
