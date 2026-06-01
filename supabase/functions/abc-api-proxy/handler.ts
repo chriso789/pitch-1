@@ -1283,6 +1283,20 @@ export const handle = async (req) => {
         if (!items.length) {
           return json({ success: false, error: "no_items", interpretation: "No items to submit." }, 400);
         }
+
+        // ── UOM gate ────────────────────────────────────────────────
+        // ABC branches reject orders with invalid UOMs. The UOM MUST come
+        // from the Product API response for the selected item — never a
+        // free-text default. Reject early so the dialog can prompt the user.
+        const missingUom = items.find((i) => !String(i.unit || "").trim());
+        if (missingUom) {
+          return json({
+            success: false,
+            error: "missing_item_uom",
+            interpretation: `Item "${missingUom.item_name || missingUom.abc_item_code}" is missing a UOM. Pull the UOM from the Product API for the selected item and resubmit.`,
+          }, 400);
+        }
+
         const { data: conn } = await supabase
           .from("abc_connections")
           .select("account_number,default_branch_code")
@@ -1297,6 +1311,45 @@ export const handle = async (req) => {
         const branchNumber =
           (body.branchNumber || body.branch_code || (conn as any)?.default_branch_code || "")
             .toString().trim();
+
+        // ── Price echo ──────────────────────────────────────────────
+        // ABC branches expect the order to include the price we showed the
+        // customer (which should match what they see in their system). If a
+        // line came in without `unit_cost`, resolve it server-side via
+        // /pricing/v2/prices so we never submit a $0 placeholder.
+        const ts = Date.now();
+        const priceMap = new Map<string, number>();
+        const needsPrice = items.filter((i) => !(Number(i.unit_cost) > 0));
+        if (needsPrice.length && shipToNumber && branchNumber) {
+          try {
+            const priceEndpoint = `${cfg.apiBase}/pricing/v2/prices`;
+            const pricePayload = {
+              requestId: `PITCH-PRICE-${ts}`,
+              shipToNumber,
+              branchNumber,
+              purpose: "ordering",
+              lines: needsPrice.map((i, idx) => ({
+                id: String(idx + 1),
+                itemNumber: (i.abc_item_code || i.srs_item_code || i.item_name).toString(),
+                quantity: Number(i.quantity) || 1,
+                uom: String(i.unit).toUpperCase(),
+              })),
+            };
+            const pr = await callAbc(tok.token, "POST", priceEndpoint, pricePayload);
+            const pj: any = pr.json;
+            const respLines = Array.isArray(pj?.lines)
+              ? pj.lines
+              : Array.isArray(pj)
+                ? (pj[0]?.lines ?? [])
+                : [];
+            for (const rl of respLines) {
+              const itemNum = String(rl?.itemNumber ?? "").trim();
+              const price = Number(rl?.unitPrice?.value ?? rl?.unitPrice ?? rl?.netPrice ?? rl?.price);
+              if (itemNum && Number.isFinite(price) && price > 0) priceMap.set(itemNum, price);
+            }
+          } catch (_e) { /* non-fatal — order will submit with the costs we have */ }
+        }
+
         // Map our delivery method enum -> ABC delivery service codes.
         // CPU = Customer Pickup, OTG = Other Ground, OTR = Other Roof, COM = Commercial.
         const deliveryService =
@@ -1313,7 +1366,22 @@ export const handle = async (req) => {
             : { line1: raw.trim(), city: "", state: "", postal: "", country: "USA" };
         };
 
-        const ts = Date.now();
+        // ── Jobsite contact (DC) ───────────────────────────────────
+        // Branches need a jobsite contact (functionCode "DC") so the driver
+        // knows who to call on delivery. Sourced from `body.jobsite_contact`
+        // which the dialog populates from the project's primary contact.
+        const jc = body.jobsite_contact || {};
+        const jobsiteContacts: Array<Record<string, unknown>> = [];
+        if (jc.name || jc.phone || jc.email) {
+          const phoneDigits = String(jc.phone || "").replace(/\D/g, "");
+          jobsiteContacts.push({
+            functionCode: "DC",
+            name: String(jc.name || body.customer_name || "Jobsite Contact").slice(0, 60),
+            email: jc.email ? String(jc.email).slice(0, 80) : "",
+            phones: phoneDigits ? [{ number: phoneDigits, type: "WORK", ext: "" }] : [],
+          });
+        }
+
         const poNumber = `PITCH-${body.job_number || "JOB"}-${ts}`;
         payload = [{
           requestId: poNumber,
@@ -1327,19 +1395,25 @@ export const handle = async (req) => {
             name: body.customer_name || "",
             number: shipToNumber,
             address: parseAddr(body.delivery_address),
+            ...(jobsiteContacts.length ? { contacts: jobsiteContacts } : {}),
           },
           orderComments: body.notes
             ? [{ code: "H", description: String(body.notes).slice(0, 500) }]
             : [],
-          lines: items.map((i, idx) => ({
-            id: idx + 1,
-            itemNumber: (i.abc_item_code || i.srs_item_code || i.item_name).toString(),
-            itemDescription: i.description || i.item_name,
-            orderedQty: {
-              value: Number(i.quantity),
-              uom: (i.unit || "EA").toUpperCase(),
-            },
-          })),
+          lines: items.map((i, idx) => {
+            const itemNumber = (i.abc_item_code || i.srs_item_code || i.item_name).toString();
+            const uom = String(i.unit).toUpperCase();
+            const resolvedPrice = Number(i.unit_cost) > 0
+              ? Number(i.unit_cost)
+              : (priceMap.get(itemNumber) ?? 0);
+            return {
+              id: idx + 1,
+              itemNumber,
+              itemDescription: i.description || i.item_name,
+              orderedQty: { value: Number(i.quantity), uom },
+              unitPrice: { value: resolvedPrice, uom },
+            };
+          }),
         }];
       }
 

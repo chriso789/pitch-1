@@ -205,6 +205,12 @@ export function PushToSupplierDialog({
   });
   const [shipAddress, setShipAddress] = useState(projectAddress || '');
   const [notes, setNotes] = useState('');
+  // Jobsite delivery contact (functionCode "DC" on ABC orders). Branches
+  // require this so the driver knows who to call on delivery — submitting
+  // without it triggers vendor-side rework.
+  const [jobsiteContactName, setJobsiteContactName] = useState(customerName || '');
+  const [jobsiteContactPhone, setJobsiteContactPhone] = useState('');
+  const [jobsiteContactEmail, setJobsiteContactEmail] = useState('');
   const [editableItems, setEditableItems] = useState<MaterialItem[]>(items);
   const [submitting, setSubmitting] = useState(false);
   const [srsCatalog, setSrsCatalog] = useState<any[]>([]);
@@ -222,6 +228,15 @@ export function PushToSupplierDialog({
   useEffect(() => {
     setShipAddress(projectAddress || '');
   }, [projectAddress]);
+
+  useEffect(() => {
+    // Prefill jobsite contact name from the project's primary contact when
+    // the dialog opens. Phone/email left blank for the user to fill in — we
+    // intentionally don't auto-pull personal phones to avoid leaking the
+    // homeowner's number onto an order without an explicit confirmation.
+    if (open) setJobsiteContactName((prev) => prev || customerName || '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, customerName]);
 
   useEffect(() => {
     if (!open || !tenantId) return;
@@ -709,6 +724,19 @@ export function PushToSupplierDialog({
             : `PO ${data.po_number} submitted.`,
         });
       } else if (selected === 'abc') {
+        // UOM gate — ABC branches reject orders with an invalid UOM. Block
+        // submit if any line is missing a UOM so the user can pull a valid
+        // one from the catalog before we contact the API.
+        const missingUomLine = editableItems.find(i => !String(i.unit || '').trim());
+        if (missingUomLine) {
+          toast({
+            title: 'Missing UOM',
+            description: `"${missingUomLine.item_name}" has no UOM. Pick it from the ABC catalog before submitting.`,
+            variant: 'destructive',
+          });
+          setSubmitting(false);
+          return;
+        }
         const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
           body: {
             action: 'submit_order',
@@ -725,6 +753,11 @@ export function PushToSupplierDialog({
             delivery_date: deliveryDate,
             delivery_address: shipAddress,
             notes,
+            jobsite_contact: {
+              name: jobsiteContactName.trim() || customerName || '',
+              phone: jobsiteContactPhone.trim(),
+              email: jobsiteContactEmail.trim(),
+            },
             items: editableItems.map(i => ({
               item_name: i.item_name,
               description: i.description,
@@ -900,6 +933,46 @@ export function PushToSupplierDialog({
                   <Label htmlFor="addr">Ship-to address</Label>
                   <Input id="addr" value={shipAddress} onChange={e => setShipAddress(e.target.value)} />
                 </div>
+
+                {selected === 'abc' && (
+                  <div className="rounded-md border border-border bg-muted/30 p-3 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm font-medium">Jobsite delivery contact</Label>
+                      <span className="text-[11px] text-muted-foreground">Required by ABC branches</span>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <div>
+                        <Label htmlFor="jc-name" className="text-xs">Name</Label>
+                        <Input
+                          id="jc-name"
+                          value={jobsiteContactName}
+                          onChange={e => setJobsiteContactName(e.target.value)}
+                          placeholder="Driver calls this person"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="jc-phone" className="text-xs">Phone</Label>
+                        <Input
+                          id="jc-phone"
+                          type="tel"
+                          value={jobsiteContactPhone}
+                          onChange={e => setJobsiteContactPhone(e.target.value)}
+                          placeholder="(555) 555-5555"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="jc-email" className="text-xs">Email</Label>
+                        <Input
+                          id="jc-email"
+                          type="email"
+                          value={jobsiteContactEmail}
+                          onChange={e => setJobsiteContactEmail(e.target.value)}
+                          placeholder="optional"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {selected === 'abc' && (
                   <div>
