@@ -41,6 +41,7 @@ const META: Record<SupplierKey, { name: string; help: string }> = {
  */
 export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, onConnected }: Props) {
   const { toast } = useToast();
+  const { canEnterAdvancedConnectFields } = useSupplierDeveloperMode();
   const [saving, setSaving] = useState(false);
 
   // ABC
