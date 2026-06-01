@@ -724,6 +724,19 @@ export function PushToSupplierDialog({
             : `PO ${data.po_number} submitted.`,
         });
       } else if (selected === 'abc') {
+        // UOM gate — ABC branches reject orders with an invalid UOM. Block
+        // submit if any line is missing a UOM so the user can pull a valid
+        // one from the catalog before we contact the API.
+        const missingUomLine = editableItems.find(i => !String(i.unit || '').trim());
+        if (missingUomLine) {
+          toast({
+            title: 'Missing UOM',
+            description: `"${missingUomLine.item_name}" has no UOM. Pick it from the ABC catalog before submitting.`,
+            variant: 'destructive',
+          });
+          setSubmitting(false);
+          return;
+        }
         const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
           body: {
             action: 'submit_order',
@@ -740,6 +753,11 @@ export function PushToSupplierDialog({
             delivery_date: deliveryDate,
             delivery_address: shipAddress,
             notes,
+            jobsite_contact: {
+              name: jobsiteContactName.trim() || customerName || '',
+              phone: jobsiteContactPhone.trim(),
+              email: jobsiteContactEmail.trim(),
+            },
             items: editableItems.map(i => ({
               item_name: i.item_name,
               description: i.description,
