@@ -563,11 +563,11 @@ export function SRSConnectionSettings() {
 
       {isConnected && (
         <Card>
-          <CardHeader>
+          <CardHeader className="py-3">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div>
-                <CardTitle className="text-lg">Synced Branches</CardTitle>
-                <CardDescription>
+                <CardTitle className="text-base">Synced Branches</CardTitle>
+                <CardDescription className="text-xs">
                   {branches.length > 0
                     ? `${branches.length} branches available for ordering.`
                     : 'No branches synced yet. Click "Sync Branches" above.'}
@@ -578,32 +578,40 @@ export function SRSConnectionSettings() {
               </Button>
             </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-0">
             {branches.length === 0 ? (
               <p className="text-sm text-muted-foreground">—</p>
             ) : (
-              <div className="text-xs max-h-80 overflow-auto border rounded-md">
-                <div className="grid grid-cols-12 gap-2 font-medium text-muted-foreground border-b px-3 py-2 sticky top-0 bg-background">
-                  <div className="col-span-2">Code</div>
-                  <div className="col-span-4">Name</div>
-                  <div className="col-span-3">City / State</div>
-                  <div className="col-span-3">Phone</div>
-                </div>
-                {branches.map((b) => (
-                  <div key={b.branch_code} className="grid grid-cols-12 gap-2 px-3 py-2 border-b last:border-b-0">
-                    <div className="col-span-2 font-mono">{b.branch_code}</div>
-                    <div className="col-span-4 truncate">{b.branch_name || '—'}</div>
-                    <div className="col-span-3 truncate text-muted-foreground">
-                      {[b.city, b.state].filter(Boolean).join(', ') || '—'}
-                    </div>
-                    <div className="col-span-3 truncate text-muted-foreground">{b.phone || '—'}</div>
+              <details className="text-xs">
+                <summary className="cursor-pointer text-muted-foreground hover:text-foreground py-1">
+                  Show all branches
+                </summary>
+                <div className="text-xs max-h-40 overflow-auto border rounded-md mt-2">
+                  <div className="grid grid-cols-12 gap-2 font-medium text-muted-foreground border-b px-3 py-1.5 sticky top-0 bg-background">
+                    <div className="col-span-2">Code</div>
+                    <div className="col-span-4">Name</div>
+                    <div className="col-span-3">City / State</div>
+                    <div className="col-span-3">Phone</div>
                   </div>
-                ))}
-              </div>
+                  {branches.map((b) => (
+                    <div key={b.branch_code} className="grid grid-cols-12 gap-2 px-3 py-1.5 border-b last:border-b-0">
+                      <div className="col-span-2 font-mono">{b.branch_code}</div>
+                      <div className="col-span-4 truncate">{b.branch_name || '—'}</div>
+                      <div className="col-span-3 truncate text-muted-foreground">
+                        {[b.city, b.state].filter(Boolean).join(', ') || '—'}
+                      </div>
+                      <div className="col-span-3 truncate text-muted-foreground">{b.phone || '—'}</div>
+                    </div>
+                  ))}
+                </div>
+              </details>
             )}
           </CardContent>
         </Card>
       )}
+
+      {isConnected && <SRSCatalogBrowser />}
+
 
 
       {isConnected && <SrsDiagnosticsPanel />}
