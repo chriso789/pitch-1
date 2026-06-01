@@ -258,14 +258,30 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
         <div className="space-y-3 py-2">
           {supplier === 'abc' && (
             <>
-              <div className="space-y-1">
-                <Label className="text-xs">ABC Account #</Label>
-                <Input value={abcAccount} onChange={(e) => setAbcAccount(e.target.value)} placeholder="e.g. 1234567" />
+              <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground space-y-1">
+                <p className="flex items-center gap-1 font-medium text-foreground">
+                  <ExternalLink className="h-3.5 w-3.5" /> You'll be redirected to myABCSupply
+                </p>
+                <p>
+                  Sign in with the ABC customer account that owns your pricing and ordering.
+                  After you approve access, Pitch will pull your ship-to accounts and branches automatically.
+                </p>
               </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Default Branch / Ship-To (optional)</Label>
-                <Input value={abcBranch} onChange={(e) => setAbcBranch(e.target.value)} placeholder="Branch code" />
-              </div>
+              {canEnterAdvancedConnectFields && (
+                <div className="pt-2 border-t border-border/50 space-y-3">
+                  <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                    Developer — manual account entry (bypasses OAuth)
+                  </p>
+                  <div className="space-y-1">
+                    <Label className="text-xs">ABC Account #</Label>
+                    <Input value={abcAccount} onChange={(e) => setAbcAccount(e.target.value)} placeholder="e.g. 1234567" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Default Branch / Ship-To (optional)</Label>
+                    <Input value={abcBranch} onChange={(e) => setAbcBranch(e.target.value)} placeholder="Branch code" />
+                  </div>
+                </div>
+              )}
             </>
           )}
 
