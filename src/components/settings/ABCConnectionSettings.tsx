@@ -1296,10 +1296,13 @@ export function ABCConnectionSettings() {
   // Developers/admins (and the O'Brien sandbox tenant) additionally see
   // the legacy diagnostics surface: platform OAuth client setup, sandbox
   // test console, raw audit, webhook tools, etc.
+  const { isConnected: abcConnected } = useAbcConnectionStatus();
+
   if (!canSeeRawDiagnostics) {
     return (
       <div className="space-y-6">
         <AbcTenantConnectCard />
+        {abcConnected && <AbcCatalogBrowser />}
       </div>
     );
   }
@@ -1308,15 +1311,13 @@ export function ABCConnectionSettings() {
     <div className="space-y-6">
       <AbcTenantConnectCard />
       {HeaderCard}
-      {/* Connection Setup card asks for Pitch's OAuth client_id/secret with ABC.
-          These are platform credentials, NOT customer credentials — they must
-          stay behind the developer/admin gate. */}
       {ConnectionSetupCard}
       {ReadinessStrip}
       {DemoWorkflowCard}
       {TestConsoleCard}
       {LatestResultCard}
       {DiagnosticsCard}
+      {abcConnected && <AbcCatalogBrowser />}
       {AdvancedSection}
     </div>
   );
