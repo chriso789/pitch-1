@@ -74,7 +74,7 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
 
   const reset = () => {
     setAbcAccount(''); setAbcBranch('');
-    setSrsCustomerCode(''); setSrsInvoiceNumber(''); setSrsInvoiceDate(''); setSrsClientId(''); setSrsIntegrationKey('');
+    setSrsCustomerCode(''); setSrsInvoiceNumber(''); setSrsInvoiceDate(''); setSrsIntegrationKey('');
     setQxoStep('auth'); setQxoUsername(''); setQxoPassword(''); setQxoSiteId('');
     setQxoAccounts([]); setQxoAccountId(''); setQxoBranchCode('');
     setQxoJobAccount(''); setQxoBranchContactName('');
@@ -139,7 +139,6 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
           customer_code: customerCode,
           environment: 'production',
         };
-        if (srsClientId.trim()) saveBody.client_id = srsClientId.trim();
         if (srsIntegrationKey.trim()) saveBody.client_secret = srsIntegrationKey.trim();
 
         const saveRes = await supabase.functions.invoke('srs-api-proxy', {
