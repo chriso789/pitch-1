@@ -20,6 +20,7 @@ import {
   AbcPriceCell,
   type AbcLineState,
 } from './AbcCatalogControls';
+import { colorsForItem } from './shingleBrandColors';
 
 type SupplierKey = 'srs' | 'qxo' | 'abc';
 
