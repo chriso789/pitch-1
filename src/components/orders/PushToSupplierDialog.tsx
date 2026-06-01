@@ -1032,16 +1032,47 @@ export function PushToSupplierDialog({
                               </td>
                               <td className="p-2">{it.unit}</td>
                               <td className="p-2">
-                                {it.requires_color ? (
-                                  <Input
-                                    value={it.color_specs || ''}
-                                    onChange={e => updateItem(i, { color_specs: e.target.value })}
-                                    placeholder="Color…"
-                                    className={`h-7 w-32 ${colorMissing ? 'border-destructive' : ''}`}
-                                  />
-                                ) : (
-                                  <span className="text-xs text-muted-foreground">{it.color_specs || '—'}</span>
-                                )}
+                                {(() => {
+                                  const { brand, colors } = colorsForItem(it.item_name);
+                                  const current = it.color_specs || '';
+                                  const inList = colors.includes(current);
+                                  const selectValue = !current ? '' : inList ? current : '__custom__';
+                                  return (
+                                    <div className="flex flex-col gap-1">
+                                      <Select
+                                        value={selectValue}
+                                        onValueChange={(v) => {
+                                          if (v === '__custom__') {
+                                            updateItem(i, { color_specs: current && !inList ? current : ' ' });
+                                          } else {
+                                            updateItem(i, { color_specs: v });
+                                          }
+                                        }}
+                                      >
+                                        <SelectTrigger
+                                          className={`h-7 w-40 ${colorMissing ? 'border-destructive' : ''}`}
+                                        >
+                                          <SelectValue placeholder={brand ? `${brand} color…` : 'Select color…'} />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {colors.map((c) => (
+                                            <SelectItem key={c} value={c}>{c}</SelectItem>
+                                          ))}
+                                          <SelectItem value="__custom__">Custom…</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                      {selectValue === '__custom__' && (
+                                        <Input
+                                          value={current === ' ' ? '' : current}
+                                          autoFocus
+                                          onChange={(e) => updateItem(i, { color_specs: e.target.value })}
+                                          placeholder="Custom color"
+                                          className={`h-7 w-40 ${colorMissing ? 'border-destructive' : ''}`}
+                                        />
+                                      )}
+                                    </div>
+                                  );
+                                })()}
                               </td>
                             </tr>
                           );
