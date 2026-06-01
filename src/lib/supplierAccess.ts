@@ -32,7 +32,12 @@ export function useSupplierDeveloperMode() {
   const isObrien = isObrienSandboxTenant(activeCompany?.tenant_name);
 
   const isDeveloper = isMasterOrAdmin || isDeveloperFlag;
-  const showAdvanced = isDeveloper || isObrien;
+  // Advanced (Developer) supplier tooling is sandbox-only: it must only
+  // appear when the active tenant is the O'Brien sandbox/demo company.
+  // Master / platform_admin users still see it there, but switching into
+  // any other tenant hides the Advanced tab so contractors never see raw
+  // OAuth URLs, WAF logs, or sandbox test login controls.
+  const showAdvanced = isObrien;
 
   return {
     /** true for master / platform_admin / users with is_developer flag */
