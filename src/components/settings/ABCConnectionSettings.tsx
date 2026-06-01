@@ -173,6 +173,8 @@ export function ABCConnectionSettings() {
   const effectiveTenantId = useEffectiveTenantId();
   const { toast } = useToast();
   const { allowSandboxDefaults, canChangeEnvironment, canSeeRawDiagnostics } = useSupplierDeveloperMode();
+  const { isConnected: abcConnected } = useAbcConnectionStatus();
+
 
   const [connection, setConnection] = useState<ABCConnection | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1296,7 +1298,6 @@ export function ABCConnectionSettings() {
   // Developers/admins (and the O'Brien sandbox tenant) additionally see
   // the legacy diagnostics surface: platform OAuth client setup, sandbox
   // test console, raw audit, webhook tools, etc.
-  const { isConnected: abcConnected } = useAbcConnectionStatus();
 
   if (!canSeeRawDiagnostics) {
     return (
@@ -1306,6 +1307,7 @@ export function ABCConnectionSettings() {
       </div>
     );
   }
+
 
   return (
     <div className="space-y-6">
