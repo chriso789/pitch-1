@@ -91,19 +91,43 @@ export function ConnectSupplierDialog({ open, onOpenChange, supplier, tenantId, 
     setSaving(true);
     try {
       if (supplier === 'abc') {
-        if (!abcAccount.trim()) throw new Error('ABC account number is required.');
-        const { data, error } = await supabase.functions.invoke('abc-save-account', {
-          body: {
-            tenant_id: tenantId,
-            account_number: abcAccount.trim(),
-            default_branch_code: abcBranch.trim() || null,
-            environment: 'production',
-          },
-        });
-        if (error) throw error;
-        if (!data?.success) throw new Error(data?.error || 'Save failed');
-        toast({ title: `${meta.name} connected`, description: 'Account verified and connected.' });
-        closeAndReset(true);
+        // Documented ABC third-party aggregator flow: redirect the tenant to
+        // myABCSupply (Okta) so they consent under their own ABC identity.
+        // The OAuth callback then persists the user-linked tokens and triggers
+        // account/ship-to/branch hydration. Advanced/dev users can still fall
+        // back to manual entry below.
+        if (canEnterAdvancedConnectFields && abcAccount.trim()) {
+          const { data, error } = await supabase.functions.invoke('abc-save-account', {
+            body: {
+              tenant_id: tenantId,
+              account_number: abcAccount.trim(),
+              default_branch_code: abcBranch.trim() || null,
+              environment: 'production',
+            },
+          });
+          if (error) throw error;
+          if (!data?.success) throw new Error(data?.error || 'Save failed');
+          toast({ title: `${meta.name} connected`, description: 'Account saved (developer manual entry).' });
+          closeAndReset(true);
+        } else {
+          const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
+            body: {
+              action: 'start_oauth',
+              tenant_id: tenantId,
+              environment: 'production',
+              return_origin: window.location.origin,
+            },
+          });
+          if (error) throw error;
+          if (!data?.success || !data?.authorization_url) {
+            throw new Error(
+              data?.human_message || data?.error || 'Could not start ABC OAuth flow.',
+            );
+          }
+          // Hand off to ABC/Okta. Callback returns to /settings?...&abc=connected.
+          window.location.assign(data.authorization_url);
+          return;
+        }
       } else if (supplier === 'srs') {
         const customerCode = srsCustomerCode.trim();
         if (!customerCode) throw new Error('SRS Account Number is required.');
