@@ -16,7 +16,11 @@ const MAX_AUTO_ROOF_AREA_SQFT = 30000;
 function hasPlausibleArea(measurement: ApprovedMeasurement): boolean {
   const tags = measurement.saved_tags as Record<string, any> | null;
   const sqft = Number(tags?.['roof.total_sqft'] || tags?.['roof.plan_area'] || 0);
-  return sqft > 0 && sqft <= MAX_AUTO_ROOF_AREA_SQFT;
+  if (sqft <= 0) return false;
+  const source = String(tags?.['source'] || '').toLowerCase();
+  const isImported = source.startsWith('imported_') || source.includes('roofr') || source.includes('eagleview') || source.includes('xactimate');
+  if (isImported) return true;
+  return sqft <= MAX_AUTO_ROOF_AREA_SQFT;
 }
 
 /**
