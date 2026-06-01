@@ -297,6 +297,7 @@ interface ProxyRequest {
     | "get_status"
     | "sandbox_test_login_status"
     | "start_oauth"
+    | "sync_accounts"
     | "price_items"
     | "get_branches"
     | "get_branch"
