@@ -950,7 +950,7 @@ export function PushToSupplierDialog({
                         <tr>
                           <th className="p-2 text-left">Item</th>
                           <th className="p-2 text-left">
-                            {selected ? `${selected.toUpperCase()} SKU` : 'SKU'}
+                            {selected === 'srs' ? 'Product ID' : selected === 'abc' ? 'ABC Item #' : selected ? `${selected.toUpperCase()} SKU` : 'SKU'}
                           </th>
                           <th className="p-2 text-right">Qty</th>
                           <th className="p-2 text-left">UoM</th>
