@@ -70,10 +70,17 @@ app.get("/accounts", async (c) => {
     if (!byShipTo.has(b.ship_to_id)) byShipTo.set(b.ship_to_id, [] as any);
     byShipTo.get(b.ship_to_id)!.push(b);
   }
-  const accounts = (shipTos ?? []).map((s) => ({
-    ...s,
-    branches: byShipTo.get(s.id) ?? [],
-  }));
+  // Per Sandy's required ABC setup flow: a Ship-To with no branches[] cannot
+  // be used for pricing (no branchNumber to send). Filter here so callers —
+  // including the setup wizard, diagnostics, and any future surface — can
+  // never accidentally render or select a zero-branch account. Defense in
+  // depth: sync_accounts also refuses to persist these.
+  const accounts = (shipTos ?? [])
+    .map((s) => ({
+      ...s,
+      branches: byShipTo.get(s.id) ?? [],
+    }))
+    .filter((s) => Array.isArray(s.branches) && s.branches.length > 0);
 
   return jsonOk(c, { accounts, count: accounts.length });
 });
