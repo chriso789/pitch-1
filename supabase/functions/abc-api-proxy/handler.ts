@@ -686,11 +686,22 @@ export const handle = async (req) => {
         duration_ms: Date.now() - startedAt, created_by: userId,
       });
       if (!accountsResp.ok) {
+        const errCode = mapAbcError(accountsResp.status, accountsResp.json);
+        // Surface a human-readable error on abc_connections so the setup wizard
+        // and diagnostics can show WHY hydration failed without leaving OAuth
+        // disconnected. OAuth itself is still valid; only sync failed.
+        await supabase
+          .from("abc_connections")
+          .update({
+            last_error: `sync_accounts.search_accounts ${accountsResp.status}: ${errCode}`.slice(0, 500),
+          })
+          .eq("tenant_id", tenant_id)
+          .eq("environment", env);
         return json({
           success: false,
           stage: "search_accounts",
           status: accountsResp.status,
-          error: mapAbcError(accountsResp.status, accountsResp.json),
+          error: errCode,
           body: accountsResp.json ?? accountsResp.text,
         });
       }
