@@ -16,6 +16,7 @@ import { LaborOrderExport } from '@/components/orders/LaborOrderExport';
 import { MaterialLineItemsExport } from '@/components/orders/MaterialLineItemsExport';
 import { PushToSupplierButton } from '@/components/orders/PushToSupplierButton';
 import { ShareMaterialsButton } from '@/components/orders/ShareMaterialsButton';
+import { colorsForItem } from '@/components/orders/shingleBrandColors';
 import { Parser as ExprParser } from 'expr-eval';
 import {
   AlertDialog,
