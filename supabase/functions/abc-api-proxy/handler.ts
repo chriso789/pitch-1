@@ -905,10 +905,12 @@ export const handle = async (req) => {
           joinCondition: "and",
         });
       }
+      const itemsPerPage = Math.min(Math.max(Number(body.itemsPerPage) || 25, 1), 100);
       const payload = {
         filters,
-        pagination: { itemsPerPage: 10, pageNumber: 1 },
+        pagination: { itemsPerPage, pageNumber: 1 },
       };
+
       const r = await callAbc(tok.token, "POST", endpoint, payload);
       const error_code = r.ok ? null : mapAbcError(r.status, r.json);
       await auditCall(supabase, {
