@@ -212,7 +212,13 @@ export function InlineSupplierMatch({
           {matchedColor && <span>· {matchedColor}</span>}
           {matchedUom && <span>· {matchedUom}</span>}
           {supplier === 'abc' && (
-            <PriceBadge state={item} loading={pricing} onRefresh={fetchAbcPrice} canPrice={!!shipToNumber} />
+            <PriceBadge
+              status={(item.abc_price_status as AbcLineState['abc_price_status']) || null}
+              price={item.abc_price ?? null}
+              loading={pricing}
+              onRefresh={fetchAbcPrice}
+              canPrice={!!shipToNumber}
+            />
           )}
         </>
       ) : (
