@@ -1095,6 +1095,7 @@ function parseEagleView(textRaw: string) {
 // Check if parsed result has meaningful data
 function hasValidMeasurements(parsed: any): boolean {
   return !!(
+    parsed &&
     parsed.total_area_sqft ||
     parsed.perimeter_ft ||
     parsed.ridges_ft ||
