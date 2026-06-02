@@ -2,9 +2,13 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, RefreshCw, AlertCircle } from "lucide-react";
+import { Loader2, RefreshCw, AlertCircle, Lock, Settings2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useAbcSetup } from "@/hooks/useAbcSetup";
+import { AbcPricingLockedCell } from "@/components/supplier-pricing/AbcPricingLockedCell";
+import { AbcSetupWizard } from "@/components/supplier-pricing/AbcSetupWizard";
+import { evaluateAbcLock } from "@/lib/templates/supplierPricing";
 
 type Supplier = "srs" | "abc" | "qxo";
 
