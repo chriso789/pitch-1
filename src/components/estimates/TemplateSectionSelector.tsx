@@ -689,6 +689,59 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
         </div>
       )}
 
+      {/* Supplier match picker — materials only */}
+      {!isLoadingData && sectionType === 'material' && lineItems.length > 0 && (abcConnection.isConnected || srsConnected) && (
+        <div className="flex flex-wrap items-end gap-3 p-3 border rounded-lg bg-muted/30">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-muted-foreground">Match to supplier</label>
+            <Select
+              value={matchSupplier || ''}
+              onValueChange={(v) => {
+                setMatchSupplier(v as SupplierKey);
+                if (v === 'abc') setMatchBranch(abcConnection.defaultBranchCode || matchBranch);
+                if (v === 'srs') setMatchBranch(srsConnected?.branch || matchBranch);
+                setCatalogLoadedKey('');
+              }}
+            >
+              <SelectTrigger className="h-8 w-[200px]"><SelectValue placeholder="Pick supplier…" /></SelectTrigger>
+              <SelectContent>
+                {abcConnection.isConnected && (
+                  <SelectItem value="abc">ABC Supply{abcConnection.environment === 'production' ? '' : ' (Sandbox)'}</SelectItem>
+                )}
+                {srsConnected && (
+                  <SelectItem value="srs">SRS Distribution{srsConnected.environment === 'production' ? '' : ' (QA)'}</SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-muted-foreground">Branch</label>
+            <Input
+              value={matchBranch}
+              onChange={(e) => { setMatchBranch(e.target.value); setCatalogLoadedKey(''); }}
+              placeholder={matchSupplier === 'abc' ? 'ABC branch #' : 'SRS branch code'}
+              className="h-8 w-[140px]"
+            />
+          </div>
+          {matchSupplier === 'abc' && (
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-muted-foreground">Ship-to (for live price)</label>
+              <Input
+                value={matchShipTo}
+                onChange={(e) => setMatchShipTo(e.target.value)}
+                placeholder="ABC ship-to #"
+                className="h-8 w-[160px]"
+              />
+            </div>
+          )}
+          {catalogLoading && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin" /> Loading catalog…
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Line Items Table */}
       {!isLoadingData && lineItems.length > 0 && (
         <div className="border rounded-lg overflow-hidden">
@@ -707,7 +760,27 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
             <TableBody>
               {lineItems.map((item) => (
                 <TableRow key={item.id}>
-                  <TableCell className="font-medium">{item.item_name}</TableCell>
+                  <TableCell className="font-medium align-top">
+                    <div>{item.item_name}</div>
+                    {sectionType === 'material' && matchSupplier && effectiveTenantId && (
+                      <InlineSupplierMatch
+                        tenantId={effectiveTenantId}
+                        supplier={matchSupplier}
+                        environment={abcConnection.environment === 'production' ? 'production' : 'sandbox'}
+                        branchCode={matchBranch}
+                        shipToNumber={matchShipTo}
+                        item={item as EstimateLineForMatch}
+                        abcCatalog={abcCatalog}
+                        srsCatalog={srsCatalog}
+                        catalogLoading={catalogLoading}
+                        onChange={(patch) => {
+                          const updated = lineItems.map((li) => li.id === item.id ? { ...li, ...patch } : li);
+                          setLineItems(updated);
+                          saveLineItemsMutation.mutate(updated);
+                        }}
+                      />
+                    )}
+                  </TableCell>
                   <TableCell>
                     {isLocked ? (
                       <span className="text-sm text-muted-foreground">{item.notes || '—'}</span>
