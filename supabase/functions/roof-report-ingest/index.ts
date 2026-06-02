@@ -1094,8 +1094,7 @@ function parseEagleView(textRaw: string) {
 
 // Check if parsed result has meaningful data
 function hasValidMeasurements(parsed: any): boolean {
-  return !!(
-    parsed &&
+  return !!(parsed && (
     parsed.total_area_sqft ||
     parsed.perimeter_ft ||
     parsed.ridges_ft ||
@@ -1103,7 +1102,7 @@ function hasValidMeasurements(parsed: any): boolean {
     parsed.valleys_ft ||
     parsed.eaves_ft ||
     parsed.rakes_ft
-  );
+  ));
 }
 
 Deno.serve(async (req) => {
