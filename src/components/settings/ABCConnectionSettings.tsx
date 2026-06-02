@@ -1315,11 +1315,15 @@ export function ABCConnectionSettings() {
       {HeaderCard}
       {ConnectionSetupCard}
       {ReadinessStrip}
+      {/* Catalog browser surfaced high so developers see live ABC product
+          search results immediately after the readiness strip — previously
+          it was buried below the Submit Diagnostics card and appeared
+          "missing" to anyone who didn't scroll the full page. */}
+      <AbcCatalogBrowser />
       {DemoWorkflowCard}
       {TestConsoleCard}
       {LatestResultCard}
       {DiagnosticsCard}
-      {abcConnected && <AbcCatalogBrowser />}
       {AdvancedSection}
     </div>
   );
