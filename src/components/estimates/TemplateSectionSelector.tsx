@@ -249,6 +249,112 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
     }
   }, [existingEstimate?.id, existingEstimate?.line_items, existingEstimate?.template_id, sectionType, effectiveEstimateId]);
 
+  // Detect connected suppliers + load user's default branch overrides.
+  // Materials-only; labor section never shows the supplier picker.
+  useEffect(() => {
+    if (sectionType !== 'material' || !effectiveTenantId) return;
+    let cancelled = false;
+    (async () => {
+      const { data: authData } = await supabase.auth.getUser();
+      const userId = authData?.user?.id;
+      let prefs: Record<string, string> = {};
+      if (userId) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('default_supplier_branches')
+          .eq('id', userId)
+          .maybeSingle();
+        prefs = ((profile as any)?.default_supplier_branches as Record<string, string>) || {};
+      }
+      const { data: srsRow } = await supabase
+        .from('srs_connections')
+        .select('default_branch_code, environment, connection_status, valid_indicator')
+        .eq('tenant_id', effectiveTenantId as any)
+        .maybeSingle();
+      if (cancelled) return;
+      if (srsRow && ((srsRow as any).connection_status === 'connected' || (srsRow as any).valid_indicator)) {
+        setSrsConnected({
+          branch: prefs.srs || (srsRow as any).default_branch_code,
+          environment: (srsRow as any).environment,
+        });
+      }
+      // Auto-pick: prefer ABC if connected, else SRS.
+      setMatchSupplier((prev) => {
+        if (prev) return prev;
+        if (abcConnection.isConnected) return 'abc';
+        if (srsRow && ((srsRow as any).connection_status === 'connected' || (srsRow as any).valid_indicator)) return 'srs';
+        return '';
+      });
+      // Seed branch from user pref / connection default.
+      setMatchBranch((prev) => {
+        if (prev) return prev;
+        if (abcConnection.isConnected) return prefs.abc || abcConnection.defaultBranchCode || '';
+        return prefs.srs || (srsRow as any)?.default_branch_code || '';
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [sectionType, effectiveTenantId, abcConnection.isConnected, abcConnection.defaultBranchCode]);
+
+  // Load ABC catalog once per (branch, supplier) so the inline match can
+  // resolve descriptions + auto-pick best matches. We search with a broad
+  // query that returns the top SKUs for the branch; the per-row scorer
+  // does the final pick. Keeping this a single load keeps API usage low.
+  useEffect(() => {
+    if (sectionType !== 'material' || !matchSupplier || !matchBranch || !effectiveTenantId) return;
+    const key = `${matchSupplier}:${matchBranch}`;
+    if (catalogLoadedKey === key) return;
+    setCatalogLoading(true);
+    (async () => {
+      try {
+        if (matchSupplier === 'abc') {
+          // Pull a reasonable catalog slice by issuing several common keyword
+          // searches and merging the results — abc-api-proxy's search_products
+          // returns at most a few hundred rows per query.
+          const queries = ['shingle', 'ridge', 'starter', 'underlayment', 'ice water', 'drip edge', 'nail', 'vent', 'pipe boot', 'flashing'];
+          const merged = new Map<string, AbcCatalogItem>();
+          const env: 'sandbox' | 'production' = abcConnection.environment === 'production' ? 'production' : 'sandbox';
+          for (const q of queries) {
+            const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
+              body: { action: 'search_products', tenant_id: effectiveTenantId, environment: env, query: q, branchNumber: matchBranch.trim() },
+            });
+            if (error || !data?.success) continue;
+            const body = data.body;
+            const raw = Array.isArray(body) ? body
+              : Array.isArray(body?.items) ? body.items
+              : Array.isArray(body?.data) ? body.data
+              : Array.isArray(body?.results) ? body.results : [];
+            for (const r of raw) {
+              const itemNumber = String(r.itemNumber ?? r.item_number ?? r.sku ?? r.productNumber ?? '').trim();
+              if (!itemNumber) continue;
+              const k = `${itemNumber}::${r.colorOption ?? r.color ?? r.option ?? ''}`;
+              if (merged.has(k)) continue;
+              merged.set(k, {
+                itemNumber,
+                itemDescription: String(r.itemDescription ?? r.description ?? r.itemDesc ?? r.productName ?? r.name ?? '').trim(),
+                color: r.colorOption ?? r.color ?? r.option ?? r.colorName ?? null,
+                uom: r.unitOfMeasure ?? r.uom ?? r.baseUom ?? r.salesUom ?? null,
+                raw: r,
+              });
+            }
+          }
+          setAbcCatalog(Array.from(merged.values()));
+        } else if (matchSupplier === 'srs') {
+          const { data, error } = await supabase.functions.invoke('srs-api-proxy', {
+            body: { action: 'get_products', tenant_id: effectiveTenantId, branch_code: matchBranch.trim() },
+          });
+          if (!error) {
+            setSrsCatalog(Array.isArray(data?.products) ? data.products : []);
+          }
+        }
+        setCatalogLoadedKey(key);
+      } finally {
+        setCatalogLoading(false);
+      }
+    })();
+  }, [sectionType, matchSupplier, matchBranch, effectiveTenantId, abcConnection.environment, catalogLoadedKey]);
+
+
+
   // Save line items mutation
   const saveLineItemsMutation = useMutation({
     mutationFn: async (payload: LineItem[] | { items: LineItem[]; templateId?: string }) => {
