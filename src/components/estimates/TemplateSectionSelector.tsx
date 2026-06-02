@@ -88,6 +88,19 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
   const [showLockDialog, setShowLockDialog] = useState(false);
   const [isCreatingEstimate, setIsCreatingEstimate] = useState(false);
 
+  // Inline supplier-match state — only used in the material section. The
+  // SKU we pick here writes back to the same enhanced_estimates.line_items
+  // JSON, so PushToSupplierDialog later sees the same matches.
+  const abcConnection = useAbcConnectionStatus();
+  const [matchSupplier, setMatchSupplier] = useState<SupplierKey | ''>('');
+  const [matchBranch, setMatchBranch] = useState<string>('');
+  const [matchShipTo, setMatchShipTo] = useState<string>('');
+  const [srsConnected, setSrsConnected] = useState<{ branch?: string; environment?: string } | null>(null);
+  const [abcCatalog, setAbcCatalog] = useState<AbcCatalogItem[]>([]);
+  const [srsCatalog, setSrsCatalog] = useState<any[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogLoadedKey, setCatalogLoadedKey] = useState<string>('');
+
   // Fetch templates for this tenant
   const { data: templates, isLoading: templatesLoading } = useQuery({
     queryKey: ['estimate-templates', effectiveTenantId, sectionType],
