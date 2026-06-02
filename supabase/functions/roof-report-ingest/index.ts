@@ -1410,7 +1410,7 @@ Deno.serve(async (req) => {
     // Check for duplicate by hash — scoped to tenant to avoid cross-tenant collisions
     let dupQuery = supabase
       .from("roof_vendor_reports")
-      .select("id, address, provider, created_at")
+      .select("id, address, provider, created_at, parsed")
       .eq("file_hash", pdfHash);
     if (resolvedTenantId) dupQuery = dupQuery.eq("tenant_id", resolvedTenantId);
     const { data: existingReport } = await dupQuery.maybeSingle();
