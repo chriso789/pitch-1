@@ -301,22 +301,65 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
   // does the final pick. Keeping this a single load keeps API usage low.
   useEffect(() => {
     if (sectionType !== 'material' || !matchSupplier || !matchBranch || !effectiveTenantId) return;
-    const key = `${matchSupplier}:${matchBranch}`;
+    // Key includes a hash of current line-item names so the catalog reloads
+    // when the user adds/removes materials with new product families.
+    const itemSig = lineItems.map((li) => li.item_name).join('|');
+    const key = `${matchSupplier}:${matchBranch}:${itemSig.length}:${itemSig.slice(0, 80)}`;
     if (catalogLoadedKey === key) return;
     setCatalogLoading(true);
     (async () => {
       try {
         if (matchSupplier === 'abc') {
-          // Pull a reasonable catalog slice by issuing several common keyword
-          // searches and merging the results — abc-api-proxy's search_products
-          // returns at most a few hundred rows per query.
-          const queries = ['shingle', 'ridge', 'starter', 'underlayment', 'ice water', 'drip edge', 'nail', 'vent', 'pipe boot', 'flashing'];
+          // Derive search tokens FROM the actual estimate line items instead
+          // of a hard-coded generic list. Roofing items like
+          // "GAF EverGuard TPO Bonding Adhesive" should produce queries like
+          // "everguard", "tpo", "bonding", "adhesive" so the ABC catalog
+          // pull actually contains matching SKUs.
+          const STOP = new Set([
+            'the','a','an','and','or','for','with','of','to','in','on','per','mil',
+            'roll','box','pail','tube','pkg','bundle','board','bag','case','each','ea',
+            'gaf','certainteed','owens','corning','iko','tamko','malarkey','atlas', // brand-only words are too broad
+            'gallon','oz','lb','lbs','ft','inch','in','sq','sqft',
+          ]);
+          const tokens = new Map<string, number>();
+          for (const li of lineItems) {
+            const txt = `${li.item_name || ''} ${(li as any).description || ''}`.toLowerCase();
+            for (const raw of txt.split(/[^a-z0-9]+/)) {
+              const t = raw.trim();
+              if (!t || t.length < 3 || STOP.has(t) || /^\d+$/.test(t)) continue;
+              tokens.set(t, (tokens.get(t) || 0) + 1);
+            }
+          }
+          // Take the top distinctive tokens; cap to keep API calls reasonable.
+          const queries = Array.from(tokens.entries())
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 12)
+            .map(([t]) => t);
+          // Always include a couple of broad fallbacks so unmatched generic
+          // rows (e.g. "Nails") still get some catalog coverage.
+          for (const fallback of ['shingle', 'underlayment', 'flashing']) {
+            if (!queries.includes(fallback)) queries.push(fallback);
+          }
           const merged = new Map<string, AbcCatalogItem>();
           const env: 'sandbox' | 'production' = abcConnection.environment === 'production' ? 'production' : 'sandbox';
-          for (const q of queries) {
-            const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
-              body: { action: 'search_products', tenant_id: effectiveTenantId, environment: env, query: q, branchNumber: matchBranch.trim() },
-            });
+          // Fire searches in parallel; each call returns up to itemsPerPage rows.
+          const responses = await Promise.allSettled(
+            queries.map((q) =>
+              supabase.functions.invoke('abc-api-proxy', {
+                body: {
+                  action: 'search_products',
+                  tenant_id: effectiveTenantId,
+                  environment: env,
+                  query: q,
+                  branchNumber: matchBranch.trim(),
+                  itemsPerPage: 50,
+                },
+              }),
+            ),
+          );
+          for (const res of responses) {
+            if (res.status !== 'fulfilled') continue;
+            const { data, error } = res.value;
             if (error || !data?.success) continue;
             const body = data.body;
             const raw = Array.isArray(body) ? body
@@ -351,7 +394,8 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
         setCatalogLoading(false);
       }
     })();
-  }, [sectionType, matchSupplier, matchBranch, effectiveTenantId, abcConnection.environment, catalogLoadedKey]);
+  }, [sectionType, matchSupplier, matchBranch, effectiveTenantId, abcConnection.environment, catalogLoadedKey, lineItems]);
+
 
 
 
