@@ -1410,6 +1410,215 @@ export const handle = async (req) => {
       return json({ success: true, webhooks: data ?? [], secret_stored_note: "Secret never returned to client." });
     }
 
+    // ---------------- sync_accounts ----------------
+    // Post-OAuth hydration: pulls Ship-To accounts (accountType=ship-to) and
+    // their branches into abc_ship_to_accounts / abc_account_branches /
+    // abc_branches so the setup wizard has real options. Ship-Tos with
+    // empty branches[] are SKIPPED per Sandy's required setup flow.
+    if (action === "sync_accounts") {
+      const { data: conn } = await supabase
+        .from("abc_connections")
+        .select("id")
+        .eq("tenant_id", tenant_id)
+        .eq("environment", env)
+        .maybeSingle();
+      const connectionId = (conn as any)?.id ?? null;
+
+      const accountSearchPath = Deno.env.get("ABC_ACCOUNT_SEARCH_PATH") || "/account/v1/search/accounts";
+      const shipToPath = Deno.env.get("ABC_SHIPTO_PATH") || "/account/v1/shiptos";
+
+      const accountsPayload = {
+        filters: [{ field: "accountType", op: "eq", value: "ship-to" }],
+        pagination: { itemsPerPage: 100, pageNumber: 1 },
+      };
+      const accountsEndpoint = `${cfg.apiBase}${accountSearchPath}`;
+      const accountsResp = await callAbc(tok.token, "POST", accountsEndpoint, accountsPayload);
+      await auditCall(supabase, {
+        tenant_id, environment: env, action, endpoint: accountsEndpoint,
+        request_body_redacted: accountsPayload,
+        status_code: accountsResp.status, response_body: accountsResp.json ?? accountsResp.text,
+        error_code: accountsResp.ok ? null : mapAbcError(accountsResp.status, accountsResp.json),
+        duration_ms: Date.now() - startedAt, created_by: userId,
+      });
+      if (!accountsResp.ok) {
+        const errCode = mapAbcError(accountsResp.status, accountsResp.json);
+        await supabase
+          .from("abc_connections")
+          .update({
+            last_error: `sync_accounts.search_accounts ${accountsResp.status}: ${errCode}`.slice(0, 500),
+          })
+          .eq("tenant_id", tenant_id)
+          .eq("environment", env);
+        return json({
+          success: false,
+          stage: "search_accounts",
+          status: accountsResp.status,
+          error: errCode,
+          body: accountsResp.json ?? accountsResp.text,
+        });
+      }
+
+      const accountsBody: any = accountsResp.json ?? {};
+      const accountRows: any[] = Array.isArray(accountsBody?.accounts)
+        ? accountsBody.accounts
+        : Array.isArray(accountsBody?.data)
+          ? accountsBody.data
+          : Array.isArray(accountsBody?.items)
+            ? accountsBody.items
+            : Array.isArray(accountsBody)
+              ? accountsBody
+              : [];
+
+      const shipToNumbers = new Set<string>();
+      for (const a of accountRows) {
+        const candidates = [
+          a?.shipToNumber, a?.shipTo?.number, a?.shipTo?.shipToNumber,
+          a?.accountNumber, a?.number,
+        ];
+        for (const c of candidates) {
+          if (c == null) continue;
+          const s = String(c).trim();
+          if (s) shipToNumbers.add(s);
+        }
+        if (Array.isArray(a?.shipTos)) {
+          for (const s of a.shipTos) {
+            const v = s?.shipToNumber ?? s?.number ?? s?.id;
+            if (v) shipToNumbers.add(String(v).trim());
+          }
+        }
+      }
+
+      const shipToRows: Array<{ ship_to_number: string; payload: any }> = [];
+      const branchRowsByNumber = new Map<string, any>();
+      const accountBranchRows: Array<{ ship_to_number: string; branch: any }> = [];
+
+      for (const stn of Array.from(shipToNumbers).slice(0, 50)) {
+        const endpoint = `${cfg.apiBase}${shipToPath}/${encodeURIComponent(stn)}`;
+        const r = await callAbc(tok.token, "GET", endpoint);
+        if (!r.ok) continue;
+        const payload = (r.json ?? {}) as any;
+        shipToRows.push({ ship_to_number: stn, payload });
+        const branches: any[] = Array.isArray(payload?.branches)
+          ? payload.branches
+          : Array.isArray(payload?.shipTo?.branches)
+            ? payload.shipTo.branches
+            : [];
+        for (const b of branches) {
+          const bn = String(b?.number ?? b?.branchNumber ?? "").trim();
+          if (!bn) continue;
+          accountBranchRows.push({ ship_to_number: stn, branch: { ...b, branchNumber: bn } });
+          if (!branchRowsByNumber.has(bn)) branchRowsByNumber.set(bn, b);
+        }
+      }
+
+      const shipToNumbersWithBranches = new Set<string>(
+        accountBranchRows.map((r) => r.ship_to_number),
+      );
+      const skippedNoBranches = shipToRows.filter(
+        (r) => !shipToNumbersWithBranches.has(r.ship_to_number),
+      ).length;
+      const shipToUpserts = shipToRows
+        .filter((r) => shipToNumbersWithBranches.has(r.ship_to_number))
+        .map(({ ship_to_number, payload }) => {
+          const st = payload?.shipTo ?? payload ?? {};
+          const addr = st?.address ?? st?.shippingAddress ?? {};
+          return {
+            connection_id: connectionId,
+            tenant_id,
+            user_id: userId,
+            ship_to_number,
+            name: st?.name ?? st?.shipToName ?? null,
+            address_line1: addr?.line1 ?? addr?.addressLine1 ?? null,
+            address_line2: addr?.line2 ?? addr?.addressLine2 ?? null,
+            city: addr?.city ?? null,
+            state: addr?.state ?? addr?.stateCode ?? null,
+            postal_code: addr?.postalCode ?? addr?.zip ?? null,
+            country: addr?.country ?? addr?.countryCode ?? null,
+            contacts: st?.contacts ?? null,
+            raw: payload,
+          };
+        });
+
+      const shipToIdByNumber = new Map<string, string>();
+      if (shipToUpserts.length && connectionId) {
+        const { data: upserted } = await supabase
+          .from("abc_ship_to_accounts")
+          .upsert(shipToUpserts, { onConflict: "connection_id,ship_to_number" })
+          .select("id, ship_to_number");
+        for (const row of (upserted ?? []) as any[]) {
+          shipToIdByNumber.set(row.ship_to_number, row.id);
+        }
+      }
+
+      if (accountBranchRows.length && shipToIdByNumber.size) {
+        const branchUpserts = accountBranchRows
+          .map(({ ship_to_number, branch }) => {
+            const ship_to_id = shipToIdByNumber.get(ship_to_number);
+            if (!ship_to_id) return null;
+            const addr = branch?.address ?? {};
+            return {
+              ship_to_id,
+              tenant_id,
+              user_id: userId,
+              branch_number: String(branch.branchNumber),
+              name: branch?.name ?? null,
+              address_line1: addr?.line1 ?? addr?.addressLine1 ?? null,
+              city: addr?.city ?? null,
+              state: addr?.state ?? addr?.stateCode ?? null,
+              postal_code: addr?.postalCode ?? addr?.zip ?? null,
+              is_home_branch: !!(branch?.homeBranch ?? branch?.isHomeBranch),
+              is_default: false,
+              raw: branch,
+            };
+          })
+          .filter(Boolean) as any[];
+        if (branchUpserts.length) {
+          await supabase
+            .from("abc_account_branches")
+            .upsert(branchUpserts, { onConflict: "ship_to_id,branch_number" });
+        }
+      }
+
+      if (branchRowsByNumber.size) {
+        const branchMeta = Array.from(branchRowsByNumber.entries()).map(([bn, b]) => {
+          const addr = b?.address ?? {};
+          return {
+            tenant_id,
+            branch_number: bn,
+            name: b?.name ?? null,
+            storefront: b?.storefront ?? null,
+            status: b?.status ?? null,
+            city: addr?.city ?? null,
+            state: addr?.state ?? addr?.stateCode ?? null,
+            postal: addr?.postalCode ?? addr?.zip ?? null,
+            country: addr?.country ?? addr?.countryCode ?? null,
+            latitude: b?.latitude ?? addr?.latitude ?? null,
+            longitude: b?.longitude ?? addr?.longitude ?? null,
+            time_zone_code: b?.timeZoneCode ?? null,
+            raw_payload: b,
+          };
+        });
+        await supabase
+          .from("abc_branches")
+          .upsert(branchMeta, { onConflict: "tenant_id,branch_number" });
+      }
+
+      await supabase
+        .from("abc_connections")
+        .update({ last_validated_at: new Date().toISOString(), last_error: null })
+        .eq("tenant_id", tenant_id)
+        .eq("environment", env);
+
+      return json({
+        success: true,
+        environment: env,
+        ship_to_count: shipToUpserts.length,
+        ship_to_total_returned: shipToRows.length,
+        ship_to_skipped_no_branches: skippedNoBranches,
+        branch_count: branchRowsByNumber.size,
+      });
+    }
+
     return json({ success: false, error: `Unknown action: ${action}` }, 400);
 
 
