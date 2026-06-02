@@ -48703,6 +48703,65 @@ export type Database = {
           },
         ]
       }
+      supplier_price_observations: {
+        Row: {
+          branch_number: string | null
+          currency: string
+          id: string
+          mapping_id: string | null
+          observed_at: string
+          price_pending: boolean
+          purpose: string
+          reason: string | null
+          ship_to_number: string | null
+          supplier: string
+          supplier_item_code: string
+          tenant_id: string
+          unit_price: number | null
+          uom: string | null
+        }
+        Insert: {
+          branch_number?: string | null
+          currency?: string
+          id?: string
+          mapping_id?: string | null
+          observed_at?: string
+          price_pending?: boolean
+          purpose: string
+          reason?: string | null
+          ship_to_number?: string | null
+          supplier: string
+          supplier_item_code: string
+          tenant_id?: string
+          unit_price?: number | null
+          uom?: string | null
+        }
+        Update: {
+          branch_number?: string | null
+          currency?: string
+          id?: string
+          mapping_id?: string | null
+          observed_at?: string
+          price_pending?: boolean
+          purpose?: string
+          reason?: string | null
+          ship_to_number?: string | null
+          supplier?: string
+          supplier_item_code?: string
+          tenant_id?: string
+          unit_price?: number | null
+          uom?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_price_observations_mapping_id_fkey"
+            columns: ["mapping_id"]
+            isOneToOne: false
+            referencedRelation: "template_item_supplier_mappings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       supplier_price_sync_logs: {
         Row: {
           completed_at: string | null
@@ -49382,6 +49441,71 @@ export type Database = {
             columns: ["item_id"]
             isOneToOne: true
             referencedRelation: "estimate_calc_template_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      template_item_supplier_mappings: {
+        Row: {
+          color_name: string | null
+          confidence: number | null
+          created_at: string
+          created_by: string | null
+          id: string
+          match_source: string
+          review_state: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          supplier: string
+          supplier_description: string | null
+          supplier_item_code: string
+          template_item_id: string
+          tenant_id: string
+          uom: string | null
+          updated_at: string
+        }
+        Insert: {
+          color_name?: string | null
+          confidence?: number | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          match_source?: string
+          review_state?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          supplier: string
+          supplier_description?: string | null
+          supplier_item_code: string
+          template_item_id: string
+          tenant_id?: string
+          uom?: string | null
+          updated_at?: string
+        }
+        Update: {
+          color_name?: string | null
+          confidence?: number | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          match_source?: string
+          review_state?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          supplier?: string
+          supplier_description?: string | null
+          supplier_item_code?: string
+          template_item_id?: string
+          tenant_id?: string
+          uom?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "template_item_supplier_mappings_template_item_id_fkey"
+            columns: ["template_item_id"]
+            isOneToOne: false
+            referencedRelation: "template_items"
             referencedColumns: ["id"]
           },
         ]
