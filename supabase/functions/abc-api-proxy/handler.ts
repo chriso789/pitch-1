@@ -667,8 +667,13 @@ export const handle = async (req) => {
 
       // 1) Search accounts (paginated). We pull the first page only — most contractors
       //    have <100 ship-tos; the docs allow itemsPerPage up to 100.
+      //
+      // ABC's Search Accounts endpoint REQUIRES an accountType filter per Sandy's
+      // documented setup flow — sending `filters: []` returns the full mixed
+      // bag (bill-to, ship-to, etc.) and we cannot guarantee branches[] hydration.
+      // Always constrain to ship-to so /accounts only ever sees the right shape.
       const accountsPayload = {
-        filters: [],
+        filters: [{ field: "accountType", op: "eq", value: "ship-to" }],
         pagination: { itemsPerPage: 100, pageNumber: 1 },
       };
       const accountsEndpoint = `${cfg.apiBase}${accountSearchPath}`;
