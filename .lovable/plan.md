@@ -1,71 +1,49 @@
-# ABC Integration Hardening — 3 Phases
+## Goal
 
-Shipping in order so each phase is verifiable before moving on.
+On the estimate materials section, let the user pick a connected supplier (ABC / SRS / QXO) once, and show the matched supplier product info (SKU, description, live price) directly under each line item — no need to open the Push-to-Supplier dialog to see it.
 
----
+## UX
 
-## Phase 1 — Order Submission Fixes (ships first)
+```text
+[ Materials section header ]   Match supplier: [ ABC Supply (Sandbox) ▼ ]  Branch: [1209]
 
-**Goal:** Next ABC order accepted cleanly by the branch.
+┌────────────────────────────────────────────────────────────────────┐
+│ GAF Timberline HDZ Shingles            Oyster Grey   57  bundle … │
+│   ABC #10056234 · Timberline HDZ Oyster Grey · $42.50/bdl   [🔍] │
+├────────────────────────────────────────────────────────────────────┤
+│ GAF Pro-Start Starter Strip            Oyster Grey    2  bundle … │
+│   No ABC match — [search]                                          │
+└────────────────────────────────────────────────────────────────────┘
+```
 
-**Backend — `supabase/functions/abc-api-proxy/handler.ts`** (order builder, ~line 832–1100):
-1. **Jobsite contact (DC)** — append a contact to `shipTo.contacts[]` with:
-   - `functionCode: "DC"`
-   - `name`, `email`, `phones: [{ number, type: "WORK" }]`
-   - Source these from request body (`jobsiteContact: { name, phone, email }`), which the dialog will populate from the project's primary contact.
-2. **Correct UOM per line** — require `uom` per item in the request payload. Reject (HTTP 400 `missing_item_uom`) if any line lacks one. No silent default. UOM comes from the Product API response stored alongside the item.
-3. **Echo price from Price Items endpoint** — require `unit_price` per line. If absent, call `/price/v2/items` server-side with `(shipToNumber, branchNumber, itemNumber, uom)` and use the returned price. Persist the resolved price into the order payload so the branch sees the same number we showed the user.
-4. **`itemDescription`** — already pulled from Product API; ensure it's included on every line submitted to ABC.
+- Supplier picker shows only connected suppliers (reuses the same detection logic as PushToSupplierDialog).
+- "Branch" defaults from the user's per-supplier preference (already persisted in profiles.default_supplier_branches) or the connection's default branch.
+- Each material row gets a small subline with: SKU · short description · price (or "No match" + search button).
+- A 🔍 button on each row opens the existing `AbcCatalogSearchPopover` / `CatalogSearchPopover` to change the match. The SKU is persisted to `estimate_line_items.abc_item_number` / `srs_item_code`, same columns the Push dialog already writes to — so the Push dialog later shows the same matches with no extra mapping.
+- Auto-match runs once when supplier+branch is set: fetches the catalog (ABC search or SRS get_products) and assigns best matches to rows that don't already have one. Match logic reuses the existing scorers in PushToSupplierDialog (extracted to a small helper file).
+- Live price for ABC: reuses `AbcPriceCell` / pricing fetch already in `AbcCatalogControls`.
 
-**Frontend — `src/components/orders/PushToSupplierDialog.tsx`:**
-- For ABC orders, attach `jobsiteContact` (name/phone/email) from the project contact to the submit payload.
-- Per-line UOM must come from the catalog item (Product API), not a free-text field. If unknown, block submit with an inline error.
-- Show the resolved unit price (from `/price`) in the row before submit; allow override but default to the API value.
+## Scope of code changes
 
-**Verification:** Test a submission against ABC sandbox via `supabase--curl_edge_functions` and confirm the order JSON contains `shipTo.contacts[{functionCode:"DC"}]`, every line has valid `uom`, `unitPrice`, and `itemDescription`.
+1. New helper `src/components/orders/catalogMatching.ts`
+   - Extract `scoreSrsProductMatch`, `autoFillSrsCatalogSkus`, and the ABC catalog scorer from PushToSupplierDialog so both surfaces share matching logic. (Pure refactor, no behavior change.)
 
----
+2. New component `src/components/estimates/InlineSupplierMatch.tsx`
+   - Props: `{ item, supplier, tenantId, environment, branchCode, onChange }`.
+   - Renders the SKU · description · price subline, plus search popover button.
+   - Persists SKU to `estimate_line_items` (same write path as PushToSupplierDialog's `persistSku`).
 
-## Phase 2 — Integration Setup UI (Ship-To + Branch picker)
+3. `src/components/estimates/TemplateSectionSelector.tsx`
+   - Add supplier-picker row above the materials table only when `sectionType === 'material'`.
+   - Detect connected suppliers (reuse hook calls already used in Push dialog) and store the chosen one in local state, defaulting to the only connected one when there's exactly one.
+   - For each material row, render `<InlineSupplierMatch>` under the item name when a supplier is selected.
+   - Trigger one-shot auto-match when supplier + branch + line items are all ready and any row is missing a SKU.
 
-**Goal:** After OAuth, user picks one Ship-To + one Branch; persisted as their default.
+4. No DB migrations: `abc_item_number`, `srs_item_code`, `abc_color`, `abc_uom`, `abc_price*` already exist on `estimate_line_items` (used by Push dialog today).
 
-**Backend:**
-- New table column on `abc_connections`: `default_ship_to_number` (already has `default_branch_code`).
-- `abc-api /accounts` already returns `accounts[].branches[]`. Frontend will hide accounts where `branches.length === 0` per spec.
-- New route `POST /accounts/default` on `abc-api`: body `{ ship_to_number, branch_number }`, validates the pair exists under this tenant's connection, then upserts `abc_connections.default_ship_to_number` and `default_branch_code`.
+## Non-goals (won't do in this pass)
 
-**Frontend — `src/components/settings/ABCConnectionSettings.tsx`:**
-- After connection, render two dependent dropdowns:
-  - **Ship-To** — `useAbcAccounts()` filtered to `branches.length > 0`. Label: `${name} — ${ship_to_number}`.
-  - **Branch** — populated from selected ship-to's `branches[]`. Label: `${branch_number} — ${name}, ${city}, ${state}`.
-- Save button calls `/accounts/default`; on success, show "Default set" badge.
-- Existing branches table shrinks to a read-only summary under the picker.
-
-**Verification:** Connect, pick a Ship-To with branches, save, reload page — selection persists. Ship-Tos with empty `branches[]` do not appear.
-
----
-
-## Phase 3 — Branch-Aware Catalog & Pricing
-
-**Goal:** Catalog/price views only show items truly available at the user's selected branch; $0 prices are gated by an availability re-check.
-
-**Backend — `supabase/functions/abc-api/index.ts` + proxy:**
-1. **`/catalog/search`** — accept `branch_number` query param (default = tenant's `default_branch_code`). Proxy to ABC Product API with `embed=branches`. Server-side filter: keep only items whose `branches[]` includes the requested branch_number. Return real `items[]` (not the current stub) including `item_number`, `description`, `family_id`, `color_name`, `uoms[]` (full UOM list from response).
-2. **`/price`** — when `unit_price === 0`, re-call ABC Product API for that item with `embed=branches`; if branch is not listed, return `price_pending: true, reason: "not_available_at_branch"` instead of `$0.00`. Otherwise return the $0 with `confirmed_zero: true`.
-3. New route `/catalog/item/:itemNumber` — returns full item including UOM list and branch availability, used by the order dialog to lock UOM to a valid value.
-
-**Frontend:**
-- `AbcCatalogBrowser` — surface the active branch in the header ("Filtered to branch 1234 — Houston Heights"). Show "Not available at your branch" if API returns `pending: branch_unavailable`.
-- `PushToSupplierDialog` (ABC path) — UOM field is now a `<Select>` whose options come from the catalog item's `uoms[]`. Selecting an item auto-picks the default UOM. Block submit if UOM is empty.
-- Price column shows `Pending — not at branch` when `not_available_at_branch`.
-
-**Verification:** Search "shingle" in catalog browser → all results listed as available at the selected branch. Submit an order with an item that returns $0 → see availability gate trigger.
-
----
-
-## Technical Notes
-
-- All three phases preserve tenant isolation (`requireTenant` on every abc-api route; service-role queries in proxy filter by `tenant_id`).
-- No DB migrations needed for Phase 1. Phase 2 adds one column. Phase 3 adds none.
-- Each phase is independently shippable; I'll pause after Phase 1 and Phase 2 for you to verify against the live ABC sandbox before continuing.
+- Bulk re-price button (price will refresh when the row is matched; can add later).
+- QXO catalog auto-match (no catalog endpoint wired yet — picker still selects QXO but inline match shows "QXO catalog search coming soon").
+- Labor section — supplier match is materials-only.
+- Changing the Push-to-Supplier dialog UI (it stays the same, just benefits from already-persisted matches).
