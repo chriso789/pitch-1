@@ -67,7 +67,7 @@ export const AbcCatalogBrowser: React.FC = () => {
   }, [searchTerm]);
 
   useEffect(() => {
-    if (!tenantId || !isConnected) return;
+    if (!tenantId) return;
     if (debounced.length < 2) {
       setItems([]);
       return;
