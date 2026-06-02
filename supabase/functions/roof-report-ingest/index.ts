@@ -1444,9 +1444,20 @@ Deno.serve(async (req) => {
     try {
       const skipDiagram = body.skipDiagram === true;
       const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
-      if (lovableApiKey && pdfBytes && !skipDiagram) {
+      // Guard against OOM: base64-encoding the full PDF and shipping it as a
+      // data: URL to Gemini roughly triples memory usage on top of the
+      // already-loaded pdfjs document. Edge workers crash above ~3MB.
+      const DIAGRAM_MAX_BYTES = 3_000_000;
+      const pdfTooLargeForDiagram = !!pdfBytes && pdfBytes.length > DIAGRAM_MAX_BYTES;
+      if (pdfTooLargeForDiagram) {
+        console.log(
+          `roof-report-ingest: Skipping diagram extraction — PDF is ${pdfBytes!.length} bytes ` +
+          `(> ${DIAGRAM_MAX_BYTES}). Avoids edge-runtime memory limit.`,
+        );
+      }
+      if (lovableApiKey && pdfBytes && !skipDiagram && !pdfTooLargeForDiagram) {
         console.log("roof-report-ingest: Starting diagram extraction...");
-        
+
         // Send the full PDF to Vision AI to find and extract diagram geometry
         const pdfBase64ForDiagram = bytesToBase64(pdfBytes);
         
