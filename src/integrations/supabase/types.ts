@@ -314,6 +314,11 @@ export type Database = {
           refresh_expires_at: string | null
           refresh_token: string | null
           scope: string | null
+          selected_branch_number: string | null
+          selected_branch_snapshot: Json | null
+          selected_ship_to_number: string | null
+          selected_ship_to_snapshot: Json | null
+          setup_completed_at: string | null
           tenant_id: string
           token_type: string | null
           updated_at: string
@@ -343,6 +348,11 @@ export type Database = {
           refresh_expires_at?: string | null
           refresh_token?: string | null
           scope?: string | null
+          selected_branch_number?: string | null
+          selected_branch_snapshot?: Json | null
+          selected_ship_to_number?: string | null
+          selected_ship_to_snapshot?: Json | null
+          setup_completed_at?: string | null
           tenant_id: string
           token_type?: string | null
           updated_at?: string
@@ -372,6 +382,11 @@ export type Database = {
           refresh_expires_at?: string | null
           refresh_token?: string | null
           scope?: string | null
+          selected_branch_number?: string | null
+          selected_branch_snapshot?: Json | null
+          selected_ship_to_number?: string | null
+          selected_ship_to_snapshot?: Json | null
+          setup_completed_at?: string | null
           tenant_id?: string
           token_type?: string | null
           updated_at?: string
