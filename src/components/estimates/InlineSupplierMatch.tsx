@@ -283,7 +283,7 @@ function PriceBadge({
       ) : status === 'priced' ? (
         <span className="flex items-center gap-1 text-emerald-600">
           <CheckCircle2 className="h-3 w-3" />
-          ${Number(state.abc_price || 0).toFixed(2)}
+          ${Number(price || 0).toFixed(2)}
         </span>
       ) : status === 'zero' ? (
         <span className="flex items-center gap-1 text-amber-600">
