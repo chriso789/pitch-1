@@ -67,23 +67,27 @@ type Provider = "roofr" | "eagleview" | "roofscope" | "hover" | "google" | "xact
 
 function detectProvider(text: string): Provider {
   const t = text.toLowerCase();
-  
-  // Early returns for clearly branded reports
-  if (t.includes("this report was prepared by roofr")) return "roofr";
-  if (t.includes("eagle view technologies") || t.includes("eagleview")) return "eagleview";
-  if (t.includes("roofscope")) return "roofscope";
-  if (t.includes("hover.to") || t.includes("hover inc")) return "hover";
-  if (t.includes("google maps") || t.includes("imagery ©") || t.includes("map data ©")) return "google";
-  
+
   // Enhanced Xactimate detection with scoring system
-  // Xactimate reports (including insurance adjuster reports) have specific patterns
+  // Xactimate / insurance scopes can reference EagleView as the roof-data source,
+  // so this must run BEFORE the EagleView branded-report check.
   const xactimatePatterns = [
     'xactimate',
     'xactanalysis',
     'xactware',
+    'citizens claims',
+    'claim number',
+    'policy number',
+    'covered damages',
+    'price list:',
+    'rcv',
+    'acv',
+    'quantity',
+    'unit tax',
     'sketch1',
     'number of squares',
     'surface area',
+    'surface are',             // OCR often drops the final "a"
     'total perimeter length',
     'total ridge length',
     'total hip length',
@@ -116,6 +120,13 @@ function detectProvider(text: string): Provider {
     console.log(`roof-report-ingest: Xactimate detected (${xactimateScore} patterns matched)`);
     return "xactimate";
   }
+  
+  // Early returns for clearly branded measurement reports
+  if (t.includes("this report was prepared by roofr")) return "roofr";
+  if (t.includes("eagle view technologies") || t.includes("eagleview")) return "eagleview";
+  if (t.includes("roofscope")) return "roofscope";
+  if (t.includes("hover.to") || t.includes("hover inc")) return "hover";
+  if (t.includes("google maps") || t.includes("imagery ©") || t.includes("map data ©")) return "google";
   
   return "generic";
 }
