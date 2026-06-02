@@ -52,10 +52,27 @@ export const useLivePricing = () => {
         throw error;
       }
 
-      // Map the pricing data back to items
-      const pricingMap = new Map(
-        data.pricing?.map((p: any) => [p.sku, p]) || []
-      );
+      // material-pricing-api returns `{ success, results: PricingResponse[], ... }`.
+      // Each result has `sku`, `price`, `source`, `lastUpdated` (camelCase).
+      const rawResults: any[] = Array.isArray(data?.results)
+        ? data.results
+        : Array.isArray(data?.pricing) // legacy fallback
+          ? data.pricing
+          : [];
+
+      // If multiple vendors return the same SKU, keep the most recent.
+      const pricingMap = new Map<string, any>();
+      for (const r of rawResults) {
+        if (!r?.sku) continue;
+        const existing = pricingMap.get(r.sku);
+        if (!existing) {
+          pricingMap.set(r.sku, r);
+          continue;
+        }
+        const existingTs = new Date(existing.lastUpdated ?? existing.last_updated ?? 0).getTime();
+        const nextTs = new Date(r.lastUpdated ?? r.last_updated ?? 0).getTime();
+        if (nextTs >= existingTs) pricingMap.set(r.sku, r);
+      }
 
       const enrichedItems: LivePricingResult[] = items.map(item => {
         if (!item.sku) return item;
@@ -73,15 +90,18 @@ export const useLivePricing = () => {
           ? (new Date().getTime() - new Date(item.last_price_updated).getTime()) / (1000 * 60 * 60)
           : null;
 
+        const lastUpdatedRaw = liveData.lastUpdated ?? liveData.last_updated;
+
         return {
           ...item,
           live_price: livePrice,
           price_variance_pct: priceVariance,
           price_source: liveData.source ? String(liveData.source) : 'api',
           price_age_hours: priceAge || undefined,
-          last_price_updated: liveData.last_updated ? String(liveData.last_updated) : item.last_price_updated
+          last_price_updated: lastUpdatedRaw ? String(lastUpdatedRaw) : item.last_price_updated
         };
       });
+
 
       return enrichedItems;
     } catch (error: any) {
