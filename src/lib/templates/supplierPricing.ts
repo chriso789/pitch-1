@@ -140,13 +140,19 @@ export function describeSupplierPriceState(state: SupplierPriceState): string {
       return 'Not mapped';
     case 'pending':
       return 'Pending';
+    case 'locked':
+      return ABC_LOCK_MESSAGES[state.reason];
     case 'priced':
       return `$${state.unitPrice.toFixed(2)}`;
     case 'zero':
       return state.reason === 'no_contract'
         ? 'No contract price'
         : 'Zero on contract — verify';
+    case 'zero_price_needs_availability_check':
+      return 'Zero — verify branch stocking';
     case 'error':
       return state.reason || 'Error';
+  }
+}
   }
 }
