@@ -752,25 +752,37 @@ export const handle = async (req) => {
       }
 
       // 3) Upsert abc_ship_to_accounts (connection_id + ship_to_number unique).
-      const shipToUpserts = shipToRows.map(({ ship_to_number, payload }) => {
-        const st = payload?.shipTo ?? payload ?? {};
-        const addr = st?.address ?? st?.shippingAddress ?? {};
-        return {
-          connection_id: connectionId,
-          tenant_id,
-          user_id: userId,
-          ship_to_number,
-          name: st?.name ?? st?.shipToName ?? null,
-          address_line1: addr?.line1 ?? addr?.addressLine1 ?? null,
-          address_line2: addr?.line2 ?? addr?.addressLine2 ?? null,
-          city: addr?.city ?? null,
-          state: addr?.state ?? addr?.stateCode ?? null,
-          postal_code: addr?.postalCode ?? addr?.zip ?? null,
-          country: addr?.country ?? addr?.countryCode ?? null,
-          contacts: st?.contacts ?? null,
-          raw: payload,
-        };
-      });
+      //
+      // Per Sandy's required setup flow: a Ship-To with NO branches[] cannot
+      // be used for pricing (no branchNumber to send). Skip persisting these
+      // entirely so the setup wizard / /accounts surface never offers them.
+      const shipToNumbersWithBranches = new Set<string>(
+        accountBranchRows.map((r) => r.ship_to_number),
+      );
+      const skippedNoBranches = shipToRows.filter(
+        (r) => !shipToNumbersWithBranches.has(r.ship_to_number),
+      ).length;
+      const shipToUpserts = shipToRows
+        .filter((r) => shipToNumbersWithBranches.has(r.ship_to_number))
+        .map(({ ship_to_number, payload }) => {
+          const st = payload?.shipTo ?? payload ?? {};
+          const addr = st?.address ?? st?.shippingAddress ?? {};
+          return {
+            connection_id: connectionId,
+            tenant_id,
+            user_id: userId,
+            ship_to_number,
+            name: st?.name ?? st?.shipToName ?? null,
+            address_line1: addr?.line1 ?? addr?.addressLine1 ?? null,
+            address_line2: addr?.line2 ?? addr?.addressLine2 ?? null,
+            city: addr?.city ?? null,
+            state: addr?.state ?? addr?.stateCode ?? null,
+            postal_code: addr?.postalCode ?? addr?.zip ?? null,
+            country: addr?.country ?? addr?.countryCode ?? null,
+            contacts: st?.contacts ?? null,
+            raw: payload,
+          };
+        });
 
       let shipToIdByNumber = new Map<string, string>();
       if (shipToUpserts.length && connectionId) {
