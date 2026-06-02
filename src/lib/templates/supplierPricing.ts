@@ -6,8 +6,9 @@
 export type SupplierKind = 'abc' | 'srs' | 'qxo';
 
 export type SupplierPriceState =
-  | { kind: 'unmapped' }
+  | { kind: 'unmapped'; reason?: string }
   | { kind: 'pending'; reason?: string }
+  | { kind: 'locked'; reason: AbcLockReason }
   | {
       kind: 'priced';
       unitPrice: number;
@@ -15,8 +16,50 @@ export type SupplierPriceState =
       currency: string;
       observedAt: string;
     }
-  | { kind: 'zero'; reason: 'contract_zero' | 'no_contract' | 'unknown' }
+  | {
+      kind: 'zero';
+      reason: 'contract_zero' | 'no_contract' | 'unknown';
+    }
+  | {
+      // Distinct from `zero` — price came back $0 AND the item is missing from
+      // the selected branch's availability list. Caller must verify branch
+      // stocking before treating this as a price at all.
+      kind: 'zero_price_needs_availability_check';
+      reason?: string;
+    }
   | { kind: 'error'; reason: string };
+
+export type AbcLockReason =
+  | 'missing_ship_to'
+  | 'missing_branch'
+  | 'missing_item_number'
+  | 'missing_uom';
+
+export const ABC_LOCK_MESSAGES: Record<AbcLockReason, string> = {
+  missing_ship_to: 'ABC pricing locked: select Ship-To account.',
+  missing_branch: 'ABC pricing locked: select Branch.',
+  missing_item_number:
+    'ABC pricing locked: item has not been mapped to ABC Product API result.',
+  missing_uom: 'ABC pricing locked: valid UOM required from Product API.',
+};
+
+/**
+ * Evaluate the ABC lock gate in priority order. Returns the first failing
+ * reason, or null if all preconditions are satisfied and a real price call
+ * may proceed.
+ */
+export function evaluateAbcLock(input: {
+  shipToNumber?: string | null;
+  branchNumber?: string | null;
+  itemNumber?: string | null;
+  uom?: string | null;
+}): AbcLockReason | null {
+  if (!input.shipToNumber) return 'missing_ship_to';
+  if (!input.branchNumber) return 'missing_branch';
+  if (!input.itemNumber) return 'missing_item_number';
+  if (!input.uom) return 'missing_uom';
+  return null;
+}
 
 export interface SupplierPriceRowInput {
   unit_price?: number | null;
