@@ -1414,20 +1414,27 @@ Deno.serve(async (req) => {
       .eq("file_hash", pdfHash);
     if (resolvedTenantId) dupQuery = dupQuery.eq("tenant_id", resolvedTenantId);
     const { data: existingReport } = await dupQuery.maybeSingle();
+    let invalidDuplicateReport: any = null;
 
     if (existingReport) {
-      console.log("roof-report-ingest: Duplicate PDF detected, returning existing report:", existingReport.id);
-      return new Response(
-        JSON.stringify({ 
-          ok: true, 
-          duplicate: true, 
-          existing_report_id: existingReport.id,
-          message: `Report already imported on ${existingReport.created_at}`,
-          provider: existingReport.provider,
-          address: existingReport.address,
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 },
-      );
+      const existingParsed = (existingReport as any).parsed;
+      if (hasValidMeasurements(existingParsed)) {
+        console.log("roof-report-ingest: Duplicate PDF detected, returning existing report:", existingReport.id);
+        return new Response(
+          JSON.stringify({ 
+            ok: true, 
+            duplicate: true, 
+            existing_report_id: existingReport.id,
+            message: `Report already imported on ${existingReport.created_at}`,
+            provider: existingReport.provider,
+            address: existingReport.address,
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 },
+        );
+      }
+
+      invalidDuplicateReport = existingReport;
+      console.log("roof-report-ingest: Duplicate had sparse/invalid parsed data; refreshing existing report:", existingReport.id);
     }
 
     const insertPayload: Record<string, any> = {
@@ -1444,10 +1451,11 @@ Deno.serve(async (req) => {
     };
     if (resolvedTenantId) insertPayload.tenant_id = resolvedTenantId;
 
-    console.log("roof-report-ingest: Inserting into roof_vendor_reports...");
-    const { data: reportRow, error: insertErr } = await supabase
-      .from("roof_vendor_reports")
-      .insert(insertPayload)
+    console.log(invalidDuplicateReport ? "roof-report-ingest: Updating existing roof_vendor_reports row..." : "roof-report-ingest: Inserting into roof_vendor_reports...");
+    const reportMutation = invalidDuplicateReport
+      ? supabase.from("roof_vendor_reports").update(insertPayload).eq("id", invalidDuplicateReport.id)
+      : supabase.from("roof_vendor_reports").insert(insertPayload);
+    const { data: reportRow, error: insertErr } = await reportMutation
       .select("*")
       .single();
 
