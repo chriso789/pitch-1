@@ -859,7 +859,9 @@ export const handle = async (req) => {
       return json({
         success: true,
         environment: env,
-        ship_to_count: shipToRows.length,
+        ship_to_count: shipToUpserts.length,
+        ship_to_total_returned: shipToRows.length,
+        ship_to_skipped_no_branches: skippedNoBranches,
         branch_count: branchRowsByNumber.size,
       });
     }
