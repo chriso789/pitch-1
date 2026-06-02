@@ -67,23 +67,27 @@ type Provider = "roofr" | "eagleview" | "roofscope" | "hover" | "google" | "xact
 
 function detectProvider(text: string): Provider {
   const t = text.toLowerCase();
-  
-  // Early returns for clearly branded reports
-  if (t.includes("this report was prepared by roofr")) return "roofr";
-  if (t.includes("eagle view technologies") || t.includes("eagleview")) return "eagleview";
-  if (t.includes("roofscope")) return "roofscope";
-  if (t.includes("hover.to") || t.includes("hover inc")) return "hover";
-  if (t.includes("google maps") || t.includes("imagery ©") || t.includes("map data ©")) return "google";
-  
+
   // Enhanced Xactimate detection with scoring system
-  // Xactimate reports (including insurance adjuster reports) have specific patterns
+  // Xactimate / insurance scopes can reference EagleView as the roof-data source,
+  // so this must run BEFORE the EagleView branded-report check.
   const xactimatePatterns = [
     'xactimate',
     'xactanalysis',
     'xactware',
+    'citizens claims',
+    'claim number',
+    'policy number',
+    'covered damages',
+    'price list:',
+    'rcv',
+    'acv',
+    'quantity',
+    'unit tax',
     'sketch1',
     'number of squares',
     'surface area',
+    'surface are',             // OCR often drops the final "a"
     'total perimeter length',
     'total ridge length',
     'total hip length',
@@ -116,6 +120,13 @@ function detectProvider(text: string): Provider {
     console.log(`roof-report-ingest: Xactimate detected (${xactimateScore} patterns matched)`);
     return "xactimate";
   }
+  
+  // Early returns for clearly branded measurement reports
+  if (t.includes("this report was prepared by roofr")) return "roofr";
+  if (t.includes("eagle view technologies") || t.includes("eagleview")) return "eagleview";
+  if (t.includes("roofscope")) return "roofscope";
+  if (t.includes("hover.to") || t.includes("hover inc")) return "hover";
+  if (t.includes("google maps") || t.includes("imagery ©") || t.includes("map data ©")) return "google";
   
   return "generic";
 }
@@ -311,9 +322,10 @@ function parseGeneric(textRaw: string) {
 function parseXactimate(textRaw: string) {
   const text = normalizeText(textRaw);
   
-  // Surface Area: "2,335.95 Surface Area" or "Surface Area 2,335.95"
-  const surfaceAreaMatch = text.match(/([\d,]+(?:\.\d+)?)\s*Surface\s*Area/i) 
-                        || text.match(/Surface\s*Area\s*([\d,]+(?:\.\d+)?)/i);
+  // Surface Area: "2,335.95 Surface Area" or "Surface Area 2,335.95".
+  // OCR on Citizens scopes sometimes reads this as "Surface Are".
+  const surfaceAreaMatch = text.match(/([\d,]+(?:\.\d+)?)\s*Surface\s*Are?a?/i) 
+                        || text.match(/Surface\s*Are?a?\s*([\d,]+(?:\.\d+)?)/i);
   const surfaceArea = surfaceAreaMatch ? parseFloatSafe(surfaceAreaMatch[1]) : null;
   
   // Number of Squares: "23.36 Number of Squares"
@@ -346,10 +358,14 @@ function parseXactimate(textRaw: string) {
                  || text.match(/Total\s*Rake\s*Length\s*([\d,]+(?:\.\d+)?)/i);
   const rake = rakeMatch ? parseFloatSafe(rakeMatch[1]) : null;
   
-  // Address from "Property: 9160 FOUNTAIN RD, LAKE WORTH, FL 33467"
-  const addressMatch = text.match(/Property:\s*([^\n]+)/i)
-                    || text.match(/(\d+[^,\n]+,\s*[A-Z\s]+,\s*[A-Z]{2}\s*\d{5}(?:-\d{4})?)/i);
-  const address = addressMatch ? addressMatch[1].trim() : null;
+  // Address from insurance scopes often spans multiple lines after "Property:".
+  const singleLineAddressMatch = text.match(/(\d+[^,\n]+,\s*[A-Z\s]+,\s*[A-Z]{2}\s*\d{5}(?:-\d{4})?)/i);
+  const propertyBlockMatch = text.match(/Property:\s*([\s\S]{0,220}?\b[A-Z]{2}\s+\d{5}(?:-\d{4})?)/i);
+  const address = singleLineAddressMatch
+    ? singleLineAddressMatch[1].trim()
+    : propertyBlockMatch
+      ? propertyBlockMatch[1].replace(/\s+/g, " ").trim()
+      : null;
   
   // Count unique facets (F1, F2, F3, F4 pattern in sketches)
   const facetMatches = text.match(/\bF\d+\b/g);
@@ -1078,7 +1094,7 @@ function parseEagleView(textRaw: string) {
 
 // Check if parsed result has meaningful data
 function hasValidMeasurements(parsed: any): boolean {
-  return !!(
+  return !!(parsed && (
     parsed.total_area_sqft ||
     parsed.perimeter_ft ||
     parsed.ridges_ft ||
@@ -1086,7 +1102,7 @@ function hasValidMeasurements(parsed: any): boolean {
     parsed.valleys_ft ||
     parsed.eaves_ft ||
     parsed.rakes_ft
-  );
+  ));
 }
 
 Deno.serve(async (req) => {
@@ -1394,24 +1410,31 @@ Deno.serve(async (req) => {
     // Check for duplicate by hash — scoped to tenant to avoid cross-tenant collisions
     let dupQuery = supabase
       .from("roof_vendor_reports")
-      .select("id, address, provider, created_at")
+      .select("id, address, provider, created_at, parsed")
       .eq("file_hash", pdfHash);
     if (resolvedTenantId) dupQuery = dupQuery.eq("tenant_id", resolvedTenantId);
     const { data: existingReport } = await dupQuery.maybeSingle();
+    let invalidDuplicateReport: any = null;
 
     if (existingReport) {
-      console.log("roof-report-ingest: Duplicate PDF detected, returning existing report:", existingReport.id);
-      return new Response(
-        JSON.stringify({ 
-          ok: true, 
-          duplicate: true, 
-          existing_report_id: existingReport.id,
-          message: `Report already imported on ${existingReport.created_at}`,
-          provider: existingReport.provider,
-          address: existingReport.address,
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 },
-      );
+      const existingParsed = (existingReport as any).parsed;
+      if (hasValidMeasurements(existingParsed)) {
+        console.log("roof-report-ingest: Duplicate PDF detected, returning existing report:", existingReport.id);
+        return new Response(
+          JSON.stringify({ 
+            ok: true, 
+            duplicate: true, 
+            existing_report_id: existingReport.id,
+            message: `Report already imported on ${existingReport.created_at}`,
+            provider: existingReport.provider,
+            address: existingReport.address,
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 },
+        );
+      }
+
+      invalidDuplicateReport = existingReport;
+      console.log("roof-report-ingest: Duplicate had sparse/invalid parsed data; refreshing existing report:", existingReport.id);
     }
 
     const insertPayload: Record<string, any> = {
@@ -1428,10 +1451,11 @@ Deno.serve(async (req) => {
     };
     if (resolvedTenantId) insertPayload.tenant_id = resolvedTenantId;
 
-    console.log("roof-report-ingest: Inserting into roof_vendor_reports...");
-    const { data: reportRow, error: insertErr } = await supabase
-      .from("roof_vendor_reports")
-      .insert(insertPayload)
+    console.log(invalidDuplicateReport ? "roof-report-ingest: Updating existing roof_vendor_reports row..." : "roof-report-ingest: Inserting into roof_vendor_reports...");
+    const reportMutation = invalidDuplicateReport
+      ? supabase.from("roof_vendor_reports").update(insertPayload).eq("id", invalidDuplicateReport.id)
+      : supabase.from("roof_vendor_reports").insert(insertPayload);
+    const { data: reportRow, error: insertErr } = await reportMutation
       .select("*")
       .single();
 

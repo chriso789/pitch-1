@@ -2179,6 +2179,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         body: {
           base64_pdf: base64,
           lead_id: pipelineEntryId,
+          skipDiagram: true,
         },
       });
 

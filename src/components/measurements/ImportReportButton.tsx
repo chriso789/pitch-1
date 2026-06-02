@@ -103,6 +103,7 @@ export const ImportReportButton: React.FC<ImportReportButtonProps> = ({
         body: {
           base64_pdf: base64,
           lead_id: pipelineEntryId,
+          skipDiagram: true,
         },
       });
 
@@ -582,7 +583,7 @@ export const ImportReportButton: React.FC<ImportReportButtonProps> = ({
                 disabled={importUploading || importAnalyzing}
               />
               <p className="text-xs text-muted-foreground">
-                Supported: EagleView, Roofr, Hover reports
+                Supported: insurance scopes, EagleView, Roofr, Hover reports
               </p>
               
               {importError && (

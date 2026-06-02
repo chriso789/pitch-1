@@ -132,6 +132,7 @@ export function ImportMeasurementReport({
           file_type: isImage ? 'image' : 'pdf',
           mime_type: mimeType,
           lead_id: pipelineEntryId,
+          skipDiagram: true,
         },
       });
 
