@@ -83,10 +83,15 @@ function normalizePriceRows(body: any): Record<string, AbcPrice> {
       r.netPrice ??
       r.net_price ??
       null;
+    const cur: any = r.currency ?? r.currencyCode ?? r.currency_code;
+    const curStr =
+      typeof cur === 'string'
+        ? cur
+        : (cur && typeof cur === 'object' && (cur.code || cur.currency)) || 'USD';
     out[item] = {
       unitPrice: unit == null ? null : Number(unit),
       uom: r.uom || r.unitOfMeasure || null,
-      currency: r.currency || 'USD',
+      currency: String(curStr).toUpperCase().slice(0, 3) || 'USD',
     };
   }
   return out;
@@ -94,10 +99,15 @@ function normalizePriceRows(body: any): Record<string, AbcPrice> {
 
 function fmtPrice(p?: AbcPrice): string {
   if (!p || p.unitPrice == null || Number.isNaN(p.unitPrice)) return '—';
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: p.currency || 'USD',
-  }).format(p.unitPrice);
+  const currency = typeof p.currency === 'string' && /^[A-Z]{3}$/.test(p.currency) ? p.currency : 'USD';
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency,
+    }).format(p.unitPrice);
+  } catch {
+    return `$${p.unitPrice.toFixed(2)}`;
+  }
 }
 
 export const AbcCatalogBrowser: React.FC = () => {
