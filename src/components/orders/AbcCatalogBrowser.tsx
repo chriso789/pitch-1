@@ -14,16 +14,18 @@ import { Search, Package, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { useAbcConnectionStatus } from '@/hooks/useAbcConnectionStatus';
+import { useAbcCatalog } from '@/hooks/useAbcCatalog';
 
 /**
  * Live ABC catalog browser — calls the real ABC Product Search endpoint
- * (`product/v1/search/items`) via the `abc-api-proxy` edge function.
+ * (`product/v1/search/items`) via the `abc-api-proxy` edge function, then
+ * batch-fetches contract prices for the visible rows via `price_items`
+ * (ABC `/pricing/v2/prices`).
  *
- * We deliberately bypass the stubbed `abc-api` `/catalog/search` route
- * (which always returns `pending: catalog_not_synced`) because ABC does
- * not provide a bulk catalog dump — items must be searched on demand.
- *
- * Mirrors the SRS catalog UX so reps know the integration is live.
+ * Pricing requires `shipToNumber` + `branchNumber`. We prefer the tenant's
+ * connected ship-to/branch (from `useAbcCatalog`), and fall back to the
+ * Sandy-approved sandbox defaults so the developer surface always shows
+ * real numbers in QA.
  */
 
 interface AbcItem {
@@ -38,9 +40,17 @@ interface AbcItem {
   productCategory?: string;
 }
 
+interface AbcPrice {
+  unitPrice: number | null;
+  uom: string | null;
+  currency: string;
+}
+
+const SANDBOX_SHIP_TO = '2010466-2';
+const SANDBOX_BRANCH = '1209';
+
 function normalizeItems(body: any): AbcItem[] {
   if (!body) return [];
-  // ABC has returned items under a few different keys depending on env.
   const raw =
     body.items ||
     body.data ||
@@ -52,24 +62,73 @@ function normalizeItems(body: any): AbcItem[] {
   return raw as AbcItem[];
 }
 
+function normalizePriceRows(body: any): Record<string, AbcPrice> {
+  if (!body) return {};
+  const rows =
+    body.lines ||
+    body.prices ||
+    body.items ||
+    body.data ||
+    body?.body?.lines ||
+    [];
+  const out: Record<string, AbcPrice> = {};
+  if (!Array.isArray(rows)) return out;
+  for (const r of rows) {
+    const item = String(r.itemNumber || r.item_number || r.sku || '').trim();
+    if (!item) continue;
+    const unit =
+      r.unitPrice ??
+      r.unit_price ??
+      r.price ??
+      r.netPrice ??
+      r.net_price ??
+      null;
+    out[item] = {
+      unitPrice: unit == null ? null : Number(unit),
+      uom: r.uom || r.unitOfMeasure || null,
+      currency: r.currency || 'USD',
+    };
+  }
+  return out;
+}
+
+function fmtPrice(p?: AbcPrice): string {
+  if (!p || p.unitPrice == null || Number.isNaN(p.unitPrice)) return '—';
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: p.currency || 'USD',
+  }).format(p.unitPrice);
+}
+
 export const AbcCatalogBrowser: React.FC = () => {
   const tenantId = useEffectiveTenantId();
-  const { defaultBranchCode, isConnected } = useAbcConnectionStatus();
+  const { defaultBranchCode } = useAbcConnectionStatus();
+  const { branches, shipTos } = useAbcCatalog(tenantId);
   const [searchTerm, setSearchTerm] = useState('shingle');
   const [debounced, setDebounced] = useState('shingle');
   const [items, setItems] = useState<AbcItem[]>([]);
+  const [prices, setPrices] = useState<Record<string, AbcPrice>>({});
   const [loading, setLoading] = useState(false);
+  const [pricesLoading, setPricesLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [priceError, setPriceError] = useState<string | null>(null);
+
+  // Resolve ship-to / branch (connected account → sandbox fallback).
+  const shipToNumber = shipTos[0]?.ship_to_number || SANDBOX_SHIP_TO;
+  const branchNumber =
+    defaultBranchCode || branches[0]?.branch_number || SANDBOX_BRANCH;
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(searchTerm.trim()), 350);
     return () => clearTimeout(t);
   }, [searchTerm]);
 
+  // Product search.
   useEffect(() => {
     if (!tenantId) return;
     if (debounced.length < 2) {
       setItems([]);
+      setPrices({});
       return;
     }
     let cancelled = false;
@@ -84,7 +143,7 @@ export const AbcCatalogBrowser: React.FC = () => {
               action: 'search_products',
               tenant_id: tenantId,
               query: debounced,
-              branchNumber: defaultBranchCode || undefined,
+              branchNumber: branchNumber || undefined,
             },
           },
         );
@@ -108,14 +167,66 @@ export const AbcCatalogBrowser: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [tenantId, isConnected, debounced, defaultBranchCode]);
+  }, [tenantId, debounced, branchNumber]);
+
+  // Batch price fetch for the visible items.
+  useEffect(() => {
+    if (!tenantId || !items.length || !shipToNumber || !branchNumber) {
+      setPrices({});
+      return;
+    }
+    let cancelled = false;
+    setPricesLoading(true);
+    setPriceError(null);
+    (async () => {
+      try {
+        const lines = items.slice(0, 25).map((it) => ({
+          itemNumber: it.itemNumber,
+          quantity: 1,
+          unitOfMeasure: it.uom || it.unitOfMeasure || 'EA',
+        }));
+        const { data, error: invokeErr } = await supabase.functions.invoke(
+          'abc-api-proxy',
+          {
+            body: {
+              action: 'price_items',
+              tenant_id: tenantId,
+              shipToNumber,
+              branchNumber,
+              purpose: 'estimating',
+              lines,
+            },
+          },
+        );
+        if (cancelled) return;
+        if (invokeErr) throw new Error(invokeErr.message || 'ABC pricing failed');
+        if (!data?.success) {
+          throw new Error(
+            data?.error_code ||
+              data?.body?.message ||
+              data?.error ||
+              'ABC pricing failed',
+          );
+        }
+        setPrices(normalizePriceRows(data.body));
+      } catch (e: any) {
+        if (!cancelled) setPriceError(e?.message || 'ABC pricing failed');
+      } finally {
+        if (!cancelled) setPricesLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId, items, shipToNumber, branchNumber]);
 
   const subtitle = useMemo(() => {
     const parts: string[] = [];
-    if (defaultBranchCode) parts.push(`Branch ${defaultBranchCode}`);
-    parts.push('Live ABC Supply Product API');
+    if (branchNumber) parts.push(`Branch ${branchNumber}`);
+    if (shipToNumber) parts.push(`Ship-To ${shipToNumber}`);
+    parts.push('Live ABC Product + Pricing API');
     return parts.join(' • ');
-  }, [defaultBranchCode]);
+  }, [branchNumber, shipToNumber]);
 
   return (
     <Card>
@@ -152,53 +263,73 @@ export const AbcCatalogBrowser: React.FC = () => {
             {error}
           </div>
         ) : (
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>ABC Product ID</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Brand</TableHead>
-                  <TableHead>UOM</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
+          <>
+            {priceError && (
+              <div className="text-xs text-amber-600 mb-2">
+                Pricing unavailable: {priceError}
+              </div>
+            )}
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
-                      <Loader2 className="h-4 w-4 animate-spin inline mr-2" />
-                      Searching ABC catalog...
-                    </TableCell>
+                    <TableHead>ABC Product ID</TableHead>
+                    <TableHead>Description</TableHead>
+                    <TableHead>Brand</TableHead>
+                    <TableHead>UOM</TableHead>
+                    <TableHead className="text-right">
+                      Price{pricesLoading ? ' …' : ''}
+                    </TableHead>
                   </TableRow>
-                ) : debounced.length < 2 ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
-                      Type at least 2 characters to search the ABC catalog
-                    </TableCell>
-                  </TableRow>
-                ) : items.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
-                      No items found for "{debounced}"
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  items.map((item, idx) => (
-                    <TableRow key={`${item.itemNumber}-${idx}`}>
-                      <TableCell className="font-mono text-sm">{item.itemNumber}</TableCell>
-                      <TableCell className="font-medium">
-                        {item.itemDescription || item.description || '—'}
-                      </TableCell>
-                      <TableCell>{item.brandName || item.brand || '—'}</TableCell>
-                      <TableCell className="text-muted-foreground text-sm">
-                        {item.uom || item.unitOfMeasure || '—'}
+                </TableHeader>
+                <TableBody>
+                  {loading ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin inline mr-2" />
+                        Searching ABC catalog...
                       </TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                  ) : debounced.length < 2 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                        Type at least 2 characters to search the ABC catalog
+                      </TableCell>
+                    </TableRow>
+                  ) : items.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                        No items found for "{debounced}"
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    items.map((item, idx) => {
+                      const p = prices[item.itemNumber];
+                      return (
+                        <TableRow key={`${item.itemNumber}-${idx}`}>
+                          <TableCell className="font-mono text-sm">{item.itemNumber}</TableCell>
+                          <TableCell className="font-medium">
+                            {item.itemDescription || item.description || '—'}
+                          </TableCell>
+                          <TableCell>{item.brandName || item.brand || '—'}</TableCell>
+                          <TableCell className="text-muted-foreground text-sm">
+                            {p?.uom || item.uom || item.unitOfMeasure || '—'}
+                          </TableCell>
+                          <TableCell className="text-right font-mono">
+                            {pricesLoading && !p ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin inline" />
+                            ) : (
+                              fmtPrice(p)
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </>
         )}
       </CardContent>
     </Card>
