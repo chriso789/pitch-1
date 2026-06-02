@@ -17,6 +17,9 @@ import { MaterialLineItemsExport } from '@/components/orders/MaterialLineItemsEx
 import { PushToSupplierButton } from '@/components/orders/PushToSupplierButton';
 import { ShareMaterialsButton } from '@/components/orders/ShareMaterialsButton';
 import { colorsForItem } from '@/components/orders/shingleBrandColors';
+import { useAbcConnectionStatus } from '@/hooks/useAbcConnectionStatus';
+import { InlineSupplierMatch, type SupplierKey, type EstimateLineForMatch } from './InlineSupplierMatch';
+import type { AbcCatalogItem } from '@/components/orders/AbcCatalogControls';
 import { Parser as ExprParser } from 'expr-eval';
 import {
   AlertDialog,
