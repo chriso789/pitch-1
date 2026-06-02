@@ -41,6 +41,21 @@ interface LineItem {
   unit_cost: number;
   line_total: number;
   notes?: string;
+  description?: string | null;
+  color_specs?: string | null;
+  requires_color?: boolean;
+  // Supplier match fields — mirror estimate_line_items columns so the
+  // Push-to-Supplier dialog picks them up automatically.
+  abc_item_number?: string | null;
+  abc_color?: string | null;
+  abc_uom?: string | null;
+  abc_price?: number | null;
+  abc_price_status?: string | null;
+  abc_price_timestamp?: string | null;
+  abc_availability?: string | null;
+  srs_item_code?: string | null;
+  product_code?: string | null;
+  metadata?: any;
 }
 
 interface TemplateSectionSelectorProps {
