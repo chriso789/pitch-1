@@ -154,5 +154,3 @@ export function describeSupplierPriceState(state: SupplierPriceState): string {
       return state.reason || 'Error';
   }
 }
-  }
-}
