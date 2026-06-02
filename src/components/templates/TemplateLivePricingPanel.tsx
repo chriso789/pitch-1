@@ -82,10 +82,12 @@ const StatusBadge: React.FC<{ row: PriceRow | undefined }> = ({ row }) => {
 
 export const TemplateLivePricingPanel: React.FC<Props> = ({ templateId }) => {
   const { toast } = useToast();
+  const abcSetup = useAbcSetup();
   const [items, setItems] = useState<TemplateItem[]>([]);
   const [rows, setRows] = useState<PriceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
 
   const loadAll = async () => {
     setLoading(true);
