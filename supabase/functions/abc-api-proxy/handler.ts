@@ -667,8 +667,13 @@ export const handle = async (req) => {
 
       // 1) Search accounts (paginated). We pull the first page only — most contractors
       //    have <100 ship-tos; the docs allow itemsPerPage up to 100.
+      //
+      // ABC's Search Accounts endpoint REQUIRES an accountType filter per Sandy's
+      // documented setup flow — sending `filters: []` returns the full mixed
+      // bag (bill-to, ship-to, etc.) and we cannot guarantee branches[] hydration.
+      // Always constrain to ship-to so /accounts only ever sees the right shape.
       const accountsPayload = {
-        filters: [],
+        filters: [{ field: "accountType", op: "eq", value: "ship-to" }],
         pagination: { itemsPerPage: 100, pageNumber: 1 },
       };
       const accountsEndpoint = `${cfg.apiBase}${accountSearchPath}`;
@@ -681,11 +686,22 @@ export const handle = async (req) => {
         duration_ms: Date.now() - startedAt, created_by: userId,
       });
       if (!accountsResp.ok) {
+        const errCode = mapAbcError(accountsResp.status, accountsResp.json);
+        // Surface a human-readable error on abc_connections so the setup wizard
+        // and diagnostics can show WHY hydration failed without leaving OAuth
+        // disconnected. OAuth itself is still valid; only sync failed.
+        await supabase
+          .from("abc_connections")
+          .update({
+            last_error: `sync_accounts.search_accounts ${accountsResp.status}: ${errCode}`.slice(0, 500),
+          })
+          .eq("tenant_id", tenant_id)
+          .eq("environment", env);
         return json({
           success: false,
           stage: "search_accounts",
           status: accountsResp.status,
-          error: mapAbcError(accountsResp.status, accountsResp.json),
+          error: errCode,
           body: accountsResp.json ?? accountsResp.text,
         });
       }
@@ -747,25 +763,37 @@ export const handle = async (req) => {
       }
 
       // 3) Upsert abc_ship_to_accounts (connection_id + ship_to_number unique).
-      const shipToUpserts = shipToRows.map(({ ship_to_number, payload }) => {
-        const st = payload?.shipTo ?? payload ?? {};
-        const addr = st?.address ?? st?.shippingAddress ?? {};
-        return {
-          connection_id: connectionId,
-          tenant_id,
-          user_id: userId,
-          ship_to_number,
-          name: st?.name ?? st?.shipToName ?? null,
-          address_line1: addr?.line1 ?? addr?.addressLine1 ?? null,
-          address_line2: addr?.line2 ?? addr?.addressLine2 ?? null,
-          city: addr?.city ?? null,
-          state: addr?.state ?? addr?.stateCode ?? null,
-          postal_code: addr?.postalCode ?? addr?.zip ?? null,
-          country: addr?.country ?? addr?.countryCode ?? null,
-          contacts: st?.contacts ?? null,
-          raw: payload,
-        };
-      });
+      //
+      // Per Sandy's required setup flow: a Ship-To with NO branches[] cannot
+      // be used for pricing (no branchNumber to send). Skip persisting these
+      // entirely so the setup wizard / /accounts surface never offers them.
+      const shipToNumbersWithBranches = new Set<string>(
+        accountBranchRows.map((r) => r.ship_to_number),
+      );
+      const skippedNoBranches = shipToRows.filter(
+        (r) => !shipToNumbersWithBranches.has(r.ship_to_number),
+      ).length;
+      const shipToUpserts = shipToRows
+        .filter((r) => shipToNumbersWithBranches.has(r.ship_to_number))
+        .map(({ ship_to_number, payload }) => {
+          const st = payload?.shipTo ?? payload ?? {};
+          const addr = st?.address ?? st?.shippingAddress ?? {};
+          return {
+            connection_id: connectionId,
+            tenant_id,
+            user_id: userId,
+            ship_to_number,
+            name: st?.name ?? st?.shipToName ?? null,
+            address_line1: addr?.line1 ?? addr?.addressLine1 ?? null,
+            address_line2: addr?.line2 ?? addr?.addressLine2 ?? null,
+            city: addr?.city ?? null,
+            state: addr?.state ?? addr?.stateCode ?? null,
+            postal_code: addr?.postalCode ?? addr?.zip ?? null,
+            country: addr?.country ?? addr?.countryCode ?? null,
+            contacts: st?.contacts ?? null,
+            raw: payload,
+          };
+        });
 
       let shipToIdByNumber = new Map<string, string>();
       if (shipToUpserts.length && connectionId) {
@@ -835,14 +863,16 @@ export const handle = async (req) => {
 
       await supabase
         .from("abc_connections")
-        .update({ last_validated_at: new Date().toISOString() })
+        .update({ last_validated_at: new Date().toISOString(), last_error: null })
         .eq("tenant_id", tenant_id)
         .eq("environment", env);
 
       return json({
         success: true,
         environment: env,
-        ship_to_count: shipToRows.length,
+        ship_to_count: shipToUpserts.length,
+        ship_to_total_returned: shipToRows.length,
+        ship_to_skipped_no_branches: skippedNoBranches,
         branch_count: branchRowsByNumber.size,
       });
     }

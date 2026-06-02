@@ -278,6 +278,57 @@ Deno.serve(async (req) => {
 
     await supabase.from("abc_oauth_states").delete().eq("state", state);
 
+    // Auto-hydrate ship-tos + branches immediately after OAuth so the setup
+    // wizard has selectable accounts on first paint. Failure here MUST NOT
+    // mark OAuth as disconnected — sync_accounts itself writes last_error on
+    // the connection row, and the wizard surfaces it from there.
+    try {
+      const proxyUrl = `${SUPABASE_URL}/functions/v1/abc-api-proxy`;
+      const svcKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      // Fire-and-forget; we await briefly but don't block the redirect on a
+      // slow ABC response. The wizard polls /accounts when it opens.
+      const syncPromise = fetch(proxyUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${svcKey}`,
+          apikey: svcKey,
+        },
+        body: JSON.stringify({
+          action: "sync_accounts",
+          environment,
+          tenant_id: integration.tenant_id,
+        }),
+      })
+        .then(async (r) => {
+          const txt = await r.text().catch(() => "");
+          console.log("abc-oauth-callback sync_accounts", r.status, txt.slice(0, 500));
+          if (!r.ok) {
+            await supabase
+              .from("abc_connections")
+              .update({ last_error: `post_oauth_sync_failed_${r.status}`.slice(0, 500) })
+              .eq("tenant_id", integration.tenant_id)
+              .eq("environment", environment);
+          }
+        })
+        .catch(async (e) => {
+          console.error("abc-oauth-callback sync_accounts threw", e);
+          await supabase
+            .from("abc_connections")
+            .update({ last_error: `post_oauth_sync_threw: ${String(e).slice(0, 400)}` })
+            .eq("tenant_id", integration.tenant_id)
+            .eq("environment", environment);
+        });
+      // Wait up to 8s so a fast sandbox response populates before the redirect,
+      // but fall through if ABC is slow — the wizard will refetch.
+      await Promise.race([
+        syncPromise,
+        new Promise((resolve) => setTimeout(resolve, 8000)),
+      ]);
+    } catch (e) {
+      console.error("abc-oauth-callback post-OAuth sync scheduling failed", e);
+    }
+
     return htmlRedirect(returnTo + "connected", "ABC Supply connected. Returning to app…");
   } catch (e) {
     console.error("abc-oauth-callback error:", e);
