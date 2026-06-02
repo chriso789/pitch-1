@@ -165,16 +165,37 @@ export const TemplateLivePricingPanel: React.FC<Props> = ({ templateId }) => {
             Live prices from your connected SRS, ABC Supply, and QXO accounts. Last checked: {fmtTime(lastChecked || undefined)}
           </p>
         </div>
-        <Button size="sm" onClick={refreshLive} disabled={refreshing || loading || items.length === 0}>
-          {refreshing ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="mr-2 h-4 w-4" />
+        <div className="flex items-center gap-2">
+          {!abcSetup.ready && !abcSetup.isLoading && (
+            <Button size="sm" variant="outline" onClick={() => setSetupOpen(true)}>
+              <Settings2 className="mr-2 h-4 w-4" />
+              Finish ABC setup
+            </Button>
           )}
-          Refresh Live Pricing
-        </Button>
+          <Button size="sm" onClick={refreshLive} disabled={refreshing || loading || items.length === 0}>
+            {refreshing ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="mr-2 h-4 w-4" />
+            )}
+            Refresh Live Pricing
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
+        {!abcSetup.ready && !abcSetup.isLoading && (
+          <div className="mb-4 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
+            <Lock className="mt-0.5 h-4 w-4 flex-shrink-0" />
+            <div>
+              <div className="font-medium">ABC pricing is locked</div>
+              <div className="mt-0.5">
+                {!abcSetup.shipToNumber
+                  ? 'Select a Ship-To account to unlock ABC pricing.'
+                  : 'Select a Branch on that Ship-To to unlock ABC pricing.'}
+              </div>
+            </div>
+          </div>
+        )}
         {loading ? (
           <div className="flex items-center justify-center py-8">
             <Loader2 className="h-5 w-5 animate-spin" />
@@ -212,6 +233,27 @@ export const TemplateLivePricingPanel: React.FC<Props> = ({ templateId }) => {
                       {SUPPLIERS.map((s) => {
                         const row = supplierRows?.get(s);
                         const priced = row?.status === "ok" && row.unit_price != null;
+
+                        // ABC lock gate — evaluated BEFORE we trust any
+                        // row.status. Per ABC setup contract, missing
+                        // shipTo/branch/itemNumber/UOM never renders pending
+                        // or a price; it renders an explicit locked reason.
+                        if (s === "abc") {
+                          const lock = evaluateAbcLock({
+                            shipToNumber: abcSetup.shipToNumber,
+                            branchNumber: abcSetup.branchNumber,
+                            itemNumber: it.abc_sku,
+                            uom: row?.uom ?? it.unit,
+                          });
+                          if (lock) {
+                            return (
+                              <td key={s} className="p-2 text-right">
+                                <AbcPricingLockedCell reason={lock} compact />
+                              </td>
+                            );
+                          }
+                        }
+
                         return (
                           <td key={s} className="p-2 text-right">
                             {priced ? (
@@ -253,6 +295,7 @@ export const TemplateLivePricingPanel: React.FC<Props> = ({ templateId }) => {
           </div>
         )}
       </CardContent>
+      <AbcSetupWizard open={setupOpen} onOpenChange={setSetupOpen} />
     </Card>
   );
 };
