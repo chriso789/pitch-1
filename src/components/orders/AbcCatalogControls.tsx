@@ -340,9 +340,14 @@ export function AbcPriceCell({ state }: { state: AbcLineState }) {
     );
   }
   if (status === 'zero') {
+    // Never silently render $0.00 — a contract-zero response must be
+    // surfaced as an explicit "verify" badge per ABC pricing policy.
     return (
-      <span className="text-xs text-amber-600 flex items-center gap-1" title="ABC returned $0.00">
-        <AlertCircle className="h-3 w-3" /> $0.00
+      <span
+        className="text-xs text-amber-600 flex items-center gap-1"
+        title="ABC returned $0.00 on contract — verify SKU / ship-to before quoting"
+      >
+        <AlertCircle className="h-3 w-3" /> Zero on contract — verify
       </span>
     );
   }
