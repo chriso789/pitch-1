@@ -322,9 +322,10 @@ function parseGeneric(textRaw: string) {
 function parseXactimate(textRaw: string) {
   const text = normalizeText(textRaw);
   
-  // Surface Area: "2,335.95 Surface Area" or "Surface Area 2,335.95"
-  const surfaceAreaMatch = text.match(/([\d,]+(?:\.\d+)?)\s*Surface\s*Area/i) 
-                        || text.match(/Surface\s*Area\s*([\d,]+(?:\.\d+)?)/i);
+  // Surface Area: "2,335.95 Surface Area" or "Surface Area 2,335.95".
+  // OCR on Citizens scopes sometimes reads this as "Surface Are".
+  const surfaceAreaMatch = text.match(/([\d,]+(?:\.\d+)?)\s*Surface\s*Are?a?/i) 
+                        || text.match(/Surface\s*Are?a?\s*([\d,]+(?:\.\d+)?)/i);
   const surfaceArea = surfaceAreaMatch ? parseFloatSafe(surfaceAreaMatch[1]) : null;
   
   // Number of Squares: "23.36 Number of Squares"
@@ -357,10 +358,14 @@ function parseXactimate(textRaw: string) {
                  || text.match(/Total\s*Rake\s*Length\s*([\d,]+(?:\.\d+)?)/i);
   const rake = rakeMatch ? parseFloatSafe(rakeMatch[1]) : null;
   
-  // Address from "Property: 9160 FOUNTAIN RD, LAKE WORTH, FL 33467"
-  const addressMatch = text.match(/Property:\s*([^\n]+)/i)
-                    || text.match(/(\d+[^,\n]+,\s*[A-Z\s]+,\s*[A-Z]{2}\s*\d{5}(?:-\d{4})?)/i);
-  const address = addressMatch ? addressMatch[1].trim() : null;
+  // Address from insurance scopes often spans multiple lines after "Property:".
+  const singleLineAddressMatch = text.match(/(\d+[^,\n]+,\s*[A-Z\s]+,\s*[A-Z]{2}\s*\d{5}(?:-\d{4})?)/i);
+  const propertyBlockMatch = text.match(/Property:\s*([\s\S]{0,220}?\b[A-Z]{2}\s+\d{5}(?:-\d{4})?)/i);
+  const address = singleLineAddressMatch
+    ? singleLineAddressMatch[1].trim()
+    : propertyBlockMatch
+      ? propertyBlockMatch[1].replace(/\s+/g, " ").trim()
+      : null;
   
   // Count unique facets (F1, F2, F3, F4 pattern in sketches)
   const facetMatches = text.match(/\bF\d+\b/g);
