@@ -79,6 +79,144 @@ app.get("/accounts", async (c) => {
 });
 
 // ============================================================
+// /setup/status — does this tenant have a complete pricing setup?
+// Source of truth for the locked-state gate on the pricing panel.
+// ============================================================
+app.get("/setup/status", async (c) => {
+  const { tenantId, svc } = ctx(c);
+  const { data, error } = await svc
+    .from("abc_connections")
+    .select(
+      "id, environment, connection_status, selected_ship_to_number, selected_branch_number, selected_ship_to_snapshot, selected_branch_snapshot, setup_completed_at, updated_at",
+    )
+    .eq("tenant_id", tenantId)
+    .order("updated_at", { ascending: false });
+  if (error) return jsonErr(c, "setup_status_failed", error.message, 500);
+  const rows = data ?? [];
+  const connected = rows.find(
+    (r: any) => (r.connection_status || "").toLowerCase() === "connected",
+  );
+  const preferred = connected || rows[0] || null;
+  const ready = !!(
+    preferred?.setup_completed_at &&
+    preferred?.selected_ship_to_number &&
+    preferred?.selected_branch_number
+  );
+  return jsonOk(c, {
+    ready,
+    connection: preferred,
+    rows,
+  });
+});
+
+// ============================================================
+// /setup/select — persist Ship-To + Branch selection.
+// Validates that the branch genuinely belongs to the chosen ship-to
+// using the synced accounts/branches tables (populated by abc-oauth-callback).
+// ============================================================
+app.post("/setup/select", async (c) => {
+  const { tenantId, userId, svc } = ctx(c);
+  let body: { ship_to_number?: string; branch_number?: string } = {};
+  try {
+    body = await c.req.json();
+  } catch {
+    /* ignore */
+  }
+  const shipToNumber = (body.ship_to_number || "").trim();
+  const branchNumber = (body.branch_number || "").trim();
+  if (!shipToNumber || !branchNumber) {
+    return jsonErr(
+      c,
+      "invalid_setup_payload",
+      "ship_to_number and branch_number are required.",
+      400,
+    );
+  }
+
+  // 1) Verify the ship-to exists for this tenant.
+  const { data: shipTo, error: stErr } = await svc
+    .from("abc_ship_to_accounts")
+    .select(
+      "id, ship_to_number, name, address_line1, city, state, postal_code",
+    )
+    .eq("tenant_id", tenantId)
+    .eq("ship_to_number", shipToNumber)
+    .maybeSingle();
+  if (stErr) return jsonErr(c, "ship_to_lookup_failed", stErr.message, 500);
+  if (!shipTo) {
+    return jsonErr(
+      c,
+      "ship_to_not_found",
+      "Selected Ship-To is not connected to this tenant.",
+      404,
+    );
+  }
+
+  // 2) Verify the branch belongs to that ship-to. NEVER trust client mapping.
+  const { data: branch, error: brErr } = await svc
+    .from("abc_account_branches")
+    .select(
+      "id, branch_number, name, address_line1, city, state, postal_code, is_home_branch",
+    )
+    .eq("tenant_id", tenantId)
+    .eq("ship_to_id", shipTo.id)
+    .eq("branch_number", branchNumber)
+    .maybeSingle();
+  if (brErr) return jsonErr(c, "branch_lookup_failed", brErr.message, 500);
+  if (!branch) {
+    return jsonErr(
+      c,
+      "branch_not_in_ship_to",
+      "Selected Branch does not belong to the chosen Ship-To.",
+      400,
+    );
+  }
+
+  // 3) Persist on the connection row (prefer connected, else most recent).
+  const { data: connRows, error: connErr } = await svc
+    .from("abc_connections")
+    .select("id, connection_status, updated_at")
+    .eq("tenant_id", tenantId)
+    .order("updated_at", { ascending: false });
+  if (connErr) return jsonErr(c, "connection_lookup_failed", connErr.message, 500);
+  const target =
+    (connRows ?? []).find(
+      (r: any) => (r.connection_status || "").toLowerCase() === "connected",
+    ) || (connRows ?? [])[0];
+  if (!target) {
+    return jsonErr(
+      c,
+      "abc_not_connected",
+      "ABC is not connected for this tenant. Complete OAuth first.",
+      409,
+    );
+  }
+
+  const { error: updErr } = await svc
+    .from("abc_connections")
+    .update({
+      selected_ship_to_number: shipTo.ship_to_number,
+      selected_branch_number: branch.branch_number,
+      selected_ship_to_snapshot: shipTo,
+      selected_branch_snapshot: branch,
+      setup_completed_at: new Date().toISOString(),
+    })
+    .eq("id", target.id)
+    .eq("tenant_id", tenantId);
+  if (updErr) return jsonErr(c, "setup_update_failed", updErr.message, 500);
+
+  console.log(
+    `[abc-api/setup] tenant=${tenantId} user=${userId} shipTo=${shipTo.ship_to_number} branch=${branch.branch_number}`,
+  );
+
+  return jsonOk(c, {
+    ready: true,
+    selected_ship_to_number: shipTo.ship_to_number,
+    selected_branch_number: branch.branch_number,
+  });
+});
+
+// ============================================================
 // /catalog/search — typed stub (catalog sync ships in Step 3)
 // ============================================================
 app.get("/catalog/search", async (c) => {
