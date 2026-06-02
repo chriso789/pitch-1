@@ -1,49 +1,77 @@
-## Goal
+## Full Plan — Side-by-Side Supplier Pricing for Template Items (Steps 1–5)
 
-On the estimate materials section, let the user pick a connected supplier (ABC / SRS / QXO) once, and show the matched supplier product info (SKU, description, live price) directly under each line item — no need to open the Push-to-Supplier dialog to see it.
+Multi-day migration. Delivered in 5 reviewable phases. Each phase is shippable on its own and gated on the previous one.
 
-## UX
+### Phase 1 — Data model (DB)
 
-```text
-[ Materials section header ]   Match supplier: [ ABC Supply (Sandbox) ▼ ]  Branch: [1209]
+Two new tables, both tenant-scoped, both with RLS + GRANTs.
 
-┌────────────────────────────────────────────────────────────────────┐
-│ GAF Timberline HDZ Shingles            Oyster Grey   57  bundle … │
-│   ABC #10056234 · Timberline HDZ Oyster Grey · $42.50/bdl   [🔍] │
-├────────────────────────────────────────────────────────────────────┤
-│ GAF Pro-Start Starter Strip            Oyster Grey    2  bundle … │
-│   No ABC match — [search]                                          │
-└────────────────────────────────────────────────────────────────────┘
+**`template_item_supplier_mappings`** — the persisted, auditable "this template item = this SKU at this supplier" decision.
+- `id`, `tenant_id`, `template_item_id` (fk), `supplier` (`abc` | `srs` | `qxo`), `supplier_item_code`, `supplier_description`, `uom`, `color_name` (nullable), `confidence` (0–1), `match_source` (`auto` | `manual` | `imported`), `review_state` (`unreviewed` | `approved` | `rejected` | `needs_attention`), `reviewed_by`, `reviewed_at`, `created_by`, timestamps.
+- Unique on `(tenant_id, template_item_id, supplier)`.
+
+**`supplier_price_observations`** — every live price fetch, append-only, so we can show "last seen $X on date Y" and trend.
+- `id`, `tenant_id`, `mapping_id` (fk), `supplier`, `supplier_item_code`, `ship_to_number`, `branch_number`, `purpose` (`estimating` | `quoting` | `ordering`), `uom`, `unit_price` (nullable), `currency`, `price_pending` (bool), `reason` (nullable), `observed_at`.
+- Index on `(tenant_id, mapping_id, observed_at desc)`.
+
+Both tables: `ENABLE ROW LEVEL SECURITY`; policies scope by `tenant_id` via `get_user_tenant_id()`; `GRANT` to `authenticated` + `service_role` (no `anon`); `NOTIFY pgrst, 'reload schema'`.
+
+### Phase 2 — Typed states everywhere
+
+Replace string-bag fields with a single discriminated union in `src/lib/templates/supplierPricing.ts`:
+
+```ts
+type SupplierPriceState =
+  | { kind: 'unmapped' }
+  | { kind: 'pending'; reason?: string }
+  | { kind: 'priced'; unitPrice: number; uom: string; currency: string; observedAt: string }
+  | { kind: 'zero'; reason: 'contract_zero' | 'no_contract' | 'unknown' }
+  | { kind: 'error'; reason: string };
 ```
 
-- Supplier picker shows only connected suppliers (reuses the same detection logic as PushToSupplierDialog).
-- "Branch" defaults from the user's per-supplier preference (already persisted in profiles.default_supplier_branches) or the connection's default branch.
-- Each material row gets a small subline with: SKU · short description · price (or "No match" + search button).
-- A 🔍 button on each row opens the existing `AbcCatalogSearchPopover` / `CatalogSearchPopover` to change the match. The SKU is persisted to `estimate_line_items.abc_item_number` / `srs_item_code`, same columns the Push dialog already writes to — so the Push dialog later shows the same matches with no extra mapping.
-- Auto-match runs once when supplier+branch is set: fetches the catalog (ABC search or SRS get_products) and assigns best matches to rows that don't already have one. Match logic reuses the existing scorers in PushToSupplierDialog (extracted to a small helper file).
-- Live price for ABC: reuses `AbcPriceCell` / pricing fetch already in `AbcCatalogControls`.
+- `TemplateLivePricingPanel`, `InlineSupplierMatch`, `AbcPriceCell` all consume `SupplierPriceState` instead of raw `unit_price: number | null`.
+- Helper `toSupplierPriceState(row)` centralizes the mapping from edge-function row → state.
+- No component is allowed to render `$0.00` for a `zero` state — it renders a labeled badge ("Zero on contract — verify" or "No contract price").
 
-## Scope of code changes
+### Phase 3 — Edge function: `template-supplier-pricing` hardening
 
-1. New helper `src/components/orders/catalogMatching.ts`
-   - Extract `scoreSrsProductMatch`, `autoFillSrsCatalogSkus`, and the ABC catalog scorer from PushToSupplierDialog so both surfaces share matching logic. (Pure refactor, no behavior change.)
+- Reads mappings from `template_item_supplier_mappings` instead of inferring on every call.
+- Writes every supplier response row into `supplier_price_observations` (one row per item per supplier per call). Service-role write with explicit `.eq('tenant_id', resolvedTenantId)`.
+- Returns the unioned `{ template_item_id, supplier, state: SupplierPriceState }` shape — never bare numbers.
+- Auth-gated (`requireAuth` + `requireTenant`), tenant resolved from JWT only, never body.
+- SRS/QXO branches stay stubbed if their backends aren't ready, but return `{ kind: 'pending', reason: 'supplier_integration_pending' }` instead of `0`.
 
-2. New component `src/components/estimates/InlineSupplierMatch.tsx`
-   - Props: `{ item, supplier, tenantId, environment, branchCode, onChange }`.
-   - Renders the SKU · description · price subline, plus search popover button.
-   - Persists SKU to `estimate_line_items` (same write path as PushToSupplierDialog's `persistSku`).
+### Phase 4 — UI
 
-3. `src/components/estimates/TemplateSectionSelector.tsx`
-   - Add supplier-picker row above the materials table only when `sectionType === 'material'`.
-   - Detect connected suppliers (reuse hook calls already used in Push dialog) and store the chosen one in local state, defaulting to the only connected one when there's exactly one.
-   - For each material row, render `<InlineSupplierMatch>` under the item name when a supplier is selected.
-   - Trigger one-shot auto-match when supplier + branch + line items are all ready and any row is missing a SKU.
+1. **Mount `TemplateLivePricingPanel`** inside `TemplateDetailsPanel` (below Vendor Quotes). Side-by-side columns: ABC / SRS / QXO. No "cheapest / savings / best price" copy anywhere — ABC contract-policy safe.
+2. **Persisted Ship-To / Branch picker** at the top of the panel, stored on the tenant's user prefs row (not on the template, not in localStorage).
+3. **Mapping review UI** — per row, an icon menu: Approve, Reject, Change SKU (opens `AbcCatalogSearchPopover` / `SrsSearchInline`), Mark needs attention. Each action writes `review_state` + `reviewed_by` + `reviewed_at`.
+4. **Zero-price fix in `AbcPriceCell`** — renders the new badge variants from the typed state. Never silently shows `$0.00`.
+5. **Inline supplier match on estimate rows** (`InlineSupplierMatch.tsx`) switches to the same typed state + same mapping table, so estimate-time matches and template-time matches share one source of truth.
 
-4. No DB migrations: `abc_item_number`, `srs_item_code`, `abc_color`, `abc_uom`, `abc_price*` already exist on `estimate_line_items` (used by Push dialog today).
+### Phase 5 — Tests + cleanup
 
-## Non-goals (won't do in this pass)
+- Unit: `toSupplierPriceState` for every supplier-response shape (priced / zero / pending / error / missing).
+- Unit: `catalogMatching.scoreSrsProductMatch` and the auto-match threshold (already used in estimates).
+- Edge-function test (Deno): `template-supplier-pricing` writes one `supplier_price_observations` row per item per supplier per call and rejects body-supplied `tenant_id`.
+- Component: `AbcPriceCell` renders the right badge for each `SupplierPriceState.kind` (no `$0.00` regression).
+- Decision recorded in `docs/`: whether `template-supplier-pricing` stays on the legacy `abc-api-proxy` path or moves to the routed `abc-api` v2 surface — kept on proxy for now (v2 catalog/price/orders are still stubbed).
 
-- Bulk re-price button (price will refresh when the row is matched; can add later).
-- QXO catalog auto-match (no catalog endpoint wired yet — picker still selects QXO but inline match shows "QXO catalog search coming soon").
-- Labor section — supplier match is materials-only.
-- Changing the Push-to-Supplier dialog UI (it stays the same, just benefits from already-persisted matches).
+### Rollout order
+
+1. Phase 1 migration (DB) — review + apply.
+2. Phase 2 typed states + Phase 4.4 `AbcPriceCell` fix shipped together (frontend-only, no schema dependency once Phase 1 is in).
+3. Phase 3 edge-function rewrite.
+4. Phase 4.1–4.3 UI (panel mount, ship-to picker, review UI).
+5. Phase 4.5 inline-estimate-row unification.
+6. Phase 5 tests.
+
+### Out of scope
+
+- Finishing the `abc-api` v2 routed surface for catalog/price/orders.
+- SRS / QXO real-pricing backends (still pending status).
+- Any "cheapest supplier" UX — explicitly excluded for ABC contract compliance.
+
+### Approval gate
+
+Reply "go" to start with the **Phase 1 migration** (DB only — no code yet). I'll surface it via the migration tool so you can review the SQL before it runs.
