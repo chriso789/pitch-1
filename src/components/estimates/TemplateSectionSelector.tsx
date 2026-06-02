@@ -226,6 +226,13 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
               item.metadata?.srs_item_code ||
               item.metadata?.srs_sku ||
               null,
+            abc_item_number: item.abc_item_number || item.metadata?.abc_item_number || null,
+            abc_color: item.abc_color || item.metadata?.abc_color || null,
+            abc_uom: item.abc_uom || item.metadata?.abc_uom || null,
+            abc_price: item.abc_price ?? null,
+            abc_price_status: item.abc_price_status ?? null,
+            abc_price_timestamp: item.abc_price_timestamp ?? null,
+            abc_availability: item.abc_availability ?? null,
             product_code: item.product_code || item.sku || null,
             color_specs: item.color_specs || item.metadata?.color_specs,
             requires_color: item.requires_color ?? item.metadata?.requires_color ?? false,
