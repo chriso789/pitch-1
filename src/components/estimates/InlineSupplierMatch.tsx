@@ -256,12 +256,18 @@ export function InlineSupplierMatch({
 }
 
 function PriceBadge({
-  state,
+  status,
+  price,
   loading,
   onRefresh,
   canPrice,
-}: { state: AbcLineState; loading: boolean; onRefresh: () => void; canPrice: boolean }) {
-  const status = state.abc_price_status;
+}: {
+  status: AbcLineState['abc_price_status'] | null;
+  price: number | null;
+  loading: boolean;
+  onRefresh: () => void;
+  canPrice: boolean;
+}) {
   return (
     <Button
       type="button"
