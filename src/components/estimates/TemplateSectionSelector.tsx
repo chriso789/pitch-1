@@ -17,6 +17,9 @@ import { MaterialLineItemsExport } from '@/components/orders/MaterialLineItemsEx
 import { PushToSupplierButton } from '@/components/orders/PushToSupplierButton';
 import { ShareMaterialsButton } from '@/components/orders/ShareMaterialsButton';
 import { colorsForItem } from '@/components/orders/shingleBrandColors';
+import { useAbcConnectionStatus } from '@/hooks/useAbcConnectionStatus';
+import { InlineSupplierMatch, type SupplierKey, type EstimateLineForMatch } from './InlineSupplierMatch';
+import type { AbcCatalogItem } from '@/components/orders/AbcCatalogControls';
 import { Parser as ExprParser } from 'expr-eval';
 import {
   AlertDialog,
@@ -38,6 +41,21 @@ interface LineItem {
   unit_cost: number;
   line_total: number;
   notes?: string;
+  description?: string | null;
+  color_specs?: string | null;
+  requires_color?: boolean;
+  // Supplier match fields — mirror estimate_line_items columns so the
+  // Push-to-Supplier dialog picks them up automatically.
+  abc_item_number?: string | null;
+  abc_color?: string | null;
+  abc_uom?: string | null;
+  abc_price?: number | null;
+  abc_price_status?: string | null;
+  abc_price_timestamp?: string | null;
+  abc_availability?: string | null;
+  srs_item_code?: string | null;
+  product_code?: string | null;
+  metadata?: any;
 }
 
 interface TemplateSectionSelectorProps {
@@ -69,6 +87,19 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
   const [newItem, setNewItem] = useState({ item_name: '', qty: 1, unit: 'ea', unit_cost: 0 });
   const [showLockDialog, setShowLockDialog] = useState(false);
   const [isCreatingEstimate, setIsCreatingEstimate] = useState(false);
+
+  // Inline supplier-match state — only used in the material section. The
+  // SKU we pick here writes back to the same enhanced_estimates.line_items
+  // JSON, so PushToSupplierDialog later sees the same matches.
+  const abcConnection = useAbcConnectionStatus();
+  const [matchSupplier, setMatchSupplier] = useState<SupplierKey | ''>('');
+  const [matchBranch, setMatchBranch] = useState<string>('');
+  const [matchShipTo, setMatchShipTo] = useState<string>('');
+  const [srsConnected, setSrsConnected] = useState<{ branch?: string; environment?: string } | null>(null);
+  const [abcCatalog, setAbcCatalog] = useState<AbcCatalogItem[]>([]);
+  const [srsCatalog, setSrsCatalog] = useState<any[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogLoadedKey, setCatalogLoadedKey] = useState<string>('');
 
   // Fetch templates for this tenant
   const { data: templates, isLoading: templatesLoading } = useQuery({
@@ -195,6 +226,13 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
               item.metadata?.srs_item_code ||
               item.metadata?.srs_sku ||
               null,
+            abc_item_number: item.abc_item_number || item.metadata?.abc_item_number || null,
+            abc_color: item.abc_color || item.metadata?.abc_color || null,
+            abc_uom: item.abc_uom || item.metadata?.abc_uom || null,
+            abc_price: item.abc_price ?? null,
+            abc_price_status: item.abc_price_status ?? null,
+            abc_price_timestamp: item.abc_price_timestamp ?? null,
+            abc_availability: item.abc_availability ?? null,
             product_code: item.product_code || item.sku || null,
             color_specs: item.color_specs || item.metadata?.color_specs,
             requires_color: item.requires_color ?? item.metadata?.requires_color ?? false,
@@ -210,6 +248,112 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
       setSelectedTemplateId(existingEstimate.template_id);
     }
   }, [existingEstimate?.id, existingEstimate?.line_items, existingEstimate?.template_id, sectionType, effectiveEstimateId]);
+
+  // Detect connected suppliers + load user's default branch overrides.
+  // Materials-only; labor section never shows the supplier picker.
+  useEffect(() => {
+    if (sectionType !== 'material' || !effectiveTenantId) return;
+    let cancelled = false;
+    (async () => {
+      const { data: authData } = await supabase.auth.getUser();
+      const userId = authData?.user?.id;
+      let prefs: Record<string, string> = {};
+      if (userId) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('default_supplier_branches')
+          .eq('id', userId)
+          .maybeSingle();
+        prefs = ((profile as any)?.default_supplier_branches as Record<string, string>) || {};
+      }
+      const { data: srsRow } = await supabase
+        .from('srs_connections')
+        .select('default_branch_code, environment, connection_status, valid_indicator')
+        .eq('tenant_id', effectiveTenantId as any)
+        .maybeSingle();
+      if (cancelled) return;
+      if (srsRow && ((srsRow as any).connection_status === 'connected' || (srsRow as any).valid_indicator)) {
+        setSrsConnected({
+          branch: prefs.srs || (srsRow as any).default_branch_code,
+          environment: (srsRow as any).environment,
+        });
+      }
+      // Auto-pick: prefer ABC if connected, else SRS.
+      setMatchSupplier((prev) => {
+        if (prev) return prev;
+        if (abcConnection.isConnected) return 'abc';
+        if (srsRow && ((srsRow as any).connection_status === 'connected' || (srsRow as any).valid_indicator)) return 'srs';
+        return '';
+      });
+      // Seed branch from user pref / connection default.
+      setMatchBranch((prev) => {
+        if (prev) return prev;
+        if (abcConnection.isConnected) return prefs.abc || abcConnection.defaultBranchCode || '';
+        return prefs.srs || (srsRow as any)?.default_branch_code || '';
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [sectionType, effectiveTenantId, abcConnection.isConnected, abcConnection.defaultBranchCode]);
+
+  // Load ABC catalog once per (branch, supplier) so the inline match can
+  // resolve descriptions + auto-pick best matches. We search with a broad
+  // query that returns the top SKUs for the branch; the per-row scorer
+  // does the final pick. Keeping this a single load keeps API usage low.
+  useEffect(() => {
+    if (sectionType !== 'material' || !matchSupplier || !matchBranch || !effectiveTenantId) return;
+    const key = `${matchSupplier}:${matchBranch}`;
+    if (catalogLoadedKey === key) return;
+    setCatalogLoading(true);
+    (async () => {
+      try {
+        if (matchSupplier === 'abc') {
+          // Pull a reasonable catalog slice by issuing several common keyword
+          // searches and merging the results — abc-api-proxy's search_products
+          // returns at most a few hundred rows per query.
+          const queries = ['shingle', 'ridge', 'starter', 'underlayment', 'ice water', 'drip edge', 'nail', 'vent', 'pipe boot', 'flashing'];
+          const merged = new Map<string, AbcCatalogItem>();
+          const env: 'sandbox' | 'production' = abcConnection.environment === 'production' ? 'production' : 'sandbox';
+          for (const q of queries) {
+            const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
+              body: { action: 'search_products', tenant_id: effectiveTenantId, environment: env, query: q, branchNumber: matchBranch.trim() },
+            });
+            if (error || !data?.success) continue;
+            const body = data.body;
+            const raw = Array.isArray(body) ? body
+              : Array.isArray(body?.items) ? body.items
+              : Array.isArray(body?.data) ? body.data
+              : Array.isArray(body?.results) ? body.results : [];
+            for (const r of raw) {
+              const itemNumber = String(r.itemNumber ?? r.item_number ?? r.sku ?? r.productNumber ?? '').trim();
+              if (!itemNumber) continue;
+              const k = `${itemNumber}::${r.colorOption ?? r.color ?? r.option ?? ''}`;
+              if (merged.has(k)) continue;
+              merged.set(k, {
+                itemNumber,
+                itemDescription: String(r.itemDescription ?? r.description ?? r.itemDesc ?? r.productName ?? r.name ?? '').trim(),
+                color: r.colorOption ?? r.color ?? r.option ?? r.colorName ?? null,
+                uom: r.unitOfMeasure ?? r.uom ?? r.baseUom ?? r.salesUom ?? null,
+                raw: r,
+              });
+            }
+          }
+          setAbcCatalog(Array.from(merged.values()));
+        } else if (matchSupplier === 'srs') {
+          const { data, error } = await supabase.functions.invoke('srs-api-proxy', {
+            body: { action: 'get_products', tenant_id: effectiveTenantId, branch_code: matchBranch.trim() },
+          });
+          if (!error) {
+            setSrsCatalog(Array.isArray(data?.products) ? data.products : []);
+          }
+        }
+        setCatalogLoadedKey(key);
+      } finally {
+        setCatalogLoading(false);
+      }
+    })();
+  }, [sectionType, matchSupplier, matchBranch, effectiveTenantId, abcConnection.environment, catalogLoadedKey]);
+
+
 
   // Save line items mutation
   const saveLineItemsMutation = useMutation({
@@ -545,6 +689,59 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
         </div>
       )}
 
+      {/* Supplier match picker — materials only */}
+      {!isLoadingData && sectionType === 'material' && lineItems.length > 0 && (abcConnection.isConnected || srsConnected) && (
+        <div className="flex flex-wrap items-end gap-3 p-3 border rounded-lg bg-muted/30">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-muted-foreground">Match to supplier</label>
+            <Select
+              value={matchSupplier || ''}
+              onValueChange={(v) => {
+                setMatchSupplier(v as SupplierKey);
+                if (v === 'abc') setMatchBranch(abcConnection.defaultBranchCode || matchBranch);
+                if (v === 'srs') setMatchBranch(srsConnected?.branch || matchBranch);
+                setCatalogLoadedKey('');
+              }}
+            >
+              <SelectTrigger className="h-8 w-[200px]"><SelectValue placeholder="Pick supplier…" /></SelectTrigger>
+              <SelectContent>
+                {abcConnection.isConnected && (
+                  <SelectItem value="abc">ABC Supply{abcConnection.environment === 'production' ? '' : ' (Sandbox)'}</SelectItem>
+                )}
+                {srsConnected && (
+                  <SelectItem value="srs">SRS Distribution{srsConnected.environment === 'production' ? '' : ' (QA)'}</SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-muted-foreground">Branch</label>
+            <Input
+              value={matchBranch}
+              onChange={(e) => { setMatchBranch(e.target.value); setCatalogLoadedKey(''); }}
+              placeholder={matchSupplier === 'abc' ? 'ABC branch #' : 'SRS branch code'}
+              className="h-8 w-[140px]"
+            />
+          </div>
+          {matchSupplier === 'abc' && (
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-muted-foreground">Ship-to (for live price)</label>
+              <Input
+                value={matchShipTo}
+                onChange={(e) => setMatchShipTo(e.target.value)}
+                placeholder="ABC ship-to #"
+                className="h-8 w-[160px]"
+              />
+            </div>
+          )}
+          {catalogLoading && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin" /> Loading catalog…
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Line Items Table */}
       {!isLoadingData && lineItems.length > 0 && (
         <div className="border rounded-lg overflow-hidden">
@@ -563,7 +760,27 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
             <TableBody>
               {lineItems.map((item) => (
                 <TableRow key={item.id}>
-                  <TableCell className="font-medium">{item.item_name}</TableCell>
+                  <TableCell className="font-medium align-top">
+                    <div>{item.item_name}</div>
+                    {sectionType === 'material' && matchSupplier && effectiveTenantId && (
+                      <InlineSupplierMatch
+                        tenantId={effectiveTenantId}
+                        supplier={matchSupplier}
+                        environment={abcConnection.environment === 'production' ? 'production' : 'sandbox'}
+                        branchCode={matchBranch}
+                        shipToNumber={matchShipTo}
+                        item={item as EstimateLineForMatch}
+                        abcCatalog={abcCatalog}
+                        srsCatalog={srsCatalog}
+                        catalogLoading={catalogLoading}
+                        onChange={(patch) => {
+                          const updated = lineItems.map((li) => li.id === item.id ? { ...li, ...patch } : li);
+                          setLineItems(updated);
+                          saveLineItemsMutation.mutate(updated);
+                        }}
+                      />
+                    )}
+                  </TableCell>
                   <TableCell>
                     {isLocked ? (
                       <span className="text-sm text-muted-foreground">{item.notes || '—'}</span>
