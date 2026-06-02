@@ -863,7 +863,7 @@ export const handle = async (req) => {
 
       await supabase
         .from("abc_connections")
-        .update({ last_validated_at: new Date().toISOString() })
+        .update({ last_validated_at: new Date().toISOString(), last_error: null })
         .eq("tenant_id", tenant_id)
         .eq("environment", env);
 
