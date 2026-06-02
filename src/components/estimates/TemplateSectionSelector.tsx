@@ -774,7 +774,7 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
                 value={matchShipTo}
                 onChange={(e) => setMatchShipTo(e.target.value)}
                 placeholder="ABC ship-to #"
-                className="h-8 w-[160px]"
+                className={`h-8 w-[160px] ${!matchShipTo ? 'border-amber-400' : ''}`}
               />
             </div>
           )}
@@ -783,8 +783,15 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
               <Loader2 className="h-3 w-3 animate-spin" /> Loading catalog…
             </div>
           )}
+          {matchSupplier === 'abc' && !matchShipTo && !catalogLoading && (
+            <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+              <AlertCircle className="h-3 w-3" />
+              Enter an ABC ship-to # to fetch live customer pricing — catalog matching will still run without it.
+            </div>
+          )}
         </div>
       )}
+
 
       {/* Line Items Table */}
       {!isLoadingData && lineItems.length > 0 && (
