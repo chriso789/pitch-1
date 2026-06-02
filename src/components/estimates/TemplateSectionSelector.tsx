@@ -16,6 +16,7 @@ import { LaborOrderExport } from '@/components/orders/LaborOrderExport';
 import { MaterialLineItemsExport } from '@/components/orders/MaterialLineItemsExport';
 import { PushToSupplierButton } from '@/components/orders/PushToSupplierButton';
 import { ShareMaterialsButton } from '@/components/orders/ShareMaterialsButton';
+import { colorsForItem } from '@/components/orders/shingleBrandColors';
 import { Parser as ExprParser } from 'expr-eval';
 import {
   AlertDialog,
@@ -566,15 +567,59 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
                   <TableCell>
                     {isLocked ? (
                       <span className="text-sm text-muted-foreground">{item.notes || '—'}</span>
-                    ) : (
-                      <Input
-                        value={item.notes || ''}
-                        onChange={(e) => handleUpdateItem(item.id, 'notes', e.target.value)}
-                        onBlur={handleSave}
-                        placeholder="e.g. Weathered Wood"
-                        className="h-8 text-sm font-medium"
-                      />
-                    )}
+                    ) : (() => {
+                      const { brand, colors } = colorsForItem(item.item_name);
+                      const current = item.notes || '';
+                      const inList = colors.includes(current);
+                      // No brand match → keep simple free-text input
+                      if (!brand || colors.length === 0) {
+                        return (
+                          <Input
+                            value={current}
+                            onChange={(e) => handleUpdateItem(item.id, 'notes', e.target.value)}
+                            onBlur={handleSave}
+                            placeholder="e.g. Weathered Wood"
+                            className="h-8 text-sm font-medium"
+                          />
+                        );
+                      }
+                      const selectValue = !current ? '' : inList ? current : '__custom__';
+                      return (
+                        <div className="flex flex-col gap-1">
+                          <Select
+                            value={selectValue}
+                            onValueChange={(v) => {
+                              if (v === '__custom__') {
+                                handleUpdateItem(item.id, 'notes', current && !inList ? current : ' ');
+                              } else {
+                                handleUpdateItem(item.id, 'notes', v);
+                                handleSave();
+                              }
+                            }}
+                          >
+                            <SelectTrigger className="h-8 text-sm">
+                              <SelectValue placeholder={`${brand} color…`} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {colors.map((c) => (
+                                <SelectItem key={c} value={c}>{c}</SelectItem>
+                              ))}
+                              <SelectItem value="__custom__">Custom…</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          {selectValue === '__custom__' && (
+                            <Input
+                              value={current === ' ' ? '' : current}
+                              autoFocus
+                              onChange={(e) => handleUpdateItem(item.id, 'notes', e.target.value)}
+                              onBlur={handleSave}
+                              placeholder="Custom color / notes"
+                              className="h-8 text-sm"
+                            />
+                          )}
+                        </div>
+                      );
+                    })()}
                   </TableCell>
                   <TableCell>
                     {isLocked ? (
