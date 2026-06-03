@@ -1393,6 +1393,56 @@ export function EstimatePreviewPanel({
                           </div>
                         )}
 
+                        {coverPhotoSource === 'streetview' && streetViewAvailable && (
+                          <div className="space-y-2 rounded border border-border p-2 bg-muted/30">
+                            <div className="flex items-center justify-between">
+                              <Label className="text-[11px] text-muted-foreground">Adjust Street View</Label>
+                              <button
+                                type="button"
+                                className="text-[10px] text-muted-foreground hover:text-foreground underline"
+                                onClick={() => { setStreetHeading(0); setStreetPitch(0); setStreetFov(90); }}
+                              >
+                                Reset
+                              </button>
+                            </div>
+                            <div>
+                              <div className="flex justify-between text-[10px] text-muted-foreground"><span>Rotate</span><span>{streetHeading}°</span></div>
+                              <Slider value={[streetHeading]} min={0} max={360} step={5} onValueChange={(v) => setStreetHeading(v[0])} />
+                            </div>
+                            <div>
+                              <div className="flex justify-between text-[10px] text-muted-foreground"><span>Tilt</span><span>{streetPitch}°</span></div>
+                              <Slider value={[streetPitch]} min={-30} max={30} step={5} onValueChange={(v) => setStreetPitch(v[0])} />
+                            </div>
+                            <div>
+                              <div className="flex justify-between text-[10px] text-muted-foreground"><span>Zoom</span><span>{streetFov}°</span></div>
+                              <Slider value={[streetFov]} min={30} max={120} step={5} onValueChange={(v) => setStreetFov(v[0])} />
+                            </div>
+                          </div>
+                        )}
+
+                        {coverPhotoSource === 'aerial' && propertyCoords && googleMapsApiKey && (
+                          <div className="space-y-2 rounded border border-border p-2 bg-muted/30">
+                            <div className="flex items-center justify-between">
+                              <Label className="text-[11px] text-muted-foreground">Adjust Aerial View</Label>
+                              <button
+                                type="button"
+                                className="text-[10px] text-muted-foreground hover:text-foreground underline"
+                                onClick={() => { setAerialZoom(19); setAerialHeading(0); }}
+                              >
+                                Reset
+                              </button>
+                            </div>
+                            <div>
+                              <div className="flex justify-between text-[10px] text-muted-foreground"><span>Zoom</span><span>{aerialZoom}</span></div>
+                              <Slider value={[aerialZoom]} min={17} max={21} step={1} onValueChange={(v) => setAerialZoom(v[0])} />
+                            </div>
+                            <div>
+                              <div className="flex justify-between text-[10px] text-muted-foreground"><span>Rotate</span><span>{aerialHeading}°</span></div>
+                              <Slider value={[aerialHeading]} min={0} max={360} step={5} onValueChange={(v) => setAerialHeading(v[0])} />
+                            </div>
+                          </div>
+                        )}
+
                         {coverPhotoSource !== 'none' && options.coverPagePropertyPhoto && (
                           <div className="rounded overflow-hidden border border-border">
                             <SafeImage
