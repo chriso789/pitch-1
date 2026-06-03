@@ -194,6 +194,16 @@ export function ABCConnectionSettings() {
   const [productQuery, setProductQuery] = useState('');
   const [priceQty, setPriceQty] = useState('1');
   const [orderStatusNumber, setOrderStatusNumber] = useState('');
+  // Sandy contract: UOM from Product API, jobsite DC contact, optional override.
+  const [orderUom, setOrderUom] = useState('');
+  const [orderQty, setOrderQty] = useState('1');
+  const [jobsiteName, setJobsiteName] = useState('');
+  const [jobsiteEmail, setJobsiteEmail] = useState('');
+  const [jobsitePhone, setJobsitePhone] = useState('');
+  const [overrideEnabled, setOverrideEnabled] = useState(false);
+  const [overridePrice, setOverridePrice] = useState('');
+  const [overrideReason, setOverrideReason] = useState('');
+  const [sandboxDemoFallback, setSandboxDemoFallback] = useState(false);
 
   const [searchHits, setSearchHits] = useState<SearchHit[]>([]);
   const [orderResult, setOrderResult] = useState<any | null>(null);
