@@ -164,6 +164,46 @@ interface FetchedEstimateData {
   config: EstimatePreviewPanelProps['config'];
 }
 
+/**
+ * Load an image URL, rotate it by `degrees` on a canvas, and return a JPEG
+ * data URL. Used to bake rotation into the aerial cover photo since Google
+ * Static Maps has no rotation parameter. Returns null on failure (CORS, etc.).
+ */
+async function rotateImageToDataUrl(src: string, degrees: number): Promise<string | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const w = img.naturalWidth;
+        const h = img.naturalHeight;
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return resolve(null);
+        // Scale the rotated image up so it still fills the original frame
+        // (object-cover behaviour). For any rotation angle, the smallest
+        // square that, when rotated, still covers a w×h rectangle requires
+        // scaling by |cosθ| + |sinθ| on the longer dimension.
+        const rad = (degrees * Math.PI) / 180;
+        const scale = Math.abs(Math.cos(rad)) + Math.abs(Math.sin(rad));
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, w, h);
+        ctx.translate(w / 2, h / 2);
+        ctx.rotate(rad);
+        ctx.scale(scale, scale);
+        ctx.drawImage(img, -w / 2, -h / 2, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.9));
+      } catch {
+        resolve(null);
+      }
+    };
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
 export function EstimatePreviewPanel({
   open,
   onOpenChange,
