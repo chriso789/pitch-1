@@ -395,23 +395,70 @@ export const handle = async (req) => {
     const env = normalizeEnv(body.environment);
     const cfg = ABC[env];
 
-    // Resolve tenant_id + user from JWT if not provided
-    let tenant_id = body.tenant_id;
+    // ── Tenant resolution + anti-spoof gate ──────────────────────────
+    // Never trust body.tenant_id as source of truth. Always resolve from JWT.
+    // If body supplied a tenant_id that disagrees with the resolved tenant,
+    // reject 403 unless caller is a verified master / platform admin.
+    let tenant_id: string | undefined = undefined;
     let userId: string | null = null;
+    let callerIsMaster = false;
+    const bodyTenantId = body.tenant_id?.toString().trim() || undefined;
+
     if (auth) {
       const { data: userRes } = await authClient.auth.getUser();
       userId = userRes?.user?.id ?? null;
-      if (!tenant_id && userId) {
+      if (userId) {
         const { data: prof } = await supabase
           .from("profiles")
-          .select("tenant_id")
+          .select("tenant_id, active_tenant_id, role")
           .eq("id", userId)
           .maybeSingle();
-        tenant_id = (prof as any)?.tenant_id ?? undefined;
+        const p: any = prof || {};
+        tenant_id = p.active_tenant_id ?? p.tenant_id ?? undefined;
+
+        // Verified master/platform_admin via has_role RPC (not profile column alone).
+        try {
+          const { data: isMaster } = await (supabase as any).rpc("has_role", {
+            _user_id: userId,
+            _role: "master",
+          });
+          if (isMaster === true) callerIsMaster = true;
+          if (!callerIsMaster) {
+            const { data: isPa } = await (supabase as any).rpc("has_role", {
+              _user_id: userId,
+              _role: "platform_admin",
+            });
+            if (isPa === true) callerIsMaster = true;
+          }
+        } catch (_e) { /* role helper missing → treat as non-master */ }
       }
     }
 
-    console.log("abc-api-proxy", { action, env, tenant_id });
+    // Spoof guard: applies to every ABC action.
+    if (bodyTenantId && bodyTenantId !== tenant_id) {
+      if (!callerIsMaster) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "tenant_spoof_forbidden",
+            interpretation:
+              "Request body tenant_id does not match the authenticated user's tenant. Master role required to override.",
+            resolved_tenant_id: tenant_id ?? null,
+            body_tenant_id: bodyTenantId,
+          }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      // Master override: honor body.tenant_id, log it.
+      console.warn("[supplier-api abc] master tenant override", {
+        userId, from: tenant_id, to: bodyTenantId, action: body.action,
+      });
+      tenant_id = bodyTenantId;
+    }
+
+    console.log("abc-api-proxy", { action: body.action, env, tenant_id, callerIsMaster });
+
+
 
     const json = (data: any, status = 200) =>
       new Response(JSON.stringify(data), {
