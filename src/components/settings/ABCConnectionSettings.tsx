@@ -1122,8 +1122,77 @@ export function ABCConnectionSettings() {
             <Send className="h-4 w-4" /> Submit Sandbox Test Order
           </div>
           <p className="text-xs text-muted-foreground">
-            Submits a non-production ABC sandbox order to ABC QA. Requires a real item from product search.
+            Sandy contract: itemNumber + UOM must come from Product API; jobsite DC contact required;
+            Price Items echo is the price source unless an explicit override + reason is supplied.
           </p>
+
+          <div className="grid gap-3 md:grid-cols-4">
+            <div className="space-y-1">
+              <Label className="text-xs">Item # (from Product Search)</Label>
+              <Input value={itemNumber} onChange={(e) => setItemNumber(e.target.value)} placeholder="e.g. 02OCTDUMP" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">UOM (from Product API)</Label>
+              <Input value={orderUom} onChange={(e) => setOrderUom(e.target.value)} placeholder="e.g. PC / BX" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Quantity</Label>
+              <Input type="number" min={1} value={orderQty} onChange={(e) => setOrderQty(e.target.value)} />
+            </div>
+            <div className="space-y-1 flex items-end">
+              <label className="flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={sandboxDemoFallback}
+                  onChange={(e) => setSandboxDemoFallback(e.target.checked)}
+                  disabled={environment !== 'sandbox'}
+                />
+                Use sandbox demo Ship-To/Branch fallback (2010466-2 / 1209)
+              </label>
+            </div>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Jobsite Contact Name (DC)</Label>
+              <Input value={jobsiteName} onChange={(e) => setJobsiteName(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Jobsite Contact Email</Label>
+              <Input value={jobsiteEmail} onChange={(e) => setJobsiteEmail(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Jobsite Contact Phone</Label>
+              <Input value={jobsitePhone} onChange={(e) => setJobsitePhone(e.target.value)} />
+            </div>
+          </div>
+
+          <div className="rounded border bg-muted/30 p-2 space-y-2">
+            <label className="flex items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={overrideEnabled}
+                onChange={(e) => setOverrideEnabled(e.target.checked)}
+              />
+              Override ABC Price Items unit price (requires reason)
+            </label>
+            {overrideEnabled && (
+              <div className="grid gap-2 md:grid-cols-2">
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={overridePrice}
+                  onChange={(e) => setOverridePrice(e.target.value)}
+                  placeholder="Override unit price"
+                />
+                <Input
+                  value={overrideReason}
+                  onChange={(e) => setOverrideReason(e.target.value)}
+                  placeholder="Reason (required, persisted on line)"
+                />
+              </div>
+            )}
+          </div>
 
           <Button
             onClick={handleSubmitTestOrder}
@@ -1133,6 +1202,7 @@ export function ABCConnectionSettings() {
             Submit Test Order
           </Button>
         </div>
+
 
         {/* Track Order */}
         <div className="rounded-md border p-3 space-y-3">
