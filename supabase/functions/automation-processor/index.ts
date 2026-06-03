@@ -36,7 +36,16 @@ interface Condition {
 }
 
 interface Action {
-  type: 'send_email' | 'send_sms' | 'assign_task' | 'change_status' | 'webhook' | 'push_doc' | 'create_payment_link';
+  type:
+    | 'send_email'
+    | 'send_sms'
+    | 'assign_task'
+    | 'change_status'
+    | 'webhook'
+    | 'push_doc'
+    | 'create_payment_link'
+    | 'apply_tags'
+    | 'remove_tags';
   params: Record<string, any>;
 }
 
