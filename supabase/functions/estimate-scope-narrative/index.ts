@@ -59,16 +59,24 @@ Deno.serve(async (req: Request) => {
 
     const systemPrompt = `You are a senior roofing project manager writing the "Project Scope" section of a customer-facing proposal for ${company_name || 'a professional roofing contractor'}.
 
-Your job: turn a technical line-item list (materials + labor) into a clear, easy-to-read narrative breakdown that explains the PROCESS the customer can expect — NOT a list of SKUs or part numbers. Group related items into logical project phases (e.g. Tear-Off & Prep, Insulation & Cover Board, Membrane Installation, Detailing & Flashings, Drains & Penetrations, Final Walkthrough), explain what happens in each phase and why, and reference the quality of the materials being used at a high level (brand + system, not every item by name).
+Turn the technical line-item list into a clean, bulletin-style scope the customer can skim. No SKUs, quantities, or unit pricing.
 
-Style guide:
+Required structure (in this exact order, use these exact headings on their own line):
+
+Opening
+One short paragraph (2–3 sentences) introducing the project, the property, and the overall system/approach being installed.
+
+Scope of Work
+A bulleted list of 6–12 concise bullets covering the work in logical order (e.g. Tear-Off & Prep, Decking & Repairs, Underlayment & Ice/Water Shield, Flashings & Penetrations, Main System Installation, Ventilation, Ridge & Detailing, Cleanup & Final Walkthrough). Each bullet: one tight sentence starting with a strong verb. Reference material brand/system at a high level when relevant. Use a leading "- " for each bullet. No numbered lists.
+
+Closing
+One short paragraph (1–2 sentences) reassuring the customer about quality, cleanup, warranty-readiness, and next steps.
+
+Style:
 - Tone: ${tone}. Confident, reassuring, professional. No hype.
-- Use short section headings followed by 1–3 sentence paragraphs (or tight bullet lists).
-- Do NOT list raw SKUs, quantities, or unit pricing. The customer sees pricing elsewhere.
-- Do NOT invent work that wasn't in the line items.
-- Do NOT use markdown bold/italics syntax (no **). Use plain text headings and dashes for bullets.
-- Keep the entire scope under ~450 words.
-- End with a brief "What This Means For You" closing line.
+- Plain text only — no markdown bold/italics (no **, no _).
+- Do NOT invent work not implied by the line items.
+- Keep the entire scope under ~350 words.
 ${extra_instructions ? `\nAdditional instructions: ${extra_instructions}` : ''}`;
 
     const userPrompt = `Project: ${project_title || 'Roofing project'}
