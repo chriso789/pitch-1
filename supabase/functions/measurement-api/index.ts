@@ -318,10 +318,11 @@ app.post("/mskill/jobs/create", async (c) => {
   return jsonOk(c, { mskill_request_id: request.id, mskill_job_id: job.id, request_hash: request.request_hash });
 });
 
-app.get("/mskill/jobs/get", async (c) => {
+app.post("/mskill/jobs/get", async (c) => {
   const tenantId = c.get("tenantId")!;
-  const jobId = c.req.query("jobId");
-  if (!jobId) return jsonErr(c, "bad_request", "jobId required", 400);
+  const body = await c.req.json().catch(() => ({}));
+  const jobId = String(body.mskill_job_id ?? body.jobId ?? c.req.query("jobId") ?? "");
+  if (!jobId) return jsonErr(c, "bad_request", "mskill_job_id required", 400);
   const svc = serviceClient();
   const { data: job } = await svc.from("mskill_jobs").select("*").eq("id", jobId).eq("tenant_id", tenantId).maybeSingle();
   if (!job) return jsonErr(c, "not_found", "job not found", 404);
@@ -331,10 +332,11 @@ app.get("/mskill/jobs/get", async (c) => {
   return jsonOk(c, { job, request, geometry_status: geo, bridge });
 });
 
-app.get("/mskill/skills/pipeline", async (c) => {
+app.post("/mskill/skills/pipeline", async (c) => {
   const tenantId = c.get("tenantId")!;
-  const jobId = c.req.query("jobId");
-  if (!jobId) return jsonErr(c, "bad_request", "jobId required", 400);
+  const body = await c.req.json().catch(() => ({}));
+  const jobId = String(body.mskill_job_id ?? body.jobId ?? c.req.query("jobId") ?? "");
+  if (!jobId) return jsonErr(c, "bad_request", "mskill_job_id required", 400);
   const svc = serviceClient();
   const { data: job } = await svc.from("mskill_jobs").select("id, tenant_id").eq("id", jobId).maybeSingle();
   if (!job || job.tenant_id !== tenantId) return jsonErr(c, "not_found", "job not found", 404);
