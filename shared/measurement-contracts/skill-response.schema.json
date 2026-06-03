@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pitch-crm.ai/schemas/measurement/skill-response.json",
+  "title": "MeasurementSkillResponse",
+  "type": "object",
+  "required": ["skill_run_id", "status", "worker_version"],
+  "properties": {
+    "skill_run_id": { "type": "string", "format": "uuid" },
+    "status": {
+      "type": "string",
+      "enum": ["completed", "failed", "needs_review", "needs_implementation"]
+    },
+    "output_payload": { "type": "object" },
+    "artifacts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/artifact" }
+    },
+    "qa_flags": { "type": "array", "items": { "type": "string" } },
+    "error_message": { "type": ["string", "null"] },
+    "worker_version": { "type": "string" }
+  },
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "required": [
+        "artifact_type",
+        "storage_path",
+        "measurement_request_id",
+        "request_hash",
+        "measurement_job_id",
+        "skill_run_id"
+      ],
+      "properties": {
+        "artifact_type": { "type": "string" },
+        "storage_path": { "type": "string" },
+        "metadata": { "type": "object" },
+        "measurement_request_id": { "type": "string", "format": "uuid" },
+        "request_hash": { "type": "string" },
+        "measurement_job_id": { "type": "string", "format": "uuid" },
+        "skill_run_id": { "type": "string", "format": "uuid" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

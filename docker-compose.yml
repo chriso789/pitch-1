@@ -1,0 +1,25 @@
+version: "3.9"
+
+services:
+  measure-worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    image: pitch-measure-worker:dev
+    container_name: pitch-measure-worker
+    env_file:
+      - ./worker/.env
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./worker/app:/app/app:ro
+      - measure-tmp:/tmp/pitch-measure
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  measure-tmp:
