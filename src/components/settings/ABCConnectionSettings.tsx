@@ -1223,14 +1223,70 @@ export function ABCConnectionSettings() {
             )}
           </div>
 
-          <Button
-            onClick={handleSubmitTestOrder}
-            disabled={submittingOrder || !canSubmitOrder || environment !== 'sandbox'}
-          >
-            {submittingOrder ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
-            Submit Test Order
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              onClick={handleValidatePayloadOnly}
+              disabled={submittingOrder || !canSubmitOrder || environment !== 'sandbox'}
+              title="Run Sandy contract validations and build the exact ABC payload — does NOT send to ABC."
+            >
+              {submittingOrder ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+              Validate Payload Only
+            </Button>
+            <Button
+              onClick={handleSubmitTestOrder}
+              disabled={submittingOrder || !canSubmitOrder || environment !== 'sandbox'}
+            >
+              {submittingOrder ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+              Submit Test Order
+            </Button>
+          </div>
+
+          {orderResult && (
+            <div className="space-y-2">
+              {orderResult.sandboxWarning && (
+                <div className="rounded border border-yellow-500/40 bg-yellow-500/10 p-2 text-xs text-yellow-900 dark:text-yellow-100">
+                  ⚠️ {orderResult.sandboxWarning}
+                </div>
+              )}
+              <div
+                className={`rounded border p-2 text-xs ${
+                  orderResult.validation === 'PASS' || orderResult.success
+                    ? 'border-emerald-500/40 bg-emerald-500/10'
+                    : 'border-destructive/40 bg-destructive/10'
+                }`}
+              >
+                <div className="font-medium">
+                  {orderResult.validation === 'PASS' && !orderResult.sentToAbc
+                    ? 'Validate Payload Only: PASS (ABC not contacted)'
+                    : orderResult.success
+                      ? 'Submit Test Order: ABC accepted'
+                      : `Result: ${orderResult.validation || 'FAIL'} — ${orderResult.error || orderResult.error_code || 'see details'}`}
+                </div>
+                {Array.isArray(orderResult.missing) && orderResult.missing.length > 0 && (
+                  <div className="mt-1">Missing fields: {orderResult.missing.join(', ')}</div>
+                )}
+              </div>
+              {orderResult.payloadProof && (
+                <details className="rounded border p-2 text-xs" open>
+                  <summary className="cursor-pointer font-medium">Final ABC payload proof</summary>
+                  <pre className="font-mono text-[10px] bg-muted/40 p-2 rounded overflow-x-auto mt-2">
+                    {JSON.stringify(orderResult.payloadProof, null, 2)}
+                  </pre>
+                </details>
+              )}
+              {orderResult.orderRequest && (
+                <details className="rounded border p-2 text-xs">
+                  <summary className="cursor-pointer font-medium">Full outgoing ABC order JSON</summary>
+                  <pre className="font-mono text-[10px] bg-muted/40 p-2 rounded overflow-x-auto mt-2">
+                    {JSON.stringify(orderResult.orderRequest, null, 2)}
+                  </pre>
+                </details>
+              )}
+            </div>
+          )}
         </div>
+
 
 
         {/* Track Order */}
