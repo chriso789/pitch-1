@@ -282,6 +282,9 @@ app.post("/estimate-templates/:id/map-measurements", async (c) => {
 // PITCH Measure — Internal Skill Pipeline routes
 // ============================================================================
 
+app.post("/mskill/skills/list", (c) => {
+  return jsonOk(c, { skills: MSKILL_REGISTRY });
+});
 app.get("/mskill/skills/list", (c) => {
   return jsonOk(c, { skills: MSKILL_REGISTRY });
 });
