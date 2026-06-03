@@ -894,6 +894,16 @@ export type Database = {
       }
       abc_order_lines: {
         Row: {
+          abc_branch_number: string | null
+          abc_catalog_payload: Json | null
+          abc_item_description: string | null
+          abc_item_number: string | null
+          abc_price: number | null
+          abc_price_override_reason: string | null
+          abc_price_source: string | null
+          abc_price_timestamp: string | null
+          abc_ship_to_number: string | null
+          abc_uom: string | null
           amount: number | null
           id: string
           item_description: string | null
@@ -907,6 +917,16 @@ export type Database = {
           unit_price: number | null
         }
         Insert: {
+          abc_branch_number?: string | null
+          abc_catalog_payload?: Json | null
+          abc_item_description?: string | null
+          abc_item_number?: string | null
+          abc_price?: number | null
+          abc_price_override_reason?: string | null
+          abc_price_source?: string | null
+          abc_price_timestamp?: string | null
+          abc_ship_to_number?: string | null
+          abc_uom?: string | null
           amount?: number | null
           id?: string
           item_description?: string | null
@@ -920,6 +940,16 @@ export type Database = {
           unit_price?: number | null
         }
         Update: {
+          abc_branch_number?: string | null
+          abc_catalog_payload?: Json | null
+          abc_item_description?: string | null
+          abc_item_number?: string | null
+          abc_price?: number | null
+          abc_price_override_reason?: string | null
+          abc_price_source?: string | null
+          abc_price_timestamp?: string | null
+          abc_ship_to_number?: string | null
+          abc_uom?: string | null
           amount?: number | null
           id?: string
           item_description?: string | null
@@ -952,6 +982,10 @@ export type Database = {
           currency: string | null
           delivery_requested_for: string | null
           id: string
+          is_sandbox_demo_fallback: boolean
+          jobsite_contact_email: string | null
+          jobsite_contact_name: string | null
+          jobsite_contact_phone: string | null
           order_number: string | null
           order_status: string | null
           ordered_on: string | null
@@ -974,6 +1008,10 @@ export type Database = {
           currency?: string | null
           delivery_requested_for?: string | null
           id?: string
+          is_sandbox_demo_fallback?: boolean
+          jobsite_contact_email?: string | null
+          jobsite_contact_name?: string | null
+          jobsite_contact_phone?: string | null
           order_number?: string | null
           order_status?: string | null
           ordered_on?: string | null
@@ -996,6 +1034,10 @@ export type Database = {
           currency?: string | null
           delivery_requested_for?: string | null
           id?: string
+          is_sandbox_demo_fallback?: boolean
+          jobsite_contact_email?: string | null
+          jobsite_contact_name?: string | null
+          jobsite_contact_phone?: string | null
           order_number?: string | null
           order_status?: string | null
           ordered_on?: string | null
