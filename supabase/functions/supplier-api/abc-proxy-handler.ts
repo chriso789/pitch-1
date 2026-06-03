@@ -456,7 +456,7 @@ export const handle = async (req) => {
       tenant_id = bodyTenantId;
     }
 
-    console.log("abc-api-proxy", { action: body.action, env, tenant_id, callerIsMaster });
+    console.log("abc-api-proxy", { action: body.action, env, tenant_id, callerIsMaster, hasAuthHeader: !!auth, authPrefix: auth ? auth.slice(0, 16) : null, userId });
 
 
 
