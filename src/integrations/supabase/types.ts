@@ -9756,6 +9756,69 @@ export type Database = {
           },
         ]
       }
+      contact_tags: {
+        Row: {
+          applied_at: string
+          applied_by: string | null
+          contact_id: string
+          created_at: string
+          id: string
+          metadata: Json
+          namespace: string | null
+          removed_at: string | null
+          source: string | null
+          source_ref: string | null
+          tag: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          applied_at?: string
+          applied_by?: string | null
+          contact_id: string
+          created_at?: string
+          id?: string
+          metadata?: Json
+          namespace?: string | null
+          removed_at?: string | null
+          source?: string | null
+          source_ref?: string | null
+          tag: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          applied_at?: string
+          applied_by?: string | null
+          contact_id?: string
+          created_at?: string
+          id?: string
+          metadata?: Json
+          namespace?: string | null
+          removed_at?: string | null
+          source?: string | null
+          source_ref?: string | null
+          tag?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contact_tags_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_tags_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+        ]
+      }
       contacts: {
         Row: {
           acquisition_cost: number | null
