@@ -52,6 +52,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { useQxoConnectionStatus } from '@/hooks/useQxoConnectionStatus';
 import { useToast } from '@/hooks/use-toast';
+import { useSupplierDeveloperMode } from '@/lib/supplierAccess';
 
 function StatusBadge({ state }: { state: string }) {
   switch (state) {
