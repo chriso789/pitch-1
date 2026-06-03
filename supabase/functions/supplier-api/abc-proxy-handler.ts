@@ -708,7 +708,7 @@ export const handle = async (req) => {
     const tok = action === "validate_payload_only"
       ? { token: "", error: undefined as string | undefined }
       : await getValidAccessToken(supabase, tenant_id!, env);
-    if (!tok.token) {
+    if (action !== "validate_payload_only" && !tok.token) {
       const code = tok.error === "not_connected" ? "not_connected" : "token_expired";
       return json({
         success: false,
