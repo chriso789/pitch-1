@@ -489,12 +489,32 @@ export function ABCConnectionSettings() {
   };
 
   const handleSubmitTestOrder = async () => {
-    if (!shipToNumber.trim() || !branchNumber.trim() || !itemNumber.trim()) {
+    if (!itemNumber.trim()) {
+      toast({ title: 'Missing item', description: 'Pick a real item from product search first.', variant: 'destructive' });
+      return;
+    }
+    if (!orderUom.trim()) {
+      toast({ title: 'Missing UOM', description: 'UOM must come from Product API for this item.', variant: 'destructive' });
+      return;
+    }
+    if (!jobsiteName.trim() || !jobsiteEmail.trim() || !jobsitePhone.trim()) {
       toast({
-        title: 'Missing inputs',
-        description: 'Ship-To, Branch, and a real Item Number from product search are required.',
+        title: 'Jobsite contact required',
+        description: 'ABC requires DC contact name, email, and phone on the order.',
         variant: 'destructive',
       });
+      return;
+    }
+    if (!sandboxDemoFallback && (!shipToNumber.trim() || !branchNumber.trim())) {
+      toast({
+        title: 'Ship-To/Branch required',
+        description: 'Enable sandbox demo fallback or fill Ship-To and Branch.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (overrideEnabled && (!overridePrice.trim() || !overrideReason.trim())) {
+      toast({ title: 'Override needs price and reason', variant: 'destructive' });
       return;
     }
     setSubmittingOrder(true);
@@ -502,9 +522,20 @@ export function ABCConnectionSettings() {
     setTrackResult(null);
     try {
       const data: any = await callProxy('submit_test_order', {
-        shipToNumber: shipToNumber.trim(),
-        branchNumber: branchNumber.trim(),
+        shipToNumber: shipToNumber.trim() || undefined,
+        branchNumber: branchNumber.trim() || undefined,
         itemNumber: itemNumber.trim(),
+        uom: orderUom.trim().toUpperCase(),
+        quantity: Number(orderQty) || 1,
+        jobsiteContact: {
+          name: jobsiteName.trim(),
+          email: jobsiteEmail.trim(),
+          phone: jobsitePhone.trim(),
+        },
+        sandboxDemo: sandboxDemoFallback,
+        priceOverride: overrideEnabled
+          ? { value: Number(overridePrice), reason: overrideReason.trim() }
+          : undefined,
       });
       setOrderResult(data);
       const friendly =
