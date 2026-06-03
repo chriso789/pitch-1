@@ -4,6 +4,10 @@ import { createRouter, jsonOk, jsonErr, requireAuth, requireTenant, serviceClien
 import { classifySurface } from "../_shared/measurement-mapping/classifier.ts";
 import { mapMeasurementsToTemplate } from "../_shared/measurement-mapping/mapper.ts";
 import type { SurfaceClass, FeatureType } from "../_shared/measurement-mapping/types.ts";
+import { runMeasurementSkill, getMeasurementSkillPipeline } from "../_shared/mskill/runner.ts";
+import { computeRequestHash } from "../_shared/mskill/artifacts.ts";
+import { MSKILL_REGISTRY } from "../_shared/mskill/registry.ts";
+import { bridgeSkillReportToRoofMeasurements } from "../_shared/mskill/bridge.ts";
 
 const app = createRouter("measurement-api");
 
