@@ -27417,6 +27417,1357 @@ export type Database = {
         }
         Relationships: []
       }
+      mskill_artifacts: {
+        Row: {
+          artifact_type: string
+          byte_size: number | null
+          created_at: string
+          id: string
+          is_stale: boolean
+          metadata: Json | null
+          mskill_job_id: string
+          mskill_request_id: string
+          mskill_run_id: string
+          request_hash: string
+          source_url: string | null
+          storage_path: string | null
+          tenant_id: string
+        }
+        Insert: {
+          artifact_type: string
+          byte_size?: number | null
+          created_at?: string
+          id?: string
+          is_stale?: boolean
+          metadata?: Json | null
+          mskill_job_id: string
+          mskill_request_id: string
+          mskill_run_id: string
+          request_hash: string
+          source_url?: string | null
+          storage_path?: string | null
+          tenant_id: string
+        }
+        Update: {
+          artifact_type?: string
+          byte_size?: number | null
+          created_at?: string
+          id?: string
+          is_stale?: boolean
+          metadata?: Json | null
+          mskill_job_id?: string
+          mskill_request_id?: string
+          mskill_run_id?: string
+          request_hash?: string
+          source_url?: string | null
+          storage_path?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mskill_artifacts_mskill_job_id_fkey"
+            columns: ["mskill_job_id"]
+            isOneToOne: false
+            referencedRelation: "mskill_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mskill_artifacts_mskill_request_id_fkey"
+            columns: ["mskill_request_id"]
+            isOneToOne: false
+            referencedRelation: "mskill_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mskill_artifacts_mskill_run_id_fkey"
+            columns: ["mskill_run_id"]
+            isOneToOne: false
+            referencedRelation: "mskill_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mskill_building_footprints: {
+        Row: {
+          area_sqft: number | null
+          confidence: number | null
+          created_at: string
+          geometry_geojson: Json
+          id: string
+          metadata: Json | null
+          mskill_request_id: string
+          parcel_id: string | null
+          provider_key: string | null
+          request_hash: string
+          tenant_id: string
+        }
+        Insert: {
+          area_sqft?: number | null
+          confidence?: number | null
+          created_at?: string
+          geometry_geojson: Json
+          id?: string
+          metadata?: Json | null
+          mskill_request_id: string
+          parcel_id?: string | null
+          provider_key?: string | null
+          request_hash: string
+          tenant_id: string
+        }
+        Update: {
+          area_sqft?: number | null
+          confidence?: number | null
+          created_at?: string
+          geometry_geojson?: Json
+          id?: string
+          metadata?: Json | null
+          mskill_request_id?: string
+          parcel_id?: string | null
+          provider_key?: string | null
+          request_hash?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mskill_building_footprints_mskill_request_id_fkey"
+            columns: ["mskill_request_id"]
+            isOneToOne: false
+            referencedRelation: "mskill_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mskill_building_footprints_parcel_id_fkey"
+            columns: ["parcel_id"]
+            isOneToOne: false
+            referencedRelation: "mskill_parcels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mskill_elevation_assets: {
+        Row: {
+          asset_type: string
+          created_at: string
+          id: string
+          metadata: Json | null
+          mskill_job_id: string
+          mskill_lidar_window_id: string | null
+          provider_key: string | null
+          request_hash: string
+          source_url: string | null
+          storage_path: string | null
+          supports_roof_geometry: boolean | null
+          tenant_id: string
+        }
+        Insert: {
+          asset_type: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          mskill_job_id: string
+          mskill_lidar_window_id?: string | null
+          provider_key?: string | null
+          request_hash: string
+          source_url?: string | null
+          storage_path?: string | null
+          supports_roof_geometry?: boolean | null
+          tenant_id: string
+        }
+        Update: {
+          asset_type?: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          mskill_job_id?: string
+          mskill_lidar_window_id?: string | null
+          provider_key?: string | null
+          request_hash?: string
+          source_url?: string | null
+          storage_path?: string | null
+          supports_roof_geometry?: boolean | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mskill_elevation_assets_mskill_job_id_fkey"
+            columns: ["mskill_job_id"]
+            isOneToOne: false
+            referencedRelation: "mskill_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mskill_elevation_assets_mskill_lidar_window_id_fkey"
+            columns: ["mskill_lidar_window_id"]
+            isOneToOne: false
+            referencedRelation: "mskill_lidar_windows"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mskill_geometry_status: {
+        Row: {
+          confidence_score: number | null
+          has_area: boolean | null
+          has_chm: boolean | null
+          has_dsm: boolean | null
+          has_dtm: boolean | null
+          has_footprint: boolean | null
+          has_lidar_coverage: boolean | null
+          has_parcel: boolean | null
+          has_pitch: boolean | null
+          has_planes: boolean | null
+          has_roof_edge: boolean | null
+          has_roof_points: boolean | null
+          has_segments: boolean | null
+          id: string
+          mskill_job_id: string
+          ready_for_bridge: boolean
+          request_hash: string
+          tenant_id: string
+          updated_at: string
+          validation_status: string | null
+        }
+        Insert: {
+          confidence_score?: number | null
+          has_area?: boolean | null
+          has_chm?: boolean | null
+          has_dsm?: boolean | null
+          has_dtm?: boolean | null
+          has_footprint?: boolean | null
+          has_lidar_coverage?: boolean | null
+          has_parcel?: boolean | null
+          has_pitch?: boolean | null
+          has_planes?: boolean | null
+          has_roof_edge?: boolean | null
+          has_roof_points?: boolean | null
+          has_segments?: boolean | null
+          id?: string
+          mskill_job_id: string
+          ready_for_bridge?: boolean
+          request_hash: string
+          tenant_id: string
+          updated_at?: string
+          validation_status?: string | null
+        }
+        Update: {
+          confidence_score?: number | null
+          has_area?: boolean | null
+          has_chm?: boolean | null
+          has_dsm?: boolean | null
+          has_dtm?: boolean | null
+          has_footprint?: boolean | null
+          has_lidar_coverage?: boolean | null
+          has_parcel?: boolean | null
+          has_pitch?: boolean | null
+          has_planes?: boolean | null
+          has_roof_edge?: boolean | null
+          has_roof_points?: boolean | null
+          has_segments?: boolean | null
+          id?: string
+          mskill_job_id?: string
+          ready_for_bridge?: boolean
+          request_hash?: string
+          tenant_id?: string
+          updated_at?: string
+          validation_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mskill_geometry_status_mskill_job_id_fkey"
+            columns: ["mskill_job_id"]
+            isOneToOne: true
+            referencedRelation: "mskill_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mskill_jobs: {
+        Row: {
+          blocked_reason: string | null
+          bridge_status: string
+          created_at: string
+          created_by: string | null
+          current_skill_key: string | null
+          id: string
+          metadata: Json | null
+          mskill_request_id: string
+          request_hash: string
+          status: string
+          target_roof_measurement_id: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          blocked_reason?: string | null
+          bridge_status?: string
+          created_at?: string
+          created_by?: string | null
+          current_skill_key?: string | null
+          id?: string
+          metadata?: Json | null
+          mskill_request_id: string
+          request_hash: string
+          status?: string
+          target_roof_measurement_id?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          blocked_reason?: string | null
+          bridge_status?: string
+          created_at?: string
+          created_by?: string | null
+          current_skill_key?: string | null
+          id?: string
+          metadata?: Json | null
+          mskill_request_id?: string
+          request_hash?: string
+          status?: string
+          target_roof_measurement_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mskill_jobs_mskill_request_id_fkey"
+            columns: ["mskill_request_id"]
+            isOneToOne: false
+            referencedRelation: "mskill_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mskill_lidar_assets: {
+        Row: {
+          asset_type: string
+          created_at: string
+          file_format: string | null
+          id: string
+          metadata: Json | null
+          mskill_lidar_window_id: string
+          request_hash: string
+          source_url: string | null
+          supports_roof_geometry: boolean | null
+          tenant_id: string
+        }
+        Insert: {
+          asset_type: string
+          created_at?: string
+          file_format?: string | null
+          id?: string
+          metadata?: Json | null
+          mskill_lidar_window_id: string
+          request_hash: string
+          source_url?: string | null
+          supports_roof_geometry?: boolean | null
+          tenant_id: string
+        }
+        Update: {
+          asset_type?: string
+          created_at?: string
+          file_format?: string | null
+          id?: string
+          metadata?: Json | null
+          mskill_lidar_window_id?: string
+          request_hash?: string
+          source_url?: string | null
+          supports_roof_geometry?: boolean | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mskill_lidar_assets_mskill_lidar_window_id_fkey"
+            columns: ["mskill_lidar_window_id"]
+            isOneToOne: false
+            referencedRelation: "mskill_lidar_windows"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mskill_lidar_windows: {
+        Row: {
+          aoi_geojson: Json
+          buffer_ft: number | null
+          coverage_metadata: Json | null
+          created_at: string
+          data_year: number | null
+          has_coverage: boolean | null
+          id: string
+          mskill_job_id: string
+          mskill_request_id: string
+          provider_key: string | null
+          request_hash: string
+          resolution_m: number | null
+          tenant_id: string
+        }
+        Insert: {
+          aoi_geojson: Json
+          buffer_ft?: number | null
+          coverage_metadata?: Json | null
+          created_at?: string
+          data_year?: number | null
+          has_coverage?: boolean | null
+          id?: string
+          mskill_job_id: string
+          mskill_request_id: string
+          provider_key?: string | null
+          request_hash: string
+          resolution_m?: number | null
+          tenant_id: string
+        }
+        Update: {
+          aoi_geojson?: Json
+          buffer_ft?: number | null
+          coverage_metadata?: Json | null
+          created_at?: string
+          data_year?: number | null
+          has_coverage?: boolean | null
+          id?: string
+          mskill_job_id?: string
+          mskill_request_id?: string
+          provider_key?: string | null
+          request_hash?: string
+          resolution_m?: number | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mskill_lidar_windows_mskill_job_id_fkey"
+            columns: ["mskill_job_id"]
+            isOneToOne: false
+            referencedRelation: "mskill_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mskill_lidar_windows_mskill_request_id_fkey"
+            columns: ["mskill_request_id"]
+            isOneToOne: false
+            referencedRelation: "mskill_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mskill_parcels: {
+        Row: {
+          address_match: boolean | null
+          confidence: number | null
+          county: string | null
+          created_at: string
+          external_id: string | null
+          geometry_geojson: Json
+          id: string
+          metadata: Json | null
+          mskill_request_id: string
+          owner_name: string | null
+          parcel_needs_review: boolean | null
+          provider_key: string | null
+          request_hash: string
+          situs_address: string | null
+          tenant_id: string
+        }
+        Insert: {
+          address_match?: boolean | null
+          confidence?: number | null
+          county?: string | null
+          created_at?: string
+          external_id?: string | null
+          geometry_geojson: Json
+          id?: string
+          metadata?: Json | null
+          mskill_request_id: string
+          owner_name?: string | null
+          parcel_needs_review?: boolean | null
+          provider_key?: string | null
+          request_hash: string
+          situs_address?: string | null
+          tenant_id: string
+        }
+        Update: {
+          address_match?: boolean | null
+          confidence?: number | null
+          county?: string | null
+          created_at?: string
+          external_id?: string | null
+          geometry_geojson?: Json
+          id?: string
+          metadata?: Json | null
+          mskill_request_id?: string
+          owner_name?: string | null
+          parcel_needs_review?: boolean | null
+          provider_key?: string | null
+          request_hash?: string
+          situs_address?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mskill_parcels_mskill_request_id_fkey"
+            columns: ["mskill_request_id"]
+            isOneToOne: false
+            referencedRelation: "mskill_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mskill_pipeline_bridges: {
+        Row: {
+          bridge_status: string
+          confidence_score: number | null
+          created_at: string
+          error_message: string | null
+          exported_payload: Json | null
+          id: string
+          mskill_job_id: string
+          mskill_request_id: string
+          request_hash: string
+          source_pipeline: string
+          target_record_id: string | null
+          target_table: string
+          tenant_id: string
+          updated_at: string
+          validation_status: string | null
+        }
+        Insert: {
+          bridge_status?: string
+          confidence_score?: number | null
+          created_at?: string
+          error_message?: string | null
+          exported_payload?: Json | null
+          id?: string
+          mskill_job_id: string
+          mskill_request_id: string
+          request_hash: string
+          source_pipeline?: string
+          target_record_id?: string | null
+          target_table?: string
+          tenant_id: string
+          updated_at?: string
+          validation_status?: string | null
+        }
+        Update: {
+          bridge_status?: string
+          confidence_score?: number | null
+          created_at?: string
+          error_message?: string | null
+          exported_payload?: Json | null
+          id?: string
+          mskill_job_id?: string
+          mskill_request_id?: string
+          request_hash?: string
+          source_pipeline?: string
+          target_record_id?: string | null
+          target_table?: string
+          tenant_id?: string
+          updated_at?: string
+          validation_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mskill_pipeline_bridges_mskill_job_id_fkey"
+            columns: ["mskill_job_id"]
+            isOneToOne: false
+            referencedRelation: "mskill_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mskill_pipeline_bridges_mskill_request_id_fkey"
+            columns: ["mskill_request_id"]
+            isOneToOne: false
+            referencedRelation: "mskill_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mskill_plane_candidates: {
+        Row: {
+          area_2d_sqft: number | null
+          area_slope_sqft: number | null
+          confidence: number | null
+          created_at: string
+          facet_index: number | null
+          id: string
+          metadata: Json | null
+          mskill_job_id: string
+          pitch_degrees: number | null
+          pitch_rise_over_12: number | null
+          plane_equation: Json | null
+          plane_normal: Json | null
+          plane_rmse: number | null
+          polygon_geojson: Json | null
+          request_hash: string
+          tenant_id: string
+        }
+        Insert: {
+          area_2d_sqft?: number | null
+          area_slope_sqft?: number | null
+          confidence?: number | null
+          created_at?: string
+          facet_index?: number | null
+          id?: string
+          metadata?: Json | null
+          mskill_job_id: string
+          pitch_degrees?: number | null
+          pitch_rise_over_12?: number | null
+          plane_equation?: Json | null
+          plane_normal?: Json | null
+          plane_rmse?: number | null
+          polygon_geojson?: Json | null
+          request_hash: string
+          tenant_id: string
+        }
+        Update: {
+          area_2d_sqft?: number | null
+          area_slope_sqft?: number | null
+          confidence?: number | null
+          created_at?: string
+          facet_index?: number | null
+          id?: string
+          metadata?: Json | null
+          mskill_job_id?: string
+          pitch_degrees?: number | null
+          pitch_rise_over_12?: number | null
+          plane_equation?: Json | null
+          plane_normal?: Json | null
+          plane_rmse?: number | null
+          polygon_geojson?: Json | null
+          request_hash?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mskill_plane_candidates_mskill_job_id_fkey"
+            columns: ["mskill_job_id"]
+            isOneToOne: false
+            referencedRelation: "mskill_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mskill_point_jobs: {
+        Row: {
+          bounds_geojson: Json | null
+          created_at: string
+          crs: string | null
+          id: string
+          metadata: Json | null
+          mskill_job_id: string
+          point_count: number | null
+          point_density: number | null
+          request_hash: string
+          status: string
+          storage_path: string | null
+          tenant_id: string
+        }
+        Insert: {
+          bounds_geojson?: Json | null
+          created_at?: string
+          crs?: string | null
+          id?: string
+          metadata?: Json | null
+          mskill_job_id: string
+          point_count?: number | null
+          point_density?: number | null
+          request_hash: string
+          status?: string
+          storage_path?: string | null
+          tenant_id: string
+        }
+        Update: {
+          bounds_geojson?: Json | null
+          created_at?: string
+          crs?: string | null
+          id?: string
+          metadata?: Json | null
+          mskill_job_id?: string
+          point_count?: number | null
+          point_density?: number | null
+          request_hash?: string
+          status?: string
+          storage_path?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mskill_point_jobs_mskill_job_id_fkey"
+            columns: ["mskill_job_id"]
+            isOneToOne: false
+            referencedRelation: "mskill_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mskill_provider_coverage: {
+        Row: {
+          asset_type: string | null
+          county: string | null
+          coverage_geojson: Json | null
+          created_at: string
+          data_year: number | null
+          id: string
+          metadata: Json | null
+          provider_key: string
+          resolution_m: number | null
+          source_url: string | null
+          state: string | null
+        }
+        Insert: {
+          asset_type?: string | null
+          county?: string | null
+          coverage_geojson?: Json | null
+          created_at?: string
+          data_year?: number | null
+          id?: string
+          metadata?: Json | null
+          provider_key: string
+          resolution_m?: number | null
+          source_url?: string | null
+          state?: string | null
+        }
+        Update: {
+          asset_type?: string | null
+          county?: string | null
+          coverage_geojson?: Json | null
+          created_at?: string
+          data_year?: number | null
+          id?: string
+          metadata?: Json | null
+          provider_key?: string
+          resolution_m?: number | null
+          source_url?: string | null
+          state?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mskill_provider_coverage_provider_key_fkey"
+            columns: ["provider_key"]
+            isOneToOne: false
+            referencedRelation: "mskill_provider_sources"
+            referencedColumns: ["provider_key"]
+          },
+        ]
+      }
+      mskill_provider_sources: {
+        Row: {
+          base_url: string | null
+          category: string
+          created_at: string
+          display_name: string
+          id: string
+          is_enabled: boolean
+          metadata: Json | null
+          provider_key: string
+          requires_paid_toggle: boolean
+          scope: string
+          updated_at: string
+        }
+        Insert: {
+          base_url?: string | null
+          category: string
+          created_at?: string
+          display_name: string
+          id?: string
+          is_enabled?: boolean
+          metadata?: Json | null
+          provider_key: string
+          requires_paid_toggle?: boolean
+          scope: string
+          updated_at?: string
+        }
+        Update: {
+          base_url?: string | null
+          category?: string
+          created_at?: string
+          display_name?: string
+          id?: string
+          is_enabled?: boolean
+          metadata?: Json | null
+          provider_key?: string
+          requires_paid_toggle?: boolean
+          scope?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      mskill_provider_sync_logs: {
+        Row: {
+          created_at: string
+          id: string
+          message: string | null
+          metadata: Json | null
+          provider_key: string
+          sync_status: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message?: string | null
+          metadata?: Json | null
+          provider_key: string
+          sync_status: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message?: string | null
+          metadata?: Json | null
+          provider_key?: string
+          sync_status?: string
+        }
+        Relationships: []
+      }
+      mskill_registry: {
+        Row: {
+          category: string
+          created_at: string
+          dependencies: string[]
+          display_name: string
+          execution_target: string
+          id: string
+          is_active: boolean
+          pass_gate: Json | null
+          pipeline_order: number
+          produced_outputs: Json
+          required_inputs: Json
+          skill_key: string
+          strength: string | null
+          updated_at: string
+          version: string
+          worker_endpoint: string | null
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          dependencies?: string[]
+          display_name: string
+          execution_target: string
+          id?: string
+          is_active?: boolean
+          pass_gate?: Json | null
+          pipeline_order: number
+          produced_outputs?: Json
+          required_inputs?: Json
+          skill_key: string
+          strength?: string | null
+          updated_at?: string
+          version?: string
+          worker_endpoint?: string | null
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          dependencies?: string[]
+          display_name?: string
+          execution_target?: string
+          id?: string
+          is_active?: boolean
+          pass_gate?: Json | null
+          pipeline_order?: number
+          produced_outputs?: Json
+          required_inputs?: Json
+          skill_key?: string
+          strength?: string | null
+          updated_at?: string
+          version?: string
+          worker_endpoint?: string | null
+        }
+        Relationships: []
+      }
+      mskill_report_artifacts: {
+        Row: {
+          artifact_type: string
+          created_at: string
+          id: string
+          metadata: Json | null
+          mskill_job_id: string
+          request_hash: string
+          source_url: string | null
+          storage_path: string | null
+          tenant_id: string
+        }
+        Insert: {
+          artifact_type: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          mskill_job_id: string
+          request_hash: string
+          source_url?: string | null
+          storage_path?: string | null
+          tenant_id: string
+        }
+        Update: {
+          artifact_type?: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          mskill_job_id?: string
+          request_hash?: string
+          source_url?: string | null
+          storage_path?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mskill_report_artifacts_mskill_job_id_fkey"
+            columns: ["mskill_job_id"]
+            isOneToOne: false
+            referencedRelation: "mskill_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mskill_requests: {
+        Row: {
+          contact_id: string | null
+          county: string | null
+          created_at: string
+          created_by: string | null
+          geocode_location_type: string | null
+          google_place_id: string | null
+          id: string
+          input_address: string
+          lat: number | null
+          lead_id: string | null
+          lon: number | null
+          metadata: Json | null
+          normalized_address: string | null
+          partial_match: boolean | null
+          request_hash: string
+          status: string
+          status_reason: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          contact_id?: string | null
+          county?: string | null
+          created_at?: string
+          created_by?: string | null
+          geocode_location_type?: string | null
+          google_place_id?: string | null
+          id?: string
+          input_address: string
+          lat?: number | null
+          lead_id?: string | null
+          lon?: number | null
+          metadata?: Json | null
+          normalized_address?: string | null
+          partial_match?: boolean | null
+          request_hash: string
+          status?: string
+          status_reason?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          contact_id?: string | null
+          county?: string | null
+          created_at?: string
+          created_by?: string | null
+          geocode_location_type?: string | null
+          google_place_id?: string | null
+          id?: string
+          input_address?: string
+          lat?: number | null
+          lead_id?: string | null
+          lon?: number | null
+          metadata?: Json | null
+          normalized_address?: string | null
+          partial_match?: boolean | null
+          request_hash?: string
+          status?: string
+          status_reason?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      mskill_roof_edge_candidates: {
+        Row: {
+          area_delta_sqft: number | null
+          area_sqft: number | null
+          building_footprint_id: string | null
+          confidence: number | null
+          created_at: string
+          geometry_geojson: Json
+          id: string
+          is_selected: boolean
+          metadata: Json | null
+          mskill_job_id: string
+          mskill_request_id: string
+          offset_ft: number
+          perimeter_ft: number | null
+          request_hash: string
+          source_type: string
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          area_delta_sqft?: number | null
+          area_sqft?: number | null
+          building_footprint_id?: string | null
+          confidence?: number | null
+          created_at?: string
+          geometry_geojson: Json
+          id?: string
+          is_selected?: boolean
+          metadata?: Json | null
+          mskill_job_id: string
+          mskill_request_id: string
+          offset_ft: number
+          perimeter_ft?: number | null
+          request_hash: string
+          source_type?: string
+          status?: string
+          tenant_id: string
+        }
+        Update: {
+          area_delta_sqft?: number | null
+          area_sqft?: number | null
+          building_footprint_id?: string | null
+          confidence?: number | null
+          created_at?: string
+          geometry_geojson?: Json
+          id?: string
+          is_selected?: boolean
+          metadata?: Json | null
+          mskill_job_id?: string
+          mskill_request_id?: string
+          offset_ft?: number
+          perimeter_ft?: number | null
+          request_hash?: string
+          source_type?: string
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mskill_roof_edge_candidates_building_footprint_id_fkey"
+            columns: ["building_footprint_id"]
+            isOneToOne: false
+            referencedRelation: "mskill_building_footprints"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mskill_roof_edge_candidates_mskill_job_id_fkey"
+            columns: ["mskill_job_id"]
+            isOneToOne: false
+            referencedRelation: "mskill_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mskill_roof_edge_candidates_mskill_request_id_fkey"
+            columns: ["mskill_request_id"]
+            isOneToOne: false
+            referencedRelation: "mskill_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mskill_roof_surface_assets: {
+        Row: {
+          asset_type: string
+          blocking_reason: string | null
+          byte_size: number | null
+          created_at: string
+          file_format: string | null
+          id: string
+          metadata: Json | null
+          mskill_job_id: string
+          provider_key: string | null
+          request_hash: string
+          requires_internal_worker: boolean
+          source_url: string | null
+          status: string
+          storage_path: string | null
+          tenant_id: string
+        }
+        Insert: {
+          asset_type: string
+          blocking_reason?: string | null
+          byte_size?: number | null
+          created_at?: string
+          file_format?: string | null
+          id?: string
+          metadata?: Json | null
+          mskill_job_id: string
+          provider_key?: string | null
+          request_hash: string
+          requires_internal_worker?: boolean
+          source_url?: string | null
+          status?: string
+          storage_path?: string | null
+          tenant_id: string
+        }
+        Update: {
+          asset_type?: string
+          blocking_reason?: string | null
+          byte_size?: number | null
+          created_at?: string
+          file_format?: string | null
+          id?: string
+          metadata?: Json | null
+          mskill_job_id?: string
+          provider_key?: string | null
+          request_hash?: string
+          requires_internal_worker?: boolean
+          source_url?: string | null
+          status?: string
+          storage_path?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mskill_roof_surface_assets_mskill_job_id_fkey"
+            columns: ["mskill_job_id"]
+            isOneToOne: false
+            referencedRelation: "mskill_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mskill_runs: {
+        Row: {
+          blocking_reason: string | null
+          created_at: string
+          duration_ms: number | null
+          error_message: string | null
+          execution_target: string
+          finished_at: string | null
+          id: string
+          input_payload: Json | null
+          mskill_job_id: string
+          mskill_request_id: string
+          output_payload: Json | null
+          request_hash: string
+          skill_key: string
+          skill_version: string | null
+          started_at: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+          worker_id: string | null
+          worker_job_ref: string | null
+        }
+        Insert: {
+          blocking_reason?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          error_message?: string | null
+          execution_target: string
+          finished_at?: string | null
+          id?: string
+          input_payload?: Json | null
+          mskill_job_id: string
+          mskill_request_id: string
+          output_payload?: Json | null
+          request_hash: string
+          skill_key: string
+          skill_version?: string | null
+          started_at?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+          worker_id?: string | null
+          worker_job_ref?: string | null
+        }
+        Update: {
+          blocking_reason?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          error_message?: string | null
+          execution_target?: string
+          finished_at?: string | null
+          id?: string
+          input_payload?: Json | null
+          mskill_job_id?: string
+          mskill_request_id?: string
+          output_payload?: Json | null
+          request_hash?: string
+          skill_key?: string
+          skill_version?: string | null
+          started_at?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+          worker_id?: string | null
+          worker_job_ref?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mskill_runs_mskill_job_id_fkey"
+            columns: ["mskill_job_id"]
+            isOneToOne: false
+            referencedRelation: "mskill_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mskill_runs_mskill_request_id_fkey"
+            columns: ["mskill_request_id"]
+            isOneToOne: false
+            referencedRelation: "mskill_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mskill_segments: {
+        Row: {
+          confidence: number | null
+          created_at: string
+          end_point: Json | null
+          id: string
+          length_ft: number | null
+          metadata: Json | null
+          mskill_job_id: string
+          request_hash: string
+          segment_type: string
+          start_point: Json | null
+          tenant_id: string
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string
+          end_point?: Json | null
+          id?: string
+          length_ft?: number | null
+          metadata?: Json | null
+          mskill_job_id: string
+          request_hash: string
+          segment_type: string
+          start_point?: Json | null
+          tenant_id: string
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string
+          end_point?: Json | null
+          id?: string
+          length_ft?: number | null
+          metadata?: Json | null
+          mskill_job_id?: string
+          request_hash?: string
+          segment_type?: string
+          start_point?: Json | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mskill_segments_mskill_job_id_fkey"
+            columns: ["mskill_job_id"]
+            isOneToOne: false
+            referencedRelation: "mskill_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mskill_surface_processing_jobs: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          finished_at: string | null
+          id: string
+          input_payload: Json | null
+          job_type: string
+          mskill_job_id: string
+          mskill_roof_surface_asset_id: string | null
+          output_payload: Json | null
+          request_hash: string
+          started_at: string | null
+          status: string
+          tenant_id: string
+          worker_id: string | null
+          worker_job_ref: string | null
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          input_payload?: Json | null
+          job_type: string
+          mskill_job_id: string
+          mskill_roof_surface_asset_id?: string | null
+          output_payload?: Json | null
+          request_hash: string
+          started_at?: string | null
+          status?: string
+          tenant_id: string
+          worker_id?: string | null
+          worker_job_ref?: string | null
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          input_payload?: Json | null
+          job_type?: string
+          mskill_job_id?: string
+          mskill_roof_surface_asset_id?: string | null
+          output_payload?: Json | null
+          request_hash?: string
+          started_at?: string | null
+          status?: string
+          tenant_id?: string
+          worker_id?: string | null
+          worker_job_ref?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mskill_surface_processing_job_mskill_roof_surface_asset_id_fkey"
+            columns: ["mskill_roof_surface_asset_id"]
+            isOneToOne: false
+            referencedRelation: "mskill_roof_surface_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mskill_surface_processing_jobs_mskill_job_id_fkey"
+            columns: ["mskill_job_id"]
+            isOneToOne: false
+            referencedRelation: "mskill_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mskill_workers: {
+        Row: {
+          base_url: string
+          capabilities: Json | null
+          created_at: string
+          display_name: string
+          id: string
+          is_online: boolean
+          last_health_check: string | null
+          metadata: Json | null
+          updated_at: string
+          worker_key: string
+        }
+        Insert: {
+          base_url: string
+          capabilities?: Json | null
+          created_at?: string
+          display_name: string
+          id?: string
+          is_online?: boolean
+          last_health_check?: string | null
+          metadata?: Json | null
+          updated_at?: string
+          worker_key: string
+        }
+        Update: {
+          base_url?: string
+          capabilities?: Json | null
+          created_at?: string
+          display_name?: string
+          id?: string
+          is_online?: boolean
+          last_health_check?: string | null
+          metadata?: Json | null
+          updated_at?: string
+          worker_key?: string
+        }
+        Relationships: []
+      }
       neighborhood_patterns: {
         Row: {
           average_area_sqft: number | null

@@ -4,6 +4,10 @@ import { createRouter, jsonOk, jsonErr, requireAuth, requireTenant, serviceClien
 import { classifySurface } from "../_shared/measurement-mapping/classifier.ts";
 import { mapMeasurementsToTemplate } from "../_shared/measurement-mapping/mapper.ts";
 import type { SurfaceClass, FeatureType } from "../_shared/measurement-mapping/types.ts";
+import { runMeasurementSkill, getMeasurementSkillPipeline } from "../_shared/mskill/runner.ts";
+import { computeRequestHash } from "../_shared/mskill/artifacts.ts";
+import { MSKILL_REGISTRY } from "../_shared/mskill/registry.ts";
+import { bridgeSkillReportToRoofMeasurements } from "../_shared/mskill/bridge.ts";
 
 const app = createRouter("measurement-api");
 
@@ -274,5 +278,123 @@ app.post("/estimate-templates/:id/map-measurements", async (c) => {
   return jsonOk(c, { ...result, dry_run: dryRun, mapping_run_id: mappingRunId });
 });
 
+// ============================================================================
+// PITCH Measure — Internal Skill Pipeline routes
+// ============================================================================
+
+app.post("/mskill/skills/list", (c) => {
+  return jsonOk(c, { skills: MSKILL_REGISTRY });
+});
+app.get("/mskill/skills/list", (c) => {
+  return jsonOk(c, { skills: MSKILL_REGISTRY });
+});
+
+app.post("/mskill/jobs/create", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const userId = c.get("userId")!;
+  const body = await c.req.json().catch(() => ({}));
+  const inputAddress = String(body.input_address ?? "").trim();
+  if (!inputAddress) return jsonErr(c, "bad_request", "input_address required", 400);
+  const svc = serviceClient();
+
+  const initialHash = await computeRequestHash({ input_address: inputAddress });
+  const { data: request, error: reqErr } = await svc.from("mskill_requests").insert({
+    tenant_id: tenantId,
+    created_by: userId,
+    input_address: inputAddress,
+    request_hash: initialHash,
+    status: "pending",
+    contact_id: body.contact_id ?? null,
+    lead_id: body.lead_id ?? null,
+  }).select("id, request_hash").single();
+  if (reqErr || !request) return jsonErr(c, "insert_failed", reqErr?.message ?? "request insert failed", 500);
+
+  const { data: job, error: jobErr } = await svc.from("mskill_jobs").insert({
+    tenant_id: tenantId,
+    mskill_request_id: request.id,
+    request_hash: request.request_hash,
+    status: "pending",
+    created_by: userId,
+  }).select("id").single();
+  if (jobErr || !job) return jsonErr(c, "insert_failed", jobErr?.message ?? "job insert failed", 500);
+
+  return jsonOk(c, { mskill_request_id: request.id, mskill_job_id: job.id, request_hash: request.request_hash });
+});
+
+app.post("/mskill/jobs/get", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const body = await c.req.json().catch(() => ({}));
+  const jobId = String(body.mskill_job_id ?? body.jobId ?? c.req.query("jobId") ?? "");
+  if (!jobId) return jsonErr(c, "bad_request", "mskill_job_id required", 400);
+  const svc = serviceClient();
+  const { data: job } = await svc.from("mskill_jobs").select("*").eq("id", jobId).eq("tenant_id", tenantId).maybeSingle();
+  if (!job) return jsonErr(c, "not_found", "job not found", 404);
+  const { data: request } = await svc.from("mskill_requests").select("*").eq("id", job.mskill_request_id).maybeSingle();
+  const { data: geo } = await svc.from("mskill_geometry_status").select("*").eq("mskill_job_id", jobId).maybeSingle();
+  const { data: bridge } = await svc.from("mskill_pipeline_bridges").select("*").eq("mskill_job_id", jobId).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  return jsonOk(c, { job, request, geometry_status: geo, bridge });
+});
+
+app.post("/mskill/skills/pipeline", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const body = await c.req.json().catch(() => ({}));
+  const jobId = String(body.mskill_job_id ?? body.jobId ?? c.req.query("jobId") ?? "");
+  if (!jobId) return jsonErr(c, "bad_request", "mskill_job_id required", 400);
+  const svc = serviceClient();
+  const { data: job } = await svc.from("mskill_jobs").select("id, tenant_id").eq("id", jobId).maybeSingle();
+  if (!job || job.tenant_id !== tenantId) return jsonErr(c, "not_found", "job not found", 404);
+  const pipeline = await getMeasurementSkillPipeline(svc, jobId);
+  return jsonOk(c, { pipeline });
+});
+
+app.post("/mskill/skills/run", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const userId = c.get("userId")!;
+  const body = await c.req.json().catch(() => ({}));
+  const jobId = String(body.mskill_job_id ?? body.jobId ?? "");
+  const skillKey = String(body.skill_key ?? "");
+  if (!jobId || !skillKey) return jsonErr(c, "bad_request", "mskill_job_id + skill_key required", 400);
+  const svc = serviceClient();
+  const { data: job } = await svc.from("mskill_jobs").select("id, tenant_id").eq("id", jobId).maybeSingle();
+  if (!job || job.tenant_id !== tenantId) return jsonErr(c, "not_found", "job not found", 404);
+  const result = await runMeasurementSkill({ svc, tenant_id: tenantId, user_id: userId }, { mskill_job_id: jobId, skill_key: skillKey });
+  return jsonOk(c, result);
+});
+
+app.get("/mskill/skills/run-status", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const runId = c.req.query("runId");
+  if (!runId) return jsonErr(c, "bad_request", "runId required", 400);
+  const svc = serviceClient();
+  const { data: run } = await svc.from("mskill_runs").select("*").eq("id", runId).eq("tenant_id", tenantId).maybeSingle();
+  if (!run) return jsonErr(c, "not_found", "run not found", 404);
+  const { data: artifacts } = await svc.from("mskill_artifacts").select("*").eq("mskill_run_id", runId);
+  return jsonOk(c, { run, artifacts });
+});
+
+app.post("/mskill/skills/retry", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const userId = c.get("userId")!;
+  const body = await c.req.json().catch(() => ({}));
+  const runId = String(body.runId ?? body.skill_run_id ?? "");
+  if (!runId) return jsonErr(c, "bad_request", "runId required", 400);
+  const svc = serviceClient();
+  const { data: run } = await svc.from("mskill_runs").select("*").eq("id", runId).eq("tenant_id", tenantId).maybeSingle();
+  if (!run) return jsonErr(c, "not_found", "run not found", 404);
+  const result = await runMeasurementSkill({ svc, tenant_id: tenantId, user_id: userId }, { mskill_job_id: run.mskill_job_id, skill_key: run.skill_key });
+  return jsonOk(c, result);
+});
+
+app.post("/mskill/jobs/bridge", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const body = await c.req.json().catch(() => ({}));
+  const jobId = String(body.mskill_job_id ?? body.jobId ?? "");
+  if (!jobId) return jsonErr(c, "bad_request", "mskill_job_id required", 400);
+  const svc = serviceClient();
+  const result = await bridgeSkillReportToRoofMeasurements(svc, { tenant_id: tenantId, mskill_job_id: jobId });
+  return jsonOk(c, result);
+});
+
 serveRouter(app);
+
 
