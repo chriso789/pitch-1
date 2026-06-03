@@ -1,0 +1,1 @@
+UPDATE public.tenants SET brand_tagline = 'LICENSED CCC1335947 • SERVING FLORIDA' WHERE id = '14de934e-7964-4afd-940a-620d2ace125d';
