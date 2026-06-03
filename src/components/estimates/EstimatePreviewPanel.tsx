@@ -243,6 +243,12 @@ export function EstimatePreviewPanel({
   const [selectedUploadedPhotoId, setSelectedUploadedPhotoId] = useState<string | null>(null);
   const [streetViewUrl, setStreetViewUrl] = useState<string | null>(null);
   const [aerialUrl, setAerialUrl] = useState<string | null>(null);
+  const [streetViewAvailable, setStreetViewAvailable] = useState(false);
+  const [streetHeading, setStreetHeading] = useState<number>(0);
+  const [streetPitch, setStreetPitch] = useState<number>(0);
+  const [streetFov, setStreetFov] = useState<number>(90);
+  const [aerialZoom, setAerialZoom] = useState<number>(19);
+  const [aerialHeading, setAerialHeading] = useState<number>(0);
   const [propertyCoords, setPropertyCoords] = useState<{ lat: number; lng: number } | null>(null);
   const { apiKey: googleMapsApiKey } = useGoogleMapsToken();
 
