@@ -59,6 +59,11 @@ export interface PDFComponentOptions {
   // Cover Page
   showCoverPage: boolean;
   coverPagePropertyPhoto?: string;
+
+  // AI Customer-Friendly Scope Narrative (replaces the technical line-item list
+  // with an easy-to-read prose breakdown of the project process)
+  useScopeNarrative?: boolean;
+  scopeNarrative?: string;
 }
 
 export type PDFViewMode = 'customer' | 'internal';
