@@ -82,6 +82,7 @@ function StatusBadge({ state }: { state: string }) {
 export function QxoTenantConnectCard() {
   const tenantId = useEffectiveTenantId();
   const status = useQxoConnectionStatus();
+  const { canEnterAdvancedConnectFields } = useSupplierDeveloperMode();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
