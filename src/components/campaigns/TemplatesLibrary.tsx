@@ -416,7 +416,7 @@ export const TemplatesLibrary: React.FC = () => {
                                     </span>
                                   </div>
                                   <div className="grid gap-2 md:grid-cols-2">
-                                    {items.map((t, i) => renderTemplateCard(t, isFollowup ? i : undefined))}
+                                    {items.map((t, i) => renderTemplateCard(t, { index: isFollowup ? i : undefined, isFollowup }))}
                                   </div>
                                 </div>
                               );
