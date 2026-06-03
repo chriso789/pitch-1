@@ -248,7 +248,8 @@ export function EstimatePreviewPanel({
   const [streetPitch, setStreetPitch] = useState<number>(0);
   const [streetFov, setStreetFov] = useState<number>(90);
   const [aerialZoom, setAerialZoom] = useState<number>(19);
-  const [aerialHeading, setAerialHeading] = useState<number>(0);
+  const [aerialPanX, setAerialPanX] = useState<number>(0); // east(+)/west(-) offset in lng degrees * 10000
+  const [aerialPanY, setAerialPanY] = useState<number>(0); // north(+)/south(-) offset in lat degrees * 10000
   const [propertyCoords, setPropertyCoords] = useState<{ lat: number; lng: number } | null>(null);
   const { apiKey: googleMapsApiKey } = useGoogleMapsToken();
 
@@ -483,8 +484,10 @@ export function EstimatePreviewPanel({
     if (!open || !contactId) return;
     const fetchAerialUrl = async () => {
       if (propertyCoords && googleMapsApiKey) {
+        const centerLat = propertyCoords.lat + aerialPanY / 10000;
+        const centerLng = propertyCoords.lng + aerialPanX / 10000;
         setAerialUrl(
-          `https://maps.googleapis.com/maps/api/staticmap?center=${propertyCoords.lat},${propertyCoords.lng}&zoom=${aerialZoom}&size=800x400&maptype=satellite&scale=2&heading=${aerialHeading}&key=${googleMapsApiKey}`
+          `https://maps.googleapis.com/maps/api/staticmap?center=${centerLat},${centerLng}&zoom=${aerialZoom}&size=800x400&maptype=satellite&scale=2&key=${googleMapsApiKey}`
         );
         return;
       }
@@ -499,7 +502,7 @@ export function EstimatePreviewPanel({
       if (url) setAerialUrl(url);
     };
     fetchAerialUrl();
-  }, [open, contactId, propertyCoords, googleMapsApiKey, aerialZoom, aerialHeading]);
+  }, [open, contactId, propertyCoords, googleMapsApiKey, aerialZoom, aerialPanX, aerialPanY]);
 
   // Auto-default cover photo source — prefer uploaded > street view (only if
   // imagery actually exists) > aerial. If street view becomes unavailable
@@ -1437,7 +1440,7 @@ export function EstimatePreviewPanel({
                               <button
                                 type="button"
                                 className="text-[10px] text-muted-foreground hover:text-foreground underline"
-                                onClick={() => { setAerialZoom(19); setAerialHeading(0); }}
+                                onClick={() => { setAerialZoom(19); setAerialPanX(0); setAerialPanY(0); }}
                               >
                                 Reset
                               </button>
@@ -1447,8 +1450,12 @@ export function EstimatePreviewPanel({
                               <Slider value={[aerialZoom]} min={17} max={21} step={1} onValueChange={(v) => setAerialZoom(v[0])} />
                             </div>
                             <div>
-                              <div className="flex justify-between text-[10px] text-muted-foreground"><span>Rotate</span><span>{aerialHeading}°</span></div>
-                              <Slider value={[aerialHeading]} min={0} max={360} step={5} onValueChange={(v) => setAerialHeading(v[0])} />
+                              <div className="flex justify-between text-[10px] text-muted-foreground"><span>Pan ←→</span><span>{aerialPanX}</span></div>
+                              <Slider value={[aerialPanX]} min={-50} max={50} step={1} onValueChange={(v) => setAerialPanX(v[0])} />
+                            </div>
+                            <div>
+                              <div className="flex justify-between text-[10px] text-muted-foreground"><span>Pan ↑↓</span><span>{aerialPanY}</span></div>
+                              <Slider value={[aerialPanY]} min={-50} max={50} step={1} onValueChange={(v) => setAerialPanY(v[0])} />
                             </div>
                           </div>
                         )}
