@@ -452,26 +452,42 @@ export function EstimatePreviewPanel({
         const meta = await resp.json();
         if (cancelled) return;
         if (meta.status === 'OK') {
-          setStreetViewUrl(
-            `https://maps.googleapis.com/maps/api/streetview?size=800x400&location=${propertyCoords.lat},${propertyCoords.lng}&key=${googleMapsApiKey}`
-          );
+          setStreetViewAvailable(true);
         } else {
-          // No street view imagery available — clear so aerial wins.
+          setStreetViewAvailable(false);
           setStreetViewUrl(null);
         }
       } catch (err) {
         console.warn('Street View metadata check failed:', err);
-        if (!cancelled) setStreetViewUrl(null);
+        if (!cancelled) {
+          setStreetViewAvailable(false);
+          setStreetViewUrl(null);
+        }
       }
     };
     checkAndSet();
     return () => { cancelled = true; };
   }, [propertyCoords, googleMapsApiKey]);
 
-  // Fetch aerial URL from roof_measurements, fallback to Google Static Maps
+  // Build adjustable Street View URL from coords + heading/pitch/fov.
+  useEffect(() => {
+    if (!streetViewAvailable || !propertyCoords || !googleMapsApiKey) return;
+    setStreetViewUrl(
+      `https://maps.googleapis.com/maps/api/streetview?size=800x400&location=${propertyCoords.lat},${propertyCoords.lng}&heading=${streetHeading}&pitch=${streetPitch}&fov=${streetFov}&key=${googleMapsApiKey}`
+    );
+  }, [streetViewAvailable, propertyCoords, googleMapsApiKey, streetHeading, streetPitch, streetFov]);
+
+  // Fetch aerial URL: prefer adjustable Google Static Maps (when coords+key present),
+  // otherwise fall back to persisted roof_measurements image.
   useEffect(() => {
     if (!open || !contactId) return;
     const fetchAerialUrl = async () => {
+      if (propertyCoords && googleMapsApiKey) {
+        setAerialUrl(
+          `https://maps.googleapis.com/maps/api/staticmap?center=${propertyCoords.lat},${propertyCoords.lng}&zoom=${aerialZoom}&size=800x400&maptype=satellite&scale=2&heading=${aerialHeading}&key=${googleMapsApiKey}`
+        );
+        return;
+      }
       const { data } = await supabase
         .from('roof_measurements')
         .select('google_maps_image_url, mapbox_image_url')
@@ -480,19 +496,10 @@ export function EstimatePreviewPanel({
         .limit(1)
         .maybeSingle();
       const url = data?.google_maps_image_url || data?.mapbox_image_url;
-      if (url) {
-        setAerialUrl(url);
-        return;
-      }
-      // Fallback: generate aerial from coords via Google Static Maps
-      if (propertyCoords && googleMapsApiKey) {
-        setAerialUrl(
-          `https://maps.googleapis.com/maps/api/staticmap?center=${propertyCoords.lat},${propertyCoords.lng}&zoom=19&size=800x400&maptype=satellite&key=${googleMapsApiKey}`
-        );
-      }
+      if (url) setAerialUrl(url);
     };
     fetchAerialUrl();
-  }, [open, contactId, propertyCoords, googleMapsApiKey]);
+  }, [open, contactId, propertyCoords, googleMapsApiKey, aerialZoom, aerialHeading]);
 
   // Auto-default cover photo source — prefer uploaded > street view (only if
   // imagery actually exists) > aerial. If street view becomes unavailable
