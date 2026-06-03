@@ -31,9 +31,12 @@ type SmsTemplate = {
   category: string | null;
   goal: string | null;
   active: boolean;
+  followup_delay_days: number | null;
   created_at: string;
   updated_at: string;
 };
+
+const DELAY_OPTIONS = [0, 1, 2, 3, 5, 7, 10, 14, 21, 30];
 
 type EmailTemplate = {
   id: string;
@@ -226,38 +229,89 @@ export const TemplatesLibrary: React.FC = () => {
     qc.invalidateQueries({ queryKey: ['templates-library-sms', tenantId] });
   };
 
-  const renderTemplateCard = (t: SmsTemplate, index?: number) => (
-    <div key={t.id} className="border rounded-md p-3 bg-card hover:bg-accent/30 transition-colors">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            {typeof index === 'number' && (
-              <Badge variant="outline" className="text-xs">#{index + 1}</Badge>
-            )}
-            <div className="font-medium text-sm truncate">{t.template_name}</div>
-            {!t.active && <Badge variant="secondary" className="text-xs">inactive</Badge>}
+  const updateTemplateFields = async (t: SmsTemplate, patch: Partial<Pick<SmsTemplate, 'active' | 'followup_delay_days'>>) => {
+    if (!tenantId) return;
+    const { error } = await supabase.from('sms_templates')
+      .update(patch)
+      .eq('id', t.id).eq('tenant_id', tenantId);
+    if (error) {
+      toast({ title: 'Update failed', description: error.message, variant: 'destructive' });
+      return;
+    }
+    qc.invalidateQueries({ queryKey: ['templates-library-sms', tenantId] });
+  };
+
+  const renderTemplateCard = (t: SmsTemplate, opts?: { index?: number; isFollowup?: boolean }) => {
+    const index = opts?.index;
+    const isFollowup = !!opts?.isFollowup;
+    const delay = t.followup_delay_days ?? 2;
+    return (
+      <div key={t.id} className="border rounded-md p-3 bg-card hover:bg-accent/30 transition-colors">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              {isFollowup && (
+                <input
+                  type="checkbox"
+                  checked={t.active}
+                  onChange={(e) => updateTemplateFields(t, { active: e.target.checked })}
+                  className="h-4 w-4 accent-primary cursor-pointer"
+                  title={t.active ? 'Disable this follow-up' : 'Enable this follow-up'}
+                />
+              )}
+              {typeof index === 'number' && (
+                <Badge variant="outline" className="text-xs">#{index + 1}</Badge>
+              )}
+              {!isFollowup && (
+                <Badge variant="default" className="text-xs bg-amber-500 hover:bg-amber-500">Initial</Badge>
+              )}
+              <div className="font-medium text-sm truncate">{t.template_name}</div>
+              {!t.active && <Badge variant="secondary" className="text-xs">inactive</Badge>}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap line-clamp-3">
+              {t.template_body}
+            </p>
+            <div className="flex items-center gap-3 mt-2 flex-wrap">
+              <div className="text-[10px] text-muted-foreground">
+                Updated {new Date(t.updated_at).toLocaleDateString()}
+              </div>
+              {isFollowup && (
+                <div className="flex items-center gap-1.5">
+                  <Label className="text-[11px] text-muted-foreground">Send after</Label>
+                  <Select
+                    value={String(delay)}
+                    onValueChange={(v) => updateTemplateFields(t, { followup_delay_days: Number(v) })}
+                  >
+                    <SelectTrigger className="h-7 w-[120px] text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DELAY_OPTIONS.map((d) => (
+                        <SelectItem key={d} value={String(d)} className="text-xs">
+                          {d === 0 ? 'Same day' : d === 1 ? '1 day' : `${d} days`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
           </div>
-          <p className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap line-clamp-3">
-            {t.template_body}
-          </p>
-          <div className="text-[10px] text-muted-foreground mt-2">
-            Updated {new Date(t.updated_at).toLocaleDateString()}
+          <div className="flex items-center gap-1 shrink-0">
+            <Button size="icon" variant="ghost" onClick={() => openEdit(t)} title="Edit">
+              <Edit className="h-3.5 w-3.5" />
+            </Button>
+            <Button size="icon" variant="ghost" onClick={() => duplicateTemplate(t)} title="Duplicate">
+              <Copy className="h-3.5 w-3.5" />
+            </Button>
+            <Button size="icon" variant="ghost" onClick={() => deleteTemplate(t)} title="Delete">
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
           </div>
-        </div>
-        <div className="flex items-center gap-1 shrink-0">
-          <Button size="icon" variant="ghost" onClick={() => openEdit(t)} title="Edit">
-            <Edit className="h-3.5 w-3.5" />
-          </Button>
-          <Button size="icon" variant="ghost" onClick={() => duplicateTemplate(t)} title="Duplicate">
-            <Copy className="h-3.5 w-3.5" />
-          </Button>
-          <Button size="icon" variant="ghost" onClick={() => deleteTemplate(t)} title="Delete">
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -362,7 +416,7 @@ export const TemplatesLibrary: React.FC = () => {
                                     </span>
                                   </div>
                                   <div className="grid gap-2 md:grid-cols-2">
-                                    {items.map((t, i) => renderTemplateCard(t, isFollowup ? i : undefined))}
+                                    {items.map((t, i) => renderTemplateCard(t, { index: isFollowup ? i : undefined, isFollowup }))}
                                   </div>
                                 </div>
                               );
