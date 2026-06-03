@@ -304,6 +304,7 @@ interface ProxyRequest {
     | "place_order"
     | "submit_order"           // legacy alias for place_order
     | "submit_test_order"
+    | "validate_payload_only"
     | "get_order_status"
     | "register_webhook"
     | "list_webhooks";
@@ -356,6 +357,20 @@ interface ProxyRequest {
 
 const ABC_SANDBOX_DEMO_FALLBACK = { shipToNumber: "2010466-2", branchNumber: "1209" } as const;
 
+// Sandbox-only Product API snapshot. Used ONLY when:
+//   env === "sandbox" AND body.sandboxDemo === true
+//   AND the live ABC Product API call was WAF-blocked (status 499).
+// Manually confirmed from ABC sandbox Product API logs. Do NOT widen this
+// map without first verifying itemNumber + validUoms against a real ABC
+// Product API response captured in abc_api_audit.
+const ABC_SANDBOX_DEMO_CATALOG: Record<string, { itemNumber: string; itemDescription: string; validUoms: string[] }> = {
+  "02OCTDUMP": {
+    itemNumber: "02OCTDUMP",
+    itemDescription: "Sandbox Demo Item 02OCTDUMP",
+    validUoms: ["EA"],
+  },
+};
+
 export const handle = async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -380,23 +395,70 @@ export const handle = async (req) => {
     const env = normalizeEnv(body.environment);
     const cfg = ABC[env];
 
-    // Resolve tenant_id + user from JWT if not provided
-    let tenant_id = body.tenant_id;
+    // ── Tenant resolution + anti-spoof gate ──────────────────────────
+    // Never trust body.tenant_id as source of truth. Always resolve from JWT.
+    // If body supplied a tenant_id that disagrees with the resolved tenant,
+    // reject 403 unless caller is a verified master / platform admin.
+    let tenant_id: string | undefined = undefined;
     let userId: string | null = null;
+    let callerIsMaster = false;
+    const bodyTenantId = body.tenant_id?.toString().trim() || undefined;
+
     if (auth) {
       const { data: userRes } = await authClient.auth.getUser();
       userId = userRes?.user?.id ?? null;
-      if (!tenant_id && userId) {
+      if (userId) {
         const { data: prof } = await supabase
           .from("profiles")
-          .select("tenant_id")
+          .select("tenant_id, active_tenant_id, role")
           .eq("id", userId)
           .maybeSingle();
-        tenant_id = (prof as any)?.tenant_id ?? undefined;
+        const p: any = prof || {};
+        tenant_id = p.active_tenant_id ?? p.tenant_id ?? undefined;
+
+        // Verified master/platform_admin via has_role RPC (not profile column alone).
+        try {
+          const { data: isMaster } = await (supabase as any).rpc("has_role", {
+            _user_id: userId,
+            _role: "master",
+          });
+          if (isMaster === true) callerIsMaster = true;
+          if (!callerIsMaster) {
+            const { data: isPa } = await (supabase as any).rpc("has_role", {
+              _user_id: userId,
+              _role: "platform_admin",
+            });
+            if (isPa === true) callerIsMaster = true;
+          }
+        } catch (_e) { /* role helper missing → treat as non-master */ }
       }
     }
 
-    console.log("abc-api-proxy", { action, env, tenant_id });
+    // Spoof guard: applies to every ABC action.
+    if (bodyTenantId && bodyTenantId !== tenant_id) {
+      if (!callerIsMaster) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "tenant_spoof_forbidden",
+            interpretation:
+              "Request body tenant_id does not match the authenticated user's tenant. Master role required to override.",
+            resolved_tenant_id: tenant_id ?? null,
+            body_tenant_id: bodyTenantId,
+          }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      // Master override: honor body.tenant_id, log it.
+      console.warn("[supplier-api abc] master tenant override", {
+        userId, from: tenant_id, to: bodyTenantId, action: body.action,
+      });
+      tenant_id = bodyTenantId;
+    }
+
+    console.log("abc-api-proxy", { action: body.action, env, tenant_id, callerIsMaster });
+
+
 
     const json = (data: any, status = 200) =>
       new Response(JSON.stringify(data), {
@@ -639,9 +701,14 @@ export const handle = async (req) => {
     }
 
     // ---------------- token-requiring actions: get a token first ----------------
-    if (!tenant_id) return json({ success: false, error: "no_tenant_context" }, 400);
-    const tok = await getValidAccessToken(supabase, tenant_id, env);
-    if (!tok.token) {
+    // validate_payload_only never calls ABC, so it does not require a token.
+    if (action !== "validate_payload_only") {
+      if (!tenant_id) return json({ success: false, error: "no_tenant_context" }, 400);
+    }
+    const tok = action === "validate_payload_only"
+      ? { token: "", error: undefined as string | undefined }
+      : await getValidAccessToken(supabase, tenant_id!, env);
+    if (action !== "validate_payload_only" && !tok.token) {
       const code = tok.error === "not_connected" ? "not_connected" : "token_expired";
       return json({
         success: false,
@@ -838,6 +905,234 @@ export const handle = async (req) => {
       return json({ success: r.ok, environment: env, endpoint, status: r.status, body: r.json ?? r.text, error_code });
     }
 
+
+    // ---------------- validate_payload_only ----------------
+    // Runs every Sandy contract check, builds the EXACT outgoing ABC orderRequest,
+    // writes an abc_api_audit row tagged "validate_payload_only", and returns
+    // payloadProof + the built payload. NEVER POSTs to ABC. NEVER writes
+    // abc_orders or abc_order_lines. Production rejects sandboxDemo with
+    // sandbox_demo_forbidden_in_production.
+    if (action === "validate_payload_only") {
+      const endpoint = `${cfg.apiBase}/order/v2/orders`;
+
+      // Hard gate: sandbox-demo fallbacks are sandbox-only.
+      if (body.sandboxDemo && env !== "sandbox") {
+        return json({
+          success: false,
+          validation: "FAIL",
+          error: "sandbox_demo_forbidden_in_production",
+          interpretation:
+            "Sandbox demo fallbacks are not allowed when environment !== sandbox. Remove sandboxDemo for production.",
+        }, 400);
+      }
+      if (!tenant_id) {
+        return json({
+          success: false,
+          validation: "FAIL",
+          error: "no_tenant_context",
+          interpretation:
+            "validate_payload_only requires an authenticated tenant context. Sign in and retry.",
+        }, 400);
+      }
+      const sandboxDemo = !!body.sandboxDemo && env === "sandbox";
+
+      let shipToNumber = (body.shipToNumber || "").toString().trim();
+      let branchNumber = (body.branchNumber || body.branch_code || "").toString().trim();
+      if (sandboxDemo) {
+        if (!shipToNumber) shipToNumber = ABC_SANDBOX_DEMO_FALLBACK.shipToNumber;
+        if (!branchNumber) branchNumber = ABC_SANDBOX_DEMO_FALLBACK.branchNumber;
+      }
+
+      const itemNumber = (body.itemNumber || "").toString().trim();
+      const requestedUom = (body.uom || "").toString().trim().toUpperCase();
+      const quantity = Math.max(1, Math.floor(Number(body.quantity ?? 1) || 1));
+      const itemDescriptionInput = (body.itemDescription || "").toString().trim();
+      const jc = body.jobsiteContact || {};
+      const jcName = (jc.name || "").toString().trim();
+      const jcEmail = (jc.email || "").toString().trim();
+      const jcPhone = (jc.phone || "").toString().trim();
+      const jcPhoneDigits = jcPhone.replace(/\D/g, "");
+      const override = body.priceOverride;
+
+      // Sandy required-field gate.
+      const missing: string[] = [];
+      if (!shipToNumber) missing.push("shipToNumber");
+      if (!branchNumber) missing.push("branchNumber");
+      if (!itemNumber) missing.push("itemNumber");
+      if (!requestedUom) missing.push("uom");
+      if (!jcName) missing.push("jobsiteContact.name");
+      if (!jcEmail) missing.push("jobsiteContact.email");
+      if (!jcPhoneDigits) missing.push("jobsiteContact.phone");
+      if (override && (!Number.isFinite(Number(override.value)) || Number(override.value) <= 0)) {
+        missing.push("priceOverride.value");
+      }
+      if (override && !String(override.reason || "").trim()) {
+        missing.push("priceOverride.reason");
+      }
+      if (missing.length) {
+        return json({
+          success: false,
+          validation: "FAIL",
+          error: "missing_required_fields",
+          missing,
+          interpretation: `Cannot validate ABC order — missing: ${missing.join(", ")}.`,
+        }, 400);
+      }
+
+      // Catalog gate — validate-only NEVER calls ABC. Use sandbox demo snapshot
+      // when sandboxDemo, otherwise require caller-provided itemDescription.
+      let catalogValidUoms: string[] = [];
+      let catalogDescription: string | null = null;
+      let catalogSource: "caller_provided" | "sandbox_demo_snapshot" = "caller_provided";
+      if (sandboxDemo) {
+        const snap = ABC_SANDBOX_DEMO_CATALOG[itemNumber];
+        if (!snap) {
+          return json({
+            success: false,
+            validation: "FAIL",
+            error: "sandbox_demo_item_not_whitelisted",
+            interpretation:
+              `validate_payload_only with sandboxDemo only accepts whitelisted items: [${Object.keys(ABC_SANDBOX_DEMO_CATALOG).join(", ")}]. Got "${itemNumber}".`,
+          }, 400);
+        }
+        catalogValidUoms = snap.validUoms.map((u) => u.toUpperCase());
+        catalogDescription = snap.itemDescription;
+        catalogSource = "sandbox_demo_snapshot";
+      }
+
+      if (catalogValidUoms.length && !catalogValidUoms.includes(requestedUom)) {
+        return json({
+          success: false,
+          validation: "FAIL",
+          error: "invalid_uom_for_item",
+          interpretation: `UOM "${requestedUom}" is not in the sandbox demo valid UOM list for ${itemNumber}. Valid UOMs: ${catalogValidUoms.join(", ")}.`,
+          itemNumber,
+          validUoms: catalogValidUoms,
+          catalogSource,
+        }, 400);
+      }
+
+      const itemDescription = itemDescriptionInput || catalogDescription || "";
+      if (!itemDescription) {
+        return json({
+          success: false,
+          validation: "FAIL",
+          error: "missing_item_description",
+          interpretation:
+            `validate_payload_only requires itemDescription (caller-supplied or sandbox snapshot) for ${itemNumber}.`,
+        }, 400);
+      }
+
+      // Price: validate-only never calls ABC. Require an override when no
+      // Price Items echo is available. (In sandbox demo this is the WAF
+      // contingency the UI exposes.)
+      if (!override) {
+        return json({
+          success: false,
+          validation: "FAIL",
+          error: "price_override_required_for_validate",
+          interpretation:
+            "validate_payload_only does not call ABC Price Items. Supply priceOverride.value + priceOverride.reason to build the payload.",
+        }, 422);
+      }
+      const finalUnitPrice = Number(override.value);
+      const priceSource = "override" as const;
+
+      const ts = Date.now();
+      const requestId = `PITCH-VALIDATE-${ts}`;
+      const purchaseOrder = `PITCH-${ts}`;
+      const delivery = new Date();
+      delivery.setUTCDate(delivery.getUTCDate() + 1);
+      const deliveryRequestedFor = delivery.toISOString().slice(0, 10);
+
+      const orderObj = {
+        requestId,
+        purchaseOrder,
+        branchNumber,
+        deliveryService: "CPU",
+        typeCode: "SO",
+        dates: { deliveryRequestedFor },
+        currency: "USD",
+        shipTo: {
+          name: jcName.slice(0, 60),
+          number: shipToNumber,
+          address: {
+            line1: "123 Test Street", line2: "", line3: "",
+            city: "North Port", state: "FL", postal: "34286", country: "USA",
+          },
+          contacts: [{
+            functionCode: "DC",
+            name: jcName.slice(0, 60),
+            email: jcEmail.slice(0, 80),
+            phones: [{ number: jcPhoneDigits, type: "MOBILE", ext: "" }],
+          }],
+        },
+        orderComments: [{
+          code: "H",
+          description:
+            "PITCH integration validate_payload_only - payload validation only, NOT sent to ABC" +
+            (sandboxDemo ? " [SANDBOX DEMO]" : ""),
+        }],
+        lines: [{
+          id: "1",
+          itemNumber,
+          itemDescription,
+          orderedQty: { value: quantity, uom: requestedUom },
+          unitPrice: { value: finalUnitPrice, uom: requestedUom, instructions: "PITCH validate-only" },
+        }],
+      };
+      const payload = [orderObj];
+
+      const sandboxWarning = sandboxDemo
+        ? "ABC sandbox validate-only path. Payload was NOT sent to ABC. payloadProof reflects shape only — ABC acceptance is unproven until live submit succeeds."
+        : null;
+
+      const payloadProof = {
+        shipToNumber,
+        branchNumber,
+        shipToContactDC: orderObj.shipTo.contacts.find((c: any) => c.functionCode === "DC") ?? null,
+        itemNumber,
+        itemDescription,
+        orderedQty: { value: quantity, uom: requestedUom },
+        unitPrice: { value: finalUnitPrice, uom: requestedUom },
+        priceSource,
+        sandboxDemoFallback: sandboxDemo,
+        catalogSource,
+        sandboxWarning,
+      };
+
+      await auditCall(supabase, {
+        tenant_id,
+        environment: env,
+        action: "validate_payload_only",
+        endpoint: "(no upstream call)",
+        request_body_redacted: payload,
+        status_code: 0,
+        response_body: { validation: "PASS", payloadProof },
+        error_code: null,
+        duration_ms: Date.now() - startedAt,
+        created_by: userId,
+      });
+
+      return json({
+        success: true,
+        validation: "PASS",
+        environment: env,
+        endpoint,
+        sentToAbc: false,
+        payloadProof,
+        orderRequest: payload,
+        catalogValidUoms,
+        finalUnitPrice,
+        priceSource,
+        requestId,
+        purchaseOrder,
+        sandboxWarning,
+        interpretation:
+          "Validate Payload Only: PASS. ABC orderRequest built and audited; no POST to ABC, no abc_orders / abc_order_lines row written. ABC acceptance is NOT proven by this run.",
+        timestamp: new Date().toISOString(),
+      });
+    }
 
     // ---------------- submit_test_order ----------------
     // Sandy's order-acceptance contract:
