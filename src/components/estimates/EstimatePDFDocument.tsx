@@ -565,7 +565,9 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
   // Build pages
   const pages = useMemo(() => {
     // In unified mode, combine materials + labor so all trades appear in scope
-    const scopeItems = opts.showUnifiedItems
+    const scopeItems = opts.useScopeNarrative && opts.scopeNarrative
+      ? [] // Narrative replaces the line-item list — no chunking needed
+      : opts.showUnifiedItems
       ? (() => {
           const combined = [...materialItems, ...laborItems];
           const tradeOrder = new Map<string, number>();
