@@ -714,7 +714,13 @@ export function ABCConnectionSettings() {
   const isConnected = connection?.connection_status === 'connected';
   const hasSecret = !!connection?.client_secret_last_four;
   const canSubmitOrder =
-    !!shipToNumber.trim() && !!branchNumber.trim() && !!itemNumber.trim();
+    !!itemNumber.trim() &&
+    !!orderUom.trim() &&
+    !!jobsiteName.trim() &&
+    !!jobsiteEmail.trim() &&
+    !!jobsitePhone.trim() &&
+    (sandboxDemoFallback || (!!shipToNumber.trim() && !!branchNumber.trim())) &&
+    (!overrideEnabled || (!!overridePrice.trim() && !!overrideReason.trim()));
   // (Order tracking now lives in <AbcDiagnosticsPanel /> — persistent + tenant-scoped.)
 
 
