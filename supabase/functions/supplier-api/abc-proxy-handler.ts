@@ -701,8 +701,13 @@ export const handle = async (req) => {
     }
 
     // ---------------- token-requiring actions: get a token first ----------------
-    if (!tenant_id) return json({ success: false, error: "no_tenant_context" }, 400);
-    const tok = await getValidAccessToken(supabase, tenant_id, env);
+    // validate_payload_only never calls ABC, so it does not require a token.
+    if (action !== "validate_payload_only") {
+      if (!tenant_id) return json({ success: false, error: "no_tenant_context" }, 400);
+    }
+    const tok = action === "validate_payload_only"
+      ? { token: "", error: undefined as string | undefined }
+      : await getValidAccessToken(supabase, tenant_id!, env);
     if (!tok.token) {
       const code = tok.error === "not_connected" ? "not_connected" : "token_expired";
       return json({
