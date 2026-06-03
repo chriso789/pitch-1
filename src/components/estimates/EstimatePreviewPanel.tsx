@@ -504,8 +504,17 @@ export function EstimatePreviewPanel({
   // Auto-default cover photo source — prefer uploaded > street view (only if
   // imagery actually exists) > aerial. If street view becomes unavailable
   // after selection, auto-fall through to aerial.
+  const coverSourceInitializedRef = useRef(false);
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      coverSourceInitializedRef.current = false;
+      return;
+    }
+    if (coverSourceInitializedRef.current) return;
+    // Wait until we know whether street/aerial imagery exists before locking in a default.
+    const streetReady = streetViewAvailable !== null;
+    if (!streetReady && !aerialUrl && jobPhotos.length === 0) return;
+
     if (jobPhotos.length > 0 && jobPhotos[0].id !== 'aerial') {
       setCoverPhotoSource('uploaded');
       setSelectedUploadedPhotoId(jobPhotos[0].id);
@@ -516,7 +525,8 @@ export function EstimatePreviewPanel({
     } else {
       setCoverPhotoSource('none');
     }
-  }, [open, jobPhotos, streetViewUrl, aerialUrl]);
+    coverSourceInitializedRef.current = true;
+  }, [open, jobPhotos, streetViewUrl, aerialUrl, streetViewAvailable]);
 
   // Wire coverPagePropertyPhoto based on source selection.
   // Auto-fall through if the requested source isn't actually available.
