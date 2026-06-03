@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pitch-crm.ai/schemas/measurement/skill-request.json",
+  "title": "MeasurementSkillRequest",
+  "description": "Canonical payload sent from the control plane to the internal worker.",
+  "type": "object",
+  "required": [
+    "skill_run_id",
+    "measurement_request_id",
+    "request_hash",
+    "measurement_job_id"
+  ],
+  "properties": {
+    "skill_run_id": { "type": "string", "format": "uuid" },
+    "measurement_request_id": { "type": "string", "format": "uuid" },
+    "request_hash": { "type": "string", "minLength": 16 },
+    "measurement_job_id": { "type": "string", "format": "uuid" },
+    "lidar_window_id": { "type": ["string", "null"] },
+    "roof_surface_asset_id": { "type": ["string", "null"] },
+    "source_url": { "type": ["string", "null"], "format": "uri" },
+    "asset_type": {
+      "type": ["string", "null"],
+      "enum": [null, "las", "laz", "copc", "ept", "geotiff", "dsm", "dtm", "chm"]
+    },
+    "aoi_geojson": { "type": ["object", "null"] },
+    "parcel_geojson": { "type": ["object", "null"] },
+    "building_footprint_geojson": { "type": ["object", "null"] },
+    "roof_edge_candidate_geojson": { "type": ["object", "null"] },
+    "target_crs": { "type": ["string", "null"] },
+    "target_resolution": { "type": ["number", "null"], "minimum": 0 },
+    "inputs": { "type": "object" }
+  },
+  "additionalProperties": false
+}
