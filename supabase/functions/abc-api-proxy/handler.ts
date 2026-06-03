@@ -306,6 +306,7 @@ interface ProxyRequest {
     | "place_order"
     | "submit_order"           // legacy alias for place_order
     | "submit_test_order"
+    | "validate_payload_only"
     | "get_order_status";
 
   environment?: "staging" | "sandbox" | "production";
