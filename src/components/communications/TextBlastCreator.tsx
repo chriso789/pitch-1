@@ -579,9 +579,9 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
         <h2 className="text-lg font-semibold">New Text Blast</h2>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 xl:grid-cols-5">
         {/* Left: Form */}
-        <div className="space-y-4">
+        <div className="space-y-4 xl:col-span-3">
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Campaign Details</CardTitle>
@@ -1232,7 +1232,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
         </div>
 
         {/* Right: Preview */}
-        <div>
+        <div className="xl:col-span-2">
           {(showPreview || script.trim()) && (
             <Card>
               <CardHeader className="pb-3">
