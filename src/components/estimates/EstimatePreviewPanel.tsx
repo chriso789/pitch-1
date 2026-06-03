@@ -273,6 +273,7 @@ export function EstimatePreviewPanel({
   const [fetchedEstimates, setFetchedEstimates] = useState<Map<string, FetchedEstimateData>>(new Map());
   const [isEstimatesOpen, setIsEstimatesOpen] = useState(true);
   const { generateMultiPagePDF, isGenerating: isGeneratingPDF } = useMultiPagePDFGeneration();
+  const [isGeneratingNarrative, setIsGeneratingNarrative] = useState(false);
   const { toast } = useToast();
   const previewRef = useRef<HTMLDivElement>(null);
   const photoUploadRef = useRef<HTMLInputElement>(null);
