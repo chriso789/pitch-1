@@ -488,14 +488,31 @@ export function ABCConnectionSettings() {
     setTrackResult(data);
   };
 
-  const handleSubmitTestOrder = async () => {
+  const buildSubmitArgs = () => ({
+    shipToNumber: shipToNumber.trim() || undefined,
+    branchNumber: branchNumber.trim() || undefined,
+    itemNumber: itemNumber.trim(),
+    uom: orderUom.trim().toUpperCase(),
+    quantity: Number(orderQty) || 1,
+    jobsiteContact: {
+      name: jobsiteName.trim(),
+      email: jobsiteEmail.trim(),
+      phone: jobsitePhone.trim(),
+    },
+    sandboxDemo: sandboxDemoFallback,
+    priceOverride: overrideEnabled
+      ? { value: Number(overridePrice), reason: overrideReason.trim() }
+      : undefined,
+  });
+
+  const preflightSubmitChecks = (): boolean => {
     if (!itemNumber.trim()) {
       toast({ title: 'Missing item', description: 'Pick a real item from product search first.', variant: 'destructive' });
-      return;
+      return false;
     }
     if (!orderUom.trim()) {
       toast({ title: 'Missing UOM', description: 'UOM must come from Product API for this item.', variant: 'destructive' });
-      return;
+      return false;
     }
     if (!jobsiteName.trim() || !jobsiteEmail.trim() || !jobsitePhone.trim()) {
       toast({
@@ -503,7 +520,7 @@ export function ABCConnectionSettings() {
         description: 'ABC requires DC contact name, email, and phone on the order.',
         variant: 'destructive',
       });
-      return;
+      return false;
     }
     if (!sandboxDemoFallback && (!shipToNumber.trim() || !branchNumber.trim())) {
       toast({
@@ -511,32 +528,43 @@ export function ABCConnectionSettings() {
         description: 'Enable sandbox demo fallback or fill Ship-To and Branch.',
         variant: 'destructive',
       });
-      return;
+      return false;
     }
     if (overrideEnabled && (!overridePrice.trim() || !overrideReason.trim())) {
       toast({ title: 'Override needs price and reason', variant: 'destructive' });
-      return;
+      return false;
     }
+    return true;
+  };
+
+  const handleValidatePayloadOnly = async () => {
+    if (!preflightSubmitChecks()) return;
+    setSubmittingOrder(true);
+    setOrderResult(null);
+    try {
+      const data: any = await callProxy('validate_payload_only', buildSubmitArgs());
+      setOrderResult(data);
+      toast({
+        title: data?.validation === 'PASS' ? 'Payload validated' : 'Payload validation failed',
+        description:
+          data?.interpretation ||
+          (data?.validation === 'PASS'
+            ? 'Sandy contract PASS. ABC was NOT contacted.'
+            : `Missing: ${(data?.missing || []).join(', ') || 'unknown'}`),
+        variant: data?.validation === 'PASS' ? 'default' : 'destructive',
+      });
+    } finally {
+      setSubmittingOrder(false);
+    }
+  };
+
+  const handleSubmitTestOrder = async () => {
+    if (!preflightSubmitChecks()) return;
     setSubmittingOrder(true);
     setOrderResult(null);
     setTrackResult(null);
     try {
-      const data: any = await callProxy('submit_test_order', {
-        shipToNumber: shipToNumber.trim() || undefined,
-        branchNumber: branchNumber.trim() || undefined,
-        itemNumber: itemNumber.trim(),
-        uom: orderUom.trim().toUpperCase(),
-        quantity: Number(orderQty) || 1,
-        jobsiteContact: {
-          name: jobsiteName.trim(),
-          email: jobsiteEmail.trim(),
-          phone: jobsitePhone.trim(),
-        },
-        sandboxDemo: sandboxDemoFallback,
-        priceOverride: overrideEnabled
-          ? { value: Number(overridePrice), reason: overrideReason.trim() }
-          : undefined,
-      });
+      const data: any = await callProxy('submit_test_order', buildSubmitArgs());
       setOrderResult(data);
       const friendly =
         data?.interpretation ||
@@ -559,6 +587,7 @@ export function ABCConnectionSettings() {
       setSubmittingOrder(false);
     }
   };
+
 
   const loadReadiness = async () => {
     if (!effectiveTenantId) return;
