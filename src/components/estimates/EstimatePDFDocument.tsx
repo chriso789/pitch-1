@@ -973,13 +973,26 @@ const FirstPage: React.FC<{
         </div>
       )}
 
+      {/* AI Customer-Friendly Scope Narrative */}
+      {!opts.showOnlyTotal && opts.useScopeNarrative && opts.scopeNarrative && (
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900 mb-1.5 flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
+            Project Scope
+          </h3>
+          <div className="text-xs text-gray-800 leading-relaxed whitespace-pre-wrap scope-narrative">
+            {opts.scopeNarrative}
+          </div>
+        </div>
+      )}
+
       {/* Project Scope Table */}
-      {!opts.showOnlyTotal && opts.showUnifiedItems && items.length > 0 && (
+      {!opts.showOnlyTotal && !opts.useScopeNarrative && opts.showUnifiedItems && items.length > 0 && (
         <ItemsTable blocks={blocks} opts={opts} markupFactor={breakdown.directCost > 0 ? breakdown.sellingPrice / breakdown.directCost : 1} />
       )}
 
       {/* Continuation hint when items overflow to next page */}
-      {!opts.showOnlyTotal && opts.showUnifiedItems && items.length > 0 && !isOnlyChunk && (
+      {!opts.showOnlyTotal && !opts.useScopeNarrative && opts.showUnifiedItems && items.length > 0 && !isOnlyChunk && (
         <p className="text-xs text-gray-400 italic text-right mt-2">
           Scope continues on next page…
         </p>
