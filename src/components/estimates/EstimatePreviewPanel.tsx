@@ -485,8 +485,13 @@ export function EstimatePreviewPanel({
     if (!open || !contactId) return;
     const fetchAerialUrl = async () => {
       if (propertyCoords && googleMapsApiKey) {
-        const centerLat = propertyCoords.lat + aerialPanY / 10000;
-        const centerLng = propertyCoords.lng + aerialPanX / 10000;
+        // Scale pan with zoom: at higher zoom the visible degree-span shrinks,
+        // so a fixed-degree offset would throw the center off-screen. We treat
+        // the slider value as a fraction (-1..1) of the visible tile width.
+        const tileDegLng = 360 / Math.pow(2, aerialZoom);
+        const tileDegLat = 170 / Math.pow(2, aerialZoom);
+        const centerLat = propertyCoords.lat - (aerialPanY / 100) * tileDegLat;
+        const centerLng = propertyCoords.lng + (aerialPanX / 100) * tileDegLng;
         setAerialUrl(
           `https://maps.googleapis.com/maps/api/staticmap?center=${centerLat},${centerLng}&zoom=${aerialZoom}&size=800x400&maptype=satellite&scale=2&key=${googleMapsApiKey}`
         );
