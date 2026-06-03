@@ -45357,6 +45357,7 @@ export type Database = {
           category: string | null
           created_at: string
           created_by: string | null
+          followup_delay_days: number
           goal: string | null
           id: string
           normalized_template_body: string | null
@@ -45371,6 +45372,7 @@ export type Database = {
           category?: string | null
           created_at?: string
           created_by?: string | null
+          followup_delay_days?: number
           goal?: string | null
           id?: string
           normalized_template_body?: string | null
@@ -45385,6 +45387,7 @@ export type Database = {
           category?: string | null
           created_at?: string
           created_by?: string | null
+          followup_delay_days?: number
           goal?: string | null
           id?: string
           normalized_template_body?: string | null

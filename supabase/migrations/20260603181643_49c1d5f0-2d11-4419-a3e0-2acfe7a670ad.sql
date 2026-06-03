@@ -1,0 +1,1 @@
+ALTER TABLE public.sms_templates ADD COLUMN IF NOT EXISTS followup_delay_days integer NOT NULL DEFAULT 2;
