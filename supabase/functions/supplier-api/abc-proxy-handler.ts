@@ -925,6 +925,15 @@ export const handle = async (req) => {
             "Sandbox demo fallbacks are not allowed when environment !== sandbox. Remove sandboxDemo for production.",
         }, 400);
       }
+      if (!tenant_id) {
+        return json({
+          success: false,
+          validation: "FAIL",
+          error: "no_tenant_context",
+          interpretation:
+            "validate_payload_only requires an authenticated tenant context. Sign in and retry.",
+        }, 400);
+      }
       const sandboxDemo = !!body.sandboxDemo && env === "sandbox";
 
       let shipToNumber = (body.shipToNumber || "").toString().trim();
