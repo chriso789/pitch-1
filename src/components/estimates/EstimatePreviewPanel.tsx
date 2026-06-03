@@ -874,6 +874,56 @@ export function EstimatePreviewPanel({
     setRemovedTemplateIds(new Set());
   };
 
+  // Generate an AI customer-friendly Project Scope narrative from the line items
+  const handleGenerateScopeNarrative = async () => {
+    const combined = [...materialItems, ...laborItems];
+    if (combined.length === 0) {
+      toast({
+        title: 'No line items',
+        description: 'Add materials or labor before generating an AI scope.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setIsGeneratingNarrative(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('estimate-scope-narrative', {
+        body: {
+          items: combined.map((it) => ({
+            item_name: it.item_name,
+            description: (it as any).description ?? (it as any).notes ?? null,
+            qty: it.qty,
+            unit: it.unit,
+            item_type: (it as any).item_type,
+            trade_type: (it as any).trade_type,
+          })),
+          project_title: estimateDisplayName || templateName || estimateNumber,
+          customer_name: customerName,
+          property_address: customerAddress,
+          company_name: companyInfo?.name,
+          tone: 'professional',
+        },
+      });
+      if (error) throw error;
+      const narrative = (data as any)?.narrative?.trim();
+      if (!narrative) throw new Error('No narrative returned');
+      setOptions((prev) => ({ ...prev, useScopeNarrative: true, scopeNarrative: narrative }));
+      toast({
+        title: 'AI Scope generated',
+        description: 'Customer-friendly project scope is ready. Edit as needed.',
+      });
+    } catch (e: any) {
+      console.error('[scope-narrative] error', e);
+      toast({
+        title: 'Generation failed',
+        description: e?.message || 'Could not generate scope narrative.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsGeneratingNarrative(false);
+    }
+  };
+
   // Generate safe filename from display name, template name, or estimate number
   const getFilename = useCallback(() => {
     // Priority: user-set display name > template name > estimate number
