@@ -540,17 +540,29 @@ export function EstimatePreviewPanel({
   // Wire coverPagePropertyPhoto based on source selection.
   // Auto-fall through if the requested source isn't actually available.
   useEffect(() => {
-    let photoUrl: string | undefined;
-    if (coverPhotoSource === 'uploaded' && selectedUploadedPhotoId) {
-      const photo = previewJobPhotos.find(p => p.id === selectedUploadedPhotoId);
-      photoUrl = photo?.file_url;
-    } else if (coverPhotoSource === 'streetview') {
-      photoUrl = streetViewUrl || aerialUrl || undefined;
-    } else if (coverPhotoSource === 'aerial') {
-      photoUrl = aerialUrl || streetViewUrl || undefined;
-    }
-    setOptions(prev => ({ ...prev, coverPagePropertyPhoto: photoUrl }));
-  }, [coverPhotoSource, selectedUploadedPhotoId, previewJobPhotos, streetViewUrl, aerialUrl]);
+    let cancelled = false;
+    const run = async () => {
+      let photoUrl: string | undefined;
+      if (coverPhotoSource === 'uploaded' && selectedUploadedPhotoId) {
+        const photo = previewJobPhotos.find(p => p.id === selectedUploadedPhotoId);
+        photoUrl = photo?.file_url;
+      } else if (coverPhotoSource === 'streetview') {
+        photoUrl = streetViewUrl || aerialUrl || undefined;
+      } else if (coverPhotoSource === 'aerial') {
+        photoUrl = aerialUrl || streetViewUrl || undefined;
+        // Apply rotation client-side via canvas (Google Static Maps has no rotate param)
+        if (photoUrl && aerialRotation % 360 !== 0) {
+          try {
+            const rotated = await rotateImageToDataUrl(photoUrl, aerialRotation);
+            if (!cancelled && rotated) photoUrl = rotated;
+          } catch { /* fall back to un-rotated url */ }
+        }
+      }
+      if (!cancelled) setOptions(prev => ({ ...prev, coverPagePropertyPhoto: photoUrl }));
+    };
+    run();
+    return () => { cancelled = true; };
+  }, [coverPhotoSource, selectedUploadedPhotoId, previewJobPhotos, streetViewUrl, aerialUrl, aerialRotation]);
 
   // Fetch additional estimate data when selected
   const handleToggleEstimate = useCallback(async (estId: string) => {
