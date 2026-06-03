@@ -44,7 +44,9 @@ import {
   X,
   ArrowLeft,
   Files,
+  Sparkles,
 } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import {
   type PDFComponentOptions,
