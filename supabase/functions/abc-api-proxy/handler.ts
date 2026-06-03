@@ -345,7 +345,16 @@ interface ProxyRequest {
     srs_item_code?: string | null;
     color_specs?: string | null;
   }>;
+  // submit_test_order extended inputs (Sandy contract)
+  uom?: string;
+  quantity?: number;
+  itemDescription?: string;
+  jobsiteContact?: { name?: string; email?: string; phone?: string };
+  priceOverride?: { value: number; reason: string };
+  sandboxDemo?: boolean;
 }
+
+const ABC_SANDBOX_DEMO_FALLBACK = { shipToNumber: "2010466-2", branchNumber: "1209" } as const;
 
 export const handle = async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
