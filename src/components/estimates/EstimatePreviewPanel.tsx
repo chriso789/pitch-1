@@ -171,7 +171,7 @@ interface FetchedEstimateData {
  */
 async function rotateImageToDataUrl(src: string, degrees: number): Promise<string | null> {
   return new Promise((resolve) => {
-    const img = new Image();
+    const img = new window.Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
       try {
