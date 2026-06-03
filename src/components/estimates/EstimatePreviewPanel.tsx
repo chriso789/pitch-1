@@ -484,8 +484,10 @@ export function EstimatePreviewPanel({
     if (!open || !contactId) return;
     const fetchAerialUrl = async () => {
       if (propertyCoords && googleMapsApiKey) {
+        const centerLat = propertyCoords.lat + aerialPanY / 10000;
+        const centerLng = propertyCoords.lng + aerialPanX / 10000;
         setAerialUrl(
-          `https://maps.googleapis.com/maps/api/staticmap?center=${propertyCoords.lat},${propertyCoords.lng}&zoom=${aerialZoom}&size=800x400&maptype=satellite&scale=2&heading=${aerialHeading}&key=${googleMapsApiKey}`
+          `https://maps.googleapis.com/maps/api/staticmap?center=${centerLat},${centerLng}&zoom=${aerialZoom}&size=800x400&maptype=satellite&scale=2&key=${googleMapsApiKey}`
         );
         return;
       }
@@ -500,7 +502,7 @@ export function EstimatePreviewPanel({
       if (url) setAerialUrl(url);
     };
     fetchAerialUrl();
-  }, [open, contactId, propertyCoords, googleMapsApiKey, aerialZoom, aerialHeading]);
+  }, [open, contactId, propertyCoords, googleMapsApiKey, aerialZoom, aerialPanX, aerialPanY]);
 
   // Auto-default cover photo source — prefer uploaded > street view (only if
   // imagery actually exists) > aerial. If street view becomes unavailable
