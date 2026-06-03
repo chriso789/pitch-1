@@ -9,6 +9,7 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Slider } from '@/components/ui/slider';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Collapsible,
@@ -242,6 +243,12 @@ export function EstimatePreviewPanel({
   const [selectedUploadedPhotoId, setSelectedUploadedPhotoId] = useState<string | null>(null);
   const [streetViewUrl, setStreetViewUrl] = useState<string | null>(null);
   const [aerialUrl, setAerialUrl] = useState<string | null>(null);
+  const [streetViewAvailable, setStreetViewAvailable] = useState(false);
+  const [streetHeading, setStreetHeading] = useState<number>(0);
+  const [streetPitch, setStreetPitch] = useState<number>(0);
+  const [streetFov, setStreetFov] = useState<number>(90);
+  const [aerialZoom, setAerialZoom] = useState<number>(19);
+  const [aerialHeading, setAerialHeading] = useState<number>(0);
   const [propertyCoords, setPropertyCoords] = useState<{ lat: number; lng: number } | null>(null);
   const { apiKey: googleMapsApiKey } = useGoogleMapsToken();
 
@@ -445,26 +452,42 @@ export function EstimatePreviewPanel({
         const meta = await resp.json();
         if (cancelled) return;
         if (meta.status === 'OK') {
-          setStreetViewUrl(
-            `https://maps.googleapis.com/maps/api/streetview?size=800x400&location=${propertyCoords.lat},${propertyCoords.lng}&key=${googleMapsApiKey}`
-          );
+          setStreetViewAvailable(true);
         } else {
-          // No street view imagery available — clear so aerial wins.
+          setStreetViewAvailable(false);
           setStreetViewUrl(null);
         }
       } catch (err) {
         console.warn('Street View metadata check failed:', err);
-        if (!cancelled) setStreetViewUrl(null);
+        if (!cancelled) {
+          setStreetViewAvailable(false);
+          setStreetViewUrl(null);
+        }
       }
     };
     checkAndSet();
     return () => { cancelled = true; };
   }, [propertyCoords, googleMapsApiKey]);
 
-  // Fetch aerial URL from roof_measurements, fallback to Google Static Maps
+  // Build adjustable Street View URL from coords + heading/pitch/fov.
+  useEffect(() => {
+    if (!streetViewAvailable || !propertyCoords || !googleMapsApiKey) return;
+    setStreetViewUrl(
+      `https://maps.googleapis.com/maps/api/streetview?size=800x400&location=${propertyCoords.lat},${propertyCoords.lng}&heading=${streetHeading}&pitch=${streetPitch}&fov=${streetFov}&key=${googleMapsApiKey}`
+    );
+  }, [streetViewAvailable, propertyCoords, googleMapsApiKey, streetHeading, streetPitch, streetFov]);
+
+  // Fetch aerial URL: prefer adjustable Google Static Maps (when coords+key present),
+  // otherwise fall back to persisted roof_measurements image.
   useEffect(() => {
     if (!open || !contactId) return;
     const fetchAerialUrl = async () => {
+      if (propertyCoords && googleMapsApiKey) {
+        setAerialUrl(
+          `https://maps.googleapis.com/maps/api/staticmap?center=${propertyCoords.lat},${propertyCoords.lng}&zoom=${aerialZoom}&size=800x400&maptype=satellite&scale=2&heading=${aerialHeading}&key=${googleMapsApiKey}`
+        );
+        return;
+      }
       const { data } = await supabase
         .from('roof_measurements')
         .select('google_maps_image_url, mapbox_image_url')
@@ -473,19 +496,10 @@ export function EstimatePreviewPanel({
         .limit(1)
         .maybeSingle();
       const url = data?.google_maps_image_url || data?.mapbox_image_url;
-      if (url) {
-        setAerialUrl(url);
-        return;
-      }
-      // Fallback: generate aerial from coords via Google Static Maps
-      if (propertyCoords && googleMapsApiKey) {
-        setAerialUrl(
-          `https://maps.googleapis.com/maps/api/staticmap?center=${propertyCoords.lat},${propertyCoords.lng}&zoom=19&size=800x400&maptype=satellite&key=${googleMapsApiKey}`
-        );
-      }
+      if (url) setAerialUrl(url);
     };
     fetchAerialUrl();
-  }, [open, contactId, propertyCoords, googleMapsApiKey]);
+  }, [open, contactId, propertyCoords, googleMapsApiKey, aerialZoom, aerialHeading]);
 
   // Auto-default cover photo source — prefer uploaded > street view (only if
   // imagery actually exists) > aerial. If street view becomes unavailable
@@ -1376,6 +1390,56 @@ export function EstimatePreviewPanel({
                                 <SafeImage src={photo.file_url} alt={photo.description || ''} className="w-full h-full object-cover" />
                               </button>
                             ))}
+                          </div>
+                        )}
+
+                        {coverPhotoSource === 'streetview' && streetViewAvailable && (
+                          <div className="space-y-2 rounded border border-border p-2 bg-muted/30">
+                            <div className="flex items-center justify-between">
+                              <Label className="text-[11px] text-muted-foreground">Adjust Street View</Label>
+                              <button
+                                type="button"
+                                className="text-[10px] text-muted-foreground hover:text-foreground underline"
+                                onClick={() => { setStreetHeading(0); setStreetPitch(0); setStreetFov(90); }}
+                              >
+                                Reset
+                              </button>
+                            </div>
+                            <div>
+                              <div className="flex justify-between text-[10px] text-muted-foreground"><span>Rotate</span><span>{streetHeading}°</span></div>
+                              <Slider value={[streetHeading]} min={0} max={360} step={5} onValueChange={(v) => setStreetHeading(v[0])} />
+                            </div>
+                            <div>
+                              <div className="flex justify-between text-[10px] text-muted-foreground"><span>Tilt</span><span>{streetPitch}°</span></div>
+                              <Slider value={[streetPitch]} min={-30} max={30} step={5} onValueChange={(v) => setStreetPitch(v[0])} />
+                            </div>
+                            <div>
+                              <div className="flex justify-between text-[10px] text-muted-foreground"><span>Zoom</span><span>{streetFov}°</span></div>
+                              <Slider value={[streetFov]} min={30} max={120} step={5} onValueChange={(v) => setStreetFov(v[0])} />
+                            </div>
+                          </div>
+                        )}
+
+                        {coverPhotoSource === 'aerial' && propertyCoords && googleMapsApiKey && (
+                          <div className="space-y-2 rounded border border-border p-2 bg-muted/30">
+                            <div className="flex items-center justify-between">
+                              <Label className="text-[11px] text-muted-foreground">Adjust Aerial View</Label>
+                              <button
+                                type="button"
+                                className="text-[10px] text-muted-foreground hover:text-foreground underline"
+                                onClick={() => { setAerialZoom(19); setAerialHeading(0); }}
+                              >
+                                Reset
+                              </button>
+                            </div>
+                            <div>
+                              <div className="flex justify-between text-[10px] text-muted-foreground"><span>Zoom</span><span>{aerialZoom}</span></div>
+                              <Slider value={[aerialZoom]} min={17} max={21} step={1} onValueChange={(v) => setAerialZoom(v[0])} />
+                            </div>
+                            <div>
+                              <div className="flex justify-between text-[10px] text-muted-foreground"><span>Rotate</span><span>{aerialHeading}°</span></div>
+                              <Slider value={[aerialHeading]} min={0} max={360} step={5} onValueChange={(v) => setAerialHeading(v[0])} />
+                            </div>
                           </div>
                         )}
 
