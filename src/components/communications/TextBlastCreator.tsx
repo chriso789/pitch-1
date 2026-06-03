@@ -1232,7 +1232,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
         </div>
 
         {/* Right: Preview */}
-        <div>
+        <div className="xl:col-span-2">
           {(showPreview || script.trim()) && (
             <Card>
               <CardHeader className="pb-3">
