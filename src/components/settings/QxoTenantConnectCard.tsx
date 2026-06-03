@@ -295,19 +295,24 @@ export function QxoTenantConnectCard() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
-            <div className="space-y-1">
-              <Label>Site / Realm</Label>
-              <Select value={siteId} onValueChange={setSiteId}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="dealersChoice">Beacon (dealersChoice)</SelectItem>
-                  <SelectItem value="homeSite">HomeSite</SelectItem>
-                  <SelectItem value="canada">Canada</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {canEnterAdvancedConnectFields && (
+              <div className="space-y-1">
+                <Label>Site / Realm</Label>
+                <Select value={siteId} onValueChange={setSiteId}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="dealersChoice">Beacon (dealersChoice)</SelectItem>
+                    <SelectItem value="homeSite">HomeSite</SelectItem>
+                    <SelectItem value="canada">Canada</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Developer only. Tenants default to Beacon (dealersChoice).
+                </p>
+              </div>
+            )}
             <div className="space-y-1">
               <Label>Username / Email</Label>
               <Input
