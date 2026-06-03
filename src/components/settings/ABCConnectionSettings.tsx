@@ -194,6 +194,16 @@ export function ABCConnectionSettings() {
   const [productQuery, setProductQuery] = useState('');
   const [priceQty, setPriceQty] = useState('1');
   const [orderStatusNumber, setOrderStatusNumber] = useState('');
+  // Sandy contract: UOM from Product API, jobsite DC contact, optional override.
+  const [orderUom, setOrderUom] = useState('');
+  const [orderQty, setOrderQty] = useState('1');
+  const [jobsiteName, setJobsiteName] = useState('');
+  const [jobsiteEmail, setJobsiteEmail] = useState('');
+  const [jobsitePhone, setJobsitePhone] = useState('');
+  const [overrideEnabled, setOverrideEnabled] = useState(false);
+  const [overridePrice, setOverridePrice] = useState('');
+  const [overrideReason, setOverrideReason] = useState('');
+  const [sandboxDemoFallback, setSandboxDemoFallback] = useState(false);
 
   const [searchHits, setSearchHits] = useState<SearchHit[]>([]);
   const [orderResult, setOrderResult] = useState<any | null>(null);
@@ -479,12 +489,32 @@ export function ABCConnectionSettings() {
   };
 
   const handleSubmitTestOrder = async () => {
-    if (!shipToNumber.trim() || !branchNumber.trim() || !itemNumber.trim()) {
+    if (!itemNumber.trim()) {
+      toast({ title: 'Missing item', description: 'Pick a real item from product search first.', variant: 'destructive' });
+      return;
+    }
+    if (!orderUom.trim()) {
+      toast({ title: 'Missing UOM', description: 'UOM must come from Product API for this item.', variant: 'destructive' });
+      return;
+    }
+    if (!jobsiteName.trim() || !jobsiteEmail.trim() || !jobsitePhone.trim()) {
       toast({
-        title: 'Missing inputs',
-        description: 'Ship-To, Branch, and a real Item Number from product search are required.',
+        title: 'Jobsite contact required',
+        description: 'ABC requires DC contact name, email, and phone on the order.',
         variant: 'destructive',
       });
+      return;
+    }
+    if (!sandboxDemoFallback && (!shipToNumber.trim() || !branchNumber.trim())) {
+      toast({
+        title: 'Ship-To/Branch required',
+        description: 'Enable sandbox demo fallback or fill Ship-To and Branch.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (overrideEnabled && (!overridePrice.trim() || !overrideReason.trim())) {
+      toast({ title: 'Override needs price and reason', variant: 'destructive' });
       return;
     }
     setSubmittingOrder(true);
@@ -492,9 +522,20 @@ export function ABCConnectionSettings() {
     setTrackResult(null);
     try {
       const data: any = await callProxy('submit_test_order', {
-        shipToNumber: shipToNumber.trim(),
-        branchNumber: branchNumber.trim(),
+        shipToNumber: shipToNumber.trim() || undefined,
+        branchNumber: branchNumber.trim() || undefined,
         itemNumber: itemNumber.trim(),
+        uom: orderUom.trim().toUpperCase(),
+        quantity: Number(orderQty) || 1,
+        jobsiteContact: {
+          name: jobsiteName.trim(),
+          email: jobsiteEmail.trim(),
+          phone: jobsitePhone.trim(),
+        },
+        sandboxDemo: sandboxDemoFallback,
+        priceOverride: overrideEnabled
+          ? { value: Number(overridePrice), reason: overrideReason.trim() }
+          : undefined,
       });
       setOrderResult(data);
       const friendly =
@@ -673,7 +714,13 @@ export function ABCConnectionSettings() {
   const isConnected = connection?.connection_status === 'connected';
   const hasSecret = !!connection?.client_secret_last_four;
   const canSubmitOrder =
-    !!shipToNumber.trim() && !!branchNumber.trim() && !!itemNumber.trim();
+    !!itemNumber.trim() &&
+    !!orderUom.trim() &&
+    !!jobsiteName.trim() &&
+    !!jobsiteEmail.trim() &&
+    !!jobsitePhone.trim() &&
+    (sandboxDemoFallback || (!!shipToNumber.trim() && !!branchNumber.trim())) &&
+    (!overrideEnabled || (!!overridePrice.trim() && !!overrideReason.trim()));
   // (Order tracking now lives in <AbcDiagnosticsPanel /> — persistent + tenant-scoped.)
 
 
@@ -1075,8 +1122,77 @@ export function ABCConnectionSettings() {
             <Send className="h-4 w-4" /> Submit Sandbox Test Order
           </div>
           <p className="text-xs text-muted-foreground">
-            Submits a non-production ABC sandbox order to ABC QA. Requires a real item from product search.
+            Sandy contract: itemNumber + UOM must come from Product API; jobsite DC contact required;
+            Price Items echo is the price source unless an explicit override + reason is supplied.
           </p>
+
+          <div className="grid gap-3 md:grid-cols-4">
+            <div className="space-y-1">
+              <Label className="text-xs">Item # (from Product Search)</Label>
+              <Input value={itemNumber} onChange={(e) => setItemNumber(e.target.value)} placeholder="e.g. 02OCTDUMP" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">UOM (from Product API)</Label>
+              <Input value={orderUom} onChange={(e) => setOrderUom(e.target.value)} placeholder="e.g. PC / BX" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Quantity</Label>
+              <Input type="number" min={1} value={orderQty} onChange={(e) => setOrderQty(e.target.value)} />
+            </div>
+            <div className="space-y-1 flex items-end">
+              <label className="flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={sandboxDemoFallback}
+                  onChange={(e) => setSandboxDemoFallback(e.target.checked)}
+                  disabled={environment !== 'sandbox'}
+                />
+                Use sandbox demo Ship-To/Branch fallback (2010466-2 / 1209)
+              </label>
+            </div>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Jobsite Contact Name (DC)</Label>
+              <Input value={jobsiteName} onChange={(e) => setJobsiteName(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Jobsite Contact Email</Label>
+              <Input value={jobsiteEmail} onChange={(e) => setJobsiteEmail(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Jobsite Contact Phone</Label>
+              <Input value={jobsitePhone} onChange={(e) => setJobsitePhone(e.target.value)} />
+            </div>
+          </div>
+
+          <div className="rounded border bg-muted/30 p-2 space-y-2">
+            <label className="flex items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={overrideEnabled}
+                onChange={(e) => setOverrideEnabled(e.target.checked)}
+              />
+              Override ABC Price Items unit price (requires reason)
+            </label>
+            {overrideEnabled && (
+              <div className="grid gap-2 md:grid-cols-2">
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={overridePrice}
+                  onChange={(e) => setOverridePrice(e.target.value)}
+                  placeholder="Override unit price"
+                />
+                <Input
+                  value={overrideReason}
+                  onChange={(e) => setOverrideReason(e.target.value)}
+                  placeholder="Reason (required, persisted on line)"
+                />
+              </div>
+            )}
+          </div>
 
           <Button
             onClick={handleSubmitTestOrder}
@@ -1086,6 +1202,7 @@ export function ABCConnectionSettings() {
             Submit Test Order
           </Button>
         </div>
+
 
         {/* Track Order */}
         <div className="rounded-md border p-3 space-y-3">
