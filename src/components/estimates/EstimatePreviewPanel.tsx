@@ -44,7 +44,9 @@ import {
   X,
   ArrowLeft,
   Files,
+  Sparkles,
 } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import {
   type PDFComponentOptions,
@@ -273,6 +275,7 @@ export function EstimatePreviewPanel({
   const [fetchedEstimates, setFetchedEstimates] = useState<Map<string, FetchedEstimateData>>(new Map());
   const [isEstimatesOpen, setIsEstimatesOpen] = useState(true);
   const { generateMultiPagePDF, isGenerating: isGeneratingPDF } = useMultiPagePDFGeneration();
+  const [isGeneratingNarrative, setIsGeneratingNarrative] = useState(false);
   const { toast } = useToast();
   const previewRef = useRef<HTMLDivElement>(null);
   const photoUploadRef = useRef<HTMLInputElement>(null);
@@ -871,6 +874,56 @@ export function EstimatePreviewPanel({
     setRemovedTemplateIds(new Set());
   };
 
+  // Generate an AI customer-friendly Project Scope narrative from the line items
+  const handleGenerateScopeNarrative = async () => {
+    const combined = [...materialItems, ...laborItems];
+    if (combined.length === 0) {
+      toast({
+        title: 'No line items',
+        description: 'Add materials or labor before generating an AI scope.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setIsGeneratingNarrative(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('estimate-scope-narrative', {
+        body: {
+          items: combined.map((it) => ({
+            item_name: it.item_name,
+            description: (it as any).description ?? (it as any).notes ?? null,
+            qty: it.qty,
+            unit: it.unit,
+            item_type: (it as any).item_type,
+            trade_type: (it as any).trade_type,
+          })),
+          project_title: estimateDisplayName || templateName || estimateNumber,
+          customer_name: customerName,
+          property_address: customerAddress,
+          company_name: companyInfo?.name,
+          tone: 'professional',
+        },
+      });
+      if (error) throw error;
+      const narrative = (data as any)?.narrative?.trim();
+      if (!narrative) throw new Error('No narrative returned');
+      setOptions((prev) => ({ ...prev, useScopeNarrative: true, scopeNarrative: narrative }));
+      toast({
+        title: 'AI Scope generated',
+        description: 'Customer-friendly project scope is ready. Edit as needed.',
+      });
+    } catch (e: any) {
+      console.error('[scope-narrative] error', e);
+      toast({
+        title: 'Generation failed',
+        description: e?.message || 'Could not generate scope narrative.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsGeneratingNarrative(false);
+    }
+  };
+
   // Generate safe filename from display name, template name, or estimate number
   const getFilename = useCallback(() => {
     // Priority: user-set display name > template name > estimate number
@@ -1311,7 +1364,47 @@ export function EstimatePreviewPanel({
                       onChange={(v) => updateOption('showLineItemPricing', v)}
                     />
                   </div>
+
+                  {/* AI Customer-Friendly Project Scope */}
+                  <div className="mt-3 rounded-md border border-dashed border-primary/30 bg-primary/5 p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="ai-scope-toggle" className="flex items-center gap-1.5 text-xs font-medium">
+                        <Sparkles className="h-3.5 w-3.5 text-primary" />
+                        AI Customer-Friendly Scope
+                      </Label>
+                      <Switch
+                        id="ai-scope-toggle"
+                        checked={!!options.useScopeNarrative}
+                        onCheckedChange={(v) => setOptions((p) => ({ ...p, useScopeNarrative: v }))}
+                      />
+                    </div>
+                    <p className="text-[10px] text-muted-foreground leading-snug">
+                      Replaces the technical material list with a clear, phased breakdown of the project process.
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full h-7 text-xs"
+                      onClick={handleGenerateScopeNarrative}
+                      disabled={isGeneratingNarrative}
+                    >
+                      {isGeneratingNarrative ? (
+                        <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" /> Generating…</>
+                      ) : (
+                        <><Sparkles className="h-3 w-3 mr-1.5" /> {options.scopeNarrative ? 'Re-generate' : 'Generate with AI'}</>
+                      )}
+                    </Button>
+                    {options.useScopeNarrative && (
+                      <Textarea
+                        value={options.scopeNarrative || ''}
+                        onChange={(e) => setOptions((p) => ({ ...p, scopeNarrative: e.target.value }))}
+                        placeholder="AI-generated project scope will appear here. You can edit before exporting."
+                        className="min-h-[140px] text-xs"
+                      />
+                    )}
+                  </div>
                 </div>
+
 
                 <Separator />
 

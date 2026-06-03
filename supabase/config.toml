@@ -1327,3 +1327,6 @@ verify_jwt = false
 
 [functions.crm-referral-export-csv]
 verify_jwt = false
+
+[functions.estimate-scope-narrative]
+verify_jwt = true
