@@ -248,7 +248,8 @@ export function EstimatePreviewPanel({
   const [streetPitch, setStreetPitch] = useState<number>(0);
   const [streetFov, setStreetFov] = useState<number>(90);
   const [aerialZoom, setAerialZoom] = useState<number>(19);
-  const [aerialHeading, setAerialHeading] = useState<number>(0);
+  const [aerialPanX, setAerialPanX] = useState<number>(0); // east(+)/west(-) offset in lng degrees * 10000
+  const [aerialPanY, setAerialPanY] = useState<number>(0); // north(+)/south(-) offset in lat degrees * 10000
   const [propertyCoords, setPropertyCoords] = useState<{ lat: number; lng: number } | null>(null);
   const { apiKey: googleMapsApiKey } = useGoogleMapsToken();
 
