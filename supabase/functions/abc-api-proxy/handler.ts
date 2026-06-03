@@ -357,6 +357,20 @@ interface ProxyRequest {
 
 const ABC_SANDBOX_DEMO_FALLBACK = { shipToNumber: "2010466-2", branchNumber: "1209" } as const;
 
+// Sandbox-only Product API snapshot. Used ONLY when:
+//   env === "sandbox" AND body.sandboxDemo === true
+//   AND the live ABC Product API call was WAF-blocked (status 499).
+// Manually confirmed from ABC sandbox Product API logs. Do NOT widen this
+// map without first verifying itemNumber + validUoms against a real ABC
+// Product API response captured in abc_api_audit.
+const ABC_SANDBOX_DEMO_CATALOG: Record<string, { itemNumber: string; itemDescription: string; validUoms: string[] }> = {
+  "02OCTDUMP": {
+    itemNumber: "02OCTDUMP",
+    itemDescription: "Sandbox Demo Item 02OCTDUMP",
+    validUoms: ["EA"],
+  },
+};
+
 export const handle = async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
