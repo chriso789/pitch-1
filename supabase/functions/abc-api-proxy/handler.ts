@@ -1070,35 +1070,109 @@ export const handle = async (req) => {
     }
 
 
-    // ---------------- submit_test_order ----------------
+    // ---------------- submit_test_order (Sandy contract) ----------------
     if (action === "submit_test_order") {
       const endpoint = `${cfg.apiBase}/order/v2/orders`;
-      const branchNumber = (body.branchNumber || body.branch_code || "").toString().trim();
-      const shipToNumber = (body.shipToNumber || "").toString().trim();
+
+      const sandboxDemo = !!body.sandboxDemo && env === "sandbox";
+      let shipToNumber = (body.shipToNumber || "").toString().trim();
+      let branchNumber = (body.branchNumber || body.branch_code || "").toString().trim();
+      if (sandboxDemo) {
+        if (!shipToNumber) shipToNumber = ABC_SANDBOX_DEMO_FALLBACK.shipToNumber;
+        if (!branchNumber) branchNumber = ABC_SANDBOX_DEMO_FALLBACK.branchNumber;
+      }
+
       const itemNumber = (body.itemNumber || "").toString().trim();
-      if (!branchNumber || !shipToNumber || !itemNumber) {
+      const requestedUom = (body.uom || "").toString().trim().toUpperCase();
+      const quantity = Math.max(1, Math.floor(Number(body.quantity ?? 1) || 1));
+      const itemDescriptionInput = (body.itemDescription || "").toString().trim();
+      const jc = body.jobsiteContact || {};
+      const jcName = (jc.name || "").toString().trim();
+      const jcEmail = (jc.email || "").toString().trim();
+      const jcPhone = (jc.phone || "").toString().trim();
+      const jcPhoneDigits = jcPhone.replace(/\D/g, "");
+      const override = body.priceOverride;
+
+      const missing: string[] = [];
+      if (!shipToNumber) missing.push("shipToNumber");
+      if (!branchNumber) missing.push("branchNumber");
+      if (!itemNumber) missing.push("itemNumber");
+      if (!requestedUom) missing.push("uom");
+      if (!jcName) missing.push("jobsiteContact.name");
+      if (!jcEmail) missing.push("jobsiteContact.email");
+      if (!jcPhoneDigits) missing.push("jobsiteContact.phone");
+      if (override && (!Number.isFinite(Number(override.value)) || Number(override.value) <= 0)) {
+        missing.push("priceOverride.value");
+      }
+      if (override && !String(override.reason || "").trim()) {
+        missing.push("priceOverride.reason");
+      }
+      if (missing.length) {
         return json({
           success: false,
-          error: "missing_demo_inputs",
-          interpretation:
-            "shipToNumber, branchNumber, and itemNumber are all required. Use Product Search to select a real item at the target branch.",
+          error: "missing_required_fields",
+          missing,
+          interpretation: `Cannot submit ABC order — missing: ${missing.join(", ")}.`,
         }, 400);
       }
+
       const ts = Date.now();
       const requestId = `PITCH-TEST-${ts}`;
-      // ABC currently limits purchaseOrder to 20 chars; keep requestId long/unique
-      // but use a compact purchase order for sandbox validation.
       const purchaseOrder = `PITCH-${ts}`;
-
-      // ISO date (YYYY-MM-DD) one business-day out.
       const delivery = new Date();
       delivery.setUTCDate(delivery.getUTCDate() + 1);
       const deliveryRequestedFor = delivery.toISOString().slice(0, 10);
 
-      // Try to fetch a real unit price from ABC first (required field for /order/v2/orders).
-      // Falls back to 0.01 if pricing call fails — sandbox still validates payload shape.
-      let unitPriceValue = 0.01;
-      let unitPriceUom = "EA";
+      // Catalog gate
+      let catalogItem: any = null;
+      let catalogValidUoms: string[] = [];
+      let catalogDescription: string | null = null;
+      let catalogFetchError: string | null = null;
+      try {
+        const catalogEndpoint = `${cfg.apiBase}/catalog/v1/items/${encodeURIComponent(itemNumber)}`;
+        const cr = await callAbc(tok.token, "GET", catalogEndpoint, undefined);
+        if (cr.ok && cr.json) {
+          const cj: any = cr.json;
+          catalogItem = Array.isArray(cj?.items) ? cj.items[0] : cj?.item ?? cj;
+          catalogDescription =
+            catalogItem?.itemDescription ?? catalogItem?.description ?? catalogItem?.name ?? null;
+          const uomList =
+            catalogItem?.uoms ?? catalogItem?.unitsOfMeasure ?? catalogItem?.validUoms ?? [];
+          catalogValidUoms = (Array.isArray(uomList) ? uomList : [])
+            .map((u: any) => String(u?.uom ?? u?.code ?? u?.unitOfMeasure ?? u).toUpperCase())
+            .filter(Boolean);
+        } else {
+          catalogFetchError = `catalog_${cr.status}`;
+        }
+      } catch (e) {
+        catalogFetchError = (e as Error)?.message || "catalog_fetch_failed";
+      }
+
+      if (catalogValidUoms.length && !catalogValidUoms.includes(requestedUom)) {
+        return json({
+          success: false,
+          error: "invalid_uom_for_item",
+          interpretation: `UOM "${requestedUom}" is not a valid Product API UOM for ${itemNumber}. Valid UOMs: ${catalogValidUoms.join(", ")}.`,
+          itemNumber,
+          validUoms: catalogValidUoms,
+          catalogFetchError,
+        }, 400);
+      }
+
+      const itemDescription = itemDescriptionInput || catalogDescription || "";
+      if (!itemDescription) {
+        return json({
+          success: false,
+          error: "missing_item_description",
+          interpretation: `Cannot submit ABC order — itemDescription must come from Product API for ${itemNumber}.`,
+          catalogFetchError,
+        }, 400);
+      }
+
+      // Price Items echo
+      let priceItemsPrice: number | null = null;
+      let priceItemsTimestamp: string | null = null;
+      let priceItemsRaw: any = null;
       try {
         const priceEndpoint = `${cfg.apiBase}/pricing/v2/prices`;
         const pricePayload = {
@@ -1106,23 +1180,35 @@ export const handle = async (req) => {
           shipToNumber,
           branchNumber,
           purpose: "ordering",
-          lines: [{ id: "1", itemNumber, quantity: 1, uom: "EA" }],
+          lines: [{ id: "1", itemNumber, quantity, uom: requestedUom }],
         };
         const pr = await callAbc(tok.token, "POST", priceEndpoint, pricePayload);
+        priceItemsRaw = pr.json ?? pr.text ?? null;
         const pj: any = pr.json;
-        const firstLine = Array.isArray(pj?.lines) ? pj.lines[0]
-          : Array.isArray(pj?.items) ? pj.items[0]
-            : Array.isArray(pj) ? pj[0]?.lines?.[0] ?? pj[0]?.items?.[0] ?? pj[0]
-              : pj;
-        const firstPrice =
-          firstLine?.unitPrice ??
-          firstLine?.netPrice ??
-          firstLine?.price ??
-          pj?.unitPrice;
-        const numericPrice = Number(firstPrice);
-        if (Number.isFinite(numericPrice) && numericPrice > 0) unitPriceValue = numericPrice;
-        unitPriceUom = String(firstLine?.uom ?? firstLine?.unitPrice?.uom ?? firstLine?.unitPrice?.uomCode ?? "EA").toUpperCase();
-      } catch (_e) { /* non-fatal — proceed with fallback price */ }
+        const respLines = Array.isArray(pj?.lines) ? pj.lines
+          : Array.isArray(pj) ? (pj[0]?.lines ?? [])
+            : [];
+        const first = respLines[0] ?? pj;
+        const candidate = Number(
+          first?.unitPrice?.value ?? first?.unitPrice ?? first?.netPrice ?? first?.price ?? NaN,
+        );
+        if (Number.isFinite(candidate) && candidate > 0) {
+          priceItemsPrice = candidate;
+          priceItemsTimestamp = new Date().toISOString();
+        }
+      } catch (_e) { /* non-fatal */ }
+
+      const overrideValue = override ? Number(override.value) : null;
+      const finalUnitPrice = override ? overrideValue! : priceItemsPrice;
+      if (finalUnitPrice == null || !(finalUnitPrice > 0)) {
+        return json({
+          success: false,
+          error: "price_unavailable",
+          interpretation:
+            "Price Items did not return a positive unit price. Re-verify shipToNumber/branchNumber/itemNumber/UOM, or supply priceOverride with a reason.",
+          itemNumber, uom: requestedUom, shipToNumber, branchNumber, priceItemsRaw,
+        }, 422);
+      }
 
       const orderObj = body.order ?? {
         requestId,
@@ -1133,40 +1219,34 @@ export const handle = async (req) => {
         dates: { deliveryRequestedFor },
         currency: "USD",
         shipTo: {
-          name: "ABC Sandbox Test",
+          name: jcName.slice(0, 60),
           number: shipToNumber,
           address: {
-            line1: "123 Test Street",
-            line2: "",
-            line3: "",
-            city: "North Port",
-            state: "FL",
-            postal: "34286",
-            country: "USA",
+            line1: "123 Test Street", line2: "", line3: "",
+            city: "North Port", state: "FL", postal: "34286", country: "USA",
           },
           contacts: [{
-            name: "ABC Sandbox Test",
-            functionCode: "SM",
-            email: "connect_user@test.com",
-            phones: [{ number: "9415550100", type: "MOBILE", ext: "" }],
+            functionCode: "DC",
+            name: jcName.slice(0, 60),
+            email: jcEmail.slice(0, 80),
+            phones: [{ number: jcPhoneDigits, type: "MOBILE", ext: "" }],
           }],
         },
-        orderComments: [
-          {
-            code: "H",
-            description: "PITCH integration sandbox test order - non-production QA",
-          },
-        ],
+        orderComments: [{
+          code: "H",
+          description:
+            "PITCH integration sandbox test order - non-production QA" +
+            (sandboxDemo ? " [SANDBOX DEMO FALLBACK ship-to/branch]" : ""),
+        }],
         lines: [{
           id: "1",
           itemNumber,
-          itemDescription: "Sandbox test item",
-          orderedQty: { value: 1, uom: "EA" },
-          unitPrice: { value: unitPriceValue, uom: unitPriceUom, instructions: "PITCH sandbox test" },
+          itemDescription,
+          orderedQty: { value: quantity, uom: requestedUom },
+          unitPrice: { value: finalUnitPrice, uom: requestedUom, instructions: "PITCH sandbox test" },
         }],
       };
 
-      // ABC /order/v2/orders accepts an ARRAY of orders.
       const payload = [orderObj];
       const r = await callAbc(tok.token, "POST", endpoint, payload);
       const error_code = r.ok ? null : mapAbcError(r.status, r.json);
@@ -1177,7 +1257,6 @@ export const handle = async (req) => {
         duration_ms: Date.now() - startedAt, created_by: userId,
       });
 
-      // Hoist any tracking identifiers ABC returned so the UI can auto-track.
       const respBody: any = r.json ?? null;
       const first = Array.isArray(respBody) ? respBody[0] : respBody?.orders?.[0] ?? respBody;
       let orderNumber =
@@ -1187,38 +1266,27 @@ export const handle = async (req) => {
       const transactionID =
         first?.transactionID ?? first?.transactionId ?? first?.transaction_id ?? null;
 
-      // 202 Accepted: ABC may not include a body. Pull async reference from
-      // Location / x-confirmation / x-order-id headers so the order isn't
-      // shown as "pending reference" forever.
       if (!confirmationNumber && !orderNumber) {
         const loc = r.headers?.location || r.headers?.["content-location"] || "";
         const headerRef =
-          r.headers?.["x-confirmation-number"] ||
-          r.headers?.["x-confirmationnumber"] ||
-          r.headers?.["x-order-number"] ||
-          r.headers?.["x-order-id"] ||
-          r.headers?.["x-transaction-id"] ||
-          null;
+          r.headers?.["x-confirmation-number"] || r.headers?.["x-confirmationnumber"] ||
+          r.headers?.["x-order-number"] || r.headers?.["x-order-id"] || r.headers?.["x-transaction-id"] || null;
         const locTail = loc ? loc.split("?")[0].split("/").filter(Boolean).pop() : null;
         const asyncRef = headerRef || locTail || transactionID || null;
         if (asyncRef) confirmationNumber = String(asyncRef);
       }
 
-      // Persist sandbox attempt to abc_orders (query-then-insert/update; no unique
-      // index on request_id exists so we cannot rely on upsert).
       try {
         const { data: existing } = await (supabase as any)
           .from("abc_orders")
           .select("id")
           .eq("tenant_id", tenant_id)
-          .or(
-            [
-              `request_id.eq.${requestId}`,
-              `purchase_order.eq.${purchaseOrder}`,
-              orderNumber ? `order_number.eq.${orderNumber}` : null,
-              confirmationNumber ? `confirmation_number.eq.${confirmationNumber}` : null,
-            ].filter(Boolean).join(","),
-          )
+          .or([
+            `request_id.eq.${requestId}`,
+            `purchase_order.eq.${purchaseOrder}`,
+            orderNumber ? `order_number.eq.${orderNumber}` : null,
+            confirmationNumber ? `confirmation_number.eq.${confirmationNumber}` : null,
+          ].filter(Boolean).join(","))
           .limit(1)
           .maybeSingle();
 
@@ -1239,11 +1307,18 @@ export const handle = async (req) => {
           ordered_on: new Date().toISOString().slice(0, 10),
           delivery_requested_for: deliveryRequestedFor,
           currency: "USD",
-          source: "sandbox",
+          source: sandboxDemo ? "sandbox_demo" : "sandbox",
+          is_sandbox_demo_fallback: sandboxDemo,
+          jobsite_contact_name: jcName,
+          jobsite_contact_email: jcEmail,
+          jobsite_contact_phone: jcPhoneDigits,
           raw_payload: {
             request: payload,
             response: { status: r.status, body: r.json ?? r.text },
+            priceItems: priceItemsRaw,
+            catalog: catalogItem,
             transactionID,
+            sandbox_demo_fallback: sandboxDemo,
           },
           updated_at: new Date().toISOString(),
         };
@@ -1253,20 +1328,13 @@ export const handle = async (req) => {
           await (supabase as any).from("abc_orders").update(orderRow).eq("id", orderId);
         } else {
           const { data: ins } = await (supabase as any)
-            .from("abc_orders")
-            .insert(orderRow)
-            .select("id")
-            .single();
+            .from("abc_orders").insert(orderRow).select("id").single();
           orderId = ins?.id ?? null;
         }
 
         if (orderId) {
-          // Replace lines (sandbox = single line)
-          await (supabase as any)
-            .from("abc_order_lines")
-            .delete()
-            .eq("order_id", orderId)
-            .eq("tenant_id", tenant_id);
+          await (supabase as any).from("abc_order_lines")
+            .delete().eq("order_id", orderId).eq("tenant_id", tenant_id);
           const line0 = orderObj.lines?.[0];
           if (line0) {
             await (supabase as any).from("abc_order_lines").insert({
@@ -1275,9 +1343,21 @@ export const handle = async (req) => {
               line_id: String(line0.id ?? 1),
               item_number: line0.itemNumber,
               item_description: line0.itemDescription,
-              ordered_qty: Number(line0.orderedQty?.value ?? 1),
-              ordered_uom: line0.orderedQty?.uom ?? "EA",
-              raw_payload: line0,
+              ordered_qty: Number(line0.orderedQty?.value ?? quantity),
+              ordered_uom: line0.orderedQty?.uom ?? requestedUom,
+              unit_price: finalUnitPrice,
+              amount: Number((finalUnitPrice * quantity).toFixed(2)),
+              abc_item_number: itemNumber,
+              abc_item_description: itemDescription,
+              abc_uom: requestedUom,
+              abc_price: finalUnitPrice,
+              abc_price_timestamp: priceItemsTimestamp ?? new Date().toISOString(),
+              abc_branch_number: branchNumber,
+              abc_ship_to_number: shipToNumber,
+              abc_price_source: override ? "override" : "price_items",
+              abc_price_override_reason: override?.reason ?? null,
+              abc_catalog_payload: catalogItem ?? null,
+              raw_payload: { line: line0, priceItems: priceItemsRaw },
             });
           }
         }
@@ -1290,6 +1370,13 @@ export const handle = async (req) => {
         environment: env,
         endpoint,
         tokenIssued: true,
+        sandboxDemoFallback: sandboxDemo,
+        catalogValidUoms,
+        catalogFetchError,
+        priceSource: override ? "override" : "price_items",
+        priceItemsPrice,
+        priceItemsRaw,
+        finalUnitPrice,
         orderRequest: payload,
         orderResponse: { status: r.status, body: r.json ?? r.text },
         orderNumber,
@@ -1299,11 +1386,15 @@ export const handle = async (req) => {
         purchaseOrder,
         branchNumber,
         shipToNumber,
+        itemNumber,
+        itemDescription,
+        uom: requestedUom,
         error_code,
         interpretation: interpretAbcError(error_code, r.status, r.json),
         timestamp: new Date().toISOString(),
       });
     }
+
 
 
 
