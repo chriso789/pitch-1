@@ -1364,7 +1364,47 @@ export function EstimatePreviewPanel({
                       onChange={(v) => updateOption('showLineItemPricing', v)}
                     />
                   </div>
+
+                  {/* AI Customer-Friendly Project Scope */}
+                  <div className="mt-3 rounded-md border border-dashed border-primary/30 bg-primary/5 p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="ai-scope-toggle" className="flex items-center gap-1.5 text-xs font-medium">
+                        <Sparkles className="h-3.5 w-3.5 text-primary" />
+                        AI Customer-Friendly Scope
+                      </Label>
+                      <Switch
+                        id="ai-scope-toggle"
+                        checked={!!options.useScopeNarrative}
+                        onCheckedChange={(v) => setOptions((p) => ({ ...p, useScopeNarrative: v }))}
+                      />
+                    </div>
+                    <p className="text-[10px] text-muted-foreground leading-snug">
+                      Replaces the technical material list with a clear, phased breakdown of the project process.
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full h-7 text-xs"
+                      onClick={handleGenerateScopeNarrative}
+                      disabled={isGeneratingNarrative}
+                    >
+                      {isGeneratingNarrative ? (
+                        <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" /> Generating…</>
+                      ) : (
+                        <><Sparkles className="h-3 w-3 mr-1.5" /> {options.scopeNarrative ? 'Re-generate' : 'Generate with AI'}</>
+                      )}
+                    </Button>
+                    {options.useScopeNarrative && (
+                      <Textarea
+                        value={options.scopeNarrative || ''}
+                        onChange={(e) => setOptions((p) => ({ ...p, scopeNarrative: e.target.value }))}
+                        placeholder="AI-generated project scope will appear here. You can edit before exporting."
+                        className="min-h-[140px] text-xs"
+                      />
+                    )}
+                  </div>
                 </div>
+
 
                 <Separator />
 
