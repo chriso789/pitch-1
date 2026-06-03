@@ -1085,11 +1085,28 @@ export const handle = async (req) => {
     }
 
 
-    // ---------------- submit_test_order (Sandy contract) ----------------
-    if (action === "submit_test_order") {
+    // ---------------- submit_test_order / validate_payload_only ----------------
+    // Sandy contract enforcement + sandbox-demo WAF fallbacks:
+    //   - Production NEVER gets any fallback (no demo catalog, no demo price,
+    //     no demo ship-to/branch). sandboxDemo is forced false when env !== sandbox.
+    //   - validate_payload_only runs every contract check and builds the exact
+    //     outgoing ABC payload, persists an abc_api_audit row tagged
+    //     "validate_payload_only", and returns PASS/FAIL — never POSTs to ABC.
+    if (action === "submit_test_order" || action === "validate_payload_only") {
+      const validateOnly = action === "validate_payload_only";
       const endpoint = `${cfg.apiBase}/order/v2/orders`;
 
+      // Hard gate: any sandbox-demo fallback is sandbox-only.
       const sandboxDemo = !!body.sandboxDemo && env === "sandbox";
+      if (body.sandboxDemo && env !== "sandbox") {
+        return json({
+          success: false,
+          error: "sandbox_demo_forbidden_in_production",
+          interpretation:
+            "Sandbox demo fallbacks are not allowed when environment !== sandbox. Remove sandboxDemo flag for production.",
+        }, 400);
+      }
+
       let shipToNumber = (body.shipToNumber || "").toString().trim();
       let branchNumber = (body.branchNumber || body.branch_code || "").toString().trim();
       if (sandboxDemo) {
@@ -1125,24 +1142,27 @@ export const handle = async (req) => {
       if (missing.length) {
         return json({
           success: false,
+          validation: "FAIL",
           error: "missing_required_fields",
           missing,
-          interpretation: `Cannot submit ABC order — missing: ${missing.join(", ")}.`,
+          interpretation: `Cannot ${validateOnly ? "validate" : "submit"} ABC order — missing: ${missing.join(", ")}.`,
         }, 400);
       }
 
       const ts = Date.now();
-      const requestId = `PITCH-TEST-${ts}`;
+      const requestId = `PITCH-${validateOnly ? "VALIDATE" : "TEST"}-${ts}`;
       const purchaseOrder = `PITCH-${ts}`;
       const delivery = new Date();
       delivery.setUTCDate(delivery.getUTCDate() + 1);
       const deliveryRequestedFor = delivery.toISOString().slice(0, 10);
 
-      // Catalog gate
+      // ----- Catalog gate (with sandbox-demo WAF fallback) -----
       let catalogItem: any = null;
       let catalogValidUoms: string[] = [];
       let catalogDescription: string | null = null;
       let catalogFetchError: string | null = null;
+      let catalogSource: "product_api" | "sandbox_demo_fallback_waf_blocked" = "product_api";
+      let catalogWafBlocked = false;
       try {
         const catalogEndpoint = `${cfg.apiBase}/catalog/v1/items/${encodeURIComponent(itemNumber)}`;
         const cr = await callAbc(tok.token, "GET", catalogEndpoint, undefined);
@@ -1158,47 +1178,97 @@ export const handle = async (req) => {
             .filter(Boolean);
         } else {
           catalogFetchError = `catalog_${cr.status}`;
+          if (cr.status === 499) catalogWafBlocked = true;
         }
       } catch (e) {
         catalogFetchError = (e as Error)?.message || "catalog_fetch_failed";
       }
 
+      // Sandbox-demo fallback for WAF-blocked catalog — only one whitelisted item.
+      if (catalogWafBlocked && sandboxDemo) {
+        const snap = ABC_SANDBOX_DEMO_CATALOG[itemNumber];
+        if (!snap) {
+          return json({
+            success: false,
+            validation: "FAIL",
+            error: "sandbox_demo_item_not_whitelisted",
+            interpretation:
+              `ABC Product API is WAF-blocked and itemNumber "${itemNumber}" is not in the sandbox demo whitelist. Only [${Object.keys(ABC_SANDBOX_DEMO_CATALOG).join(", ")}] may be used in sandbox demo fallback mode.`,
+            catalogFetchError,
+          }, 400);
+        }
+        // Try to recover the most recent real description from prior catalog audit.
+        try {
+          const { data: lastCatalogAudit } = await (supabase as any)
+            .from("abc_api_audit")
+            .select("response_body")
+            .eq("tenant_id", tenant_id)
+            .eq("environment", env)
+            .ilike("endpoint", `%catalog/v1/items/${itemNumber}%`)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          const rb: any = lastCatalogAudit?.response_body;
+          const recovered = rb?.itemDescription ?? rb?.description ?? rb?.items?.[0]?.itemDescription;
+          if (recovered) catalogDescription = String(recovered);
+        } catch (_e) { /* non-fatal */ }
+        catalogItem = { ...snap, source: "sandbox_demo_fallback_waf_blocked" };
+        catalogValidUoms = snap.validUoms.map((u) => u.toUpperCase());
+        catalogDescription = catalogDescription || snap.itemDescription;
+        catalogSource = "sandbox_demo_fallback_waf_blocked";
+      }
+
+      // UOM contract: when we have ANY valid UOM list (real or demo snapshot),
+      // the requested UOM MUST be in it. Never silently allow an unverified UOM.
       if (catalogValidUoms.length && !catalogValidUoms.includes(requestedUom)) {
         return json({
           success: false,
+          validation: "FAIL",
           error: "invalid_uom_for_item",
-          interpretation: `UOM "${requestedUom}" is not a valid Product API UOM for ${itemNumber}. Valid UOMs: ${catalogValidUoms.join(", ")}.`,
-          itemNumber,
-          validUoms: catalogValidUoms,
-          catalogFetchError,
+          interpretation: `UOM "${requestedUom}" is not in the ${catalogSource === "sandbox_demo_fallback_waf_blocked" ? "sandbox demo" : "Product API"} valid UOM list for ${itemNumber}. Valid UOMs: ${catalogValidUoms.join(", ")}.`,
+          itemNumber, validUoms: catalogValidUoms, catalogSource, catalogFetchError,
         }, 400);
+      }
+      if (!catalogValidUoms.length) {
+        return json({
+          success: false,
+          validation: "FAIL",
+          error: "catalog_unavailable",
+          interpretation:
+            sandboxDemo
+              ? `Product API returned no UOMs for ${itemNumber} and no sandbox demo snapshot is available. Add the item to ABC_SANDBOX_DEMO_CATALOG once UOMs are verified.`
+              : `Product API returned no UOMs for ${itemNumber}. Cannot validate UOM contract.`,
+          catalogFetchError,
+        }, 422);
       }
 
       const itemDescription = itemDescriptionInput || catalogDescription || "";
       if (!itemDescription) {
         return json({
           success: false,
+          validation: "FAIL",
           error: "missing_item_description",
-          interpretation: `Cannot submit ABC order — itemDescription must come from Product API for ${itemNumber}.`,
+          interpretation: `Cannot ${validateOnly ? "validate" : "submit"} ABC order — itemDescription must come from Product API (or sandbox snapshot) for ${itemNumber}.`,
           catalogFetchError,
         }, 400);
       }
 
-      // Price Items echo
+      // ----- Price Items echo (with sandbox-demo WAF fallback) -----
       let priceItemsPrice: number | null = null;
       let priceItemsTimestamp: string | null = null;
       let priceItemsRaw: any = null;
+      let priceWafBlocked = false;
       try {
         const priceEndpoint = `${cfg.apiBase}/pricing/v2/prices`;
         const pricePayload = {
           requestId: `PITCH-PRICE-${ts}`,
-          shipToNumber,
-          branchNumber,
+          shipToNumber, branchNumber,
           purpose: "ordering",
           lines: [{ id: "1", itemNumber, quantity, uom: requestedUom }],
         };
         const pr = await callAbc(tok.token, "POST", priceEndpoint, pricePayload);
         priceItemsRaw = pr.json ?? pr.text ?? null;
+        if (pr.status === 499) priceWafBlocked = true;
         const pj: any = pr.json;
         const respLines = Array.isArray(pj?.lines) ? pj.lines
           : Array.isArray(pj) ? (pj[0]?.lines ?? [])
@@ -1213,17 +1283,40 @@ export const handle = async (req) => {
         }
       } catch (_e) { /* non-fatal */ }
 
+      // Decide final unit price + source.
+      let priceSource: "price_items" | "override" | "sandbox_demo_override_waf_blocked" =
+        override ? "override" : "price_items";
+      if (priceWafBlocked && sandboxDemo) {
+        if (!override) {
+          return json({
+            success: false,
+            validation: "FAIL",
+            error: "price_items_waf_blocked_requires_override",
+            interpretation:
+              "ABC Price Items call was WAF-blocked. Sandbox demo requires a manual priceOverride.value + reason to proceed.",
+            priceItemsRaw,
+          }, 422);
+        }
+        priceSource = "sandbox_demo_override_waf_blocked";
+      }
+
       const overrideValue = override ? Number(override.value) : null;
       const finalUnitPrice = override ? overrideValue! : priceItemsPrice;
       if (finalUnitPrice == null || !(finalUnitPrice > 0)) {
         return json({
           success: false,
+          validation: "FAIL",
           error: "price_unavailable",
           interpretation:
             "Price Items did not return a positive unit price. Re-verify shipToNumber/branchNumber/itemNumber/UOM, or supply priceOverride with a reason.",
           itemNumber, uom: requestedUom, shipToNumber, branchNumber, priceItemsRaw,
         }, 422);
       }
+
+      const sandboxWarning =
+        catalogSource === "sandbox_demo_fallback_waf_blocked" || priceSource === "sandbox_demo_override_waf_blocked"
+          ? "ABC sandbox call was WAF-blocked. This demo uses a manually confirmed sandbox override and should not be used for production."
+          : null;
 
       const orderObj = body.order ?? {
         requestId,
@@ -1251,7 +1344,9 @@ export const handle = async (req) => {
           code: "H",
           description:
             "PITCH integration sandbox test order - non-production QA" +
-            (sandboxDemo ? " [SANDBOX DEMO FALLBACK ship-to/branch]" : ""),
+            (sandboxDemo ? " [SANDBOX DEMO FALLBACK ship-to/branch]" : "") +
+            (catalogSource === "sandbox_demo_fallback_waf_blocked" ? " [CATALOG WAF FALLBACK]" : "") +
+            (priceSource === "sandbox_demo_override_waf_blocked" ? " [PRICE WAF FALLBACK + OVERRIDE]" : ""),
         }],
         lines: [{
           id: "1",
@@ -1263,6 +1358,59 @@ export const handle = async (req) => {
       };
 
       const payload = [orderObj];
+
+      const payloadProof = {
+        shipToNumber,
+        branchNumber,
+        shipToContactDC: orderObj.shipTo?.contacts?.find?.((c: any) => c.functionCode === "DC") ?? null,
+        itemNumber,
+        itemDescription,
+        orderedQty: { value: quantity, uom: requestedUom },
+        unitPrice: { value: finalUnitPrice, uom: requestedUom },
+        priceSource,
+        sandboxDemoFallback: sandboxDemo,
+        catalogSource,
+        priceWafBlocked,
+        catalogWafBlocked,
+        sandboxWarning,
+      };
+
+      // ── validate_payload_only short-circuit ──────────────────────────
+      if (validateOnly) {
+        await auditCall(supabase, {
+          tenant_id, environment: env,
+          action: "validate_payload_only",
+          endpoint: "(no upstream call)",
+          request_body_redacted: payload,
+          status_code: 0,
+          response_body: { validation: "PASS", payloadProof },
+          error_code: null,
+          duration_ms: Date.now() - startedAt,
+          created_by: userId,
+        });
+        return json({
+          success: true,
+          validation: "PASS",
+          environment: env,
+          endpoint,
+          sentToAbc: false,
+          payloadProof,
+          orderRequest: payload,
+          catalogValidUoms,
+          catalogFetchError,
+          priceItemsPrice,
+          priceItemsRaw,
+          finalUnitPrice,
+          requestId,
+          purchaseOrder,
+          sandboxWarning,
+          interpretation:
+            "Validate Payload Only: PASS. Outgoing ABC payload built and audited; ABC was NOT contacted.",
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      // ── normal submit path ───────────────────────────────────────────
       const r = await callAbc(tok.token, "POST", endpoint, payload);
       const error_code = r.ok ? null : mapAbcError(r.status, r.json);
       await auditCall(supabase, {
@@ -1332,8 +1480,11 @@ export const handle = async (req) => {
             response: { status: r.status, body: r.json ?? r.text },
             priceItems: priceItemsRaw,
             catalog: catalogItem,
+            catalogSource,
+            priceSource,
             transactionID,
             sandbox_demo_fallback: sandboxDemo,
+            sandbox_warning: sandboxWarning,
           },
           updated_at: new Date().toISOString(),
         };
@@ -1369,10 +1520,10 @@ export const handle = async (req) => {
               abc_price_timestamp: priceItemsTimestamp ?? new Date().toISOString(),
               abc_branch_number: branchNumber,
               abc_ship_to_number: shipToNumber,
-              abc_price_source: override ? "override" : "price_items",
+              abc_price_source: priceSource,
               abc_price_override_reason: override?.reason ?? null,
               abc_catalog_payload: catalogItem ?? null,
-              raw_payload: { line: line0, priceItems: priceItemsRaw },
+              raw_payload: { line: line0, priceItems: priceItemsRaw, catalogSource, sandbox_warning: sandboxWarning },
             });
           }
         }
@@ -1382,17 +1533,22 @@ export const handle = async (req) => {
 
       return json({
         success: r.ok,
+        validation: "PASS",
+        sentToAbc: true,
         environment: env,
         endpoint,
         tokenIssued: true,
         sandboxDemoFallback: sandboxDemo,
+        sandboxWarning,
+        catalogSource,
         catalogValidUoms,
         catalogFetchError,
-        priceSource: override ? "override" : "price_items",
+        priceSource,
         priceItemsPrice,
         priceItemsRaw,
         finalUnitPrice,
         orderRequest: payload,
+        payloadProof,
         orderResponse: { status: r.status, body: r.json ?? r.text },
         orderNumber,
         confirmationNumber,
