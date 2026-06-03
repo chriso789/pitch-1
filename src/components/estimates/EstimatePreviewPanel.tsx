@@ -164,6 +164,46 @@ interface FetchedEstimateData {
   config: EstimatePreviewPanelProps['config'];
 }
 
+/**
+ * Load an image URL, rotate it by `degrees` on a canvas, and return a JPEG
+ * data URL. Used to bake rotation into the aerial cover photo since Google
+ * Static Maps has no rotation parameter. Returns null on failure (CORS, etc.).
+ */
+async function rotateImageToDataUrl(src: string, degrees: number): Promise<string | null> {
+  return new Promise((resolve) => {
+    const img = new window.Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const w = img.naturalWidth;
+        const h = img.naturalHeight;
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return resolve(null);
+        // Scale the rotated image up so it still fills the original frame
+        // (object-cover behaviour). For any rotation angle, the smallest
+        // square that, when rotated, still covers a w×h rectangle requires
+        // scaling by |cosθ| + |sinθ| on the longer dimension.
+        const rad = (degrees * Math.PI) / 180;
+        const scale = Math.abs(Math.cos(rad)) + Math.abs(Math.sin(rad));
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, w, h);
+        ctx.translate(w / 2, h / 2);
+        ctx.rotate(rad);
+        ctx.scale(scale, scale);
+        ctx.drawImage(img, -w / 2, -h / 2, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.9));
+      } catch {
+        resolve(null);
+      }
+    };
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
 export function EstimatePreviewPanel({
   open,
   onOpenChange,
@@ -248,8 +288,9 @@ export function EstimatePreviewPanel({
   const [streetPitch, setStreetPitch] = useState<number>(0);
   const [streetFov, setStreetFov] = useState<number>(90);
   const [aerialZoom, setAerialZoom] = useState<number>(19);
-  const [aerialPanX, setAerialPanX] = useState<number>(0); // east(+)/west(-) offset in lng degrees * 10000
-  const [aerialPanY, setAerialPanY] = useState<number>(0); // north(+)/south(-) offset in lat degrees * 10000
+  const [aerialPanX, setAerialPanX] = useState<number>(0); // -100..100 fraction-of-tile east(+)/west(-), scales with zoom
+  const [aerialPanY, setAerialPanY] = useState<number>(0); // -100..100 fraction-of-tile north(+)/south(-), scales with zoom
+  const [aerialRotation, setAerialRotation] = useState<number>(0); // degrees, applied client-side via canvas
   const [propertyCoords, setPropertyCoords] = useState<{ lat: number; lng: number } | null>(null);
   const { apiKey: googleMapsApiKey } = useGoogleMapsToken();
 
@@ -484,8 +525,13 @@ export function EstimatePreviewPanel({
     if (!open || !contactId) return;
     const fetchAerialUrl = async () => {
       if (propertyCoords && googleMapsApiKey) {
-        const centerLat = propertyCoords.lat + aerialPanY / 10000;
-        const centerLng = propertyCoords.lng + aerialPanX / 10000;
+        // Scale pan with zoom: at higher zoom the visible degree-span shrinks,
+        // so a fixed-degree offset would throw the center off-screen. We treat
+        // the slider value as a fraction (-1..1) of the visible tile width.
+        const tileDegLng = 360 / Math.pow(2, aerialZoom);
+        const tileDegLat = 170 / Math.pow(2, aerialZoom);
+        const centerLat = propertyCoords.lat - (aerialPanY / 100) * tileDegLat;
+        const centerLng = propertyCoords.lng + (aerialPanX / 100) * tileDegLng;
         setAerialUrl(
           `https://maps.googleapis.com/maps/api/staticmap?center=${centerLat},${centerLng}&zoom=${aerialZoom}&size=800x400&maptype=satellite&scale=2&key=${googleMapsApiKey}`
         );
@@ -534,17 +580,29 @@ export function EstimatePreviewPanel({
   // Wire coverPagePropertyPhoto based on source selection.
   // Auto-fall through if the requested source isn't actually available.
   useEffect(() => {
-    let photoUrl: string | undefined;
-    if (coverPhotoSource === 'uploaded' && selectedUploadedPhotoId) {
-      const photo = previewJobPhotos.find(p => p.id === selectedUploadedPhotoId);
-      photoUrl = photo?.file_url;
-    } else if (coverPhotoSource === 'streetview') {
-      photoUrl = streetViewUrl || aerialUrl || undefined;
-    } else if (coverPhotoSource === 'aerial') {
-      photoUrl = aerialUrl || streetViewUrl || undefined;
-    }
-    setOptions(prev => ({ ...prev, coverPagePropertyPhoto: photoUrl }));
-  }, [coverPhotoSource, selectedUploadedPhotoId, previewJobPhotos, streetViewUrl, aerialUrl]);
+    let cancelled = false;
+    const run = async () => {
+      let photoUrl: string | undefined;
+      if (coverPhotoSource === 'uploaded' && selectedUploadedPhotoId) {
+        const photo = previewJobPhotos.find(p => p.id === selectedUploadedPhotoId);
+        photoUrl = photo?.file_url;
+      } else if (coverPhotoSource === 'streetview') {
+        photoUrl = streetViewUrl || aerialUrl || undefined;
+      } else if (coverPhotoSource === 'aerial') {
+        photoUrl = aerialUrl || streetViewUrl || undefined;
+        // Apply rotation client-side via canvas (Google Static Maps has no rotate param)
+        if (photoUrl && aerialRotation % 360 !== 0) {
+          try {
+            const rotated = await rotateImageToDataUrl(photoUrl, aerialRotation);
+            if (!cancelled && rotated) photoUrl = rotated;
+          } catch { /* fall back to un-rotated url */ }
+        }
+      }
+      if (!cancelled) setOptions(prev => ({ ...prev, coverPagePropertyPhoto: photoUrl }));
+    };
+    run();
+    return () => { cancelled = true; };
+  }, [coverPhotoSource, selectedUploadedPhotoId, previewJobPhotos, streetViewUrl, aerialUrl, aerialRotation]);
 
   // Fetch additional estimate data when selected
   const handleToggleEstimate = useCallback(async (estId: string) => {
@@ -1440,7 +1498,7 @@ export function EstimatePreviewPanel({
                               <button
                                 type="button"
                                 className="text-[10px] text-muted-foreground hover:text-foreground underline"
-                                onClick={() => { setAerialZoom(19); setAerialPanX(0); setAerialPanY(0); }}
+                                onClick={() => { setAerialZoom(19); setAerialPanX(0); setAerialPanY(0); setAerialRotation(0); }}
                               >
                                 Reset
                               </button>
@@ -1451,11 +1509,15 @@ export function EstimatePreviewPanel({
                             </div>
                             <div>
                               <div className="flex justify-between text-[10px] text-muted-foreground"><span>Pan ←→</span><span>{aerialPanX}</span></div>
-                              <Slider value={[aerialPanX]} min={-50} max={50} step={1} onValueChange={(v) => setAerialPanX(v[0])} />
+                              <Slider value={[aerialPanX]} min={-100} max={100} step={2} onValueChange={(v) => setAerialPanX(v[0])} />
                             </div>
                             <div>
                               <div className="flex justify-between text-[10px] text-muted-foreground"><span>Pan ↑↓</span><span>{aerialPanY}</span></div>
-                              <Slider value={[aerialPanY]} min={-50} max={50} step={1} onValueChange={(v) => setAerialPanY(v[0])} />
+                              <Slider value={[aerialPanY]} min={-100} max={100} step={2} onValueChange={(v) => setAerialPanY(v[0])} />
+                            </div>
+                            <div>
+                              <div className="flex justify-between text-[10px] text-muted-foreground"><span>Rotate</span><span>{aerialRotation}°</span></div>
+                              <Slider value={[aerialRotation]} min={0} max={360} step={5} onValueChange={(v) => setAerialRotation(v[0])} />
                             </div>
                           </div>
                         )}
