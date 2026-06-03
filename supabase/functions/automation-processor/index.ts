@@ -272,6 +272,10 @@ async function executeAction(
       return await pushDocument(supabase, tenantId, params, context);
     case 'create_payment_link':
       return await createPaymentLink(supabase, tenantId, params, context);
+    case 'apply_tags':
+      return await applyTags(supabase, tenantId, params, context);
+    case 'remove_tags':
+      return await removeTags(supabase, tenantId, params, context);
     default:
       throw new Error(`Unknown action type: ${type}`);
   }
