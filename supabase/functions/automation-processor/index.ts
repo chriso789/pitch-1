@@ -36,7 +36,16 @@ interface Condition {
 }
 
 interface Action {
-  type: 'send_email' | 'send_sms' | 'assign_task' | 'change_status' | 'webhook' | 'push_doc' | 'create_payment_link';
+  type:
+    | 'send_email'
+    | 'send_sms'
+    | 'assign_task'
+    | 'change_status'
+    | 'webhook'
+    | 'push_doc'
+    | 'create_payment_link'
+    | 'apply_tags'
+    | 'remove_tags';
   params: Record<string, any>;
 }
 
@@ -263,6 +272,10 @@ async function executeAction(
       return await pushDocument(supabase, tenantId, params, context);
     case 'create_payment_link':
       return await createPaymentLink(supabase, tenantId, params, context);
+    case 'apply_tags':
+      return await applyTags(supabase, tenantId, params, context);
+    case 'remove_tags':
+      return await removeTags(supabase, tenantId, params, context);
     default:
       throw new Error(`Unknown action type: ${type}`);
   }
@@ -662,4 +675,124 @@ async function logExecution(
   } catch (error) {
     console.error('Failed to log automation execution:', error);
   }
+}
+
+// ============================================
+// TAG ACTIONS (Phase 0 lifecycle spine)
+// ============================================
+
+const TAG_FORMAT = /^[a-z][a-z0-9_]*:[a-z0-9][a-z0-9_\-]*$/;
+
+function resolveContactId(context: Record<string, any>): string | null {
+  return (
+    context?.contact_id ||
+    context?.contact?.id ||
+    context?.lead?.contact_id ||
+    context?.pipeline_entry?.contact_id ||
+    null
+  );
+}
+
+function normalizeTagList(params: Record<string, any>): string[] {
+  const raw = params?.tags ?? params?.tag;
+  const list = Array.isArray(raw) ? raw : raw ? [raw] : [];
+  return list
+    .map((t: any) => String(t).trim().toLowerCase())
+    .filter((t: string) => TAG_FORMAT.test(t));
+}
+
+async function applyTags(
+  supabase: any,
+  tenantId: string,
+  params: Record<string, any>,
+  context: Record<string, any>
+) {
+  const contactId = params?.contact_id || resolveContactId(context);
+  if (!contactId) throw new Error('apply_tags: contact_id not resolvable from context');
+
+  const tags = normalizeTagList(params);
+  if (tags.length === 0) {
+    return { skipped: true, reason: 'No valid namespaced tags provided' };
+  }
+
+  const source = params?.source || 'automation';
+  const sourceRef = params?.source_ref || context?.automation_id || null;
+  const metadata = params?.metadata || {};
+
+  const rows = tags.map((tag) => ({
+    tenant_id: tenantId,
+    contact_id: contactId,
+    tag,
+    source,
+    source_ref: sourceRef,
+    metadata,
+  }));
+
+  // Upsert: re-activate any soft-removed copy, otherwise insert.
+  const { data: existing } = await supabase
+    .from('contact_tags')
+    .select('id, tag, removed_at')
+    .eq('tenant_id', tenantId)
+    .eq('contact_id', contactId)
+    .in('tag', tags);
+
+  const existingByTag = new Map<string, any>((existing || []).map((r: any) => [r.tag, r]));
+  const toInsert: any[] = [];
+  const toReactivate: string[] = [];
+
+  for (const row of rows) {
+    const ex = existingByTag.get(row.tag);
+    if (!ex) toInsert.push(row);
+    else if (ex.removed_at) toReactivate.push(ex.id);
+  }
+
+  const results: any = { applied: 0, reactivated: 0, already_active: 0 };
+
+  if (toInsert.length > 0) {
+    const { error } = await supabase.from('contact_tags').insert(toInsert);
+    if (error) throw new Error(`apply_tags insert failed: ${error.message}`);
+    results.applied = toInsert.length;
+  }
+
+  if (toReactivate.length > 0) {
+    const { error } = await supabase
+      .from('contact_tags')
+      .update({ removed_at: null, applied_at: new Date().toISOString(), source, source_ref: sourceRef })
+      .in('id', toReactivate);
+    if (error) throw new Error(`apply_tags reactivate failed: ${error.message}`);
+    results.reactivated = toReactivate.length;
+  }
+
+  results.already_active = tags.length - results.applied - results.reactivated;
+  results.tags = tags;
+  results.contact_id = contactId;
+  return results;
+}
+
+async function removeTags(
+  supabase: any,
+  tenantId: string,
+  params: Record<string, any>,
+  context: Record<string, any>
+) {
+  const contactId = params?.contact_id || resolveContactId(context);
+  if (!contactId) throw new Error('remove_tags: contact_id not resolvable from context');
+
+  const tags = normalizeTagList(params);
+  if (tags.length === 0) {
+    return { skipped: true, reason: 'No valid namespaced tags provided' };
+  }
+
+  const { data, error } = await supabase
+    .from('contact_tags')
+    .update({ removed_at: new Date().toISOString() })
+    .eq('tenant_id', tenantId)
+    .eq('contact_id', contactId)
+    .in('tag', tags)
+    .is('removed_at', null)
+    .select('id, tag');
+
+  if (error) throw new Error(`remove_tags failed: ${error.message}`);
+
+  return { removed: data?.length || 0, tags, contact_id: contactId };
 }
