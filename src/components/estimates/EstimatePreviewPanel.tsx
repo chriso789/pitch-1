@@ -528,10 +528,12 @@ export function EstimatePreviewPanel({
         // Scale pan with zoom: at higher zoom the visible degree-span shrinks,
         // so a fixed-degree offset would throw the center off-screen. We treat
         // the slider value as a fraction (-1..1) of the visible tile width.
+        // Scale pan range to cover ~4 tile-widths so users can move well outside the framed area.
+        const PAN_TILES = 4;
         const tileDegLng = 360 / Math.pow(2, aerialZoom);
         const tileDegLat = 170 / Math.pow(2, aerialZoom);
-        const centerLat = propertyCoords.lat - (aerialPanY / 100) * tileDegLat;
-        const centerLng = propertyCoords.lng + (aerialPanX / 100) * tileDegLng;
+        const centerLat = propertyCoords.lat - (aerialPanY / 100) * tileDegLat * PAN_TILES;
+        const centerLng = propertyCoords.lng + (aerialPanX / 100) * tileDegLng * PAN_TILES;
         setAerialUrl(
           `https://maps.googleapis.com/maps/api/staticmap?center=${centerLat},${centerLng}&zoom=${aerialZoom}&size=800x400&maptype=satellite&scale=2&key=${googleMapsApiKey}`
         );
