@@ -1498,7 +1498,7 @@ export function EstimatePreviewPanel({
                               <button
                                 type="button"
                                 className="text-[10px] text-muted-foreground hover:text-foreground underline"
-                                onClick={() => { setAerialZoom(19); setAerialPanX(0); setAerialPanY(0); }}
+                                onClick={() => { setAerialZoom(19); setAerialPanX(0); setAerialPanY(0); setAerialRotation(0); }}
                               >
                                 Reset
                               </button>
@@ -1509,11 +1509,15 @@ export function EstimatePreviewPanel({
                             </div>
                             <div>
                               <div className="flex justify-between text-[10px] text-muted-foreground"><span>Pan ←→</span><span>{aerialPanX}</span></div>
-                              <Slider value={[aerialPanX]} min={-50} max={50} step={1} onValueChange={(v) => setAerialPanX(v[0])} />
+                              <Slider value={[aerialPanX]} min={-100} max={100} step={2} onValueChange={(v) => setAerialPanX(v[0])} />
                             </div>
                             <div>
                               <div className="flex justify-between text-[10px] text-muted-foreground"><span>Pan ↑↓</span><span>{aerialPanY}</span></div>
-                              <Slider value={[aerialPanY]} min={-50} max={50} step={1} onValueChange={(v) => setAerialPanY(v[0])} />
+                              <Slider value={[aerialPanY]} min={-100} max={100} step={2} onValueChange={(v) => setAerialPanY(v[0])} />
+                            </div>
+                            <div>
+                              <div className="flex justify-between text-[10px] text-muted-foreground"><span>Rotate</span><span>{aerialRotation}°</span></div>
+                              <Slider value={[aerialRotation]} min={0} max={360} step={5} onValueChange={(v) => setAerialRotation(v[0])} />
                             </div>
                           </div>
                         )}
