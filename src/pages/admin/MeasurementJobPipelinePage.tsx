@@ -43,23 +43,11 @@ export default function MeasurementJobPipelinePage() {
   const qc = useQueryClient();
   const { toast } = useToast();
 
-  const jobQ = useQuery({
-    queryKey: ["mskill", "job", jobId],
-    queryFn: async () => {
-      const r = await edgeApi<JobPayload>("measurement-api", "/mskill/jobs/get", { __noop: true }, { headers: {} });
-      // edgeApi POSTs by default; for GET-style use fetch via supabase client built-in is easier — fallback:
-      throw new Error("use REST GET");
-    },
-    enabled: false,
-  });
-
-  // Use direct functions.invoke since edgeApi assumes POST.
   const job = useQuery({
     queryKey: ["mskill", "job-get", jobId],
     enabled: !!jobId,
     queryFn: async () => {
-      const r = await edgeApi<JobPayload>("measurement-api", "/mskill/jobs/get?jobId=" + jobId, {});
-      // Send as POST with query-style route; the router accepts the route header.
+      const r = await edgeApi<JobPayload>("measurement-api", "/mskill/jobs/get", { mskill_job_id: jobId });
       if (r.error) throw new Error(r.error);
       return r.data!;
     },
@@ -70,7 +58,7 @@ export default function MeasurementJobPipelinePage() {
     queryKey: ["mskill", "pipeline", jobId],
     enabled: !!jobId,
     queryFn: async () => {
-      const r = await edgeApi<{ pipeline: PipelineSkill[] }>("measurement-api", "/mskill/skills/pipeline?jobId=" + jobId, {});
+      const r = await edgeApi<{ pipeline: PipelineSkill[] }>("measurement-api", "/mskill/skills/pipeline", { mskill_job_id: jobId });
       if (r.error) throw new Error(r.error);
       return r.data!.pipeline;
     },
