@@ -31,9 +31,12 @@ type SmsTemplate = {
   category: string | null;
   goal: string | null;
   active: boolean;
+  followup_delay_days: number | null;
   created_at: string;
   updated_at: string;
 };
+
+const DELAY_OPTIONS = [0, 1, 2, 3, 5, 7, 10, 14, 21, 30];
 
 type EmailTemplate = {
   id: string;
