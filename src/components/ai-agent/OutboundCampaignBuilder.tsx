@@ -47,6 +47,7 @@ interface OutboundCampaignBuilderProps {
 export function OutboundCampaignBuilder({ onCampaignCreated }: OutboundCampaignBuilderProps) {
   const { profile } = useUserProfile();
   const tenantId = profile?.tenant_id;
+  const { currentLocationId, currentLocation } = useLocation();
   const { toast } = useToast();
 
   const [config, setConfig] = useState<CampaignConfig>({
