@@ -1,0 +1,227 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pitch-crm.ai/schemas/measurement/artifact-envelope.json",
+  "title": "MeasurementArtifactEnvelope",
+  "description": "Canonical envelope for any measurement-pipeline artifact (Phase 2 contract; not yet emitted by live endpoints).",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "envelope_version",
+    "artifact_id",
+    "job_id",
+    "parent_artifact_ids",
+    "artifact_type",
+    "stage",
+    "source_skill",
+    "producer",
+    "status",
+    "created_at",
+    "coordinate_frame",
+    "units",
+    "geometry",
+    "data",
+    "quality",
+    "validation",
+    "lineage",
+    "warnings",
+    "errors"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "envelope_version": { "type": "integer", "minimum": 1 },
+    "artifact_id": { "type": "string", "format": "uuid" },
+    "job_id": { "type": "string", "format": "uuid" },
+    "parent_artifact_ids": { "type": "array", "items": { "type": "string", "format": "uuid" } },
+    "artifact_type": { "$ref": "#/$defs/ArtifactType" },
+    "stage": { "$ref": "#/$defs/Stage" },
+    "source_skill": { "type": "string", "minLength": 1 },
+    "producer": {
+      "type": "object",
+      "required": ["kind", "name", "version"],
+      "properties": {
+        "kind": { "enum": ["worker", "control_plane", "external"] },
+        "name": { "type": "string" },
+        "version": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "status": { "$ref": "#/$defs/Status" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "coordinate_frame": { "$ref": "#/$defs/CoordinateFrame" },
+    "units": { "$ref": "#/$defs/Units" },
+    "geometry": { "$ref": "#/$defs/Geometry" },
+    "data": { "type": "object" },
+    "quality": { "$ref": "#/$defs/Quality" },
+    "validation": { "$ref": "#/$defs/Validation" },
+    "lineage": { "$ref": "#/$defs/Lineage" },
+    "warnings": { "type": "array", "items": { "$ref": "#/$defs/Issue" } },
+    "errors": { "type": "array", "items": { "$ref": "#/$defs/Issue" } },
+    "storage": { "$ref": "#/$defs/Storage" },
+    "display": { "$ref": "#/$defs/Display" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "ArtifactType": {
+      "enum": [
+        "source_surface_data", "dsm", "dtm", "chm",
+        "roof_points", "roof_mask", "roof_perimeter", "roof_planes",
+        "ridge_segments", "hip_segments", "valley_segments",
+        "eave_segments", "rake_segments",
+        "pitch_measurements", "roof_area_measurements",
+        "geometry_quality_score",
+        "geojson_export", "report_export"
+      ]
+    },
+    "Stage": {
+      "enum": [
+        "ingest", "generate_dsm", "generate_dtm", "generate_chm",
+        "isolate_roof_points", "refine_roof_perimeter", "fit_roof_planes",
+        "detect_ridges", "detect_hips", "detect_valleys",
+        "detect_eaves", "detect_rakes",
+        "calculate_pitch", "calculate_roof_area", "geometry_quality_score",
+        "validate_geometry", "export_geojson", "export_report"
+      ]
+    },
+    "Status": {
+      "enum": [
+        "created", "partial", "complete",
+        "validation_pending", "validated", "rejected",
+        "exportable", "reportable", "failed"
+      ]
+    },
+    "CoordinateFrame": {
+      "type": "object",
+      "required": ["frame_id", "frame_type", "units", "has_z", "status"],
+      "properties": {
+        "frame_id": { "type": "string" },
+        "frame_type": { "enum": ["source", "project_metric", "raster_grid", "export_geojson", "report_display"] },
+        "crs": { "type": ["string", "null"] },
+        "origin": { "type": ["array", "null"], "items": { "type": "number" } },
+        "axis_orientation": { "type": ["string", "null"] },
+        "units": { "type": "string" },
+        "has_z": { "type": "boolean" },
+        "z_convention": { "type": ["string", "null"], "enum": [null, "ellipsoidal_m", "orthometric_m", "relative_m", "none"] },
+        "transform_to_source": { "type": ["object", "null"] },
+        "transform_to_local": { "type": ["object", "null"] },
+        "transform_to_raster": { "type": ["object", "null"] },
+        "transform_to_export": { "type": ["object", "null"] },
+        "precision": { "type": ["object", "null"] },
+        "status": { "enum": ["complete", "partial", "unknown"] }
+      }
+    },
+    "Units": {
+      "type": "object",
+      "required": ["horizontal_distance", "vertical_distance", "area", "slope", "pitch", "angle", "raster_resolution", "confidence", "quality_score"],
+      "properties": {
+        "horizontal_distance": { "type": "string" },
+        "vertical_distance": { "type": "string" },
+        "area": { "type": "string" },
+        "slope": { "type": "string" },
+        "pitch": { "type": "string" },
+        "angle": { "type": "string" },
+        "raster_resolution": { "type": "string" },
+        "confidence": { "type": "string" },
+        "quality_score": { "type": "string" }
+      }
+    },
+    "Geometry": {
+      "type": "object",
+      "required": ["geometry_type", "coordinate_frame"],
+      "properties": {
+        "geometry_type": { "enum": ["raster", "point_cloud", "polygon", "multipolygon", "linestring", "multilinestring", "plane_set", "export_document", "none"] },
+        "coordinate_frame": { "type": "string" },
+        "dimensions": { "type": ["object", "null"] },
+        "bbox": { "type": ["array", "null"], "items": { "type": "number" } },
+        "value": {},
+        "storage_ref": { "type": ["string", "null"] },
+        "precision": { "type": ["object", "null"] },
+        "no_data_policy": { "type": ["object", "null"] }
+      }
+    },
+    "Quality": {
+      "type": "object",
+      "required": ["overall_score", "warnings_count", "blockers_count"],
+      "properties": {
+        "overall_score": { "type": "number", "minimum": 0, "maximum": 1 },
+        "confidence": { "type": "number" },
+        "component_scores": { "type": "object" },
+        "completeness": { "type": "number" },
+        "coordinate_integrity": { "type": "number" },
+        "geometry_validity": { "type": "number" },
+        "plane_fit_quality": { "type": "number" },
+        "segment_consistency": { "type": "number" },
+        "warnings_count": { "type": "integer", "minimum": 0 },
+        "blockers_count": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "Validation": {
+      "type": "object",
+      "required": ["validation_status", "export_allowed", "report_allowed"],
+      "properties": {
+        "validation_status": { "enum": ["pending", "passed", "failed", "skipped"] },
+        "validated_at": { "type": ["string", "null"], "format": "date-time" },
+        "validator_version": { "type": ["string", "null"] },
+        "errors": { "type": "array", "items": { "$ref": "#/$defs/Issue" } },
+        "warnings": { "type": "array", "items": { "$ref": "#/$defs/Issue" } },
+        "blockers": { "type": "array", "items": { "$ref": "#/$defs/Issue" } },
+        "export_allowed": { "type": "boolean" },
+        "report_allowed": { "type": "boolean" }
+      }
+    },
+    "Lineage": {
+      "type": "object",
+      "required": ["input_artifact_ids", "parameters", "skill_version", "created_by"],
+      "properties": {
+        "input_artifact_ids": { "type": "array", "items": { "type": "string" } },
+        "source_files": { "type": "array", "items": { "type": "string" } },
+        "source_job_id": { "type": ["string", "null"] },
+        "parameters": { "type": "object" },
+        "skill_version": { "type": "string" },
+        "code_version": { "type": ["string", "null"] },
+        "runtime": { "type": ["object", "null"] },
+        "created_by": { "enum": ["worker", "control_plane", "external"] },
+        "dependencies": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "Storage": {
+      "type": "object",
+      "required": ["storage_type"],
+      "properties": {
+        "storage_type": { "enum": ["supabase_storage", "s3", "inline", "external"] },
+        "uri": { "type": ["string", "null"] },
+        "bucket": { "type": ["string", "null"] },
+        "path": { "type": ["string", "null"] },
+        "mime_type": { "type": ["string", "null"] },
+        "checksum": { "type": ["object", "null"] },
+        "byte_size": { "type": ["integer", "null"], "minimum": 0 },
+        "compression": { "enum": [null, "none", "gzip", "zstd"] },
+        "encoding": { "type": ["string", "null"] }
+      }
+    },
+    "Display": {
+      "type": "object",
+      "properties": {
+        "display_units": { "type": "object" },
+        "rounding_rules": { "type": "object" },
+        "labels": { "type": "object" },
+        "report_visibility": { "enum": ["customer", "internal", "debug", "hidden"] },
+        "map_visibility": { "enum": ["always", "on_zoom", "hidden"] }
+      }
+    },
+    "Issue": {
+      "type": "object",
+      "required": ["severity", "code", "message", "blocking"],
+      "properties": {
+        "severity": { "enum": ["info", "warning", "error", "blocker"] },
+        "code": { "type": "string" },
+        "message": { "type": "string" },
+        "object_type": { "type": ["string", "null"] },
+        "object_id": { "type": ["string", "null"] },
+        "source_skill": { "type": ["string", "null"] },
+        "blocking": { "type": "boolean" },
+        "suggested_fix": { "type": ["string", "null"] },
+        "metadata": { "type": "object" }
+      }
+    }
+  }
+}

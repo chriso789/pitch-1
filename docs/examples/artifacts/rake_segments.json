@@ -1,0 +1,135 @@
+{
+  "schema_version": "1.0.0",
+  "envelope_version": 1,
+  "artifact_id": "151ac6fc-91bf-417f-981e-cbeb8ecd8eda",
+  "job_id": "00000000-0000-4000-8000-000000000001",
+  "parent_artifact_ids": [
+    "d3007ffc-4cf0-4088-a252-38027799ccc7"
+  ],
+  "artifact_type": "rake_segments",
+  "stage": "detect_rakes",
+  "source_skill": "detect_rakes",
+  "producer": {
+    "kind": "worker",
+    "name": "detect_rakes",
+    "version": "0.1.0"
+  },
+  "status": "complete",
+  "created_at": "2026-06-04T00:00:00Z",
+  "coordinate_frame": {
+    "frame_id": "project_metric_utm17n",
+    "frame_type": "project_metric",
+    "crs": "EPSG:32617",
+    "origin": null,
+    "axis_orientation": "ENU",
+    "units": "m",
+    "has_z": true,
+    "z_convention": "orthometric_m",
+    "transform_to_source": null,
+    "transform_to_local": null,
+    "transform_to_raster": null,
+    "transform_to_export": null,
+    "precision": {
+      "xy_m": 0.05,
+      "z_m": 0.1
+    },
+    "status": "complete"
+  },
+  "units": {
+    "horizontal_distance": "m",
+    "vertical_distance": "m",
+    "area": "m^2",
+    "slope": "deg",
+    "pitch": "rise_per_12",
+    "angle": "deg",
+    "raster_resolution": "m_per_px",
+    "confidence": "ratio_0_1",
+    "quality_score": "ratio_0_1"
+  },
+  "geometry": {
+    "geometry_type": "multilinestring",
+    "coordinate_frame": "project_metric_utm17n",
+    "dimensions": null,
+    "bbox": [
+      635112.0,
+      3324518.0,
+      635148.0,
+      3324554.0
+    ],
+    "value": null,
+    "storage_ref": null,
+    "precision": {
+      "xy_m": 0.05
+    },
+    "no_data_policy": null
+  },
+  "data": {
+    "segments": [
+      {
+        "segment_id": "rk1",
+        "connected_plane_ids": [
+          "p1"
+        ],
+        "geometry": {
+          "type": "LineString",
+          "coordinates": [
+            [
+              635112,
+              3324518
+            ],
+            [
+              635112,
+              3324536
+            ]
+          ]
+        },
+        "classification_evidence": {
+          "is_boundary": true,
+          "follows_slope": true,
+          "method": "perimeter_rake"
+        },
+        "length_m": 18.0
+      }
+    ]
+  },
+  "quality": {
+    "overall_score": 0.0,
+    "confidence": 0.0,
+    "component_scores": {},
+    "completeness": 0.0,
+    "coordinate_integrity": 0.0,
+    "geometry_validity": 0.0,
+    "plane_fit_quality": 0.0,
+    "segment_consistency": 0.0,
+    "warnings_count": 0,
+    "blockers_count": 0
+  },
+  "validation": {
+    "validation_status": "pending",
+    "validated_at": null,
+    "validator_version": null,
+    "errors": [],
+    "warnings": [],
+    "blockers": [],
+    "export_allowed": false,
+    "report_allowed": false
+  },
+  "lineage": {
+    "input_artifact_ids": [
+      "d3007ffc-4cf0-4088-a252-38027799ccc7"
+    ],
+    "source_files": [],
+    "source_job_id": "00000000-0000-4000-8000-000000000001",
+    "parameters": {},
+    "skill_version": "0.1.0",
+    "code_version": "git:abc1234",
+    "runtime": {
+      "language": "python",
+      "version": "3.11"
+    },
+    "created_by": "worker",
+    "dependencies": []
+  },
+  "warnings": [],
+  "errors": []
+}
