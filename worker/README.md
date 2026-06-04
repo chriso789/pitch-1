@@ -40,7 +40,7 @@ Python FastAPI worker (this service)
 |---|---|---|
 | GET  | `/health` | liveness |
 | GET  | `/capabilities` | declared skill list + versions |
-| POST | `/skills/clip-point-cloud` | clip LAS/LAZ/COPC/EPT to AOI |
+| POST | `/skills/clip-point-cloud` | **implemented** — clip LAS/LAZ/COPC/EPT to AOI |
 | POST | `/skills/generate-dsm` | DSM from first/highest returns |
 | POST | `/skills/generate-dtm` | DTM from ground returns |
 | POST | `/skills/generate-chm` | CHM = DSM − DTM |
@@ -58,17 +58,22 @@ Python FastAPI worker (this service)
 
 ## Environment
 
+Standardized names — match the control plane:
+
 ```
-WORKER_API_KEY=...               # shared secret with control plane
+INTERNAL_WORKER_API_KEY=...     # shared secret with control plane
+WORKER_MODE=development         # development | production
 SUPABASE_URL=...
 SUPABASE_SERVICE_ROLE_KEY=...
 SUPABASE_STORAGE_BUCKET=mskill-artifacts
-WORKER_MODE=development           # development | production
 MAX_AOI_SQFT=200000
 MAX_POINT_COUNT=50000000
+MIN_CLIPPED_POINT_COUNT=500
 MAX_DOWNLOAD_MB=2048
 TEMP_WORK_DIR=/tmp/pitch-measure
 ```
+
+Legacy `WORKER_API_KEY` is still read as a fallback.
 
 ## Run locally
 
@@ -82,10 +87,12 @@ curl http://localhost:8080/capabilities
 
 ## Status
 
-Scaffold only. Skill endpoints accept the canonical payload, validate it,
-and return `status: "needs_implementation"` with `qa_flags: ["stub"]`.
-Control plane MUST NOT mark a `skill_run` as `completed` from a stub
-response — only real artifacts unblock downstream skills.
+`clip_point_cloud` performs real PDAL compute and uploads a clipped LAZ
+to Supabase Storage. All other skill endpoints accept the canonical
+payload, validate it, and return `status: "needs_implementation"` with
+`qa_flags: ["stub"]`. Control plane MUST NOT mark a `skill_run` as
+`completed` from a stub response — only real artifacts unblock downstream
+skills.
 
 ## Guardrails (do not violate)
 
