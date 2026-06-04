@@ -688,17 +688,20 @@ function Phase6Panel({ sessionId, summary }: { sessionId: string; summary: Sessi
                 <TooltipTrigger asChild><span><Button size="sm" variant="outline" disabled>Push to Estimate</Button></span></TooltipTrigger>
                 <TooltipContent>{preview?.push_to_estimate_disabled_reason ?? "Push to Estimate remains disabled in Phase 7.6b."}</TooltipContent>
               </Tooltip>
+              <Button size="sm" variant="secondary" onClick={runPreflight} disabled={preflightBusy || !preview?.batch}>
+                {preflightBusy ? "Running…" : "Run pricing preflight"}
+              </Button>
               <Tooltip>
-                <TooltipTrigger asChild><span><Button size="sm" variant="outline" disabled>Pricing preflight</Button></span></TooltipTrigger>
-                <TooltipContent>Pricing preflight is not enabled in Phase 7.6b.</TooltipContent>
+                <TooltipTrigger asChild><span><Button size="sm" variant="outline" disabled>Push to Estimate</Button></span></TooltipTrigger>
+                <TooltipContent>Push to Estimate remains disabled. Phase 7.6c only validates pricing readiness for preview candidates; live handoff and final customer pricing are not enabled.</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild><span><Button size="sm" variant="outline" disabled>Final pricing</Button></span></TooltipTrigger>
-                <TooltipContent>Final pricing is disabled until pricing preflight ships.</TooltipContent>
+                <TooltipContent>Final customer-facing pricing is intentionally disabled in Phase 7.6c.</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild><span><Button size="sm" variant="outline" disabled>Approve custom line</Button></span></TooltipTrigger>
-                <TooltipContent>Custom non-catalog line approval is disabled in Phase 7.6b.</TooltipContent>
+                <TooltipContent>Custom non-catalog line approval is disabled in Phase 7.6c.</TooltipContent>
               </Tooltip>
             </div>
           </CardContent>
