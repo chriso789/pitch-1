@@ -3506,6 +3506,7 @@ export type Database = {
           created_at: string
           id: string
           last_error: string | null
+          location_id: string | null
           scheduled_for: string
           state: string
           tenant_id: string
@@ -3519,6 +3520,7 @@ export type Database = {
           created_at?: string
           id?: string
           last_error?: string | null
+          location_id?: string | null
           scheduled_for: string
           state?: string
           tenant_id: string
@@ -3532,6 +3534,7 @@ export type Database = {
           created_at?: string
           id?: string
           last_error?: string | null
+          location_id?: string | null
           scheduled_for?: string
           state?: string
           tenant_id?: string
