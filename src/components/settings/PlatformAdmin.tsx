@@ -439,6 +439,37 @@ export const PlatformAdmin = () => {
             </Tabs>
           </div>
         </TabsContent>
+
+        <TabsContent value="reports" className="mt-4">
+          <EnhancedErrorReportsManager />
+        </TabsContent>
+
+        <TabsContent value="health" className="mt-4">
+          <SystemHealthCheck />
+        </TabsContent>
+
+        <TabsContent value="developer" className="mt-4">
+          <DeveloperAccess />
+        </TabsContent>
+
+        <TabsContent value="ai-admin" className="mt-4">
+          <AIAdminChat />
+        </TabsContent>
+
+        <TabsContent value="security" className="mt-4">
+          <div className="space-y-6">
+            <SecurityAudit />
+            <TrustedDevices />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="edge-functions" className="mt-4">
+          <EdgeFunctionHealthDashboard />
+        </TabsContent>
+
+        <TabsContent value="cache" className="mt-4">
+          <CacheManagement />
+        </TabsContent>
       </Tabs>
 
       {/* Company Details Dialog */}
