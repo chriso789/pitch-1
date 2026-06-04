@@ -21,3 +21,5 @@ export * from "./phase4-generator.ts";
 export * from "./crm-handoff.ts";
 // Phase 6 — handoff preview builder (pure module; no live writes).
 export * from "./phase6-preview.ts";
+// Phase 7.6a — catalog binding contracts (pure helpers; no runtime resolver).
+export * from "./catalog-bindings.ts";
