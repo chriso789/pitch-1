@@ -8,14 +8,21 @@ const app = createRouter("measurement-worker");
 app.get("/__health", (c) => jsonOk(c, { fn: "measurement-worker", ok: true }));
 
 // ---------------------------------------------------------------------------
-// Internal worker callback. Authed via INTERNAL_WORKER_SECRET — NO user JWT.
+// Internal compute-worker callback. Authed via INTERNAL_WORKER_API_KEY (new,
+// standardized) with fallback to legacy INTERNAL_WORKER_SECRET — NO user JWT.
 // Mounted BEFORE requireAuth so the external worker can call it.
 // ---------------------------------------------------------------------------
 app.post("/worker/callback", async (c) => {
-  const provided = c.req.header("x-internal-worker-secret") ?? "";
-  const expected = Deno.env.get("INTERNAL_WORKER_SECRET") ?? "";
+  const provided =
+    c.req.header("x-internal-worker-api-key") ??
+    c.req.header("x-internal-worker-secret") ??
+    "";
+  const expected =
+    Deno.env.get("INTERNAL_WORKER_API_KEY") ??
+    Deno.env.get("INTERNAL_WORKER_SECRET") ??
+    "";
   if (!expected || provided !== expected) {
-    return jsonErr(c, "unauthorized", "invalid internal worker secret", 401);
+    return jsonErr(c, "unauthorized", "invalid internal worker api key", 401);
   }
   const body = await c.req.json().catch(() => ({}));
   const runId = String(body.mskill_run_id ?? "");
@@ -24,6 +31,7 @@ app.post("/worker/callback", async (c) => {
   const outputPayload = body.output_payload ?? {};
   const errorMessage = body.error_message ?? null;
   const artifacts: Array<{ artifact_type: string; storage_path?: string; source_url?: string; byte_size?: number; metadata?: Record<string, unknown> }> = Array.isArray(body.artifacts) ? body.artifacts : [];
+  const qaFlags: string[] = Array.isArray(body.qa_flags) ? body.qa_flags.map(String) : [];
   if (!runId || !requestHash) return jsonErr(c, "bad_request", "mskill_run_id + request_hash required", 400);
 
   const svc = serviceClient();
@@ -33,10 +41,26 @@ app.post("/worker/callback", async (c) => {
     return jsonErr(c, "stale_request", "request_hash mismatch — refusing stale write", 409);
   }
 
+  // Hard rule: refuse to promote a run to "completed" from a stub response.
+  // - status="needs_implementation" → stays as-is, marked requires_internal_worker.
+  // - qa_flags includes "stub" or "no_real_compute" → downgrade to needs_review.
+  // - status="completed" but no artifacts written → downgrade to needs_review.
+  let effectiveStatus = status;
+  let effectiveBlocking: string | null = null;
+  const isStub = qaFlags.includes("stub") || qaFlags.includes("no_real_compute");
+  if (status === "needs_implementation" || isStub) {
+    effectiveStatus = "requires_internal_worker";
+    effectiveBlocking = "worker_returned_stub_or_unimplemented";
+  } else if (status === "completed" && artifacts.length === 0) {
+    effectiveStatus = "needs_review";
+    effectiveBlocking = "completed_without_artifact_refused";
+  }
+
   await svc.from("mskill_runs").update({
-    status,
+    status: effectiveStatus,
     output_payload: outputPayload,
     error_message: errorMessage,
+    blocking_reason: effectiveBlocking,
     finished_at: new Date().toISOString(),
   }).eq("id", runId);
 
@@ -57,7 +81,14 @@ app.post("/worker/callback", async (c) => {
     });
   }
 
-  return jsonOk(c, { ok: true, run_id: runId, status, artifacts_written: artifacts.length });
+  return jsonOk(c, {
+    ok: true,
+    run_id: runId,
+    status: effectiveStatus,
+    reported_status: status,
+    blocking_reason: effectiveBlocking,
+    artifacts_written: artifacts.length,
+  });
 });
 
 // Everything below requires user auth.

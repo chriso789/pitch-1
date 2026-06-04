@@ -14,8 +14,8 @@ export interface DispatchResult {
   worker_response?: Record<string, unknown>;
 }
 
-const WORKER_BASE_URL = Deno.env.get("MSKILL_WORKER_BASE_URL") ?? "";
-const WORKER_SECRET = Deno.env.get("INTERNAL_WORKER_SECRET") ?? "";
+const WORKER_BASE_URL = Deno.env.get("INTERNAL_WORKER_BASE_URL") ?? "";
+const WORKER_API_KEY = Deno.env.get("INTERNAL_WORKER_API_KEY") ?? "";
 
 export async function dispatchInternalWorkerJob(
   svc: SupabaseClient,
@@ -25,10 +25,10 @@ export async function dispatchInternalWorkerJob(
   if (!skill.worker_endpoint) {
     return { dispatched: false, blocking_reason: "skill has no worker endpoint" };
   }
-  if (!WORKER_BASE_URL || !WORKER_SECRET) {
+  if (!WORKER_BASE_URL || !WORKER_API_KEY) {
     return {
       dispatched: false,
-      blocking_reason: "MSKILL_WORKER_BASE_URL or INTERNAL_WORKER_SECRET not configured — cannot complete from stub",
+      blocking_reason: "INTERNAL_WORKER_BASE_URL or INTERNAL_WORKER_API_KEY not configured — cannot complete from stub",
     };
   }
 
@@ -48,7 +48,7 @@ export async function dispatchInternalWorkerJob(
     skill_key: skill.skill_key,
     callback_url: `${Deno.env.get("SUPABASE_URL") ?? ""}/functions/v1/measurement-worker`,
     callback_route: "/worker/callback",
-    callback_secret: WORKER_SECRET,
+    callback_secret: WORKER_API_KEY,
   };
 
   try {
@@ -56,7 +56,7 @@ export async function dispatchInternalWorkerJob(
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-internal-worker-secret": WORKER_SECRET,
+        "x-internal-worker-api-key": WORKER_API_KEY,
       },
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(15_000),
