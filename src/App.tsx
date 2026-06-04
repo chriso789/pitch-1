@@ -166,6 +166,7 @@ const AppContent = () => {
         <Route path="/app/*" element={<MobileRoutes />} />
         <Route path="/deeplink" element={<MobileRoutes />} />
         <Route path="/admin/*" element={<AdminRoutes />} />
+        <Route path="/providers/inventory" element={<Navigate to="/admin/providers/inventory" replace />} />
         <Route path="/settings/*" element={<SettingsRoutes />} />
         <Route path="/developer/cost-tracker" element={<Suspense fallback={<PageLoader />}>{React.createElement(React.lazy(() => import("@/pages/developer/CostTrackerPage")))}</Suspense>} />
 
