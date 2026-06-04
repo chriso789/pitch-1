@@ -35,6 +35,17 @@ import {
   type ResolverV2RuntimeResult,
 } from "../_shared/blueprint-importer/phase7_6b-resolver.ts";
 import type { BlueprintCatalogBinding } from "../_shared/blueprint-importer/catalog-bindings.ts";
+import {
+  evaluatePricingPreflight,
+  buildPreflightCandidateUpdate,
+  buildPreflightReviewFlagSpecs,
+  summarizePreflightResults,
+  PHASE_7_6C_PREFLIGHT_VERSION,
+  type PreflightCandidateInput,
+  type PreflightCandidateResult,
+  type TargetRowSnapshot,
+} from "../_shared/blueprint-importer/phase7_6c-preflight.ts";
+
 
 
 const app = createRouter("document-worker");
