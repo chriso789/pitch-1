@@ -8,7 +8,7 @@
 > - Phase 1 (schema draft + shared TS/Python contracts + JSON schemas + examples): **complete** — see `docs/blueprint-importer-phase-1-schema-contracts.md`
 > - Phase 2 (schema promotion + DB verification): **complete** — see `docs/blueprint-importer-phase-2-db-verification.md`
 > - Phase 3 (runtime detection: classify → parse → measurement objects → PlanPaths → review flags → acceptance UI): **complete** — see `docs/blueprint-importer-phase-3-runtime-detection.md`. Material/labor population, template binding, and CRM estimate handoff remain intentionally unwired.
-> - Phase 4 (material/labor draft generation + template binding): **not started — awaiting approval**
+> - Phase 4 (material/labor draft generation + template binding): **shipped — see [phase-4 doc](./blueprint-importer-phase-4-draft-generation.md). Draft-only; no final pricing, no CRM handoff.**
 
 ---
 

@@ -16,6 +16,10 @@ import {
   evaluateTradeAcceptance,
   deterministicSessionHash,
   REVIEW_FLAG_CODES,
+  generateDraftsForAcceptedTrade,
+  generateTemplateBindingOnly,
+  phase4InformationalSessionFlags,
+  getPhase4Template,
 } from "../_shared/blueprint-importer/index.ts";
 
 
@@ -783,5 +787,316 @@ app.post("/blueprint-importer/v2/accept-trade", async (c) => {
   return jsonOk(c, { accepted_trade: acceptedRow });
 });
 
+// =============================================================================
+// Blueprint Importer v2 — Phase 4 draft generation routes
+// Template binding + deterministic material/labor draft generation.
+// Writes only to: blueprint_template_bindings, blueprint_material_draft_lines,
+//                 blueprint_labor_draft_lines, blueprint_review_flags.
+// Does NOT write to estimates, proposals, work orders, or any CRM table.
+// See docs/blueprint-importer-phase-4-draft-generation.md.
+// =============================================================================
+
+async function loadPhase4Context(
+  svc: ReturnType<typeof serviceClient>,
+  tenantId: string,
+  sessionId: string,
+  acceptedTradeId: string,
+) {
+  const [{ data: session }, { data: accepted }, { data: measurements }, { data: sourceDocs }, { data: allAccepted }] = await Promise.all([
+    svc.from("blueprint_import_sessions").select("id,tenant_id,status").eq("id", sessionId).eq("tenant_id", tenantId).maybeSingle(),
+    svc.from("blueprint_accepted_trades").select("*").eq("id", acceptedTradeId).eq("tenant_id", tenantId).maybeSingle(),
+    svc.from("blueprint_measurement_objects").select("id,trade_id,measurement_key,quantity,unit,plan_path_id,normalized_value").eq("import_session_id", sessionId).eq("tenant_id", tenantId),
+    svc.from("blueprint_source_documents").select("document_type").eq("import_session_id", sessionId).eq("tenant_id", tenantId),
+    svc.from("blueprint_accepted_trades").select("trade_id").eq("import_session_id", sessionId).eq("tenant_id", tenantId),
+  ]);
+  return { session, accepted, measurements: measurements ?? [], sourceDocs: sourceDocs ?? [], allAccepted: allAccepted ?? [] };
+}
+
+// ---- POST /blueprint-importer/v2/bind-template ----
+app.post("/blueprint-importer/v2/bind-template", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const body = await c.req.json().catch(() => ({}));
+  const { session_id, accepted_trade_id, user_assumptions } = body as {
+    session_id?: string; accepted_trade_id?: string; user_assumptions?: Record<string, unknown>;
+  };
+  if (!session_id || !accepted_trade_id) return jsonErr(c, "bad_request", "session_id + accepted_trade_id required", 400);
+  const svc = serviceClient();
+  const ctx = await loadPhase4Context(svc, tenantId, session_id, accepted_trade_id);
+  if (!ctx.session || !ctx.accepted) return jsonErr(c, "not_found", "session or accepted_trade not found", 404);
+
+  const paintSource = ctx.sourceDocs.some((s) => s.document_type === "wall_report")
+    || ctx.allAccepted.some((a) => a.trade_id === "exterior_walls_siding");
+  const merged = { ...(ctx.accepted.user_assumptions ?? {}), ...(user_assumptions ?? {}) };
+  const tradeId = ctx.accepted.trade_id as string;
+  const tradeMeasurements = ctx.measurements.filter((m) => m.trade_id === tradeId);
+
+  const { binding, flags } = generateTemplateBindingOnly({
+    trade_id: tradeId as never,
+    accepted_trade_id,
+    measurements: tradeMeasurements as never,
+    user_assumptions: merged,
+    paint_source_present: paintSource,
+  });
+
+  // Supersede prior bindings for this accepted_trade.
+  await svc.from("blueprint_template_bindings").update({ binding_status: "superseded", updated_at: new Date().toISOString() })
+    .eq("tenant_id", tenantId).eq("accepted_trade_id", accepted_trade_id).neq("binding_status", "superseded");
+
+  let bindingRow: { id: string } | null = null;
+  if (binding) {
+    const { data, error } = await svc.from("blueprint_template_bindings").insert({
+      import_session_id: session_id,
+      tenant_id: tenantId,
+      accepted_trade_id,
+      trade_id: tradeId,
+      template_id: null,
+      template_version: binding.internal_template_key ?? null,
+      binding_status: binding.binding_status === "ready" ? "ready" : "blocked",
+      required_inputs: binding.required_inputs,
+      optional_inputs: binding.optional_inputs,
+      missing_inputs: binding.missing_inputs,
+      user_assumptions: merged,
+    }).select("id").single();
+    if (error) return jsonErr(c, "binding_insert_failed", error.message, 500);
+    bindingRow = data;
+  }
+  // Persist flags.
+  if (flags.length) {
+    await svc.from("blueprint_review_flags").insert(flags.map((f) => ({
+      import_session_id: session_id,
+      tenant_id: tenantId,
+      related_entity_type: f.related_entity_type,
+      related_entity_id: f.related_entity_type === "template_binding" ? bindingRow?.id ?? null
+        : f.related_entity_type === "accepted_trade" ? accepted_trade_id : null,
+      severity: f.severity,
+      flag_code: f.flag_code,
+      message: f.message,
+      blocking: f.blocking,
+    })));
+  }
+  // Persist merged user_assumptions on the accepted_trade.
+  await svc.from("blueprint_accepted_trades").update({ user_assumptions: merged, updated_at: new Date().toISOString() })
+    .eq("id", accepted_trade_id).eq("tenant_id", tenantId);
+
+  return jsonOk(c, { template_binding: binding, binding_id: bindingRow?.id ?? null, review_flags: flags });
+});
+
+async function runDraftGeneration(
+  c: any,
+  mode: "materials" | "labor",
+) {
+  const tenantId = c.get("tenantId")!;
+  const body = await c.req.json().catch(() => ({}));
+  const { session_id, accepted_trade_id, user_assumptions } = body as {
+    session_id?: string; accepted_trade_id?: string; user_assumptions?: Record<string, unknown>;
+  };
+  if (!session_id || !accepted_trade_id) return jsonErr(c, "bad_request", "session_id + accepted_trade_id required", 400);
+  const svc = serviceClient();
+  const ctx = await loadPhase4Context(svc, tenantId, session_id, accepted_trade_id);
+  if (!ctx.session || !ctx.accepted) return jsonErr(c, "not_found", "session or accepted_trade not found", 404);
+
+  const paintSource = ctx.sourceDocs.some((s) => s.document_type === "wall_report")
+    || ctx.allAccepted.some((a) => a.trade_id === "exterior_walls_siding");
+  const merged = { ...(ctx.accepted.user_assumptions ?? {}), ...(user_assumptions ?? {}) };
+  const tradeId = ctx.accepted.trade_id as string;
+  const tradeMeasurements = ctx.measurements.filter((m) => m.trade_id === tradeId);
+
+  const out = generateDraftsForAcceptedTrade({
+    trade_id: tradeId as never,
+    accepted_trade_id,
+    measurements: tradeMeasurements as never,
+    user_assumptions: merged,
+    paint_source_present: paintSource,
+  });
+
+  // Find / create / supersede binding so draft rows can FK to it.
+  let bindingId: string | null = null;
+  {
+    const { data: existing } = await svc.from("blueprint_template_bindings")
+      .select("id,binding_status")
+      .eq("tenant_id", tenantId).eq("accepted_trade_id", accepted_trade_id)
+      .neq("binding_status", "superseded").order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (existing?.id && out.template_binding.internal_template_key) {
+      // Update existing binding with refreshed state.
+      await svc.from("blueprint_template_bindings").update({
+        binding_status: out.template_binding.binding_status === "ready" ? "ready" : "blocked",
+        required_inputs: out.template_binding.required_inputs,
+        optional_inputs: out.template_binding.optional_inputs,
+        missing_inputs: out.template_binding.missing_inputs,
+        user_assumptions: merged,
+        updated_at: new Date().toISOString(),
+      }).eq("id", existing.id).eq("tenant_id", tenantId);
+      bindingId = existing.id;
+    } else if (out.template_binding.internal_template_key) {
+      const { data: created, error: cErr } = await svc.from("blueprint_template_bindings").insert({
+        import_session_id: session_id,
+        tenant_id: tenantId,
+        accepted_trade_id,
+        trade_id: tradeId,
+        template_id: null,
+        template_version: out.template_binding.internal_template_key,
+        binding_status: out.template_binding.binding_status === "ready" ? "ready" : "blocked",
+        required_inputs: out.template_binding.required_inputs,
+        optional_inputs: out.template_binding.optional_inputs,
+        missing_inputs: out.template_binding.missing_inputs,
+        user_assumptions: merged,
+      }).select("id").single();
+      if (cErr) return jsonErr(c, "binding_insert_failed", cErr.message, 500);
+      bindingId = created!.id;
+    }
+  }
+
+  // Idempotency: supersede prior non-superseded draft rows of the same mode for this accepted_trade.
+  const draftTable = mode === "materials" ? "blueprint_material_draft_lines" : "blueprint_labor_draft_lines";
+  await svc.from(draftTable).update({ status: "superseded" })
+    .eq("tenant_id", tenantId).eq("accepted_trade_id", accepted_trade_id).neq("status", "superseded");
+
+  let insertedRows: Array<{ id: string; rule_id?: string | null; material_rule_id?: string | null; labor_rule_id?: string | null }> = [];
+  if (mode === "materials") {
+    const rows = out.material_drafts.map((d) => ({
+      import_session_id: session_id,
+      tenant_id: tenantId,
+      accepted_trade_id,
+      template_binding_id: bindingId,
+      material_rule_id: d.rule_id,
+      item_key: d.item_key,
+      item_name: d.item_name,
+      quantity: d.quantity,
+      unit: d.unit,
+      rounding_rule: d.rounding_rule,
+      waste_percent: d.waste_percent,
+      source_measurement_ids: d.source_measurement_ids,
+      plan_path_ids: d.plan_path_ids,
+      formula_key: d.formula_key,
+      formula_inputs: d.formula_inputs,
+      catalog_resolution_status: d.catalog_resolution_status,
+      catalog_item_id: d.catalog_item_id,
+      status: d.status,
+    }));
+    if (rows.length) {
+      const { data, error } = await svc.from("blueprint_material_draft_lines").insert(rows).select("id,material_rule_id");
+      if (error) return jsonErr(c, "material_insert_failed", error.message, 500);
+      insertedRows = data ?? [];
+    }
+  } else {
+    const rows = out.labor_drafts.map((d) => ({
+      import_session_id: session_id,
+      tenant_id: tenantId,
+      accepted_trade_id,
+      template_binding_id: bindingId,
+      labor_rule_id: d.rule_id,
+      labor_key: d.labor_key,
+      labor_name: d.labor_name,
+      quantity: d.quantity,
+      unit: d.unit,
+      base_rate: null,
+      complexity_multiplier: null,
+      source_measurement_ids: d.source_measurement_ids,
+      plan_path_ids: d.plan_path_ids,
+      formula_key: d.formula_key,
+      formula_inputs: { ...d.formula_inputs, complexity_flags: d.complexity_flags },
+      status: d.status,
+    }));
+    if (rows.length) {
+      const { data, error } = await svc.from("blueprint_labor_draft_lines").insert(rows).select("id,labor_rule_id");
+      if (error) return jsonErr(c, "labor_insert_failed", error.message, 500);
+      insertedRows = data ?? [];
+    }
+  }
+
+  // Persist flags. Resolve material_draft_line / labor_draft_line ids from inserted rows by rule_id.
+  const flagSet = mode === "materials"
+    ? out.review_flags.filter((f) => f.related_entity_type !== "labor_draft_line")
+    : out.review_flags.filter((f) => f.related_entity_type !== "material_draft_line");
+
+  const flagRows = flagSet.map((f) => {
+    let related_entity_id: string | null = null;
+    if (f.related_entity_type === "template_binding") related_entity_id = bindingId;
+    else if (f.related_entity_type === "accepted_trade") related_entity_id = accepted_trade_id;
+    else if (f.related_entity_type === "material_draft_line") {
+      // related_entity_local_key === `material:<accepted_trade_id>:<rule_id>`
+      const ruleId = f.related_entity_local_key.split(":").slice(2).join(":");
+      related_entity_id = insertedRows.find((r) => (r as any).material_rule_id === ruleId)?.id ?? null;
+    } else if (f.related_entity_type === "labor_draft_line") {
+      const ruleId = f.related_entity_local_key.split(":").slice(2).join(":");
+      related_entity_id = insertedRows.find((r) => (r as any).labor_rule_id === ruleId)?.id ?? null;
+    }
+    return {
+      import_session_id: session_id,
+      tenant_id: tenantId,
+      related_entity_type: f.related_entity_type,
+      related_entity_id,
+      severity: f.severity,
+      flag_code: f.flag_code,
+      message: f.message,
+      blocking: f.blocking,
+    };
+  });
+  if (flagRows.length) {
+    await svc.from("blueprint_review_flags").insert(flagRows);
+  }
+
+  // Add Phase 4 informational session flags (only once per session_id).
+  const { data: existingInfo } = await svc.from("blueprint_review_flags")
+    .select("id,flag_code")
+    .eq("tenant_id", tenantId).eq("import_session_id", session_id)
+    .in("flag_code", [REVIEW_FLAG_CODES.FINAL_PRICING_NOT_ENABLED_PHASE_4, REVIEW_FLAG_CODES.CRM_HANDOFF_NOT_ENABLED_PHASE_4]);
+  const existingCodes = new Set((existingInfo ?? []).map((r) => r.flag_code));
+  const newInfo = phase4InformationalSessionFlags(session_id).filter((f) => !existingCodes.has(f.flag_code));
+  if (newInfo.length) {
+    await svc.from("blueprint_review_flags").insert(newInfo.map((f) => ({
+      import_session_id: session_id,
+      tenant_id: tenantId,
+      related_entity_type: f.related_entity_type,
+      related_entity_id: null,
+      severity: f.severity,
+      flag_code: f.flag_code,
+      message: f.message,
+      blocking: f.blocking,
+    })));
+  }
+
+  return jsonOk(c, {
+    mode,
+    template_binding_id: bindingId,
+    template_binding: out.template_binding,
+    material_drafts: mode === "materials" ? out.material_drafts : [],
+    labor_drafts: mode === "labor" ? out.labor_drafts : [],
+    review_flags: flagSet,
+    blocked_summary: out.blocked_summary,
+    inserted_count: insertedRows.length,
+  });
+}
+
+app.post("/blueprint-importer/v2/generate-material-drafts", (c) => runDraftGeneration(c, "materials"));
+app.post("/blueprint-importer/v2/generate-labor-drafts", (c) => runDraftGeneration(c, "labor"));
+
+// ---- POST /blueprint-importer/v2/draft-lines ----
+// Read-only summary of Phase 4 outputs for a session.
+app.post("/blueprint-importer/v2/draft-lines", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const { session_id } = await c.req.json().catch(() => ({}));
+  if (!session_id) return jsonErr(c, "bad_request", "session_id required", 400);
+  const svc = serviceClient();
+  const [{ data: bindings }, { data: materials }, { data: labor }, { data: templatesMeta }] = await Promise.all([
+    svc.from("blueprint_template_bindings").select("*").eq("import_session_id", session_id).eq("tenant_id", tenantId),
+    svc.from("blueprint_material_draft_lines").select("*").eq("import_session_id", session_id).eq("tenant_id", tenantId),
+    svc.from("blueprint_labor_draft_lines").select("*").eq("import_session_id", session_id).eq("tenant_id", tenantId),
+    svc.from("blueprint_accepted_trades").select("id,trade_id").eq("import_session_id", session_id).eq("tenant_id", tenantId),
+  ]);
+  const trade_templates = (templatesMeta ?? []).map((t) => ({
+    accepted_trade_id: t.id,
+    trade_id: t.trade_id,
+    template: getPhase4Template(t.trade_id as never),
+  }));
+  return jsonOk(c, {
+    bindings: bindings ?? [],
+    material_draft_lines: materials ?? [],
+    labor_draft_lines: labor ?? [],
+    trade_templates,
+  });
+});
+
 serveRouter(app);
+
 

@@ -13,3 +13,7 @@ export * from "./measurement-mapper.ts";
 export * from "./acceptance-gates.ts";
 export * from "./session-hash.ts";
 export * from "./review-flag-codes.ts";
+// Phase 4 — deterministic draft generation (pure modules; still no IO).
+export * from "./phase4-formulas.ts";
+export * from "./phase4-templates.ts";
+export * from "./phase4-generator.ts";
