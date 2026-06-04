@@ -182,3 +182,122 @@ export async function fetchBlueprintDraftLines(session_id: string) {
   if (error) throw new Error(error);
   return data!;
 }
+
+// -------------------- Phase 6 helpers --------------------
+
+export type Phase6DraftMode = "material" | "labor" | "both";
+
+export interface HandoffPreviewSummary {
+  handoff_batch_id: string;
+  deterministic_batch_key: string;
+  batch_status: string;
+  total_candidates: number;
+  candidates_handoff_allowed: number;
+  skipped: Array<{ draft_id: string; draft_type: "material" | "labor"; trade_id: string; reasons: string[] }>;
+  blocker_summary: Record<string, number>;
+  warning_summary: Record<string, number>;
+  push_to_estimate_enabled: false;
+  push_to_estimate_disabled_reason: string;
+}
+
+export interface HandoffPreviewBatchRow {
+  id: string;
+  tenant_id: string;
+  import_session_id: string;
+  status: string;
+  pricing_mode: string;
+  catalog_mode: string;
+  custom_line_mode: string;
+  canonical_estimate_target_table: string;
+  canonical_estimate_target_id: string | null;
+  target_context_type: string;
+  target_context_id: string | null;
+  deterministic_batch_key: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HandoffPreviewCandidateRow {
+  id: string;
+  handoff_batch_id: string;
+  accepted_trade_id: string;
+  template_binding_id: string | null;
+  source_draft_line_id: string;
+  source_draft_line_type: "material" | "labor";
+  trade_id: string;
+  item_key: string;
+  item_name: string | null;
+  description: string | null;
+  quantity: number | null;
+  unit: string | null;
+  source_measurement_ids: string[];
+  plan_path_ids: string[];
+  source_document_ids: string[];
+  formula_key: string | null;
+  catalog_resolution_status: string;
+  catalog_item_id: string | null;
+  pricing_status: string;
+  cost_status: string;
+  user_review_status: string;
+  handoff_allowed: boolean;
+  handoff_blockers: string[];
+  blocking_review_flag_ids: string[];
+  warning_review_flag_ids: string[];
+  provenance_summary: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+  status: string;
+}
+
+export interface HandoffPreviewGetResult {
+  batch: HandoffPreviewBatchRow | null;
+  candidates: HandoffPreviewCandidateRow[];
+  target_estimate: { id: string; status: string | null; estimate_number: string | null; display_name: string | null } | null;
+  push_to_estimate_enabled: false;
+  push_to_estimate_disabled_reason: string;
+  disabled_actions?: Record<string, string>;
+}
+
+export async function createBlueprintHandoffPreview(params: {
+  import_session_id: string;
+  target_context_type?: string;
+  target_context_id?: string | null;
+  canonical_estimate_target_id?: string | null;
+  accepted_trade_ids?: string[] | null;
+  draft_mode?: Phase6DraftMode;
+  pricing_mode?: "quantity_only" | "ready_for_pricing_review";
+  catalog_mode?: "catalog_resolved_only" | "preview_only";
+}) {
+  const { data, error } = await edgeApi<HandoffPreviewSummary>(
+    "document-worker",
+    "/blueprint-importer/v2/handoff-preview",
+    params as unknown as Record<string, unknown>,
+  );
+  if (error) throw new Error(error);
+  return data!;
+}
+
+export async function fetchBlueprintHandoffPreview(params: { handoff_batch_id?: string; import_session_id?: string }) {
+  const { data, error } = await edgeApi<HandoffPreviewGetResult>(
+    "document-worker",
+    "/blueprint-importer/v2/handoff-preview/get",
+    params as unknown as Record<string, unknown>,
+  );
+  if (error) throw new Error(error);
+  return data!;
+}
+
+export async function reviewBlueprintHandoffCandidate(params: {
+  handoff_batch_id: string;
+  candidate_id: string;
+  user_review_status: "pending" | "reviewed" | "excluded";
+}) {
+  const { data, error } = await edgeApi<{ ok: true; candidate_id: string; user_review_status: string }>(
+    "document-worker",
+    "/blueprint-importer/v2/handoff-preview/review",
+    params as unknown as Record<string, unknown>,
+  );
+  if (error) throw new Error(error);
+  return data!;
+}
+
