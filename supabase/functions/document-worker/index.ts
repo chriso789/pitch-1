@@ -406,4 +406,382 @@ for (const route of ["/parse/invoice", "/parse/supplier-quote", "/parse/permit",
   app.post(route, (c) => jsonErr(c, "not_implemented", `${route} deferred to next slice`, 501));
 }
 
+// =============================================================================
+// Blueprint Importer v2 — Phase 3 runtime routes
+// Deterministic ingest + acceptance only. No materials, no labor, no estimate
+// handoff. Writes only to Phase 1/2 blueprint_* tables (excluding material/labor
+// draft tables). See docs/blueprint-importer-phase-3-runtime-detection.md.
+// =============================================================================
+
+interface IngestBody {
+  bucket?: string;
+  path?: string;
+  storage_path?: string;
+  document_id?: string;
+  source_context_type?: string;
+  source_context_id?: string | null;
+  original_filename?: string | null;
+}
+
+app.post("/blueprint-importer/v2/ingest", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const userId = c.get("userId") ?? null;
+  const body = (await c.req.json().catch(() => ({}))) as IngestBody;
+  const svc = serviceClient();
+
+  // ---- Resolve source bytes (mirrors /parse/roof-report) ----
+  let bucket: string | null = body.bucket ?? null;
+  let path: string | null = body.path ?? null;
+  let docId: string | null = body.document_id ?? null;
+  if (!bucket && !docId && typeof body.storage_path === "string") {
+    const [b, ...rest] = body.storage_path.split("/");
+    bucket = b; path = rest.join("/");
+  }
+  if (!docId && (!bucket || !path)) {
+    return jsonErr(c, "bad_request", "Provide document_id OR bucket+path OR storage_path", 400);
+  }
+  if (!docId && path) {
+    const first = path.split("/")[0];
+    if (first !== tenantId) return jsonErr(c, "forbidden", "storage path must start with active tenant_id", 403);
+  }
+
+  let bytes: Uint8Array;
+  let filename: string | null = body.original_filename ?? null;
+  try {
+    if (docId) {
+      const { data: doc } = await svc.from("documents")
+        .select("id,tenant_id,file_path,filename")
+        .eq("id", docId).maybeSingle();
+      if (!doc || doc.tenant_id !== tenantId) return jsonErr(c, "not_found", "document not found in tenant", 404);
+      bytes = await downloadStorageObject(svc, "documents", doc.file_path);
+      filename = filename ?? doc.filename ?? doc.file_path.split("/").pop() ?? null;
+    } else {
+      bytes = await downloadStorageObject(svc, bucket!, path!);
+      filename = filename ?? path!.split("/").pop() ?? null;
+    }
+  } catch (e) {
+    return jsonErr(c, "fetch_failed", e instanceof Error ? e.message : String(e), 500);
+  }
+
+  const pdfText = await extractPdfText(bytes);
+  if (!pdfText.has_selectable_text) {
+    return jsonErr(c, "no_selectable_text", "PDF has no selectable text; OCR tier not enabled.", 422);
+  }
+
+  // ---- Classify ----
+  const cls = classifyBlueprintDocument(pdfText.full_text);
+
+  // Run all candidate parsers and pick the strongest signal that matches the classifier.
+  type ParserOutcome = {
+    parser: "eagleview_roof" | "roofr_roof" | "eagleview_wall" | "none";
+    data: Record<string, unknown> | null;
+    confidence: number;
+    requires_review: boolean;
+    missing_fields: string[];
+    field_confidences: Record<string, number>;
+  };
+  const candidates: ParserOutcome[] = [];
+  if (cls.document_type === "eagleview_roof_report" || cls.db_document_type === "roof_report") {
+    const ev = parseEagleViewRoofReport(pdfText.full_text);
+    candidates.push({ parser: "eagleview_roof", data: ev.data as unknown as Record<string, unknown>, confidence: ev.overall_confidence, requires_review: ev.requires_review, missing_fields: ev.missing_fields, field_confidences: ev.field_confidences });
+  }
+  if (cls.document_type === "roofr_roof_report" || cls.db_document_type === "roof_report") {
+    const rf = parseRoofrRoofReport(pdfText.full_text);
+    candidates.push({ parser: "roofr_roof", data: rf.data as unknown as Record<string, unknown>, confidence: rf.overall_confidence, requires_review: rf.requires_review, missing_fields: rf.missing_fields, field_confidences: rf.field_confidences });
+  }
+  if (cls.document_type === "eagleview_wall_report" || cls.db_document_type === "wall_report") {
+    const wl = parseEagleViewWallReport(pdfText.full_text);
+    candidates.push({ parser: "eagleview_wall", data: wl.data as unknown as Record<string, unknown>, confidence: wl.overall_confidence, requires_review: wl.requires_review, missing_fields: wl.missing_fields, field_confidences: wl.field_confidences });
+  }
+  const winner = candidates.sort((a, b) => b.confidence - a.confidence)[0];
+  if (!winner || winner.parser === "none" || !winner.data) {
+    return jsonErr(c, "unsupported_document", `classifier=${cls.document_type}; no MVP parser produced output`, 422);
+  }
+
+  // ---- Deterministic dedup hash → supersede prior session for same source ----
+  const dHash = await deterministicSessionHash({
+    tenant_id: tenantId,
+    document_type: cls.db_document_type,
+    provider: cls.db_provider,
+    normalized_extraction: winner.data,
+  });
+  const { data: prior } = await svc.from("blueprint_import_sessions")
+    .select("id").eq("tenant_id", tenantId).eq("deterministic_hash", dHash)
+    .neq("status", "superseded").maybeSingle();
+  if (prior?.id) {
+    await svc.from("blueprint_import_sessions").update({ status: "superseded", updated_at: new Date().toISOString() }).eq("id", prior.id).eq("tenant_id", tenantId);
+  }
+
+  // ---- Create session ----
+  const { data: session, error: sErr } = await svc.from("blueprint_import_sessions").insert({
+    tenant_id: tenantId,
+    source_context_type: body.source_context_type ?? "standalone",
+    source_context_id: body.source_context_id ?? null,
+    status: "parsed",
+    contract_version: "blueprint-importer-v2",
+    deterministic_hash: dHash,
+    metadata: { classifier: cls, parser: winner.parser, supersedes: prior?.id ?? null },
+    created_by: userId,
+  }).select("id").single();
+  if (sErr || !session) return jsonErr(c, "session_insert_failed", sErr?.message ?? "unknown", 500);
+  const sessionId = session.id as string;
+
+  // ---- Persist source document ----
+  const { data: srcDoc, error: dErr } = await svc.from("blueprint_source_documents").insert({
+    import_session_id: sessionId,
+    tenant_id: tenantId,
+    storage_path: path ?? null,
+    document_reference: docId,
+    document_type: cls.db_document_type,
+    provider: cls.db_provider,
+    original_filename: filename,
+    page_count: pdfText.page_count,
+    extraction_status: winner.requires_review ? "succeeded" : "succeeded",
+    metadata: {
+      missing_fields: winner.missing_fields,
+      field_confidences: winner.field_confidences,
+      overall_confidence: winner.confidence,
+    },
+  }).select("id").single();
+  if (dErr || !srcDoc) return jsonErr(c, "source_doc_insert_failed", dErr?.message ?? "unknown", 500);
+  const srcDocId = srcDoc.id as string;
+
+  // ---- Map measurements + insert PlanPaths first, then measurements with FK ----
+  const mapCtx = { document_type: cls.db_document_type as "roof_report" | "wall_report", provider: cls.db_provider, file_name: filename };
+  const mapped =
+    cls.db_document_type === "roof_report"
+      ? mapRoofExtractionToMeasurements(winner.data as never, mapCtx)
+      : cls.db_document_type === "wall_report"
+        ? mapWallExtractionToMeasurements(winner.data as never, mapCtx)
+        : [];
+
+  const planPathRows = mapped.map((m) => ({
+    import_session_id: sessionId,
+    tenant_id: tenantId,
+    source_document_id: srcDocId,
+    path_type: m.plan_path.path_type,
+    file_name: m.plan_path.file_name,
+    document_type: m.plan_path.document_type,
+    provider: m.plan_path.provider,
+    page_number: m.plan_path.page_number ?? null,
+    section_label: m.plan_path.section_label ?? null,
+    table_label: m.plan_path.table_label ?? null,
+    diagram_label: m.plan_path.diagram_label ?? null,
+    source_text_excerpt: m.plan_path.source_text_excerpt ?? null,
+    confidence: m.plan_path.confidence,
+    // include the plan_path_key in source_text_excerpt fallback when nothing else
+  }));
+  let insertedPlanPaths: { id: string }[] = [];
+  if (planPathRows.length) {
+    const { data, error } = await svc.from("blueprint_plan_paths").insert(planPathRows).select("id");
+    if (error) return jsonErr(c, "plan_path_insert_failed", error.message, 500);
+    insertedPlanPaths = data ?? [];
+  }
+
+  const moRows = mapped.map((m, idx) => ({
+    import_session_id: sessionId,
+    tenant_id: tenantId,
+    source_document_id: srcDocId,
+    trade_id: m.measurement.trade_id,
+    measurement_key: m.measurement.measurement_key,
+    measurement_group: m.measurement.measurement_group,
+    quantity: m.measurement.quantity,
+    unit: m.measurement.unit,
+    confidence: m.measurement.confidence,
+    source_value_raw: m.measurement.source_value_raw ?? null,
+    normalized_value: m.measurement.normalized_value ?? null,
+    plan_path_id: insertedPlanPaths[idx]?.id ?? null,
+    page_number: m.measurement.page_number ?? null,
+    metadata: m.measurement.metadata ?? {},
+  }));
+  if (moRows.length) {
+    const { error } = await svc.from("blueprint_measurement_objects").insert(moRows);
+    if (error) return jsonErr(c, "measurement_insert_failed", error.message, 500);
+  }
+
+  // ---- Detect trades ----
+  const detected =
+    cls.db_document_type === "roof_report"
+      ? detectTradesFromRoofReport(winner.data as never, cls.db_provider)
+      : cls.db_document_type === "wall_report"
+        ? detectTradesFromWallReport(winner.data as never, cls.db_provider)
+        : [];
+  if (detected.length) {
+    const { error } = await svc.from("blueprint_detected_trades").insert(detected.map((d) => ({
+      import_session_id: sessionId,
+      tenant_id: tenantId,
+      trade_id: d.trade_id,
+      support_status: d.support_status,
+      confidence: d.confidence,
+      detection_signals: d.detection_signals,
+      source_document_ids: [srcDocId],
+      status: "detected",
+    })));
+    if (error) return jsonErr(c, "detected_trade_insert_failed", error.message, 500);
+  }
+
+  // ---- Review flags from report warnings + Phase 3 disabled-feature notices ----
+  const flagRows: Array<Record<string, unknown>> = [];
+  const w = winner.data as Record<string, unknown>;
+  if (cls.db_document_type === "wall_report") {
+    if (w.has_image_obstruction_warning) {
+      flagRows.push(flag(sessionId, tenantId, srcDocId, "source_document", "warning", REVIEW_FLAG_CODES.WALL_IMAGE_OBSTRUCTION_WARNING, "Report indicates image obstruction; wall measurements may be incomplete.", false));
+    }
+    if (w.has_field_verification_warning) {
+      flagRows.push(flag(sessionId, tenantId, srcDocId, "source_document", "warning", REVIEW_FLAG_CODES.REPORT_FIELD_VERIFICATION_REQUIRED, "Report flags fields that require field verification (e.g. yellow-shaded values).", false));
+    }
+    if (w.has_soffit_assumption_warning) {
+      flagRows.push(flag(sessionId, tenantId, srcDocId, "source_document", "warning", REVIEW_FLAG_CODES.WALL_SOFFIT_ASSUMPTION_WARNING, "Wall report includes a soffit assumption; verify before pricing.", false));
+    }
+  }
+  if (cls.db_document_type === "roof_report" && (w.penetrations_count ?? 0) === 0) {
+    // Penetrations not enumerated → field verification suggested.
+    flagRows.push(flag(sessionId, tenantId, srcDocId, "source_document", "info", REVIEW_FLAG_CODES.ROOF_PENETRATION_FIELD_VERIFICATION_REQUIRED, "Roof penetrations were not enumerated; verify in field before finalizing scope.", false));
+  }
+  // Phase 4 disabled notice — informational only.
+  flagRows.push(flag(sessionId, tenantId, null, "import_session", "info", REVIEW_FLAG_CODES.MATERIAL_POPULATION_NOT_ENABLED_PHASE_3, "Material draft generation is not enabled until Phase 4.", false));
+  flagRows.push(flag(sessionId, tenantId, null, "import_session", "info", REVIEW_FLAG_CODES.LABOR_PRICING_NOT_ENABLED_PHASE_3, "Labor pricing is not enabled until Phase 4.", false));
+
+  if (flagRows.length) {
+    await svc.from("blueprint_review_flags").insert(flagRows);
+  }
+
+  // ---- Promote session to trades_detected ----
+  await svc.from("blueprint_import_sessions").update({
+    status: "trades_detected",
+    updated_at: new Date().toISOString(),
+  }).eq("id", sessionId).eq("tenant_id", tenantId);
+
+  return jsonOk(c, {
+    session_id: sessionId,
+    source_document_id: srcDocId,
+    classifier: cls,
+    parser: winner.parser,
+    overall_confidence: winner.confidence,
+    measurement_count: moRows.length,
+    detected_trade_count: detected.length,
+    plan_path_count: insertedPlanPaths.length,
+    deterministic_hash: dHash,
+    supersedes_session_id: prior?.id ?? null,
+  });
+});
+
+function flag(
+  sessionId: string,
+  tenantId: string,
+  relatedId: string | null,
+  relatedType: string,
+  severity: "info" | "warning" | "error" | "blocker",
+  flag_code: string,
+  message: string,
+  blocking: boolean,
+) {
+  return {
+    import_session_id: sessionId,
+    tenant_id: tenantId,
+    related_entity_type: relatedType,
+    related_entity_id: relatedId,
+    severity,
+    flag_code,
+    message,
+    blocking,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// GET session summary — for the review UI.
+// ---------------------------------------------------------------------------
+app.post("/blueprint-importer/v2/session", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const { session_id } = await c.req.json().catch(() => ({}));
+  if (!session_id) return jsonErr(c, "bad_request", "session_id required", 400);
+  const svc = serviceClient();
+
+  const [{ data: session }, { data: sourceDocs }, { data: detected }, { data: accepted }, { data: measurements }, { data: planPaths }, { data: flags }] = await Promise.all([
+    svc.from("blueprint_import_sessions").select("*").eq("id", session_id).eq("tenant_id", tenantId).maybeSingle(),
+    svc.from("blueprint_source_documents").select("*").eq("import_session_id", session_id).eq("tenant_id", tenantId),
+    svc.from("blueprint_detected_trades").select("*").eq("import_session_id", session_id).eq("tenant_id", tenantId),
+    svc.from("blueprint_accepted_trades").select("*").eq("import_session_id", session_id).eq("tenant_id", tenantId),
+    svc.from("blueprint_measurement_objects").select("*").eq("import_session_id", session_id).eq("tenant_id", tenantId),
+    svc.from("blueprint_plan_paths").select("*").eq("import_session_id", session_id).eq("tenant_id", tenantId),
+    svc.from("blueprint_review_flags").select("*").eq("import_session_id", session_id).eq("tenant_id", tenantId),
+  ]);
+
+  if (!session) return jsonErr(c, "not_found", "session not found", 404);
+  return jsonOk(c, { session, source_documents: sourceDocs ?? [], detected_trades: detected ?? [], accepted_trades: accepted ?? [], measurements: measurements ?? [], plan_paths: planPaths ?? [], review_flags: flags ?? [] });
+});
+
+// ---------------------------------------------------------------------------
+// Accept a detected trade. Enforces Phase 3 acceptance gates at runtime.
+// ---------------------------------------------------------------------------
+interface AcceptBody {
+  session_id: string;
+  trade_id: string;
+  detected_trade_id?: string | null;
+  requested_review_state?: "pending_review" | "manual_only";
+  user_assumptions?: Record<string, unknown>;
+}
+
+app.post("/blueprint-importer/v2/accept-trade", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const userId = c.get("userId") ?? null;
+  const body = (await c.req.json().catch(() => ({}))) as AcceptBody;
+  if (!body?.session_id || !body?.trade_id) return jsonErr(c, "bad_request", "session_id + trade_id required", 400);
+
+  const svc = serviceClient();
+  // Load session context.
+  const [{ data: session }, { data: detected }, { data: accepted }, { data: sourceDocs }, { data: measurements }] = await Promise.all([
+    svc.from("blueprint_import_sessions").select("id,tenant_id").eq("id", body.session_id).eq("tenant_id", tenantId).maybeSingle(),
+    svc.from("blueprint_detected_trades").select("*").eq("import_session_id", body.session_id).eq("tenant_id", tenantId),
+    svc.from("blueprint_accepted_trades").select("trade_id").eq("import_session_id", body.session_id).eq("tenant_id", tenantId),
+    svc.from("blueprint_source_documents").select("document_type").eq("import_session_id", body.session_id).eq("tenant_id", tenantId),
+    svc.from("blueprint_measurement_objects").select("trade_id,plan_path_id").eq("import_session_id", body.session_id).eq("tenant_id", tenantId),
+  ]);
+  if (!session) return jsonErr(c, "not_found", "session not found", 404);
+
+  const detectedRow = (detected ?? []).find((d) => d.trade_id === body.trade_id) ?? null;
+  const acceptedIds = (accepted ?? []).map((a) => a.trade_id);
+  const hasWallSource = (sourceDocs ?? []).some((s) => s.document_type === "wall_report");
+  const hasPlanPathsForTrade = (measurements ?? []).some((m) => m.trade_id === body.trade_id && !!m.plan_path_id);
+
+  const verdict = evaluateTradeAcceptance({
+    trade_id: body.trade_id,
+    already_accepted_trade_ids: acceptedIds,
+    detected_support_status: detectedRow?.support_status ?? null,
+    has_exterior_walls_siding_source: hasWallSource,
+    has_plan_paths_for_trade: hasPlanPathsForTrade,
+    requested_review_state: body.requested_review_state,
+  });
+
+  if (!verdict.ok) {
+    // Persist a blocking review flag so the failure is visible in the UI.
+    await svc.from("blueprint_review_flags").insert({
+      import_session_id: body.session_id,
+      tenant_id: tenantId,
+      related_entity_type: "detected_trade",
+      related_entity_id: detectedRow?.id ?? null,
+      severity: "blocker",
+      flag_code: verdict.flag_code,
+      message: verdict.reason,
+      blocking: true,
+    });
+    return jsonErr(c, verdict.flag_code, verdict.reason, verdict.http_status);
+  }
+
+  const { data: acceptedRow, error } = await svc.from("blueprint_accepted_trades").insert({
+    import_session_id: body.session_id,
+    tenant_id: tenantId,
+    detected_trade_id: detectedRow?.id ?? null,
+    trade_id: body.trade_id,
+    accepted_by: userId,
+    status: "accepted",
+    review_state: verdict.review_state,
+    user_assumptions: body.user_assumptions ?? {},
+  }).select("*").single();
+  if (error) return jsonErr(c, "accept_insert_failed", error.message, 500);
+
+  return jsonOk(c, { accepted_trade: acceptedRow });
+});
+
 serveRouter(app);
+
