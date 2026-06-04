@@ -562,6 +562,7 @@ function Phase6Panel({ sessionId, summary }: { sessionId: string; summary: Sessi
     try {
       const res = await resolveBlueprintCatalogBindings({ handoff_batch_id: preview.batch.id });
       setResolverSummary(res.summary);
+      setPreflightSummary(null);
       toast.success(
         `Resolver: ${res.summary.resolved} resolved · ${res.summary.ambiguous} ambiguous · ${res.summary.missing} missing · ${res.summary.blocked} blocked`,
       );
@@ -570,6 +571,28 @@ function Phase6Panel({ sessionId, summary }: { sessionId: string; summary: Sessi
       toast.error(e instanceof Error ? e.message : "Resolver failed");
     } finally { setResolverBusy(false); }
   };
+
+  const runPreflight = async () => {
+    if (!preview?.batch) {
+      toast.error("Generate a handoff preview before running pricing preflight.");
+      return;
+    }
+    setPreflightBusy(true);
+    try {
+      const res = await runBlueprintPricingPreflight({
+        handoff_batch_id: preview.batch.id,
+        pricing_mode: (preview.batch.pricing_mode as "quantity_only" | "ready_for_pricing_review") ?? "quantity_only",
+      });
+      setPreflightSummary(res.summary);
+      toast.success(
+        `Pricing preflight: ${res.summary.ready_for_pricing_review} ready · ${res.summary.blocked} blocked (preview-only)`,
+      );
+      await loadPreview();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Pricing preflight failed");
+    } finally { setPreflightBusy(false); }
+  };
+
 
   const reviewCandidate = async (candidate_id: string, status: "pending" | "reviewed" | "excluded") => {
     if (!preview?.batch) return;
