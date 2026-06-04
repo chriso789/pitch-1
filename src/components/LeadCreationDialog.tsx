@@ -480,7 +480,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
       return false;
     }
 
-    if (!selectedAddress) {
+    if (!effectiveSelectedAddress) {
       toast({
         title: "Address Required",
         description: "Please select a verified address from the suggestions",
@@ -511,6 +511,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
     markAsSubmitting();
     setLoading(true);
     try {
+      const leadAddress = effectiveSelectedAddress;
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user || !userProfile?.tenant_id) {
         toast({
@@ -528,7 +529,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
       // --- DUPLICATE-LEAD-BY-ADDRESS GUARD ---
       // Block creating a second active lead at the same verified street address.
       {
-        const addrComponents = selectedAddress?.address_components || [];
+        const addrComponents = leadAddress?.address_components || [];
         const getC = (type: string) =>
           addrComponents.find((c: any) => c.types.includes(type))?.long_name || '';
         const dupStreet = (getC('street_number') + ' ' + getC('route')).trim();
@@ -564,7 +565,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
 
       // Create new contact if not provided
       if (!contactId) {
-        const addressComponents = selectedAddress?.address_components || [];
+        const addressComponents = leadAddress?.address_components || [];
         const getComponent = (type: string) => 
           addressComponents.find((comp: any) => comp.types.includes(type))?.long_name || '';
 
@@ -649,9 +650,9 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
               address_city: getComponent('locality'),
               address_state: getComponent('administrative_area_level_1'),
               address_zip: getComponent('postal_code'),
-              latitude: selectedAddress?.geometry?.location?.lat,
-              longitude: selectedAddress?.geometry?.location?.lng,
-              verified_address: selectedAddress,
+              latitude: leadAddress?.geometry?.location?.lat,
+              longitude: leadAddress?.geometry?.location?.lng,
+              verified_address: leadAddress,
               created_by: session.user.id,
               assigned_to: assignedRep,
               location_id: currentLocationId,
@@ -683,7 +684,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
           metadata: {
             multiple_reps: formData.assignedTo,
             address_verified: true,
-            verified_address: selectedAddress,
+            verified_address: leadAddress,
             roof_age_years: parseInt(formData.roofAge),
             roof_type: formData.roofType
           }
