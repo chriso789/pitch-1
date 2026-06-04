@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pitch-crm.ai/schemas/blueprint-importer/blueprint-resolver-v2-result.schema.json",
+  "title": "BlueprintResolverV2Result",
+  "description": "Phase 7.6a — contract only. Runtime resolver is NOT implemented.",
+  "type": "object",
+  "required": [
+    "resolver_version","tenant_id","source_candidate_id","trade_id",
+    "source_item_key","source_candidate_type","source_unit","status",
+    "match_confidence","blockers","warnings","provenance"
+  ],
+  "properties": {
+    "resolver_version": { "type": "string", "const": "v2.0-contract" },
+    "tenant_id": { "type": "string", "format": "uuid" },
+    "source_candidate_id": { "type": "string", "format": "uuid" },
+    "trade_id": { "type": "string" },
+    "source_item_key": { "type": "string" },
+    "source_candidate_type": { "type": "string", "enum": ["material","labor"] },
+    "source_unit": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["resolved","unresolved","ambiguous","inactive_binding","inactive_target","unit_mismatch","tenant_scope_mismatch","missing_labor_rate","blocked"]
+    },
+    "matched_binding_id": { "type": ["string","null"], "format": "uuid" },
+    "matched_target_kind": {
+      "type": ["string","null"],
+      "enum": ["product_catalog","supplier_catalog_item","abc_catalog_item","labor_rate","custom_line_disabled","unresolved", null]
+    },
+    "matched_target_table": {
+      "type": ["string","null"],
+      "enum": ["product_catalog","supplier_catalog_items","abc_catalog_items","labor_rates", null]
+    },
+    "matched_target_item_id": { "type": ["string","null"], "format": "uuid" },
+    "matched_labor_rate_id": { "type": ["string","null"], "format": "uuid" },
+    "match_confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "BLUEPRINT_CATALOG_BINDING_MISSING","BLUEPRINT_CATALOG_BINDING_AMBIGUOUS",
+          "BLUEPRINT_CATALOG_BINDING_INACTIVE","BLUEPRINT_CATALOG_TARGET_INACTIVE",
+          "BLUEPRINT_CATALOG_UNIT_MISMATCH","BLUEPRINT_LABOR_RATE_MISSING",
+          "BLUEPRINT_LABOR_RATE_INACTIVE","TENANT_COMPANY_SCOPE_UNRESOLVED",
+          "CATALOG_UNRESOLVED_LIVE_HANDOFF","CUSTOM_LINE_MODE_NOT_APPROVED"
+        ]
+      }
+    },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "provenance": {
+      "type": "object",
+      "required": ["attempted_binding_ids","rejected"],
+      "properties": {
+        "attempted_binding_ids": { "type": "array", "items": { "type": "string", "format": "uuid" } },
+        "rejected": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["binding_id","reason"],
+            "properties": {
+              "binding_id": { "type": "string", "format": "uuid" },
+              "reason": { "type": "string" }
+            }
+          }
+        },
+        "resolved_at": { "type": ["string","null"], "format": "date-time" }
+      }
+    }
+  },
+  "additionalProperties": false
+}

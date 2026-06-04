@@ -43,6 +43,18 @@ from .acceptance_gates import (
     Verdict,
     evaluate_trade_acceptance,
 )
+# Phase 7.6a — catalog binding contracts (pure twins; NOT registered).
+from .catalog_bindings import (
+    BlueprintCatalogBinding,
+    create_deterministic_binding_key,
+    validate_binding_shape,
+    validate_binding_tenant_scope,
+    validate_binding_trade_allowed,
+    validate_binding_unit_compatibility,
+    validate_binding_active_for_resolver,
+    summarize_binding_target,
+    assert_binding_can_resolve_candidate,
+)
 # Phase 5.5 — CRM handoff contracts (pure twins; NOT registered in skills_registry).
 from .crm_handoff import (
     CANONICAL_ESTIMATE_TARGET,

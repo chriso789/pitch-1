@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pitch-crm.ai/schemas/blueprint-importer/blueprint-catalog-binding.schema.json",
+  "title": "BlueprintCatalogBinding",
+  "description": "Phase 7.6a — shape only. Runtime resolver is NOT implemented.",
+  "type": "object",
+  "required": [
+    "id","tenant_id","binding_scope","binding_type","trade_id",
+    "source_candidate_type","source_item_key","source_unit",
+    "target_kind","pricing_source_type","cost_source_type","status",
+    "resolver_priority","match_confidence","requires_user_confirmation",
+    "deterministic_binding_key","metadata"
+  ],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "tenant_id": { "type": "string", "format": "uuid" },
+    "binding_scope": { "type": "string", "enum": ["tenant","template","trade","global_fallback_disabled"] },
+    "binding_type": { "type": "string", "enum": ["material","labor","accessory","allowance"] },
+    "trade_id": { "type": "string", "not": { "const": "windows_doors" } },
+    "source_candidate_type": { "type": "string", "enum": ["material","labor"] },
+    "source_item_key": { "type": "string", "minLength": 1 },
+    "source_item_name": { "type": ["string","null"] },
+    "source_template_key": { "type": ["string","null"] },
+    "source_template_version": { "type": ["string","null"] },
+    "source_formula_key": { "type": ["string","null"] },
+    "source_unit": { "type": "string", "minLength": 1 },
+    "target_kind": {
+      "type": "string",
+      "enum": ["product_catalog","supplier_catalog_item","abc_catalog_item","labor_rate","custom_line_disabled","unresolved"]
+    },
+    "target_table": {
+      "type": ["string","null"],
+      "enum": ["product_catalog","supplier_catalog_items","abc_catalog_items","labor_rates", null]
+    },
+    "target_item_id": { "type": ["string","null"], "format": "uuid" },
+    "target_abc_item_number": { "type": ["string","null"] },
+    "target_unit": { "type": ["string","null"] },
+    "unit_conversion_rule": { "type": "object" },
+    "pricing_source_type": { "type": "string", "enum": ["catalog_cost","labor_rate","manual_approved","unresolved","disabled"] },
+    "cost_source_type": { "type": "string", "enum": ["catalog","labor_rate","fixed","unresolved","disabled"] },
+    "unit_cost": { "type": ["number","null"] },
+    "labor_rate_id": { "type": ["string","null"], "format": "uuid" },
+    "markup_rule_id": { "type": ["string","null"], "format": "uuid" },
+    "tax_rule_id": { "type": ["string","null"], "format": "uuid" },
+    "effective_from": { "type": ["string","null"], "format": "date-time" },
+    "effective_to": { "type": ["string","null"], "format": "date-time" },
+    "status": { "type": "string", "enum": ["draft","active","inactive","superseded","blocked","needs_review"] },
+    "resolver_priority": { "type": "integer" },
+    "match_confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "requires_user_confirmation": { "type": "boolean" },
+    "approved_by": { "type": ["string","null"], "format": "uuid" },
+    "approved_at": { "type": ["string","null"], "format": "date-time" },
+    "deterministic_binding_key": { "type": "string", "minLength": 1 },
+    "metadata": { "type": "object" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}

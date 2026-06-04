@@ -5241,6 +5241,170 @@ export type Database = {
           },
         ]
       }
+      blueprint_catalog_binding_events: {
+        Row: {
+          binding_id: string
+          changed_by: string | null
+          created_at: string
+          event_type: string
+          id: string
+          metadata: Json
+          next_status: string | null
+          previous_status: string | null
+          reason: string | null
+          tenant_id: string
+        }
+        Insert: {
+          binding_id: string
+          changed_by?: string | null
+          created_at?: string
+          event_type: string
+          id?: string
+          metadata?: Json
+          next_status?: string | null
+          previous_status?: string | null
+          reason?: string | null
+          tenant_id: string
+        }
+        Update: {
+          binding_id?: string
+          changed_by?: string | null
+          created_at?: string
+          event_type?: string
+          id?: string
+          metadata?: Json
+          next_status?: string | null
+          previous_status?: string | null
+          reason?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "blueprint_catalog_binding_events_binding_id_fkey"
+            columns: ["binding_id"]
+            isOneToOne: false
+            referencedRelation: "blueprint_catalog_bindings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      blueprint_catalog_bindings: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          binding_scope: string
+          binding_type: string
+          cost_source_type: string
+          created_at: string
+          deterministic_binding_key: string
+          effective_from: string | null
+          effective_to: string | null
+          id: string
+          labor_rate_id: string | null
+          markup_rule_id: string | null
+          match_confidence: number
+          metadata: Json
+          pricing_source_type: string
+          requires_user_confirmation: boolean
+          resolver_priority: number
+          source_candidate_type: string
+          source_formula_key: string | null
+          source_item_key: string
+          source_item_name: string | null
+          source_template_key: string | null
+          source_template_version: string | null
+          source_unit: string
+          status: string
+          target_abc_item_number: string | null
+          target_item_id: string | null
+          target_kind: string
+          target_table: string | null
+          target_unit: string | null
+          tax_rule_id: string | null
+          tenant_id: string
+          trade_id: string
+          unit_conversion_rule: Json
+          unit_cost: number | null
+          updated_at: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          binding_scope?: string
+          binding_type: string
+          cost_source_type?: string
+          created_at?: string
+          deterministic_binding_key: string
+          effective_from?: string | null
+          effective_to?: string | null
+          id?: string
+          labor_rate_id?: string | null
+          markup_rule_id?: string | null
+          match_confidence?: number
+          metadata?: Json
+          pricing_source_type?: string
+          requires_user_confirmation?: boolean
+          resolver_priority?: number
+          source_candidate_type: string
+          source_formula_key?: string | null
+          source_item_key: string
+          source_item_name?: string | null
+          source_template_key?: string | null
+          source_template_version?: string | null
+          source_unit: string
+          status?: string
+          target_abc_item_number?: string | null
+          target_item_id?: string | null
+          target_kind?: string
+          target_table?: string | null
+          target_unit?: string | null
+          tax_rule_id?: string | null
+          tenant_id: string
+          trade_id: string
+          unit_conversion_rule?: Json
+          unit_cost?: number | null
+          updated_at?: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          binding_scope?: string
+          binding_type?: string
+          cost_source_type?: string
+          created_at?: string
+          deterministic_binding_key?: string
+          effective_from?: string | null
+          effective_to?: string | null
+          id?: string
+          labor_rate_id?: string | null
+          markup_rule_id?: string | null
+          match_confidence?: number
+          metadata?: Json
+          pricing_source_type?: string
+          requires_user_confirmation?: boolean
+          resolver_priority?: number
+          source_candidate_type?: string
+          source_formula_key?: string | null
+          source_item_key?: string
+          source_item_name?: string | null
+          source_template_key?: string | null
+          source_template_version?: string | null
+          source_unit?: string
+          status?: string
+          target_abc_item_number?: string | null
+          target_item_id?: string | null
+          target_kind?: string
+          target_table?: string | null
+          target_unit?: string | null
+          tax_rule_id?: string | null
+          tenant_id?: string
+          trade_id?: string
+          unit_conversion_rule?: Json
+          unit_cost?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       blueprint_detected_trades: {
         Row: {
           confidence: number
