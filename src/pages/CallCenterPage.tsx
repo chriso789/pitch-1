@@ -179,7 +179,7 @@ const CallCenterPage = () => {
 
   // Fetch calls
   const { data: calls, isLoading, refetch } = useQuery({
-    queryKey: ['call-center-calls', tenantId, statusFilter],
+    queryKey: ['call-center-calls', tenantId, currentLocationId, statusFilter],
     queryFn: async () => {
       if (!tenantId) return [];
       
@@ -192,6 +192,10 @@ const CallCenterPage = () => {
         .eq('tenant_id', tenantId)
         .order('created_at', { ascending: false });
       
+      if (currentLocationId) {
+        query = query.eq('location_id', currentLocationId);
+      }
+
       if (statusFilter !== 'all') {
         query = query.eq('status', statusFilter);
       }
