@@ -97,10 +97,14 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
 
     const lat = verifiedAddress.lat ?? verifiedAddress.geometry?.location?.lat ?? contact.latitude;
     const lng = verifiedAddress.lng ?? verifiedAddress.geometry?.location?.lng ?? contact.longitude;
+    const streetMatch = street.match(/^(\d+[\w-]*)\s+(.+)$/);
+    const streetNumber = streetMatch?.[1] || '';
+    const route = streetMatch?.[2] || street;
     const addressComponents = Array.isArray(verifiedAddress.address_components)
       ? verifiedAddress.address_components
       : [
-          street ? { long_name: street, short_name: street, types: ['route'] } : null,
+          streetNumber ? { long_name: streetNumber, short_name: streetNumber, types: ['street_number'] } : null,
+          route ? { long_name: route, short_name: route, types: ['route'] } : null,
           contact.address_city ? { long_name: contact.address_city, short_name: contact.address_city, types: ['locality'] } : null,
           contact.address_state ? { long_name: contact.address_state, short_name: contact.address_state, types: ['administrative_area_level_1'] } : null,
           contact.address_zip ? { long_name: contact.address_zip, short_name: contact.address_zip, types: ['postal_code'] } : null,
@@ -177,23 +181,28 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
         notes: "",
       };
       
-      // If contact is provided, pre-fill name/phone only — leave address blank
-      // so the user verifies a fresh address via Google autocomplete.
+      let initialSelectedAddress: AddressSuggestion | null = null;
+
+      // If contact is provided, pre-fill the saved contact address when available.
       if (contact) {
+        initialSelectedAddress = buildContactAddressSuggestion();
         initialFormData = {
           ...initialFormData,
           name: `${contact.first_name || ''} ${contact.last_name || ''}`.trim(),
           phone: contact.phone || "",
-          address: "",
-          useSameInfo: false,
+          address: initialSelectedAddress?.formatted_address || "",
+          useSameInfo: !!initialSelectedAddress,
           assignedTo: contact.assigned_to ? [contact.assigned_to] : []
         };
       }
 
       setFormData(initialFormData);
+      setSelectedAddress(initialSelectedAddress);
+      setAddressSuggestions([]);
+      setShowAddressPicker(false);
       initializeForm(initialFormData);
     }
-  }, [open, initializeForm, contact]);
+  }, [open, initializeForm, contact, buildContactAddressSuggestion]);
 
   // Check for changes when form data updates
   useEffect(() => {
