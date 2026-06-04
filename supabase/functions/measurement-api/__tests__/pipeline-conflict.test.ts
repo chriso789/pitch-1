@@ -88,27 +88,180 @@ Deno.test("T-3: flag OFF without ?legacy=1 stays legacy", () => {
   }
 });
 
-// --- T-4 / T-5 / T-6 contract assertions -----------------------------------
-// These are intentionally documented-but-not-yet-asserted. They will become
-// real DB-level assertions once the orchestrator route + shim ship. Keeping
-// them as Deno.test placeholders ensures `supabase test` surfaces the contract
-// and that a missing implementation is visible (skipped/ignored, not silently
-// absent).
+// --- T-4a / T-5a / T-6a / T-8 / T-9 conflict-lock assertions ---------------
+// Promoted from "pending" to live assertions by docs/measurement-conflict-lock.md.
 
-Deno.test({
-  name: "T-4: measure-roof cannot write final roof_measurements when flag ON (pending implementation)",
-  ignore: true,
-  fn: () => { /* will assert canonical_measurement_route stamp absence path is blocked */ },
+import {
+  evaluateExportReportGate,
+  evaluateFinalWriter,
+  evaluateWrappedHelperCall,
+} from "../../_shared/mskill/writer-guard.ts";
+import { buildRouteProvenance } from "../../_shared/mskill/provenance.ts";
+
+function withFlag(value: string | undefined, fn: () => void) {
+  const prev = Deno.env.get("USE_MSKILL_MEASUREMENT_PIPELINE");
+  if (value === undefined) Deno.env.delete("USE_MSKILL_MEASUREMENT_PIPELINE");
+  else Deno.env.set("USE_MSKILL_MEASUREMENT_PIPELINE", value);
+  try { fn(); } finally {
+    if (prev === undefined) Deno.env.delete("USE_MSKILL_MEASUREMENT_PIPELINE");
+    else Deno.env.set("USE_MSKILL_MEASUREMENT_PIPELINE", prev);
+  }
+}
+
+Deno.test("T-4a: measure-roof blocked from final write when flag ON", () => {
+  withFlag("true", () => {
+    const r = evaluateFinalWriter({ writer: "measure-roof", legacy_forced: false });
+    assertEquals(r.allowed, false);
+    if (!r.allowed) assertEquals(r.code, "final_writer_blocked");
+  });
+});
+
+Deno.test("T-4a: measure blocked from final write when flag ON", () => {
+  withFlag("true", () => {
+    const r = evaluateFinalWriter({ writer: "measure", legacy_forced: false });
+    assertEquals(r.allowed, false);
+  });
+});
+
+Deno.test("T-4a: measure-roof allowed when flag OFF (legacy behavior preserved)", () => {
+  withFlag("false", () => {
+    const r = evaluateFinalWriter({ writer: "measure-roof", legacy_forced: false });
+    assertEquals(r.allowed, true);
+  });
+});
+
+Deno.test("T-4a: bridge write rejected when provenance is non-canonical", () => {
+  withFlag("true", () => {
+    const r = evaluateFinalWriter({
+      writer: "bridgeSkillReportToRoofMeasurements",
+      legacy_forced: false,
+      provenance: { canonical_measurement_route: false, legacy_artifact: true },
+    });
+    assertEquals(r.allowed, false);
+  });
+});
+
+Deno.test("T-4a: bridge write allowed with canonical provenance", () => {
+  withFlag("true", () => {
+    const prov = buildRouteProvenance({
+      source_module: "_shared/mskill/bridge.ts",
+      source_function: "bridgeSkillReportToRoofMeasurements",
+      measurement_request_id: "00000000-0000-0000-0000-000000000001",
+      request_hash: "abc",
+      mskill_job_id: "00000000-0000-0000-0000-000000000002",
+    });
+    const r = evaluateFinalWriter({
+      writer: "bridgeSkillReportToRoofMeasurements",
+      legacy_forced: false,
+      provenance: prov,
+    });
+    assertEquals(r.allowed, true);
+  });
+});
+
+Deno.test("T-4a: legacy writer requires ?legacy=1 when flag ON", () => {
+  withFlag("true", () => {
+    const blocked = evaluateFinalWriter({
+      writer: "start-ai-measurement/index.legacy.ts",
+      legacy_forced: false,
+    });
+    assertEquals(blocked.allowed, false);
+    const allowed = evaluateFinalWriter({
+      writer: "start-ai-measurement/index.legacy.ts",
+      legacy_forced: true,
+    });
+    assertEquals(allowed.allowed, true);
+  });
+});
+
+Deno.test("T-5a: render-measurement-pdf blocked without export_report run when flag ON", () => {
+  withFlag("true", () => {
+    const r = evaluateExportReportGate({
+      renderer: "render-measurement-pdf",
+      legacy_forced: false,
+    });
+    assertEquals(r.allowed, false);
+    if (!r.allowed) assertEquals(r.code, "export_report_missing");
+  });
+});
+
+Deno.test("T-5a: render blocked when export_report run not completed", () => {
+  withFlag("true", () => {
+    const r = evaluateExportReportGate({
+      renderer: "render-measurement-pdf",
+      legacy_forced: false,
+      export_report_run_id: "run-1",
+      export_report_run_status: "running",
+    });
+    assertEquals(r.allowed, false);
+  });
+});
+
+Deno.test("T-5a: render allowed with completed export_report run", () => {
+  withFlag("true", () => {
+    const r = evaluateExportReportGate({
+      renderer: "render-measurement-pdf",
+      legacy_forced: false,
+      export_report_run_id: "run-1",
+      export_report_run_status: "completed",
+    });
+    assertEquals(r.allowed, true);
+  });
+});
+
+Deno.test("T-6a: wrapped helper blocked outside a skill run when flag ON", () => {
+  withFlag("true", () => {
+    const r = evaluateWrappedHelperCall({
+      helper: "_shared/perimeter-refinement.ts",
+      legacy_forced: false,
+    });
+    assertEquals(r.allowed, false);
+    if (!r.allowed) assertEquals(r.code, "helper_not_wrapped");
+  });
+});
+
+Deno.test("T-6a: wrapped helper allowed inside a skill run", () => {
+  withFlag("true", () => {
+    const r = evaluateWrappedHelperCall({
+      helper: "_shared/ridge-clustering.ts",
+      legacy_forced: false,
+      skill_run_id: "run-x",
+    });
+    assertEquals(r.allowed, true);
+  });
+});
+
+Deno.test("T-8: buildRouteProvenance throws on missing required field", () => {
+  let threw = false;
+  try {
+    buildRouteProvenance({
+      source_module: "",
+      source_function: "fn",
+      measurement_request_id: "req",
+      request_hash: "h",
+      mskill_job_id: "job",
+    });
+  } catch { threw = true; }
+  assert(threw, "missing source_module must throw");
+});
+
+Deno.test("T-8: buildRouteProvenance stamps legacy defaults correctly", () => {
+  const p = buildRouteProvenance({
+    source_module: "x.ts",
+    source_function: "f",
+    measurement_request_id: "req",
+    request_hash: "h",
+    mskill_job_id: "job",
+    legacy_artifact: true,
+  });
+  assertEquals(p.legacy_artifact, true);
+  assertEquals(p.wrapped_by_skill, false);
+  assertEquals(p.canonical_measurement_route, false);
+  assertEquals(p.route_warning, "legacy_noncanonical_measurement_path");
 });
 
 Deno.test({
-  name: "T-5: render-measurement-pdf refuses canonical render without export_report artifact (pending)",
+  name: "T-9: duplicate bridge writes for the same measurement_job_id collapse (DB-level, pending migration)",
   ignore: true,
-  fn: () => { /* will assert 409 export_report_missing */ },
-});
-
-Deno.test({
-  name: "T-6: legacy helpers cannot write mskill_artifacts outside a mskill_runs row (pending)",
-  ignore: true,
-  fn: () => { /* will assert FK / trigger blocks orphan artifacts */ },
+  fn: () => { /* enforced by future unique index on (measurement_job_id, mskill_job_id) */ },
 });
