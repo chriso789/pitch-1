@@ -790,18 +790,29 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
             />
           </div>
 
-          {contact && (
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="useSameInfo"
-                checked={formData.useSameInfo}
-                onCheckedChange={handleUseSameInfoChange}
-              />
-              <Label htmlFor="useSameInfo" className="text-sm">
-                Use same info as contact ({contact.first_name} {contact.last_name})
-              </Label>
-            </div>
-          )}
+          {contact && (() => {
+            const hasContactAddress = !!buildContactAddressSuggestion();
+            return (
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="useSameInfo"
+                    checked={formData.useSameInfo}
+                    onCheckedChange={handleUseSameInfoChange}
+                    disabled={!hasContactAddress}
+                  />
+                  <Label htmlFor="useSameInfo" className="text-sm">
+                    Use same address as contact ({contact.first_name} {contact.last_name})
+                  </Label>
+                </div>
+                {!hasContactAddress && (
+                  <p className="text-xs text-muted-foreground ml-6">
+                    This contact has no saved address — please enter the lead's address below.
+                  </p>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Pipeline Details */}
           <div className="grid grid-cols-3 gap-4">
