@@ -36,6 +36,10 @@ import { OnboardingAnalyticsDashboard } from "./OnboardingAnalyticsDashboard";
 import { PlatformCommunications } from "./PlatformCommunications";
 import { EmailDiagnosticsPanel } from "./EmailDiagnosticsPanel";
 import { PlatformOperatorsPanel } from "./PlatformOperatorsPanel";
+import { SRSConnectionSettings } from "./SRSConnectionSettings";
+import { QXOConnectionSettings } from "./QXOConnectionSettings";
+import { ABCConnectionSettings } from "./ABCConnectionSettings";
+import { Wrench, Truck, Package } from "lucide-react";
 
 interface Company {
   id: string;
