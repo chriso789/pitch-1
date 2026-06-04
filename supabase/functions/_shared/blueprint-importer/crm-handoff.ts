@@ -446,3 +446,248 @@ export function assertCandidateCanLiveWrite(
     throw new Error(`Candidate cannot live-write — blockers: ${blockers.join(",")}`);
   }
 }
+
+// ===========================================================================
+// Phase 7.5 — Approval object + resolver + pricing contract (shape only).
+// Pure helpers. Side-effect free. NOT invoked from runtime.
+// ===========================================================================
+
+export type ApprovalStatus =
+  | "approval_not_started"
+  | "approval_in_review"
+  | "approval_ready"
+  | "approved_for_live_handoff"
+  | "approval_revoked"
+  | "approval_superseded"
+  | "approval_failed";
+
+export type ApprovalBlockerCode =
+  | "APPROVAL_MISSING_INCLUDED_CANDIDATES"
+  | "APPROVAL_UNRESOLVED_BLOCKERS_REMAIN"
+  | "APPROVAL_HASH_MISMATCH"
+  | "APPROVAL_SOURCE_DRAFT_STALE"
+  | "APPROVAL_TARGET_ESTIMATE_LOCKED"
+  | "APPROVAL_TARGET_ESTIMATE_TENANT_MISMATCH"
+  | "APPROVAL_PRICING_MODE_UNSAFE"
+  | "APPROVAL_CATALOG_MODE_REQUIRES_RESOLVER"
+  | "APPROVAL_CUSTOM_LINE_MODE_NOT_APPROVED";
+
+export type ApprovalWarningCode =
+  | "APPROVAL_WARNINGS_ACKNOWLEDGED"
+  | "APPROVAL_INCLUDES_QUANTITY_ONLY_LINES"
+  | "APPROVAL_INCLUDES_CATALOG_AMBIGUOUS"
+  | "APPROVAL_INCLUDES_LABOR_RATE_MISSING";
+
+export interface ApprovalObject {
+  contract_version: string; // e.g. "phase7.5.v1"
+  approval_statement_version: string;
+  approved_by: string | null;
+  approved_at: string | null;
+  import_session_id: string;
+  handoff_batch_id: string;
+  target_enhanced_estimate_id: string | null;
+  included_candidate_ids: string[];
+  excluded_candidate_ids: string[];
+  acknowledged_warning_ids: string[];
+  resolved_blocker_ids: string[];
+  catalog_mode: CatalogHandoffMode;
+  pricing_mode: PricingMode;
+  custom_line_mode: CustomLineMode;
+  source_draft_hash: string | null;
+  approval_status: ApprovalStatus;
+  approval_blockers: ApprovalBlockerCode[];
+  approval_warnings: ApprovalWarningCode[];
+  /** Set by validateApprovalHash(). Phase 7.5 stores it; live write recomputes & compares. */
+  deterministic_approval_hash: string | null;
+}
+
+export interface DeterministicApprovalHashInputs {
+  contract_version: string;
+  approval_statement_version: string;
+  import_session_id: string;
+  handoff_batch_id: string;
+  target_enhanced_estimate_id: string | null;
+  included_candidate_ids: string[];
+  excluded_candidate_ids: string[];
+  acknowledged_warning_ids: string[];
+  resolved_blocker_ids: string[];
+  catalog_mode: CatalogHandoffMode;
+  pricing_mode: PricingMode;
+  custom_line_mode: CustomLineMode;
+  source_draft_hash: string | null;
+}
+
+export async function createDeterministicApprovalHash(
+  inputs: DeterministicApprovalHashInputs,
+): Promise<string> {
+  const payload = [
+    inputs.contract_version,
+    inputs.approval_statement_version,
+    inputs.import_session_id,
+    inputs.handoff_batch_id,
+    inputs.target_enhanced_estimate_id ?? "null",
+    sortedUuidList(inputs.included_candidate_ids),
+    sortedUuidList(inputs.excluded_candidate_ids),
+    sortedUuidList(inputs.acknowledged_warning_ids),
+    sortedUuidList(inputs.resolved_blocker_ids),
+    inputs.catalog_mode,
+    inputs.pricing_mode,
+    inputs.custom_line_mode,
+    inputs.source_draft_hash ?? "null",
+  ].join(":");
+  return await sha256Hex(payload);
+}
+
+export function validateApprovalObjectShape(a: ApprovalObject): ApprovalBlockerCode[] {
+  const blockers: ApprovalBlockerCode[] = [];
+  if (!a.included_candidate_ids || a.included_candidate_ids.length === 0) {
+    blockers.push("APPROVAL_MISSING_INCLUDED_CANDIDATES");
+  }
+  if ((a.approval_blockers?.length ?? 0) > 0) {
+    blockers.push("APPROVAL_UNRESOLVED_BLOCKERS_REMAIN");
+  }
+  if (a.catalog_mode !== "catalog_resolved_only" && a.custom_line_mode !== "enabled") {
+    blockers.push("APPROVAL_CATALOG_MODE_REQUIRES_RESOLVER");
+  }
+  if (a.custom_line_mode === "enabled" && !a.resolved_blocker_ids.includes("CUSTOM_LINE_MODE_REVIEWED")) {
+    blockers.push("APPROVAL_CUSTOM_LINE_MODE_NOT_APPROVED");
+  }
+  return blockers;
+}
+
+export async function validateApprovalHash(
+  a: ApprovalObject,
+): Promise<{ ok: boolean; expected: string; got: string | null }> {
+  const expected = await createDeterministicApprovalHash({
+    contract_version: a.contract_version,
+    approval_statement_version: a.approval_statement_version,
+    import_session_id: a.import_session_id,
+    handoff_batch_id: a.handoff_batch_id,
+    target_enhanced_estimate_id: a.target_enhanced_estimate_id,
+    included_candidate_ids: a.included_candidate_ids,
+    excluded_candidate_ids: a.excluded_candidate_ids,
+    acknowledged_warning_ids: a.acknowledged_warning_ids,
+    resolved_blocker_ids: a.resolved_blocker_ids,
+    catalog_mode: a.catalog_mode,
+    pricing_mode: a.pricing_mode,
+    custom_line_mode: a.custom_line_mode,
+    source_draft_hash: a.source_draft_hash,
+  });
+  return { ok: expected === a.deterministic_approval_hash, expected, got: a.deterministic_approval_hash };
+}
+
+// ----- Target estimate status mapping -----------------------------------
+
+export type EnhancedEstimateStatus = "draft" | "sent" | "signed";
+
+export function validateTargetStatusForLiveWrite(
+  status: EnhancedEstimateStatus | string,
+): { can_live_write: boolean; blocker?: HandoffBlockerCode | "TARGET_ESTIMATE_SENT" | "TARGET_ESTIMATE_APPROVED" | "TARGET_ESTIMATE_STATUS_UNKNOWN" } {
+  if (status === "draft") return { can_live_write: true };
+  if (status === "sent") return { can_live_write: false, blocker: "TARGET_ESTIMATE_SENT" };
+  if (status === "signed") return { can_live_write: false, blocker: "TARGET_ESTIMATE_APPROVED" };
+  return { can_live_write: false, blocker: "TARGET_ESTIMATE_STATUS_UNKNOWN" };
+}
+
+export function validateSourceDraftHashFresh(
+  approval_hash: string | null,
+  current_hash: string | null,
+): boolean {
+  return approval_hash !== null && approval_hash === current_hash;
+}
+
+// ----- Pricing-mode (quantity-only) safety decision ---------------------
+
+export type QuantityOnlySafetyStatus =
+  | "blocked_quantity_only_unsafe"
+  | "allowed_pricing_required"
+  | "deferred_pending_pricing_contract";
+
+/**
+ * Phase 7.5 verification result.
+ *
+ * Inspection of public.estimate_line_items shows unit_cost, extended_cost, and
+ * total_price are NOT NULL with defaults of 0. Inserting a quantity-only line
+ * therefore silently produces total_price=0, which corrupts enhanced_estimates
+ * totals. Decision: quantity-only live writes are unsafe under current schema.
+ */
+export function decideQuantityOnlySafety(mode: PricingMode): QuantityOnlySafetyStatus {
+  if (mode === "quantity_only") return "blocked_quantity_only_unsafe";
+  if (mode === "ready_for_pricing_review") return "allowed_pricing_required";
+  return "deferred_pending_pricing_contract";
+}
+
+export function validateQuantityOnlyModeAllowed(mode: PricingMode): HandoffBlockerCode[] {
+  return decideQuantityOnlySafety(mode) === "blocked_quantity_only_unsafe"
+    ? ["PRICING_REQUIRED_BUT_UNAVAILABLE"]
+    : [];
+}
+
+// ----- Catalog/labor resolver contract (shape only) ---------------------
+
+export type CatalogResolverMatchStatus =
+  | "resolved"
+  | "unresolved"
+  | "ambiguous"
+  | "inactive_item"
+  | "missing_labor_rate"
+  | "blocked";
+
+export type CatalogResolverBlockerCode =
+  | "CATALOG_RESOLVER_NOT_IMPLEMENTED"
+  | "CATALOG_UNRESOLVED_LIVE_HANDOFF"
+  | "CATALOG_MATCH_AMBIGUOUS"
+  | "CATALOG_ITEM_INACTIVE"
+  | "LABOR_RATE_MISSING"
+  | "TENANT_CATALOG_MISMATCH"
+  | "CUSTOM_LINE_MODE_NOT_APPROVED";
+
+export interface CatalogResolverOutput {
+  resolver_version: string;
+  resolver_mode: "deterministic_catalog_only" | "deterministic_with_user_confirmation";
+  tenant_id: string;
+  source_candidate_id: string;
+  trade_id: string;
+  item_key: string;
+  normalized_item_name: string | null;
+  candidate_type: SourceDraftLineType;
+  match_status: CatalogResolverMatchStatus;
+  matched_catalog_table:
+    | "product_catalog"
+    | "supplier_catalog_items"
+    | "abc_catalog_items"
+    | "labor_rates"
+    | null;
+  matched_catalog_item_id: string | null;
+  labor_rate_id: string | null;
+  match_rule_id: string | null;
+  match_confidence: number; // [0, 1]
+  blockers: CatalogResolverBlockerCode[];
+  warnings: string[];
+  provenance: {
+    attempted_sources: string[];
+    rejected_matches: Array<{ id: string; reason: string; confidence: number }>;
+    resolved_at: string | null;
+  };
+}
+
+export function validateCatalogResolverOutput(o: CatalogResolverOutput): CatalogResolverBlockerCode[] {
+  const blockers: CatalogResolverBlockerCode[] = [...(o.blockers ?? [])];
+  if (o.match_status === "ambiguous" && !blockers.includes("CATALOG_MATCH_AMBIGUOUS")) {
+    blockers.push("CATALOG_MATCH_AMBIGUOUS");
+  }
+  if (o.match_status === "inactive_item" && !blockers.includes("CATALOG_ITEM_INACTIVE")) {
+    blockers.push("CATALOG_ITEM_INACTIVE");
+  }
+  if (o.match_status === "missing_labor_rate" && !blockers.includes("LABOR_RATE_MISSING")) {
+    blockers.push("LABOR_RATE_MISSING");
+  }
+  if (o.match_status === "unresolved" && !blockers.includes("CATALOG_UNRESOLVED_LIVE_HANDOFF")) {
+    blockers.push("CATALOG_UNRESOLVED_LIVE_HANDOFF");
+  }
+  if (o.match_status === "resolved" && o.match_confidence < 0.9) {
+    // Phase 7 threshold; below 0.9 requires user confirmation.
+    if (!blockers.includes("CATALOG_MATCH_AMBIGUOUS")) blockers.push("CATALOG_MATCH_AMBIGUOUS");
+  }
+  return blockers;
+}
