@@ -200,25 +200,250 @@ export default function BlueprintImporterV2() {
 
             <Separator />
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2"><Lock className="h-4 w-4" /> Next actions (disabled in Phase 3)</CardTitle>
-              </CardHeader>
-              <CardContent className="flex flex-wrap gap-3">
-                {["Populate Material List", "Generate Labor Pricing", "Push to Estimate"].map((label) => (
-                  <Tooltip key={label}>
-                    <TooltipTrigger asChild>
-                      <span><Button variant="outline" disabled>{label}</Button></span>
-                    </TooltipTrigger>
-                    <TooltipContent>Not enabled until Phase 4.</TooltipContent>
-                  </Tooltip>
-                ))}
-              </CardContent>
-            </Card>
+            <Phase4Panel sessionId={sessionId!} summary={summary} onRefresh={refresh} />
           </>
         )}
       </div>
     </TooltipProvider>
+  );
+}
+
+// ============================================================================
+// Phase 4 — template binding + deterministic draft generation panel.
+// ============================================================================
+const MVP_TRADES = new Set(["roofing", "exterior_walls_siding", "paint_coatings", "gutters_fascia_trim"]);
+
+function Phase4Panel({ sessionId, summary, onRefresh }: { sessionId: string; summary: SessionSummary; onRefresh: () => Promise<void> }) {
+  const [drafts, setDrafts] = useState<DraftLinesResult | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [assumptions, setAssumptions] = useState<Record<string, Record<string, string>>>({});
+
+  const loadDrafts = async () => {
+    try {
+      const d = await fetchBlueprintDraftLines(sessionId);
+      setDrafts(d);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load drafts");
+    }
+  };
+  useEffect(() => { void loadDrafts(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [sessionId]);
+
+  const acceptedMvp = summary.accepted_trades.filter((a) => MVP_TRADES.has(a.trade_id));
+
+  const blockingFlags = summary.review_flags.filter((f) => f.blocking && !f.resolved);
+  const materialBlocked = blockingFlags.length > 0;
+  const laborBlocked = blockingFlags.length > 0;
+
+  const setA = (acceptedId: string, key: string, value: string) =>
+    setAssumptions((prev) => ({ ...prev, [acceptedId]: { ...(prev[acceptedId] ?? {}), [key]: value } }));
+
+  const parseAssumptionMap = (raw: Record<string, string> | undefined): Record<string, unknown> => {
+    if (!raw) return {};
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(raw)) {
+      if (v === "") continue;
+      const n = Number(v);
+      out[k] = Number.isFinite(n) && /^-?\d*\.?\d+$/.test(v) ? n : v;
+    }
+    return out;
+  };
+
+  const doBind = async (acceptedId: string) => {
+    setBusy(`bind:${acceptedId}`);
+    try {
+      await bindBlueprintTemplate({
+        session_id: sessionId,
+        accepted_trade_id: acceptedId,
+        user_assumptions: parseAssumptionMap(assumptions[acceptedId]),
+      });
+      toast.success("Template bound");
+      await Promise.all([onRefresh(), loadDrafts()]);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Bind failed");
+    } finally { setBusy(null); }
+  };
+  const doMaterials = async (acceptedId: string) => {
+    setBusy(`mat:${acceptedId}`);
+    try {
+      await generateBlueprintMaterialDrafts({
+        session_id: sessionId,
+        accepted_trade_id: acceptedId,
+        user_assumptions: parseAssumptionMap(assumptions[acceptedId]),
+      });
+      toast.success("Material drafts generated");
+      await Promise.all([onRefresh(), loadDrafts()]);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Material generation failed");
+    } finally { setBusy(null); }
+  };
+  const doLabor = async (acceptedId: string) => {
+    setBusy(`lab:${acceptedId}`);
+    try {
+      await generateBlueprintLaborDrafts({
+        session_id: sessionId,
+        accepted_trade_id: acceptedId,
+        user_assumptions: parseAssumptionMap(assumptions[acceptedId]),
+      });
+      toast.success("Labor drafts generated");
+      await Promise.all([onRefresh(), loadDrafts()]);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Labor generation failed");
+    } finally { setBusy(null); }
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Phase 4 — Draft generation</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-1 text-sm text-muted-foreground">
+          <p>Template binding + deterministic material/labor draft quantities. No final pricing, no CRM estimate handoff.</p>
+          <p>Windows/doors stay measurement-only; future trades (drywall, framing, MEP) stay locked.</p>
+        </CardContent>
+      </Card>
+
+      {acceptedMvp.length === 0 && (
+        <Alert>
+          <AlertTitle>No MVP trades accepted yet</AlertTitle>
+          <AlertDescription>Accept at least one of: roofing, exterior walls / siding, paint, or gutters / fascia / trim.</AlertDescription>
+        </Alert>
+      )}
+
+      {acceptedMvp.map((accepted) => {
+        const tradeTemplateMeta = drafts?.trade_templates.find((t) => t.accepted_trade_id === accepted.id);
+        const template = (tradeTemplateMeta?.template ?? null) as null | {
+          internal_template_key: string; name: string;
+          required_assumptions: Array<{ key: string; label: string; required: boolean; template_default: unknown }>;
+          optional_assumptions: Array<{ key: string; label: string; required: boolean; template_default: unknown }>;
+        };
+        const binding = drafts?.bindings.find((b: any) => b.accepted_trade_id === accepted.id && b.binding_status !== "superseded") as any;
+        const mats = (drafts?.material_draft_lines ?? []).filter((m: any) => m.accepted_trade_id === accepted.id && m.status !== "superseded");
+        const labs = (drafts?.labor_draft_lines ?? []).filter((l: any) => l.accepted_trade_id === accepted.id && l.status !== "superseded");
+
+        return (
+          <Card key={accepted.id}>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base">{TRADE_LABELS[accepted.trade_id] ?? accepted.trade_id}</CardTitle>
+                <Badge variant={binding?.binding_status === "ready" ? "default" : binding ? "destructive" : "outline"}>
+                  {binding?.binding_status ?? "no binding"}
+                </Badge>
+              </div>
+              {template && (
+                <p className="text-xs text-muted-foreground font-mono">{template.internal_template_key}</p>
+              )}
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {template ? (
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Required assumptions</div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {template.required_assumptions.map((a) => {
+                      const resolved = binding?.required_inputs?.[a.key]?.resolved_value;
+                      const source = binding?.required_inputs?.[a.key]?.source;
+                      return (
+                        <div key={a.key} className="text-xs space-y-1">
+                          <label className="font-mono">{a.key}</label>
+                          <input
+                            className="w-full border rounded px-2 py-1 bg-background"
+                            placeholder={String(a.template_default ?? `(required)`)}
+                            value={assumptions[accepted.id]?.[a.key] ?? (resolved == null ? "" : String(resolved))}
+                            onChange={(e) => setA(accepted.id, a.key, e.target.value)}
+                          />
+                          <div className="text-[10px] text-muted-foreground">{a.label} · source: {source ?? "—"}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {binding?.missing_inputs?.length > 0 && (
+                    <div className="text-xs text-destructive mt-2">Missing: {binding.missing_inputs.join(", ")}</div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground italic">No MVP template defined for this trade.</p>
+              )}
+
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="secondary" disabled={!!busy || !template} onClick={() => doBind(accepted.id)}>
+                  {busy === `bind:${accepted.id}` ? "Binding…" : "Bind / refresh template"}
+                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <Button size="sm" disabled={!!busy || materialBlocked || !template} onClick={() => doMaterials(accepted.id)}>
+                        {busy === `mat:${accepted.id}` ? "Generating…" : "Populate Material Draft"}
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  {materialBlocked && <TooltipContent>Resolve blocking review flags first.</TooltipContent>}
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <Button size="sm" disabled={!!busy || laborBlocked || !template} onClick={() => doLabor(accepted.id)}>
+                        {busy === `lab:${accepted.id}` ? "Generating…" : "Generate Labor Draft"}
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  {laborBlocked && <TooltipContent>Resolve blocking review flags first.</TooltipContent>}
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span><Button size="sm" variant="outline" disabled>Push to Estimate</Button></span>
+                  </TooltipTrigger>
+                  <TooltipContent>CRM estimate handoff is not enabled in Phase 4.</TooltipContent>
+                </Tooltip>
+              </div>
+
+              {(mats.length > 0 || labs.length > 0) && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <DraftTable title="Material drafts" rows={mats} unitKey="unit" nameKey="item_name" />
+                  <DraftTable title="Labor drafts" rows={labs} unitKey="unit" nameKey="labor_name" />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })}
+    </div>
+  );
+}
+
+function DraftTable({ title, rows, unitKey, nameKey }: { title: string; rows: any[]; unitKey: string; nameKey: string }) {
+  return (
+    <div>
+      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">{title}</div>
+      <div className="rounded border bg-muted/30 max-h-72 overflow-auto">
+        <table className="w-full text-xs">
+          <thead className="text-left">
+            <tr className="border-b">
+              <th className="px-2 py-1">Item</th>
+              <th className="px-2 py-1 text-right">Qty</th>
+              <th className="px-2 py-1">Unit</th>
+              <th className="px-2 py-1">Status</th>
+              <th className="px-2 py-1">PlanPaths</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id} className="border-b last:border-0">
+                <td className="px-2 py-1">{r[nameKey] ?? r.item_key ?? r.labor_key}</td>
+                <td className="px-2 py-1 text-right">{r.quantity ?? "—"}</td>
+                <td className="px-2 py-1">{r[unitKey] ?? "—"}</td>
+                <td className="px-2 py-1">
+                  <Badge variant={r.status === "ready" ? "default" : r.status === "blocked" ? "destructive" : "outline"}>{r.status}</Badge>
+                </td>
+                <td className="px-2 py-1">{Array.isArray(r.plan_path_ids) ? r.plan_path_ids.length : 0}</td>
+              </tr>
+            ))}
+            {rows.length === 0 && (
+              <tr><td colSpan={5} className="px-2 py-3 text-center text-muted-foreground italic">No rows yet — click the generator button.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 
