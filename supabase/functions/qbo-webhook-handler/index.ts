@@ -308,7 +308,20 @@ async function updateInvoiceBalance(
         },
       },
     );
-    if (!invoiceResponse.ok) throw new Error("Failed to fetch invoice from QBO");
+    const invoiceTid = getIntuitTid(invoiceResponse);
+    console.log("[qbo-webhook-handler] fetch invoice", {
+      status: invoiceResponse.status,
+      intuit_tid: invoiceTid,
+      realm_id: realmId,
+      tenant_id: tenantId,
+      qbo_invoice_id: invoiceId,
+    });
+    if (!invoiceResponse.ok) {
+      const errBody = await invoiceResponse.text();
+      throw new Error(
+        `qbo_webhook_handler:fetch_invoice failed [status=${invoiceResponse.status} intuit_tid=${invoiceTid ?? "none"}]: ${errBody.slice(0, 300)}`,
+      );
+    }
 
     const invoiceData = await invoiceResponse.json();
     const invoice = invoiceData.Invoice;
