@@ -330,6 +330,18 @@ async function updateInvoiceBalance(
       tenant_id: tenantId,
       qbo_invoice_id: invoiceId,
     });
+    void writeQboApiLog(supabase, {
+      action: "qbo_webhook_handler",
+      tenant_id: tenantId,
+      realm_id: realmId,
+      oauth_app_env: connection.oauth_app_env,
+      endpoint: `/v3/company/${realmId}/invoice/${invoiceId}`,
+      method: "GET",
+      http_status: invoiceResponse.status,
+      intuit_tid: invoiceTid,
+      success: invoiceResponse.ok,
+      request_metadata: { op: "fetch_invoice", qbo_entity: "Invoice", qbo_entity_id: invoiceId },
+    });
     if (!invoiceResponse.ok) {
       const errBody = await invoiceResponse.text();
       throw new Error(
