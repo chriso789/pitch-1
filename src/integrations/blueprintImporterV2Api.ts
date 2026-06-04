@@ -69,7 +69,7 @@ export interface SessionSummary {
 }
 
 export async function ingestBlueprintReport(payload: IngestPayload) {
-  const { data, error } = await edgeApi<IngestResult>("document-worker", "/blueprint-importer/v2/ingest", payload);
+  const { data, error } = await edgeApi<IngestResult>("document-worker", "/blueprint-importer/v2/ingest", payload as unknown as Record<string, unknown>);
   if (error) throw new Error(error);
   return data!;
 }
