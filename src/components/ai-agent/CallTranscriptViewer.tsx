@@ -57,7 +57,7 @@ export function CallTranscriptViewer() {
     queryKey: ['ai-call-transcripts', profile?.tenant_id, currentLocationId],
     enabled: !!profile?.tenant_id,
     queryFn: async () => {
-      let q = supabase
+      let q: any = supabase
         .from('ai_call_transcripts')
         .select('*')
         .eq('tenant_id', profile!.tenant_id!)
