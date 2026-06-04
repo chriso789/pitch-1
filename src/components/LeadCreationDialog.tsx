@@ -397,6 +397,25 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
     [selectedAddress, formData.useSameInfo, buildContactAddressSuggestion]
   );
 
+  // Keep the Address input + selectedAddress in sync whenever the user checks
+  // "Use same info as contact" (or the contact data loads after the dialog opens).
+  // This guarantees the saved contact address is reflected in the field instead
+  // of leaving the placeholder visible.
+  useEffect(() => {
+    if (!open) return;
+    if (!formData.useSameInfo) return;
+    const suggestion = buildContactAddressSuggestion();
+    if (!suggestion) return;
+    const alreadySynced =
+      selectedAddress?.formatted_address === suggestion.formatted_address &&
+      formData.address === suggestion.formatted_address;
+    if (alreadySynced) return;
+    setSelectedAddress(suggestion);
+    setFormData(prev => ({ ...prev, address: suggestion.formatted_address }));
+    setAddressSuggestions([]);
+    setShowAddressPicker(false);
+  }, [open, formData.useSameInfo, contact, buildContactAddressSuggestion, selectedAddress, formData.address]);
+
   // Enhanced validation with illumination logic - must match validateForm requirements
   const isFormValid = React.useMemo(() => {
     const roofAgeNum = parseInt(formData.roofAge);
@@ -893,7 +912,12 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
             <Label htmlFor="address">Address *</Label>
             <Input
               id="address"
-              value={formData.address}
+              value={
+                formData.address ||
+                (formData.useSameInfo
+                  ? buildContactAddressSuggestion()?.formatted_address || ''
+                  : '')
+              }
               onChange={(e) => {
                 const newAddress = e.target.value;
                 setFormData(prev => ({ ...prev, address: newAddress }));
