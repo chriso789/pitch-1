@@ -207,6 +207,19 @@ async function handleServerCallback(reqUrl: URL): Promise<Response> {
       intuit_tid: ciTid,
       realm_id: realmId,
     });
+    void writeQboApiLog(admin, {
+      action: "qbo_oauth_connect",
+      tenant_id: stateRow.tenant_id,
+      user_id: stateRow.initiated_by ?? null,
+      realm_id: realmId,
+      oauth_app_env: ctx.mode,
+      endpoint: `/v3/company/${realmId}/companyinfo/${realmId}`,
+      method: "GET",
+      http_status: ciResp.status,
+      intuit_tid: ciTid,
+      success: ciResp.ok,
+      request_metadata: { op: "company_info" },
+    });
     if (ciResp.ok) {
       const ci = await ciResp.json();
       companyInfo = ci.CompanyInfo;
