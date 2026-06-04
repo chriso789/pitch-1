@@ -25,6 +25,16 @@ import {
   PHASE_6_DISABLED_MESSAGES,
   type Phase6DraftModeFilter,
 } from "../_shared/blueprint-importer/index.ts";
+import {
+  resolveCandidateAgainstBindings,
+  buildCandidateUpdate,
+  buildReviewFlagSpecs,
+  summarizeResolverResults,
+  PHASE_7_6B_RESOLVER_VERSION,
+  type ResolverCandidate,
+  type ResolverV2RuntimeResult,
+} from "../_shared/blueprint-importer/phase7_6b-resolver.ts";
+import type { BlueprintCatalogBinding } from "../_shared/blueprint-importer/catalog-bindings.ts";
 
 
 const app = createRouter("document-worker");
