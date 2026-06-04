@@ -1,0 +1,19 @@
+{
+  "_note": "Contract example showing blocking review flag when paint_coatings is accepted without exterior_walls_siding.",
+  "accepted_trade_attempt": {
+    "import_session_id": "00000000-0000-0000-0000-000000000001",
+    "tenant_id": "00000000-0000-0000-0000-0000000000aa",
+    "trade_id": "paint_coatings",
+    "status": "accepted",
+    "review_state": "blocked"
+  },
+  "review_flag": {
+    "import_session_id": "00000000-0000-0000-0000-000000000001",
+    "related_entity_type": "accepted_trade",
+    "severity": "blocker",
+    "flag_code": "paint_without_wall_source",
+    "message": "paint_coatings is derived from exterior_walls_siding and cannot stand alone. Accept exterior_walls_siding first or downgrade to manual_only.",
+    "blocking": true,
+    "resolved": false
+  }
+}

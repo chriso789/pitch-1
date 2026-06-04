@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pitch-crm.ai/schemas/blueprint-importer/blueprint-template-binding.schema.json",
+  "title": "BlueprintTemplateBinding",
+  "type": "object",
+  "required": ["import_session_id", "tenant_id", "accepted_trade_id", "trade_id", "binding_status", "required_inputs"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "import_session_id": { "type": "string", "format": "uuid" },
+    "tenant_id": { "type": "string", "format": "uuid" },
+    "accepted_trade_id": { "type": "string", "format": "uuid" },
+    "trade_id": { "type": "string" },
+    "template_id": { "type": ["string", "null"], "format": "uuid" },
+    "template_version": { "type": ["string", "null"] },
+    "binding_status": {
+      "type": "string",
+      "enum": ["pending","ready","blocked","rejected","superseded"]
+    },
+    "required_inputs": { "type": "object" },
+    "optional_inputs": { "type": "object" },
+    "missing_inputs": { "type": "array", "items": { "type": "string" } },
+    "user_assumptions": { "type": "object" }
+  },
+  "additionalProperties": false
+}

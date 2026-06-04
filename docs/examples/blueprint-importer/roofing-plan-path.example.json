@@ -1,0 +1,15 @@
+{
+  "_note": "Contract example. Not live extraction output.",
+  "id": "00000000-0000-0000-0000-000000000201",
+  "import_session_id": "00000000-0000-0000-0000-000000000001",
+  "source_document_id": "00000000-0000-0000-0000-000000000002",
+  "path_type": "report_page",
+  "file_name": "Sample_Roof_Report.pdf",
+  "document_type": "roof_report",
+  "provider": "roofr",
+  "page_number": 2,
+  "section_label": "Roof Measurements",
+  "table_label": "Lengths Summary",
+  "source_text_excerpt": "Total Roof Area: 2,842 SF — Predominant Pitch 7/12",
+  "confidence": 0.98
+}

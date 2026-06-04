@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pitch-crm.ai/schemas/blueprint-importer/blueprint-import-session.schema.json",
+  "title": "BlueprintImportSession",
+  "type": "object",
+  "required": ["tenant_id", "source_context_type", "status", "contract_version"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "tenant_id": { "type": "string", "format": "uuid" },
+    "source_context_type": {
+      "type": "string",
+      "enum": ["project", "opportunity", "lead", "estimate", "contact", "standalone"]
+    },
+    "source_context_id": { "type": ["string", "null"], "format": "uuid" },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft", "parsed", "trades_detected", "user_review_required",
+        "accepted", "rejected", "superseded", "failed"
+      ]
+    },
+    "contract_version": { "type": "string" },
+    "deterministic_hash": { "type": ["string", "null"] },
+    "notes": { "type": ["string", "null"] },
+    "metadata": { "type": "object" },
+    "created_by": { "type": ["string", "null"], "format": "uuid" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}

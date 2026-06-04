@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pitch-crm.ai/schemas/blueprint-importer/blueprint-material-draft-line.schema.json",
+  "title": "BlueprintMaterialDraftLine",
+  "description": "Schema only. NOT populated in Phase 1.",
+  "type": "object",
+  "required": [
+    "import_session_id","tenant_id","accepted_trade_id","item_key",
+    "source_measurement_ids","plan_path_ids","catalog_resolution_status","status"
+  ],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "import_session_id": { "type": "string", "format": "uuid" },
+    "tenant_id": { "type": "string", "format": "uuid" },
+    "accepted_trade_id": { "type": "string", "format": "uuid" },
+    "template_binding_id": { "type": ["string", "null"], "format": "uuid" },
+    "material_rule_id": { "type": ["string", "null"] },
+    "item_key": { "type": "string" },
+    "item_name": { "type": ["string", "null"] },
+    "quantity": { "type": ["number", "null"] },
+    "unit": { "type": ["string", "null"] },
+    "rounding_rule": { "type": ["string", "null"] },
+    "waste_percent": { "type": ["number", "null"] },
+    "source_measurement_ids": { "type": "array", "items": { "type": "string", "format": "uuid" } },
+    "plan_path_ids": { "type": "array", "items": { "type": "string", "format": "uuid" }, "minItems": 1 },
+    "formula_key": { "type": ["string", "null"] },
+    "formula_inputs": { "type": "object" },
+    "catalog_resolution_status": {
+      "type": "string",
+      "enum": ["unresolved","matched","ambiguous","missing","manual_override"]
+    },
+    "catalog_item_id": { "type": ["string", "null"], "format": "uuid" },
+    "status": { "type": "string", "enum": ["draft","ready","blocked","rejected","superseded"] }
+  },
+  "additionalProperties": false
+}

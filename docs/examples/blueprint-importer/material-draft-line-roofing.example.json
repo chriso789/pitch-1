@@ -1,0 +1,21 @@
+{
+  "_note": "Contract example only. NOT populated in Phase 1. Demonstrates the required shape for future auto-populated material draft lines, including the mandatory non-empty plan_path_ids array.",
+  "id": "00000000-0000-0000-0000-000000000301",
+  "import_session_id": "00000000-0000-0000-0000-000000000001",
+  "tenant_id": "00000000-0000-0000-0000-0000000000aa",
+  "accepted_trade_id": "00000000-0000-0000-0000-000000000050",
+  "template_binding_id": "00000000-0000-0000-0000-000000000060",
+  "material_rule_id": "roofing.shingles.architectural.v1",
+  "item_key": "shingles_architectural_bundles",
+  "item_name": "Architectural shingles (bundles)",
+  "quantity": 96,
+  "unit": "bundle",
+  "rounding_rule": "ceil",
+  "waste_percent": 12,
+  "source_measurement_ids": ["00000000-0000-0000-0000-000000000101"],
+  "plan_path_ids": ["00000000-0000-0000-0000-000000000201"],
+  "formula_key": "shingles_from_area_with_waste",
+  "formula_inputs": { "area_sqft": 2842, "waste_percent": 12, "bundles_per_square": 3 },
+  "catalog_resolution_status": "unresolved",
+  "status": "draft"
+}

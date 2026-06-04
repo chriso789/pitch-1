@@ -1,0 +1,70 @@
+{
+  "_note": "Contract example. Not live extraction output.",
+  "measurement_objects": [
+    {
+      "id": "00000000-0000-0000-0000-000000000101",
+      "import_session_id": "00000000-0000-0000-0000-000000000001",
+      "tenant_id": "00000000-0000-0000-0000-0000000000aa",
+      "source_document_id": "00000000-0000-0000-0000-000000000002",
+      "trade_id": "roofing",
+      "measurement_key": "total_roof_area_sqft",
+      "measurement_group": "roof_area",
+      "quantity": 2842,
+      "unit": "sqft",
+      "confidence": 0.99,
+      "source_value_raw": "2,842 SF",
+      "plan_path_id": "00000000-0000-0000-0000-000000000201",
+      "page_number": 2
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000102",
+      "import_session_id": "00000000-0000-0000-0000-000000000001",
+      "tenant_id": "00000000-0000-0000-0000-0000000000aa",
+      "source_document_id": "00000000-0000-0000-0000-000000000002",
+      "trade_id": "roofing",
+      "measurement_key": "predominant_pitch",
+      "measurement_group": "roof_pitch",
+      "quantity": 7,
+      "unit": "pitch_ratio",
+      "confidence": 0.97,
+      "source_value_raw": "7/12",
+      "normalized_value": { "rise": 7, "run": 12 },
+      "plan_path_id": "00000000-0000-0000-0000-000000000201",
+      "page_number": 2
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000103",
+      "import_session_id": "00000000-0000-0000-0000-000000000001",
+      "tenant_id": "00000000-0000-0000-0000-0000000000aa",
+      "source_document_id": "00000000-0000-0000-0000-000000000002",
+      "trade_id": "roofing",
+      "measurement_key": "eaves_lf",
+      "measurement_group": "roof_edges",
+      "quantity": 184,
+      "unit": "lf",
+      "confidence": 0.98,
+      "plan_path_id": "00000000-0000-0000-0000-000000000201",
+      "page_number": 3
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000104",
+      "import_session_id": "00000000-0000-0000-0000-000000000001",
+      "tenant_id": "00000000-0000-0000-0000-0000000000aa",
+      "source_document_id": "00000000-0000-0000-0000-000000000002",
+      "trade_id": "roofing",
+      "measurement_key": "waste_table",
+      "measurement_group": "roof_waste",
+      "unit": "percent",
+      "confidence": 0.95,
+      "normalized_value": {
+        "rows": [
+          { "waste_percent": 10, "suggested_area_sqft": 3126 },
+          { "waste_percent": 12, "suggested_area_sqft": 3183 },
+          { "waste_percent": 15, "suggested_area_sqft": 3268 }
+        ]
+      },
+      "plan_path_id": "00000000-0000-0000-0000-000000000201",
+      "page_number": 4
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pitch-crm.ai/schemas/blueprint-importer/blueprint-accepted-trade.schema.json",
+  "title": "BlueprintAcceptedTrade",
+  "type": "object",
+  "required": ["import_session_id", "tenant_id", "trade_id", "status", "review_state"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "import_session_id": { "type": "string", "format": "uuid" },
+    "tenant_id": { "type": "string", "format": "uuid" },
+    "detected_trade_id": { "type": ["string", "null"], "format": "uuid" },
+    "trade_id": {
+      "type": "string",
+      "not": { "enum": ["windows_doors"] },
+      "enum": [
+        "roofing","exterior_walls_siding","paint_coatings","gutters_fascia_trim",
+        "drywall","framing","insulation","flooring","concrete",
+        "electrical","plumbing","hvac"
+      ]
+    },
+    "accepted_by": { "type": ["string", "null"], "format": "uuid" },
+    "accepted_at": { "type": "string", "format": "date-time" },
+    "status": { "type": "string", "enum": ["accepted","rejected","superseded"] },
+    "selected_template_id": { "type": ["string", "null"], "format": "uuid" },
+    "user_assumptions": { "type": "object" },
+    "review_state": {
+      "type": "string",
+      "enum": ["pending_review","blocked","cleared","manual_only"]
+    }
+  },
+  "additionalProperties": false
+}
