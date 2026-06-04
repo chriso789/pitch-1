@@ -37,12 +37,20 @@ function normalizePhone(raw: string): string | null {
 }
 
 function suppressAddressFirstNameArtifacts(text: string, item: any): string {
+  let out = text;
+  // 1) Generic safety net: any "Hi/Hello/Hey <digits...>," pattern is junk (house number leaked as first name)
+  out = out.replace(/\b(Hi|Hello|Hey)\s+\d[\w-]*\s*,/gi, '$1,');
+  // 2) Greeting followed by an address-token word
+  out = out.replace(/\b(Hi|Hello|Hey)\s+(?:drive|street|st|ave|avenue|road|rd|blvd|boulevard|ln|lane|ct|court|way|circle|cir|pl|place|dr|pkwy|parkway|terrace|ter|trail|trl|hwy|highway)\s*,/gi, '$1,');
+  // 3) If contact_name first word is junk, strip its exact form after a greeting
   const firstName = String(item?.contact_name || '').trim().split(/\s+/)[0] || '';
-  if (!firstName || !/^\d/.test(firstName) && !ADDRESS_TOKEN_RE.test(firstName)) return text;
-  const escaped = firstName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return text
-    .replace(new RegExp(`\\b(Hi|Hello|Hey)\\s+${escaped}\\s*,`, 'gi'), '$1,')
-    .replace(/[ \t]{2,}/g, ' ');
+  if (firstName && (/^\d/.test(firstName) || ADDRESS_TOKEN_RE.test(firstName))) {
+    const escaped = firstName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    out = out.replace(new RegExp(`\\b(Hi|Hello|Hey)\\s+${escaped}\\s*,`, 'gi'), '$1,');
+  }
+  // 4) Collapse "Hi ," → "Hi," and extra spaces
+  out = out.replace(/\b(Hi|Hello|Hey)\s+,/gi, '$1,').replace(/[ \t]{2,}/g, ' ');
+  return out;
 }
 
 // Returns 'mobile' | 'landline' | 'voip' | 'unknown'. Cached in phone_line_types.
