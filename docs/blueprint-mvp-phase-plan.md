@@ -11,6 +11,7 @@
 > - Phase 4 (material/labor draft generation + template binding): **shipped — see [phase-4 doc](./blueprint-importer-phase-4-draft-generation.md). Draft-only; no final pricing, no CRM handoff.**
 > - Phase 5 (CRM estimate handoff contract + integration review docs): **shipped — docs only. See [phase-5 handoff contract](./blueprint-importer-phase-5-crm-handoff-contract.md), [CRM/estimate integration inventory](./blueprint-crm-estimate-integration-inventory.md), and [CRM handoff review gates](./blueprint-crm-handoff-review-gates.md).**
 > - Phase 5.5 (CRM handoff schema + contracts): **shipped — see [phase-5.5 doc](./blueprint-importer-phase-5-5-handoff-schema-contracts.md). Canonical target chosen: `enhanced_estimates`. Three staging/provenance tables created (no live writes). Shared TS + Python contracts + JSON schemas + 8 examples. `estimate_line_items` NOT altered (bridge table preferred). Runtime unwired; Phase 6 (preview implementation) blocked behind review.**
+> - Phase 6 (CRM handoff preview implementation, preview-only): **shipped — see [phase-6 doc](./blueprint-importer-phase-6-handoff-preview.md). Three `document-worker` routes added (`/handoff-preview`, `/handoff-preview/get`, `/handoff-preview/review`). Writes only to `blueprint_estimate_handoff_batches` + `blueprint_estimate_line_candidates`. `blueprint_estimate_line_provenance` not written. Push to Estimate, final pricing, catalog mapping, and custom-line approval intentionally disabled in UI and at the route boundary. 17/17 tests passing.**
 
 ---
 
