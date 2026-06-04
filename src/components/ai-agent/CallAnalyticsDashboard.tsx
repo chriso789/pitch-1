@@ -71,7 +71,7 @@ export function CallAnalyticsDashboard() {
     queryFn: async () => {
       if (!profile?.tenant_id) return null;
 
-      let q = supabase
+      let q: any = supabase
         .from('ai_call_transcripts')
         .select('*')
         .eq('tenant_id', profile.tenant_id)
