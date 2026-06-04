@@ -74,6 +74,8 @@ export default function MeasurementSkillsPage() {
         </CardContent>
       </Card>
 
+      <WorkerTestReportPanel />
+
       <Card>
         <CardHeader><CardTitle>Skill registry</CardTitle></CardHeader>
         <CardContent>
