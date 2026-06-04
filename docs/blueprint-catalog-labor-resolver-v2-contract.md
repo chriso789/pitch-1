@@ -111,3 +111,31 @@ Warnings:
 - Any live `estimate_line_items` / `enhanced_estimates` / `proposal_tier_items` write.
 - `material_item_match_rules` wiring (see `blueprint-tenant-company-catalog-reconciliation.md`).
 - Backfill of `product_catalog` / `labor_rates`.
+
+---
+
+## Phase 7.6b runtime addendum
+
+Phase 7.6b implements the deterministic runtime described above (no fuzzy /
+no AI / no first-row-wins). Authoritative module:
+`supabase/functions/_shared/blueprint-importer/phase7_6b-resolver.ts`.
+
+Authoritative routes (document-worker, blueprint-importer v2 family):
+
+- `POST /blueprint-importer/v2/resolve-bindings`
+- `POST /blueprint-importer/v2/resolve-bindings/get`
+
+The runtime adds the following ADDITIVE warning codes on top of the contract
+warnings:
+
+- `BINDING_REQUIRES_USER_CONFIRMATION`
+- `BINDING_TARGET_TABLE_NOT_STRONGLY_FK_ENFORCED`
+- `BINDING_USES_UNIT_CONVERSION`
+- `BINDING_TARGET_COST_UNVERIFIED`
+- `PRICING_PREFLIGHT_NOT_ENABLED_PHASE_7_6B`
+- `LIVE_HANDOFF_NOT_ENABLED_PHASE_7_6B`
+
+All other contract guarantees are preserved verbatim. See
+`docs/blueprint-importer-phase-7-6b-binding-resolver-runtime.md` for the
+runtime architecture, candidate-update contract, review-flag idempotency
+strategy, and Phase 7.6c readiness decision.

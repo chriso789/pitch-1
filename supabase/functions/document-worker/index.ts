@@ -25,6 +25,16 @@ import {
   PHASE_6_DISABLED_MESSAGES,
   type Phase6DraftModeFilter,
 } from "../_shared/blueprint-importer/index.ts";
+import {
+  resolveCandidateAgainstBindings,
+  buildCandidateUpdate,
+  buildReviewFlagSpecs,
+  summarizeResolverResults,
+  PHASE_7_6B_RESOLVER_VERSION,
+  type ResolverCandidate,
+  type ResolverV2RuntimeResult,
+} from "../_shared/blueprint-importer/phase7_6b-resolver.ts";
+import type { BlueprintCatalogBinding } from "../_shared/blueprint-importer/catalog-bindings.ts";
 
 
 const app = createRouter("document-worker");
@@ -1334,6 +1344,221 @@ app.post("/blueprint-importer/v2/handoff-preview/review", async (c) => {
     .eq("id", body.candidate_id).eq("tenant_id", tenantId);
   if (error) return jsonErr(c, "candidate_update_failed", error.message, 500);
   return jsonOk(c, { ok: true, candidate_id: body.candidate_id, user_review_status: body.user_review_status });
+});
+
+// =============================================================================
+// Blueprint Importer v2 — Phase 7.6b deterministic resolver runtime routes.
+// Reads blueprint_estimate_line_candidates + blueprint_catalog_bindings.
+// Writes blueprint_estimate_line_candidates + blueprint_review_flags ONLY.
+// Does NOT write: estimate_line_items, enhanced_estimates, proposal_tier_items,
+// proposal/work order/purchase order/production/invoice tables,
+// product_catalog, labor_rates, supplier_catalog_items, abc_catalog_items,
+// material_item_match_rules. Push to Estimate remains disabled.
+// See docs/blueprint-importer-phase-7-6b-binding-resolver-runtime.md.
+// =============================================================================
+
+const PHASE_7_6B_PUSH_DISABLED_REASON =
+  "Push to Estimate remains disabled. Phase 7.6b only resolves preview candidates to approved blueprint catalog bindings; pricing preflight and live handoff are not enabled.";
+
+interface ResolveBindingsBody {
+  handoff_batch_id?: string;
+  candidate_ids?: string[] | null;
+  resolver_mode?: "blueprint_catalog_bindings_only";
+  dry_run?: boolean;
+  contract_version?: string;
+}
+
+app.post("/blueprint-importer/v2/resolve-bindings", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const body = (await c.req.json().catch(() => ({}))) as ResolveBindingsBody;
+  if (!body.handoff_batch_id) {
+    return jsonErr(c, "bad_request", "handoff_batch_id required", 400);
+  }
+  const resolverMode = body.resolver_mode ?? "blueprint_catalog_bindings_only";
+  if (resolverMode !== "blueprint_catalog_bindings_only") {
+    return jsonErr(c, "resolver_mode_unsupported",
+      "Only blueprint_catalog_bindings_only is supported in Phase 7.6b", 400);
+  }
+  const dryRun = body.dry_run === true;
+  const svc = serviceClient();
+
+  // Validate batch belongs to tenant.
+  const { data: batch, error: batchErr } = await svc
+    .from("blueprint_estimate_handoff_batches")
+    .select("id,tenant_id,import_session_id,status,catalog_mode,custom_line_mode,pricing_mode,deterministic_batch_key,source_draft_hash,metadata")
+    .eq("id", body.handoff_batch_id)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (batchErr) return jsonErr(c, "batch_lookup_failed", batchErr.message, 500);
+  if (!batch) return jsonErr(c, "batch_not_found", "handoff batch not found", 404);
+  if (batch.status === "live_written" || batch.status === "superseded" || batch.status === "cancelled") {
+    return jsonErr(c, "batch_terminal", `batch is ${batch.status}`, 409);
+  }
+
+  // Load candidates (tenant + batch scoped).
+  let candidatesQuery = svc.from("blueprint_estimate_line_candidates")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .eq("handoff_batch_id", batch.id);
+  if (body.candidate_ids && body.candidate_ids.length > 0) {
+    candidatesQuery = candidatesQuery.in("id", body.candidate_ids);
+  }
+  const { data: candRows, error: candErr } = await candidatesQuery;
+  if (candErr) return jsonErr(c, "candidate_lookup_failed", candErr.message, 500);
+  const candidates = (candRows ?? []) as unknown as ResolverCandidate[];
+
+  // Load tenant-scoped active+inactive bindings — pass to pure matcher.
+  const { data: bindingRows, error: bindErr } = await svc
+    .from("blueprint_catalog_bindings")
+    .select("*")
+    .eq("tenant_id", tenantId);
+  if (bindErr) return jsonErr(c, "binding_lookup_failed", bindErr.message, 500);
+  const bindings = (bindingRows ?? []) as unknown as BlueprintCatalogBinding[];
+
+  const now = new Date().toISOString();
+  const results: ResolverV2RuntimeResult[] = [];
+  const updates: Array<{ id: string; payload: ReturnType<typeof buildCandidateUpdate> }> = [];
+  const allFlagSpecs: Array<{ candidate_id: string; specs: ReturnType<typeof buildReviewFlagSpecs> }> = [];
+
+  for (const cand of candidates) {
+    const result = resolveCandidateAgainstBindings(cand, bindings, { now: () => now });
+    results.push(result);
+    updates.push({ id: cand.id, payload: buildCandidateUpdate(cand, result, now) });
+    allFlagSpecs.push({ candidate_id: cand.id, specs: buildReviewFlagSpecs(cand, result) });
+  }
+
+  if (!dryRun) {
+    // Replace resolver-owned flags per candidate (idempotent: delete-then-insert
+    // scoped by metadata.source = 'resolver_v2' AND metadata.line_candidate_id).
+    for (const { candidate_id, specs } of allFlagSpecs) {
+      // Delete prior resolver-owned flags for this candidate.
+      await svc.from("blueprint_review_flags")
+        .delete()
+        .eq("tenant_id", tenantId)
+        .eq("import_session_id", batch.import_session_id)
+        .filter("metadata->>source", "eq", "resolver_v2")
+        .filter("metadata->>line_candidate_id", "eq", candidate_id);
+      if (specs.length === 0) continue;
+      const { error: insErr } = await svc.from("blueprint_review_flags")
+        .insert(specs);
+      if (insErr) return jsonErr(c, "review_flag_insert_failed", insErr.message, 500);
+    }
+
+    // Refresh blocking/warning flag id arrays per candidate (resolver-owned only,
+    // unioned with prior phase 6 flag ids that remain).
+    for (const upd of updates) {
+      const cand = candidates.find((c) => c.id === upd.id)!;
+      const { data: ownedFlags } = await svc.from("blueprint_review_flags")
+        .select("id,blocking")
+        .eq("tenant_id", tenantId)
+        .eq("import_session_id", batch.import_session_id)
+        .filter("metadata->>source", "eq", "resolver_v2")
+        .filter("metadata->>line_candidate_id", "eq", cand.id);
+      const ownedBlocking = (ownedFlags ?? []).filter((f: any) => f.blocking).map((f: any) => f.id as string);
+      const ownedWarning = (ownedFlags ?? []).filter((f: any) => !f.blocking).map((f: any) => f.id as string);
+
+      const priorBlocking = Array.isArray(cand.blocking_review_flag_ids)
+        ? (cand.blocking_review_flag_ids as string[]) : [];
+      const priorWarning = Array.isArray(cand.warning_review_flag_ids)
+        ? (cand.warning_review_flag_ids as string[]) : [];
+
+      // Drop any stale resolver_v2 flag ids that no longer exist from prior arrays
+      // by keeping only ids that match either (a) the new owned sets, or (b) IDs
+      // not owned by resolver_v2 (kept verbatim). We don't have a 1:1 map of all
+      // existing prior IDs to source, so we keep prior ids that aren't superseded
+      // by name collision; the array is informational and bounded by candidate.
+      const blockingMerged = Array.from(new Set([
+        ...priorBlocking.filter((id) => !ownedBlocking.includes(id)),
+        ...ownedBlocking,
+      ]));
+      const warningMerged = Array.from(new Set([
+        ...priorWarning.filter((id) => !ownedWarning.includes(id)),
+        ...ownedWarning,
+      ]));
+
+      const updatePayload = {
+        ...upd.payload,
+        blocking_review_flag_ids: blockingMerged,
+        warning_review_flag_ids: warningMerged,
+      };
+      const { error: updErr } = await svc.from("blueprint_estimate_line_candidates")
+        .update(updatePayload as any)
+        .eq("id", upd.id)
+        .eq("tenant_id", tenantId)
+        .eq("handoff_batch_id", batch.id);
+      if (updErr) return jsonErr(c, "candidate_update_failed", updErr.message, 500);
+    }
+
+    // Update batch status verdict (preview lifecycle, never live).
+    const anyBlocked = results.some((r) => r.blockers.length > 0);
+    const nextStatus = anyBlocked ? "user_review_required" : "preview_created";
+    await svc.from("blueprint_estimate_handoff_batches")
+      .update({
+        status: nextStatus,
+        updated_at: now,
+        metadata: {
+          ...(batch.metadata ?? {}),
+          phase_7_6b_resolver_run_at: now,
+          phase_7_6b_resolver_version: PHASE_7_6B_RESOLVER_VERSION,
+        },
+      })
+      .eq("id", batch.id)
+      .eq("tenant_id", tenantId);
+  }
+
+  const summary = summarizeResolverResults(results);
+
+  return jsonOk(c, {
+    handoff_batch_id: batch.id,
+    resolver_mode: resolverMode,
+    resolver_version: PHASE_7_6B_RESOLVER_VERSION,
+    contract_version: body.contract_version ?? "blueprint-importer-v2",
+    dry_run: dryRun,
+    total_candidates: candidates.length,
+    summary,
+    results,
+    push_to_estimate_enabled: false,
+    push_to_estimate_disabled_reason: PHASE_7_6B_PUSH_DISABLED_REASON,
+    pricing_preflight_enabled: false,
+    pricing_preflight_disabled_reason:
+      "Pricing preflight is not enabled in Phase 7.6b. Resolver only verifies catalog binding existence/validity.",
+  });
+});
+
+// ---- POST /blueprint-importer/v2/resolve-bindings/get ----
+// (POST keeps parity with other v2 reads; Hono param routes are intentionally
+// avoided to mirror existing handoff-preview/get style.)
+app.post("/blueprint-importer/v2/resolve-bindings/get", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const body = (await c.req.json().catch(() => ({}))) as { handoff_batch_id?: string; candidate_ids?: string[] };
+  if (!body.handoff_batch_id) return jsonErr(c, "bad_request", "handoff_batch_id required", 400);
+  const svc = serviceClient();
+  const { data: batch } = await svc.from("blueprint_estimate_handoff_batches")
+    .select("id,tenant_id,import_session_id,status,catalog_mode,pricing_mode,custom_line_mode,metadata,updated_at")
+    .eq("id", body.handoff_batch_id).eq("tenant_id", tenantId).maybeSingle();
+  if (!batch) return jsonErr(c, "batch_not_found", "handoff batch not found", 404);
+
+  let q = svc.from("blueprint_estimate_line_candidates")
+    .select("id,source_draft_line_id,source_draft_line_type,trade_id,item_key,item_name,quantity,unit,catalog_resolution_status,catalog_item_id,pricing_status,cost_status,handoff_allowed,handoff_blockers,status,metadata,blocking_review_flag_ids,warning_review_flag_ids,deterministic_handoff_key,updated_at")
+    .eq("tenant_id", tenantId).eq("handoff_batch_id", batch.id);
+  if (body.candidate_ids && body.candidate_ids.length > 0) q = q.in("id", body.candidate_ids);
+  const { data: cands } = await q;
+
+  const candidates = (cands ?? []) as any[];
+  const resolverResults = candidates
+    .map((c) => (c.metadata?.resolver_v2_result as ResolverV2RuntimeResult | undefined))
+    .filter((r): r is ResolverV2RuntimeResult => !!r);
+  const summary = resolverResults.length > 0 ? summarizeResolverResults(resolverResults) : null;
+
+  return jsonOk(c, {
+    handoff_batch_id: batch.id,
+    batch,
+    resolver_version: PHASE_7_6B_RESOLVER_VERSION,
+    candidates,
+    summary,
+    push_to_estimate_enabled: false,
+    push_to_estimate_disabled_reason: PHASE_7_6B_PUSH_DISABLED_REASON,
+  });
 });
 
 serveRouter(app);

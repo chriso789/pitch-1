@@ -18,10 +18,13 @@ import {
   createBlueprintHandoffPreview,
   fetchBlueprintHandoffPreview,
   reviewBlueprintHandoffCandidate,
+  resolveBlueprintCatalogBindings,
   type SessionSummary,
   type DraftLinesResult,
   type HandoffPreviewGetResult,
   type HandoffPreviewCandidateRow,
+  type BlueprintResolverV2RuntimeResult,
+  type ResolveBindingsSummary,
 } from "@/integrations/blueprintImporterV2Api";
 
 const TRADE_LABELS: Record<string, string> = {
@@ -509,6 +512,8 @@ function SessionSummaryCard({ summary }: { summary: SessionSummary }) {
 function Phase6Panel({ sessionId, summary }: { sessionId: string; summary: SessionSummary }) {
   const [preview, setPreview] = useState<HandoffPreviewGetResult | null>(null);
   const [busy, setBusy] = useState(false);
+  const [resolverBusy, setResolverBusy] = useState(false);
+  const [resolverSummary, setResolverSummary] = useState<ResolveBindingsSummary["summary"] | null>(null);
   const [targetEstimateId, setTargetEstimateId] = useState<string>("");
   const [draftMode, setDraftMode] = useState<"material" | "labor" | "both">("both");
   const [includedTrades, setIncludedTrades] = useState<Set<string>>(new Set());
@@ -537,10 +542,29 @@ function Phase6Panel({ sessionId, summary }: { sessionId: string; summary: Sessi
         pricing_mode: "quantity_only",
       });
       toast.success("Handoff preview generated");
+      setResolverSummary(null);
       await loadPreview();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Preview failed");
     } finally { setBusy(false); }
+  };
+
+  const runResolver = async () => {
+    if (!preview?.batch) {
+      toast.error("Generate a handoff preview before resolving catalog bindings.");
+      return;
+    }
+    setResolverBusy(true);
+    try {
+      const res = await resolveBlueprintCatalogBindings({ handoff_batch_id: preview.batch.id });
+      setResolverSummary(res.summary);
+      toast.success(
+        `Resolver: ${res.summary.resolved} resolved · ${res.summary.ambiguous} ambiguous · ${res.summary.missing} missing · ${res.summary.blocked} blocked`,
+      );
+      await loadPreview();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Resolver failed");
+    } finally { setResolverBusy(false); }
   };
 
   const reviewCandidate = async (candidate_id: string, status: "pending" | "reviewed" | "excluded") => {
@@ -569,7 +593,7 @@ function Phase6Panel({ sessionId, summary }: { sessionId: string; summary: Sessi
         </CardHeader>
         <CardContent className="space-y-2 text-sm text-muted-foreground">
           <p>Preview-only: shows what would become CRM estimate lines and what blocks them. No live writes to <code>enhanced_estimates</code> or <code>estimate_line_items</code>.</p>
-          <p>Catalog mapping, custom non-catalog lines, final pricing, and Push to Estimate are intentionally disabled until Phase 7 is approved.</p>
+          <p>Phase 7.6b adds a deterministic <strong>catalog binding resolver</strong>. Pricing preflight, custom-line approval, final pricing, and Push to Estimate remain disabled.</p>
         </CardContent>
       </Card>
 
@@ -630,21 +654,24 @@ function Phase6Panel({ sessionId, summary }: { sessionId: string; summary: Sessi
               <Button size="sm" onClick={runPreview} disabled={busy}>
                 {busy ? "Generating…" : "Create handoff preview"}
               </Button>
+              <Button size="sm" variant="secondary" onClick={runResolver} disabled={resolverBusy || !preview?.batch}>
+                {resolverBusy ? "Resolving…" : "Resolve catalog bindings"}
+              </Button>
               <Tooltip>
                 <TooltipTrigger asChild><span><Button size="sm" variant="outline" disabled>Push to Estimate</Button></span></TooltipTrigger>
-                <TooltipContent>{preview?.push_to_estimate_disabled_reason ?? "Push to Estimate is disabled until Phase 7."}</TooltipContent>
+                <TooltipContent>{preview?.push_to_estimate_disabled_reason ?? "Push to Estimate remains disabled in Phase 7.6b."}</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild><span><Button size="sm" variant="outline" disabled>Pricing preflight</Button></span></TooltipTrigger>
+                <TooltipContent>Pricing preflight is not enabled in Phase 7.6b.</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild><span><Button size="sm" variant="outline" disabled>Final pricing</Button></span></TooltipTrigger>
-                <TooltipContent>Final pricing is disabled in Phase 6.</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild><span><Button size="sm" variant="outline" disabled>Catalog mapping</Button></span></TooltipTrigger>
-                <TooltipContent>Catalog mapping is disabled in Phase 6.</TooltipContent>
+                <TooltipContent>Final pricing is disabled until pricing preflight ships.</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild><span><Button size="sm" variant="outline" disabled>Approve custom line</Button></span></TooltipTrigger>
-                <TooltipContent>Custom non-catalog line approval is disabled in Phase 6.</TooltipContent>
+                <TooltipContent>Custom non-catalog line approval is disabled in Phase 7.6b.</TooltipContent>
               </Tooltip>
             </div>
           </CardContent>
@@ -667,6 +694,24 @@ function Phase6Panel({ sessionId, summary }: { sessionId: string; summary: Sessi
             <div className="text-xs text-muted-foreground">
               Mode: catalog=<code>{preview.batch.catalog_mode}</code>, pricing=<code>{preview.batch.pricing_mode}</code>, custom_line=<code>{preview.batch.custom_line_mode}</code>
             </div>
+            {resolverSummary && (
+              <div className="rounded border bg-background p-2 text-xs space-y-1">
+                <div className="font-semibold uppercase text-muted-foreground">Phase 7.6b resolver summary</div>
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant="default">resolved {resolverSummary.resolved}</Badge>
+                  <Badge variant="secondary">ambiguous {resolverSummary.ambiguous}</Badge>
+                  <Badge variant="secondary">missing {resolverSummary.missing}</Badge>
+                  <Badge variant="destructive">blocked {resolverSummary.blocked}</Badge>
+                </div>
+                {Object.keys(resolverSummary.blocker_counts).length > 0 && (
+                  <div className="text-destructive">Blockers: {Object.entries(resolverSummary.blocker_counts).map(([k, v]) => `${k}×${v}`).join(", ")}</div>
+                )}
+                {Object.keys(resolverSummary.warning_counts).length > 0 && (
+                  <div className="text-amber-600">Warnings: {Object.entries(resolverSummary.warning_counts).map(([k, v]) => `${k}×${v}`).join(", ")}</div>
+                )}
+                <div className="text-[10px] text-muted-foreground italic">{resolverSummary.push_to_estimate_disabled_reason}</div>
+              </div>
+            )}
             <CandidateTable candidates={preview.candidates} onReview={reviewCandidate} />
           </CardContent>
         </Card>
@@ -689,6 +734,7 @@ function CandidateTable({ candidates, onReview }: { candidates: HandoffPreviewCa
             <th className="px-2 py-1 text-right">Qty</th>
             <th className="px-2 py-1">Unit</th>
             <th className="px-2 py-1">Catalog</th>
+            <th className="px-2 py-1">Resolver v2</th>
             <th className="px-2 py-1">Pricing</th>
             <th className="px-2 py-1">Handoff</th>
             <th className="px-2 py-1">Blockers / Warnings</th>
@@ -696,41 +742,66 @@ function CandidateTable({ candidates, onReview }: { candidates: HandoffPreviewCa
           </tr>
         </thead>
         <tbody>
-          {candidates.map((c) => (
-            <tr key={c.id} className="border-b last:border-0 align-top">
-              <td className="px-2 py-1">
-                <div className="font-medium">{c.item_name ?? c.item_key}</div>
-                <div className="text-[10px] text-muted-foreground">{c.trade_id} · meas:{c.source_measurement_ids.length} · paths:{c.plan_path_ids.length}</div>
-              </td>
-              <td className="px-2 py-1"><Badge variant="outline">{c.source_draft_line_type}</Badge></td>
-              <td className="px-2 py-1 text-right">{c.quantity ?? "—"}</td>
-              <td className="px-2 py-1">{c.unit ?? "—"}</td>
-              <td className="px-2 py-1"><Badge variant={c.catalog_resolution_status === "matched" ? "default" : "outline"}>{c.catalog_resolution_status}</Badge></td>
-              <td className="px-2 py-1"><Badge variant="outline">{c.pricing_status}</Badge></td>
-              <td className="px-2 py-1">
-                <Badge variant={c.handoff_allowed ? "default" : "destructive"}>{c.handoff_allowed ? "allowed" : "blocked"}</Badge>
-              </td>
-              <td className="px-2 py-1 max-w-[240px]">
-                {c.handoff_blockers.length > 0 && (
-                  <div className="text-destructive text-[10px]">{c.handoff_blockers.join(", ")}</div>
-                )}
-                {Array.isArray((c.metadata as any)?.warning_codes) && (c.metadata as any).warning_codes.length > 0 && (
-                  <div className="text-amber-600 text-[10px]">{(c.metadata as any).warning_codes.join(", ")}</div>
-                )}
-              </td>
-              <td className="px-2 py-1">
-                <select
-                  className="text-[10px] border rounded px-1 py-0.5 bg-background"
-                  value={c.user_review_status}
-                  onChange={(e) => onReview(c.id, e.target.value as any)}
-                >
-                  <option value="pending">pending</option>
-                  <option value="reviewed">reviewed</option>
-                  <option value="excluded">excluded</option>
-                </select>
-              </td>
-            </tr>
-          ))}
+          {candidates.map((c) => {
+            const rv = (c.metadata as any)?.resolver_v2_result as BlueprintResolverV2RuntimeResult | undefined;
+            const bindingSummary = rv?.binding_summary ?? (c.metadata as any)?.binding_summary ?? null;
+            const resolverWarnings: string[] = rv?.warnings ?? ((c.metadata as any)?.resolver_warning_codes as string[] | undefined) ?? [];
+            const phase6Warnings: string[] = Array.isArray((c.metadata as any)?.warning_codes) ? (c.metadata as any).warning_codes : [];
+            const targetLabel = rv
+              ? `${rv.matched_target_kind ?? "—"}${rv.matched_target_unit ? ` · ${rv.source_unit}→${rv.matched_target_unit}` : ""}`
+              : "—";
+            return (
+              <tr key={c.id} className="border-b last:border-0 align-top">
+                <td className="px-2 py-1">
+                  <div className="font-medium">{c.item_name ?? c.item_key}</div>
+                  <div className="text-[10px] text-muted-foreground">{c.trade_id} · meas:{c.source_measurement_ids.length} · paths:{c.plan_path_ids.length}</div>
+                </td>
+                <td className="px-2 py-1"><Badge variant="outline">{c.source_draft_line_type}</Badge></td>
+                <td className="px-2 py-1 text-right">{c.quantity ?? "—"}</td>
+                <td className="px-2 py-1">{c.unit ?? "—"}</td>
+                <td className="px-2 py-1"><Badge variant={c.catalog_resolution_status === "matched" ? "default" : "outline"}>{c.catalog_resolution_status}</Badge></td>
+                <td className="px-2 py-1">
+                  {rv ? (
+                    <div className="space-y-0.5">
+                      <Badge variant={rv.status === "resolved" ? "default" : rv.status === "ambiguous" ? "secondary" : "destructive"}>{rv.status}</Badge>
+                      <div className="text-[10px] text-muted-foreground">{targetLabel}</div>
+                      {bindingSummary && <div className="text-[10px] font-mono break-all">{bindingSummary}</div>}
+                      {rv.requires_user_confirmation && <div className="text-[10px] text-amber-600">needs confirmation</div>}
+                      {rv.uses_unit_conversion && <div className="text-[10px] text-amber-600">unit conversion</div>}
+                    </div>
+                  ) : (
+                    <span className="text-[10px] text-muted-foreground italic">not run</span>
+                  )}
+                </td>
+                <td className="px-2 py-1"><Badge variant="outline">{c.pricing_status}</Badge></td>
+                <td className="px-2 py-1">
+                  <Badge variant={c.handoff_allowed ? "default" : "destructive"}>{c.handoff_allowed ? "allowed" : "blocked"}</Badge>
+                </td>
+                <td className="px-2 py-1 max-w-[260px]">
+                  {Array.isArray(c.handoff_blockers) && c.handoff_blockers.length > 0 && (
+                    <div className="text-destructive text-[10px] break-words">{c.handoff_blockers.join(", ")}</div>
+                  )}
+                  {resolverWarnings.length > 0 && (
+                    <div className="text-amber-600 text-[10px] break-words">{resolverWarnings.join(", ")}</div>
+                  )}
+                  {phase6Warnings.length > 0 && (
+                    <div className="text-amber-600 text-[10px] break-words">{phase6Warnings.join(", ")}</div>
+                  )}
+                </td>
+                <td className="px-2 py-1">
+                  <select
+                    className="text-[10px] border rounded px-1 py-0.5 bg-background"
+                    value={c.user_review_status}
+                    onChange={(e) => onReview(c.id, e.target.value as any)}
+                  >
+                    <option value="pending">pending</option>
+                    <option value="reviewed">reviewed</option>
+                    <option value="excluded">excluded</option>
+                  </select>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
