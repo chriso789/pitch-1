@@ -6,8 +6,8 @@ promote a skill_run to "completed" from a stub response.
 """
 
 SKILLS: list[dict] = [
-    {"name": "clip_point_cloud",     "path": "/skills/clip-point-cloud",     "implemented": False,
-     "notes": "PDAL clip LAS/LAZ/COPC/EPT to AOI; emits clipped cloud + density/bounds."},
+    {"name": "clip_point_cloud",     "path": "/skills/clip-point-cloud",     "implemented": True,
+     "notes": "PDAL clip LAS/LAZ/COPC/EPT to AOI; emits clipped LAZ + density/bounds/CRS, uploads to Supabase Storage."},
     {"name": "generate_dsm",         "path": "/skills/generate-dsm",         "implemented": False,
      "notes": "First/highest returns → DSM GeoTIFF (COG)."},
     {"name": "generate_dtm",         "path": "/skills/generate-dtm",         "implemented": False,
