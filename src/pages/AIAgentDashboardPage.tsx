@@ -3,13 +3,15 @@ import { useNavigate } from 'react-router-dom';
 import { GlobalLayout } from '@/shared/components/layout/GlobalLayout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Settings, BarChart3, Phone, MessageSquare, FileText } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { ArrowLeft, Settings, BarChart3, Phone, MessageSquare, FileText, MapPin } from 'lucide-react';
 import { CallAnalyticsDashboard } from '@/components/ai-agent/CallAnalyticsDashboard';
 import { LiveCallTranscript } from '@/components/ai-agent/LiveCallTranscript';
 import { CallTranscriptViewer } from '@/components/ai-agent/CallTranscriptViewer';
 import { CampaignsHub } from '@/components/campaigns/CampaignsHub';
 import { TemplatesLibrary } from '@/components/campaigns/TemplatesLibrary';
 import { LayoutTemplate } from 'lucide-react';
+import { useLocation as useLocationContext } from '@/contexts/LocationContext';
 
 export default function AIAgentDashboardPage() {
   const navigate = useNavigate();
