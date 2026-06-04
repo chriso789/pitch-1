@@ -147,6 +147,19 @@ Deno.serve(async (req) => {
       tenant_id,
       qbo_invoice_id: qboInvoiceId,
     });
+    void writeQboApiLog(supabase, {
+      action: 'qbo_invoice_send',
+      tenant_id,
+      connection_id: connection.id,
+      realm_id: connection.realm_id,
+      oauth_app_env: connection.oauth_app_env,
+      endpoint: `/v3/company/${connection.realm_id}/invoice`,
+      method: 'POST',
+      http_status: updateResponse.status,
+      intuit_tid: updateTid,
+      success: updateResponse.ok,
+      request_metadata: { op: 'update_invoice_payment_flags', qbo_entity: 'Invoice', qbo_entity_id: qboInvoiceId },
+    });
 
     if (!updateResponse.ok) {
       const errorText = await updateResponse.text();
