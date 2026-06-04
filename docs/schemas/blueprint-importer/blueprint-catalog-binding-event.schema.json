@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pitch-crm.ai/schemas/blueprint-importer/blueprint-catalog-binding-event.schema.json",
+  "title": "BlueprintCatalogBindingEvent",
+  "type": "object",
+  "required": ["id","tenant_id","binding_id","event_type","metadata"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "tenant_id": { "type": "string", "format": "uuid" },
+    "binding_id": { "type": "string", "format": "uuid" },
+    "event_type": {
+      "type": "string",
+      "enum": ["created","status_changed","target_changed","pricing_changed","approved","superseded","deactivated","reactivated","blocked","note"]
+    },
+    "previous_status": { "type": ["string","null"], "enum": ["draft","active","inactive","superseded","blocked","needs_review", null] },
+    "next_status": { "type": ["string","null"], "enum": ["draft","active","inactive","superseded","blocked","needs_review", null] },
+    "changed_by": { "type": ["string","null"], "format": "uuid" },
+    "reason": { "type": ["string","null"] },
+    "metadata": { "type": "object" },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}
