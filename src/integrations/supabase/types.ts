@@ -47954,6 +47954,7 @@ export type Database = {
           max_attempts_per_contact: number
           name: string
           opted_out_count: number
+          parent_blast_id: string | null
           replied_count: number | null
           reply_rate: number | null
           required_messages_per_second: number | null
@@ -47995,6 +47996,7 @@ export type Database = {
           max_attempts_per_contact?: number
           name: string
           opted_out_count?: number
+          parent_blast_id?: string | null
           replied_count?: number | null
           reply_rate?: number | null
           required_messages_per_second?: number | null
@@ -48036,6 +48038,7 @@ export type Database = {
           max_attempts_per_contact?: number
           name?: string
           opted_out_count?: number
+          parent_blast_id?: string | null
           replied_count?: number | null
           reply_rate?: number | null
           required_messages_per_second?: number | null
@@ -48059,6 +48062,13 @@ export type Database = {
             columns: ["list_id"]
             isOneToOne: false
             referencedRelation: "dialer_lists"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_blasts_parent_blast_id_fkey"
+            columns: ["parent_blast_id"]
+            isOneToOne: false
+            referencedRelation: "sms_blasts"
             referencedColumns: ["id"]
           },
           {
@@ -59387,6 +59397,10 @@ export type Database = {
         Returns: string
       }
       prune_log_tables: { Args: never; Returns: undefined }
+      recalc_sms_blast_counts: {
+        Args: { p_blast_id: string }
+        Returns: undefined
+      }
       recalculate_change_order_totals: {
         Args: { _co_id: string }
         Returns: undefined
