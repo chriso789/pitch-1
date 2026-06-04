@@ -21,9 +21,14 @@ build on. It explicitly does **not**:
 
 ## Files created
 
-### Migration (file only — DO NOT APPLY in this phase)
+### Migration (DRAFT only — DO NOT APPLY in this phase)
 
-- `supabase/migrations/20260604043421_2f153e21-f518-452d-bfab-e429bc0d7e47.sql`
+- `docs/migrations-draft/blueprint-importer-v2-phase1.sql`
+
+Note: Lovable's platform blocks direct writes into `supabase/migrations/`. The
+SQL is parked as a reviewable draft. On approval, the same body should be
+handed verbatim to the Supabase migration tool, which will create the
+timestamped file under `supabase/migrations/` and apply it.
 
 Tables created by that migration:
 
