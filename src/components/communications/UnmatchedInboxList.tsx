@@ -31,12 +31,13 @@ interface UnmatchedInboxListProps {
 
 export const UnmatchedInboxList = ({ selectedId, onSelect }: UnmatchedInboxListProps) => {
   const tenantId = useEffectiveTenantId();
+  const { currentLocationId } = useLocation();
   const [stateFilter, setStateFilter] = useState<string>('open');
   const [channelFilter, setChannelFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   const { data: items, isLoading, refetch } = useQuery({
-    queryKey: ['unmatched-inbox', tenantId, stateFilter, channelFilter],
+    queryKey: ['unmatched-inbox', tenantId, currentLocationId, stateFilter, channelFilter],
     queryFn: async () => {
       if (!tenantId) return [];
 
@@ -62,6 +63,10 @@ export const UnmatchedInboxList = ({ selectedId, onSelect }: UnmatchedInboxListP
         .eq('tenant_id', tenantId)
         .order('received_at', { ascending: false })
         .limit(100);
+
+      if (currentLocationId) {
+        query = query.eq('location_id', currentLocationId);
+      }
 
       if (stateFilter !== 'all') {
         query = query.eq('state', stateFilter);
