@@ -593,7 +593,7 @@ function Phase6Panel({ sessionId, summary }: { sessionId: string; summary: Sessi
         </CardHeader>
         <CardContent className="space-y-2 text-sm text-muted-foreground">
           <p>Preview-only: shows what would become CRM estimate lines and what blocks them. No live writes to <code>enhanced_estimates</code> or <code>estimate_line_items</code>.</p>
-          <p>Catalog mapping, custom non-catalog lines, final pricing, and Push to Estimate are intentionally disabled until Phase 7 is approved.</p>
+          <p>Phase 7.6b adds a deterministic <strong>catalog binding resolver</strong>. Pricing preflight, custom-line approval, final pricing, and Push to Estimate remain disabled.</p>
         </CardContent>
       </Card>
 
