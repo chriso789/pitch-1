@@ -14,6 +14,7 @@ import {
 import { format, formatDuration, intervalToDuration } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { useLocation } from '@/contexts/LocationContext';
 import { GlobalLayout } from '@/shared/components/layout/GlobalLayout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -62,6 +63,7 @@ interface CallRecord {
 
 const CallCenterPage = () => {
   const tenantId = useEffectiveTenantId();
+  const { currentLocationId } = useLocation();
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [expandedCallId, setExpandedCallId] = useState<string | null>(null);
@@ -177,7 +179,7 @@ const CallCenterPage = () => {
 
   // Fetch calls
   const { data: calls, isLoading, refetch } = useQuery({
-    queryKey: ['call-center-calls', tenantId, statusFilter],
+    queryKey: ['call-center-calls', tenantId, currentLocationId, statusFilter],
     queryFn: async () => {
       if (!tenantId) return [];
       
@@ -190,6 +192,10 @@ const CallCenterPage = () => {
         .eq('tenant_id', tenantId)
         .order('created_at', { ascending: false });
       
+      if (currentLocationId) {
+        query = query.eq('location_id', currentLocationId);
+      }
+
       if (statusFilter !== 'all') {
         query = query.eq('status', statusFilter);
       }
