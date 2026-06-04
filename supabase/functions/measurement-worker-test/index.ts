@@ -237,7 +237,7 @@ async function testHashMismatch(svc: ReturnType<typeof serviceClient>): Promise<
     });
     const cbBody = await cbRes.json().catch(() => ({}));
     const after = await svc.from("mskill_runs").select("status").eq("id", run.id).single();
-    const rejected = cbRes.status === 409 || cbBody?.error?.code === "stale_request";
+    const rejected = cbRes.status === 409 || cbBody?.code === "stale_request" || cbBody?.error?.code === "stale_request";
     const stillDispatched = after.data?.status === "dispatched";
 
     await svc.from("mskill_runs").delete().eq("id", run.id);
