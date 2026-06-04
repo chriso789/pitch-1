@@ -388,11 +388,6 @@ export const CLJSearchBar = () => {
               )}
 
               {/* Leads Group */}
-                  })}
-                </CommandGroup>
-              )}
-
-              {/* Leads Group */}
               {!loading && leads.length > 0 && (
                 <CommandGroup heading="Leads">
                   {leads.map((result) => {
