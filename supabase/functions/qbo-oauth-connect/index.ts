@@ -507,9 +507,20 @@ Deno.serve(async (req) => {
         }),
       });
 
+      const refreshTid = getIntuitTid(tokenResp);
+      console.log("[qbo-oauth-connect] refresh response", {
+        status: tokenResp.status,
+        intuit_tid: refreshTid,
+        tenant_id: profile.tenant_id,
+        realm_id: connection.realm_id,
+      });
+
       if (!tokenResp.ok) {
         const errBody = await tokenResp.text();
-        console.error("[qbo-oauth-connect] refresh failed", { status: tokenResp.status });
+        console.error("[qbo-oauth-connect] refresh failed", {
+          status: tokenResp.status,
+          intuit_tid: refreshTid,
+        });
         // invalid_grant => refresh token revoked/expired; mark connection inactive.
         const isInvalidGrant = tokenResp.status === 400 && /invalid_grant/i.test(errBody);
         if (isInvalidGrant) {
@@ -518,12 +529,18 @@ Deno.serve(async (req) => {
             .update({ is_active: false, disconnected_at: new Date().toISOString() })
             .eq("id", connection.id);
           return jsonResponse(
-            { success: false, error: "reauth_required", status: tokenResp.status },
+            { success: false, error: "reauth_required", status: tokenResp.status, intuit_tid: refreshTid },
             401,
           );
         }
         return jsonResponse(
-          { success: false, error: "qbo_token_refresh_failed", status: tokenResp.status, details: errBody },
+          {
+            success: false,
+            error: "qbo_token_refresh_failed",
+            status: tokenResp.status,
+            intuit_tid: refreshTid,
+            details: errBody.slice(0, 500),
+          },
           400,
         );
       }
