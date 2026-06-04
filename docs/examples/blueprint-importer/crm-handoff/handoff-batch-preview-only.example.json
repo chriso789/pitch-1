@@ -1,0 +1,19 @@
+{
+  "_note": "Contract example only. Not live generated. Not pushed to estimate.",
+  "id": "00000000-0000-0000-0000-000000005001",
+  "tenant_id": "00000000-0000-0000-0000-0000000000aa",
+  "import_session_id": "00000000-0000-0000-0000-000000000001",
+  "target_context_type": "project",
+  "target_context_id": "00000000-0000-0000-0000-0000000000b1",
+  "canonical_estimate_target_table": "enhanced_estimates",
+  "canonical_estimate_target_id": null,
+  "status": "preview_created",
+  "pricing_mode": "quantity_only",
+  "catalog_mode": "preview_only",
+  "custom_line_mode": "disabled",
+  "deterministic_batch_key": "aaaa1111bbbb2222cccc3333dddd4444eeee5555ffff66667777888899990000",
+  "source_draft_hash": "phase4-draft-hash-abc123",
+  "blocking_review_flag_ids": [],
+  "warning_review_flag_ids": ["00000000-0000-0000-0000-0000000000f1"],
+  "metadata": { "ui_origin": "blueprint_importer_v2" }
+}

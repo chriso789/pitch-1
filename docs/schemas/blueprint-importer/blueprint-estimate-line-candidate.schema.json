@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pitch-crm.ai/schemas/blueprint-importer/blueprint-estimate-line-candidate.schema.json",
+  "title": "BlueprintEstimateLineCandidate",
+  "description": "Phase 5.5 staging surface — schema only. No runtime inserts.",
+  "type": "object",
+  "required": [
+    "tenant_id","handoff_batch_id","import_session_id","accepted_trade_id",
+    "source_draft_line_id","source_draft_line_type","trade_id","item_key",
+    "source_measurement_ids","plan_path_ids","catalog_resolution_status",
+    "pricing_status","cost_status","user_review_status","handoff_allowed",
+    "deterministic_handoff_key","status"
+  ],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "tenant_id": { "type": "string", "format": "uuid" },
+    "handoff_batch_id": { "type": "string", "format": "uuid" },
+    "import_session_id": { "type": "string", "format": "uuid" },
+    "accepted_trade_id": { "type": "string", "format": "uuid" },
+    "template_binding_id": { "type": ["string","null"], "format": "uuid" },
+    "source_draft_line_id": { "type": "string", "format": "uuid" },
+    "source_draft_line_type": { "type": "string", "enum": ["material","labor"] },
+    "trade_id": { "type": "string", "not": { "const": "windows_doors" } },
+    "item_key": { "type": "string" },
+    "item_name": { "type": ["string","null"] },
+    "description": { "type": ["string","null"] },
+    "quantity": { "type": ["number","null"] },
+    "unit": { "type": ["string","null"] },
+    "source_measurement_ids": { "type": "array", "minItems": 1, "items": { "type": "string", "format": "uuid" } },
+    "plan_path_ids": { "type": "array", "minItems": 1, "items": { "type": "string", "format": "uuid" } },
+    "source_document_ids": { "type": "array", "items": { "type": "string", "format": "uuid" } },
+    "formula_key": { "type": ["string","null"] },
+    "formula_inputs": { "type": "object" },
+    "catalog_resolution_status": { "type": "string", "enum": ["unresolved","matched","ambiguous","missing","manual_override"] },
+    "catalog_item_id": { "type": ["string","null"], "format": "uuid" },
+    "pricing_status": {
+      "type": "string",
+      "enum": [
+        "quantity_only","cost_unresolved","catalog_resolved_cost_missing",
+        "catalog_resolved_cost_available","labor_rate_missing",
+        "ready_for_pricing_review","ready_for_live_handoff","blocked"
+      ]
+    },
+    "cost_status": { "type": "string", "enum": ["not_attempted","unavailable","available_from_catalog","available_from_user_override"] },
+    "user_review_status": { "type": "string", "enum": ["pending","reviewed","approved","excluded"] },
+    "handoff_allowed": { "type": "boolean" },
+    "handoff_blockers": { "type": "array", "items": { "type": "string" } },
+    "blocking_review_flag_ids": { "type": "array", "items": { "type": "string", "format": "uuid" } },
+    "warning_review_flag_ids": { "type": "array", "items": { "type": "string", "format": "uuid" } },
+    "deterministic_handoff_key": { "type": "string", "minLength": 16 },
+    "provenance_summary": { "type": "object" },
+    "metadata": { "type": "object" },
+    "status": {
+      "type": "string",
+      "enum": ["draft","preview","blocked","user_review_required","user_approved","superseded","cancelled","failed","live_written"]
+    }
+  },
+  "additionalProperties": false
+}

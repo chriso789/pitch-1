@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pitch-crm.ai/schemas/blueprint-importer/blueprint-estimate-line-provenance.schema.json",
+  "title": "BlueprintEstimateLineProvenance",
+  "description": "Phase 5.5 bridge — schema only. live_estimate_line_item_id remains null until Phase 7.",
+  "type": "object",
+  "required": [
+    "tenant_id","handoff_batch_id","line_candidate_id",
+    "canonical_estimate_target_table","deterministic_handoff_key",
+    "import_session_id","accepted_trade_id","source_draft_line_id",
+    "source_draft_line_type","source_measurement_ids","plan_path_ids"
+  ],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "tenant_id": { "type": "string", "format": "uuid" },
+    "handoff_batch_id": { "type": "string", "format": "uuid" },
+    "line_candidate_id": { "type": "string", "format": "uuid" },
+    "canonical_estimate_target_table": { "type": "string", "enum": ["enhanced_estimates"] },
+    "canonical_estimate_target_id": { "type": ["string","null"], "format": "uuid" },
+    "live_estimate_line_item_id": { "type": ["string","null"], "format": "uuid" },
+    "deterministic_handoff_key": { "type": "string", "minLength": 16 },
+    "import_session_id": { "type": "string", "format": "uuid" },
+    "accepted_trade_id": { "type": "string", "format": "uuid" },
+    "template_binding_id": { "type": ["string","null"], "format": "uuid" },
+    "source_draft_line_id": { "type": "string", "format": "uuid" },
+    "source_draft_line_type": { "type": "string", "enum": ["material","labor"] },
+    "source_measurement_ids": { "type": "array", "minItems": 1, "items": { "type": "string", "format": "uuid" } },
+    "plan_path_ids": { "type": "array", "minItems": 1, "items": { "type": "string", "format": "uuid" } },
+    "source_document_ids": { "type": "array", "items": { "type": "string", "format": "uuid" } },
+    "formula_key": { "type": ["string","null"] },
+    "formula_inputs": { "type": "object" },
+    "approved_by": { "type": ["string","null"], "format": "uuid" },
+    "approved_at": { "type": ["string","null"], "format": "date-time" },
+    "live_written_by": { "type": ["string","null"], "format": "uuid" },
+    "live_written_at": { "type": ["string","null"], "format": "date-time" },
+    "metadata": { "type": "object" }
+  },
+  "additionalProperties": false
+}

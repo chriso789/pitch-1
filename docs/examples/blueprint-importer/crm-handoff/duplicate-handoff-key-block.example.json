@@ -1,0 +1,23 @@
+{
+  "_note": "Contract example only. Two candidates resolving to the same deterministic key MUST upsert (preview) or block live write with DETERMINISTIC_KEY_COLLISION. The DB UNIQUE(tenant_id, deterministic_handoff_key) on blueprint_estimate_line_candidates enforces this.",
+  "scenario": "duplicate_handoff_key_collision",
+  "tenant_id": "00000000-0000-0000-0000-0000000000aa",
+  "deterministic_handoff_key": "1111aaaa2222bbbb3333cccc4444dddd5555eeee6666ffff7777888899990001",
+  "candidate_a": {
+    "id": "00000000-0000-0000-0000-000000005101",
+    "source_draft_line_id": "00000000-0000-0000-0000-000000000301",
+    "source_draft_line_type": "material",
+    "status": "preview"
+  },
+  "candidate_b_attempted_insert": {
+    "id": "00000000-0000-0000-0000-000000005199",
+    "source_draft_line_id": "00000000-0000-0000-0000-000000000301",
+    "source_draft_line_type": "material",
+    "status": "draft",
+    "expected_outcome": "REJECTED by UNIQUE(tenant_id, deterministic_handoff_key); future builder must upsert by key instead of insert"
+  },
+  "live_write_attempt_outcome": {
+    "blocker": "DETERMINISTIC_KEY_COLLISION",
+    "resolution": "Investigate Phase 4 generator; never coerce-merge."
+  }
+}
