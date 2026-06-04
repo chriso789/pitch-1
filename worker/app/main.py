@@ -16,6 +16,7 @@ from .schemas import (
     CapabilitySkill,
 )
 from .skills_registry import SKILLS
+from .skills.clip_point_cloud import run_clip_point_cloud
 
 app = FastAPI(
     title="PITCH Measure Worker",
@@ -45,6 +46,18 @@ async def capabilities():
     )
 
 
+# ---------------------------------------------------------------------------
+# Real skill: clip_point_cloud
+# ---------------------------------------------------------------------------
+@app.post("/skills/clip-point-cloud", response_model=SkillResponse, tags=["skills"])
+async def skill_clip_point_cloud(req: SkillRequest, _=Depends(require_worker_key)):
+    return run_clip_point_cloud(req)
+
+
+# ---------------------------------------------------------------------------
+# Stubs for everything else. These MUST NOT mark a skill_run completed —
+# the control plane refuses to promote `needs_implementation` / `stub`.
+# ---------------------------------------------------------------------------
 def _stub(req: SkillRequest, skill_name: str) -> SkillResponse:
     return SkillResponse(
         skill_run_id=req.skill_run_id,
@@ -68,6 +81,8 @@ def _register_stub(path: str, name: str):
 
 
 for sk in SKILLS:
+    if sk["implemented"]:
+        continue
     _register_stub(sk["path"], sk["name"])
 
 
