@@ -20,6 +20,10 @@ import {
   generateTemplateBindingOnly,
   phase4InformationalSessionFlags,
   getPhase4Template,
+  buildHandoffPreview,
+  buildHandoffBatchKey,
+  PHASE_6_DISABLED_MESSAGES,
+  type Phase6DraftModeFilter,
 } from "../_shared/blueprint-importer/index.ts";
 
 
@@ -1097,6 +1101,242 @@ app.post("/blueprint-importer/v2/draft-lines", async (c) => {
   });
 });
 
+// =============================================================================
+// Blueprint Importer v2 — Phase 6 handoff PREVIEW routes
+// Preview-only. NEVER writes to enhanced_estimates / estimate_line_items /
+// proposal_tier_items. NEVER writes blueprint_estimate_line_provenance.
+// Push to Estimate is intentionally not exposed.
+// See docs/blueprint-importer-phase-6-handoff-preview.md.
+// =============================================================================
+
+interface HandoffPreviewBody {
+  import_session_id?: string;
+  target_context_type?: string;
+  target_context_id?: string | null;
+  canonical_estimate_target_id?: string | null;
+  accepted_trade_ids?: string[] | null;
+  draft_mode?: Phase6DraftModeFilter;
+  pricing_mode?: "quantity_only" | "ready_for_pricing_review";
+  catalog_mode?: "catalog_resolved_only" | "user_approved_custom_lines" | "preview_only";
+  custom_line_mode?: "disabled" | "enabled";
+}
+
+app.post("/blueprint-importer/v2/handoff-preview", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const userId = c.get("userId") ?? null;
+  const body = (await c.req.json().catch(() => ({}))) as HandoffPreviewBody;
+  const session_id = body.import_session_id;
+  if (!session_id) return jsonErr(c, "bad_request", "import_session_id required", 400);
+
+  const target_context_type = body.target_context_type ?? "standalone";
+  const draft_mode: Phase6DraftModeFilter = (body.draft_mode ?? "both") as Phase6DraftModeFilter;
+  const pricing_mode = body.pricing_mode ?? "quantity_only";
+  // Phase 6 default: preview_only — live handoff intentionally blocked.
+  const catalog_mode = body.catalog_mode ?? "preview_only";
+  if (catalog_mode === "user_approved_custom_lines") {
+    return jsonErr(c, "phase_6_custom_line_disabled", PHASE_6_DISABLED_MESSAGES.custom_line, 400);
+  }
+  const custom_line_mode = "disabled" as const;
+
+  const svc = serviceClient();
+
+  // Validate session.
+  const { data: session } = await svc.from("blueprint_import_sessions")
+    .select("id,tenant_id,status").eq("id", session_id).eq("tenant_id", tenantId).maybeSingle();
+  if (!session) return jsonErr(c, "not_found", "session not found", 404);
+  if (session.status === "superseded" || session.status === "cancelled") {
+    return jsonErr(c, "stale_import_session", `session is ${session.status}`, 409);
+  }
+
+  // Validate target enhanced_estimates if supplied (read-only).
+  if (body.canonical_estimate_target_id) {
+    const { data: targetEst } = await svc.from("enhanced_estimates")
+      .select("id,tenant_id,status").eq("id", body.canonical_estimate_target_id).maybeSingle();
+    if (!targetEst) return jsonErr(c, "target_estimate_missing", "enhanced_estimates target not found", 404);
+    if (targetEst.tenant_id !== tenantId) return jsonErr(c, "target_estimate_tenant_mismatch", "cross-tenant target", 403);
+  }
+
+  // Load context.
+  const [{ data: accepted }, { data: bindings }, { data: materials }, { data: labor }, { data: planPaths }, { data: flags }, { data: sourceDocs }] = await Promise.all([
+    svc.from("blueprint_accepted_trades").select("id,trade_id,user_assumptions").eq("import_session_id", session_id).eq("tenant_id", tenantId),
+    svc.from("blueprint_template_bindings").select("id,accepted_trade_id,template_version,binding_status,user_assumptions").eq("import_session_id", session_id).eq("tenant_id", tenantId).neq("binding_status", "superseded"),
+    svc.from("blueprint_material_draft_lines").select("*").eq("import_session_id", session_id).eq("tenant_id", tenantId).neq("status", "superseded"),
+    svc.from("blueprint_labor_draft_lines").select("*").eq("import_session_id", session_id).eq("tenant_id", tenantId).neq("status", "superseded"),
+    svc.from("blueprint_plan_paths").select("id,source_document_id").eq("import_session_id", session_id).eq("tenant_id", tenantId),
+    svc.from("blueprint_review_flags").select("id,flag_code,severity,blocking,resolved,related_entity_type,related_entity_id").eq("import_session_id", session_id).eq("tenant_id", tenantId),
+    svc.from("blueprint_source_documents").select("id,document_type").eq("import_session_id", session_id).eq("tenant_id", tenantId),
+  ]);
+
+  const paintSourcePresent = (sourceDocs ?? []).some((d: any) => d.document_type === "wall_report")
+    || (accepted ?? []).some((a: any) => a.trade_id === "exterior_walls_siding");
+
+  // Deterministic batch key (idempotency).
+  const deterministic_batch_key = await buildHandoffBatchKey({
+    tenant_id: tenantId,
+    import_session_id: session_id,
+    target_context_type,
+    target_context_id: body.target_context_id ?? null,
+    canonical_estimate_target_id: body.canonical_estimate_target_id ?? null,
+    pricing_mode,
+    catalog_mode,
+    custom_line_mode,
+  });
+
+  // Upsert batch (supersede prior preview batches with a different key for same session).
+  const { data: existingBatch } = await svc.from("blueprint_estimate_handoff_batches")
+    .select("id,status").eq("tenant_id", tenantId).eq("deterministic_batch_key", deterministic_batch_key).maybeSingle();
+
+  let batchId: string;
+  if (existingBatch) {
+    batchId = existingBatch.id;
+  } else {
+    // Mark prior non-terminal preview batches as superseded for the same session.
+    await svc.from("blueprint_estimate_handoff_batches")
+      .update({ status: "superseded", updated_at: new Date().toISOString() })
+      .eq("tenant_id", tenantId)
+      .eq("import_session_id", session_id)
+      .in("status", ["draft", "preview_requested", "preview_created", "user_review_required"]);
+    const { data: created, error: cErr } = await svc.from("blueprint_estimate_handoff_batches").insert({
+      tenant_id: tenantId,
+      import_session_id: session_id,
+      target_context_type,
+      target_context_id: body.target_context_id ?? null,
+      canonical_estimate_target_table: "enhanced_estimates",
+      canonical_estimate_target_id: body.canonical_estimate_target_id ?? null,
+      status: "preview_requested",
+      pricing_mode,
+      catalog_mode,
+      custom_line_mode,
+      created_by: userId,
+      deterministic_batch_key,
+      metadata: { ui_origin: "blueprint_importer_v2", phase: 6 },
+    }).select("id").single();
+    if (cErr) return jsonErr(c, "batch_insert_failed", cErr.message, 500);
+    batchId = created!.id;
+  }
+
+  // Build candidates.
+  const preview = await buildHandoffPreview({
+    tenant_id: tenantId,
+    import_session_id: session_id,
+    handoff_batch_id: batchId,
+    accepted_trades: (accepted ?? []) as any,
+    template_bindings: (bindings ?? []) as any,
+    material_drafts: (materials ?? []) as any,
+    labor_drafts: (labor ?? []) as any,
+    plan_paths: (planPaths ?? []) as any,
+    review_flags: (flags ?? []) as any,
+    allowed_accepted_trade_ids: body.accepted_trade_ids ?? null,
+    draft_mode,
+    catalog_mode,
+    custom_line_mode,
+    pricing_mode,
+    paint_source_present: paintSourcePresent,
+  });
+
+  // Upsert candidates by deterministic_handoff_key.
+  if (preview.candidates.length > 0) {
+    const { error: upErr } = await svc.from("blueprint_estimate_line_candidates")
+      .upsert(preview.candidates as any, { onConflict: "tenant_id,deterministic_handoff_key" });
+    if (upErr) return jsonErr(c, "candidate_upsert_failed", upErr.message, 500);
+  }
+
+  // Update batch status verdict.
+  await svc.from("blueprint_estimate_handoff_batches")
+    .update({ status: preview.batch_status, updated_at: new Date().toISOString() })
+    .eq("id", batchId).eq("tenant_id", tenantId);
+
+  return jsonOk(c, {
+    handoff_batch_id: batchId,
+    deterministic_batch_key,
+    batch_status: preview.batch_status,
+    total_candidates: preview.total_candidates,
+    candidates_handoff_allowed: preview.candidates_handoff_allowed,
+    skipped: preview.skipped,
+    blocker_summary: preview.blocker_summary,
+    warning_summary: preview.warning_summary,
+    push_to_estimate_enabled: false,
+    push_to_estimate_disabled_reason: PHASE_6_DISABLED_MESSAGES.push_to_estimate,
+  });
+});
+
+// ---- POST /blueprint-importer/v2/handoff-preview/get ----
+app.post("/blueprint-importer/v2/handoff-preview/get", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const body = await c.req.json().catch(() => ({})) as { handoff_batch_id?: string; import_session_id?: string };
+  if (!body.handoff_batch_id && !body.import_session_id) {
+    return jsonErr(c, "bad_request", "handoff_batch_id or import_session_id required", 400);
+  }
+  const svc = serviceClient();
+
+  let batchQuery = svc.from("blueprint_estimate_handoff_batches")
+    .select("*").eq("tenant_id", tenantId);
+  if (body.handoff_batch_id) batchQuery = batchQuery.eq("id", body.handoff_batch_id);
+  else batchQuery = batchQuery.eq("import_session_id", body.import_session_id!).neq("status", "superseded").order("created_at", { ascending: false }).limit(1);
+  const { data: batch } = await batchQuery.maybeSingle();
+  if (!batch) {
+    return jsonOk(c, {
+      batch: null,
+      candidates: [],
+      target_estimate: null,
+      push_to_estimate_enabled: false,
+      push_to_estimate_disabled_reason: PHASE_6_DISABLED_MESSAGES.push_to_estimate,
+    });
+  }
+
+  const { data: candidates } = await svc.from("blueprint_estimate_line_candidates")
+    .select("*").eq("tenant_id", tenantId).eq("handoff_batch_id", batch.id).order("created_at", { ascending: true });
+
+  let targetEstimate: { id: string; status: string | null; estimate_number: string | null; display_name: string | null } | null = null;
+  if (batch.canonical_estimate_target_id) {
+    const { data: t } = await svc.from("enhanced_estimates")
+      .select("id,status,estimate_number,display_name")
+      .eq("id", batch.canonical_estimate_target_id).eq("tenant_id", tenantId).maybeSingle();
+    targetEstimate = t ?? null;
+  }
+
+  return jsonOk(c, {
+    batch,
+    candidates: candidates ?? [],
+    target_estimate: targetEstimate,
+    push_to_estimate_enabled: false,
+    push_to_estimate_disabled_reason: PHASE_6_DISABLED_MESSAGES.push_to_estimate,
+    disabled_actions: PHASE_6_DISABLED_MESSAGES,
+  });
+});
+
+// ---- POST /blueprint-importer/v2/handoff-preview/review ----
+// Preview-only candidate review changes. Does NOT enable live handoff.
+app.post("/blueprint-importer/v2/handoff-preview/review", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const body = await c.req.json().catch(() => ({})) as {
+    handoff_batch_id?: string;
+    candidate_id?: string;
+    user_review_status?: "pending" | "reviewed" | "excluded";
+  };
+  if (!body.handoff_batch_id || !body.candidate_id || !body.user_review_status) {
+    return jsonErr(c, "bad_request", "handoff_batch_id, candidate_id, user_review_status required", 400);
+  }
+  // Phase 6 forbids 'approved' here — that belongs to Phase 7.
+  if ((body.user_review_status as string) === "approved") {
+    return jsonErr(c, "phase_6_user_approval_disabled",
+      "Per-line user approval is not enabled in Phase 6 — Phase 7 owns the live-handoff approval gate.", 400);
+  }
+  const svc = serviceClient();
+  const { data: cand } = await svc.from("blueprint_estimate_line_candidates")
+    .select("id,tenant_id,handoff_batch_id").eq("id", body.candidate_id).eq("tenant_id", tenantId).maybeSingle();
+  if (!cand) return jsonErr(c, "not_found", "candidate not found", 404);
+  if (cand.handoff_batch_id !== body.handoff_batch_id) {
+    return jsonErr(c, "candidate_batch_mismatch", "candidate does not belong to batch", 400);
+  }
+  const { error } = await svc.from("blueprint_estimate_line_candidates")
+    .update({ user_review_status: body.user_review_status, updated_at: new Date().toISOString() })
+    .eq("id", body.candidate_id).eq("tenant_id", tenantId);
+  if (error) return jsonErr(c, "candidate_update_failed", error.message, 500);
+  return jsonOk(c, { ok: true, candidate_id: body.candidate_id, user_review_status: body.user_review_status });
+});
+
 serveRouter(app);
+
 
 
