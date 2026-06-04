@@ -61,6 +61,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
     phone: "",
     roofAge: "",
     status: "lead",
+    projectType: "",
     roofType: "",
     priority: "medium",
     estimatedValue: "",
@@ -151,15 +152,59 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
     { value: "project", label: "Project" },
   ];
 
-  const roofTypes = [
-    { value: "shingle", label: "Asphalt Shingle" },
-    { value: "metal", label: "Metal" },
-    { value: "tile", label: "Tile" },
-    { value: "flat", label: "Flat/Membrane" },
-    { value: "slate", label: "Slate" },
-    { value: "cedar", label: "Cedar/Wood Shake" },
-    { value: "other", label: "Other" },
+  const projectTypes = [
+    { value: "roof", label: "Roof" },
+    { value: "siding", label: "Siding" },
+    { value: "gutters", label: "Gutters" },
+    { value: "interior", label: "Interior" },
+    { value: "exterior", label: "Exterior" },
   ];
+
+  const projectSubtypes: Record<string, { value: string; label: string }[]> = {
+    roof: [
+      { value: "shingle", label: "Asphalt Shingle" },
+      { value: "metal", label: "Metal" },
+      { value: "tile", label: "Tile" },
+      { value: "flat", label: "Flat/Membrane" },
+      { value: "slate", label: "Slate" },
+      { value: "cedar", label: "Cedar/Wood Shake" },
+      { value: "other", label: "Other" },
+    ],
+    siding: [
+      { value: "vinyl", label: "Vinyl" },
+      { value: "fiber_cement", label: "Fiber Cement / Hardie" },
+      { value: "wood", label: "Wood" },
+      { value: "stucco", label: "Stucco" },
+      { value: "metal", label: "Metal" },
+      { value: "other", label: "Other" },
+    ],
+    gutters: [
+      { value: "aluminum_5", label: 'Aluminum 5"' },
+      { value: "aluminum_6", label: 'Aluminum 6"' },
+      { value: "copper", label: "Copper" },
+      { value: "steel", label: "Steel" },
+      { value: "guards", label: "Gutter Guards" },
+      { value: "other", label: "Other" },
+    ],
+    interior: [
+      { value: "drywall", label: "Drywall" },
+      { value: "paint", label: "Paint" },
+      { value: "flooring", label: "Flooring" },
+      { value: "trim", label: "Trim / Carpentry" },
+      { value: "other", label: "Other" },
+    ],
+    exterior: [
+      { value: "paint", label: "Paint" },
+      { value: "windows", label: "Windows" },
+      { value: "doors", label: "Doors" },
+      { value: "decking", label: "Decking" },
+      { value: "fascia_soffit", label: "Fascia / Soffit" },
+      { value: "other", label: "Other" },
+    ],
+  };
+
+  const currentSubtypes = projectSubtypes[formData.projectType] || [];
+  const subtypeLabel = formData.projectType === "roof" ? "Roof Type" : "Type";
 
   useEffect(() => {
     if (open) {
@@ -172,6 +217,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
         phone: "",
         roofAge: "",
         status: "lead",
+        projectType: "",
         roofType: "",
         priority: "medium",
         estimatedValue: "",
@@ -419,35 +465,23 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
   // Enhanced validation with illumination logic - must match validateForm requirements
   const isFormValid = React.useMemo(() => {
     const roofAgeNum = parseInt(formData.roofAge);
-    const roofRequired = !contact; // Roof fields optional when creating from existing contact
-    
-    // Debug each validation condition individually
+    const fieldsRequired = !contact; // Project fields optional when creating from existing contact
+    const roofAgeRequired = fieldsRequired && formData.projectType === "roof";
+
     const checks = {
       name: formData.name.trim() !== "",
       phone: formData.phone.trim() !== "",
       selectedAddress: effectiveSelectedAddress !== null,
       status: formData.status !== "",
-      roofAge: roofRequired ? formData.roofAge !== "" : true,
-      roofType: roofRequired ? formData.roofType !== "" : true,
-      roofAgeValid: roofRequired ? (!isNaN(roofAgeNum) && roofAgeNum >= 0 && roofAgeNum <= 100) : (formData.roofAge === "" || (!isNaN(roofAgeNum) && roofAgeNum >= 0 && roofAgeNum <= 100))
+      projectType: fieldsRequired ? formData.projectType !== "" : true,
+      subtype: fieldsRequired ? formData.roofType !== "" : true,
+      roofAge: roofAgeRequired ? formData.roofAge !== "" : true,
+      roofAgeValid: roofAgeRequired
+        ? (!isNaN(roofAgeNum) && roofAgeNum >= 0 && roofAgeNum <= 100)
+        : (formData.roofAge === "" || (!isNaN(roofAgeNum) && roofAgeNum >= 0 && roofAgeNum <= 100))
     };
-    
-    console.log('🔍 Form Validation Debug:', {
-      checks,
-      values: {
-        name: `"${formData.name}"`,
-        phone: `"${formData.phone}"`,
-        roofAge: `"${formData.roofAge}"`,
-        roofType: `"${formData.roofType}"`,
-        status: `"${formData.status}"`,
-        hasSelectedAddress: !!effectiveSelectedAddress
-      }
-    });
-    
-    const valid = Object.values(checks).every(Boolean);
-    console.log('✅ isFormValid:', valid);
-    
-    return valid;
+
+    return Object.values(checks).every(Boolean);
   }, [formData, contact, effectiveSelectedAddress]);
 
   const validateForm = () => {
@@ -469,21 +503,31 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
       return false;
     }
 
-    const roofRequired = !contact;
+    const fieldsRequired = !contact;
+    const roofAgeRequired = fieldsRequired && formData.projectType === "roof";
 
-    if (roofRequired && !formData.roofAge) {
+    if (fieldsRequired && !formData.projectType) {
       toast({
         title: "Validation Error",
-        description: "Roof age is required",
+        description: "Project type is required",
         variant: "destructive",
       });
       return false;
     }
 
-    if (roofRequired && !formData.roofType) {
+    if (fieldsRequired && !formData.roofType) {
       toast({
         title: "Validation Error",
-        description: "Roof type is required",
+        description: `${subtypeLabel} is required`,
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    if (roofAgeRequired && !formData.roofAge) {
+      toast({
+        title: "Validation Error",
+        description: "Roof age is required",
         variant: "destructive",
       });
       return false;
@@ -704,7 +748,9 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
             multiple_reps: formData.assignedTo,
             address_verified: true,
             verified_address: leadAddress,
-            roof_age_years: parseInt(formData.roofAge),
+            roof_age_years: formData.roofAge ? parseInt(formData.roofAge) : null,
+            project_type: formData.projectType || null,
+            project_subtype: formData.roofType || null,
             roof_type: formData.roofType
           }
         } as any)
@@ -733,6 +779,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
         phone: "",
         roofAge: "",
         status: "lead",
+        projectType: "",
         roofType: "",
         priority: "medium",
         estimatedValue: "",
@@ -811,18 +858,20 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
             </div>
           </div>
 
-          <div>
-            <Label htmlFor="roofAge">Roof Age (years) *</Label>
-            <Input
-              id="roofAge"
-              type="number"
-              min="0"
-              max="100"
-              value={formData.roofAge}
-              onChange={(e) => setFormData(prev => ({ ...prev, roofAge: e.target.value }))}
-              placeholder="e.g., 15"
-            />
-          </div>
+          {formData.projectType === "roof" && (
+            <div>
+              <Label htmlFor="roofAge">Roof Age (years) *</Label>
+              <Input
+                id="roofAge"
+                type="number"
+                min="0"
+                max="100"
+                value={formData.roofAge}
+                onChange={(e) => setFormData(prev => ({ ...prev, roofAge: e.target.value }))}
+                placeholder="e.g., 15"
+              />
+            </div>
+          )}
 
           {contact && (() => {
             const hasContactAddress = !!buildContactAddressSuggestion();
@@ -849,7 +898,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
           })()}
 
           {/* Pipeline Details */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
               <Label htmlFor="status">Pipeline Status *</Label>
               <Select value={formData.status} onValueChange={(value) => setFormData(prev => ({ ...prev, status: value }))}>
@@ -866,13 +915,35 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
               </Select>
             </div>
             <div>
-              <Label htmlFor="roofType">Roof Type *</Label>
-              <Select value={formData.roofType} onValueChange={(value) => setFormData(prev => ({ ...prev, roofType: value }))}>
+              <Label htmlFor="projectType">Project Type *</Label>
+              <Select
+                value={formData.projectType}
+                onValueChange={(value) => setFormData(prev => ({ ...prev, projectType: value, roofType: "" }))}
+              >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select roof type" />
+                  <SelectValue placeholder="Select project" />
                 </SelectTrigger>
                 <SelectContent>
-                  {roofTypes.map(type => (
+                  {projectTypes.map(type => (
+                    <SelectItem key={type.value} value={type.value}>
+                      {type.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="roofType">{subtypeLabel} *</Label>
+              <Select
+                value={formData.roofType}
+                onValueChange={(value) => setFormData(prev => ({ ...prev, roofType: value }))}
+                disabled={!formData.projectType}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={formData.projectType ? `Select ${subtypeLabel.toLowerCase()}` : "Choose project first"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {currentSubtypes.map(type => (
                     <SelectItem key={type.value} value={type.value}>
                       {type.label}
                     </SelectItem>
