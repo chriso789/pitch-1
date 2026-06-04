@@ -512,6 +512,8 @@ function SessionSummaryCard({ summary }: { summary: SessionSummary }) {
 function Phase6Panel({ sessionId, summary }: { sessionId: string; summary: SessionSummary }) {
   const [preview, setPreview] = useState<HandoffPreviewGetResult | null>(null);
   const [busy, setBusy] = useState(false);
+  const [resolverBusy, setResolverBusy] = useState(false);
+  const [resolverSummary, setResolverSummary] = useState<ResolveBindingsSummary["summary"] | null>(null);
   const [targetEstimateId, setTargetEstimateId] = useState<string>("");
   const [draftMode, setDraftMode] = useState<"material" | "labor" | "both">("both");
   const [includedTrades, setIncludedTrades] = useState<Set<string>>(new Set());
@@ -540,10 +542,29 @@ function Phase6Panel({ sessionId, summary }: { sessionId: string; summary: Sessi
         pricing_mode: "quantity_only",
       });
       toast.success("Handoff preview generated");
+      setResolverSummary(null);
       await loadPreview();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Preview failed");
     } finally { setBusy(false); }
+  };
+
+  const runResolver = async () => {
+    if (!preview?.batch) {
+      toast.error("Generate a handoff preview before resolving catalog bindings.");
+      return;
+    }
+    setResolverBusy(true);
+    try {
+      const res = await resolveBlueprintCatalogBindings({ handoff_batch_id: preview.batch.id });
+      setResolverSummary(res.summary);
+      toast.success(
+        `Resolver: ${res.summary.resolved} resolved · ${res.summary.ambiguous} ambiguous · ${res.summary.missing} missing · ${res.summary.blocked} blocked`,
+      );
+      await loadPreview();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Resolver failed");
+    } finally { setResolverBusy(false); }
   };
 
   const reviewCandidate = async (candidate_id: string, status: "pending" | "reviewed" | "excluded") => {
