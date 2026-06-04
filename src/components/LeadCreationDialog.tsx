@@ -912,7 +912,12 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
             <Label htmlFor="address">Address *</Label>
             <Input
               id="address"
-              value={formData.address}
+              value={
+                formData.address ||
+                (formData.useSameInfo
+                  ? buildContactAddressSuggestion()?.formatted_address || ''
+                  : '')
+              }
               onChange={(e) => {
                 const newAddress = e.target.value;
                 setFormData(prev => ({ ...prev, address: newAddress }));
