@@ -11,7 +11,12 @@ import { Loader2, Lock, ShieldAlert, FileText } from "lucide-react";
 import {
   fetchBlueprintImportSession,
   acceptBlueprintTrade,
+  bindBlueprintTemplate,
+  generateBlueprintMaterialDrafts,
+  generateBlueprintLaborDrafts,
+  fetchBlueprintDraftLines,
   type SessionSummary,
+  type DraftLinesResult,
 } from "@/integrations/blueprintImporterV2Api";
 
 const TRADE_LABELS: Record<string, string> = {
