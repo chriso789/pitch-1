@@ -2138,6 +2138,7 @@ export type Database = {
           escalation_reason: string | null
           gathered_data: Json | null
           id: string
+          location_id: string | null
           project_status_provided: Json | null
           sentiment: string | null
           telnyx_call_control_id: string | null
@@ -2151,6 +2152,7 @@ export type Database = {
           escalation_reason?: string | null
           gathered_data?: Json | null
           id?: string
+          location_id?: string | null
           project_status_provided?: Json | null
           sentiment?: string | null
           telnyx_call_control_id?: string | null
@@ -2164,6 +2166,7 @@ export type Database = {
           escalation_reason?: string | null
           gathered_data?: Json | null
           id?: string
+          location_id?: string | null
           project_status_provided?: Json | null
           sentiment?: string | null
           telnyx_call_control_id?: string | null
@@ -7040,6 +7043,7 @@ export type Database = {
           created_at: string | null
           id: string
           is_partial: boolean | null
+          location_id: string | null
           raw_payload: Json | null
           speaker: string | null
           status: string | null
@@ -7054,6 +7058,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_partial?: boolean | null
+          location_id?: string | null
           raw_payload?: Json | null
           speaker?: string | null
           status?: string | null
@@ -7068,6 +7073,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_partial?: boolean | null
+          location_id?: string | null
           raw_payload?: Json | null
           speaker?: string | null
           status?: string | null
@@ -14050,6 +14056,7 @@ export type Database = {
           id: string
           is_active: boolean
           list_id: string | null
+          location_id: string | null
           max_parallel_calls: number | null
           name: string
           started_at: string | null
@@ -14070,6 +14077,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           list_id?: string | null
+          location_id?: string | null
           max_parallel_calls?: number | null
           name: string
           started_at?: string | null
@@ -14090,6 +14098,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           list_id?: string | null
+          location_id?: string | null
           max_parallel_calls?: number | null
           name?: string
           started_at?: string | null
