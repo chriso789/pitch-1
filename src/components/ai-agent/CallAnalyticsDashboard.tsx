@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserProfile } from '@/contexts/UserProfileContext';
+import { useLocation } from '@/contexts/LocationContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -45,6 +46,7 @@ interface CallsByHour {
 
 export function CallAnalyticsDashboard() {
   const { profile } = useUserProfile();
+  const { currentLocationId } = useLocation();
   const [dateRange, setDateRange] = useState<'today' | 'week' | 'month'>('week');
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -65,17 +67,19 @@ export function CallAnalyticsDashboard() {
 
   // Fetch call transcripts for analytics
   const { data: callData, isLoading, refetch } = useQuery({
-    queryKey: ['ai-call-analytics', profile?.tenant_id, dateRange, refreshKey],
+    queryKey: ['ai-call-analytics', profile?.tenant_id, currentLocationId, dateRange, refreshKey],
     queryFn: async () => {
       if (!profile?.tenant_id) return null;
 
-      const { data, error } = await supabase
+      let q: any = supabase
         .from('ai_call_transcripts')
         .select('*')
         .eq('tenant_id', profile.tenant_id)
         .gte('created_at', start.toISOString())
         .lte('created_at', end.toISOString())
         .order('created_at', { ascending: false });
+      if (currentLocationId) q = q.eq('location_id', currentLocationId);
+      const { data, error } = await q;
 
       if (error) throw error;
       return data || [];

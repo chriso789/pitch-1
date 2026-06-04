@@ -74,13 +74,15 @@ export function CampaignsHub() {
   });
 
   const { data: voice, isLoading: voiceLoading, refetch: refetchVoice } = useQuery({
-    queryKey: ['dialer-campaigns', activeTenantId],
+    queryKey: ['dialer-campaigns', activeTenantId, currentLocationId],
     queryFn: async () => {
       if (!activeTenantId) return [];
-      const { data, error } = await (supabase.from('dialer_campaigns') as any)
+      let q = (supabase.from('dialer_campaigns') as any)
         .select('*')
         .eq('tenant_id', activeTenantId)
         .order('created_at', { ascending: false });
+      if (currentLocationId) q = q.eq('location_id', currentLocationId);
+      const { data, error } = await q;
       if (error) throw error;
       return data || [];
     },

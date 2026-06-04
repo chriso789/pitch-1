@@ -3,16 +3,19 @@ import { useNavigate } from 'react-router-dom';
 import { GlobalLayout } from '@/shared/components/layout/GlobalLayout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Settings, BarChart3, Phone, MessageSquare, FileText } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { ArrowLeft, Settings, BarChart3, Phone, MessageSquare, FileText, MapPin } from 'lucide-react';
 import { CallAnalyticsDashboard } from '@/components/ai-agent/CallAnalyticsDashboard';
 import { LiveCallTranscript } from '@/components/ai-agent/LiveCallTranscript';
 import { CallTranscriptViewer } from '@/components/ai-agent/CallTranscriptViewer';
 import { CampaignsHub } from '@/components/campaigns/CampaignsHub';
 import { TemplatesLibrary } from '@/components/campaigns/TemplatesLibrary';
 import { LayoutTemplate } from 'lucide-react';
+import { useLocation as useLocationContext } from '@/contexts/LocationContext';
 
 export default function AIAgentDashboardPage() {
   const navigate = useNavigate();
+  const { currentLocation } = useLocationContext();
 
   return (
     <GlobalLayout>
@@ -25,8 +28,16 @@ export default function AIAgentDashboardPage() {
               Back
             </Button>
             <div>
-              <h1 className="text-2xl font-bold">AI Agent Command Center</h1>
-              <p className="text-muted-foreground">Monitor and manage your AI call agent</p>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold">AI Agent Command Center</h1>
+                <Badge variant="outline" className="gap-1">
+                  <MapPin className="h-3 w-3" />
+                  {currentLocation?.name ?? 'All locations'}
+                </Badge>
+              </div>
+              <p className="text-muted-foreground">
+                Monitor and manage your AI call agent — campaigns, analytics, and transcripts are scoped to this location.
+              </p>
             </div>
           </div>
           <Button variant="outline" onClick={() => navigate('/settings/ai-agent')}>

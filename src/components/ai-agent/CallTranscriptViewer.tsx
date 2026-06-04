@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useUserProfile } from '@/contexts/UserProfileContext';
+import { useLocation } from '@/contexts/LocationContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -46,29 +48,36 @@ const formatDuration = (seconds: number | null) => {
 };
 
 export function CallTranscriptViewer() {
+  const { profile } = useUserProfile();
+  const { currentLocationId } = useLocation();
   const [selectedCallId, setSelectedCallId] = useState<string | null>(null);
   const [selectedCall, setSelectedCall] = useState<AiCallTranscript | null>(null);
 
   const { data: calls = [], isLoading: loadingCalls } = useQuery({
-    queryKey: ['ai-call-transcripts'],
+    queryKey: ['ai-call-transcripts', profile?.tenant_id, currentLocationId],
+    enabled: !!profile?.tenant_id,
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q: any = supabase
         .from('ai_call_transcripts')
         .select('*')
+        .eq('tenant_id', profile!.tenant_id!)
         .order('created_at', { ascending: false })
         .limit(50);
+      if (currentLocationId) q = q.eq('location_id', currentLocationId);
+      const { data, error } = await q;
       if (error) throw error;
       return (data ?? []) as AiCallTranscript[];
     },
   });
 
   const { data: lines = [], isLoading: loadingLines } = useQuery({
-    queryKey: ['call-transcript-lines', selectedCall?.telnyx_call_control_id],
-    enabled: !!selectedCall?.telnyx_call_control_id,
+    queryKey: ['call-transcript-lines', profile?.tenant_id, selectedCall?.telnyx_call_control_id],
+    enabled: !!profile?.tenant_id && !!selectedCall?.telnyx_call_control_id,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('call_transcripts')
         .select('*')
+        .eq('tenant_id', profile!.tenant_id!)
         .eq('call_id', selectedCall!.telnyx_call_control_id!)
         .eq('is_partial', false)
         .order('created_at', { ascending: true });

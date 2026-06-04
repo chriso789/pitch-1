@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserProfile } from '@/contexts/UserProfileContext';
+import { useLocation } from '@/contexts/LocationContext';
 import { useToast } from '@/hooks/use-toast';
 
 interface CampaignConfig {
@@ -46,6 +47,7 @@ interface OutboundCampaignBuilderProps {
 export function OutboundCampaignBuilder({ onCampaignCreated }: OutboundCampaignBuilderProps) {
   const { profile } = useUserProfile();
   const tenantId = profile?.tenant_id;
+  const { currentLocationId, currentLocation } = useLocation();
   const { toast } = useToast();
 
   const [config, setConfig] = useState<CampaignConfig>({
@@ -106,6 +108,15 @@ export function OutboundCampaignBuilder({ onCampaignCreated }: OutboundCampaignB
       return;
     }
 
+    if (!currentLocationId) {
+      toast({
+        title: 'Select a location',
+        description: 'Pick an active location before creating an AI voice campaign — campaigns are scoped per location.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setIsCreating(true);
     try {
       // Store campaign configuration
@@ -113,6 +124,7 @@ export function OutboundCampaignBuilder({ onCampaignCreated }: OutboundCampaignB
         .from('dialer_campaigns') as any)
         .insert({
           tenant_id: tenantId,
+          location_id: currentLocationId,
           name: config.name,
           description: config.description,
           campaign_type: 'ai_outbound',
