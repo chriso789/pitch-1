@@ -17,6 +17,7 @@ import {
   getDefaultQboMode,
   type QboContext,
 } from "./qbo-context.ts";
+import { getIntuitTid } from "./qbo-intuit-tid.ts";
 
 export const QBO_AUTH_URL = "https://appcenter.intuit.com/connect/oauth2";
 export const QBO_TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer";
