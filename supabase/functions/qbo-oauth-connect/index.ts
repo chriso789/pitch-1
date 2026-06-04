@@ -541,6 +541,20 @@ Deno.serve(async (req) => {
         tenant_id: profile.tenant_id,
         realm_id: connection.realm_id,
       });
+      void writeQboApiLog(admin, {
+        action: "qbo_token_refresh",
+        tenant_id: profile.tenant_id,
+        user_id: user.id ?? null,
+        connection_id: connection.id,
+        realm_id: connection.realm_id,
+        oauth_app_env: connection.oauth_app_env,
+        endpoint: "/oauth2/v1/tokens/bearer",
+        method: "POST",
+        http_status: tokenResp.status,
+        intuit_tid: refreshTid,
+        success: tokenResp.ok,
+        request_metadata: { op: "refresh_token" },
+      });
 
       if (!tokenResp.ok) {
         const errBody = await tokenResp.text();
