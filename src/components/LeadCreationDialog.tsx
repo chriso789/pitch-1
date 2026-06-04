@@ -465,35 +465,23 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
   // Enhanced validation with illumination logic - must match validateForm requirements
   const isFormValid = React.useMemo(() => {
     const roofAgeNum = parseInt(formData.roofAge);
-    const roofRequired = !contact; // Roof fields optional when creating from existing contact
-    
-    // Debug each validation condition individually
+    const fieldsRequired = !contact; // Project fields optional when creating from existing contact
+    const roofAgeRequired = fieldsRequired && formData.projectType === "roof";
+
     const checks = {
       name: formData.name.trim() !== "",
       phone: formData.phone.trim() !== "",
       selectedAddress: effectiveSelectedAddress !== null,
       status: formData.status !== "",
-      roofAge: roofRequired ? formData.roofAge !== "" : true,
-      roofType: roofRequired ? formData.roofType !== "" : true,
-      roofAgeValid: roofRequired ? (!isNaN(roofAgeNum) && roofAgeNum >= 0 && roofAgeNum <= 100) : (formData.roofAge === "" || (!isNaN(roofAgeNum) && roofAgeNum >= 0 && roofAgeNum <= 100))
+      projectType: fieldsRequired ? formData.projectType !== "" : true,
+      subtype: fieldsRequired ? formData.roofType !== "" : true,
+      roofAge: roofAgeRequired ? formData.roofAge !== "" : true,
+      roofAgeValid: roofAgeRequired
+        ? (!isNaN(roofAgeNum) && roofAgeNum >= 0 && roofAgeNum <= 100)
+        : (formData.roofAge === "" || (!isNaN(roofAgeNum) && roofAgeNum >= 0 && roofAgeNum <= 100))
     };
-    
-    console.log('🔍 Form Validation Debug:', {
-      checks,
-      values: {
-        name: `"${formData.name}"`,
-        phone: `"${formData.phone}"`,
-        roofAge: `"${formData.roofAge}"`,
-        roofType: `"${formData.roofType}"`,
-        status: `"${formData.status}"`,
-        hasSelectedAddress: !!effectiveSelectedAddress
-      }
-    });
-    
-    const valid = Object.values(checks).every(Boolean);
-    console.log('✅ isFormValid:', valid);
-    
-    return valid;
+
+    return Object.values(checks).every(Boolean);
   }, [formData, contact, effectiveSelectedAddress]);
 
   const validateForm = () => {
