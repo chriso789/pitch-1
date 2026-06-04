@@ -124,8 +124,20 @@ Deno.serve(async (req) => {
         }
       );
 
+      const fetchTid = getIntuitTid(fetchResponse);
+      console.log('[qbo-customer-sync] fetch existing', {
+        status: fetchResponse.status,
+        intuit_tid: fetchTid,
+        realm_id: connection.realm_id,
+        qbo_customer_id: qboCustomerId,
+        tenant_id,
+      });
+
       if (!fetchResponse.ok) {
-        throw new Error(`Failed to fetch customer: ${fetchResponse.statusText}`);
+        const errBody = await fetchResponse.text();
+        throw new Error(
+          `qbo_customer_sync:fetch failed [status=${fetchResponse.status} intuit_tid=${fetchTid ?? 'none'}]: ${errBody.slice(0, 300)}`,
+        );
       }
 
       const currentCustomer = await fetchResponse.json();
@@ -164,9 +176,27 @@ Deno.serve(async (req) => {
       );
     }
 
+    const intuit_tid = getIntuitTid(qboResponse);
+    console.log('[qbo-customer-sync] upsert response', {
+      operation,
+      status: qboResponse.status,
+      intuit_tid,
+      realm_id: connection.realm_id,
+      tenant_id,
+    });
+
     if (!qboResponse.ok) {
       const errorText = await qboResponse.text();
-      throw new Error(`QBO API error: ${errorText}`);
+      return new Response(
+        JSON.stringify({
+          error: 'qbo_customer_sync_failed',
+          message: `QBO API error [status=${qboResponse.status} intuit_tid=${intuit_tid ?? 'none'}]`,
+          intuit_tid,
+          status: qboResponse.status,
+          details: errorText.slice(0, 500),
+        }),
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
     }
 
     const qboData = await qboResponse.json();
