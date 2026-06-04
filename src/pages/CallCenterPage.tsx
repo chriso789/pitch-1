@@ -14,6 +14,7 @@ import {
 import { format, formatDuration, intervalToDuration } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { useLocation } from '@/contexts/LocationContext';
 import { GlobalLayout } from '@/shared/components/layout/GlobalLayout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
