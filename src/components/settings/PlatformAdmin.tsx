@@ -39,7 +39,15 @@ import { PlatformOperatorsPanel } from "./PlatformOperatorsPanel";
 import { SRSConnectionSettings } from "./SRSConnectionSettings";
 import { QXOConnectionSettings } from "./QXOConnectionSettings";
 import { ABCConnectionSettings } from "./ABCConnectionSettings";
-import { Wrench, Truck, Package } from "lucide-react";
+import { Wrench, Truck, Package, AlertTriangle, Activity, Code, Bot, Database, Server } from "lucide-react";
+import EnhancedErrorReportsManager from "./EnhancedErrorReportsManager";
+import { SystemHealthCheck } from "./SystemHealthCheck";
+import { DeveloperAccess } from "./DeveloperAccess";
+import { AIAdminChat } from "@/components/ai-admin/AIAdminChat";
+import { SecurityAudit } from "./SecurityAudit";
+import { TrustedDevices } from "./TrustedDevices";
+import { EdgeFunctionHealthDashboard } from "./EdgeFunctionHealthDashboard";
+import { CacheManagement } from "./CacheManagement";
 
 interface Company {
   id: string;
