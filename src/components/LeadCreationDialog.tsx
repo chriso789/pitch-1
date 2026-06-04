@@ -152,15 +152,59 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
     { value: "project", label: "Project" },
   ];
 
-  const roofTypes = [
-    { value: "shingle", label: "Asphalt Shingle" },
-    { value: "metal", label: "Metal" },
-    { value: "tile", label: "Tile" },
-    { value: "flat", label: "Flat/Membrane" },
-    { value: "slate", label: "Slate" },
-    { value: "cedar", label: "Cedar/Wood Shake" },
-    { value: "other", label: "Other" },
+  const projectTypes = [
+    { value: "roof", label: "Roof" },
+    { value: "siding", label: "Siding" },
+    { value: "gutters", label: "Gutters" },
+    { value: "interior", label: "Interior" },
+    { value: "exterior", label: "Exterior" },
   ];
+
+  const projectSubtypes: Record<string, { value: string; label: string }[]> = {
+    roof: [
+      { value: "shingle", label: "Asphalt Shingle" },
+      { value: "metal", label: "Metal" },
+      { value: "tile", label: "Tile" },
+      { value: "flat", label: "Flat/Membrane" },
+      { value: "slate", label: "Slate" },
+      { value: "cedar", label: "Cedar/Wood Shake" },
+      { value: "other", label: "Other" },
+    ],
+    siding: [
+      { value: "vinyl", label: "Vinyl" },
+      { value: "fiber_cement", label: "Fiber Cement / Hardie" },
+      { value: "wood", label: "Wood" },
+      { value: "stucco", label: "Stucco" },
+      { value: "metal", label: "Metal" },
+      { value: "other", label: "Other" },
+    ],
+    gutters: [
+      { value: "aluminum_5", label: 'Aluminum 5"' },
+      { value: "aluminum_6", label: 'Aluminum 6"' },
+      { value: "copper", label: "Copper" },
+      { value: "steel", label: "Steel" },
+      { value: "guards", label: "Gutter Guards" },
+      { value: "other", label: "Other" },
+    ],
+    interior: [
+      { value: "drywall", label: "Drywall" },
+      { value: "paint", label: "Paint" },
+      { value: "flooring", label: "Flooring" },
+      { value: "trim", label: "Trim / Carpentry" },
+      { value: "other", label: "Other" },
+    ],
+    exterior: [
+      { value: "paint", label: "Paint" },
+      { value: "windows", label: "Windows" },
+      { value: "doors", label: "Doors" },
+      { value: "decking", label: "Decking" },
+      { value: "fascia_soffit", label: "Fascia / Soffit" },
+      { value: "other", label: "Other" },
+    ],
+  };
+
+  const currentSubtypes = projectSubtypes[formData.projectType] || [];
+  const subtypeLabel = formData.projectType === "roof" ? "Roof Type" : "Type";
 
   useEffect(() => {
     if (open) {
