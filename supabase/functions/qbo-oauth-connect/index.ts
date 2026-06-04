@@ -24,6 +24,7 @@ import {
   qboCredentialAvailability,
   type QboMode,
 } from "../_shared/qbo-context.ts";
+import { getIntuitTid } from "../_shared/qbo-intuit-tid.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
