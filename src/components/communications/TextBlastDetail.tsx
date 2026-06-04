@@ -129,11 +129,70 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
 
   if (!blast) return null;
 
-  const progress = blast.total_recipients > 0
-    ? Math.round(((blast.sent_count + blast.failed_count + blast.opted_out_count) / blast.total_recipients) * 100)
+  // Derive live counts from items so the dashboard reflects replies/opt-outs
+  // the instant the inbound webhook updates them — independent of how often
+  // the processor reconciles the parent blast row.
+  const allItems = items || [];
+  const counts = {
+    total: blast.total_recipients || allItems.length,
+    sent: allItems.filter((i: any) => ['sent', 'delivered', 'replied'].includes(i.status)).length,
+    delivered: allItems.filter((i: any) => ['delivered', 'replied'].includes(i.status)).length,
+    replied: allItems.filter((i: any) => i.status === 'replied').length,
+    failed: allItems.filter((i: any) => ['failed', 'cancelled', 'skipped_cooldown', 'skipped_duplicate', 'skipped_missing_address', 'skipped_opt_out'].includes(i.status)).length,
+    opted: allItems.filter((i: any) => i.status === 'opted_out').length,
+  };
+  const nonResponders = allItems.filter((i: any) =>
+    ['sent', 'delivered', 'failed'].includes(i.status)
+  );
+  const progress = counts.total > 0
+    ? Math.round(((counts.sent + counts.failed + counts.opted) / counts.total) * 100)
     : 0;
-  const skippedCount = (items || []).filter((item: any) => ['skipped_cooldown', 'skipped_duplicate'].includes(item.status)).length;
-  const noTextsSent = blast.status === 'completed' && blast.sent_count === 0 && skippedCount > 0;
+  const skippedCount = allItems.filter((item: any) => ['skipped_cooldown', 'skipped_duplicate'].includes(item.status)).length;
+  const noTextsSent = blast.status === 'completed' && counts.sent === 0 && skippedCount > 0;
+
+  const handleResendToNonResponders = async () => {
+    if (!nonResponders.length) {
+      toast({ title: 'Nothing to resend', description: 'Every recipient in this blast already replied or opted out.' });
+      return;
+    }
+    try {
+      const { data: child, error: blastErr } = await supabase
+        .from('sms_blasts')
+        .insert({
+          tenant_id: blast.tenant_id,
+          from_location_id: (blast as any).from_location_id,
+          name: `${blast.name} — Round ${((blast as any).parent_blast_id ? '' : '2')}`.trim(),
+          script: blast.script,
+          total_recipients: nonResponders.length,
+          max_attempts_per_contact: (blast as any).max_attempts_per_contact ?? 1,
+          status: 'draft',
+          is_test_mode: blast.is_test_mode,
+          template_pool_ids: (blast as any).template_pool_ids ?? null,
+          ai_followup_enabled: (blast as any).ai_followup_enabled ?? false,
+          goal: (blast as any).goal ?? null,
+          parent_blast_id: (blast as any).parent_blast_id || blast.id,
+        })
+        .select()
+        .single();
+      if (blastErr) throw blastErr;
+      const childItems = nonResponders.map((i: any) => ({
+        blast_id: child.id,
+        tenant_id: blast.tenant_id,
+        contact_id: i.contact_id,
+        phone: i.phone,
+        contact_name: i.contact_name,
+        status: 'pending',
+      }));
+      const { error: itemsErr } = await supabase.from('sms_blast_items').insert(childItems);
+      if (itemsErr) throw itemsErr;
+      toast({
+        title: 'Resend draft created',
+        description: `${nonResponders.length} non-responders queued in a new round under this blast.`,
+      });
+    } catch (e: any) {
+      toast({ title: 'Resend failed', description: e.message, variant: 'destructive' });
+    }
+  };
 
   const statusIcons: Record<string, any> = {
     pending: Clock,
@@ -168,6 +227,7 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
             {noTextsSent ? 'no texts sent' : blast.status}
           </Badge>
           {blast.is_test_mode && <Badge variant="outline">test mode</Badge>}
+          {(blast as any).parent_blast_id && <Badge variant="outline">resend round</Badge>}
         </div>
         <div className="flex items-center gap-2">
           {(blast.status === 'draft' || blast.status === 'paused') && (
@@ -186,6 +246,12 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
             <Button variant="destructive" size="sm" onClick={handleCancel}>
               <Ban className="h-4 w-4 mr-2" />
               Cancel Blast
+            </Button>
+          )}
+          {['completed', 'cancelled', 'failed'].includes(blast.status) && nonResponders.length > 0 && (
+            <Button variant="outline" size="sm" onClick={handleResendToNonResponders}>
+              <Send className="h-4 w-4 mr-2" />
+              Resend to {nonResponders.length} Non-Responders
             </Button>
           )}
         </div>
