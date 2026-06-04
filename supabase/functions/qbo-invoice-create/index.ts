@@ -283,9 +283,27 @@ Deno.serve(async (req) => {
       }
     );
 
+    const intuit_tid = getIntuitTid(qboResponse);
+    console.log('[qbo-invoice-create] invoice create', {
+      status: qboResponse.status,
+      intuit_tid,
+      realm_id: connection.realm_id,
+      tenant_id,
+      project_id,
+    });
+
     if (!qboResponse.ok) {
       const errorText = await qboResponse.text();
-      throw new Error(`QBO API error: ${errorText}`);
+      return new Response(
+        JSON.stringify({
+          error: 'qbo_invoice_create_failed',
+          message: `QBO API error [status=${qboResponse.status} intuit_tid=${intuit_tid ?? 'none'}]`,
+          intuit_tid,
+          status: qboResponse.status,
+          details: errorText.slice(0, 500),
+        }),
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
     }
 
     const qboData = await qboResponse.json();
