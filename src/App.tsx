@@ -169,6 +169,7 @@ const AppContent = () => {
         <Route path="/providers/inventory" element={<Navigate to="/admin/providers/inventory" replace />} />
         <Route path="/settings/*" element={<SettingsRoutes />} />
         <Route path="/developer/cost-tracker" element={<Suspense fallback={<PageLoader />}>{React.createElement(React.lazy(() => import("@/pages/developer/CostTrackerPage")))}</Suspense>} />
+        <Route path="/developer/intuit-review-readiness" element={<Suspense fallback={<PageLoader />}>{React.createElement(React.lazy(() => import("@/pages/developer/IntuitReviewReadinessPage")))}</Suspense>} />
 
         {/* Direct public marketing routes (not through PublicRoutes wrapper) */}
         <Route path="/pricing" element={<Pricing />} />
