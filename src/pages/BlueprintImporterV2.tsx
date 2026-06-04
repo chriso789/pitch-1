@@ -654,21 +654,24 @@ function Phase6Panel({ sessionId, summary }: { sessionId: string; summary: Sessi
               <Button size="sm" onClick={runPreview} disabled={busy}>
                 {busy ? "Generating…" : "Create handoff preview"}
               </Button>
+              <Button size="sm" variant="secondary" onClick={runResolver} disabled={resolverBusy || !preview?.batch}>
+                {resolverBusy ? "Resolving…" : "Resolve catalog bindings"}
+              </Button>
               <Tooltip>
                 <TooltipTrigger asChild><span><Button size="sm" variant="outline" disabled>Push to Estimate</Button></span></TooltipTrigger>
-                <TooltipContent>{preview?.push_to_estimate_disabled_reason ?? "Push to Estimate is disabled until Phase 7."}</TooltipContent>
+                <TooltipContent>{preview?.push_to_estimate_disabled_reason ?? "Push to Estimate remains disabled in Phase 7.6b."}</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild><span><Button size="sm" variant="outline" disabled>Pricing preflight</Button></span></TooltipTrigger>
+                <TooltipContent>Pricing preflight is not enabled in Phase 7.6b.</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild><span><Button size="sm" variant="outline" disabled>Final pricing</Button></span></TooltipTrigger>
-                <TooltipContent>Final pricing is disabled in Phase 6.</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild><span><Button size="sm" variant="outline" disabled>Catalog mapping</Button></span></TooltipTrigger>
-                <TooltipContent>Catalog mapping is disabled in Phase 6.</TooltipContent>
+                <TooltipContent>Final pricing is disabled until pricing preflight ships.</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild><span><Button size="sm" variant="outline" disabled>Approve custom line</Button></span></TooltipTrigger>
-                <TooltipContent>Custom non-catalog line approval is disabled in Phase 6.</TooltipContent>
+                <TooltipContent>Custom non-catalog line approval is disabled in Phase 7.6b.</TooltipContent>
               </Tooltip>
             </div>
           </CardContent>
