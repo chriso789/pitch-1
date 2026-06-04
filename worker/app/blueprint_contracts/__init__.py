@@ -43,6 +43,21 @@ from .acceptance_gates import (
     Verdict,
     evaluate_trade_acceptance,
 )
+# Phase 5.5 — CRM handoff contracts (pure twins; NOT registered in skills_registry).
+from .crm_handoff import (
+    CANONICAL_ESTIMATE_TARGET,
+    BlueprintEstimateHandoffBatch,
+    BlueprintEstimateLineCandidate,
+    BlueprintEstimateLineProvenance,
+    create_deterministic_batch_key,
+    create_deterministic_handoff_key,
+    validate_candidate_has_plan_path,
+    validate_candidate_has_measurements,
+    validate_candidate_trade_allowed,
+    validate_candidate_catalog_gate,
+    validate_candidate_review_gates,
+    summarize_candidate_provenance,
+)
 
 
 __all__ = [
@@ -70,4 +85,16 @@ __all__ = [
     "AcceptanceContext",
     "Verdict",
     "evaluate_trade_acceptance",
+    "CANONICAL_ESTIMATE_TARGET",
+    "BlueprintEstimateHandoffBatch",
+    "BlueprintEstimateLineCandidate",
+    "BlueprintEstimateLineProvenance",
+    "create_deterministic_batch_key",
+    "create_deterministic_handoff_key",
+    "validate_candidate_has_plan_path",
+    "validate_candidate_has_measurements",
+    "validate_candidate_trade_allowed",
+    "validate_candidate_catalog_gate",
+    "validate_candidate_review_gates",
+    "summarize_candidate_provenance",
 ]
