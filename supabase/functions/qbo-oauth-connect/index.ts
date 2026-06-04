@@ -587,7 +587,7 @@ Deno.serve(async (req) => {
       if (connection) {
         try {
           const ctx = getQboContextForConnection(connection);
-          await fetch(QBO_REVOKE_URL, {
+          const revokeResp = await fetch(QBO_REVOKE_URL, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -595,6 +595,12 @@ Deno.serve(async (req) => {
               Authorization: basicAuth(ctx.clientId, ctx.clientSecret),
             },
             body: JSON.stringify({ token: connection.refresh_token }),
+          });
+          console.log("[qbo-oauth-connect] revoke response", {
+            status: revokeResp.status,
+            intuit_tid: getIntuitTid(revokeResp),
+            tenant_id: profile.tenant_id,
+            realm_id: connection.realm_id,
           });
         } catch (e) {
           console.warn("[qbo-oauth-connect] revoke call failed (continuing):", e);
