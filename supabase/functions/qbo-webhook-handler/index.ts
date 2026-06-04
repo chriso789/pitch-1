@@ -240,7 +240,21 @@ async function processPaymentEvent(
       },
     );
 
-    if (!paymentResponse.ok) throw new Error("Failed to fetch payment from QBO");
+    const paymentTid = getIntuitTid(paymentResponse);
+    console.log("[qbo-webhook-handler] fetch payment", {
+      status: paymentResponse.status,
+      intuit_tid: paymentTid,
+      realm_id: realmId,
+      tenant_id: tenantId,
+      qbo_payment_id: paymentId,
+    });
+
+    if (!paymentResponse.ok) {
+      const errBody = await paymentResponse.text();
+      throw new Error(
+        `qbo_webhook_handler:fetch_payment failed [status=${paymentResponse.status} intuit_tid=${paymentTid ?? "none"}]: ${errBody.slice(0, 300)}`,
+      );
+    }
 
     const paymentData = await paymentResponse.json();
     const payment = paymentData.Payment;
