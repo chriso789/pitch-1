@@ -367,6 +367,11 @@ export const CLJSearchBar = () => {
                           </div>
                         </div>
                         <div className="flex items-center gap-1 shrink-0 ml-2">
+                          {result.project_type && (
+                            <Badge variant="secondary" className="text-xs bg-purple-100 text-purple-700 border-purple-200">
+                              {formatProjectType(result.project_type)}
+                            </Badge>
+                          )}
                           {result.clj_number && (
                             <Badge variant="secondary" className="text-xs">
                               {result.clj_number}
@@ -378,6 +383,11 @@ export const CLJSearchBar = () => {
                         </div>
                       </CommandItem>
                     );
+                  })}
+                </CommandGroup>
+              )}
+
+              {/* Leads Group */}
                   })}
                 </CommandGroup>
               )}
