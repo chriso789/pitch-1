@@ -39,6 +39,7 @@ interface QueueItem {
 
 const AIFollowupQueuePage = () => {
   const tenantId = useEffectiveTenantId();
+  const { currentLocationId } = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [statusFilter, setStatusFilter] = useState<string>('pending');
@@ -46,7 +47,7 @@ const AIFollowupQueuePage = () => {
 
   // Fetch queue items
   const { data: queueItems, isLoading, refetch } = useQuery({
-    queryKey: ['ai-outreach-queue', tenantId, statusFilter],
+    queryKey: ['ai-outreach-queue', tenantId, currentLocationId, statusFilter],
     queryFn: async () => {
       if (!tenantId) return [];
       
@@ -59,6 +60,10 @@ const AIFollowupQueuePage = () => {
         .eq('tenant_id', tenantId)
         .order('scheduled_for', { ascending: true });
       
+      if (currentLocationId) {
+        query = query.eq('location_id', currentLocationId);
+      }
+
       if (statusFilter !== 'all') {
         query = query.eq('state', statusFilter);
       }
