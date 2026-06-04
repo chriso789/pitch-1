@@ -63,6 +63,7 @@ interface CallRecord {
 
 const CallCenterPage = () => {
   const tenantId = useEffectiveTenantId();
+  const { currentLocationId } = useLocation();
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [expandedCallId, setExpandedCallId] = useState<string | null>(null);
