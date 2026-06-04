@@ -24,7 +24,7 @@ class Settings(BaseModel):
         "LOCAL_ARTIFACT_DIR", "/tmp/pitch-measure/test-artifacts"
     )
     callback_base_url: str = os.getenv("CONTROL_PLANE_CALLBACK_URL", "")
-    worker_version: str = "0.2.1-clip-point-cloud"
+    worker_version: str = "0.3.0-geometry-engine"
 
     @property
     def is_test_mode(self) -> bool:
