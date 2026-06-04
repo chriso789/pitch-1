@@ -37,11 +37,7 @@ import { SystemHealthCheck } from "@/components/settings/SystemHealthCheck";
 import { SettingsTabEditor } from "@/components/settings/SettingsTabEditor";
 import { LeadSources } from "@/features/leads/components/LeadSources";
 import { IntegrationsSettings } from "@/components/settings/IntegrationsSettings";
-import { SRSConnectionSettings } from "@/components/settings/SRSConnectionSettings";
-import { QXOConnectionSettings } from "@/components/settings/QXOConnectionSettings";
-import { ABCConnectionSettings } from "@/components/settings/ABCConnectionSettings";
 import { SupplierIntegrationsPanel } from "@/components/settings/SupplierIntegrationsPanel";
-import { useSupplierDeveloperMode } from "@/lib/supplierAccess";
 import { SecurityAudit } from "@/components/settings/SecurityAudit";
 import { TrustedDevices } from "@/components/settings/TrustedDevices";
 import { CacheManagement } from "@/components/settings/CacheManagement";
@@ -884,86 +880,18 @@ export const Settings = () => {
 /**
  * Supplier Connections section.
  *
- * Default view (every tenant): clean SupplierIntegrationsPanel — Connect /
- * Disconnect / Order History only.
+ * Production view only — Connect / Disconnect / Order History.
  *
- * Advanced (Developer) sub-tab: only visible to master / platform_admin /
- * users with is_developer, OR to the O'Brien sandbox tenant. Holds the
- * full ABC/SRS/QXO consoles with OAuth URLs, raw audit, WAF logs, sandbox
- * tooling — all of which RLS already isolates per tenant.
+ * The developer/sandbox consoles (OAuth URLs, raw audit, WAF diagnostics,
+ * sandbox test login) have been moved out of company profiles entirely and
+ * now live in Platform Admin → Supplier Dev Tools (master-only).
  */
 function SupplierConnectionsSection({
-  supplierSubTab,
-  setSupplierSubTab,
+  supplierSubTab: _supplierSubTab,
+  setSupplierSubTab: _setSupplierSubTab,
 }: {
   supplierSubTab: string;
   setSupplierSubTab: (v: string) => void;
 }) {
-  const { showAdvanced } = useSupplierDeveloperMode();
-  const [view, setView] = useState<"overview" | "advanced">("overview");
-
-  if (!showAdvanced) {
-    return (
-      <SupplierIntegrationsPanel
-        onOpenAdvanced={() => {
-          // Non-developers can't open the advanced console; this is a no-op.
-          // (Future: surface a guided "request access" prompt.)
-        }}
-      />
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      <Tabs value={view} onValueChange={(v) => setView(v as "overview" | "advanced")} className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="overview" className="flex items-center gap-2">
-            <LucideIcons.LayoutGrid className="h-4 w-4" /> Overview
-          </TabsTrigger>
-          <TabsTrigger value="advanced" className="flex items-center gap-2">
-            <LucideIcons.Wrench className="h-4 w-4" /> Advanced (Developer)
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="overview">
-          <SupplierIntegrationsPanel
-            onOpenAdvanced={(supplier) => {
-              setSupplierSubTab(supplier);
-              setView("advanced");
-            }}
-          />
-        </TabsContent>
-
-        <TabsContent value="advanced">
-          <div className="space-y-4">
-            <div>
-              <h2 className="text-2xl font-bold">Supplier Connections — Advanced</h2>
-              <p className="text-muted-foreground text-sm">
-                Developer tooling: OAuth URLs, raw audit, WAF diagnostics, sandbox test login. Visible to developers and the O'Brien sandbox tenant only.
-              </p>
-            </div>
-            <Tabs value={supplierSubTab} onValueChange={setSupplierSubTab} className="space-y-6">
-              <TabsList className="flex-wrap">
-                <TabsTrigger value="srs" className="flex items-center gap-2">
-                  <LucideIcons.Truck className="h-4 w-4" />
-                  SRS Distribution
-                </TabsTrigger>
-                <TabsTrigger value="qxo" className="flex items-center gap-2">
-                  <LucideIcons.Package className="h-4 w-4" />
-                  QXO / Beacon
-                </TabsTrigger>
-                <TabsTrigger value="abc" className="flex items-center gap-2">
-                  <LucideIcons.Building2 className="h-4 w-4" />
-                  ABC Supply
-                </TabsTrigger>
-              </TabsList>
-              <TabsContent value="srs"><SRSConnectionSettings /></TabsContent>
-              <TabsContent value="qxo"><QXOConnectionSettings /></TabsContent>
-              <TabsContent value="abc"><ABCConnectionSettings /></TabsContent>
-            </Tabs>
-          </div>
-        </TabsContent>
-      </Tabs>
-    </div>
-  );
+  return <SupplierIntegrationsPanel />;
 }

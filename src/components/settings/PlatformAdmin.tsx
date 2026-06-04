@@ -36,6 +36,10 @@ import { OnboardingAnalyticsDashboard } from "./OnboardingAnalyticsDashboard";
 import { PlatformCommunications } from "./PlatformCommunications";
 import { EmailDiagnosticsPanel } from "./EmailDiagnosticsPanel";
 import { PlatformOperatorsPanel } from "./PlatformOperatorsPanel";
+import { SRSConnectionSettings } from "./SRSConnectionSettings";
+import { QXOConnectionSettings } from "./QXOConnectionSettings";
+import { ABCConnectionSettings } from "./ABCConnectionSettings";
+import { Wrench, Truck, Package } from "lucide-react";
 
 interface Company {
   id: string;
@@ -299,6 +303,10 @@ export const PlatformAdmin = () => {
             <UserCog className="h-3 w-3" />
             Operators
           </TabsTrigger>
+          <TabsTrigger value="supplier-dev" className="gap-1">
+            <Wrench className="h-3 w-3" />
+            Supplier Dev Tools
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="active" className="mt-4">
@@ -367,6 +375,33 @@ export const PlatformAdmin = () => {
 
         <TabsContent value="operators" className="mt-4">
           <PlatformOperatorsPanel />
+        </TabsContent>
+
+        <TabsContent value="supplier-dev" className="mt-4">
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-lg font-semibold">Supplier Connections — Developer Console</h3>
+              <p className="text-sm text-muted-foreground">
+                OAuth URLs, raw audit, WAF diagnostics, sandbox test logins for SRS, QXO/Beacon, and ABC Supply. Master-only. Production connect/disconnect lives in each company's Settings → Supplier Connections.
+              </p>
+            </div>
+            <Tabs defaultValue="abc" className="space-y-6">
+              <TabsList className="flex-wrap">
+                <TabsTrigger value="srs" className="gap-2">
+                  <Truck className="h-4 w-4" /> SRS Distribution
+                </TabsTrigger>
+                <TabsTrigger value="qxo" className="gap-2">
+                  <Package className="h-4 w-4" /> QXO / Beacon
+                </TabsTrigger>
+                <TabsTrigger value="abc" className="gap-2">
+                  <Building2 className="h-4 w-4" /> ABC Supply
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="srs"><SRSConnectionSettings /></TabsContent>
+              <TabsContent value="qxo"><QXOConnectionSettings /></TabsContent>
+              <TabsContent value="abc"><ABCConnectionSettings /></TabsContent>
+            </Tabs>
+          </div>
         </TabsContent>
       </Tabs>
 
