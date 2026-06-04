@@ -262,7 +262,8 @@ export interface DeterministicBatchKeyInputs {
   pricing_mode: PricingMode;
   catalog_mode: CatalogHandoffMode;
   custom_line_mode: CustomLineMode;
-  source_draft_hash?: string | null;
+  /** Phase 7.5: required. Stale source drafts MUST produce a different batch key. */
+  source_draft_hash: string | null;
 }
 
 export async function createDeterministicBatchKey(
