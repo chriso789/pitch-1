@@ -14,7 +14,7 @@ edge function) and writes artifacts back to Supabase Storage + the
 ```
 Lovable/Supabase (control plane)
         │
-        │  POST /skills/<name>  (with WORKER_API_KEY)
+        │  POST /skills/<name>  (X-Internal-Worker-Api-Key)
         ▼
 Python FastAPI worker (this service)
         │
