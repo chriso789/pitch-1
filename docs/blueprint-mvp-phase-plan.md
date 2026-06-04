@@ -3,11 +3,12 @@
 **Status:** Phase 0 contract doc. No DB, no code, no endpoint behavior changes.
 **Scope:** Locks the phase sequence, the MVP cut, explicit non-goals, acceptance criteria, and current implementation gaps. Companion to `blueprint-trade-catalog.md` and `blueprint-estimate-mapping-contract.md`.
 
-> **Progress (as of Phase 2):**
+> **Progress (as of Phase 3):**
 > - Phase 0 (contract docs): **complete**
 > - Phase 1 (schema draft + shared TS/Python contracts + JSON schemas + examples): **complete** — see `docs/blueprint-importer-phase-1-schema-contracts.md`
 > - Phase 2 (schema promotion + DB verification): **complete** — see `docs/blueprint-importer-phase-2-db-verification.md`
-> - Phase 3 (detection / parsing / acceptance / draft generation / UI): **not started — awaiting approval**
+> - Phase 3 (runtime detection: classify → parse → measurement objects → PlanPaths → review flags → acceptance UI): **complete** — see `docs/blueprint-importer-phase-3-runtime-detection.md`. Material/labor population, template binding, and CRM estimate handoff remain intentionally unwired.
+> - Phase 4 (material/labor draft generation + template binding): **not started — awaiting approval**
 
 ---
 
