@@ -748,7 +748,9 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
             multiple_reps: formData.assignedTo,
             address_verified: true,
             verified_address: leadAddress,
-            roof_age_years: parseInt(formData.roofAge),
+            roof_age_years: formData.roofAge ? parseInt(formData.roofAge) : null,
+            project_type: formData.projectType || null,
+            project_subtype: formData.roofType || null,
             roof_type: formData.roofType
           }
         } as any)
