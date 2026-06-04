@@ -898,7 +898,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
           })()}
 
           {/* Pipeline Details */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
               <Label htmlFor="status">Pipeline Status *</Label>
               <Select value={formData.status} onValueChange={(value) => setFormData(prev => ({ ...prev, status: value }))}>
@@ -915,13 +915,35 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
               </Select>
             </div>
             <div>
-              <Label htmlFor="roofType">Roof Type *</Label>
-              <Select value={formData.roofType} onValueChange={(value) => setFormData(prev => ({ ...prev, roofType: value }))}>
+              <Label htmlFor="projectType">Project Type *</Label>
+              <Select
+                value={formData.projectType}
+                onValueChange={(value) => setFormData(prev => ({ ...prev, projectType: value, roofType: "" }))}
+              >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select roof type" />
+                  <SelectValue placeholder="Select project" />
                 </SelectTrigger>
                 <SelectContent>
-                  {roofTypes.map(type => (
+                  {projectTypes.map(type => (
+                    <SelectItem key={type.value} value={type.value}>
+                      {type.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="roofType">{subtypeLabel} *</Label>
+              <Select
+                value={formData.roofType}
+                onValueChange={(value) => setFormData(prev => ({ ...prev, roofType: value }))}
+                disabled={!formData.projectType}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={formData.projectType ? `Select ${subtypeLabel.toLowerCase()}` : "Choose project first"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {currentSubtypes.map(type => (
                     <SelectItem key={type.value} value={type.value}>
                       {type.label}
                     </SelectItem>
