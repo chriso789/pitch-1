@@ -101,10 +101,13 @@ export async function exchangeAuthorizationCode(
       redirect_uri: c.redirectUri,
     }),
   });
+  const intuit_tid = getIntuitTid(res);
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`QBO token exchange failed [${res.status}]: ${body}`);
+    console.error("[qbo-auth] token exchange failed", { status: res.status, intuit_tid });
+    throw new Error(`QBO token exchange failed [status=${res.status} intuit_tid=${intuit_tid ?? "none"}]: ${body}`);
   }
+  console.log("[qbo-auth] token exchange ok", { intuit_tid });
   return (await res.json()) as QboTokenResponse;
 }
 
