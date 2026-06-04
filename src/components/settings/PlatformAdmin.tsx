@@ -40,7 +40,7 @@ import { SRSConnectionSettings } from "./SRSConnectionSettings";
 import { QXOConnectionSettings } from "./QXOConnectionSettings";
 import { ABCConnectionSettings } from "./ABCConnectionSettings";
 import { Wrench, Truck, Package, AlertTriangle, Activity, Code, Bot, Database, Server } from "lucide-react";
-import EnhancedErrorReportsManager from "./EnhancedErrorReportsManager";
+import EnhancedErrorReportsManager from "@/features/settings/components/EnhancedErrorReportsManager";
 import { SystemHealthCheck } from "./SystemHealthCheck";
 import { DeveloperAccess } from "./DeveloperAccess";
 import { AIAdminChat } from "@/components/ai-admin/AIAdminChat";
