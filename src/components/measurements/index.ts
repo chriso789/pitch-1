@@ -12,3 +12,4 @@ export { ExpertReviewQueue } from './ExpertReviewQueue';
 export { AnnotationPanel } from './AnnotationPanel';
 export { ReviewerDashboard } from './ReviewerDashboard';
 export { StaticMeasurementView } from './StaticMeasurementView';
+export { RoofPerimeterCandidatePanel } from './RoofPerimeterCandidatePanel';
