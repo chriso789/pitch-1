@@ -44,8 +44,9 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
       if (error) throw error;
       return data || [];
     },
-    refetchInterval: (query) => {
-      return blast?.status === 'sending' ? 3000 : false;
+    refetchInterval: () => {
+      // Poll items so replies / STOPs landing via the inbound webhook show up live.
+      return blast?.status === 'sending' ? 3000 : 8000;
     },
   });
 
