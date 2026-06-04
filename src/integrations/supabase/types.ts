@@ -27417,51 +27417,212 @@ export type Database = {
         }
         Relationships: []
       }
-      mskill_artifacts: {
+      mskill_artifact_issues: {
         Row: {
-          artifact_type: string
-          byte_size: number | null
+          artifact_id: string | null
+          blocking: boolean
+          code: string
           created_at: string
           id: string
+          message: string
+          metadata: Json
+          mskill_artifact_id: string | null
+          mskill_job_id: string
+          mskill_request_id: string | null
+          mskill_run_id: string | null
+          object_id: string | null
+          object_type: string | null
+          severity: string
+          source_skill: string | null
+          suggested_fix: string | null
+          tenant_id: string
+        }
+        Insert: {
+          artifact_id?: string | null
+          blocking?: boolean
+          code: string
+          created_at?: string
+          id?: string
+          message: string
+          metadata?: Json
+          mskill_artifact_id?: string | null
+          mskill_job_id: string
+          mskill_request_id?: string | null
+          mskill_run_id?: string | null
+          object_id?: string | null
+          object_type?: string | null
+          severity: string
+          source_skill?: string | null
+          suggested_fix?: string | null
+          tenant_id: string
+        }
+        Update: {
+          artifact_id?: string | null
+          blocking?: boolean
+          code?: string
+          created_at?: string
+          id?: string
+          message?: string
+          metadata?: Json
+          mskill_artifact_id?: string | null
+          mskill_job_id?: string
+          mskill_request_id?: string | null
+          mskill_run_id?: string | null
+          object_id?: string | null
+          object_type?: string | null
+          severity?: string
+          source_skill?: string | null
+          suggested_fix?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mskill_artifact_issues_mskill_artifact_id_fkey"
+            columns: ["mskill_artifact_id"]
+            isOneToOne: false
+            referencedRelation: "mskill_artifacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mskill_artifact_issues_mskill_job_id_fkey"
+            columns: ["mskill_job_id"]
+            isOneToOne: false
+            referencedRelation: "mskill_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mskill_artifact_issues_mskill_request_id_fkey"
+            columns: ["mskill_request_id"]
+            isOneToOne: false
+            referencedRelation: "mskill_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mskill_artifact_issues_mskill_run_id_fkey"
+            columns: ["mskill_run_id"]
+            isOneToOne: false
+            referencedRelation: "mskill_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mskill_artifacts: {
+        Row: {
+          artifact_id: string | null
+          artifact_type: string
+          byte_size: number | null
+          coordinate_frame: Json | null
+          created_at: string
+          data: Json | null
+          display: Json | null
+          envelope: Json | null
+          envelope_version: number | null
+          export_allowed: boolean
+          geometry: Json | null
+          id: string
           is_stale: boolean
+          lineage: Json | null
           metadata: Json | null
           mskill_job_id: string
           mskill_request_id: string
           mskill_run_id: string
+          parent_artifact_ids: string[]
+          producer: Json | null
+          producer_kind: string | null
+          quality: Json | null
+          report_allowed: boolean
           request_hash: string
+          schema_version: string | null
+          source_skill: string | null
           source_url: string | null
+          stage: string | null
+          status: string | null
+          storage_block: Json | null
           storage_path: string | null
           tenant_id: string
+          units: Json | null
+          updated_at: string
+          validation: Json | null
+          validation_confidence: number | null
+          validation_status: string | null
         }
         Insert: {
+          artifact_id?: string | null
           artifact_type: string
           byte_size?: number | null
+          coordinate_frame?: Json | null
           created_at?: string
+          data?: Json | null
+          display?: Json | null
+          envelope?: Json | null
+          envelope_version?: number | null
+          export_allowed?: boolean
+          geometry?: Json | null
           id?: string
           is_stale?: boolean
+          lineage?: Json | null
           metadata?: Json | null
           mskill_job_id: string
           mskill_request_id: string
           mskill_run_id: string
+          parent_artifact_ids?: string[]
+          producer?: Json | null
+          producer_kind?: string | null
+          quality?: Json | null
+          report_allowed?: boolean
           request_hash: string
+          schema_version?: string | null
+          source_skill?: string | null
           source_url?: string | null
+          stage?: string | null
+          status?: string | null
+          storage_block?: Json | null
           storage_path?: string | null
           tenant_id: string
+          units?: Json | null
+          updated_at?: string
+          validation?: Json | null
+          validation_confidence?: number | null
+          validation_status?: string | null
         }
         Update: {
+          artifact_id?: string | null
           artifact_type?: string
           byte_size?: number | null
+          coordinate_frame?: Json | null
           created_at?: string
+          data?: Json | null
+          display?: Json | null
+          envelope?: Json | null
+          envelope_version?: number | null
+          export_allowed?: boolean
+          geometry?: Json | null
           id?: string
           is_stale?: boolean
+          lineage?: Json | null
           metadata?: Json | null
           mskill_job_id?: string
           mskill_request_id?: string
           mskill_run_id?: string
+          parent_artifact_ids?: string[]
+          producer?: Json | null
+          producer_kind?: string | null
+          quality?: Json | null
+          report_allowed?: boolean
           request_hash?: string
+          schema_version?: string | null
+          source_skill?: string | null
           source_url?: string | null
+          stage?: string | null
+          status?: string | null
+          storage_block?: Json | null
           storage_path?: string | null
           tenant_id?: string
+          units?: Json | null
+          updated_at?: string
+          validation?: Json | null
+          validation_confidence?: number | null
+          validation_status?: string | null
         }
         Relationships: [
           {
