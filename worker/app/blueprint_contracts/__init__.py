@@ -33,6 +33,17 @@ from .review_flags import (
     BlueprintReviewFlag,
     create_review_flag,
 )
+# Phase 3 additions — pure contracts, NOT registered in skills_registry.
+from .document_classifier import (
+    DocumentClassification,
+    classify_blueprint_document,
+)
+from .acceptance_gates import (
+    AcceptanceContext,
+    Verdict,
+    evaluate_trade_acceptance,
+)
+
 
 __all__ = [
     "TradeSupportStatus",
@@ -54,4 +65,9 @@ __all__ = [
     "BLOCKING_FLAG_CODES",
     "BlueprintReviewFlag",
     "create_review_flag",
+    "DocumentClassification",
+    "classify_blueprint_document",
+    "AcceptanceContext",
+    "Verdict",
+    "evaluate_trade_acceptance",
 ]
