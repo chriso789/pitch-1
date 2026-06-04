@@ -266,7 +266,7 @@ export const SMSConversationThread = ({
         </div>
       </CardHeader>
 
-      <CardContent className="flex-1 flex flex-col p-0 overflow-hidden">
+      <CardContent className="flex-1 flex flex-col p-0 overflow-hidden min-h-0">
         {/* Failed message alert */}
         <FailedMessageAlert 
           count={messages.filter(m => 
@@ -276,7 +276,7 @@ export const SMSConversationThread = ({
         />
         
         {/* Messages */}
-        <ScrollArea className="flex-1 p-4" ref={scrollRef}>
+        <ScrollArea className="flex-1 min-h-0 p-4" ref={scrollRef}>
           {loading ? (
             <div className="flex items-center justify-center h-full">
               <Loader2 className="h-6 w-6 animate-spin" />
