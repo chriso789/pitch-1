@@ -304,7 +304,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
       if (!activeTenantId) return [];
       const { data, error } = await supabase
         .from('sms_templates')
-        .select('id, template_name, template_body, category, goal')
+        .select('id, template_name, template_body, category, goal, followup_delay_days')
         .eq('tenant_id', activeTenantId)
         .eq('active', true)
         .order('template_name');
@@ -340,6 +340,44 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [dedupedTemplates, goal]
   );
+
+  const FOLLOWUP_CATEGORIES = useMemo(
+    () => new Set(['storm_followup', 'grant_followup', 'reactivation', 'followup']),
+    []
+  );
+  const DELAY_OPTIONS = [1, 2, 3, 5, 7, 10, 14, 21, 30];
+
+  const isFollowupTemplate = (t: any) =>
+    FOLLOWUP_CATEGORIES.has(String(t.category || '').toLowerCase()) ||
+    (typeof t.followup_delay_days === 'number' && t.followup_delay_days > 0);
+
+  const { initialTemplates, followupTemplates } = useMemo(() => {
+    const initial: any[] = [];
+    const followup: any[] = [];
+    for (const t of visibleTemplates) {
+      (isFollowupTemplate(t) ? followup : initial).push(t);
+    }
+    followup.sort((a, b) => (a.followup_delay_days ?? 2) - (b.followup_delay_days ?? 2));
+    return { initialTemplates: initial, followupTemplates: followup };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleTemplates]);
+
+  const formatDelayLabel = (d: number) =>
+    d === 0 ? 'Same day' : d === 1 ? '1 day later' : `${d} days later`;
+
+  const updateTemplateDelay = async (templateId: string, days: number) => {
+    if (!activeTenantId) return;
+    const { error } = await supabase
+      .from('sms_templates')
+      .update({ followup_delay_days: days })
+      .eq('id', templateId)
+      .eq('tenant_id', activeTenantId);
+    if (error) {
+      toast({ title: 'Could not update schedule', description: error.message, variant: 'destructive' });
+      return;
+    }
+    queryClient.invalidateQueries({ queryKey: ['sms-templates', activeTenantId] });
+  };
 
   // When Campaign Goal changes: clear selection, auto-pick top templates, reset preview.
   useEffect(() => {
