@@ -694,6 +694,24 @@ function Phase6Panel({ sessionId, summary }: { sessionId: string; summary: Sessi
             <div className="text-xs text-muted-foreground">
               Mode: catalog=<code>{preview.batch.catalog_mode}</code>, pricing=<code>{preview.batch.pricing_mode}</code>, custom_line=<code>{preview.batch.custom_line_mode}</code>
             </div>
+            {resolverSummary && (
+              <div className="rounded border bg-background p-2 text-xs space-y-1">
+                <div className="font-semibold uppercase text-muted-foreground">Phase 7.6b resolver summary</div>
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant="default">resolved {resolverSummary.resolved}</Badge>
+                  <Badge variant="secondary">ambiguous {resolverSummary.ambiguous}</Badge>
+                  <Badge variant="secondary">missing {resolverSummary.missing}</Badge>
+                  <Badge variant="destructive">blocked {resolverSummary.blocked}</Badge>
+                </div>
+                {Object.keys(resolverSummary.blocker_counts).length > 0 && (
+                  <div className="text-destructive">Blockers: {Object.entries(resolverSummary.blocker_counts).map(([k, v]) => `${k}×${v}`).join(", ")}</div>
+                )}
+                {Object.keys(resolverSummary.warning_counts).length > 0 && (
+                  <div className="text-amber-600">Warnings: {Object.entries(resolverSummary.warning_counts).map(([k, v]) => `${k}×${v}`).join(", ")}</div>
+                )}
+                <div className="text-[10px] text-muted-foreground italic">{resolverSummary.push_to_estimate_disabled_reason}</div>
+              </div>
+            )}
             <CandidateTable candidates={preview.candidates} onReview={reviewCandidate} />
           </CardContent>
         </Card>
