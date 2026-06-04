@@ -1,0 +1,24 @@
+{
+  "_note": "Phase 7.5 contract example. Runtime resolver is NOT implemented.",
+  "resolver_version": "v0.0-contract",
+  "resolver_mode": "deterministic_catalog_only",
+  "tenant_id": "00000000-0000-0000-0000-0000000000aa",
+  "source_candidate_id": "00000000-0000-0000-0000-000000005101",
+  "trade_id": "roofing",
+  "item_key": "shingles_architectural_30yr",
+  "normalized_item_name": "architectural shingles 30yr",
+  "candidate_type": "material",
+  "match_status": "resolved",
+  "matched_catalog_table": "product_catalog",
+  "matched_catalog_item_id": "00000000-0000-0000-0000-000000007101",
+  "labor_rate_id": null,
+  "match_rule_id": "00000000-0000-0000-0000-000000007901",
+  "match_confidence": 0.97,
+  "blockers": [],
+  "warnings": [],
+  "provenance": {
+    "attempted_sources": ["product_catalog"],
+    "rejected_matches": [],
+    "resolved_at": "2026-06-04T16:00:00.000Z"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "_note": "Phase 7.5 verification result. estimate_line_items NOT NULL pricing columns make quantity-only live writes unsafe.",
+  "pricing_mode": "quantity_only",
+  "safety_status": "blocked_quantity_only_unsafe",
+  "blockers": ["PRICING_REQUIRED_BUT_UNAVAILABLE","QUANTITY_ONLY_LIVE_LINES_UNSAFE"],
+  "warnings": [],
+  "evidence": {
+    "estimate_line_items_unit_cost_nullable": false,
+    "estimate_line_items_total_price_nullable": false,
+    "enhanced_estimates_totals_tolerate_null": false,
+    "proposal_tier_items_require_price": true,
+    "notes": "unit_cost, extended_cost, total_price are NOT NULL DEFAULT 0. Inserting quantity-only lines would silently zero totals."
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pitch-crm.ai/schemas/blueprint-importer/blueprint-catalog-resolver-output.schema.json",
+  "title": "BlueprintCatalogResolverOutput",
+  "description": "Phase 7.5 contract — shape only. Runtime resolver is NOT implemented.",
+  "type": "object",
+  "required": [
+    "resolver_version","resolver_mode","tenant_id","source_candidate_id",
+    "trade_id","item_key","candidate_type","match_status","match_confidence",
+    "blockers","warnings","provenance"
+  ],
+  "properties": {
+    "resolver_version": { "type": "string", "minLength": 1 },
+    "resolver_mode": {
+      "type": "string",
+      "enum": ["deterministic_catalog_only","deterministic_with_user_confirmation"]
+    },
+    "tenant_id": { "type": "string", "format": "uuid" },
+    "source_candidate_id": { "type": "string", "format": "uuid" },
+    "trade_id": { "type": "string" },
+    "item_key": { "type": "string" },
+    "normalized_item_name": { "type": ["string","null"] },
+    "candidate_type": { "type": "string", "enum": ["material","labor"] },
+    "match_status": {
+      "type": "string",
+      "enum": ["resolved","unresolved","ambiguous","inactive_item","missing_labor_rate","blocked"]
+    },
+    "matched_catalog_table": {
+      "type": ["string","null"],
+      "enum": ["product_catalog","supplier_catalog_items","abc_catalog_items","labor_rates", null]
+    },
+    "matched_catalog_item_id": { "type": ["string","null"], "format": "uuid" },
+    "labor_rate_id": { "type": ["string","null"], "format": "uuid" },
+    "match_rule_id": { "type": ["string","null"], "format": "uuid" },
+    "match_confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "blockers": { "type": "array", "items": { "type": "string" } },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "provenance": {
+      "type": "object",
+      "properties": {
+        "attempted_sources": { "type": "array", "items": { "type": "string" } },
+        "rejected_matches": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id","reason","confidence"],
+            "properties": {
+              "id": { "type": "string" },
+              "reason": { "type": "string" },
+              "confidence": { "type": "number" }
+            }
+          }
+        },
+        "resolved_at": { "type": ["string","null"], "format": "date-time" }
+      }
+    }
+  },
+  "additionalProperties": false
+}

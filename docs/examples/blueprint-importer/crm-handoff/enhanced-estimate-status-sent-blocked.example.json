@@ -1,0 +1,12 @@
+{
+  "_note": "Phase 7.5 contract example. Target enhanced_estimates.status='sent' blocks live write.",
+  "target": {
+    "table": "enhanced_estimates",
+    "id": "00000000-0000-0000-0000-0000000070aa",
+    "status": "sent"
+  },
+  "decision": {
+    "can_live_write": false,
+    "blocker": "TARGET_ESTIMATE_SENT"
+  }
+}

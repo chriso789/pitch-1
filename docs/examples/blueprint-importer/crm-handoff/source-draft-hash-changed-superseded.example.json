@@ -1,0 +1,16 @@
+{
+  "_note": "Phase 7.5 contract example. source_draft_hash changed between preview and approval; batch must be superseded.",
+  "preview_batch": {
+    "handoff_batch_id": "00000000-0000-0000-0000-000000005001",
+    "deterministic_batch_key": "sha256:OLDKEYOLDKEYOLDKEYOLDKEY",
+    "source_draft_hash": "sha256:OLD-DRAFT-HASH"
+  },
+  "current_session": {
+    "import_session_id": "00000000-0000-0000-0000-000000000001",
+    "source_draft_hash": "sha256:NEW-DRAFT-HASH"
+  },
+  "decision": {
+    "preview_status": "superseded",
+    "blocker": "APPROVAL_SOURCE_DRAFT_STALE"
+  }
+}

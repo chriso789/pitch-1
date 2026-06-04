@@ -1,0 +1,25 @@
+{
+  "_note": "Phase 7.5 contract example only. Not live generated. Not pushed to estimate.",
+  "contract_version": "phase7.5.v1",
+  "approval_statement_version": "v1.0",
+  "approved_by": "00000000-0000-0000-0000-0000000000bb",
+  "approved_at": "2026-06-04T16:00:00.000Z",
+  "import_session_id": "00000000-0000-0000-0000-000000000001",
+  "handoff_batch_id": "00000000-0000-0000-0000-000000005001",
+  "target_enhanced_estimate_id": "00000000-0000-0000-0000-0000000070aa",
+  "included_candidate_ids": [
+    "00000000-0000-0000-0000-000000005101",
+    "00000000-0000-0000-0000-000000005102"
+  ],
+  "excluded_candidate_ids": [],
+  "acknowledged_warning_ids": ["ROOF_WASTE_EXCLUDES_RIDGE_HIP_VALLEY_STARTER"],
+  "resolved_blocker_ids": [],
+  "catalog_mode": "catalog_resolved_only",
+  "pricing_mode": "ready_for_pricing_review",
+  "custom_line_mode": "disabled",
+  "source_draft_hash": "sha256:abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234",
+  "approval_status": "approval_ready",
+  "approval_blockers": [],
+  "approval_warnings": ["APPROVAL_WARNINGS_ACKNOWLEDGED"],
+  "deterministic_approval_hash": "to-be-computed-by-validateApprovalHash"
+}

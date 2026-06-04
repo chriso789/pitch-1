@@ -1,0 +1,27 @@
+{
+  "_note": "Phase 7.5 contract example. Two product_catalog matches tied within 0.02; user must disambiguate.",
+  "resolver_version": "v0.0-contract",
+  "resolver_mode": "deterministic_with_user_confirmation",
+  "tenant_id": "00000000-0000-0000-0000-0000000000aa",
+  "source_candidate_id": "00000000-0000-0000-0000-000000005102",
+  "trade_id": "siding",
+  "item_key": "vinyl_siding_dutchlap_4in",
+  "normalized_item_name": "vinyl siding dutchlap 4in",
+  "candidate_type": "material",
+  "match_status": "ambiguous",
+  "matched_catalog_table": "product_catalog",
+  "matched_catalog_item_id": null,
+  "labor_rate_id": null,
+  "match_rule_id": null,
+  "match_confidence": 0.84,
+  "blockers": ["CATALOG_MATCH_AMBIGUOUS"],
+  "warnings": [],
+  "provenance": {
+    "attempted_sources": ["product_catalog","supplier_catalog_items"],
+    "rejected_matches": [
+      { "id": "00000000-0000-0000-0000-000000007201", "reason": "tied_within_0.02", "confidence": 0.85 },
+      { "id": "00000000-0000-0000-0000-000000007202", "reason": "tied_within_0.02", "confidence": 0.84 }
+    ],
+    "resolved_at": "2026-06-04T16:00:00.000Z"
+  }
+}
