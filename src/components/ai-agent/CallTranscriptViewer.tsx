@@ -71,12 +71,13 @@ export function CallTranscriptViewer() {
   });
 
   const { data: lines = [], isLoading: loadingLines } = useQuery({
-    queryKey: ['call-transcript-lines', selectedCall?.telnyx_call_control_id],
-    enabled: !!selectedCall?.telnyx_call_control_id,
+    queryKey: ['call-transcript-lines', profile?.tenant_id, selectedCall?.telnyx_call_control_id],
+    enabled: !!profile?.tenant_id && !!selectedCall?.telnyx_call_control_id,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('call_transcripts')
         .select('*')
+        .eq('tenant_id', profile!.tenant_id!)
         .eq('call_id', selectedCall!.telnyx_call_control_id!)
         .eq('is_partial', false)
         .order('created_at', { ascending: true });
