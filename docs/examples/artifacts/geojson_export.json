@@ -1,0 +1,139 @@
+{
+  "schema_version": "1.0.0",
+  "envelope_version": 1,
+  "artifact_id": "c8bdd16c-6502-425a-be7a-62028dd35e6d",
+  "job_id": "00000000-0000-4000-8000-000000000001",
+  "parent_artifact_ids": [
+    "2ab6f71d-e129-405e-a33d-9ab9627ad826",
+    "d3007ffc-4cf0-4088-a252-38027799ccc7",
+    "55e8e388-fdf7-4404-a37a-753880d95e5a",
+    "1f1499f7-c6f1-48b6-bfda-348dfda54d09",
+    "ba899b0f-f89c-47be-a6ea-aa49fb52a0b3",
+    "151ac6fc-91bf-417f-981e-cbeb8ecd8eda"
+  ],
+  "artifact_type": "geojson_export",
+  "stage": "export_geojson",
+  "source_skill": "export_geojson",
+  "producer": {
+    "kind": "control_plane",
+    "name": "export_geojson",
+    "version": "0.1.0"
+  },
+  "status": "exportable",
+  "created_at": "2026-06-04T00:00:00Z",
+  "coordinate_frame": {
+    "frame_id": "export_wgs84",
+    "frame_type": "export_geojson",
+    "crs": "EPSG:4326",
+    "origin": null,
+    "axis_orientation": "ENU",
+    "units": "deg",
+    "has_z": true,
+    "z_convention": "ellipsoidal_m",
+    "transform_to_source": null,
+    "transform_to_local": null,
+    "transform_to_raster": null,
+    "transform_to_export": null,
+    "precision": {
+      "xy_m": 0.05,
+      "z_m": 0.1
+    },
+    "status": "complete"
+  },
+  "units": {
+    "horizontal_distance": "m",
+    "vertical_distance": "m",
+    "area": "m^2",
+    "slope": "deg",
+    "pitch": "rise_per_12",
+    "angle": "deg",
+    "raster_resolution": "m_per_px",
+    "confidence": "ratio_0_1",
+    "quality_score": "ratio_0_1"
+  },
+  "geometry": {
+    "geometry_type": "export_document",
+    "coordinate_frame": "export_wgs84",
+    "dimensions": null,
+    "bbox": [
+      -80.5101,
+      30.0021,
+      -80.5099,
+      30.0023
+    ],
+    "value": null,
+    "storage_ref": null,
+    "precision": null,
+    "no_data_policy": null
+  },
+  "data": {
+    "document_uri": "supabase://measurement-artifacts/00000000-0000-4000-8000-000000000001/exports/measurement.geojson",
+    "feature_counts_by_type": {
+      "roof_perimeter": 1,
+      "roof_plane": 2,
+      "ridge_segment": 1,
+      "hip_segment": 1,
+      "eave_segment": 1,
+      "rake_segment": 1
+    }
+  },
+  "quality": {
+    "overall_score": 0.0,
+    "confidence": 0.0,
+    "component_scores": {},
+    "completeness": 0.0,
+    "coordinate_integrity": 0.0,
+    "geometry_validity": 0.0,
+    "plane_fit_quality": 0.0,
+    "segment_consistency": 0.0,
+    "warnings_count": 0,
+    "blockers_count": 0
+  },
+  "validation": {
+    "validation_status": "passed",
+    "validated_at": "2026-06-04T00:00:00Z",
+    "validator_version": "0.0.0-not-hardened",
+    "errors": [],
+    "warnings": [],
+    "blockers": [],
+    "export_allowed": true,
+    "report_allowed": false
+  },
+  "lineage": {
+    "input_artifact_ids": [
+      "2ab6f71d-e129-405e-a33d-9ab9627ad826",
+      "d3007ffc-4cf0-4088-a252-38027799ccc7",
+      "55e8e388-fdf7-4404-a37a-753880d95e5a",
+      "1f1499f7-c6f1-48b6-bfda-348dfda54d09",
+      "ba899b0f-f89c-47be-a6ea-aa49fb52a0b3",
+      "151ac6fc-91bf-417f-981e-cbeb8ecd8eda"
+    ],
+    "source_files": [],
+    "source_job_id": "00000000-0000-4000-8000-000000000001",
+    "parameters": {},
+    "skill_version": "0.1.0",
+    "code_version": "git:abc1234",
+    "runtime": {
+      "language": "typescript",
+      "version": "deno-1.44"
+    },
+    "created_by": "control_plane",
+    "dependencies": []
+  },
+  "warnings": [],
+  "errors": [],
+  "storage": {
+    "storage_type": "supabase_storage",
+    "uri": "supabase://measurement-artifacts/00000000-0000-4000-8000-000000000001/exports/measurement.geojson",
+    "bucket": "measurement-artifacts",
+    "path": "00000000-0000-4000-8000-000000000001/exports/measurement.geojson",
+    "mime_type": "application/geo+json",
+    "checksum": {
+      "algo": "sha256",
+      "value": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+    },
+    "byte_size": 24123,
+    "compression": "none",
+    "encoding": "binary"
+  }
+}

@@ -1,0 +1,141 @@
+{
+  "schema_version": "1.0.0",
+  "envelope_version": 1,
+  "artifact_id": "e22ae73b-a634-4ed0-aeb1-756f7d0bb931",
+  "job_id": "00000000-0000-4000-8000-000000000001",
+  "parent_artifact_ids": [],
+  "artifact_type": "dtm",
+  "stage": "generate_dtm",
+  "source_skill": "generate_dtm",
+  "producer": {
+    "kind": "worker",
+    "name": "generate_dtm",
+    "version": "0.1.0"
+  },
+  "status": "complete",
+  "created_at": "2026-06-04T00:00:00Z",
+  "coordinate_frame": {
+    "frame_id": "raster_grid_dsm",
+    "frame_type": "raster_grid",
+    "crs": "EPSG:32617",
+    "origin": null,
+    "axis_orientation": "ENU",
+    "units": "m",
+    "has_z": true,
+    "z_convention": "orthometric_m",
+    "transform_to_source": null,
+    "transform_to_local": null,
+    "transform_to_raster": null,
+    "transform_to_export": null,
+    "precision": {
+      "xy_m": 0.05,
+      "z_m": 0.1
+    },
+    "status": "complete"
+  },
+  "units": {
+    "horizontal_distance": "m",
+    "vertical_distance": "m",
+    "area": "m^2",
+    "slope": "deg",
+    "pitch": "rise_per_12",
+    "angle": "deg",
+    "raster_resolution": "m_per_px",
+    "confidence": "ratio_0_1",
+    "quality_score": "ratio_0_1"
+  },
+  "geometry": {
+    "geometry_type": "raster",
+    "coordinate_frame": "raster_grid_dsm",
+    "dimensions": {
+      "width_px": 2048,
+      "height_px": 2048
+    },
+    "bbox": [
+      635100.0,
+      3324500.0,
+      635202.4,
+      3324602.4
+    ],
+    "value": null,
+    "storage_ref": null,
+    "precision": {
+      "xy_m": 0.05
+    },
+    "no_data_policy": {
+      "sentinel": -9999,
+      "mask_band": null
+    }
+  },
+  "data": {
+    "raster_uri": "supabase://measurement-artifacts/00000000-0000-4000-8000-000000000001/dtm/dtm.tif",
+    "width_px": 2048,
+    "height_px": 2048,
+    "resolution_m_per_px": 0.05,
+    "bounds": [
+      635100.0,
+      3324500.0,
+      635202.4,
+      3324602.4
+    ],
+    "no_data": -9999,
+    "band_stats": {
+      "min_m": 101.92,
+      "p50_m": 103.1,
+      "p95_m": 104.21,
+      "max_m": 105.04
+    }
+  },
+  "quality": {
+    "overall_score": 0.0,
+    "confidence": 0.0,
+    "component_scores": {},
+    "completeness": 0.0,
+    "coordinate_integrity": 0.0,
+    "geometry_validity": 0.0,
+    "plane_fit_quality": 0.0,
+    "segment_consistency": 0.0,
+    "warnings_count": 0,
+    "blockers_count": 0
+  },
+  "validation": {
+    "validation_status": "pending",
+    "validated_at": null,
+    "validator_version": null,
+    "errors": [],
+    "warnings": [],
+    "blockers": [],
+    "export_allowed": false,
+    "report_allowed": false
+  },
+  "lineage": {
+    "input_artifact_ids": [],
+    "source_files": [],
+    "source_job_id": "00000000-0000-4000-8000-000000000001",
+    "parameters": {},
+    "skill_version": "0.1.0",
+    "code_version": "git:abc1234",
+    "runtime": {
+      "language": "python",
+      "version": "3.11"
+    },
+    "created_by": "worker",
+    "dependencies": []
+  },
+  "warnings": [],
+  "errors": [],
+  "storage": {
+    "storage_type": "supabase_storage",
+    "uri": "supabase://measurement-artifacts/00000000-0000-4000-8000-000000000001/dtm/dtm.tif",
+    "bucket": "measurement-artifacts",
+    "path": "00000000-0000-4000-8000-000000000001/dtm/dtm.tif",
+    "mime_type": "image/tiff",
+    "checksum": {
+      "algo": "sha256",
+      "value": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+    },
+    "byte_size": 4194304,
+    "compression": "none",
+    "encoding": "binary"
+  }
+}
