@@ -267,6 +267,104 @@ function testDownstreamBlocked(): TestResult {
 }
 
 // ---------------------------------------------------------------------------
+// Real-clip fixture tests — call the worker's /test/clip-point-cloud-fixture
+// endpoint. This proves end-to-end PDAL + storage fallback works without
+// needing a live roof_surface_asset.
+// ---------------------------------------------------------------------------
+
+async function callFixture(mode: "real" | "sparse"): Promise<{ res: Response; body: any }> {
+  const res = await workerFetch("/test/clip-point-cloud-fixture", {
+    method: "POST",
+    body: JSON.stringify({ mode }),
+  });
+  const body = await res.json().catch(() => ({}));
+  return { res, body };
+}
+
+async function testRealClipFixture(): Promise<TestResult> {
+  try {
+    const { res, body } = await callFixture("real");
+    if (res.status === 403) {
+      return {
+        id: "real_clip", name: "Real clip fixture (test endpoint)",
+        pass: false, skipped: true,
+        detail: "Worker in production mode — fixture endpoint disabled. Run from job pipeline with a live roof_surface_asset.",
+      };
+    }
+    if (res.status === 404) {
+      return {
+        id: "real_clip", name: "Real clip fixture (test endpoint)",
+        pass: false, skipped: true,
+        detail: "Worker missing /test/clip-point-cloud-fixture — redeploy worker with v0.2.1+.",
+      };
+    }
+    if (!res.ok) {
+      return { id: "real_clip", name: "Real clip fixture", pass: false, detail: `HTTP ${res.status}`, data: body };
+    }
+    const status = String(body?.status ?? "");
+    const arts = Array.isArray(body?.artifacts) ? body.artifacts : [];
+    const art = arts[0];
+    const payload = body?.output_payload ?? {};
+    const pc = Number(payload?.point_count ?? 0);
+    const b = payload?.bounds;
+    const fx = payload?._fixture;
+    const aoi = fx?.aoi_bounds as number[] | undefined;
+    let boundsInsideAoi = false;
+    if (b && aoi && aoi.length === 4) {
+      const slack = 0.5;
+      boundsInsideAoi =
+        b.minx >= aoi[0] - slack && b.maxx <= aoi[2] + slack &&
+        b.miny >= aoi[1] - slack && b.maxy <= aoi[3] + slack;
+    }
+    const artifactOk = !!art && typeof art.storage_path === "string" && art.storage_path.length > 0;
+    const pass = status === "completed" && pc > 0 && boundsInsideAoi && artifactOk;
+    return {
+      id: "real_clip",
+      name: "Real clip fixture (status=completed + artifact + bounds⊂AOI)",
+      pass,
+      detail: pass
+        ? `points=${pc} storage=${art.storage_path}`
+        : `status=${status} pc=${pc} boundsInsideAoi=${boundsInsideAoi} artifact=${artifactOk}`,
+      data: { status, point_count: pc, bounds: b, artifact: art, qa_flags: body?.qa_flags },
+    };
+  } catch (e) {
+    return { id: "real_clip", name: "Real clip fixture", pass: false, detail: String((e as Error).message) };
+  }
+}
+
+async function testSparseAoiFixture(): Promise<TestResult> {
+  try {
+    const { res, body } = await callFixture("sparse");
+    if (res.status === 403 || res.status === 404) {
+      return {
+        id: "sparse", name: "Sparse AOI fixture", pass: false, skipped: true,
+        detail: res.status === 403 ? "Worker in production mode — fixture endpoint disabled." : "Worker missing fixture endpoint.",
+      };
+    }
+    if (!res.ok) {
+      return { id: "sparse", name: "Sparse AOI fixture", pass: false, detail: `HTTP ${res.status}`, data: body };
+    }
+    const status = String(body?.status ?? "");
+    const qa: string[] = Array.isArray(body?.qa_flags) ? body.qa_flags : [];
+    const arts = Array.isArray(body?.artifacts) ? body.artifacts : [];
+    const badSignals = ["empty_pipeline_result", "low_point_count", "bounds_outside_aoi", "no_points", "sparse_output", "pipeline_error"];
+    const hasBadSignal = qa.some((f) => badSignals.includes(f));
+    const notCompleted = status !== "completed";
+    const noPromotedArtifact = status === "failed" ? arts.length === 0 : true;
+    const pass = notCompleted && hasBadSignal && noPromotedArtifact;
+    return {
+      id: "sparse",
+      name: "Sparse AOI fixture (status≠completed, qa flagged, no promoted artifact)",
+      pass,
+      detail: `status=${status} qa=${qa.join(",")} artifacts=${arts.length}`,
+      data: body,
+    };
+  } catch (e) {
+    return { id: "sparse", name: "Sparse AOI fixture", pass: false, detail: String((e as Error).message) };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Public routes — master/admin only via requireAuth + role check
 // ---------------------------------------------------------------------------
 
@@ -339,19 +437,10 @@ app.post("/run", async (c) => {
   results.push(await testCallbackHardening(svc));
   results.push(await testHashMismatch(svc));
 
-  // Real-clipping success path + sparse path require a live mskill_request +
-  // roof_surface_asset with a real LAZ. Surface that as `skipped: true` until
-  // wired into the pipeline page.
-  results.push({
-    id: "real_clip", name: "Real clipping success path",
-    pass: false, skipped: true,
-    detail: "Run from job pipeline page — needs measurement_job_id + roof_surface_asset_id",
-  });
-  results.push({
-    id: "sparse", name: "Sparse / empty AOI path",
-    pass: false, skipped: true,
-    detail: "Run from job pipeline page with a tiny AOI",
-  });
+  // Real-clip + sparse-AOI tests via the worker's /test/clip-point-cloud-fixture
+  // endpoint (enabled only when WORKER_MODE != production).
+  results.push(await testRealClipFixture());
+  results.push(await testSparseAoiFixture());
 
   const passed = results.filter((r) => r.pass).length;
   const failed = results.filter((r) => !r.pass && !r.skipped).length;

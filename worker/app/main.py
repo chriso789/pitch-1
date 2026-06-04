@@ -17,12 +17,17 @@ from .schemas import (
 )
 from .skills_registry import SKILLS
 from .skills.clip_point_cloud import run_clip_point_cloud
+from .test_routes import router as test_router
 
 app = FastAPI(
     title="PITCH Measure Worker",
     version=get_settings().worker_version,
     description="Internal Python compute service for PITCH Measure skills.",
 )
+
+# Test-only routes — every route inside guards against worker_mode=production.
+if get_settings().is_non_prod:
+    app.include_router(test_router)
 
 
 @app.get("/health")

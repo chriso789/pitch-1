@@ -110,15 +110,39 @@ def _build_pipeline(
 
 
 def _upload_to_storage(local_path: str, storage_path: str) -> dict[str, Any]:
-    """Upload clipped LAZ to Supabase Storage. Returns metadata or raises."""
+    """Upload clipped LAZ to Supabase Storage, or in test/dev mode without
+    Supabase credentials, copy to the local artifact dir. Returns metadata.
+
+    Production behavior (worker_mode=production) ALWAYS uploads to Supabase;
+    missing credentials raise. Only test/development mode permits the local
+    fallback, and the returned storage_path is prefixed `test-artifacts/...`
+    so the control plane can distinguish a fixture artifact from a real one.
+    """
     settings = get_settings()
-    if not settings.supabase_url or not settings.supabase_service_role_key:
-        raise RuntimeError("SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY not configured — cannot upload artifact")
+    have_supabase = bool(settings.supabase_url and settings.supabase_service_role_key)
+
+    if not have_supabase:
+        if settings.worker_mode.lower() == "production":
+            raise RuntimeError(
+                "SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY not configured — "
+                "production worker cannot upload artifact"
+            )
+        import shutil
+        local_path_out = os.path.join(settings.local_artifact_dir, storage_path)
+        os.makedirs(os.path.dirname(local_path_out), exist_ok=True)
+        shutil.copyfile(local_path, local_path_out)
+        size = os.path.getsize(local_path_out)
+        return {
+            "bucket": "local-test-fallback",
+            "storage_path": f"test-artifacts/{storage_path}",
+            "local_path": local_path_out,
+            "byte_size": size,
+        }
+
     from supabase import create_client  # type: ignore
     client = create_client(settings.supabase_url, settings.supabase_service_role_key)
     with open(local_path, "rb") as f:
         data = f.read()
-    # upsert via service role; bucket must exist.
     client.storage.from_(settings.supabase_storage_bucket).upload(
         path=storage_path,
         file=data,
