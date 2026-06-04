@@ -133,6 +133,19 @@ Deno.serve(async (req) => {
         qbo_customer_id: qboCustomerId,
         tenant_id,
       });
+      void writeQboApiLog(supabase, {
+        action: 'qbo_customer_sync',
+        tenant_id,
+        connection_id: connection.id,
+        realm_id: connection.realm_id,
+        oauth_app_env: connection.oauth_app_env,
+        endpoint: `/v3/company/${connection.realm_id}/customer/${qboCustomerId}`,
+        method: 'GET',
+        http_status: fetchResponse.status,
+        intuit_tid: fetchTid,
+        success: fetchResponse.ok,
+        request_metadata: { op: 'fetch_existing', qbo_entity: 'Customer', qbo_entity_id: qboCustomerId },
+      });
 
       if (!fetchResponse.ok) {
         const errBody = await fetchResponse.text();
