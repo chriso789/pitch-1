@@ -46,7 +46,16 @@ interface SearchResult {
   clj_number: string;
   entity_status: string;
   match_score: number;
+  project_type?: string | null;
 }
+
+const formatProjectType = (raw?: string | null): string => {
+  if (!raw) return '';
+  return raw
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .trim();
+};
 
 const MAX_RECENTS = 5;
 // Scope recents to BOTH tenant and active location so switching locations
