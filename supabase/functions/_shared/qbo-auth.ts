@@ -135,14 +135,19 @@ export async function refreshAccessToken(
       refresh_token: refreshToken,
     }),
   });
+  const intuit_tid = getIntuitTid(res);
   if (!res.ok) {
     const body = await res.text();
+    console.error("[qbo-auth] token refresh failed", { status: res.status, intuit_tid });
     // invalid_grant => refresh token revoked/expired by Intuit; surface as reauth.
     if (res.status === 400 && /invalid_grant/i.test(body)) {
-      throw new QboReauthRequiredError(`QBO refresh rejected (invalid_grant): ${body}`);
+      throw new QboReauthRequiredError(
+        `QBO refresh rejected (invalid_grant) [intuit_tid=${intuit_tid ?? "none"}]: ${body}`,
+      );
     }
-    throw new Error(`QBO token refresh failed [${res.status}]: ${body}`);
+    throw new Error(`QBO token refresh failed [status=${res.status} intuit_tid=${intuit_tid ?? "none"}]: ${body}`);
   }
+  console.log("[qbo-auth] token refresh ok", { intuit_tid });
   return (await res.json()) as QboTokenResponse;
 }
 
