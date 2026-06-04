@@ -97,10 +97,14 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
 
     const lat = verifiedAddress.lat ?? verifiedAddress.geometry?.location?.lat ?? contact.latitude;
     const lng = verifiedAddress.lng ?? verifiedAddress.geometry?.location?.lng ?? contact.longitude;
+    const streetMatch = street.match(/^(\d+[\w-]*)\s+(.+)$/);
+    const streetNumber = streetMatch?.[1] || '';
+    const route = streetMatch?.[2] || street;
     const addressComponents = Array.isArray(verifiedAddress.address_components)
       ? verifiedAddress.address_components
       : [
-          street ? { long_name: street, short_name: street, types: ['route'] } : null,
+          streetNumber ? { long_name: streetNumber, short_name: streetNumber, types: ['street_number'] } : null,
+          route ? { long_name: route, short_name: route, types: ['route'] } : null,
           contact.address_city ? { long_name: contact.address_city, short_name: contact.address_city, types: ['locality'] } : null,
           contact.address_state ? { long_name: contact.address_state, short_name: contact.address_state, types: ['administrative_area_level_1'] } : null,
           contact.address_zip ? { long_name: contact.address_zip, short_name: contact.address_zip, types: ['postal_code'] } : null,
@@ -177,23 +181,28 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
         notes: "",
       };
       
-      // If contact is provided, pre-fill name/phone only — leave address blank
-      // so the user verifies a fresh address via Google autocomplete.
+      let initialSelectedAddress: AddressSuggestion | null = null;
+
+      // If contact is provided, pre-fill the saved contact address when available.
       if (contact) {
+        initialSelectedAddress = buildContactAddressSuggestion();
         initialFormData = {
           ...initialFormData,
           name: `${contact.first_name || ''} ${contact.last_name || ''}`.trim(),
           phone: contact.phone || "",
-          address: "",
-          useSameInfo: false,
+          address: initialSelectedAddress?.formatted_address || "",
+          useSameInfo: !!initialSelectedAddress,
           assignedTo: contact.assigned_to ? [contact.assigned_to] : []
         };
       }
 
       setFormData(initialFormData);
+      setSelectedAddress(initialSelectedAddress);
+      setAddressSuggestions([]);
+      setShowAddressPicker(false);
       initializeForm(initialFormData);
     }
-  }, [open, initializeForm, contact]);
+  }, [open, initializeForm, contact, buildContactAddressSuggestion]);
 
   // Check for changes when form data updates
   useEffect(() => {
@@ -383,6 +392,11 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
     }));
   };
 
+  const effectiveSelectedAddress = React.useMemo(
+    () => selectedAddress || (formData.useSameInfo ? buildContactAddressSuggestion() : null),
+    [selectedAddress, formData.useSameInfo, buildContactAddressSuggestion]
+  );
+
   // Enhanced validation with illumination logic - must match validateForm requirements
   const isFormValid = React.useMemo(() => {
     const roofAgeNum = parseInt(formData.roofAge);
@@ -392,7 +406,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
     const checks = {
       name: formData.name.trim() !== "",
       phone: formData.phone.trim() !== "",
-      selectedAddress: selectedAddress !== null,
+      selectedAddress: effectiveSelectedAddress !== null,
       status: formData.status !== "",
       roofAge: roofRequired ? formData.roofAge !== "" : true,
       roofType: roofRequired ? formData.roofType !== "" : true,
@@ -407,7 +421,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
         roofAge: `"${formData.roofAge}"`,
         roofType: `"${formData.roofType}"`,
         status: `"${formData.status}"`,
-        hasSelectedAddress: !!selectedAddress
+        hasSelectedAddress: !!effectiveSelectedAddress
       }
     });
     
@@ -415,7 +429,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
     console.log('✅ isFormValid:', valid);
     
     return valid;
-  }, [formData, selectedAddress]);
+  }, [formData, contact, effectiveSelectedAddress]);
 
   const validateForm = () => {
     if (!formData.name.trim()) {
@@ -466,7 +480,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
       return false;
     }
 
-    if (!selectedAddress) {
+    if (!effectiveSelectedAddress) {
       toast({
         title: "Address Required",
         description: "Please select a verified address from the suggestions",
@@ -497,6 +511,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
     markAsSubmitting();
     setLoading(true);
     try {
+      const leadAddress = effectiveSelectedAddress;
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user || !userProfile?.tenant_id) {
         toast({
@@ -514,7 +529,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
       // --- DUPLICATE-LEAD-BY-ADDRESS GUARD ---
       // Block creating a second active lead at the same verified street address.
       {
-        const addrComponents = selectedAddress?.address_components || [];
+        const addrComponents = leadAddress?.address_components || [];
         const getC = (type: string) =>
           addrComponents.find((c: any) => c.types.includes(type))?.long_name || '';
         const dupStreet = (getC('street_number') + ' ' + getC('route')).trim();
@@ -550,7 +565,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
 
       // Create new contact if not provided
       if (!contactId) {
-        const addressComponents = selectedAddress?.address_components || [];
+        const addressComponents = leadAddress?.address_components || [];
         const getComponent = (type: string) => 
           addressComponents.find((comp: any) => comp.types.includes(type))?.long_name || '';
 
@@ -635,9 +650,9 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
               address_city: getComponent('locality'),
               address_state: getComponent('administrative_area_level_1'),
               address_zip: getComponent('postal_code'),
-              latitude: selectedAddress?.geometry?.location?.lat,
-              longitude: selectedAddress?.geometry?.location?.lng,
-              verified_address: selectedAddress,
+              latitude: leadAddress?.geometry?.location?.lat,
+              longitude: leadAddress?.geometry?.location?.lng,
+              verified_address: leadAddress,
               created_by: session.user.id,
               assigned_to: assignedRep,
               location_id: currentLocationId,
@@ -669,7 +684,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
           metadata: {
             multiple_reps: formData.assignedTo,
             address_verified: true,
-            verified_address: selectedAddress,
+            verified_address: leadAddress,
             roof_age_years: parseInt(formData.roofAge),
             roof_type: formData.roofType
           }
