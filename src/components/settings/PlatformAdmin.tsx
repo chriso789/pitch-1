@@ -315,6 +315,34 @@ export const PlatformAdmin = () => {
             <Wrench className="h-3 w-3" />
             Supplier Dev Tools
           </TabsTrigger>
+          <TabsTrigger value="reports" className="gap-1">
+            <AlertTriangle className="h-3 w-3" />
+            Reports
+          </TabsTrigger>
+          <TabsTrigger value="health" className="gap-1">
+            <Activity className="h-3 w-3" />
+            Health
+          </TabsTrigger>
+          <TabsTrigger value="developer" className="gap-1">
+            <Code className="h-3 w-3" />
+            Developer
+          </TabsTrigger>
+          <TabsTrigger value="ai-admin" className="gap-1">
+            <Bot className="h-3 w-3" />
+            AI Admin
+          </TabsTrigger>
+          <TabsTrigger value="security" className="gap-1">
+            <Shield className="h-3 w-3" />
+            Security
+          </TabsTrigger>
+          <TabsTrigger value="edge-functions" className="gap-1">
+            <Server className="h-3 w-3" />
+            Edge Functions
+          </TabsTrigger>
+          <TabsTrigger value="cache" className="gap-1">
+            <Database className="h-3 w-3" />
+            Cache
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="active" className="mt-4">
