@@ -5,6 +5,7 @@ import {
   getValidAccessToken,
   QboReauthRequiredError,
 } from "../_shared/qbo-auth.ts";
+import { getIntuitTid } from "../_shared/qbo-intuit-tid.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
