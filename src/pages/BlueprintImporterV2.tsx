@@ -15,8 +15,13 @@ import {
   generateBlueprintMaterialDrafts,
   generateBlueprintLaborDrafts,
   fetchBlueprintDraftLines,
+  createBlueprintHandoffPreview,
+  fetchBlueprintHandoffPreview,
+  reviewBlueprintHandoffCandidate,
   type SessionSummary,
   type DraftLinesResult,
+  type HandoffPreviewGetResult,
+  type HandoffPreviewCandidateRow,
 } from "@/integrations/blueprintImporterV2Api";
 
 const TRADE_LABELS: Record<string, string> = {
@@ -201,6 +206,10 @@ export default function BlueprintImporterV2() {
             <Separator />
 
             <Phase4Panel sessionId={sessionId!} summary={summary} onRefresh={refresh} />
+
+            <Separator />
+
+            <Phase6Panel sessionId={sessionId!} summary={summary} />
           </>
         )}
       </div>
