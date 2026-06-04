@@ -702,6 +702,27 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
                 </RadioGroup>
               </div>
 
+              {sendMode !== 'single' && (
+                <label className="flex items-start gap-2 p-3 rounded-md border border-border bg-muted/20 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={excludePriorBlasts}
+                    onChange={(e) => setExcludePriorBlasts(e.target.checked)}
+                  />
+                  <span className="text-sm">
+                    <span className="font-medium">Exclude contacts already messaged in past blasts</span>
+                    <span className="block text-xs text-muted-foreground">
+                      Prevents resending to anyone who's been included in a prior blast (sent, delivered, replied, or opted-out).
+                      {excludedCount > 0 && (
+                        <> Filtering out <strong>{excludedCount}</strong> contact{excludedCount === 1 ? '' : 's'} from this list.</>
+                      )}
+                    </span>
+                  </span>
+                </label>
+              )}
+
+
               {sendMode === 'single' ? (
                 <div className="space-y-3 p-3 rounded-md border border-border bg-muted/30">
                   <div className="relative">
