@@ -156,6 +156,19 @@ Deno.serve(async (req) => {
           tenant_id,
           project_id,
         });
+        void writeQboApiLog(supabase, {
+          action: 'qbo_invoice_create',
+          tenant_id,
+          connection_id: connection.id,
+          realm_id: connection.realm_id,
+          oauth_app_env: connection.oauth_app_env,
+          endpoint: `/v3/company/${connection.realm_id}/customer`,
+          method: 'POST',
+          http_status: subCustomerResponse.status,
+          intuit_tid: subTid,
+          success: subCustomerResponse.ok,
+          request_metadata: { op: 'create_sub_customer', qbo_entity: 'Customer', project_id },
+        });
 
         if (!subCustomerResponse.ok) {
           const errorText = await subCustomerResponse.text();
