@@ -736,7 +736,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
           contact_id: contactId,
           location_id: currentLocationId, // Set location from location switcher
           status: formData.status,
-          roof_type: formData.roofType || null,
+          roof_type: formData.projectType === "roof" && formData.roofType ? formData.roofType : null,
           priority: formData.priority,
           estimated_value: formData.estimatedValue ? parseFloat(formData.estimatedValue) : null,
           assigned_to: formData.assignedTo[0] || session.user.id, // Auto-assign to creator if no rep selected
