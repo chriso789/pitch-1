@@ -273,7 +273,7 @@ export const PlatformAdmin = () => {
 
       {/* Companies Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="flex-wrap">
+        <TabsList className="flex flex-wrap h-auto gap-1 justify-start">
           <TabsTrigger value="active">
             Active ({activeCompanies.length})
           </TabsTrigger>
