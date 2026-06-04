@@ -76,6 +76,49 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
   const navigate = useNavigate();
   const { currentLocationId } = useLocation();
 
+  const getContactAddressLabel = React.useCallback(() => {
+    if (!contact) return "";
+    const verifiedAddress = contact.verified_address as any;
+    const stateZip = [contact.address_state, contact.address_zip].filter(Boolean).join(' ');
+    return verifiedAddress?.formatted_address || [
+      contact.address_street,
+      contact.address_city,
+      stateZip,
+    ].filter(Boolean).join(', ');
+  }, [contact]);
+
+  const buildContactAddressSuggestion = React.useCallback((): AddressSuggestion | null => {
+    if (!contact) return null;
+
+    const verifiedAddress = (contact.verified_address || {}) as any;
+    const formattedAddress = getContactAddressLabel();
+    const street = contact.address_street || verifiedAddress.street || '';
+    if (!formattedAddress && !street) return null;
+
+    const lat = verifiedAddress.lat ?? verifiedAddress.geometry?.location?.lat ?? contact.latitude;
+    const lng = verifiedAddress.lng ?? verifiedAddress.geometry?.location?.lng ?? contact.longitude;
+    const addressComponents = Array.isArray(verifiedAddress.address_components)
+      ? verifiedAddress.address_components
+      : [
+          street ? { long_name: street, short_name: street, types: ['route'] } : null,
+          contact.address_city ? { long_name: contact.address_city, short_name: contact.address_city, types: ['locality'] } : null,
+          contact.address_state ? { long_name: contact.address_state, short_name: contact.address_state, types: ['administrative_area_level_1'] } : null,
+          contact.address_zip ? { long_name: contact.address_zip, short_name: contact.address_zip, types: ['postal_code'] } : null,
+        ].filter(Boolean);
+
+    return {
+      place_id: verifiedAddress.place_id || `contact-${contact.id || formattedAddress}`,
+      formatted_address: formattedAddress || street,
+      geometry: {
+        location: {
+          lat: lat != null ? Number(lat) : 0,
+          lng: lng != null ? Number(lng) : 0,
+        },
+      },
+      address_components: addressComponents,
+    };
+  }, [contact, getContactAddressLabel]);
+
   // Initialize form navigation guard
   const {
     hasUnsavedChanges,
@@ -307,6 +350,20 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
   const handleAddressSelect = (suggestion: AddressSuggestion) => {
     setSelectedAddress(suggestion);
     setFormData(prev => ({ ...prev, address: suggestion.formatted_address }));
+    setShowAddressPicker(false);
+  };
+
+  const handleUseSameInfoChange = (checked: boolean | string) => {
+    const isChecked = checked === true;
+    const contactAddress = isChecked ? buildContactAddressSuggestion() : null;
+
+    setFormData(prev => ({
+      ...prev,
+      useSameInfo: isChecked,
+      address: contactAddress?.formatted_address || '',
+    }));
+    setSelectedAddress(contactAddress);
+    setAddressSuggestions([]);
     setShowAddressPicker(false);
   };
 
@@ -738,9 +795,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
               <Checkbox
                 id="useSameInfo"
                 checked={formData.useSameInfo}
-                onCheckedChange={(checked) => 
-                  setFormData(prev => ({ ...prev, useSameInfo: checked as boolean }))
-                }
+                onCheckedChange={handleUseSameInfoChange}
               />
               <Label htmlFor="useSameInfo" className="text-sm">
                 Use same info as contact ({contact.first_name} {contact.last_name})
