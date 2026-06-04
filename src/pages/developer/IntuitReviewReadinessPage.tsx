@@ -449,7 +449,7 @@ export default function IntuitReviewReadinessPage() {
         oauth_app_env: testForm.oauth_app_env,
         test_type: testForm.test_type,
         status: testForm.status,
-        evidence: testForm.notes ? { notes: testForm.notes, recorded_by: profile.full_name ?? profile.id } : { recorded_by: profile.full_name ?? profile.id },
+        evidence: testForm.notes ? { notes: testForm.notes, recorded_by: `${profile.first_name} ${profile.last_name}`.trim() || profile.id } : { recorded_by: `${profile.first_name} ${profile.last_name}`.trim() || profile.id },
       });
       if (error) throw error;
       toast({ title: "Test recorded", description: `${testForm.test_type} → ${testForm.status}` });
