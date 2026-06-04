@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pitch-crm.ai/schemas/blueprint-importer/blueprint-detected-trade.schema.json",
+  "title": "BlueprintDetectedTrade",
+  "type": "object",
+  "required": ["import_session_id", "tenant_id", "trade_id", "support_status", "confidence", "status"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "import_session_id": { "type": "string", "format": "uuid" },
+    "tenant_id": { "type": "string", "format": "uuid" },
+    "trade_id": {
+      "type": "string",
+      "enum": [
+        "roofing","exterior_walls_siding","paint_coatings","gutters_fascia_trim",
+        "windows_doors","drywall","framing","insulation","flooring","concrete",
+        "electrical","plumbing","hvac"
+      ]
+    },
+    "support_status": {
+      "type": "string",
+      "enum": ["mvp_supported","measurement_object_only","future_supported","unsupported"]
+    },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "detection_signals": { "type": "object" },
+    "source_document_ids": { "type": "array", "items": { "type": "string", "format": "uuid" } },
+    "status": { "type": "string", "enum": ["detected","dismissed","superseded","promoted"] }
+  },
+  "additionalProperties": false
+}

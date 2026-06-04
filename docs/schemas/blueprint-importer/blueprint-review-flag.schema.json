@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pitch-crm.ai/schemas/blueprint-importer/blueprint-review-flag.schema.json",
+  "title": "BlueprintReviewFlag",
+  "type": "object",
+  "required": ["import_session_id", "related_entity_type", "severity", "flag_code", "message", "blocking"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "import_session_id": { "type": "string", "format": "uuid" },
+    "related_entity_type": {
+      "type": "string",
+      "enum": [
+        "import_session","source_document","detected_trade","accepted_trade",
+        "measurement_object","template_binding","material_draft_line","labor_draft_line","plan_path"
+      ]
+    },
+    "related_entity_id": { "type": ["string", "null"], "format": "uuid" },
+    "severity": { "type": "string", "enum": ["info","warning","error","blocker"] },
+    "flag_code": { "type": "string" },
+    "message": { "type": "string" },
+    "blocking": { "type": "boolean" },
+    "resolved": { "type": "boolean" },
+    "resolved_by": { "type": ["string", "null"], "format": "uuid" },
+    "resolved_at": { "type": ["string", "null"], "format": "date-time" },
+    "metadata": { "type": "object" }
+  },
+  "additionalProperties": false
+}

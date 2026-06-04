@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pitch-crm.ai/schemas/blueprint-importer/blueprint-source-document.schema.json",
+  "title": "BlueprintSourceDocument",
+  "type": "object",
+  "required": [
+    "import_session_id", "tenant_id", "document_type", "provider", "extraction_status"
+  ],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "import_session_id": { "type": "string", "format": "uuid" },
+    "tenant_id": { "type": "string", "format": "uuid" },
+    "file_id": { "type": ["string", "null"], "format": "uuid" },
+    "storage_path": { "type": ["string", "null"] },
+    "document_reference": { "type": ["string", "null"] },
+    "document_type": {
+      "type": "string",
+      "enum": ["roof_report", "wall_report", "blueprint_set", "spec_book", "addendum", "unknown"]
+    },
+    "provider": {
+      "type": "string",
+      "enum": ["roofr", "eagleview", "internal_geometry", "user_uploaded_blueprint", "unknown"]
+    },
+    "original_filename": { "type": ["string", "null"] },
+    "page_count": { "type": ["integer", "null"], "minimum": 0 },
+    "report_date": { "type": ["string", "null"], "format": "date" },
+    "property_address": { "type": ["string", "null"] },
+    "property_latitude": { "type": ["number", "null"] },
+    "property_longitude": { "type": ["number", "null"] },
+    "content_hash": { "type": ["string", "null"] },
+    "extraction_status": {
+      "type": "string",
+      "enum": ["pending", "in_progress", "succeeded", "failed", "skipped"]
+    },
+    "metadata": { "type": "object" }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,23 @@
+{
+  "_note": "Contract example. Not live extraction output.",
+  "id": "00000000-0000-0000-0000-000000000020",
+  "import_session_id": "00000000-0000-0000-0000-000000000001",
+  "tenant_id": "00000000-0000-0000-0000-0000000000aa",
+  "trade_id": "exterior_walls_siding",
+  "support_status": "mvp_supported",
+  "confidence": 0.92,
+  "detection_signals": {
+    "matched_document_types": ["wall_report"],
+    "matched_providers": ["eagleview"],
+    "required_inputs_present": [
+      "wall_area_sqft",
+      "window_door_area_sqft",
+      "window_door_count",
+      "window_door_perimeter_lf",
+      "outside_corners_lf",
+      "inside_corners_lf"
+    ]
+  },
+  "source_document_ids": ["00000000-0000-0000-0000-000000000003"],
+  "status": "detected"
+}

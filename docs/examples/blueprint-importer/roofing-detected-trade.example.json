@@ -1,0 +1,24 @@
+{
+  "_note": "Contract example. Not live extraction output.",
+  "id": "00000000-0000-0000-0000-000000000010",
+  "import_session_id": "00000000-0000-0000-0000-000000000001",
+  "tenant_id": "00000000-0000-0000-0000-0000000000aa",
+  "trade_id": "roofing",
+  "support_status": "mvp_supported",
+  "confidence": 0.98,
+  "detection_signals": {
+    "matched_document_types": ["roof_report"],
+    "matched_providers": ["roofr"],
+    "required_inputs_present": [
+      "total_roof_area_sqft",
+      "predominant_pitch",
+      "eaves_lf",
+      "rakes_lf",
+      "valleys_lf",
+      "hips_lf",
+      "ridges_lf"
+    ]
+  },
+  "source_document_ids": ["00000000-0000-0000-0000-000000000002"],
+  "status": "detected"
+}

@@ -1,0 +1,44 @@
+{
+  "_note": "Contract example. Not live extraction output.",
+  "measurement_objects": [
+    {
+      "import_session_id": "00000000-0000-0000-0000-000000000001",
+      "tenant_id": "00000000-0000-0000-0000-0000000000aa",
+      "source_document_id": "00000000-0000-0000-0000-000000000003",
+      "trade_id": "exterior_walls_siding",
+      "measurement_key": "wall_area_sqft",
+      "measurement_group": "wall_area",
+      "quantity": 3120,
+      "unit": "sqft",
+      "confidence": 0.97,
+      "plan_path_id": "00000000-0000-0000-0000-000000000202",
+      "page_number": 2
+    },
+    {
+      "import_session_id": "00000000-0000-0000-0000-000000000001",
+      "tenant_id": "00000000-0000-0000-0000-0000000000aa",
+      "source_document_id": "00000000-0000-0000-0000-000000000003",
+      "trade_id": "exterior_walls_siding",
+      "measurement_key": "window_door_area_sqft",
+      "measurement_group": "wall_openings",
+      "quantity": 412,
+      "unit": "sqft",
+      "confidence": 0.95,
+      "plan_path_id": "00000000-0000-0000-0000-000000000202",
+      "page_number": 3
+    },
+    {
+      "import_session_id": "00000000-0000-0000-0000-000000000001",
+      "tenant_id": "00000000-0000-0000-0000-0000000000aa",
+      "source_document_id": "00000000-0000-0000-0000-000000000003",
+      "trade_id": "exterior_walls_siding",
+      "measurement_key": "outside_corners_lf",
+      "measurement_group": "wall_corners",
+      "quantity": 96,
+      "unit": "lf",
+      "confidence": 0.94,
+      "plan_path_id": "00000000-0000-0000-0000-000000000202",
+      "page_number": 3
+    }
+  ]
+}

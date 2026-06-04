@@ -1,0 +1,28 @@
+{
+  "_note": "Contract example. drywall is future_supported. It may be detected at low confidence but cannot auto-populate estimates. Acceptance is only allowed in review_state=manual_only.",
+  "detected_trade": {
+    "import_session_id": "00000000-0000-0000-0000-000000000001",
+    "tenant_id": "00000000-0000-0000-0000-0000000000aa",
+    "trade_id": "drywall",
+    "support_status": "future_supported",
+    "confidence": 0.42,
+    "detection_signals": { "matched_keywords": ["GWB", "drywall schedule"] },
+    "status": "detected"
+  },
+  "rejected_accept_attempt": {
+    "trade_id": "drywall",
+    "review_state": "pending_review",
+    "result": {
+      "ok": false,
+      "reason": "future_supported trades require manual_only review_state during MVP",
+      "flag_code": "future_trade_requires_sheet_intelligence"
+    }
+  },
+  "allowed_manual_only_accept": {
+    "import_session_id": "00000000-0000-0000-0000-000000000001",
+    "tenant_id": "00000000-0000-0000-0000-0000000000aa",
+    "trade_id": "drywall",
+    "status": "accepted",
+    "review_state": "manual_only"
+  }
+}

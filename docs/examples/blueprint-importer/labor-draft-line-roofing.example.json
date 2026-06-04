@@ -1,0 +1,20 @@
+{
+  "_note": "Contract example only. NOT populated in Phase 1.",
+  "id": "00000000-0000-0000-0000-000000000401",
+  "import_session_id": "00000000-0000-0000-0000-000000000001",
+  "tenant_id": "00000000-0000-0000-0000-0000000000aa",
+  "accepted_trade_id": "00000000-0000-0000-0000-000000000050",
+  "template_binding_id": "00000000-0000-0000-0000-000000000060",
+  "labor_rule_id": "roofing.tearoff_install.v1",
+  "labor_key": "roof_tearoff_and_install",
+  "labor_name": "Tear off + install (per square)",
+  "quantity": 28.42,
+  "unit": "square",
+  "base_rate": null,
+  "complexity_multiplier": 1.1,
+  "source_measurement_ids": ["00000000-0000-0000-0000-000000000101"],
+  "plan_path_ids": ["00000000-0000-0000-0000-000000000201"],
+  "formula_key": "labor_per_square_with_pitch_multiplier",
+  "formula_inputs": { "area_sqft": 2842, "pitch": "7/12" },
+  "status": "draft"
+}

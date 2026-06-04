@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pitch-crm.ai/schemas/blueprint-importer/blueprint-labor-draft-line.schema.json",
+  "title": "BlueprintLaborDraftLine",
+  "description": "Schema only. NOT populated in Phase 1.",
+  "type": "object",
+  "required": [
+    "import_session_id","tenant_id","accepted_trade_id","labor_key",
+    "source_measurement_ids","plan_path_ids","status"
+  ],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "import_session_id": { "type": "string", "format": "uuid" },
+    "tenant_id": { "type": "string", "format": "uuid" },
+    "accepted_trade_id": { "type": "string", "format": "uuid" },
+    "template_binding_id": { "type": ["string", "null"], "format": "uuid" },
+    "labor_rule_id": { "type": ["string", "null"] },
+    "labor_key": { "type": "string" },
+    "labor_name": { "type": ["string", "null"] },
+    "quantity": { "type": ["number", "null"] },
+    "unit": { "type": ["string", "null"] },
+    "base_rate": { "type": ["number", "null"] },
+    "complexity_multiplier": { "type": ["number", "null"] },
+    "source_measurement_ids": { "type": "array", "items": { "type": "string", "format": "uuid" } },
+    "plan_path_ids": { "type": "array", "items": { "type": "string", "format": "uuid" }, "minItems": 1 },
+    "formula_key": { "type": ["string", "null"] },
+    "formula_inputs": { "type": "object" },
+    "status": { "type": "string", "enum": ["draft","ready","blocked","rejected","superseded"] }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,39 @@
+{
+  "_note": "Contract example. windows_doors is measurement-object-only and cannot be a top-level accepted trade.",
+  "rejected_accept_attempt": {
+    "trade_id": "windows_doors",
+    "result": {
+      "ok": false,
+      "reason": "windows_doors is measurement-object-only and cannot be a top-level accepted trade",
+      "flag_code": "windows_doors_selected_as_trade"
+    }
+  },
+  "surfaced_as_measurement_objects": [
+    {
+      "import_session_id": "00000000-0000-0000-0000-000000000001",
+      "tenant_id": "00000000-0000-0000-0000-0000000000aa",
+      "source_document_id": "00000000-0000-0000-0000-000000000003",
+      "trade_id": "exterior_walls_siding",
+      "measurement_key": "window_door_count",
+      "measurement_group": "wall_openings",
+      "quantity": 18,
+      "unit": "count",
+      "confidence": 0.96,
+      "plan_path_id": "00000000-0000-0000-0000-000000000202",
+      "page_number": 3
+    },
+    {
+      "import_session_id": "00000000-0000-0000-0000-000000000001",
+      "tenant_id": "00000000-0000-0000-0000-0000000000aa",
+      "source_document_id": "00000000-0000-0000-0000-000000000003",
+      "trade_id": "exterior_walls_siding",
+      "measurement_key": "window_door_perimeter_lf",
+      "measurement_group": "wall_openings",
+      "quantity": 248,
+      "unit": "lf",
+      "confidence": 0.94,
+      "plan_path_id": "00000000-0000-0000-0000-000000000202",
+      "page_number": 3
+    }
+  ]
+}
