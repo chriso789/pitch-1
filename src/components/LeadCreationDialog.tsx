@@ -392,6 +392,11 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
     }));
   };
 
+  const effectiveSelectedAddress = React.useMemo(
+    () => selectedAddress || (formData.useSameInfo ? buildContactAddressSuggestion() : null),
+    [selectedAddress, formData.useSameInfo, buildContactAddressSuggestion]
+  );
+
   // Enhanced validation with illumination logic - must match validateForm requirements
   const isFormValid = React.useMemo(() => {
     const roofAgeNum = parseInt(formData.roofAge);
@@ -401,7 +406,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
     const checks = {
       name: formData.name.trim() !== "",
       phone: formData.phone.trim() !== "",
-      selectedAddress: selectedAddress !== null,
+      selectedAddress: effectiveSelectedAddress !== null,
       status: formData.status !== "",
       roofAge: roofRequired ? formData.roofAge !== "" : true,
       roofType: roofRequired ? formData.roofType !== "" : true,
@@ -416,7 +421,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
         roofAge: `"${formData.roofAge}"`,
         roofType: `"${formData.roofType}"`,
         status: `"${formData.status}"`,
-        hasSelectedAddress: !!selectedAddress
+        hasSelectedAddress: !!effectiveSelectedAddress
       }
     });
     
@@ -424,7 +429,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
     console.log('✅ isFormValid:', valid);
     
     return valid;
-  }, [formData, selectedAddress]);
+  }, [formData, contact, effectiveSelectedAddress]);
 
   const validateForm = () => {
     if (!formData.name.trim()) {
