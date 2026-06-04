@@ -502,3 +502,237 @@ function SessionSummaryCard({ summary }: { summary: SessionSummary }) {
     </Card>
   );
 }
+
+// ============================================================================
+// Phase 6 — CRM handoff preview panel (no live writes).
+// ============================================================================
+function Phase6Panel({ sessionId, summary }: { sessionId: string; summary: SessionSummary }) {
+  const [preview, setPreview] = useState<HandoffPreviewGetResult | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [targetEstimateId, setTargetEstimateId] = useState<string>("");
+  const [draftMode, setDraftMode] = useState<"material" | "labor" | "both">("both");
+  const [includedTrades, setIncludedTrades] = useState<Set<string>>(new Set());
+
+  const acceptedMvp = summary.accepted_trades.filter((a) => MVP_TRADES.has(a.trade_id));
+
+  const loadPreview = async () => {
+    try {
+      const data = await fetchBlueprintHandoffPreview({ import_session_id: sessionId });
+      setPreview(data);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load preview");
+    }
+  };
+  useEffect(() => { void loadPreview(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [sessionId]);
+
+  const runPreview = async () => {
+    setBusy(true);
+    try {
+      await createBlueprintHandoffPreview({
+        import_session_id: sessionId,
+        accepted_trade_ids: includedTrades.size > 0 ? Array.from(includedTrades) : null,
+        draft_mode: draftMode,
+        canonical_estimate_target_id: targetEstimateId.trim() || null,
+        catalog_mode: "preview_only",
+        pricing_mode: "quantity_only",
+      });
+      toast.success("Handoff preview generated");
+      await loadPreview();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Preview failed");
+    } finally { setBusy(false); }
+  };
+
+  const reviewCandidate = async (candidate_id: string, status: "pending" | "reviewed" | "excluded") => {
+    if (!preview?.batch) return;
+    try {
+      await reviewBlueprintHandoffCandidate({ handoff_batch_id: preview.batch.id, candidate_id, user_review_status: status });
+      await loadPreview();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Update failed");
+    }
+  };
+
+  const toggleTrade = (id: string) => {
+    setIncludedTrades((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Phase 6 — CRM handoff preview</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm text-muted-foreground">
+          <p>Preview-only: shows what would become CRM estimate lines and what blocks them. No live writes to <code>enhanced_estimates</code> or <code>estimate_line_items</code>.</p>
+          <p>Catalog mapping, custom non-catalog lines, final pricing, and Push to Estimate are intentionally disabled until Phase 7 is approved.</p>
+        </CardContent>
+      </Card>
+
+      {acceptedMvp.length === 0 ? (
+        <Alert>
+          <AlertTitle>No accepted MVP trades</AlertTitle>
+          <AlertDescription>Accept and generate Phase 4 drafts before running a handoff preview.</AlertDescription>
+        </Alert>
+      ) : (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Generate handoff preview</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+              <div>
+                <label className="font-semibold uppercase text-muted-foreground">Target enhanced_estimates ID (optional)</label>
+                <input
+                  className="w-full border rounded px-2 py-1 bg-background mt-1 font-mono"
+                  placeholder="leave blank for standalone preview"
+                  value={targetEstimateId}
+                  onChange={(e) => setTargetEstimateId(e.target.value)}
+                />
+                <p className="text-[10px] text-muted-foreground mt-1">Validated read-only; never modified in Phase 6.</p>
+              </div>
+              <div>
+                <label className="font-semibold uppercase text-muted-foreground">Draft mode</label>
+                <select
+                  className="w-full border rounded px-2 py-1 bg-background mt-1"
+                  value={draftMode}
+                  onChange={(e) => setDraftMode(e.target.value as any)}
+                >
+                  <option value="both">Material + Labor</option>
+                  <option value="material">Material only</option>
+                  <option value="labor">Labor only</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <div className="text-xs font-semibold uppercase text-muted-foreground mb-1">Accepted trades to include</div>
+              <div className="flex flex-wrap gap-2">
+                {acceptedMvp.map((a) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => toggleTrade(a.id)}
+                    className={`text-xs px-2 py-1 rounded border ${includedTrades.has(a.id) || includedTrades.size === 0 ? "bg-primary/10 border-primary" : "bg-background"}`}
+                  >
+                    {TRADE_LABELS[a.trade_id] ?? a.trade_id}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-1">No selection = all accepted MVP trades.</p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" onClick={runPreview} disabled={busy}>
+                {busy ? "Generating…" : "Create handoff preview"}
+              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild><span><Button size="sm" variant="outline" disabled>Push to Estimate</Button></span></TooltipTrigger>
+                <TooltipContent>{preview?.push_to_estimate_disabled_reason ?? "Push to Estimate is disabled until Phase 7."}</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild><span><Button size="sm" variant="outline" disabled>Final pricing</Button></span></TooltipTrigger>
+                <TooltipContent>Final pricing is disabled in Phase 6.</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild><span><Button size="sm" variant="outline" disabled>Catalog mapping</Button></span></TooltipTrigger>
+                <TooltipContent>Catalog mapping is disabled in Phase 6.</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild><span><Button size="sm" variant="outline" disabled>Approve custom line</Button></span></TooltipTrigger>
+                <TooltipContent>Custom non-catalog line approval is disabled in Phase 6.</TooltipContent>
+              </Tooltip>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {preview?.batch && (
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base">Preview batch</CardTitle>
+              <Badge variant={preview.batch.status === "preview_created" ? "default" : "destructive"}>{preview.batch.status}</Badge>
+            </div>
+            <p className="text-[10px] text-muted-foreground font-mono break-all">key: {preview.batch.deterministic_batch_key}</p>
+            {preview.target_estimate && (
+              <p className="text-xs">Target: <code>{preview.target_estimate.estimate_number ?? preview.target_estimate.display_name ?? preview.target_estimate.id}</code> (status: {preview.target_estimate.status ?? "—"})</p>
+            )}
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="text-xs text-muted-foreground">
+              Mode: catalog=<code>{preview.batch.catalog_mode}</code>, pricing=<code>{preview.batch.pricing_mode}</code>, custom_line=<code>{preview.batch.custom_line_mode}</code>
+            </div>
+            <CandidateTable candidates={preview.candidates} onReview={reviewCandidate} />
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function CandidateTable({ candidates, onReview }: { candidates: HandoffPreviewCandidateRow[]; onReview: (id: string, s: "pending" | "reviewed" | "excluded") => void }) {
+  if (candidates.length === 0) {
+    return <p className="text-xs text-muted-foreground italic">No candidates yet — generate a preview above.</p>;
+  }
+  return (
+    <div className="rounded border bg-muted/30 max-h-[480px] overflow-auto">
+      <table className="w-full text-xs">
+        <thead className="text-left sticky top-0 bg-background">
+          <tr className="border-b">
+            <th className="px-2 py-1">Trade / Item</th>
+            <th className="px-2 py-1">Type</th>
+            <th className="px-2 py-1 text-right">Qty</th>
+            <th className="px-2 py-1">Unit</th>
+            <th className="px-2 py-1">Catalog</th>
+            <th className="px-2 py-1">Pricing</th>
+            <th className="px-2 py-1">Handoff</th>
+            <th className="px-2 py-1">Blockers / Warnings</th>
+            <th className="px-2 py-1">Review</th>
+          </tr>
+        </thead>
+        <tbody>
+          {candidates.map((c) => (
+            <tr key={c.id} className="border-b last:border-0 align-top">
+              <td className="px-2 py-1">
+                <div className="font-medium">{c.item_name ?? c.item_key}</div>
+                <div className="text-[10px] text-muted-foreground">{c.trade_id} · meas:{c.source_measurement_ids.length} · paths:{c.plan_path_ids.length}</div>
+              </td>
+              <td className="px-2 py-1"><Badge variant="outline">{c.source_draft_line_type}</Badge></td>
+              <td className="px-2 py-1 text-right">{c.quantity ?? "—"}</td>
+              <td className="px-2 py-1">{c.unit ?? "—"}</td>
+              <td className="px-2 py-1"><Badge variant={c.catalog_resolution_status === "matched" ? "default" : "outline"}>{c.catalog_resolution_status}</Badge></td>
+              <td className="px-2 py-1"><Badge variant="outline">{c.pricing_status}</Badge></td>
+              <td className="px-2 py-1">
+                <Badge variant={c.handoff_allowed ? "default" : "destructive"}>{c.handoff_allowed ? "allowed" : "blocked"}</Badge>
+              </td>
+              <td className="px-2 py-1 max-w-[240px]">
+                {c.handoff_blockers.length > 0 && (
+                  <div className="text-destructive text-[10px]">{c.handoff_blockers.join(", ")}</div>
+                )}
+                {Array.isArray((c.metadata as any)?.warning_codes) && (c.metadata as any).warning_codes.length > 0 && (
+                  <div className="text-amber-600 text-[10px]">{(c.metadata as any).warning_codes.join(", ")}</div>
+                )}
+              </td>
+              <td className="px-2 py-1">
+                <select
+                  className="text-[10px] border rounded px-1 py-0.5 bg-background"
+                  value={c.user_review_status}
+                  onChange={(e) => onReview(c.id, e.target.value as any)}
+                >
+                  <option value="pending">pending</option>
+                  <option value="reviewed">reviewed</option>
+                  <option value="excluded">excluded</option>
+                </select>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
