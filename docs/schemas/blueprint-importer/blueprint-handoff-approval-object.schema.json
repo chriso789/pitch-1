@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pitch-crm.ai/schemas/blueprint-importer/blueprint-handoff-approval-object.schema.json",
+  "title": "BlueprintHandoffApprovalObject",
+  "description": "Phase 7.5 contract — shape only. No runtime writes. Persisted on blueprint_estimate_handoff_batches.approval_object.",
+  "type": "object",
+  "required": [
+    "contract_version",
+    "approval_statement_version",
+    "import_session_id",
+    "handoff_batch_id",
+    "included_candidate_ids",
+    "excluded_candidate_ids",
+    "acknowledged_warning_ids",
+    "resolved_blocker_ids",
+    "catalog_mode",
+    "pricing_mode",
+    "custom_line_mode",
+    "approval_status",
+    "approval_blockers",
+    "approval_warnings"
+  ],
+  "properties": {
+    "contract_version": { "type": "string", "minLength": 1 },
+    "approval_statement_version": { "type": "string", "minLength": 1 },
+    "approved_by": { "type": ["string", "null"], "format": "uuid" },
+    "approved_at": { "type": ["string", "null"], "format": "date-time" },
+    "import_session_id": { "type": "string", "format": "uuid" },
+    "handoff_batch_id": { "type": "string", "format": "uuid" },
+    "target_enhanced_estimate_id": { "type": ["string", "null"], "format": "uuid" },
+    "included_candidate_ids": { "type": "array", "items": { "type": "string", "format": "uuid" } },
+    "excluded_candidate_ids": { "type": "array", "items": { "type": "string", "format": "uuid" } },
+    "acknowledged_warning_ids": { "type": "array", "items": { "type": "string" } },
+    "resolved_blocker_ids": { "type": "array", "items": { "type": "string" } },
+    "catalog_mode": { "type": "string", "enum": ["catalog_resolved_only","user_approved_custom_lines","preview_only"] },
+    "pricing_mode": { "type": "string", "enum": ["quantity_only","ready_for_pricing_review"] },
+    "custom_line_mode": { "type": "string", "enum": ["disabled","enabled"] },
+    "source_draft_hash": { "type": ["string","null"] },
+    "approval_status": {
+      "type": "string",
+      "enum": [
+        "approval_not_started","approval_in_review","approval_ready",
+        "approved_for_live_handoff","approval_revoked","approval_superseded","approval_failed"
+      ]
+    },
+    "approval_blockers": { "type": "array", "items": { "type": "string" } },
+    "approval_warnings": { "type": "array", "items": { "type": "string" } },
+    "deterministic_approval_hash": { "type": ["string","null"] }
+  },
+  "additionalProperties": false
+}

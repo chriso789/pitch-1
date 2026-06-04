@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pitch-crm.ai/schemas/blueprint-importer/blueprint-live-handoff-pricing-decision.schema.json",
+  "title": "BlueprintLiveHandoffPricingDecision",
+  "description": "Phase 7.5 verification result. NOT a runtime artifact.",
+  "type": "object",
+  "required": ["pricing_mode","safety_status","blockers","warnings","evidence"],
+  "properties": {
+    "pricing_mode": { "type": "string", "enum": ["quantity_only","ready_for_pricing_review"] },
+    "safety_status": {
+      "type": "string",
+      "enum": ["blocked_quantity_only_unsafe","allowed_pricing_required","deferred_pending_pricing_contract"]
+    },
+    "blockers": { "type": "array", "items": { "type": "string" } },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "evidence": {
+      "type": "object",
+      "properties": {
+        "estimate_line_items_unit_cost_nullable": { "type": "boolean" },
+        "estimate_line_items_total_price_nullable": { "type": "boolean" },
+        "enhanced_estimates_totals_tolerate_null": { "type": "boolean" },
+        "proposal_tier_items_require_price": { "type": "boolean" },
+        "notes": { "type": "string" }
+      }
+    }
+  },
+  "additionalProperties": false
+}

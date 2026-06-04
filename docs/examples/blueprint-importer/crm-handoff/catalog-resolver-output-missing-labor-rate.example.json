@@ -1,0 +1,24 @@
+{
+  "_note": "Phase 7.5 contract example. labor_rates row missing for this trade/code — live write blocked.",
+  "resolver_version": "v0.0-contract",
+  "resolver_mode": "deterministic_catalog_only",
+  "tenant_id": "00000000-0000-0000-0000-0000000000aa",
+  "source_candidate_id": "00000000-0000-0000-0000-000000005103",
+  "trade_id": "roofing",
+  "item_key": "roof_labor_tearoff_install",
+  "normalized_item_name": "roof tear-off and install labor",
+  "candidate_type": "labor",
+  "match_status": "missing_labor_rate",
+  "matched_catalog_table": "labor_rates",
+  "matched_catalog_item_id": null,
+  "labor_rate_id": null,
+  "match_rule_id": null,
+  "match_confidence": 0.0,
+  "blockers": ["LABOR_RATE_MISSING"],
+  "warnings": [],
+  "provenance": {
+    "attempted_sources": ["labor_rates"],
+    "rejected_matches": [],
+    "resolved_at": "2026-06-04T16:00:00.000Z"
+  }
+}

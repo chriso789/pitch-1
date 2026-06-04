@@ -1,0 +1,22 @@
+{
+  "_note": "Phase 7.5 contract example. Approval object refers to an older source_draft_hash than the live batch — must be superseded.",
+  "contract_version": "phase7.5.v1",
+  "approval_statement_version": "v1.0",
+  "approved_by": null,
+  "approved_at": null,
+  "import_session_id": "00000000-0000-0000-0000-000000000001",
+  "handoff_batch_id": "00000000-0000-0000-0000-000000005001",
+  "target_enhanced_estimate_id": "00000000-0000-0000-0000-0000000070aa",
+  "included_candidate_ids": ["00000000-0000-0000-0000-000000005101"],
+  "excluded_candidate_ids": [],
+  "acknowledged_warning_ids": [],
+  "resolved_blocker_ids": [],
+  "catalog_mode": "catalog_resolved_only",
+  "pricing_mode": "ready_for_pricing_review",
+  "custom_line_mode": "disabled",
+  "source_draft_hash": "sha256:OLD-HASH-OLD-HASH-OLD-HASH-OLD-HASH-OLD-HASH-OLD-HASH-OLD-HASH",
+  "approval_status": "approval_superseded",
+  "approval_blockers": ["APPROVAL_SOURCE_DRAFT_STALE"],
+  "approval_warnings": [],
+  "deterministic_approval_hash": null
+}
