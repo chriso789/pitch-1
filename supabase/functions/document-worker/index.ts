@@ -1572,7 +1572,270 @@ app.post("/blueprint-importer/v2/resolve-bindings/get", async (c) => {
   });
 });
 
+// ===========================================================================
+// Phase 7.6c — Pricing preflight (preview-only).
+// NO live writes. NO catalog/labor mutation. NO Push to Estimate.
+// ===========================================================================
+
+const PHASE_7_6C_PUSH_DISABLED_REASON =
+  "Push to Estimate remains disabled. Phase 7.6c only validates pricing readiness for preview candidates; live handoff and final customer pricing are not enabled.";
+
+interface PricingPreflightBody {
+  handoff_batch_id?: string;
+  candidate_ids?: string[] | null;
+  pricing_mode?: "quantity_only" | "ready_for_pricing_review";
+  catalog_mode?: string;
+  contract_version?: string;
+  dry_run?: boolean;
+}
+
+async function loadTargetForBinding(
+  svc: ReturnType<typeof serviceClient>,
+  tenantId: string,
+  binding: BlueprintCatalogBinding,
+): Promise<TargetRowSnapshot | null> {
+  switch (binding.target_kind) {
+    case "product_catalog": {
+      if (!binding.target_item_id) return null;
+      const { data } = await svc.from("product_catalog")
+        .select("id,tenant_id,is_active,price_per_square")
+        .eq("id", binding.target_item_id).maybeSingle();
+      if (!data) {
+        return { table: "product_catalog", id: null, tenant_id: null, tenant_scoped: true, is_active: null, active_status_verifiable: true, base_unit_cost: null, target_unit: "square", base_rate_per_hour: null };
+      }
+      return {
+        table: "product_catalog",
+        id: (data as any).id,
+        tenant_id: (data as any).tenant_id,
+        tenant_scoped: true,
+        is_active: (data as any).is_active,
+        active_status_verifiable: true,
+        base_unit_cost: typeof (data as any).price_per_square === "number" ? (data as any).price_per_square : null,
+        target_unit: "square",
+        base_rate_per_hour: null,
+      };
+    }
+    case "supplier_catalog_item": {
+      if (!binding.target_item_id) return null;
+      const { data } = await svc.from("supplier_catalog_items")
+        .select("id,catalog_id,active,base_price,uom")
+        .eq("id", binding.target_item_id).maybeSingle();
+      if (!data) {
+        return { table: "supplier_catalog_items", id: null, tenant_id: null, tenant_scoped: false, is_active: null, active_status_verifiable: true, base_unit_cost: null, target_unit: null, base_rate_per_hour: null };
+      }
+      return {
+        table: "supplier_catalog_items",
+        id: (data as any).id,
+        tenant_id: null, // tenant-scoping is via supplier_catalogs join (not enforced here — out of scope)
+        tenant_scoped: false,
+        is_active: (data as any).active,
+        active_status_verifiable: true,
+        base_unit_cost: typeof (data as any).base_price === "number" ? (data as any).base_price : null,
+        target_unit: (data as any).uom ?? null,
+        base_rate_per_hour: null,
+      };
+    }
+    case "abc_catalog_item": {
+      if (!binding.target_abc_item_number) return null;
+      const { data } = await svc.from("abc_catalog_items")
+        .select("item_number,is_active,costing_uom")
+        .eq("item_number", binding.target_abc_item_number).maybeSingle();
+      if (!data) {
+        return { table: "abc_catalog_items", id: null, abc_item_number: null, tenant_id: null, tenant_scoped: false, is_active: null, active_status_verifiable: true, base_unit_cost: null, target_unit: null, base_rate_per_hour: null };
+      }
+      return {
+        table: "abc_catalog_items",
+        id: null,
+        abc_item_number: (data as any).item_number,
+        tenant_id: null,
+        tenant_scoped: false,
+        is_active: (data as any).is_active,
+        active_status_verifiable: true,
+        // ABC pricing lives in webhook-fetched price rows, NOT directly on abc_catalog_items.
+        // Phase 7.6c treats ABC base cost as unverified — relies on binding.unit_cost.
+        base_unit_cost: null,
+        target_unit: (data as any).costing_uom ?? null,
+        base_rate_per_hour: null,
+      };
+    }
+    case "labor_rate": {
+      if (!binding.labor_rate_id) return null;
+      const { data } = await svc.from("labor_rates")
+        .select("id,tenant_id,is_active,base_rate_per_hour")
+        .eq("id", binding.labor_rate_id).maybeSingle();
+      if (!data) {
+        return { table: "labor_rates", id: null, tenant_id: null, tenant_scoped: true, is_active: null, active_status_verifiable: true, base_unit_cost: null, target_unit: "hr", base_rate_per_hour: null };
+      }
+      return {
+        table: "labor_rates",
+        id: (data as any).id,
+        tenant_id: (data as any).tenant_id,
+        tenant_scoped: true,
+        is_active: (data as any).is_active,
+        active_status_verifiable: true,
+        base_unit_cost: null,
+        target_unit: "hr",
+        base_rate_per_hour: typeof (data as any).base_rate_per_hour === "number" ? (data as any).base_rate_per_hour : null,
+      };
+    }
+    default:
+      return null;
+  }
+}
+
+app.post("/blueprint-importer/v2/pricing-preflight", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const body = (await c.req.json().catch(() => ({}))) as PricingPreflightBody;
+  if (!body.handoff_batch_id) return jsonErr(c, "bad_request", "handoff_batch_id required", 400);
+  const dryRun = body.dry_run === true;
+  const svc = serviceClient();
+
+  const { data: batch, error: batchErr } = await svc.from("blueprint_estimate_handoff_batches")
+    .select("id,tenant_id,import_session_id,status,catalog_mode,pricing_mode,custom_line_mode,metadata,source_draft_hash")
+    .eq("id", body.handoff_batch_id).eq("tenant_id", tenantId).maybeSingle();
+  if (batchErr) return jsonErr(c, "batch_lookup_failed", batchErr.message, 500);
+  if (!batch) return jsonErr(c, "batch_not_found", "handoff batch not found", 404);
+  if (["live_written", "superseded", "cancelled"].includes(batch.status)) {
+    return jsonErr(c, "batch_terminal", `batch is ${batch.status}`, 409);
+  }
+
+  const pricingMode = body.pricing_mode ?? (batch.pricing_mode as string) ?? "quantity_only";
+  const contractVersion = body.contract_version ?? "blueprint-importer-v2";
+
+  let candQ = svc.from("blueprint_estimate_line_candidates")
+    .select("*")
+    .eq("tenant_id", tenantId).eq("handoff_batch_id", batch.id);
+  if (body.candidate_ids && body.candidate_ids.length > 0) candQ = candQ.in("id", body.candidate_ids);
+  const { data: candRows, error: candErr } = await candQ;
+  if (candErr) return jsonErr(c, "candidate_lookup_failed", candErr.message, 500);
+  const candidates = (candRows ?? []) as any[];
+
+  // Cache bindings by id (resolver_v2_result already references binding ids).
+  const bindingIds = Array.from(new Set(candidates
+    .map((c) => (c.metadata?.resolver_v2_result?.matched_binding_id as string | null))
+    .filter((x): x is string => !!x)));
+  const bindingMap = new Map<string, BlueprintCatalogBinding>();
+  if (bindingIds.length > 0) {
+    const { data: bRows, error: bErr } = await svc.from("blueprint_catalog_bindings")
+      .select("*").eq("tenant_id", tenantId).in("id", bindingIds);
+    if (bErr) return jsonErr(c, "binding_lookup_failed", bErr.message, 500);
+    for (const b of (bRows ?? []) as unknown as BlueprintCatalogBinding[]) bindingMap.set(b.id, b);
+  }
+
+  const now = new Date().toISOString();
+  const results: PreflightCandidateResult[] = [];
+  const updates: Array<{ id: string; payload: ReturnType<typeof buildPreflightCandidateUpdate> }> = [];
+  const flagSpecs: Array<{ candidate_id: string; specs: ReturnType<typeof buildPreflightReviewFlagSpecs> }> = [];
+
+  for (const cand of candidates) {
+    const resolver = (cand.metadata?.resolver_v2_result as PreflightCandidateInput["resolver_result"]) ?? null;
+    const binding = resolver?.matched_binding_id ? bindingMap.get(resolver.matched_binding_id) ?? null : null;
+    const target = binding ? await loadTargetForBinding(svc, tenantId, binding) : null;
+    const input: PreflightCandidateInput = {
+      id: cand.id,
+      tenant_id: cand.tenant_id,
+      handoff_batch_id: cand.handoff_batch_id,
+      import_session_id: cand.import_session_id,
+      source_draft_line_id: cand.source_draft_line_id,
+      source_draft_line_type: cand.source_draft_line_type,
+      trade_id: cand.trade_id,
+      item_key: cand.item_key,
+      quantity: cand.quantity,
+      unit: cand.unit,
+      deterministic_handoff_key: cand.deterministic_handoff_key,
+      resolver_result: resolver,
+      metadata: cand.metadata,
+    };
+    const result = evaluatePricingPreflight(input, binding, target, {
+      pricing_mode: pricingMode, pricing_contract_version: contractVersion, now: () => now,
+    });
+    results.push(result);
+    updates.push({ id: cand.id, payload: buildPreflightCandidateUpdate(input, result, cand.status) });
+    flagSpecs.push({ candidate_id: cand.id, specs: buildPreflightReviewFlagSpecs(input, result) });
+  }
+
+  if (!dryRun) {
+    for (const { candidate_id, specs } of flagSpecs) {
+      await svc.from("blueprint_review_flags")
+        .delete()
+        .eq("tenant_id", tenantId)
+        .eq("import_session_id", batch.import_session_id)
+        .filter("metadata->>source", "eq", "pricing_preflight_v2")
+        .filter("metadata->>line_candidate_id", "eq", candidate_id);
+      if (specs.length === 0) continue;
+      const { error: insErr } = await svc.from("blueprint_review_flags").insert(specs);
+      if (insErr) return jsonErr(c, "review_flag_insert_failed", insErr.message, 500);
+    }
+    for (const upd of updates) {
+      // Force handoff_allowed=false; preserve resolver/source/quantity by ONLY
+      // updating the allowed columns (metadata merge is handled in payload).
+      const { error: updErr } = await svc.from("blueprint_estimate_line_candidates")
+        .update(upd.payload as any)
+        .eq("id", upd.id).eq("tenant_id", tenantId).eq("handoff_batch_id", batch.id);
+      if (updErr) return jsonErr(c, "candidate_update_failed", updErr.message, 500);
+    }
+    await svc.from("blueprint_estimate_handoff_batches")
+      .update({
+        updated_at: now,
+        metadata: {
+          ...(batch.metadata ?? {}),
+          phase_7_6c_preflight_run_at: now,
+          phase_7_6c_preflight_version: PHASE_7_6C_PREFLIGHT_VERSION,
+          phase_7_6c_pricing_mode: pricingMode,
+        },
+      }).eq("id", batch.id).eq("tenant_id", tenantId);
+  }
+
+  const summary = summarizePreflightResults(results);
+  return jsonOk(c, {
+    handoff_batch_id: batch.id,
+    preflight_version: PHASE_7_6C_PREFLIGHT_VERSION,
+    contract_version: contractVersion,
+    pricing_mode: pricingMode,
+    dry_run: dryRun,
+    total_candidates: candidates.length,
+    summary,
+    results,
+    push_to_estimate_enabled: false,
+    push_to_estimate_disabled_reason: PHASE_7_6C_PUSH_DISABLED_REASON,
+    final_pricing_enabled: false,
+    final_pricing_disabled_reason: "Final customer-facing pricing is intentionally disabled in Phase 7.6c.",
+  });
+});
+
+app.post("/blueprint-importer/v2/pricing-preflight/get", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const body = (await c.req.json().catch(() => ({}))) as { handoff_batch_id?: string; candidate_ids?: string[] };
+  if (!body.handoff_batch_id) return jsonErr(c, "bad_request", "handoff_batch_id required", 400);
+  const svc = serviceClient();
+  const { data: batch } = await svc.from("blueprint_estimate_handoff_batches")
+    .select("id,tenant_id,import_session_id,status,pricing_mode,metadata,updated_at")
+    .eq("id", body.handoff_batch_id).eq("tenant_id", tenantId).maybeSingle();
+  if (!batch) return jsonErr(c, "batch_not_found", "handoff batch not found", 404);
+  let q = svc.from("blueprint_estimate_line_candidates")
+    .select("id,source_draft_line_id,source_draft_line_type,trade_id,item_key,quantity,unit,catalog_resolution_status,pricing_status,cost_status,handoff_allowed,handoff_blockers,status,metadata,deterministic_handoff_key,updated_at")
+    .eq("tenant_id", tenantId).eq("handoff_batch_id", batch.id);
+  if (body.candidate_ids && body.candidate_ids.length > 0) q = q.in("id", body.candidate_ids);
+  const { data: cands } = await q;
+  const candidates = (cands ?? []) as any[];
+  const preflightResults = candidates
+    .map((c) => (c.metadata?.pricing_preflight as PreflightCandidateResult | undefined))
+    .filter((r): r is PreflightCandidateResult => !!r);
+  const summary = preflightResults.length > 0 ? summarizePreflightResults(preflightResults) : null;
+  return jsonOk(c, {
+    handoff_batch_id: batch.id,
+    batch,
+    preflight_version: PHASE_7_6C_PREFLIGHT_VERSION,
+    candidates,
+    summary,
+    push_to_estimate_enabled: false,
+    push_to_estimate_disabled_reason: PHASE_7_6C_PUSH_DISABLED_REASON,
+    final_pricing_enabled: false,
+  });
+});
+
 serveRouter(app);
+
 
 
 
