@@ -6,6 +6,18 @@ import { extractPdfText, downloadStorageObject } from "../_shared/parsers/pdf-te
 import { parseEagleViewRoofReport } from "../_shared/parsers/eagleview-roof.ts";
 import { parseRoofrRoofReport } from "../_shared/parsers/roofr-roof.ts";
 import { classifyBlueprintPage } from "../_shared/parsers/blueprint-classifier.ts";
+import { parseEagleViewWallReport } from "../_shared/blueprint-importer/parsers/eagleview-wall.ts";
+import {
+  classifyBlueprintDocument,
+  detectTradesFromRoofReport,
+  detectTradesFromWallReport,
+  mapRoofExtractionToMeasurements,
+  mapWallExtractionToMeasurements,
+  evaluateTradeAcceptance,
+  deterministicSessionHash,
+  REVIEW_FLAG_CODES,
+} from "../_shared/blueprint-importer/index.ts";
+
 
 const app = createRouter("document-worker");
 
