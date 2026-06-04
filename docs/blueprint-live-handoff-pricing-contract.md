@@ -65,3 +65,14 @@ Reaffirmed rules:
 - No margin/markup/tax/discount may be inferred.
 - `material_item_match_rules` MUST NOT be used as a pricing source until tenant/company scope is reconciled (`TENANT_COMPANY_SCOPE_UNRESOLVED`).
 
+
+---
+
+## Phase 7.6b note
+
+Phase 7.6b ships the deterministic binding resolver runtime. It deliberately
+does NOT compute pricing. Resolved candidates land at
+`pricing_status = cost_unresolved`; unresolved candidates remain at
+`quantity_only`. The values `ready_for_pricing_review` and
+`ready_for_live_handoff` are never written by Phase 7.6b. Pricing preflight
+remains blocked-on Phase 7.6c.
