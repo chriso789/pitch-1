@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import WorkerTestReportPanel from "./WorkerTestReportPanel";
 
 type Skill = {
   skill_key: string;
@@ -72,6 +73,8 @@ export default function MeasurementSkillsPage() {
           </form>
         </CardContent>
       </Card>
+
+      <WorkerTestReportPanel />
 
       <Card>
         <CardHeader><CardTitle>Skill registry</CardTitle></CardHeader>
