@@ -111,9 +111,9 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
       formatted_address: formattedAddress || street,
       geometry: {
         location: {
-          lat: lat != null ? Number(lat) : undefined,
-          lng: lng != null ? Number(lng) : undefined,
-        } as any,
+          lat: lat != null ? Number(lat) : 0,
+          lng: lng != null ? Number(lng) : 0,
+        },
       },
       address_components: addressComponents,
     };
@@ -795,9 +795,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
               <Checkbox
                 id="useSameInfo"
                 checked={formData.useSameInfo}
-                onCheckedChange={(checked) => 
-                  setFormData(prev => ({ ...prev, useSameInfo: checked as boolean }))
-                }
+                onCheckedChange={handleUseSameInfoChange}
               />
               <Label htmlFor="useSameInfo" className="text-sm">
                 Use same info as contact ({contact.first_name} {contact.last_name})
