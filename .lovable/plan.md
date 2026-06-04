@@ -1,52 +1,63 @@
-# PITCH Measure — Beat Nearmap Without Nearmap
+## Phase 3 — Blueprint Importer Runtime Detection
 
-**Mission:** First-party roof measurement engine using free / public / already-connected sources. **No Nearmap integration.**
+**Scope lock:** deterministic parsing + trade detection + measurement extraction + PlanPath provenance + review flags + user acceptance UI. No materials, no labor, no CRM handoff, no new edge functions, no AI in math.
 
-## Phase status
+### Pre-flight verification
+Re-read Phase 0–2 contracts and the applied migration. If anything is stale/contradictory, stop and report before writing code.
+- `docs/blueprint-trade-catalog.md`
+- `docs/blueprint-estimate-mapping-contract.md`
+- `docs/blueprint-mvp-phase-plan.md`
+- `docs/blueprint-importer-phase-1-schema-contracts.md`
+- `docs/blueprint-importer-phase-2-db-verification.md`
+- `supabase/functions/_shared/blueprint-importer/index.ts`
+- `worker/app/blueprint_contracts/__init__.py`
+- The applied `supabase/migrations/2026...blueprint-importer-v2-phase1.sql`
 
-| Phase | Deliverable | Status |
-|---|---|---|
-| 0 | Capability-gap doc vs Nearmap | ✅ `docs/pitch-vs-nearmap-capability-gap.md` |
-| 1 | `verifyRoofSurfaceDataAvailability` + executor | ✅ `_shared/mskill/verify-roof-surface-data.ts` + `executors/verify_roof_surface_data.ts` |
-| 2 | `generate_dsm` / `generate_dtm` / `generate_chm` worker skills (real PDAL/rasterio) | ✅ `worker/app/skills/generate_*.py` |
-| 3 | `isolate_roof_points` + `refine_roof_perimeter_from_surface` | ✅ `worker/app/skills/isolate_roof_points.py`, `refine_roof_perimeter_from_surface.py` |
-| 4 | `fit_roof_planes` (RANSAC) | ✅ `worker/app/skills/fit_roof_planes.py` |
-| 5 | `detect_ridges` / `_hips` / `_valleys` / `_eaves` / `_rakes` (plane-intersection classifier) | ✅ `worker/app/skills/detect_segments.py` |
-| 6 | `calculate_pitch` + `calculate_roof_area` (slope-adjusted) | ✅ `worker/app/skills/geometry_finalize.py` |
-| 7 | `geometry_quality_score` (first-party confidence score) | ✅ `geometry_finalize.run_geometry_quality_score` |
-| 7b | `validate_geometry` (gates: closure, snap tolerance, area reconciliation) | 🟡 still scaffold |
-| 7c | `export_report` (PDF + GeoJSON) | 🟡 still scaffold |
-| 8 | Bridge writer to `roof_measurements` + AI Measurement button rewire | 🔒 **gated** — does not proceed until 7b/7c pass on regression suite |
+### Implementation (deterministic, no AI)
 
-Worker version bumped: `0.3.0-geometry-engine`.
+**A. Shared parser contracts** (`supabase/functions/_shared/blueprint-importer/`)
+- `document-classifier.ts` — signal-based classifier → `roofr_roof_report | eagleview_roof_report | eagleview_wall_report | unknown`. Generic blueprint sets stored only as source docs with `future_trade_requires_sheet_intelligence` flag.
+- `units.ts` — deterministic `ft-in → decimal ft`, `sq ft`, pitch `n/12` normalization. Preserve raw + normalized + unit.
+- `parsers/roofr-roof.ts`, `parsers/eagleview-roof.ts`, `parsers/eagleview-wall.ts` — label-anchored regex extractors emitting `{ key, raw, normalized, unit, confidence, plan_path }` per field. Report-summary totals preferred over diagram-rounded labels. No invention of missing fields.
+- `trade-detection.ts` — deterministic rules: roof report ⇒ `roofing` + `gutters_fascia_trim` when fascia/eave evidence; wall report ⇒ `exterior_walls_siding`, `paint_coatings` (derived), `gutters_fascia_trim`, `windows_doors` (measurement-only).
+- `acceptance-gates.ts` — runtime enforcement of Phase 2 helper-only gaps: blocks `windows_doors` top-level, blocks `paint_coatings` without sibling `exterior_walls_siding`, blocks `future_supported` auto-acceptance, requires non-empty PlanPath before ready.
+- `review-flag-codes.ts` — canonical set of Phase 3 flag codes.
+- `session-hash.ts` — deterministic content hash; rerun supersedes per Phase 0 contract.
 
-## Hard rules (still enforced)
+**B. Python parser twins** (`worker/app/blueprint_contracts/parsers/`) — mirror logic, side-effect-free. NOT registered in `skills_registry.py` or `main.py`.
 
-- DEM/DTM-only is **not** sufficient — `verifyRoofSurfaceDataAvailability` returns `blocking_reason="dem_only_not_sufficient"`.
-- LiDAR coverage rows without a `source_url` / `asset_reference` → `roof_geometry_possible=false`.
-- Nearmap provider keys are filtered out in `verify-roof-surface-data.ts` (`NEARMAP_FORBIDDEN_PREFIX`).
-- Math-only soffit offsets never outrank `refine_roof_perimeter_from_surface` output (already enforced by `perimeter-selection.ts`).
-- Eaves/rakes are NEVER classified from footprint alone — only after `fit_roof_planes` succeeds.
-- AI Measurement button rewire stays gated until validate_geometry + Fonsica/Montelluna/Palm Harbor regression pass.
+**C. Runtime wiring (existing infra only)**
+- Extend the existing `document-worker` grouped function with parse handlers that consume an uploaded report, run classifier → parser → writes to the 8 Phase-3 tables (`blueprint_import_sessions`, `blueprint_source_documents`, `blueprint_detected_trades`, `blueprint_plan_paths`, `blueprint_measurement_objects`, `blueprint_review_flags`, and on accept `blueprint_accepted_trades`). No writes to `blueprint_material_draft_lines` or `blueprint_labor_draft_lines`.
+- Add an `acceptTrade` handler in the same function enforcing `acceptance-gates`.
+- No standalone edge functions. No changes to geometry worker / measurement worker / roof export-report flows.
 
-## Regression suite (still required before Phase 8)
+**D. UI** (`src/pages/BlueprintImporterV2.tsx` + `src/components/blueprint-importer/`)
+- Import session summary card (source docs, detected provider/type, status, blocking flags).
+- Detected trade cards with support badge, confidence, source doc, measurement preview, PlanPath chips, blocking flags.
+- Accept button enabled only when allowed-MVP AND no blocking flags AND (paint ⇒ siding present).
+- Disabled states for `windows_doors` (measurement-only), `future_supported` (locked), unsupported.
+- Gated next-action buttons: "Populate Material List", "Generate Labor Pricing", "Push to Estimate" all disabled with tooltip "Not enabled until Phase 4." No draft-line tables surfaced.
+- Wire into `src/integrations/blueprintApi.ts` via existing `edgeApi("document-worker", ...)` pattern.
 
-- 4063 Fonsica
-- neighbor Fonsica address
-- Montelluna
-- Palm Harbor
-- simple gable
-- hip roof
-- complex valley
-- tile roof
-- metal roof
-- flat / commercial
+**E. Tests** (`tests/blueprint-importer/`)
+- Roofr roof parser: provider/type detection, area/facets/pitch/eaves/rakes/valleys/hips/ridges/waste, PlanPaths created, roofing detected.
+- EagleView roof parser: same surface incl. penetrations + pitch table.
+- EagleView wall parser: total area, with-W&D area, W&D area/count/perimeter, top/bottom walls, inside/outside corners, fascia, waste; review flags for field-verification / image obstruction / soffit assumption; detects siding, paint, gutters, windows-doors.
+- Acceptance gates: roofing/siding/gutters acceptable; windows_doors blocked top-level; paint blocked without siding; future trades blocked; accept does NOT write material/labor lines.
+- Determinism: same input ⇒ same normalized values + hash; rerun supersedes without duplicates.
+- RLS smoke (if pattern supported in repo): tenant-scoped read/write.
 
-## Next steps for the next loop
+**F. Docs**
+- New: `docs/blueprint-importer-phase-3-runtime-detection.md` (scope, files, parser architecture, supported types, measurement keys, PlanPath strategy, review flag strategy, acceptance workflow, disabled future actions, unwired surfaces, gaps, tests, verification checklist).
+- Update only the Phase 3 status row in `docs/blueprint-mvp-phase-plan.md`.
 
-1. Real `validate_geometry` (polygon closure, snap tolerance, area reconciliation between perimeter / footprint / facet sum).
-2. Real `export_report` (PDF + GeoJSON, only callable after `validate_geometry.completed`).
-3. Provider catalog seed rows for USGS 3DEP, NOAA Digital Coast, LABINS — with `source_url` / `asset_reference` columns populated so `verifyRoofSurfaceDataAvailability` returns real candidates.
-4. Wire `verifyRoofSurfaceDataAvailability` into `measurement-api` start-of-pipeline; refuse to enqueue DSM/DTM/CHM skills when `roof_geometry_possible=false`.
-5. Worker fixture tests for `generate_dsm`, `fit_roof_planes`, `detect_segments` parallel to existing `test_clip_point_cloud_real_fixture.py`.
-6. Then — and only then — bridge writer → `roof_measurements` and AI Measurement button rewire.
+### Hard stops (will not implement)
+Material population · labor pricing · estimate/CRM handoff · drywall/framing/MEP · blueprint sheet intelligence (scale, sheet coords) · standalone edge functions · AI in math path · geometry/measurement worker changes · changes to roof export/report gating · Phase 4.
+
+### Final verification report
+Will produce the full yes/no checklist from your prompt (Phase 0–2 re-read, runtime added, parser types, tables written/not-written, endpoints/workers/UI deltas, all gate confirmations, tests added/passing, deviations, next phase recommendation).
+
+### Notes / risks
+- The grouped `document-worker` function is the only runtime surface that will gain new routes. I will document each added route.
+- Real Roofr/EagleView PDF→text extraction lives in existing document-worker upstream; parsers consume already-extracted text. If text extraction for these report types is missing in the worker today, I will add a thin deterministic text-extraction step inside the same function (no new edge function), and document it.
+- "Same parse ⇒ same hash" relies on stable text extraction; if upstream OCR is non-deterministic, hash will key on normalized parser output instead, and that decision will be documented.
