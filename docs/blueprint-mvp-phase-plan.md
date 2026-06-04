@@ -3,7 +3,7 @@
 **Status:** Phase 0 contract doc. No DB, no code, no endpoint behavior changes.
 **Scope:** Locks the phase sequence, the MVP cut, explicit non-goals, acceptance criteria, and current implementation gaps. Companion to `blueprint-trade-catalog.md` and `blueprint-estimate-mapping-contract.md`.
 
-> **Progress (as of Phase 5.5):**
+> **Progress (as of Phase 7):**
 > - Phase 0 (contract docs): **complete**
 > - Phase 1 (schema draft + shared TS/Python contracts + JSON schemas + examples): **complete** — see `docs/blueprint-importer-phase-1-schema-contracts.md`
 > - Phase 2 (schema promotion + DB verification): **complete** — see `docs/blueprint-importer-phase-2-db-verification.md`
@@ -12,6 +12,7 @@
 > - Phase 5 (CRM estimate handoff contract + integration review docs): **shipped — docs only. See [phase-5 handoff contract](./blueprint-importer-phase-5-crm-handoff-contract.md), [CRM/estimate integration inventory](./blueprint-crm-estimate-integration-inventory.md), and [CRM handoff review gates](./blueprint-crm-handoff-review-gates.md).**
 > - Phase 5.5 (CRM handoff schema + contracts): **shipped — see [phase-5.5 doc](./blueprint-importer-phase-5-5-handoff-schema-contracts.md). Canonical target chosen: `enhanced_estimates`. Three staging/provenance tables created (no live writes). Shared TS + Python contracts + JSON schemas + 8 examples. `estimate_line_items` NOT altered (bridge table preferred). Runtime unwired; Phase 6 (preview implementation) blocked behind review.**
 > - Phase 6 (CRM handoff preview implementation, preview-only): **shipped — see [phase-6 doc](./blueprint-importer-phase-6-handoff-preview.md). Three `document-worker` routes added (`/handoff-preview`, `/handoff-preview/get`, `/handoff-preview/review`). Writes only to `blueprint_estimate_handoff_batches` + `blueprint_estimate_line_candidates`. `blueprint_estimate_line_provenance` not written. Push to Estimate, final pricing, catalog mapping, and custom-line approval intentionally disabled in UI and at the route boundary. 17/17 tests passing.**
+> - Phase 7 (live handoff approval contract): **shipped — docs only. See [phase-7 doc](./blueprint-importer-phase-7-live-handoff-approval-contract.md), [status mapping](./blueprint-live-handoff-status-mapping.md), [existing-line resolution policy](./blueprint-existing-line-resolution-policy.md), [provenance bridge live-write contract](./blueprint-provenance-bridge-live-write-contract.md), and [catalog resolver requirements](./blueprint-catalog-resolver-requirements.md). No code, no DB, no endpoint/worker/UI changes. Phase 8 readiness: **blocked — Phase 7.5 required** (status hardening on `enhanced_estimates.status`, catalog/labor resolver contract, pricing-boundary verification, approval-object persistence, `source_draft_hash` in deterministic batch key).**
 
 ---
 
