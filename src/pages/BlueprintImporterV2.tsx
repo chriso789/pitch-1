@@ -734,6 +734,7 @@ function CandidateTable({ candidates, onReview }: { candidates: HandoffPreviewCa
             <th className="px-2 py-1 text-right">Qty</th>
             <th className="px-2 py-1">Unit</th>
             <th className="px-2 py-1">Catalog</th>
+            <th className="px-2 py-1">Resolver v2</th>
             <th className="px-2 py-1">Pricing</th>
             <th className="px-2 py-1">Handoff</th>
             <th className="px-2 py-1">Blockers / Warnings</th>
@@ -741,41 +742,66 @@ function CandidateTable({ candidates, onReview }: { candidates: HandoffPreviewCa
           </tr>
         </thead>
         <tbody>
-          {candidates.map((c) => (
-            <tr key={c.id} className="border-b last:border-0 align-top">
-              <td className="px-2 py-1">
-                <div className="font-medium">{c.item_name ?? c.item_key}</div>
-                <div className="text-[10px] text-muted-foreground">{c.trade_id} · meas:{c.source_measurement_ids.length} · paths:{c.plan_path_ids.length}</div>
-              </td>
-              <td className="px-2 py-1"><Badge variant="outline">{c.source_draft_line_type}</Badge></td>
-              <td className="px-2 py-1 text-right">{c.quantity ?? "—"}</td>
-              <td className="px-2 py-1">{c.unit ?? "—"}</td>
-              <td className="px-2 py-1"><Badge variant={c.catalog_resolution_status === "matched" ? "default" : "outline"}>{c.catalog_resolution_status}</Badge></td>
-              <td className="px-2 py-1"><Badge variant="outline">{c.pricing_status}</Badge></td>
-              <td className="px-2 py-1">
-                <Badge variant={c.handoff_allowed ? "default" : "destructive"}>{c.handoff_allowed ? "allowed" : "blocked"}</Badge>
-              </td>
-              <td className="px-2 py-1 max-w-[240px]">
-                {c.handoff_blockers.length > 0 && (
-                  <div className="text-destructive text-[10px]">{c.handoff_blockers.join(", ")}</div>
-                )}
-                {Array.isArray((c.metadata as any)?.warning_codes) && (c.metadata as any).warning_codes.length > 0 && (
-                  <div className="text-amber-600 text-[10px]">{(c.metadata as any).warning_codes.join(", ")}</div>
-                )}
-              </td>
-              <td className="px-2 py-1">
-                <select
-                  className="text-[10px] border rounded px-1 py-0.5 bg-background"
-                  value={c.user_review_status}
-                  onChange={(e) => onReview(c.id, e.target.value as any)}
-                >
-                  <option value="pending">pending</option>
-                  <option value="reviewed">reviewed</option>
-                  <option value="excluded">excluded</option>
-                </select>
-              </td>
-            </tr>
-          ))}
+          {candidates.map((c) => {
+            const rv = (c.metadata as any)?.resolver_v2_result as BlueprintResolverV2RuntimeResult | undefined;
+            const bindingSummary = rv?.binding_summary ?? (c.metadata as any)?.binding_summary ?? null;
+            const resolverWarnings: string[] = rv?.warnings ?? ((c.metadata as any)?.resolver_warning_codes as string[] | undefined) ?? [];
+            const phase6Warnings: string[] = Array.isArray((c.metadata as any)?.warning_codes) ? (c.metadata as any).warning_codes : [];
+            const targetLabel = rv
+              ? `${rv.matched_target_kind ?? "—"}${rv.matched_target_unit ? ` · ${rv.source_unit}→${rv.matched_target_unit}` : ""}`
+              : "—";
+            return (
+              <tr key={c.id} className="border-b last:border-0 align-top">
+                <td className="px-2 py-1">
+                  <div className="font-medium">{c.item_name ?? c.item_key}</div>
+                  <div className="text-[10px] text-muted-foreground">{c.trade_id} · meas:{c.source_measurement_ids.length} · paths:{c.plan_path_ids.length}</div>
+                </td>
+                <td className="px-2 py-1"><Badge variant="outline">{c.source_draft_line_type}</Badge></td>
+                <td className="px-2 py-1 text-right">{c.quantity ?? "—"}</td>
+                <td className="px-2 py-1">{c.unit ?? "—"}</td>
+                <td className="px-2 py-1"><Badge variant={c.catalog_resolution_status === "matched" ? "default" : "outline"}>{c.catalog_resolution_status}</Badge></td>
+                <td className="px-2 py-1">
+                  {rv ? (
+                    <div className="space-y-0.5">
+                      <Badge variant={rv.status === "resolved" ? "default" : rv.status === "ambiguous" ? "secondary" : "destructive"}>{rv.status}</Badge>
+                      <div className="text-[10px] text-muted-foreground">{targetLabel}</div>
+                      {bindingSummary && <div className="text-[10px] font-mono break-all">{bindingSummary}</div>}
+                      {rv.requires_user_confirmation && <div className="text-[10px] text-amber-600">needs confirmation</div>}
+                      {rv.uses_unit_conversion && <div className="text-[10px] text-amber-600">unit conversion</div>}
+                    </div>
+                  ) : (
+                    <span className="text-[10px] text-muted-foreground italic">not run</span>
+                  )}
+                </td>
+                <td className="px-2 py-1"><Badge variant="outline">{c.pricing_status}</Badge></td>
+                <td className="px-2 py-1">
+                  <Badge variant={c.handoff_allowed ? "default" : "destructive"}>{c.handoff_allowed ? "allowed" : "blocked"}</Badge>
+                </td>
+                <td className="px-2 py-1 max-w-[260px]">
+                  {Array.isArray(c.handoff_blockers) && c.handoff_blockers.length > 0 && (
+                    <div className="text-destructive text-[10px] break-words">{c.handoff_blockers.join(", ")}</div>
+                  )}
+                  {resolverWarnings.length > 0 && (
+                    <div className="text-amber-600 text-[10px] break-words">{resolverWarnings.join(", ")}</div>
+                  )}
+                  {phase6Warnings.length > 0 && (
+                    <div className="text-amber-600 text-[10px] break-words">{phase6Warnings.join(", ")}</div>
+                  )}
+                </td>
+                <td className="px-2 py-1">
+                  <select
+                    className="text-[10px] border rounded px-1 py-0.5 bg-background"
+                    value={c.user_review_status}
+                    onChange={(e) => onReview(c.id, e.target.value as any)}
+                  >
+                    <option value="pending">pending</option>
+                    <option value="reviewed">reviewed</option>
+                    <option value="excluded">excluded</option>
+                  </select>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
