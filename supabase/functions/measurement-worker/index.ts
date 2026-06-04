@@ -8,14 +8,21 @@ const app = createRouter("measurement-worker");
 app.get("/__health", (c) => jsonOk(c, { fn: "measurement-worker", ok: true }));
 
 // ---------------------------------------------------------------------------
-// Internal worker callback. Authed via INTERNAL_WORKER_SECRET — NO user JWT.
+// Internal compute-worker callback. Authed via INTERNAL_WORKER_API_KEY (new,
+// standardized) with fallback to legacy INTERNAL_WORKER_SECRET — NO user JWT.
 // Mounted BEFORE requireAuth so the external worker can call it.
 // ---------------------------------------------------------------------------
 app.post("/worker/callback", async (c) => {
-  const provided = c.req.header("x-internal-worker-secret") ?? "";
-  const expected = Deno.env.get("INTERNAL_WORKER_SECRET") ?? "";
+  const provided =
+    c.req.header("x-internal-worker-api-key") ??
+    c.req.header("x-internal-worker-secret") ??
+    "";
+  const expected =
+    Deno.env.get("INTERNAL_WORKER_API_KEY") ??
+    Deno.env.get("INTERNAL_WORKER_SECRET") ??
+    "";
   if (!expected || provided !== expected) {
-    return jsonErr(c, "unauthorized", "invalid internal worker secret", 401);
+    return jsonErr(c, "unauthorized", "invalid internal worker api key", 401);
   }
   const body = await c.req.json().catch(() => ({}));
   const runId = String(body.mskill_run_id ?? "");
