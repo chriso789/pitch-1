@@ -249,6 +249,19 @@ async function processPaymentEvent(
       tenant_id: tenantId,
       qbo_payment_id: paymentId,
     });
+    void writeQboApiLog(supabase, {
+      action: "qbo_webhook_handler",
+      tenant_id: tenantId,
+      connection_id: (connection as { id?: string }).id ?? null,
+      realm_id: realmId,
+      oauth_app_env: connection.oauth_app_env,
+      endpoint: `/v3/company/${realmId}/payment/${paymentId}`,
+      method: "GET",
+      http_status: paymentResponse.status,
+      intuit_tid: paymentTid,
+      success: paymentResponse.ok,
+      request_metadata: { op: "fetch_payment", qbo_entity: "Payment", qbo_entity_id: paymentId },
+    });
 
     if (!paymentResponse.ok) {
       const errBody = await paymentResponse.text();
