@@ -301,3 +301,110 @@ export async function reviewBlueprintHandoffCandidate(params: {
   return data!;
 }
 
+
+// -------------------- Phase 7.6b helpers --------------------
+// Deterministic binding resolver runtime. NO pricing, NO live writes.
+
+export type BlueprintResolverV2RuntimeStatus =
+  | "resolved" | "unresolved" | "ambiguous"
+  | "inactive_binding" | "inactive_target" | "unit_mismatch"
+  | "tenant_scope_mismatch" | "missing_labor_rate" | "blocked";
+
+export interface BlueprintResolverV2RuntimeResult {
+  resolver_version: string;
+  tenant_id: string;
+  source_candidate_id: string;
+  trade_id: string;
+  source_item_key: string;
+  source_candidate_type: "material" | "labor";
+  source_unit: string;
+  status: BlueprintResolverV2RuntimeStatus;
+  matched_binding_id: string | null;
+  matched_target_kind: string | null;
+  matched_target_table: string | null;
+  matched_target_item_id: string | null;
+  matched_target_abc_item_number: string | null;
+  matched_labor_rate_id: string | null;
+  matched_target_unit: string | null;
+  uses_unit_conversion: boolean;
+  requires_user_confirmation: boolean;
+  match_confidence: number;
+  blockers: string[];
+  warnings: string[];
+  provenance: {
+    attempted_binding_ids: string[];
+    rejected: Array<{ binding_id: string; reason: string }>;
+    resolved_at: string | null;
+  };
+  binding_summary: string | null;
+}
+
+export interface ResolveBindingsSummary {
+  handoff_batch_id: string;
+  resolver_mode: "blueprint_catalog_bindings_only";
+  resolver_version: string;
+  contract_version: string;
+  dry_run: boolean;
+  total_candidates: number;
+  summary: {
+    total: number;
+    by_status: Record<BlueprintResolverV2RuntimeStatus, number>;
+    resolved: number;
+    blocked: number;
+    ambiguous: number;
+    missing: number;
+    blocker_counts: Record<string, number>;
+    warning_counts: Record<string, number>;
+    handoff_still_blocked: true;
+    push_to_estimate_enabled: false;
+    push_to_estimate_disabled_reason: string;
+  };
+  results: BlueprintResolverV2RuntimeResult[];
+  push_to_estimate_enabled: false;
+  push_to_estimate_disabled_reason: string;
+  pricing_preflight_enabled: false;
+  pricing_preflight_disabled_reason: string;
+}
+
+export async function resolveBlueprintCatalogBindings(params: {
+  handoff_batch_id: string;
+  candidate_ids?: string[] | null;
+  dry_run?: boolean;
+}) {
+  const { data, error } = await edgeApi<ResolveBindingsSummary>(
+    "document-worker",
+    "/blueprint-importer/v2/resolve-bindings",
+    {
+      ...params,
+      resolver_mode: "blueprint_catalog_bindings_only",
+      contract_version: "blueprint-importer-v2",
+    } as unknown as Record<string, unknown>,
+  );
+  if (error) throw new Error(error);
+  return data!;
+}
+
+export interface ResolveBindingsGetResult {
+  handoff_batch_id: string;
+  batch: Record<string, unknown> | null;
+  resolver_version: string;
+  candidates: Array<Record<string, unknown> & {
+    metadata?: { resolver_v2_result?: BlueprintResolverV2RuntimeResult; binding_summary?: string | null };
+  }>;
+  summary: ResolveBindingsSummary["summary"] | null;
+  push_to_estimate_enabled: false;
+  push_to_estimate_disabled_reason: string;
+}
+
+export async function fetchBlueprintResolverResults(params: {
+  handoff_batch_id: string;
+  candidate_ids?: string[];
+}) {
+  const { data, error } = await edgeApi<ResolveBindingsGetResult>(
+    "document-worker",
+    "/blueprint-importer/v2/resolve-bindings/get",
+    params as unknown as Record<string, unknown>,
+  );
+  if (error) throw new Error(error);
+  return data!;
+}
