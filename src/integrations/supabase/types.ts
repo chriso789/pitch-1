@@ -59332,6 +59332,7 @@ export type Database = {
           entity_subtext: string
           entity_type: string
           match_score: number
+          project_type: string
         }[]
       }
       search_network_line_items: {

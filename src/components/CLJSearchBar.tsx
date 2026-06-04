@@ -46,7 +46,16 @@ interface SearchResult {
   clj_number: string;
   entity_status: string;
   match_score: number;
+  project_type?: string | null;
 }
+
+const formatProjectType = (raw?: string | null): string => {
+  if (!raw) return '';
+  return raw
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .trim();
+};
 
 const MAX_RECENTS = 5;
 // Scope recents to BOTH tenant and active location so switching locations
@@ -358,6 +367,11 @@ export const CLJSearchBar = () => {
                           </div>
                         </div>
                         <div className="flex items-center gap-1 shrink-0 ml-2">
+                          {result.project_type && (
+                            <Badge variant="secondary" className="text-xs bg-purple-100 text-purple-700 border-purple-200">
+                              {formatProjectType(result.project_type)}
+                            </Badge>
+                          )}
                           {result.clj_number && (
                             <Badge variant="secondary" className="text-xs">
                               {result.clj_number}
@@ -399,6 +413,11 @@ export const CLJSearchBar = () => {
                           </div>
                         </div>
                         <div className="flex items-center gap-1 shrink-0 ml-2">
+                          {result.project_type && (
+                            <Badge variant="secondary" className="text-xs bg-purple-100 text-purple-700 border-purple-200">
+                              {formatProjectType(result.project_type)}
+                            </Badge>
+                          )}
                           {result.clj_number && (
                             <Badge variant="secondary" className="text-xs">
                               {result.clj_number}
