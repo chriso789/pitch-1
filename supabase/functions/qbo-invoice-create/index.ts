@@ -147,10 +147,25 @@ Deno.serve(async (req) => {
           }
         );
 
+        const subTid = getIntuitTid(subCustomerResponse);
+        console.log('[qbo-invoice-create] sub-customer create', {
+          status: subCustomerResponse.status,
+          intuit_tid: subTid,
+          realm_id: connection.realm_id,
+          tenant_id,
+          project_id,
+        });
+
         if (!subCustomerResponse.ok) {
           const errorText = await subCustomerResponse.text();
-          console.error('QBO sub-customer creation error:', errorText);
-          throw new Error(`Failed to create sub-customer: ${errorText}`);
+          console.error('QBO sub-customer creation error:', {
+            intuit_tid: subTid,
+            status: subCustomerResponse.status,
+            body_excerpt: errorText.slice(0, 500),
+          });
+          throw new Error(
+            `qbo_invoice_create:sub_customer failed [status=${subCustomerResponse.status} intuit_tid=${subTid ?? 'none'}]: ${errorText.slice(0, 300)}`,
+          );
         }
 
         const subCustomerData = await subCustomerResponse.json();
