@@ -18,12 +18,27 @@ class Settings(BaseModel):
     min_clipped_point_count: int = int(os.getenv("MIN_CLIPPED_POINT_COUNT", "500"))
     max_download_mb: int = int(os.getenv("MAX_DOWNLOAD_MB", "2048"))
     temp_work_dir: str = os.getenv("TEMP_WORK_DIR", "/tmp/pitch-measure")
+    # Local fallback storage used ONLY when worker_mode in {test, development}
+    # and Supabase Storage env is missing. Never used in production.
+    local_artifact_dir: str = os.getenv(
+        "LOCAL_ARTIFACT_DIR", "/tmp/pitch-measure/test-artifacts"
+    )
     callback_base_url: str = os.getenv("CONTROL_PLANE_CALLBACK_URL", "")
-    worker_version: str = "0.2.0-clip-point-cloud"
+    worker_version: str = "0.2.1-clip-point-cloud"
+
+    @property
+    def is_test_mode(self) -> bool:
+        return self.worker_mode.lower() in ("test", "testing")
+
+    @property
+    def is_non_prod(self) -> bool:
+        return self.worker_mode.lower() in ("test", "testing", "development", "dev")
 
 
 @lru_cache
 def get_settings() -> Settings:
     s = Settings()
     os.makedirs(s.temp_work_dir, exist_ok=True)
+    if s.is_non_prod:
+        os.makedirs(s.local_artifact_dir, exist_ok=True)
     return s
