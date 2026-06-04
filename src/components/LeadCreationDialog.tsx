@@ -217,6 +217,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
         phone: "",
         roofAge: "",
         status: "lead",
+        projectType: "",
         roofType: "",
         priority: "medium",
         estimatedValue: "",
