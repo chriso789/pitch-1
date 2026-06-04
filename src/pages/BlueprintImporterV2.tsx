@@ -18,10 +18,13 @@ import {
   createBlueprintHandoffPreview,
   fetchBlueprintHandoffPreview,
   reviewBlueprintHandoffCandidate,
+  resolveBlueprintCatalogBindings,
   type SessionSummary,
   type DraftLinesResult,
   type HandoffPreviewGetResult,
   type HandoffPreviewCandidateRow,
+  type BlueprintResolverV2RuntimeResult,
+  type ResolveBindingsSummary,
 } from "@/integrations/blueprintImporterV2Api";
 
 const TRADE_LABELS: Record<string, string> = {
