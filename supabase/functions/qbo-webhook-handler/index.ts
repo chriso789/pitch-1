@@ -11,6 +11,7 @@ import { createHmac } from "https://deno.land/std@0.177.0/node/crypto.ts";
 import { qboHost } from "../_shared/qbo-host.ts";
 import { qboWebhookVerifiers, type QboMode } from "../_shared/qbo-context.ts";
 import { getIntuitTid } from "../_shared/qbo-intuit-tid.ts";
+import { writeQboApiLog } from "../_shared/qbo-api.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -248,6 +249,19 @@ async function processPaymentEvent(
       tenant_id: tenantId,
       qbo_payment_id: paymentId,
     });
+    void writeQboApiLog(supabase, {
+      action: "qbo_webhook_handler",
+      tenant_id: tenantId,
+      connection_id: (connection as { id?: string }).id ?? null,
+      realm_id: realmId,
+      oauth_app_env: connection.oauth_app_env,
+      endpoint: `/v3/company/${realmId}/payment/${paymentId}`,
+      method: "GET",
+      http_status: paymentResponse.status,
+      intuit_tid: paymentTid,
+      success: paymentResponse.ok,
+      request_metadata: { op: "fetch_payment", qbo_entity: "Payment", qbo_entity_id: paymentId },
+    });
 
     if (!paymentResponse.ok) {
       const errBody = await paymentResponse.text();
@@ -315,6 +329,18 @@ async function updateInvoiceBalance(
       realm_id: realmId,
       tenant_id: tenantId,
       qbo_invoice_id: invoiceId,
+    });
+    void writeQboApiLog(supabase, {
+      action: "qbo_webhook_handler",
+      tenant_id: tenantId,
+      realm_id: realmId,
+      oauth_app_env: connection.oauth_app_env,
+      endpoint: `/v3/company/${realmId}/invoice/${invoiceId}`,
+      method: "GET",
+      http_status: invoiceResponse.status,
+      intuit_tid: invoiceTid,
+      success: invoiceResponse.ok,
+      request_metadata: { op: "fetch_invoice", qbo_entity: "Invoice", qbo_entity_id: invoiceId },
     });
     if (!invoiceResponse.ok) {
       const errBody = await invoiceResponse.text();

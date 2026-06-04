@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { qboHost } from "../_shared/qbo-host.ts";
 import { getIntuitTid } from "../_shared/qbo-intuit-tid.ts";
+import { writeQboApiLog } from "../_shared/qbo-api.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -85,6 +86,19 @@ Deno.serve(async (req) => {
       tenant_id,
       qbo_invoice_id: qboInvoiceId,
     });
+    void writeQboApiLog(supabase, {
+      action: 'qbo_invoice_send',
+      tenant_id,
+      connection_id: connection.id,
+      realm_id: connection.realm_id,
+      oauth_app_env: connection.oauth_app_env,
+      endpoint: `/v3/company/${connection.realm_id}/invoice/${qboInvoiceId}`,
+      method: 'GET',
+      http_status: fetchResponse.status,
+      intuit_tid: fetchTid,
+      success: fetchResponse.ok,
+      request_metadata: { op: 'fetch_invoice', qbo_entity: 'Invoice', qbo_entity_id: qboInvoiceId },
+    });
 
     if (!fetchResponse.ok) {
       const errorText = await fetchResponse.text();
@@ -133,6 +147,19 @@ Deno.serve(async (req) => {
       tenant_id,
       qbo_invoice_id: qboInvoiceId,
     });
+    void writeQboApiLog(supabase, {
+      action: 'qbo_invoice_send',
+      tenant_id,
+      connection_id: connection.id,
+      realm_id: connection.realm_id,
+      oauth_app_env: connection.oauth_app_env,
+      endpoint: `/v3/company/${connection.realm_id}/invoice`,
+      method: 'POST',
+      http_status: updateResponse.status,
+      intuit_tid: updateTid,
+      success: updateResponse.ok,
+      request_metadata: { op: 'update_invoice_payment_flags', qbo_entity: 'Invoice', qbo_entity_id: qboInvoiceId },
+    });
 
     if (!updateResponse.ok) {
       const errorText = await updateResponse.text();
@@ -172,6 +199,19 @@ Deno.serve(async (req) => {
         realm_id: connection.realm_id,
         tenant_id,
         qbo_invoice_id: qboInvoiceId,
+      });
+      void writeQboApiLog(supabase, {
+        action: 'qbo_invoice_send',
+        tenant_id,
+        connection_id: connection.id,
+        realm_id: connection.realm_id,
+        oauth_app_env: connection.oauth_app_env,
+        endpoint: `/v3/company/${connection.realm_id}/invoice/${qboInvoiceId}/send`,
+        method: 'POST',
+        http_status: sendResponse.status,
+        intuit_tid: sendTid,
+        success: sendResponse.ok,
+        request_metadata: { op: 'email_send', qbo_entity: 'Invoice', qbo_entity_id: qboInvoiceId },
       });
 
       if (!sendResponse.ok) {

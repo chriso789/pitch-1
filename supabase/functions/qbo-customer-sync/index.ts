@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { qboHost } from "../_shared/qbo-host.ts";
 import { getIntuitTid } from "../_shared/qbo-intuit-tid.ts";
+import { writeQboApiLog } from "../_shared/qbo-api.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -132,6 +133,19 @@ Deno.serve(async (req) => {
         qbo_customer_id: qboCustomerId,
         tenant_id,
       });
+      void writeQboApiLog(supabase, {
+        action: 'qbo_customer_sync',
+        tenant_id,
+        connection_id: connection.id,
+        realm_id: connection.realm_id,
+        oauth_app_env: connection.oauth_app_env,
+        endpoint: `/v3/company/${connection.realm_id}/customer/${qboCustomerId}`,
+        method: 'GET',
+        http_status: fetchResponse.status,
+        intuit_tid: fetchTid,
+        success: fetchResponse.ok,
+        request_metadata: { op: 'fetch_existing', qbo_entity: 'Customer', qbo_entity_id: qboCustomerId },
+      });
 
       if (!fetchResponse.ok) {
         const errBody = await fetchResponse.text();
@@ -183,6 +197,19 @@ Deno.serve(async (req) => {
       intuit_tid,
       realm_id: connection.realm_id,
       tenant_id,
+    });
+    void writeQboApiLog(supabase, {
+      action: 'qbo_customer_sync',
+      tenant_id,
+      connection_id: connection.id,
+      realm_id: connection.realm_id,
+      oauth_app_env: connection.oauth_app_env,
+      endpoint: `/v3/company/${connection.realm_id}/customer`,
+      method: 'POST',
+      http_status: qboResponse.status,
+      intuit_tid,
+      success: qboResponse.ok,
+      request_metadata: { op: operation, qbo_entity: 'Customer', contact_id },
     });
 
     if (!qboResponse.ok) {

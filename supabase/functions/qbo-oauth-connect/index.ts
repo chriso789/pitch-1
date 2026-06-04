@@ -25,6 +25,7 @@ import {
   type QboMode,
 } from "../_shared/qbo-context.ts";
 import { getIntuitTid } from "../_shared/qbo-intuit-tid.ts";
+import { writeQboApiLog } from "../_shared/qbo-api.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -157,6 +158,19 @@ async function handleServerCallback(reqUrl: URL): Promise<Response> {
     intuit_tid: tokenTid,
     realm_id: realmId,
   });
+  void writeQboApiLog(admin, {
+    action: "qbo_oauth_connect",
+    tenant_id: stateRow.tenant_id,
+    user_id: stateRow.initiated_by ?? null,
+    realm_id: realmId,
+    oauth_app_env: ctx.mode,
+    endpoint: "/oauth2/v1/tokens/bearer",
+    method: "POST",
+    http_status: tokenResp.status,
+    intuit_tid: tokenTid,
+    success: tokenResp.ok,
+    request_metadata: { op: "token_exchange" },
+  });
 
   if (!tokenResp.ok) {
     const errBody = await tokenResp.text();
@@ -192,6 +206,19 @@ async function handleServerCallback(reqUrl: URL): Promise<Response> {
       status: ciResp.status,
       intuit_tid: ciTid,
       realm_id: realmId,
+    });
+    void writeQboApiLog(admin, {
+      action: "qbo_oauth_connect",
+      tenant_id: stateRow.tenant_id,
+      user_id: stateRow.initiated_by ?? null,
+      realm_id: realmId,
+      oauth_app_env: ctx.mode,
+      endpoint: `/v3/company/${realmId}/companyinfo/${realmId}`,
+      method: "GET",
+      http_status: ciResp.status,
+      intuit_tid: ciTid,
+      success: ciResp.ok,
+      request_metadata: { op: "company_info" },
     });
     if (ciResp.ok) {
       const ci = await ciResp.json();
@@ -513,6 +540,20 @@ Deno.serve(async (req) => {
         intuit_tid: refreshTid,
         tenant_id: profile.tenant_id,
         realm_id: connection.realm_id,
+      });
+      void writeQboApiLog(admin, {
+        action: "qbo_token_refresh",
+        tenant_id: profile.tenant_id,
+        user_id: user.id ?? null,
+        connection_id: connection.id,
+        realm_id: connection.realm_id,
+        oauth_app_env: connection.oauth_app_env,
+        endpoint: "/oauth2/v1/tokens/bearer",
+        method: "POST",
+        http_status: tokenResp.status,
+        intuit_tid: refreshTid,
+        success: tokenResp.ok,
+        request_metadata: { op: "refresh_token" },
       });
 
       if (!tokenResp.ok) {
