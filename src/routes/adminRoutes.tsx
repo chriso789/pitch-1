@@ -12,6 +12,7 @@ const AIAgentSettingsPage = React.lazy(() => import("@/pages/settings/AIAgentSet
 const AIAdminPage = React.lazy(() => import("@/pages/settings/AIAdminPage"));
 const MeasurementSkillsPage = React.lazy(() => import("@/pages/admin/MeasurementSkillsPage"));
 const MeasurementJobPipelinePage = React.lazy(() => import("@/pages/admin/MeasurementJobPipelinePage"));
+const ProviderSourceInventoryPage = React.lazy(() => import("@/pages/admin/ProviderSourceInventoryPage"));
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-background">
@@ -31,6 +32,7 @@ export default function AdminRoutes() {
         <Route path="audit-logs" element={<ProtectedRoute><AuditLogs /></ProtectedRoute>} />
         <Route path="measurement-skills" element={<ProtectedRoute><MeasurementSkillsPage /></ProtectedRoute>} />
         <Route path="measurement-skills/:jobId" element={<ProtectedRoute><MeasurementJobPipelinePage /></ProtectedRoute>} />
+        <Route path="providers/inventory" element={<ProtectedRoute><ProviderSourceInventoryPage /></ProtectedRoute>} />
       </Routes>
     </Suspense>
   );

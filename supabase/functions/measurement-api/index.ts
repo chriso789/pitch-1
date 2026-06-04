@@ -395,6 +395,249 @@ app.post("/mskill/jobs/bridge", async (c) => {
   return jsonOk(c, result);
 });
 
+
+// ============================================================================
+// PITCH Measure — Provider Source Inventory
+// ============================================================================
+
+const CATEGORY_ORDER = [
+  "geocode","parcel","footprint","lidar","elevation","dem","dtm","dsm","point_cloud","roof_surface","worker_compute",
+] as const;
+
+function envFlagForProvider(key: string): string | null {
+  const k = key.toLowerCase();
+  if (k.includes("google")) return "GOOGLE_MAPS_API_KEY";
+  if (k.includes("mapbox")) return "MAPBOX_ACCESS_TOKEN";
+  if (k.includes("eagleview")) return "EAGLEVIEW_API_KEY";
+  if (k.includes("hover")) return "HOVER_API_KEY";
+  if (k.includes("nearmap")) return "NEARMAP_API_KEY";
+  return null;
+}
+
+function outputTableForCategory(cat: string): string | null {
+  switch (cat) {
+    case "geocode": return "mskill_requests";
+    case "parcel": return "mskill_parcels";
+    case "footprint": return "mskill_building_footprints";
+    case "lidar": return "mskill_lidar_windows";
+    case "elevation": return "mskill_elevation_assets";
+    case "roof_surface": return "mskill_roof_surface_assets";
+    default: return null;
+  }
+}
+function outputArtifactForCategory(cat: string): string | null {
+  switch (cat) {
+    case "geocode": return "geocode_result";
+    case "parcel": return "parcel_geometry";
+    case "footprint": return "building_footprint_geometry";
+    case "lidar": return "lidar_window_metadata";
+    case "elevation": return "elevation_asset";
+    case "roof_surface": return "roof_surface_asset";
+    default: return null;
+  }
+}
+
+function computeNextBlocker(jobScope: any, registry: any[]): string | null {
+  if (!jobScope) return null;
+  const runs = jobScope.runs ?? [];
+  const ordered = [...registry].sort((a, b) => a.pipeline_order - b.pipeline_order);
+  for (const skill of ordered) {
+    const r = runs.find((x: any) => x.skill_key === skill.skill_key);
+    if (!r || r.status !== "completed") {
+      return `${skill.skill_key} (#${skill.pipeline_order}, ${skill.execution_target}) — ${r?.status ?? "not_run"}`;
+    }
+  }
+  return null;
+}
+
+async function buildProviderInventory(svc: ReturnType<typeof serviceClient>, tenantId: string, jobId?: string | null) {
+  const [providersRes, coverageRes, logsRes, workersRes, registryRes] = await Promise.all([
+    svc.from("mskill_provider_sources").select("*").order("category").order("provider_key"),
+    svc.from("mskill_provider_coverage").select("*"),
+    svc.from("mskill_provider_sync_logs").select("*").order("created_at", { ascending: false }).limit(500),
+    svc.from("mskill_workers").select("*"),
+    svc.from("mskill_registry").select("*").order("pipeline_order"),
+  ]);
+
+  let jobScope: any = null;
+  if (jobId) {
+    const { data: job } = await svc.from("mskill_jobs").select("id, tenant_id, mskill_request_id, request_hash").eq("id", jobId).maybeSingle();
+    if (job && job.tenant_id === tenantId) {
+      const [req, parcel, footprint, lidarWin, elevAssets, surfaceAssets, runs] = await Promise.all([
+        svc.from("mskill_requests").select("*").eq("id", job.mskill_request_id).maybeSingle(),
+        svc.from("mskill_parcels").select("*").eq("mskill_job_id", jobId).maybeSingle(),
+        svc.from("mskill_building_footprints").select("*").eq("mskill_job_id", jobId).maybeSingle(),
+        svc.from("mskill_lidar_windows").select("*").eq("mskill_job_id", jobId).maybeSingle(),
+        svc.from("mskill_elevation_assets").select("*").eq("mskill_job_id", jobId),
+        svc.from("mskill_roof_surface_assets").select("*").eq("mskill_job_id", jobId),
+        svc.from("mskill_runs").select("id, skill_key, status, error_reason, started_at, completed_at").eq("mskill_job_id", jobId).order("created_at", { ascending: false }),
+      ]);
+      jobScope = {
+        job, request: req.data ?? null,
+        parcel: parcel.data ?? null,
+        building_footprint: footprint.data ?? null,
+        lidar_window: lidarWin.data ?? null,
+        elevation_assets: elevAssets.data ?? [],
+        roof_surface_assets: surfaceAssets.data ?? [],
+        runs: runs.data ?? [],
+      };
+    }
+  }
+
+  const lastLogByKey: Record<string, any> = {};
+  for (const log of logsRes.data ?? []) {
+    if (!lastLogByKey[log.provider_key]) lastLogByKey[log.provider_key] = log;
+  }
+  const runsByKey: Record<string, any[]> = {};
+  for (const r of jobScope?.runs ?? []) {
+    (runsByKey[r.skill_key] ??= []).push(r);
+  }
+
+  const providerRows = (providersRes.data ?? []).map((p: any) => {
+    const counties = (coverageRes.data ?? []).filter((c: any) => c.provider_key === p.provider_key);
+    const log = lastLogByKey[p.provider_key];
+    const envVar = envFlagForProvider(p.provider_key);
+    return {
+      provider_key: p.provider_key,
+      provider_name: p.display_name,
+      provider_type: "external_api",
+      data_category: p.category,
+      enabled: !!p.is_enabled,
+      priority: p.metadata?.priority ?? null,
+      jurisdiction: p.scope,
+      query_url: p.base_url ?? p.metadata?.query_url ?? null,
+      metadata_url: p.metadata?.metadata_url ?? null,
+      download_url_template: p.metadata?.download_url_template ?? null,
+      auth_required: !!envVar || !!p.metadata?.auth_required || !!p.requires_paid_toggle,
+      required_env_var: envVar,
+      requires_paid_toggle: !!p.requires_paid_toggle,
+      coverage_records: counties.map((c: any) => ({
+        county: c.county, state: c.state, data_year: c.data_year,
+        resolution_m: c.resolution_m, asset_type: c.asset_type, source_url: c.source_url,
+      })),
+      last_test_status: log?.sync_status ?? null,
+      last_http_status: log?.metadata?.http_status ?? null,
+      last_success_at: log?.sync_status === "ok" ? log?.created_at : null,
+      last_error: log?.sync_status && log.sync_status !== "ok" ? log.message : null,
+      output_table: outputTableForCategory(p.category),
+      output_artifact_type: outputArtifactForCategory(p.category),
+      supports_roof_geometry: ["lidar","elevation","roof_surface","point_cloud","dsm"].includes(p.category),
+      notes: p.metadata?.notes ?? null,
+    };
+  });
+
+  const worker = (workersRes.data ?? [])[0] ?? null;
+  const computeRows = (registryRes.data ?? [])
+    .filter((s: any) => s.execution_target === "internal_worker" || s.execution_target === "hybrid")
+    .map((s: any) => {
+      const latest = (runsByKey[s.skill_key] ?? [])[0] ?? null;
+      const capImpl = worker?.capabilities?.[s.skill_key]?.implemented ?? null;
+      return {
+        provider_key: `worker:${s.skill_key}`,
+        provider_name: s.display_name,
+        provider_type: "internal_worker",
+        data_category: "worker_compute",
+        enabled: !!s.is_active,
+        priority: s.pipeline_order,
+        jurisdiction: "internal",
+        query_url: s.worker_endpoint,
+        metadata_url: worker?.base_url ? `${worker.base_url}/capabilities` : null,
+        download_url_template: null,
+        auth_required: true,
+        required_env_var: "INTERNAL_WORKER_API_KEY",
+        requires_paid_toggle: false,
+        worker_implemented: capImpl,
+        worker_online: !!worker?.is_online,
+        worker_last_health_check: worker?.last_health_check ?? null,
+        last_test_status: latest?.status ?? null,
+        last_http_status: null,
+        last_success_at: latest?.status === "completed" ? latest.completed_at : null,
+        last_error: latest && latest.status !== "completed" ? latest.error_reason : null,
+        output_table: "mskill_artifacts",
+        output_artifact_type: (s.produced_outputs ?? [])[0] ?? null,
+        supports_roof_geometry: ["compute","geometry"].includes(s.category),
+        notes: `pipeline order ${s.pipeline_order} · ${s.execution_target}`,
+      };
+    });
+
+  const allRows = [...providerRows, ...computeRows];
+  const grouped: Record<string, any[]> = {};
+  for (const cat of CATEGORY_ORDER) grouped[cat] = [];
+  for (const row of allRows) {
+    const cat = (CATEGORY_ORDER as readonly string[]).includes(row.data_category) ? row.data_category : "geocode";
+    (grouped[cat] ??= []).push(row);
+  }
+
+  return {
+    generated_at: new Date().toISOString(),
+    tenant_id: tenantId,
+    job_scope: jobScope,
+    groups: CATEGORY_ORDER.map((cat) => ({ category: cat, sources: grouped[cat] ?? [] })),
+    flat: allRows,
+    worker_summary: worker
+      ? { worker_key: worker.worker_key, display_name: worker.display_name, base_url: worker.base_url, is_online: worker.is_online, last_health_check: worker.last_health_check }
+      : null,
+    next_blocker: computeNextBlocker(jobScope, registryRes.data ?? []),
+  };
+}
+
+app.get("/mskill/providers/inventory", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const jobId = c.req.query("jobId") ?? null;
+  const inv = await buildProviderInventory(serviceClient(), tenantId, jobId);
+  return jsonOk(c, inv);
+});
+app.post("/mskill/providers/inventory", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const body = await c.req.json().catch(() => ({}));
+  const jobId = (body.jobId as string | undefined) ?? null;
+  const inv = await buildProviderInventory(serviceClient(), tenantId, jobId);
+  return jsonOk(c, inv);
+});
+
+// Per-source connectivity probe. Read-only HEAD/GET. Logs to mskill_provider_sync_logs.
+app.post("/mskill/providers/test", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const body = await c.req.json().catch(() => ({}));
+  const providerKey = String(body.provider_key ?? "");
+  const mode = String(body.mode ?? "connection");
+  if (!providerKey) return jsonErr(c, "bad_request", "provider_key required", 400);
+  const svc = serviceClient();
+
+  if (providerKey.startsWith("worker:")) {
+    const { data: worker } = await svc.from("mskill_workers").select("*").limit(1).maybeSingle();
+    if (!worker?.base_url) return jsonOk(c, { ok: false, status: "no_worker_configured" });
+    try {
+      const r = await fetch(`${worker.base_url}/health`, { headers: { "x-api-key": Deno.env.get("INTERNAL_WORKER_API_KEY") ?? "" } });
+      const text = await r.text();
+      await svc.from("mskill_provider_sync_logs").insert({ provider_key: providerKey, sync_status: r.ok ? "ok" : "fail", message: text.slice(0, 500), metadata: { http_status: r.status, tested_by: tenantId, mode } });
+      return jsonOk(c, { ok: r.ok, http_status: r.status, body_preview: text.slice(0, 200) });
+    } catch (e: any) {
+      await svc.from("mskill_provider_sync_logs").insert({ provider_key: providerKey, sync_status: "fail", message: String(e?.message ?? e), metadata: { tested_by: tenantId, mode } });
+      return jsonOk(c, { ok: false, error: String(e?.message ?? e) });
+    }
+  }
+
+  const { data: prov } = await svc.from("mskill_provider_sources").select("*").eq("provider_key", providerKey).maybeSingle();
+  if (!prov) return jsonErr(c, "not_found", "provider not found", 404);
+
+  const url: string | null = prov.base_url ?? prov.metadata?.query_url ?? prov.metadata?.metadata_url ?? null;
+  if (!url) {
+    await svc.from("mskill_provider_sync_logs").insert({ provider_key: providerKey, sync_status: "skipped", message: "no testable URL configured", metadata: { mode } });
+    return jsonOk(c, { ok: false, status: "no_url_configured", note: "Provider has no base_url/metadata_url to probe." });
+  }
+  try {
+    const r = await fetch(url, { method: "GET", headers: { "User-Agent": "PITCH-ProviderInventory/1.0" } });
+    const text = await r.text();
+    await svc.from("mskill_provider_sync_logs").insert({ provider_key: providerKey, sync_status: r.ok ? "ok" : "fail", message: text.slice(0, 500), metadata: { http_status: r.status, mode, url } });
+    return jsonOk(c, { ok: r.ok, http_status: r.status, url, body_preview: text.slice(0, 200) });
+  } catch (e: any) {
+    await svc.from("mskill_provider_sync_logs").insert({ provider_key: providerKey, sync_status: "fail", message: String(e?.message ?? e), metadata: { mode, url } });
+    return jsonOk(c, { ok: false, error: String(e?.message ?? e), url });
+  }
+});
+
 serveRouter(app);
+
 
 

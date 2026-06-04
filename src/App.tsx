@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useNavigate, Navigate } from "react-router-dom";
 import { ErrorTrackingProvider } from "@/hooks/useErrorTracking";
 import { LocationSelectionDialog } from "@/components/auth/LocationSelectionDialog";
 import { supabase } from "@/integrations/supabase/client";
@@ -166,6 +166,7 @@ const AppContent = () => {
         <Route path="/app/*" element={<MobileRoutes />} />
         <Route path="/deeplink" element={<MobileRoutes />} />
         <Route path="/admin/*" element={<AdminRoutes />} />
+        <Route path="/providers/inventory" element={<Navigate to="/admin/providers/inventory" replace />} />
         <Route path="/settings/*" element={<SettingsRoutes />} />
         <Route path="/developer/cost-tracker" element={<Suspense fallback={<PageLoader />}>{React.createElement(React.lazy(() => import("@/pages/developer/CostTrackerPage")))}</Suspense>} />
 
