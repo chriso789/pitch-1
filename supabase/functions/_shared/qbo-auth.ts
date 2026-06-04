@@ -269,6 +269,8 @@ export async function fetchCompanyInfo(
     `${ctx.accountingBaseUrl}/v3/company/${realmId}/companyinfo/${realmId}?minorversion=75`,
     { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" } },
   );
+  const intuit_tid = getIntuitTid(res);
+  console.log("[qbo-auth] fetchCompanyInfo", { status: res.status, intuit_tid, realm_id: realmId });
   if (!res.ok) return null;
   return await res.json();
 }
