@@ -23,6 +23,8 @@ const SmartDocs = React.lazy(() => import("@/pages/SmartDocs"));
 const BlueprintsPage = React.lazy(() => import("@/pages/BlueprintsPage"));
 const BlueprintReviewPage = React.lazy(() => import("@/pages/BlueprintReviewPage"));
 const BlueprintLab = React.lazy(() => import("@/pages/BlueprintLab"));
+const BlueprintImporterV2 = React.lazy(() => import("@/pages/BlueprintImporterV2"));
+
 const BlueprintDocumentDetail = React.lazy(() => import("@/pages/BlueprintDocumentDetail"));
 const BlueprintPageReview = React.lazy(() => import("@/pages/BlueprintPageReview"));
 const Jobs = React.lazy(() => import("@/pages/Jobs"));
