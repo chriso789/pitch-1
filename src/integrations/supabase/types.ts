@@ -28390,25 +28390,37 @@ export type Database = {
           base_building_footprint_geojson: Json | null
           building_footprint_id: string | null
           confidence: number | null
+          confidence_reason: string | null
           created_at: string
           delta_perimeter_ft: number | null
           eave_offset_ft: number | null
+          eave_source_type: string | null
           effective_offset_ft: number | null
           geometry_geojson: Json
           id: string
+          imagery_verified: boolean | null
           is_selected: boolean
+          jurisdiction_default_used: boolean | null
           lanai_extension_detected: boolean | null
           metadata: Json | null
           mskill_job_id: string
           mskill_request_id: string
+          needs_review_reason: string | null
           offset_ft: number
+          overhang_strategy: string | null
           perimeter_ft: number | null
           porch_extension_detected: boolean | null
           rake_offset_ft: number | null
+          rake_source_type: string | null
           request_hash: string
           roof_perimeter_geojson: Json | null
+          roof_type_default_used: boolean | null
+          soffit_confidence: string | null
+          soffit_data_source: string | null
+          soffit_exposure_ft: number | null
           source_type: string
           status: string
+          surface_refined: boolean | null
           tenant_id: string
           uniform_offset_ft: number | null
           updated_at: string
@@ -28421,25 +28433,37 @@ export type Database = {
           base_building_footprint_geojson?: Json | null
           building_footprint_id?: string | null
           confidence?: number | null
+          confidence_reason?: string | null
           created_at?: string
           delta_perimeter_ft?: number | null
           eave_offset_ft?: number | null
+          eave_source_type?: string | null
           effective_offset_ft?: number | null
           geometry_geojson: Json
           id?: string
+          imagery_verified?: boolean | null
           is_selected?: boolean
+          jurisdiction_default_used?: boolean | null
           lanai_extension_detected?: boolean | null
           metadata?: Json | null
           mskill_job_id: string
           mskill_request_id: string
+          needs_review_reason?: string | null
           offset_ft: number
+          overhang_strategy?: string | null
           perimeter_ft?: number | null
           porch_extension_detected?: boolean | null
           rake_offset_ft?: number | null
+          rake_source_type?: string | null
           request_hash: string
           roof_perimeter_geojson?: Json | null
+          roof_type_default_used?: boolean | null
+          soffit_confidence?: string | null
+          soffit_data_source?: string | null
+          soffit_exposure_ft?: number | null
           source_type?: string
           status?: string
+          surface_refined?: boolean | null
           tenant_id: string
           uniform_offset_ft?: number | null
           updated_at?: string
@@ -28452,25 +28476,37 @@ export type Database = {
           base_building_footprint_geojson?: Json | null
           building_footprint_id?: string | null
           confidence?: number | null
+          confidence_reason?: string | null
           created_at?: string
           delta_perimeter_ft?: number | null
           eave_offset_ft?: number | null
+          eave_source_type?: string | null
           effective_offset_ft?: number | null
           geometry_geojson?: Json
           id?: string
+          imagery_verified?: boolean | null
           is_selected?: boolean
+          jurisdiction_default_used?: boolean | null
           lanai_extension_detected?: boolean | null
           metadata?: Json | null
           mskill_job_id?: string
           mskill_request_id?: string
+          needs_review_reason?: string | null
           offset_ft?: number
+          overhang_strategy?: string | null
           perimeter_ft?: number | null
           porch_extension_detected?: boolean | null
           rake_offset_ft?: number | null
+          rake_source_type?: string | null
           request_hash?: string
           roof_perimeter_geojson?: Json | null
+          roof_type_default_used?: boolean | null
+          soffit_confidence?: string | null
+          soffit_data_source?: string | null
+          soffit_exposure_ft?: number | null
           source_type?: string
           status?: string
+          surface_refined?: boolean | null
           tenant_id?: string
           uniform_offset_ft?: number | null
           updated_at?: string
@@ -46876,6 +46912,66 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      soffit_eave_rules: {
+        Row: {
+          confidence: string
+          created_at: string
+          eave_exposure_default_ft: number
+          eave_exposure_max_ft: number | null
+          eave_exposure_min_ft: number | null
+          enabled: boolean
+          id: string
+          jurisdiction_key: string | null
+          jurisdiction_type: string
+          notes: string | null
+          rake_exposure_default_ft: number
+          rake_exposure_max_ft: number | null
+          rake_exposure_min_ft: number | null
+          roof_type: string
+          source_reference: string | null
+          structure_type: string
+          updated_at: string
+        }
+        Insert: {
+          confidence?: string
+          created_at?: string
+          eave_exposure_default_ft: number
+          eave_exposure_max_ft?: number | null
+          eave_exposure_min_ft?: number | null
+          enabled?: boolean
+          id?: string
+          jurisdiction_key?: string | null
+          jurisdiction_type: string
+          notes?: string | null
+          rake_exposure_default_ft: number
+          rake_exposure_max_ft?: number | null
+          rake_exposure_min_ft?: number | null
+          roof_type: string
+          source_reference?: string | null
+          structure_type?: string
+          updated_at?: string
+        }
+        Update: {
+          confidence?: string
+          created_at?: string
+          eave_exposure_default_ft?: number
+          eave_exposure_max_ft?: number | null
+          eave_exposure_min_ft?: number | null
+          enabled?: boolean
+          id?: string
+          jurisdiction_key?: string | null
+          jurisdiction_type?: string
+          notes?: string | null
+          rake_exposure_default_ft?: number
+          rake_exposure_max_ft?: number | null
+          rake_exposure_min_ft?: number | null
+          roof_type?: string
+          source_reference?: string | null
+          structure_type?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       spatial_ref_sys: {
         Row: {

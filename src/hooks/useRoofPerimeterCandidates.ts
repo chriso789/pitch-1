@@ -37,6 +37,19 @@ export type RoofPerimeterCandidate = {
   base_building_footprint_geojson: unknown;
   created_at: string;
   updated_at: string;
+  // Soffit / eave provenance (Part 3 of pre-rewire verification)
+  soffit_data_source?: string | null;
+  soffit_exposure_ft?: number | null;
+  soffit_confidence?: "low" | "low-medium" | "medium" | "high" | null;
+  eave_source_type?: string | null;
+  rake_source_type?: string | null;
+  overhang_strategy?: string | null;
+  jurisdiction_default_used?: boolean | null;
+  roof_type_default_used?: boolean | null;
+  surface_refined?: boolean | null;
+  imagery_verified?: boolean | null;
+  confidence_reason?: string | null;
+  needs_review_reason?: string | null;
 };
 
 export const PERIMETER_CANDIDATE_KEY = (jobId?: string | null) =>
