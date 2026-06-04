@@ -422,7 +422,7 @@ export const PlatformAdmin = () => {
               </p>
             </div>
             <Tabs defaultValue="abc" className="space-y-6">
-              <TabsList className="flex-wrap">
+              <TabsList className="flex flex-wrap h-auto gap-1 justify-start">
                 <TabsTrigger value="srs" className="gap-2">
                   <Truck className="h-4 w-4" /> SRS Distribution
                 </TabsTrigger>
