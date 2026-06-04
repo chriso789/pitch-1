@@ -858,18 +858,20 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
             </div>
           </div>
 
-          <div>
-            <Label htmlFor="roofAge">Roof Age (years) *</Label>
-            <Input
-              id="roofAge"
-              type="number"
-              min="0"
-              max="100"
-              value={formData.roofAge}
-              onChange={(e) => setFormData(prev => ({ ...prev, roofAge: e.target.value }))}
-              placeholder="e.g., 15"
-            />
-          </div>
+          {formData.projectType === "roof" && (
+            <div>
+              <Label htmlFor="roofAge">Roof Age (years) *</Label>
+              <Input
+                id="roofAge"
+                type="number"
+                min="0"
+                max="100"
+                value={formData.roofAge}
+                onChange={(e) => setFormData(prev => ({ ...prev, roofAge: e.target.value }))}
+                placeholder="e.g., 15"
+              />
+            </div>
+          )}
 
           {contact && (() => {
             const hasContactAddress = !!buildContactAddressSuggestion();
