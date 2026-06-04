@@ -503,21 +503,31 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
       return false;
     }
 
-    const roofRequired = !contact;
+    const fieldsRequired = !contact;
+    const roofAgeRequired = fieldsRequired && formData.projectType === "roof";
 
-    if (roofRequired && !formData.roofAge) {
+    if (fieldsRequired && !formData.projectType) {
       toast({
         title: "Validation Error",
-        description: "Roof age is required",
+        description: "Project type is required",
         variant: "destructive",
       });
       return false;
     }
 
-    if (roofRequired && !formData.roofType) {
+    if (fieldsRequired && !formData.roofType) {
       toast({
         title: "Validation Error",
-        description: "Roof type is required",
+        description: `${subtypeLabel} is required`,
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    if (roofAgeRequired && !formData.roofAge) {
+      toast({
+        title: "Validation Error",
+        description: "Roof age is required",
         variant: "destructive",
       });
       return false;
