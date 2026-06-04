@@ -5293,6 +5293,12 @@ export type Database = {
       }
       blueprint_estimate_handoff_batches: {
         Row: {
+          approval_blockers: Json
+          approval_object: Json | null
+          approval_required: boolean
+          approval_statement_version: string | null
+          approval_status: string | null
+          approval_warnings: Json
           approved_at: string | null
           approved_by: string | null
           blocking_review_flag_ids: string[]
@@ -5302,6 +5308,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           custom_line_mode: string
+          deterministic_approval_hash: string | null
           deterministic_batch_key: string
           id: string
           import_session_id: string
@@ -5316,6 +5323,12 @@ export type Database = {
           warning_review_flag_ids: string[]
         }
         Insert: {
+          approval_blockers?: Json
+          approval_object?: Json | null
+          approval_required?: boolean
+          approval_statement_version?: string | null
+          approval_status?: string | null
+          approval_warnings?: Json
           approved_at?: string | null
           approved_by?: string | null
           blocking_review_flag_ids?: string[]
@@ -5325,6 +5338,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           custom_line_mode?: string
+          deterministic_approval_hash?: string | null
           deterministic_batch_key: string
           id?: string
           import_session_id: string
@@ -5339,6 +5353,12 @@ export type Database = {
           warning_review_flag_ids?: string[]
         }
         Update: {
+          approval_blockers?: Json
+          approval_object?: Json | null
+          approval_required?: boolean
+          approval_statement_version?: string | null
+          approval_status?: string | null
+          approval_warnings?: Json
           approved_at?: string | null
           approved_by?: string | null
           blocking_review_flag_ids?: string[]
@@ -5348,6 +5368,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           custom_line_mode?: string
+          deterministic_approval_hash?: string | null
           deterministic_batch_key?: string
           id?: string
           import_session_id?: string
