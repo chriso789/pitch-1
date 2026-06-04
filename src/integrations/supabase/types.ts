@@ -39009,6 +39009,108 @@ export type Database = {
           },
         ]
       }
+      qbo_api_logs: {
+        Row: {
+          action: string
+          connection_id: string | null
+          created_at: string
+          duration_ms: number | null
+          endpoint: string | null
+          error_code: string | null
+          error_message: string | null
+          http_status: number | null
+          id: string
+          intuit_tid: string | null
+          method: string | null
+          oauth_app_env: string | null
+          realm_id: string | null
+          request_metadata: Json
+          response_metadata: Json
+          success: boolean
+          tenant_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          connection_id?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          endpoint?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          http_status?: number | null
+          id?: string
+          intuit_tid?: string | null
+          method?: string | null
+          oauth_app_env?: string | null
+          realm_id?: string | null
+          request_metadata?: Json
+          response_metadata?: Json
+          success?: boolean
+          tenant_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          connection_id?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          endpoint?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          http_status?: number | null
+          id?: string
+          intuit_tid?: string | null
+          method?: string | null
+          oauth_app_env?: string | null
+          realm_id?: string | null
+          request_metadata?: Json
+          response_metadata?: Json
+          success?: boolean
+          tenant_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      qbo_connection_tests: {
+        Row: {
+          connection_id: string | null
+          created_at: string
+          evidence: Json
+          id: string
+          oauth_app_env: string
+          realm_id: string | null
+          status: string
+          tenant_id: string
+          test_type: string
+          user_id: string | null
+        }
+        Insert: {
+          connection_id?: string | null
+          created_at?: string
+          evidence?: Json
+          id?: string
+          oauth_app_env: string
+          realm_id?: string | null
+          status: string
+          tenant_id: string
+          test_type: string
+          user_id?: string | null
+        }
+        Update: {
+          connection_id?: string | null
+          created_at?: string
+          evidence?: Json
+          id?: string
+          oauth_app_env?: string
+          realm_id?: string | null
+          status?: string
+          tenant_id?: string
+          test_type?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       qbo_connections: {
         Row: {
           access_token: string
