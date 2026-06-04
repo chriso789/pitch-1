@@ -93,6 +93,16 @@ Deno.serve(async (req) => {
     payload,
   });
 
+  // Build phone variants up-front — blast items may be stored as +1XXXXXXXXXX,
+  // 1XXXXXXXXXX, or bare XXXXXXXXXX. The webhook gets E.164 from Telnyx, so we
+  // must match across all forms or we silently miss replies/opt-outs.
+  const phoneVariants: string[] = (() => {
+    if (!fromE164) return [];
+    const digits = fromE164.replace(/\D/g, '');
+    const last10 = digits.slice(-10);
+    return Array.from(new Set([fromE164, digits, last10, `+${digits}`, `1${last10}`]));
+  })();
+
   // Opt-out handling
   const upper = body.toUpperCase();
   if (tenantId && fromE164 && STOP_WORDS.has(upper)) {
@@ -108,18 +118,23 @@ Deno.serve(async (req) => {
         },
         { onConflict: 'tenant_id,phone,channel' },
       );
-    // Cancel any still-queued blast items for this phone in this tenant
-    await supabase
-      .from('sms_blast_items')
-      .update({ status: 'opted_out' })
-      .eq('phone', fromE164)
-      .in('status', ['pending', 'claimed'])
-      .in(
-        'blast_id',
-        ((
-          await supabase.from('sms_blasts').select('id').eq('tenant_id', tenantId)
-        ).data || []).map((b: any) => b.id),
-      );
+    // Cancel queued items AND mark already-sent items as opted_out so the
+    // blast UI reflects the STOP. Match across all phone formats.
+    if (phoneVariants.length) {
+      const { data: tenantBlasts } = await supabase
+        .from('sms_blasts')
+        .select('id')
+        .eq('tenant_id', tenantId);
+      const blastIds = (tenantBlasts || []).map((b: any) => b.id);
+      if (blastIds.length) {
+        await supabase
+          .from('sms_blast_items')
+          .update({ status: 'opted_out' })
+          .in('phone', phoneVariants)
+          .in('status', ['pending', 'claimed', 'sent', 'delivered'])
+          .in('blast_id', blastIds);
+      }
+    }
   }
 
   // Try to match contact across all common phone number storage formats
@@ -254,25 +269,31 @@ Deno.serve(async (req) => {
 
 
     // If the inbound is a reply to a recent outbound blast for this phone, mark replied.
-    // Include 'replied' so multi-turn conversations keep matching the original blast.
-    const { data: lastBlastItem } = await supabase
-      .from('sms_blast_items')
-      .select('id, blast_id')
-      .eq('tenant_id', tenantId)
-      .eq('phone', fromE164)
-      .in('status', ['sent', 'delivered', 'replied'])
-      .order('sent_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    // Match across phone formats; blast items can be stored as +1XXX, 1XXX, or bare 10-digit.
+    const { data: lastBlastItem } = phoneVariants.length
+      ? await supabase
+          .from('sms_blast_items')
+          .select('id, blast_id')
+          .eq('tenant_id', tenantId)
+          .in('phone', phoneVariants)
+          .in('status', ['sent', 'delivered', 'replied'])
+          .order('sent_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      : { data: null };
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
     if (lastBlastItem) {
-      await supabase
-        .from('sms_blast_items')
-        .update({ status: 'replied', replied_at: new Date().toISOString() })
-        .eq('id', lastBlastItem.id);
+      // STOP overrides reply — opt-out is already handled above; only mark replied
+      // when this isn't a STOP keyword.
+      if (!STOP_WORDS.has(upper)) {
+        await supabase
+          .from('sms_blast_items')
+          .update({ status: 'replied', replied_at: new Date().toISOString() })
+          .eq('id', lastBlastItem.id);
+      }
 
       if (!STOP_WORDS.has(upper)) {
         fetch(`${supabaseUrl}/functions/v1/ai-followup-worker`, {

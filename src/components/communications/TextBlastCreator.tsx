@@ -84,6 +84,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   const [dryRunBlastId, setDryRunBlastId] = useState<string | null>(null);
   const [previewTemplateIndex, setPreviewTemplateIndex] = useState(0);
   const [rotateTemplates, setRotateTemplates] = useState<boolean>(false);
+  const [excludePriorBlasts, setExcludePriorBlasts] = useState<boolean>(true);
   const lastGoalRef = useRef<string>('');
 
   // Template editor state — save/edit sms_templates for this tenant
@@ -405,7 +406,41 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
     setPreviewTemplateIndex(0);
   }, [selectedTemplateIds.join('|')]);
 
-  const effectiveListItems = sendMode === 'custom' ? customContacts : (listItems || []);
+  // Prior-blast recipients to exclude (any contact this tenant has already
+  // messaged through a previous blast). Phones come back in multiple formats;
+  // we normalize to last-10-digits for comparison.
+  const { data: priorRecipients } = useQuery({
+    queryKey: ['blast-prior-recipients', activeTenantId, excludePriorBlasts],
+    queryFn: async () => {
+      if (!activeTenantId || !excludePriorBlasts) return { contactIds: new Set<string>(), phoneLast10: new Set<string>() };
+      const { data, error } = await supabase
+        .from('sms_blast_items')
+        .select('contact_id, phone, status')
+        .eq('tenant_id', activeTenantId)
+        .in('status', ['sent', 'delivered', 'replied', 'opted_out']);
+      if (error) throw error;
+      const contactIds = new Set<string>();
+      const phoneLast10 = new Set<string>();
+      for (const r of data || []) {
+        if (r.contact_id) contactIds.add(r.contact_id as string);
+        const digits = String(r.phone || '').replace(/\D/g, '');
+        if (digits.length >= 10) phoneLast10.add(digits.slice(-10));
+      }
+      return { contactIds, phoneLast10 };
+    },
+    enabled: !!activeTenantId && excludePriorBlasts,
+  });
+
+  const rawListItems = sendMode === 'custom' ? customContacts : (listItems || []);
+  const effectiveListItems = excludePriorBlasts && priorRecipients
+    ? rawListItems.filter((li: any) => {
+        if (li.contact_id && priorRecipients.contactIds.has(li.contact_id)) return false;
+        const digits = String(li.phone_number || '').replace(/\D/g, '');
+        if (digits.length >= 10 && priorRecipients.phoneLast10.has(digits.slice(-10))) return false;
+        return true;
+      })
+    : rawListItems;
+  const excludedCount = rawListItems.length - effectiveListItems.length;
   const recipientCount = sendMode === 'single' ? (manualPhone.trim() ? 1 : 0) : effectiveListItems.length;
 
   // Smart-tag aware preview (MSFH-ready). Uses a real-looking FL sample context.
@@ -666,6 +701,27 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
                   </div>
                 </RadioGroup>
               </div>
+
+              {sendMode !== 'single' && (
+                <label className="flex items-start gap-2 p-3 rounded-md border border-border bg-muted/20 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={excludePriorBlasts}
+                    onChange={(e) => setExcludePriorBlasts(e.target.checked)}
+                  />
+                  <span className="text-sm">
+                    <span className="font-medium">Exclude contacts already messaged in past blasts</span>
+                    <span className="block text-xs text-muted-foreground">
+                      Prevents resending to anyone who's been included in a prior blast (sent, delivered, replied, or opted-out).
+                      {excludedCount > 0 && (
+                        <> Filtering out <strong>{excludedCount}</strong> contact{excludedCount === 1 ? '' : 's'} from this list.</>
+                      )}
+                    </span>
+                  </span>
+                </label>
+              )}
+
 
               {sendMode === 'single' ? (
                 <div className="space-y-3 p-3 rounded-md border border-border bg-muted/30">
