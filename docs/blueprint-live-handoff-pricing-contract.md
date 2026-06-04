@@ -43,3 +43,25 @@ Tier subtotals are aggregated from `estimate_line_items.total_price`. A zero-pri
 
 - No "explicit zero is intentional" marker exists on `estimate_line_items`. Phase 7.6 should either add one or keep blocking the mode.
 - `enhanced_estimates` totals recompute on insert/update — confirm trigger behavior before any Phase 8 write.
+
+## 7. Phase 7.6a addendum — binding gate
+
+Live handoff remains blocked until the candidate has:
+
+- an `active` `blueprint_catalog_bindings` row (see `blueprint-catalog-labor-resolver-v2-contract.md`)
+- a deterministic, non-`unresolved`, non-`custom_line_disabled` target
+- a safe unit mapping (`source_unit==target_unit` OR a populated `unit_conversion_rule`)
+- an approved `pricing_source_type` (`catalog_cost`, `labor_rate`, or `manual_approved`)
+- an approved `cost_source_type` (`catalog`, `labor_rate`, or `fixed`)
+- non-zero pricing where `estimate_line_items` requires it (it does — `unit_cost`, `extended_cost`, `total_price` are NOT NULL DEFAULT 0)
+- no unresolved pricing blockers
+
+Reaffirmed rules:
+
+- Quantity-only live handoff is unsafe because `estimate_line_items` defaults pricing to 0 (silent tier-total corruption).
+- No future implementation may rely on those default-0 values as valid pricing.
+- No price may be invented.
+- No labor rate may be inferred.
+- No margin/markup/tax/discount may be inferred.
+- `material_item_match_rules` MUST NOT be used as a pricing source until tenant/company scope is reconciled (`TENANT_COMPANY_SCOPE_UNRESOLVED`).
+
