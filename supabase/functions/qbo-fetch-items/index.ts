@@ -66,6 +66,19 @@ Deno.serve(async (req) => {
       realm_id,
       tenant_id: tenantId,
     });
+    void writeQboApiLog(admin, {
+      action: 'qbo_fetch_items',
+      tenant_id: tenantId,
+      connection_id: connection.id,
+      realm_id,
+      oauth_app_env: connection.oauth_app_env,
+      endpoint: `/v3/company/${realm_id}/query`,
+      method: 'GET',
+      http_status: qboResponse.status,
+      intuit_tid,
+      success: qboResponse.ok,
+      request_metadata: { op: 'query_items', qbo_entity: 'Item' },
+    });
 
     if (!qboResponse.ok) {
       const errorText = await qboResponse.text();
