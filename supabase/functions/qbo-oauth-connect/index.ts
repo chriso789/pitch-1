@@ -158,6 +158,19 @@ async function handleServerCallback(reqUrl: URL): Promise<Response> {
     intuit_tid: tokenTid,
     realm_id: realmId,
   });
+  void writeQboApiLog(admin, {
+    action: "qbo_oauth_connect",
+    tenant_id: stateRow.tenant_id,
+    user_id: stateRow.initiated_by ?? null,
+    realm_id: realmId,
+    oauth_app_env: ctx.mode,
+    endpoint: "/oauth2/v1/tokens/bearer",
+    method: "POST",
+    http_status: tokenResp.status,
+    intuit_tid: tokenTid,
+    success: tokenResp.ok,
+    request_metadata: { op: "token_exchange" },
+  });
 
   if (!tokenResp.ok) {
     const errBody = await tokenResp.text();
