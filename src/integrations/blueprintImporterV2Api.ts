@@ -95,3 +95,90 @@ export async function acceptBlueprintTrade(params: {
   if (error) throw new Error(error);
   return data!;
 }
+
+// -------------------- Phase 4 helpers --------------------
+
+export interface BindTemplateResult {
+  template_binding: {
+    trade_id: string;
+    internal_template_key: string | null;
+    template_name: string | null;
+    required_inputs: Record<string, { label: string; required: boolean; resolved_value: unknown; source: string }>;
+    optional_inputs: Record<string, { label: string; required: boolean; resolved_value: unknown; source: string }>;
+    missing_inputs: string[];
+    binding_status: "pending" | "ready" | "blocked";
+    user_assumptions: Record<string, unknown>;
+  } | null;
+  binding_id: string | null;
+  review_flags: Array<{ flag_code: string; message: string; blocking: boolean; severity: string }>;
+}
+
+export interface GenerateDraftsResult {
+  mode: "materials" | "labor";
+  template_binding_id: string | null;
+  template_binding: BindTemplateResult["template_binding"];
+  material_drafts: Array<Record<string, unknown>>;
+  labor_drafts: Array<Record<string, unknown>>;
+  review_flags: Array<{ flag_code: string; message: string; blocking: boolean; severity: string }>;
+  blocked_summary: string[];
+  inserted_count: number;
+}
+
+export interface DraftLinesResult {
+  bindings: Array<Record<string, unknown>>;
+  material_draft_lines: Array<Record<string, unknown>>;
+  labor_draft_lines: Array<Record<string, unknown>>;
+  trade_templates: Array<{ accepted_trade_id: string; trade_id: string; template: unknown }>;
+}
+
+export async function bindBlueprintTemplate(params: {
+  session_id: string;
+  accepted_trade_id: string;
+  user_assumptions?: Record<string, unknown>;
+}) {
+  const { data, error } = await edgeApi<BindTemplateResult>(
+    "document-worker",
+    "/blueprint-importer/v2/bind-template",
+    params,
+  );
+  if (error) throw new Error(error);
+  return data!;
+}
+
+export async function generateBlueprintMaterialDrafts(params: {
+  session_id: string;
+  accepted_trade_id: string;
+  user_assumptions?: Record<string, unknown>;
+}) {
+  const { data, error } = await edgeApi<GenerateDraftsResult>(
+    "document-worker",
+    "/blueprint-importer/v2/generate-material-drafts",
+    params,
+  );
+  if (error) throw new Error(error);
+  return data!;
+}
+
+export async function generateBlueprintLaborDrafts(params: {
+  session_id: string;
+  accepted_trade_id: string;
+  user_assumptions?: Record<string, unknown>;
+}) {
+  const { data, error } = await edgeApi<GenerateDraftsResult>(
+    "document-worker",
+    "/blueprint-importer/v2/generate-labor-drafts",
+    params,
+  );
+  if (error) throw new Error(error);
+  return data!;
+}
+
+export async function fetchBlueprintDraftLines(session_id: string) {
+  const { data, error } = await edgeApi<DraftLinesResult>(
+    "document-worker",
+    "/blueprint-importer/v2/draft-lines",
+    { session_id },
+  );
+  if (error) throw new Error(error);
+  return data!;
+}
