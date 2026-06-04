@@ -48,7 +48,7 @@ export async function dispatchInternalWorkerJob(
     skill_key: skill.skill_key,
     callback_url: `${Deno.env.get("SUPABASE_URL") ?? ""}/functions/v1/measurement-worker`,
     callback_route: "/worker/callback",
-    callback_secret: WORKER_SECRET,
+    callback_secret: WORKER_API_KEY,
   };
 
   try {
@@ -56,7 +56,7 @@ export async function dispatchInternalWorkerJob(
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-internal-worker-secret": WORKER_SECRET,
+        "x-internal-worker-api-key": WORKER_API_KEY,
       },
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(15_000),
