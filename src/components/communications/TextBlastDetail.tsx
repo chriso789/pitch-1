@@ -267,41 +267,43 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
 
 
 
-      {/* Stats */}
+      {/* Stats — live-derived from items so replies/STOPs landing via the
+          inbound webhook show up immediately, not only after the next
+          processor run. */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-3 shrink-0">
         <Card>
           <CardContent className="py-3 text-center">
-            <p className="text-2xl font-bold">{blast.total_recipients}</p>
+            <p className="text-2xl font-bold">{counts.total}</p>
             <p className="text-xs text-muted-foreground">Total</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="py-3 text-center">
-            <p className="text-2xl font-bold text-green-600">{blast.sent_count}</p>
+            <p className="text-2xl font-bold text-green-600">{counts.sent}</p>
             <p className="text-xs text-muted-foreground">Sent</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="py-3 text-center">
-            <p className="text-2xl font-bold text-blue-600">{blast.delivered_count || 0}</p>
+            <p className="text-2xl font-bold text-blue-600">{counts.delivered}</p>
             <p className="text-xs text-muted-foreground">Delivered</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="py-3 text-center">
-            <p className="text-2xl font-bold text-violet-600">{blast.replied_count || 0}</p>
+            <p className="text-2xl font-bold text-violet-600">{counts.replied}</p>
             <p className="text-xs text-muted-foreground">Replied</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="py-3 text-center">
-            <p className="text-2xl font-bold text-destructive">{blast.failed_count}</p>
+            <p className="text-2xl font-bold text-destructive">{counts.failed}</p>
             <p className="text-xs text-muted-foreground">Failed</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="py-3 text-center">
-            <p className="text-2xl font-bold text-amber-500">{blast.opted_out_count}</p>
+            <p className="text-2xl font-bold text-amber-500">{counts.opted}</p>
             <p className="text-xs text-muted-foreground">Opted Out</p>
           </CardContent>
         </Card>
@@ -319,7 +321,7 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
           <div className="p-3 rounded-md border border-border bg-muted/30">
             <p className="font-medium mb-1">Delivery Verifier</p>
             <p className="text-muted-foreground">
-              {blast.sent_count} sent · {blast.delivered_count || 0} confirmed delivered · {blast.replied_count || 0} replied · {blast.opted_out_count || 0} opted out (STOP).
+              {counts.sent} sent · {counts.delivered} confirmed delivered · {counts.replied} replied · {counts.opted} opted out (STOP).
               {(blast as any).max_attempts_per_contact && (
                 <> Capped at {(blast as any).max_attempts_per_contact} attempt{(blast as any).max_attempts_per_contact !== 1 ? 's' : ''} per contact (24h apart, stops on reply / NO / STOP).</>
               )}
