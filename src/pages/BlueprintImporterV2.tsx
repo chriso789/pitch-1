@@ -516,6 +516,8 @@ function Phase6Panel({ sessionId, summary }: { sessionId: string; summary: Sessi
   const [busy, setBusy] = useState(false);
   const [resolverBusy, setResolverBusy] = useState(false);
   const [resolverSummary, setResolverSummary] = useState<ResolveBindingsSummary["summary"] | null>(null);
+  const [preflightBusy, setPreflightBusy] = useState(false);
+  const [preflightSummary, setPreflightSummary] = useState<PreflightBatchSummary | null>(null);
   const [targetEstimateId, setTargetEstimateId] = useState<string>("");
   const [draftMode, setDraftMode] = useState<"material" | "labor" | "both">("both");
   const [includedTrades, setIncludedTrades] = useState<Set<string>>(new Set());
