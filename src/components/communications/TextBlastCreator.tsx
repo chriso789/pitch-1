@@ -195,18 +195,20 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   });
 
   // Fetch contacts by selected status (test batch capped by batchSize)
+  // CRITICAL: scoped to currentLocationId so East/West coast blasts never cross.
   const { data: listItems } = useQuery({
-    queryKey: ['blast-contacts-by-status', activeTenantId, selectedStatusKey, batchSize],
+    queryKey: ['blast-contacts-by-status', activeTenantId, currentLocationId, selectedStatusKey, batchSize],
     queryFn: async () => {
       if (!activeTenantId || !selectedStatusKey) return [];
-      const { data, error } = await supabase
+      let q = supabase
         .from('contacts')
         .select('id, first_name, last_name, phone')
         .eq('tenant_id', activeTenantId)
         .eq('qualification_status', selectedStatusKey)
         .eq('is_deleted', false)
-        .not('phone', 'is', null)
-        .limit(batchSize);
+        .not('phone', 'is', null);
+      if (currentLocationId) q = q.eq('location_id', currentLocationId);
+      const { data, error } = await q.limit(batchSize);
       if (error) throw error;
       return (data || []).map((c: any) => ({
         id: c.id,
@@ -219,20 +221,21 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
     enabled: !!activeTenantId && !!selectedStatusKey,
   });
 
-  // Search contacts for single-number mode
+  // Search contacts for single-number mode (location-scoped)
   const { data: contactSearchResults } = useQuery({
-    queryKey: ['blast-single-contact-search', activeTenantId, contactSearch],
+    queryKey: ['blast-single-contact-search', activeTenantId, currentLocationId, contactSearch],
     queryFn: async () => {
       if (!activeTenantId || contactSearch.trim().length < 2) return [];
       const term = `%${contactSearch.trim()}%`;
-      const { data, error } = await supabase
+      let q = supabase
         .from('contacts')
         .select('id, first_name, last_name, phone, address_street, address_city, address_state, address_zip')
         .eq('tenant_id', activeTenantId)
         .eq('is_deleted', false)
         .not('phone', 'is', null)
-        .or(`first_name.ilike.${term},last_name.ilike.${term},phone.ilike.${term}`)
-        .limit(8);
+        .or(`first_name.ilike.${term},last_name.ilike.${term},phone.ilike.${term}`);
+      if (currentLocationId) q = q.eq('location_id', currentLocationId);
+      const { data, error } = await q.limit(8);
       if (error) throw error;
       return data || [];
     },
@@ -240,20 +243,21 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   });
 
 
-  // Search contacts for custom-list mode (multi-select)
+  // Search contacts for custom-list mode (multi-select, location-scoped)
   const { data: customSearchResults } = useQuery({
-    queryKey: ['blast-custom-contact-search', activeTenantId, customSearch],
+    queryKey: ['blast-custom-contact-search', activeTenantId, currentLocationId, customSearch],
     queryFn: async () => {
       if (!activeTenantId || customSearch.trim().length < 2) return [];
       const term = `%${customSearch.trim()}%`;
-      const { data, error } = await supabase
+      let q = supabase
         .from('contacts')
         .select('id, first_name, last_name, phone')
         .eq('tenant_id', activeTenantId)
         .eq('is_deleted', false)
         .not('phone', 'is', null)
-        .or(`first_name.ilike.${term},last_name.ilike.${term},phone.ilike.${term}`)
-        .limit(15);
+        .or(`first_name.ilike.${term},last_name.ilike.${term},phone.ilike.${term}`);
+      if (currentLocationId) q = q.eq('location_id', currentLocationId);
+      const { data, error } = await q.limit(15);
       if (error) throw error;
       return data || [];
     },
