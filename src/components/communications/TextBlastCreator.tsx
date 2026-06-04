@@ -950,74 +950,162 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
                 <p className="text-[11px] text-muted-foreground italic mb-2">
                   If templates look duplicated, clean them once. This will inactivate duplicates, not delete them.
                 </p>
-                <div className="space-y-1.5 max-h-44 overflow-y-auto rounded-md border border-border p-2">
+                <div className="space-y-3 max-h-[28rem] overflow-y-auto rounded-md border border-border p-2">
                   {!visibleTemplates.length && (
                     <p className="text-xs text-muted-foreground italic px-1 py-2">No templates for this goal yet — using default script.</p>
                   )}
-                  {visibleTemplates.map((t: any) => {
-                    const checked = selectedTemplateIds.includes(t.id);
+
+                  {(() => {
+                    const renderTemplateRow = (
+                      t: any,
+                      opts: { stepNumber: number; isFollowup: boolean; isLast: boolean }
+                    ) => {
+                      const checked = selectedTemplateIds.includes(t.id);
+                      const delay = t.followup_delay_days ?? (opts.isFollowup ? 2 : 0);
+                      return (
+                        <div key={t.id} className="relative">
+                          <label className="flex items-start gap-2 p-2 rounded border border-border/60 bg-card hover:bg-muted/40 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              className="mt-1"
+                              checked={checked}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedTemplateIds((prev) => [...prev, t.id]);
+                                  setScript(t.template_body || '');
+                                  setPreviewTemplateIndex(0);
+                                } else {
+                                  const next = selectedTemplateIds.filter((id) => id !== t.id);
+                                  setSelectedTemplateIds(next);
+                                  if (script === t.template_body) {
+                                    const fallback = visibleTemplates.find((vt: any) => next.includes(vt.id));
+                                    if (fallback) setScript(fallback.template_body || '');
+                                  }
+                                }
+                              }}
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <Badge
+                                  variant={opts.isFollowup ? 'secondary' : 'default'}
+                                  className={`text-[10px] py-0 ${opts.isFollowup ? '' : 'bg-amber-500 hover:bg-amber-500 text-white'}`}
+                                >
+                                  {opts.isFollowup ? `Follow-up ${opts.stepNumber}` : 'Initial message'}
+                                </Badge>
+                                <Badge variant="outline" className="text-[10px] py-0">
+                                  {opts.isFollowup ? formatDelayLabel(delay) : 'Sends immediately'}
+                                </Badge>
+                                <span className="text-xs font-medium truncate">{t.template_name}</span>
+                                {t.category && (
+                                  <Badge variant="outline" className="text-[10px] py-0 opacity-70">{t.category}</Badge>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-muted-foreground line-clamp-2 mt-1">{t.template_body}</p>
+
+                              {opts.isFollowup && (
+                                <div className="flex items-center gap-1.5 mt-2">
+                                  <Label className="text-[11px] text-muted-foreground">Send after</Label>
+                                  <Select
+                                    value={String(delay)}
+                                    onValueChange={(v) => updateTemplateDelay(t.id, Number(v))}
+                                  >
+                                    <SelectTrigger className="h-7 w-[130px] text-xs" onClick={(e) => e.preventDefault()}>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {DELAY_OPTIONS.map((d) => (
+                                        <SelectItem key={d} value={String(d)} className="text-xs">
+                                          {d === 1 ? '1 day' : `${d} days`}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                  <span className="text-[11px] text-muted-foreground">after the initial message</span>
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                title="Edit template"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  openEditTemplate(t);
+                                }}
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="text-[11px] h-6 px-2"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  setScript(t.template_body || '');
+                                  setSelectedTemplateIds([t.id]);
+                                  setPreviewTemplateIndex(0);
+                                }}
+                              >
+                                Use
+                              </Button>
+                            </div>
+                          </label>
+                          {!opts.isLast && (
+                            <div className="flex items-center justify-center my-1 text-muted-foreground" aria-hidden>
+                              <div className="w-px h-3 bg-border" />
+                              <span className="text-[10px] mx-1">↓ then</span>
+                              <div className="w-px h-3 bg-border" />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    };
+
                     return (
-                      <label key={t.id} className="flex items-start gap-2 p-1.5 rounded hover:bg-muted/50 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          className="mt-1"
-                          checked={checked}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedTemplateIds((prev) => [...prev, t.id]);
-                              setScript(t.template_body || '');
-                              setPreviewTemplateIndex(0);
-                            } else {
-                              const next = selectedTemplateIds.filter((id) => id !== t.id);
-                              setSelectedTemplateIds(next);
-                              if (script === t.template_body) {
-                                const fallback = visibleTemplates.find((vt: any) => next.includes(vt.id));
-                                if (fallback) setScript(fallback.template_body || '');
-                              }
-                            }
-                          }}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-medium truncate">{t.template_name}</span>
-                            {t.category && <Badge variant="outline" className="text-[10px] py-0">{t.category}</Badge>}
+                      <>
+                        {initialTemplates.length > 0 && (
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 px-1">
+                              <Badge className="bg-amber-500 hover:bg-amber-500 text-white text-[10px] py-0">Step 1 · Initial</Badge>
+                              <span className="text-[11px] text-muted-foreground">First message recipients receive</span>
+                            </div>
+                            {initialTemplates.map((t: any, i: number) =>
+                              renderTemplateRow(t, {
+                                stepNumber: 1,
+                                isFollowup: false,
+                                isLast: i === initialTemplates.length - 1 && followupTemplates.length === 0,
+                              })
+                            )}
                           </div>
-                          <p className="text-[11px] text-muted-foreground line-clamp-2">{t.template_body}</p>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
-                            title="Edit template"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              openEditTemplate(t);
-                            }}
-                          >
-                            <Pencil className="h-3 w-3" />
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="text-[11px] h-6 px-2"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              setScript(t.template_body || '');
-                              setSelectedTemplateIds([t.id]);
-                              setPreviewTemplateIndex(0);
-                            }}
-                          >
-                            Use
-                          </Button>
-                        </div>
-                      </label>
+                        )}
+
+                        {followupTemplates.length > 0 && (
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 px-1 pt-1">
+                              <Badge variant="secondary" className="text-[10px] py-0">Follow-up sequence</Badge>
+                              <span className="text-[11px] text-muted-foreground">
+                                Sent in order based on the schedule below
+                              </span>
+                            </div>
+                            {followupTemplates.map((t: any, i: number) =>
+                              renderTemplateRow(t, {
+                                stepNumber: i + 1,
+                                isFollowup: true,
+                                isLast: i === followupTemplates.length - 1,
+                              })
+                            )}
+                          </div>
+                        )}
+                      </>
                     );
-                  })}
+                  })()}
                 </div>
               </div>
+
 
               <div className="rounded-md border border-border p-2.5 space-y-1.5">
                 <label className="flex items-center justify-between gap-2 cursor-pointer">
