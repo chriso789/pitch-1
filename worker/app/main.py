@@ -23,13 +23,14 @@ from .skills.generate_chm import run_generate_chm
 from .skills.isolate_roof_points import run_isolate_roof_points
 from .skills.refine_roof_perimeter_from_surface import run_refine_roof_perimeter_from_surface
 from .skills.fit_roof_planes import run_fit_roof_planes
-from .skills.detect_segments import (
-    run_detect_ridges, run_detect_hips, run_detect_valleys,
-    run_detect_eaves, run_detect_rakes,
-)
-from .skills.geometry_finalize import (
-    run_calculate_pitch, run_calculate_roof_area, run_geometry_quality_score,
-)
+from .skills.detect_ridges import run_detect_ridges
+from .skills.detect_hips import run_detect_hips
+from .skills.detect_valleys import run_detect_valleys
+from .skills.detect_eaves import run_detect_eaves
+from .skills.detect_rakes import run_detect_rakes
+from .skills.calculate_pitch import run_calculate_pitch
+from .skills.calculate_roof_area import run_calculate_roof_area
+from .skills.geometry_quality_score import run_geometry_quality_score
 from .test_routes import router as test_router
 
 # Map skill_name → real handler. Anything not in this map falls back to a stub.
