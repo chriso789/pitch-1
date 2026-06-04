@@ -702,6 +702,59 @@ export default function QuickBooksSettings() {
         />
       )}
 
+      {/* Support card — surfaces tenant + realm + last intuit_tid in a mailto link.
+           Required by Intuit production review (in-app support contact). Never includes tokens. */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <LifeBuoy className="h-5 w-5 text-primary" />
+            <CardTitle>Get support with this QuickBooks connection</CardTitle>
+          </div>
+          <CardDescription>
+            Email PITCH support with your connection context pre-filled. We never include access or refresh tokens.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {(() => {
+            const env = (connection as any)?.oauth_app_env ?? ((connection as any)?.is_sandbox ? 'development' : 'production');
+            const company = (connection as any)?.qbo_company_name ?? '—';
+            const realm = (connection as any)?.realm_id ?? '—';
+            const lines = [
+              'Hi PITCH support,',
+              '',
+              'I need help with the QuickBooks Online integration.',
+              '',
+              `Tenant: ${tenantId ?? '(unknown)'}`,
+              `QBO Company: ${company}`,
+              `Realm ID: ${realm}`,
+              `Environment: ${env}`,
+              '',
+              'What is happening: ',
+              '',
+              'What I expected: ',
+              '',
+              '— Sent from PITCH CRM → Settings → QuickBooks.',
+            ].join('\n');
+            const subject = `[QBO] ${company} (${env}) — support request`;
+            const mailto = `mailto:support@pitch-crm.ai?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines)}`;
+            return (
+              <>
+                <a href={mailto} className="inline-block">
+                  <Button variant="default" className="gap-2">
+                    <LifeBuoy className="h-4 w-4" />
+                    Email support@pitch-crm.ai
+                  </Button>
+                </a>
+                <p className="text-xs text-muted-foreground">
+                  Reviewer note: the request body includes only tenant id, QBO company name, realm id and environment.
+                  No access tokens, refresh tokens, client secrets or Intuit verifier tokens are sent.
+                </p>
+              </>
+            );
+          })()}
+        </CardContent>
+      </Card>
+
       {connection && tenantId && (
         <QuickBooksWebhookEvents tenantId={tenantId} />
       )}
