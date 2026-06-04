@@ -1,8 +1,14 @@
 """PITCH Measure internal worker — FastAPI entrypoint.
 
-Scaffold only. Every /skills/* endpoint validates the canonical
-SkillRequest payload and returns status="needs_implementation". When
-real compute lands, replace the stub bodies in `app/skills/<name>.py`.
+Mixed implementation status. Real skill handlers are imported from
+`app/skills/<name>.py` and registered through `REAL_HANDLERS` (see
+`skills_registry.py` for the authoritative status map). Any `/skills/*`
+endpoint without a real handler still falls back to the canonical
+SkillRequest stub returning status="needs_implementation".
+
+Live worker endpoints do NOT yet emit the canonical measurement artifact
+envelope (see docs/measurement-artifact-envelope.md). Adoption is gated
+to a later phase per the hardening contract.
 """
 from fastapi import FastAPI, Depends
 from fastapi.responses import JSONResponse
