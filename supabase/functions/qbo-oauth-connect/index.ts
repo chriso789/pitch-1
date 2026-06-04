@@ -151,13 +151,21 @@ async function handleServerCallback(reqUrl: URL): Promise<Response> {
     }),
   });
 
+  const tokenTid = getIntuitTid(tokenResp);
+  console.log("[qbo-oauth-connect] callback token exchange", {
+    status: tokenResp.status,
+    intuit_tid: tokenTid,
+    realm_id: realmId,
+  });
+
   if (!tokenResp.ok) {
     const errBody = await tokenResp.text();
     console.error("[qbo-oauth-connect] callback token exchange failed", {
       status: tokenResp.status,
+      intuit_tid: tokenTid,
       body: errBody.slice(0, 200),
     });
-    return redirectToSettings({ status: "exchange_failed", reason: `http_${tokenResp.status}` });
+    return redirectToSettings({ status: "exchange_failed", reason: `http_${tokenResp.status}`, intuit_tid: tokenTid ?? undefined });
   }
 
   const tokens = (await tokenResp.json()) as TokenResponse;
@@ -175,6 +183,12 @@ async function handleServerCallback(reqUrl: URL): Promise<Response> {
         },
       },
     );
+    const ciTid = getIntuitTid(ciResp);
+    console.log("[qbo-oauth-connect] companyinfo fetch", {
+      status: ciResp.status,
+      intuit_tid: ciTid,
+      realm_id: realmId,
+    });
     if (ciResp.ok) {
       const ci = await ciResp.json();
       companyInfo = ci.CompanyInfo;
