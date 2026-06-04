@@ -303,6 +303,10 @@ export const PlatformAdmin = () => {
             <UserCog className="h-3 w-3" />
             Operators
           </TabsTrigger>
+          <TabsTrigger value="supplier-dev" className="gap-1">
+            <Wrench className="h-3 w-3" />
+            Supplier Dev Tools
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="active" className="mt-4">
