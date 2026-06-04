@@ -5178,6 +5178,693 @@ export type Database = {
         }
         Relationships: []
       }
+      blueprint_accepted_trades: {
+        Row: {
+          accepted_at: string
+          accepted_by: string | null
+          created_at: string
+          detected_trade_id: string | null
+          id: string
+          import_session_id: string
+          review_state: string
+          selected_template_id: string | null
+          status: string
+          tenant_id: string
+          trade_id: string
+          updated_at: string
+          user_assumptions: Json
+        }
+        Insert: {
+          accepted_at?: string
+          accepted_by?: string | null
+          created_at?: string
+          detected_trade_id?: string | null
+          id?: string
+          import_session_id: string
+          review_state?: string
+          selected_template_id?: string | null
+          status?: string
+          tenant_id: string
+          trade_id: string
+          updated_at?: string
+          user_assumptions?: Json
+        }
+        Update: {
+          accepted_at?: string
+          accepted_by?: string | null
+          created_at?: string
+          detected_trade_id?: string | null
+          id?: string
+          import_session_id?: string
+          review_state?: string
+          selected_template_id?: string | null
+          status?: string
+          tenant_id?: string
+          trade_id?: string
+          updated_at?: string
+          user_assumptions?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "blueprint_accepted_trades_detected_trade_id_fkey"
+            columns: ["detected_trade_id"]
+            isOneToOne: false
+            referencedRelation: "blueprint_detected_trades"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "blueprint_accepted_trades_import_session_id_fkey"
+            columns: ["import_session_id"]
+            isOneToOne: false
+            referencedRelation: "blueprint_import_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      blueprint_detected_trades: {
+        Row: {
+          confidence: number
+          created_at: string
+          detection_signals: Json
+          id: string
+          import_session_id: string
+          source_document_ids: string[]
+          status: string
+          support_status: string
+          tenant_id: string
+          trade_id: string
+          updated_at: string
+        }
+        Insert: {
+          confidence?: number
+          created_at?: string
+          detection_signals?: Json
+          id?: string
+          import_session_id: string
+          source_document_ids?: string[]
+          status?: string
+          support_status: string
+          tenant_id: string
+          trade_id: string
+          updated_at?: string
+        }
+        Update: {
+          confidence?: number
+          created_at?: string
+          detection_signals?: Json
+          id?: string
+          import_session_id?: string
+          source_document_ids?: string[]
+          status?: string
+          support_status?: string
+          tenant_id?: string
+          trade_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "blueprint_detected_trades_import_session_id_fkey"
+            columns: ["import_session_id"]
+            isOneToOne: false
+            referencedRelation: "blueprint_import_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      blueprint_import_sessions: {
+        Row: {
+          contract_version: string
+          created_at: string
+          created_by: string | null
+          deterministic_hash: string | null
+          id: string
+          metadata: Json
+          notes: string | null
+          source_context_id: string | null
+          source_context_type: string
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          contract_version?: string
+          created_at?: string
+          created_by?: string | null
+          deterministic_hash?: string | null
+          id?: string
+          metadata?: Json
+          notes?: string | null
+          source_context_id?: string | null
+          source_context_type: string
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          contract_version?: string
+          created_at?: string
+          created_by?: string | null
+          deterministic_hash?: string | null
+          id?: string
+          metadata?: Json
+          notes?: string | null
+          source_context_id?: string | null
+          source_context_type?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      blueprint_labor_draft_lines: {
+        Row: {
+          accepted_trade_id: string | null
+          base_rate: number | null
+          complexity_multiplier: number | null
+          created_at: string
+          formula_inputs: Json
+          formula_key: string | null
+          id: string
+          import_session_id: string
+          labor_key: string
+          labor_name: string | null
+          labor_rule_id: string | null
+          plan_path_ids: string[]
+          quantity: number | null
+          source_measurement_ids: string[]
+          status: string
+          template_binding_id: string | null
+          tenant_id: string
+          unit: string | null
+        }
+        Insert: {
+          accepted_trade_id?: string | null
+          base_rate?: number | null
+          complexity_multiplier?: number | null
+          created_at?: string
+          formula_inputs?: Json
+          formula_key?: string | null
+          id?: string
+          import_session_id: string
+          labor_key: string
+          labor_name?: string | null
+          labor_rule_id?: string | null
+          plan_path_ids?: string[]
+          quantity?: number | null
+          source_measurement_ids?: string[]
+          status?: string
+          template_binding_id?: string | null
+          tenant_id: string
+          unit?: string | null
+        }
+        Update: {
+          accepted_trade_id?: string | null
+          base_rate?: number | null
+          complexity_multiplier?: number | null
+          created_at?: string
+          formula_inputs?: Json
+          formula_key?: string | null
+          id?: string
+          import_session_id?: string
+          labor_key?: string
+          labor_name?: string | null
+          labor_rule_id?: string | null
+          plan_path_ids?: string[]
+          quantity?: number | null
+          source_measurement_ids?: string[]
+          status?: string
+          template_binding_id?: string | null
+          tenant_id?: string
+          unit?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "blueprint_labor_draft_lines_accepted_trade_id_fkey"
+            columns: ["accepted_trade_id"]
+            isOneToOne: false
+            referencedRelation: "blueprint_accepted_trades"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "blueprint_labor_draft_lines_import_session_id_fkey"
+            columns: ["import_session_id"]
+            isOneToOne: false
+            referencedRelation: "blueprint_import_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "blueprint_labor_draft_lines_template_binding_id_fkey"
+            columns: ["template_binding_id"]
+            isOneToOne: false
+            referencedRelation: "blueprint_template_bindings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      blueprint_material_draft_lines: {
+        Row: {
+          accepted_trade_id: string | null
+          catalog_item_id: string | null
+          catalog_resolution_status: string
+          created_at: string
+          formula_inputs: Json
+          formula_key: string | null
+          id: string
+          import_session_id: string
+          item_key: string
+          item_name: string | null
+          material_rule_id: string | null
+          plan_path_ids: string[]
+          quantity: number | null
+          rounding_rule: string | null
+          source_measurement_ids: string[]
+          status: string
+          template_binding_id: string | null
+          tenant_id: string
+          unit: string | null
+          waste_percent: number | null
+        }
+        Insert: {
+          accepted_trade_id?: string | null
+          catalog_item_id?: string | null
+          catalog_resolution_status?: string
+          created_at?: string
+          formula_inputs?: Json
+          formula_key?: string | null
+          id?: string
+          import_session_id: string
+          item_key: string
+          item_name?: string | null
+          material_rule_id?: string | null
+          plan_path_ids?: string[]
+          quantity?: number | null
+          rounding_rule?: string | null
+          source_measurement_ids?: string[]
+          status?: string
+          template_binding_id?: string | null
+          tenant_id: string
+          unit?: string | null
+          waste_percent?: number | null
+        }
+        Update: {
+          accepted_trade_id?: string | null
+          catalog_item_id?: string | null
+          catalog_resolution_status?: string
+          created_at?: string
+          formula_inputs?: Json
+          formula_key?: string | null
+          id?: string
+          import_session_id?: string
+          item_key?: string
+          item_name?: string | null
+          material_rule_id?: string | null
+          plan_path_ids?: string[]
+          quantity?: number | null
+          rounding_rule?: string | null
+          source_measurement_ids?: string[]
+          status?: string
+          template_binding_id?: string | null
+          tenant_id?: string
+          unit?: string | null
+          waste_percent?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "blueprint_material_draft_lines_accepted_trade_id_fkey"
+            columns: ["accepted_trade_id"]
+            isOneToOne: false
+            referencedRelation: "blueprint_accepted_trades"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "blueprint_material_draft_lines_import_session_id_fkey"
+            columns: ["import_session_id"]
+            isOneToOne: false
+            referencedRelation: "blueprint_import_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "blueprint_material_draft_lines_template_binding_id_fkey"
+            columns: ["template_binding_id"]
+            isOneToOne: false
+            referencedRelation: "blueprint_template_bindings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      blueprint_measurement_objects: {
+        Row: {
+          confidence: number
+          created_at: string
+          id: string
+          import_session_id: string
+          measurement_group: string | null
+          measurement_key: string
+          metadata: Json
+          normalized_value: Json | null
+          page_number: number | null
+          plan_path_id: string | null
+          precision: number | null
+          quantity: number | null
+          source_document_id: string | null
+          source_value_raw: string | null
+          tenant_id: string
+          trade_id: string | null
+          unit: string | null
+        }
+        Insert: {
+          confidence?: number
+          created_at?: string
+          id?: string
+          import_session_id: string
+          measurement_group?: string | null
+          measurement_key: string
+          metadata?: Json
+          normalized_value?: Json | null
+          page_number?: number | null
+          plan_path_id?: string | null
+          precision?: number | null
+          quantity?: number | null
+          source_document_id?: string | null
+          source_value_raw?: string | null
+          tenant_id: string
+          trade_id?: string | null
+          unit?: string | null
+        }
+        Update: {
+          confidence?: number
+          created_at?: string
+          id?: string
+          import_session_id?: string
+          measurement_group?: string | null
+          measurement_key?: string
+          metadata?: Json
+          normalized_value?: Json | null
+          page_number?: number | null
+          plan_path_id?: string | null
+          precision?: number | null
+          quantity?: number | null
+          source_document_id?: string | null
+          source_value_raw?: string | null
+          tenant_id?: string
+          trade_id?: string | null
+          unit?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "blueprint_measurement_objects_import_session_id_fkey"
+            columns: ["import_session_id"]
+            isOneToOne: false
+            referencedRelation: "blueprint_import_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "blueprint_measurement_objects_plan_path_id_fkey"
+            columns: ["plan_path_id"]
+            isOneToOne: false
+            referencedRelation: "blueprint_plan_paths"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "blueprint_measurement_objects_source_document_id_fkey"
+            columns: ["source_document_id"]
+            isOneToOne: false
+            referencedRelation: "blueprint_source_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      blueprint_plan_paths: {
+        Row: {
+          confidence: number
+          created_at: string
+          diagram_label: string | null
+          document_type: string | null
+          file_name: string | null
+          id: string
+          import_session_id: string
+          page_number: number | null
+          path_type: string
+          provider: string | null
+          section_label: string | null
+          source_coordinates: Json | null
+          source_document_id: string | null
+          source_text_excerpt: string | null
+          table_label: string | null
+          tenant_id: string
+        }
+        Insert: {
+          confidence?: number
+          created_at?: string
+          diagram_label?: string | null
+          document_type?: string | null
+          file_name?: string | null
+          id?: string
+          import_session_id: string
+          page_number?: number | null
+          path_type: string
+          provider?: string | null
+          section_label?: string | null
+          source_coordinates?: Json | null
+          source_document_id?: string | null
+          source_text_excerpt?: string | null
+          table_label?: string | null
+          tenant_id: string
+        }
+        Update: {
+          confidence?: number
+          created_at?: string
+          diagram_label?: string | null
+          document_type?: string | null
+          file_name?: string | null
+          id?: string
+          import_session_id?: string
+          page_number?: number | null
+          path_type?: string
+          provider?: string | null
+          section_label?: string | null
+          source_coordinates?: Json | null
+          source_document_id?: string | null
+          source_text_excerpt?: string | null
+          table_label?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "blueprint_plan_paths_import_session_id_fkey"
+            columns: ["import_session_id"]
+            isOneToOne: false
+            referencedRelation: "blueprint_import_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "blueprint_plan_paths_source_document_id_fkey"
+            columns: ["source_document_id"]
+            isOneToOne: false
+            referencedRelation: "blueprint_source_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      blueprint_review_flags: {
+        Row: {
+          blocking: boolean
+          created_at: string
+          flag_code: string
+          id: string
+          import_session_id: string
+          message: string
+          metadata: Json
+          related_entity_id: string | null
+          related_entity_type: string
+          resolved: boolean
+          resolved_at: string | null
+          resolved_by: string | null
+          severity: string
+          tenant_id: string
+        }
+        Insert: {
+          blocking?: boolean
+          created_at?: string
+          flag_code: string
+          id?: string
+          import_session_id: string
+          message: string
+          metadata?: Json
+          related_entity_id?: string | null
+          related_entity_type: string
+          resolved?: boolean
+          resolved_at?: string | null
+          resolved_by?: string | null
+          severity: string
+          tenant_id: string
+        }
+        Update: {
+          blocking?: boolean
+          created_at?: string
+          flag_code?: string
+          id?: string
+          import_session_id?: string
+          message?: string
+          metadata?: Json
+          related_entity_id?: string | null
+          related_entity_type?: string
+          resolved?: boolean
+          resolved_at?: string | null
+          resolved_by?: string | null
+          severity?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "blueprint_review_flags_import_session_id_fkey"
+            columns: ["import_session_id"]
+            isOneToOne: false
+            referencedRelation: "blueprint_import_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      blueprint_source_documents: {
+        Row: {
+          content_hash: string | null
+          created_at: string
+          document_reference: string | null
+          document_type: string
+          extraction_status: string
+          file_id: string | null
+          id: string
+          import_session_id: string
+          metadata: Json
+          original_filename: string | null
+          page_count: number | null
+          property_address: string | null
+          property_latitude: number | null
+          property_longitude: number | null
+          provider: string
+          report_date: string | null
+          storage_path: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          content_hash?: string | null
+          created_at?: string
+          document_reference?: string | null
+          document_type: string
+          extraction_status?: string
+          file_id?: string | null
+          id?: string
+          import_session_id: string
+          metadata?: Json
+          original_filename?: string | null
+          page_count?: number | null
+          property_address?: string | null
+          property_latitude?: number | null
+          property_longitude?: number | null
+          provider: string
+          report_date?: string | null
+          storage_path?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          content_hash?: string | null
+          created_at?: string
+          document_reference?: string | null
+          document_type?: string
+          extraction_status?: string
+          file_id?: string | null
+          id?: string
+          import_session_id?: string
+          metadata?: Json
+          original_filename?: string | null
+          page_count?: number | null
+          property_address?: string | null
+          property_latitude?: number | null
+          property_longitude?: number | null
+          provider?: string
+          report_date?: string | null
+          storage_path?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "blueprint_source_documents_import_session_id_fkey"
+            columns: ["import_session_id"]
+            isOneToOne: false
+            referencedRelation: "blueprint_import_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      blueprint_template_bindings: {
+        Row: {
+          accepted_trade_id: string | null
+          binding_status: string
+          created_at: string
+          id: string
+          import_session_id: string
+          missing_inputs: Json
+          optional_inputs: Json
+          required_inputs: Json
+          template_id: string | null
+          template_version: string | null
+          tenant_id: string
+          trade_id: string
+          updated_at: string
+          user_assumptions: Json
+        }
+        Insert: {
+          accepted_trade_id?: string | null
+          binding_status?: string
+          created_at?: string
+          id?: string
+          import_session_id: string
+          missing_inputs?: Json
+          optional_inputs?: Json
+          required_inputs?: Json
+          template_id?: string | null
+          template_version?: string | null
+          tenant_id: string
+          trade_id: string
+          updated_at?: string
+          user_assumptions?: Json
+        }
+        Update: {
+          accepted_trade_id?: string | null
+          binding_status?: string
+          created_at?: string
+          id?: string
+          import_session_id?: string
+          missing_inputs?: Json
+          optional_inputs?: Json
+          required_inputs?: Json
+          template_id?: string | null
+          template_version?: string | null
+          tenant_id?: string
+          trade_id?: string
+          updated_at?: string
+          user_assumptions?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "blueprint_template_bindings_accepted_trade_id_fkey"
+            columns: ["accepted_trade_id"]
+            isOneToOne: false
+            referencedRelation: "blueprint_accepted_trades"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "blueprint_template_bindings_import_session_id_fkey"
+            columns: ["import_session_id"]
+            isOneToOne: false
+            referencedRelation: "blueprint_import_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       brands: {
         Row: {
           ai_persona_prompt: string | null
