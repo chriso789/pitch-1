@@ -81,7 +81,14 @@ app.post("/worker/callback", async (c) => {
     });
   }
 
-  return jsonOk(c, { ok: true, run_id: runId, status, artifacts_written: artifacts.length });
+  return jsonOk(c, {
+    ok: true,
+    run_id: runId,
+    status: effectiveStatus,
+    reported_status: status,
+    blocking_reason: effectiveBlocking,
+    artifacts_written: artifacts.length,
+  });
 });
 
 // Everything below requires user auth.
