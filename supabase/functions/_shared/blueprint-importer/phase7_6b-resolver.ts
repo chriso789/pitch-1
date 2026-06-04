@@ -326,10 +326,15 @@ export function resolveCandidateAgainstBindings(
     }
     let status: BlueprintResolverV2Status = "unresolved";
     const blockers: BlueprintResolverV2BlockerCode[] = ["CATALOG_UNRESOLVED_LIVE_HANDOFF"];
+    // A binding rejected SOLELY for missing labor_rate_id is the "missing_labor_rate" case.
+    const laborRateMissingOnly = inactives.filter((e) =>
+      e.binding.source_candidate_type === "labor" &&
+      (e.inactive_reason ?? "").split(",").every((er) => er === "labor_binding_requires_labor_rate_id"),
+    );
     if (customLineDisabled) {
       status = "blocked";
       blockers.push("CUSTOM_LINE_MODE_NOT_APPROVED", "BLUEPRINT_CATALOG_BINDING_INACTIVE");
-    } else if (laborMissing.length > 0) {
+    } else if (laborMissing.length > 0 || laborRateMissingOnly.length > 0) {
       status = "missing_labor_rate";
       blockers.push("BLUEPRINT_LABOR_RATE_MISSING");
     } else if (unitMismatches.length > 0) {
