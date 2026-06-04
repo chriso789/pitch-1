@@ -7,7 +7,7 @@ import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
-import { Loader2, Lock, ShieldAlert, FileText } from "lucide-react";
+import { Loader2, ShieldAlert, FileText } from "lucide-react";
 import {
   fetchBlueprintImportSession,
   acceptBlueprintTrade,
