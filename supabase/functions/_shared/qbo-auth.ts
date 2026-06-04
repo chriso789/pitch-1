@@ -294,7 +294,7 @@ export async function revokeConnection(service: SupabaseClient, tenant_id: strin
 
   try {
     const ctx = getQboContextForConnection(conn);
-    await fetch(QBO_REVOKE_URL, {
+    const revokeRes = await fetch(QBO_REVOKE_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -302,6 +302,10 @@ export async function revokeConnection(service: SupabaseClient, tenant_id: strin
         Authorization: basicAuthHeader(ctx.clientId, ctx.clientSecret),
       },
       body: JSON.stringify({ token: (conn as { refresh_token: string }).refresh_token }),
+    });
+    console.log("[qbo-auth] revokeConnection", {
+      status: revokeRes.status,
+      intuit_tid: getIntuitTid(revokeRes),
     });
   } catch (e) {
     console.warn("QBO revoke call failed (continuing):", e);
