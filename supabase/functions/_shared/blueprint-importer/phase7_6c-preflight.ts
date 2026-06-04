@@ -331,9 +331,7 @@ function evaluateMaterial(
   let unitCompatible = true;
   if (targetUnit && candidateUnit !== targetUnit) {
     if (Object.keys(conversionRule).length === 0) {
-      blockers.push("UNIT_CONVERSION_REQUIRED", "LABOR_RATE_UNIT_MISMATCH".replace("LABOR_RATE_", "") as Phase7_6cBlockerCode);
-      // Use the material-flavored unit mismatch:
-      // (we don't have a dedicated material code; UNIT_CONVERSION_REQUIRED is precise.)
+      blockers.push("UNIT_CONVERSION_REQUIRED");
       unitCompatible = false;
     } else {
       warnings.push("BINDING_UNIT_CONVERSION_APPLIED");
