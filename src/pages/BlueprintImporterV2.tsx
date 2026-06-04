@@ -19,12 +19,14 @@ import {
   fetchBlueprintHandoffPreview,
   reviewBlueprintHandoffCandidate,
   resolveBlueprintCatalogBindings,
+  runBlueprintPricingPreflight,
   type SessionSummary,
   type DraftLinesResult,
   type HandoffPreviewGetResult,
   type HandoffPreviewCandidateRow,
   type BlueprintResolverV2RuntimeResult,
   type ResolveBindingsSummary,
+  type PreflightBatchSummary,
 } from "@/integrations/blueprintImporterV2Api";
 
 const TRADE_LABELS: Record<string, string> = {
@@ -514,6 +516,8 @@ function Phase6Panel({ sessionId, summary }: { sessionId: string; summary: Sessi
   const [busy, setBusy] = useState(false);
   const [resolverBusy, setResolverBusy] = useState(false);
   const [resolverSummary, setResolverSummary] = useState<ResolveBindingsSummary["summary"] | null>(null);
+  const [preflightBusy, setPreflightBusy] = useState(false);
+  const [preflightSummary, setPreflightSummary] = useState<PreflightBatchSummary | null>(null);
   const [targetEstimateId, setTargetEstimateId] = useState<string>("");
   const [draftMode, setDraftMode] = useState<"material" | "labor" | "both">("both");
   const [includedTrades, setIncludedTrades] = useState<Set<string>>(new Set());
@@ -558,6 +562,7 @@ function Phase6Panel({ sessionId, summary }: { sessionId: string; summary: Sessi
     try {
       const res = await resolveBlueprintCatalogBindings({ handoff_batch_id: preview.batch.id });
       setResolverSummary(res.summary);
+      setPreflightSummary(null);
       toast.success(
         `Resolver: ${res.summary.resolved} resolved · ${res.summary.ambiguous} ambiguous · ${res.summary.missing} missing · ${res.summary.blocked} blocked`,
       );
@@ -566,6 +571,28 @@ function Phase6Panel({ sessionId, summary }: { sessionId: string; summary: Sessi
       toast.error(e instanceof Error ? e.message : "Resolver failed");
     } finally { setResolverBusy(false); }
   };
+
+  const runPreflight = async () => {
+    if (!preview?.batch) {
+      toast.error("Generate a handoff preview before running pricing preflight.");
+      return;
+    }
+    setPreflightBusy(true);
+    try {
+      const res = await runBlueprintPricingPreflight({
+        handoff_batch_id: preview.batch.id,
+        pricing_mode: (preview.batch.pricing_mode as "quantity_only" | "ready_for_pricing_review") ?? "quantity_only",
+      });
+      setPreflightSummary(res.summary);
+      toast.success(
+        `Pricing preflight: ${res.summary.ready_for_pricing_review} ready · ${res.summary.blocked} blocked (preview-only)`,
+      );
+      await loadPreview();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Pricing preflight failed");
+    } finally { setPreflightBusy(false); }
+  };
+
 
   const reviewCandidate = async (candidate_id: string, status: "pending" | "reviewed" | "excluded") => {
     if (!preview?.batch) return;
@@ -661,17 +688,20 @@ function Phase6Panel({ sessionId, summary }: { sessionId: string; summary: Sessi
                 <TooltipTrigger asChild><span><Button size="sm" variant="outline" disabled>Push to Estimate</Button></span></TooltipTrigger>
                 <TooltipContent>{preview?.push_to_estimate_disabled_reason ?? "Push to Estimate remains disabled in Phase 7.6b."}</TooltipContent>
               </Tooltip>
+              <Button size="sm" variant="secondary" onClick={runPreflight} disabled={preflightBusy || !preview?.batch}>
+                {preflightBusy ? "Running…" : "Run pricing preflight"}
+              </Button>
               <Tooltip>
-                <TooltipTrigger asChild><span><Button size="sm" variant="outline" disabled>Pricing preflight</Button></span></TooltipTrigger>
-                <TooltipContent>Pricing preflight is not enabled in Phase 7.6b.</TooltipContent>
+                <TooltipTrigger asChild><span><Button size="sm" variant="outline" disabled>Push to Estimate</Button></span></TooltipTrigger>
+                <TooltipContent>Push to Estimate remains disabled. Phase 7.6c only validates pricing readiness for preview candidates; live handoff and final customer pricing are not enabled.</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild><span><Button size="sm" variant="outline" disabled>Final pricing</Button></span></TooltipTrigger>
-                <TooltipContent>Final pricing is disabled until pricing preflight ships.</TooltipContent>
+                <TooltipContent>Final customer-facing pricing is intentionally disabled in Phase 7.6c.</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild><span><Button size="sm" variant="outline" disabled>Approve custom line</Button></span></TooltipTrigger>
-                <TooltipContent>Custom non-catalog line approval is disabled in Phase 7.6b.</TooltipContent>
+                <TooltipContent>Custom non-catalog line approval is disabled in Phase 7.6c.</TooltipContent>
               </Tooltip>
             </div>
           </CardContent>
@@ -710,6 +740,26 @@ function Phase6Panel({ sessionId, summary }: { sessionId: string; summary: Sessi
                   <div className="text-amber-600">Warnings: {Object.entries(resolverSummary.warning_counts).map(([k, v]) => `${k}×${v}`).join(", ")}</div>
                 )}
                 <div className="text-[10px] text-muted-foreground italic">{resolverSummary.push_to_estimate_disabled_reason}</div>
+              </div>
+            )}
+            {preflightSummary && (
+              <div className="rounded border bg-background p-2 text-xs space-y-1">
+                <div className="font-semibold uppercase text-muted-foreground">Phase 7.6c pricing preflight (preview-only)</div>
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant="default">ready {preflightSummary.ready_for_pricing_review}</Badge>
+                  <Badge variant="destructive">blocked {preflightSummary.blocked}</Badge>
+                  {preflightSummary.preview_cost_total !== null && (
+                    <Badge variant="secondary">preview cost ${preflightSummary.preview_cost_total.toFixed(2)}</Badge>
+                  )}
+                </div>
+                {Object.keys(preflightSummary.blocker_counts).length > 0 && (
+                  <div className="text-destructive">Blockers: {Object.entries(preflightSummary.blocker_counts).map(([k, v]) => `${k}×${v}`).join(", ")}</div>
+                )}
+                {Object.keys(preflightSummary.warning_counts).length > 0 && (
+                  <div className="text-amber-600">Warnings: {Object.entries(preflightSummary.warning_counts).map(([k, v]) => `${k}×${v}`).join(", ")}</div>
+                )}
+                <div className="text-[10px] text-muted-foreground italic">{preflightSummary.push_to_estimate_disabled_reason}</div>
+                <div className="text-[10px] text-muted-foreground italic">{preflightSummary.final_pricing_disabled_reason}</div>
               </div>
             )}
             <CandidateTable candidates={preview.candidates} onReview={reviewCandidate} />

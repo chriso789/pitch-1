@@ -408,3 +408,120 @@ export async function fetchBlueprintResolverResults(params: {
   if (error) throw new Error(error);
   return data!;
 }
+
+
+// -------------------- Phase 7.6c helpers --------------------
+// Pricing preflight (preview-only). NO live writes. NO final pricing.
+
+export type PreflightPricingStatus =
+  | "blocked_quantity_only_unsafe"
+  | "cost_unresolved"
+  | "catalog_resolved_cost_missing"
+  | "catalog_resolved_cost_available"
+  | "labor_rate_missing"
+  | "pricing_rule_missing"
+  | "ready_for_pricing_review"
+  | "blocked";
+
+export type PreflightCostStatus =
+  | "not_attempted" | "missing" | "zero_unsafe"
+  | "explicit_positive" | "explicit_zero_approved"
+  | "unit_mismatch" | "production_rate_required"
+  | "tenant_mismatch" | "target_inactive" | "target_missing"
+  | "target_active_unverifiable" | "out_of_scope";
+
+export interface PreflightCandidateResult {
+  candidate_id: string;
+  preflight_version: string;
+  pricing_mode: string;
+  pricing_contract_version: string;
+  cost_status: PreflightCostStatus;
+  pricing_status: PreflightPricingStatus;
+  target_validation: {
+    target_kind: string | null;
+    target_present: boolean;
+    tenant_safe: boolean;
+    active: boolean | null;
+    active_verifiable: boolean;
+    unit_compatible: boolean;
+    notes: string[];
+  };
+  preview_cost: {
+    unit_cost: number | null;
+    quantity: number | null;
+    extended_cost: number | null;
+    cost_source: string | null;
+    preview_only: true;
+  };
+  blockers: string[];
+  warnings: string[];
+  handoff_allowed: false;
+  evaluated_at: string;
+}
+
+export interface PreflightBatchSummary {
+  total: number;
+  ready_for_pricing_review: number;
+  blocked: number;
+  blocker_counts: Record<string, number>;
+  warning_counts: Record<string, number>;
+  pricing_status_counts: Record<string, number>;
+  cost_status_counts: Record<string, number>;
+  preview_cost_total: number | null;
+  preview_only: true;
+  push_to_estimate_enabled: false;
+  push_to_estimate_disabled_reason: string;
+  final_pricing_enabled: false;
+  final_pricing_disabled_reason: string;
+}
+
+export interface PricingPreflightRunResult {
+  handoff_batch_id: string;
+  preflight_version: string;
+  contract_version: string;
+  pricing_mode: string;
+  dry_run: boolean;
+  total_candidates: number;
+  summary: PreflightBatchSummary;
+  results: PreflightCandidateResult[];
+  push_to_estimate_enabled: false;
+  push_to_estimate_disabled_reason: string;
+  final_pricing_enabled: false;
+  final_pricing_disabled_reason: string;
+}
+
+export async function runBlueprintPricingPreflight(params: {
+  handoff_batch_id: string;
+  candidate_ids?: string[] | null;
+  pricing_mode?: "quantity_only" | "ready_for_pricing_review";
+  dry_run?: boolean;
+}) {
+  const { data, error } = await edgeApi<PricingPreflightRunResult>(
+    "document-worker",
+    "/blueprint-importer/v2/pricing-preflight",
+    { ...params, contract_version: "blueprint-importer-v2" } as unknown as Record<string, unknown>,
+  );
+  if (error) throw new Error(error);
+  return data!;
+}
+
+export async function fetchBlueprintPricingPreflight(params: {
+  handoff_batch_id: string;
+  candidate_ids?: string[];
+}) {
+  const { data, error } = await edgeApi<{
+    handoff_batch_id: string; batch: Record<string, unknown> | null;
+    preflight_version: string;
+    candidates: Array<Record<string, unknown> & { metadata?: { pricing_preflight?: PreflightCandidateResult } }>;
+    summary: PreflightBatchSummary | null;
+    push_to_estimate_enabled: false;
+    push_to_estimate_disabled_reason: string;
+    final_pricing_enabled: false;
+  }>(
+    "document-worker",
+    "/blueprint-importer/v2/pricing-preflight/get",
+    params as unknown as Record<string, unknown>,
+  );
+  if (error) throw new Error(error);
+  return data!;
+}
