@@ -48,17 +48,23 @@ const formatDuration = (seconds: number | null) => {
 };
 
 export function CallTranscriptViewer() {
+  const { profile } = useUserProfile();
+  const { currentLocationId } = useLocation();
   const [selectedCallId, setSelectedCallId] = useState<string | null>(null);
   const [selectedCall, setSelectedCall] = useState<AiCallTranscript | null>(null);
 
   const { data: calls = [], isLoading: loadingCalls } = useQuery({
-    queryKey: ['ai-call-transcripts'],
+    queryKey: ['ai-call-transcripts', profile?.tenant_id, currentLocationId],
+    enabled: !!profile?.tenant_id,
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from('ai_call_transcripts')
         .select('*')
+        .eq('tenant_id', profile!.tenant_id!)
         .order('created_at', { ascending: false })
         .limit(50);
+      if (currentLocationId) q = q.eq('location_id', currentLocationId);
+      const { data, error } = await q;
       if (error) throw error;
       return (data ?? []) as AiCallTranscript[];
     },
