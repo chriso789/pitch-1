@@ -311,12 +311,15 @@ export const Settings = () => {
         filteredTabs = filteredTabs.filter(tab => !masterBackendTabs.includes(tab.tab_key));
       }
 
-      // Restrict ALL "System" category tabs to the COB owner only
+      // Restrict ALL "Platform" category tabs to the COB owner only
       const SYSTEM_OWNER_EMAIL = 'chrisobrien91@gmail.com';
       const isSystemOwner = currentUser?.email?.toLowerCase() === SYSTEM_OWNER_EMAIL;
+      // "System" category (Reports, Health, Developer, AI Admin, Security, Edge Functions, Cache)
+      // is no longer rendered in the sidebar — those tools now live inside Platform Admin.
+      filteredTabs = filteredTabs.filter(tab => TAB_TO_CATEGORY[tab.tab_key] !== 'system');
       if (!isSystemOwner) {
         filteredTabs = filteredTabs.filter(
-          tab => TAB_TO_CATEGORY[tab.tab_key] !== 'system' && TAB_TO_CATEGORY[tab.tab_key] !== 'platform'
+          tab => TAB_TO_CATEGORY[tab.tab_key] !== 'platform'
         );
       }
 

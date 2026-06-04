@@ -39,7 +39,15 @@ import { PlatformOperatorsPanel } from "./PlatformOperatorsPanel";
 import { SRSConnectionSettings } from "./SRSConnectionSettings";
 import { QXOConnectionSettings } from "./QXOConnectionSettings";
 import { ABCConnectionSettings } from "./ABCConnectionSettings";
-import { Wrench, Truck, Package } from "lucide-react";
+import { Wrench, Truck, Package, AlertTriangle, Activity, Code, Bot, Database, Server } from "lucide-react";
+import EnhancedErrorReportsManager from "@/features/settings/components/EnhancedErrorReportsManager";
+import { SystemHealthCheck } from "./SystemHealthCheck";
+import { DeveloperAccess } from "./DeveloperAccess";
+import { AIAdminChat } from "@/components/ai-admin/AIAdminChat";
+import { SecurityAudit } from "./SecurityAudit";
+import { TrustedDevices } from "./TrustedDevices";
+import { EdgeFunctionHealthDashboard } from "./EdgeFunctionHealthDashboard";
+import { CacheManagement } from "./CacheManagement";
 
 interface Company {
   id: string;
@@ -307,6 +315,34 @@ export const PlatformAdmin = () => {
             <Wrench className="h-3 w-3" />
             Supplier Dev Tools
           </TabsTrigger>
+          <TabsTrigger value="reports" className="gap-1">
+            <AlertTriangle className="h-3 w-3" />
+            Reports
+          </TabsTrigger>
+          <TabsTrigger value="health" className="gap-1">
+            <Activity className="h-3 w-3" />
+            Health
+          </TabsTrigger>
+          <TabsTrigger value="developer" className="gap-1">
+            <Code className="h-3 w-3" />
+            Developer
+          </TabsTrigger>
+          <TabsTrigger value="ai-admin" className="gap-1">
+            <Bot className="h-3 w-3" />
+            AI Admin
+          </TabsTrigger>
+          <TabsTrigger value="security" className="gap-1">
+            <Shield className="h-3 w-3" />
+            Security
+          </TabsTrigger>
+          <TabsTrigger value="edge-functions" className="gap-1">
+            <Server className="h-3 w-3" />
+            Edge Functions
+          </TabsTrigger>
+          <TabsTrigger value="cache" className="gap-1">
+            <Database className="h-3 w-3" />
+            Cache
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="active" className="mt-4">
@@ -402,6 +438,37 @@ export const PlatformAdmin = () => {
               <TabsContent value="abc"><ABCConnectionSettings /></TabsContent>
             </Tabs>
           </div>
+        </TabsContent>
+
+        <TabsContent value="reports" className="mt-4">
+          <EnhancedErrorReportsManager />
+        </TabsContent>
+
+        <TabsContent value="health" className="mt-4">
+          <SystemHealthCheck />
+        </TabsContent>
+
+        <TabsContent value="developer" className="mt-4">
+          <DeveloperAccess />
+        </TabsContent>
+
+        <TabsContent value="ai-admin" className="mt-4">
+          <AIAdminChat />
+        </TabsContent>
+
+        <TabsContent value="security" className="mt-4">
+          <div className="space-y-6">
+            <SecurityAudit />
+            <TrustedDevices />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="edge-functions" className="mt-4">
+          <EdgeFunctionHealthDashboard />
+        </TabsContent>
+
+        <TabsContent value="cache" className="mt-4">
+          <CacheManagement />
         </TabsContent>
       </Tabs>
 
