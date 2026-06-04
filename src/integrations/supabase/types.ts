@@ -28386,59 +28386,95 @@ export type Database = {
         Row: {
           area_delta_sqft: number | null
           area_sqft: number | null
+          attached_patios_detected: boolean | null
+          base_building_footprint_geojson: Json | null
           building_footprint_id: string | null
           confidence: number | null
           created_at: string
+          delta_perimeter_ft: number | null
+          eave_offset_ft: number | null
+          effective_offset_ft: number | null
           geometry_geojson: Json
           id: string
           is_selected: boolean
+          lanai_extension_detected: boolean | null
           metadata: Json | null
           mskill_job_id: string
           mskill_request_id: string
           offset_ft: number
           perimeter_ft: number | null
+          porch_extension_detected: boolean | null
+          rake_offset_ft: number | null
           request_hash: string
+          roof_perimeter_geojson: Json | null
           source_type: string
           status: string
           tenant_id: string
+          uniform_offset_ft: number | null
+          updated_at: string
+          validation_source: string | null
         }
         Insert: {
           area_delta_sqft?: number | null
           area_sqft?: number | null
+          attached_patios_detected?: boolean | null
+          base_building_footprint_geojson?: Json | null
           building_footprint_id?: string | null
           confidence?: number | null
           created_at?: string
+          delta_perimeter_ft?: number | null
+          eave_offset_ft?: number | null
+          effective_offset_ft?: number | null
           geometry_geojson: Json
           id?: string
           is_selected?: boolean
+          lanai_extension_detected?: boolean | null
           metadata?: Json | null
           mskill_job_id: string
           mskill_request_id: string
           offset_ft: number
           perimeter_ft?: number | null
+          porch_extension_detected?: boolean | null
+          rake_offset_ft?: number | null
           request_hash: string
+          roof_perimeter_geojson?: Json | null
           source_type?: string
           status?: string
           tenant_id: string
+          uniform_offset_ft?: number | null
+          updated_at?: string
+          validation_source?: string | null
         }
         Update: {
           area_delta_sqft?: number | null
           area_sqft?: number | null
+          attached_patios_detected?: boolean | null
+          base_building_footprint_geojson?: Json | null
           building_footprint_id?: string | null
           confidence?: number | null
           created_at?: string
+          delta_perimeter_ft?: number | null
+          eave_offset_ft?: number | null
+          effective_offset_ft?: number | null
           geometry_geojson?: Json
           id?: string
           is_selected?: boolean
+          lanai_extension_detected?: boolean | null
           metadata?: Json | null
           mskill_job_id?: string
           mskill_request_id?: string
           offset_ft?: number
           perimeter_ft?: number | null
+          porch_extension_detected?: boolean | null
+          rake_offset_ft?: number | null
           request_hash?: string
+          roof_perimeter_geojson?: Json | null
           source_type?: string
           status?: string
           tenant_id?: string
+          uniform_offset_ft?: number | null
+          updated_at?: string
+          validation_source?: string | null
         }
         Relationships: [
           {
@@ -55988,6 +56024,121 @@ export type Database = {
           validation_status: string | null
         }
         Relationships: []
+      }
+      roof_perimeter_candidates: {
+        Row: {
+          area_sqft: number | null
+          attached_patios_detected: boolean | null
+          base_building_footprint_geojson: Json | null
+          building_footprint_id: string | null
+          confidence: number | null
+          created_at: string | null
+          delta_area_sqft: number | null
+          delta_perimeter_ft: number | null
+          eave_offset_ft: number | null
+          effective_offset_ft: number | null
+          id: string | null
+          is_selected: boolean | null
+          lanai_extension_detected: boolean | null
+          measurement_job_id: string | null
+          measurement_request_id: string | null
+          metadata: Json | null
+          offset_ft: number | null
+          perimeter_ft: number | null
+          porch_extension_detected: boolean | null
+          rake_offset_ft: number | null
+          request_hash: string | null
+          roof_perimeter_geojson: Json | null
+          source_type: string | null
+          status: string | null
+          tenant_id: string | null
+          uniform_offset_ft: number | null
+          updated_at: string | null
+          validation_source: string | null
+        }
+        Insert: {
+          area_sqft?: number | null
+          attached_patios_detected?: boolean | null
+          base_building_footprint_geojson?: never
+          building_footprint_id?: string | null
+          confidence?: number | null
+          created_at?: string | null
+          delta_area_sqft?: number | null
+          delta_perimeter_ft?: number | null
+          eave_offset_ft?: number | null
+          effective_offset_ft?: never
+          id?: string | null
+          is_selected?: boolean | null
+          lanai_extension_detected?: boolean | null
+          measurement_job_id?: string | null
+          measurement_request_id?: string | null
+          metadata?: Json | null
+          offset_ft?: number | null
+          perimeter_ft?: number | null
+          porch_extension_detected?: boolean | null
+          rake_offset_ft?: number | null
+          request_hash?: string | null
+          roof_perimeter_geojson?: never
+          source_type?: string | null
+          status?: string | null
+          tenant_id?: string | null
+          uniform_offset_ft?: number | null
+          updated_at?: string | null
+          validation_source?: string | null
+        }
+        Update: {
+          area_sqft?: number | null
+          attached_patios_detected?: boolean | null
+          base_building_footprint_geojson?: never
+          building_footprint_id?: string | null
+          confidence?: number | null
+          created_at?: string | null
+          delta_area_sqft?: number | null
+          delta_perimeter_ft?: number | null
+          eave_offset_ft?: number | null
+          effective_offset_ft?: never
+          id?: string | null
+          is_selected?: boolean | null
+          lanai_extension_detected?: boolean | null
+          measurement_job_id?: string | null
+          measurement_request_id?: string | null
+          metadata?: Json | null
+          offset_ft?: number | null
+          perimeter_ft?: number | null
+          porch_extension_detected?: boolean | null
+          rake_offset_ft?: number | null
+          request_hash?: string | null
+          roof_perimeter_geojson?: never
+          source_type?: string | null
+          status?: string | null
+          tenant_id?: string | null
+          uniform_offset_ft?: number | null
+          updated_at?: string | null
+          validation_source?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mskill_roof_edge_candidates_building_footprint_id_fkey"
+            columns: ["building_footprint_id"]
+            isOneToOne: false
+            referencedRelation: "mskill_building_footprints"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mskill_roof_edge_candidates_mskill_job_id_fkey"
+            columns: ["measurement_job_id"]
+            isOneToOne: false
+            referencedRelation: "mskill_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mskill_roof_edge_candidates_mskill_request_id_fkey"
+            columns: ["measurement_request_id"]
+            isOneToOne: false
+            referencedRelation: "mskill_requests"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       scope_network_intelligence: {
         Row: {
