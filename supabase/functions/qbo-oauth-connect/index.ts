@@ -25,6 +25,7 @@ import {
   type QboMode,
 } from "../_shared/qbo-context.ts";
 import { getIntuitTid } from "../_shared/qbo-intuit-tid.ts";
+import { writeQboApiLog } from "../_shared/qbo-api.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
