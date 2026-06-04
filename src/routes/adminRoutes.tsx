@@ -32,6 +32,7 @@ export default function AdminRoutes() {
         <Route path="audit-logs" element={<ProtectedRoute><AuditLogs /></ProtectedRoute>} />
         <Route path="measurement-skills" element={<ProtectedRoute><MeasurementSkillsPage /></ProtectedRoute>} />
         <Route path="measurement-skills/:jobId" element={<ProtectedRoute><MeasurementJobPipelinePage /></ProtectedRoute>} />
+        <Route path="providers/inventory" element={<ProtectedRoute><ProviderSourceInventoryPage /></ProtectedRoute>} />
       </Routes>
     </Suspense>
   );
