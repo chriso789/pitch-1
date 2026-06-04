@@ -17,6 +17,7 @@ import {
   getDefaultQboMode,
   type QboContext,
 } from "./qbo-context.ts";
+import { getIntuitTid } from "./qbo-intuit-tid.ts";
 
 export const QBO_AUTH_URL = "https://appcenter.intuit.com/connect/oauth2";
 export const QBO_TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer";
@@ -100,10 +101,13 @@ export async function exchangeAuthorizationCode(
       redirect_uri: c.redirectUri,
     }),
   });
+  const intuit_tid = getIntuitTid(res);
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`QBO token exchange failed [${res.status}]: ${body}`);
+    console.error("[qbo-auth] token exchange failed", { status: res.status, intuit_tid });
+    throw new Error(`QBO token exchange failed [status=${res.status} intuit_tid=${intuit_tid ?? "none"}]: ${body}`);
   }
+  console.log("[qbo-auth] token exchange ok", { intuit_tid });
   return (await res.json()) as QboTokenResponse;
 }
 
@@ -131,14 +135,19 @@ export async function refreshAccessToken(
       refresh_token: refreshToken,
     }),
   });
+  const intuit_tid = getIntuitTid(res);
   if (!res.ok) {
     const body = await res.text();
+    console.error("[qbo-auth] token refresh failed", { status: res.status, intuit_tid });
     // invalid_grant => refresh token revoked/expired by Intuit; surface as reauth.
     if (res.status === 400 && /invalid_grant/i.test(body)) {
-      throw new QboReauthRequiredError(`QBO refresh rejected (invalid_grant): ${body}`);
+      throw new QboReauthRequiredError(
+        `QBO refresh rejected (invalid_grant) [intuit_tid=${intuit_tid ?? "none"}]: ${body}`,
+      );
     }
-    throw new Error(`QBO token refresh failed [${res.status}]: ${body}`);
+    throw new Error(`QBO token refresh failed [status=${res.status} intuit_tid=${intuit_tid ?? "none"}]: ${body}`);
   }
+  console.log("[qbo-auth] token refresh ok", { intuit_tid });
   return (await res.json()) as QboTokenResponse;
 }
 
@@ -260,6 +269,8 @@ export async function fetchCompanyInfo(
     `${ctx.accountingBaseUrl}/v3/company/${realmId}/companyinfo/${realmId}?minorversion=75`,
     { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" } },
   );
+  const intuit_tid = getIntuitTid(res);
+  console.log("[qbo-auth] fetchCompanyInfo", { status: res.status, intuit_tid, realm_id: realmId });
   if (!res.ok) return null;
   return await res.json();
 }
@@ -283,7 +294,7 @@ export async function revokeConnection(service: SupabaseClient, tenant_id: strin
 
   try {
     const ctx = getQboContextForConnection(conn);
-    await fetch(QBO_REVOKE_URL, {
+    const revokeRes = await fetch(QBO_REVOKE_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -291,6 +302,10 @@ export async function revokeConnection(service: SupabaseClient, tenant_id: strin
         Authorization: basicAuthHeader(ctx.clientId, ctx.clientSecret),
       },
       body: JSON.stringify({ token: (conn as { refresh_token: string }).refresh_token }),
+    });
+    console.log("[qbo-auth] revokeConnection", {
+      status: revokeRes.status,
+      intuit_tid: getIntuitTid(revokeRes),
     });
   } catch (e) {
     console.warn("QBO revoke call failed (continuing):", e);

@@ -10,6 +10,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { createHmac } from "https://deno.land/std@0.177.0/node/crypto.ts";
 import { qboHost } from "../_shared/qbo-host.ts";
 import { qboWebhookVerifiers, type QboMode } from "../_shared/qbo-context.ts";
+import { getIntuitTid } from "../_shared/qbo-intuit-tid.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -239,7 +240,21 @@ async function processPaymentEvent(
       },
     );
 
-    if (!paymentResponse.ok) throw new Error("Failed to fetch payment from QBO");
+    const paymentTid = getIntuitTid(paymentResponse);
+    console.log("[qbo-webhook-handler] fetch payment", {
+      status: paymentResponse.status,
+      intuit_tid: paymentTid,
+      realm_id: realmId,
+      tenant_id: tenantId,
+      qbo_payment_id: paymentId,
+    });
+
+    if (!paymentResponse.ok) {
+      const errBody = await paymentResponse.text();
+      throw new Error(
+        `qbo_webhook_handler:fetch_payment failed [status=${paymentResponse.status} intuit_tid=${paymentTid ?? "none"}]: ${errBody.slice(0, 300)}`,
+      );
+    }
 
     const paymentData = await paymentResponse.json();
     const payment = paymentData.Payment;
@@ -293,7 +308,20 @@ async function updateInvoiceBalance(
         },
       },
     );
-    if (!invoiceResponse.ok) throw new Error("Failed to fetch invoice from QBO");
+    const invoiceTid = getIntuitTid(invoiceResponse);
+    console.log("[qbo-webhook-handler] fetch invoice", {
+      status: invoiceResponse.status,
+      intuit_tid: invoiceTid,
+      realm_id: realmId,
+      tenant_id: tenantId,
+      qbo_invoice_id: invoiceId,
+    });
+    if (!invoiceResponse.ok) {
+      const errBody = await invoiceResponse.text();
+      throw new Error(
+        `qbo_webhook_handler:fetch_invoice failed [status=${invoiceResponse.status} intuit_tid=${invoiceTid ?? "none"}]: ${errBody.slice(0, 300)}`,
+      );
+    }
 
     const invoiceData = await invoiceResponse.json();
     const invoice = invoiceData.Invoice;

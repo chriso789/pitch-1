@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { qboHost } from "../_shared/qbo-host.ts";
+import { getIntuitTid } from "../_shared/qbo-intuit-tid.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -146,10 +147,25 @@ Deno.serve(async (req) => {
           }
         );
 
+        const subTid = getIntuitTid(subCustomerResponse);
+        console.log('[qbo-invoice-create] sub-customer create', {
+          status: subCustomerResponse.status,
+          intuit_tid: subTid,
+          realm_id: connection.realm_id,
+          tenant_id,
+          project_id,
+        });
+
         if (!subCustomerResponse.ok) {
           const errorText = await subCustomerResponse.text();
-          console.error('QBO sub-customer creation error:', errorText);
-          throw new Error(`Failed to create sub-customer: ${errorText}`);
+          console.error('QBO sub-customer creation error:', {
+            intuit_tid: subTid,
+            status: subCustomerResponse.status,
+            body_excerpt: errorText.slice(0, 500),
+          });
+          throw new Error(
+            `qbo_invoice_create:sub_customer failed [status=${subCustomerResponse.status} intuit_tid=${subTid ?? 'none'}]: ${errorText.slice(0, 300)}`,
+          );
         }
 
         const subCustomerData = await subCustomerResponse.json();
@@ -267,9 +283,27 @@ Deno.serve(async (req) => {
       }
     );
 
+    const intuit_tid = getIntuitTid(qboResponse);
+    console.log('[qbo-invoice-create] invoice create', {
+      status: qboResponse.status,
+      intuit_tid,
+      realm_id: connection.realm_id,
+      tenant_id,
+      project_id,
+    });
+
     if (!qboResponse.ok) {
       const errorText = await qboResponse.text();
-      throw new Error(`QBO API error: ${errorText}`);
+      return new Response(
+        JSON.stringify({
+          error: 'qbo_invoice_create_failed',
+          message: `QBO API error [status=${qboResponse.status} intuit_tid=${intuit_tid ?? 'none'}]`,
+          intuit_tid,
+          status: qboResponse.status,
+          details: errorText.slice(0, 500),
+        }),
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
     }
 
     const qboData = await qboResponse.json();

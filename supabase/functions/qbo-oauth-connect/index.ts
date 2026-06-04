@@ -24,6 +24,7 @@ import {
   qboCredentialAvailability,
   type QboMode,
 } from "../_shared/qbo-context.ts";
+import { getIntuitTid } from "../_shared/qbo-intuit-tid.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -150,13 +151,25 @@ async function handleServerCallback(reqUrl: URL): Promise<Response> {
     }),
   });
 
+  const tokenTid = getIntuitTid(tokenResp);
+  console.log("[qbo-oauth-connect] callback token exchange", {
+    status: tokenResp.status,
+    intuit_tid: tokenTid,
+    realm_id: realmId,
+  });
+
   if (!tokenResp.ok) {
     const errBody = await tokenResp.text();
     console.error("[qbo-oauth-connect] callback token exchange failed", {
       status: tokenResp.status,
+      intuit_tid: tokenTid,
       body: errBody.slice(0, 200),
     });
-    return redirectToSettings({ status: "exchange_failed", reason: `http_${tokenResp.status}` });
+    return redirectToSettings({
+      status: "exchange_failed",
+      reason: `http_${tokenResp.status}`,
+      ...(tokenTid ? { intuit_tid: tokenTid } : {}),
+    });
   }
 
   const tokens = (await tokenResp.json()) as TokenResponse;
@@ -174,6 +187,12 @@ async function handleServerCallback(reqUrl: URL): Promise<Response> {
         },
       },
     );
+    const ciTid = getIntuitTid(ciResp);
+    console.log("[qbo-oauth-connect] companyinfo fetch", {
+      status: ciResp.status,
+      intuit_tid: ciTid,
+      realm_id: realmId,
+    });
     if (ciResp.ok) {
       const ci = await ciResp.json();
       companyInfo = ci.CompanyInfo;
@@ -488,9 +507,20 @@ Deno.serve(async (req) => {
         }),
       });
 
+      const refreshTid = getIntuitTid(tokenResp);
+      console.log("[qbo-oauth-connect] refresh response", {
+        status: tokenResp.status,
+        intuit_tid: refreshTid,
+        tenant_id: profile.tenant_id,
+        realm_id: connection.realm_id,
+      });
+
       if (!tokenResp.ok) {
         const errBody = await tokenResp.text();
-        console.error("[qbo-oauth-connect] refresh failed", { status: tokenResp.status });
+        console.error("[qbo-oauth-connect] refresh failed", {
+          status: tokenResp.status,
+          intuit_tid: refreshTid,
+        });
         // invalid_grant => refresh token revoked/expired; mark connection inactive.
         const isInvalidGrant = tokenResp.status === 400 && /invalid_grant/i.test(errBody);
         if (isInvalidGrant) {
@@ -499,12 +529,18 @@ Deno.serve(async (req) => {
             .update({ is_active: false, disconnected_at: new Date().toISOString() })
             .eq("id", connection.id);
           return jsonResponse(
-            { success: false, error: "reauth_required", status: tokenResp.status },
+            { success: false, error: "reauth_required", status: tokenResp.status, intuit_tid: refreshTid },
             401,
           );
         }
         return jsonResponse(
-          { success: false, error: "qbo_token_refresh_failed", status: tokenResp.status, details: errBody },
+          {
+            success: false,
+            error: "qbo_token_refresh_failed",
+            status: tokenResp.status,
+            intuit_tid: refreshTid,
+            details: errBody.slice(0, 500),
+          },
           400,
         );
       }
@@ -551,7 +587,7 @@ Deno.serve(async (req) => {
       if (connection) {
         try {
           const ctx = getQboContextForConnection(connection);
-          await fetch(QBO_REVOKE_URL, {
+          const revokeResp = await fetch(QBO_REVOKE_URL, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -559,6 +595,12 @@ Deno.serve(async (req) => {
               Authorization: basicAuth(ctx.clientId, ctx.clientSecret),
             },
             body: JSON.stringify({ token: connection.refresh_token }),
+          });
+          console.log("[qbo-oauth-connect] revoke response", {
+            status: revokeResp.status,
+            intuit_tid: getIntuitTid(revokeResp),
+            tenant_id: profile.tenant_id,
+            realm_id: connection.realm_id,
           });
         } catch (e) {
           console.warn("[qbo-oauth-connect] revoke call failed (continuing):", e);

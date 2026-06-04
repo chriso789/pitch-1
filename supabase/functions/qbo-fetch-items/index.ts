@@ -5,6 +5,7 @@ import {
   getValidAccessToken,
   QboReauthRequiredError,
 } from "../_shared/qbo-auth.ts";
+import { getIntuitTid } from "../_shared/qbo-intuit-tid.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -57,18 +58,39 @@ Deno.serve(async (req) => {
       }
     );
 
+    const intuit_tid = getIntuitTid(qboResponse);
+    console.log('[qbo-fetch-items] response', {
+      status: qboResponse.status,
+      intuit_tid,
+      realm_id,
+      tenant_id: tenantId,
+    });
+
     if (!qboResponse.ok) {
       const errorText = await qboResponse.text();
-      console.error('QBO API Error:', errorText);
+      console.error('QBO API Error:', {
+        intuit_tid,
+        status: qboResponse.status,
+        body_excerpt: errorText.slice(0, 500),
+      });
       // 401 from QBO means the access token was rejected even though refresh succeeded —
       // surface as reauth_required so the UI can prompt.
       if (qboResponse.status === 401) {
         return new Response(
-          JSON.stringify({ error: 'reauth_required', details: errorText }),
+          JSON.stringify({ error: 'reauth_required', intuit_tid, details: errorText.slice(0, 500) }),
           { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-      throw new Error(`QuickBooks API error: ${qboResponse.status}`);
+      return new Response(
+        JSON.stringify({
+          error: 'qbo_fetch_items_failed',
+          message: `QuickBooks API error [status=${qboResponse.status} intuit_tid=${intuit_tid ?? 'none'}]`,
+          intuit_tid,
+          status: qboResponse.status,
+          details: errorText.slice(0, 500),
+        }),
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
     }
 
     const qboData = await qboResponse.json();

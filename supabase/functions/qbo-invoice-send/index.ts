@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { qboHost } from "../_shared/qbo-host.ts";
+import { getIntuitTid } from "../_shared/qbo-intuit-tid.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -76,9 +77,28 @@ Deno.serve(async (req) => {
       }
     );
 
+    const fetchTid = getIntuitTid(fetchResponse);
+    console.log('[qbo-invoice-send] fetch invoice', {
+      status: fetchResponse.status,
+      intuit_tid: fetchTid,
+      realm_id: connection.realm_id,
+      tenant_id,
+      qbo_invoice_id: qboInvoiceId,
+    });
+
     if (!fetchResponse.ok) {
       const errorText = await fetchResponse.text();
-      throw new Error(`Failed to fetch invoice: ${errorText}`);
+      return new Response(
+        JSON.stringify({
+          error: 'qbo_invoice_send_failed',
+          op: 'fetch',
+          message: `Failed to fetch invoice [status=${fetchResponse.status} intuit_tid=${fetchTid ?? 'none'}]`,
+          intuit_tid: fetchTid,
+          status: fetchResponse.status,
+          details: errorText.slice(0, 500),
+        }),
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
     }
 
     const fetchData = await fetchResponse.json();
@@ -105,9 +125,28 @@ Deno.serve(async (req) => {
       }
     );
 
+    const updateTid = getIntuitTid(updateResponse);
+    console.log('[qbo-invoice-send] update invoice', {
+      status: updateResponse.status,
+      intuit_tid: updateTid,
+      realm_id: connection.realm_id,
+      tenant_id,
+      qbo_invoice_id: qboInvoiceId,
+    });
+
     if (!updateResponse.ok) {
       const errorText = await updateResponse.text();
-      throw new Error(`Failed to update invoice: ${errorText}`);
+      return new Response(
+        JSON.stringify({
+          error: 'qbo_invoice_send_failed',
+          op: 'update',
+          message: `Failed to update invoice [status=${updateResponse.status} intuit_tid=${updateTid ?? 'none'}]`,
+          intuit_tid: updateTid,
+          status: updateResponse.status,
+          details: errorText.slice(0, 500),
+        }),
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
     }
 
     const updateData = await updateResponse.json();
@@ -126,9 +165,22 @@ Deno.serve(async (req) => {
         }
       );
 
+      const sendTid = getIntuitTid(sendResponse);
+      console.log('[qbo-invoice-send] email send', {
+        status: sendResponse.status,
+        intuit_tid: sendTid,
+        realm_id: connection.realm_id,
+        tenant_id,
+        qbo_invoice_id: qboInvoiceId,
+      });
+
       if (!sendResponse.ok) {
         const errorText = await sendResponse.text();
-        console.error('Failed to send invoice email:', errorText);
+        console.error('Failed to send invoice email:', {
+          intuit_tid: sendTid,
+          status: sendResponse.status,
+          body_excerpt: errorText.slice(0, 500),
+        });
         // Don't fail the whole request if email fails
       }
     }
