@@ -3,13 +3,14 @@
 **Status:** Phase 0 contract doc. No DB, no code, no endpoint behavior changes.
 **Scope:** Locks the phase sequence, the MVP cut, explicit non-goals, acceptance criteria, and current implementation gaps. Companion to `blueprint-trade-catalog.md` and `blueprint-estimate-mapping-contract.md`.
 
-> **Progress (as of Phase 5):**
+> **Progress (as of Phase 5.5):**
 > - Phase 0 (contract docs): **complete**
 > - Phase 1 (schema draft + shared TS/Python contracts + JSON schemas + examples): **complete** — see `docs/blueprint-importer-phase-1-schema-contracts.md`
 > - Phase 2 (schema promotion + DB verification): **complete** — see `docs/blueprint-importer-phase-2-db-verification.md`
 > - Phase 3 (runtime detection: classify → parse → measurement objects → PlanPaths → review flags → acceptance UI): **complete** — see `docs/blueprint-importer-phase-3-runtime-detection.md`. Material/labor population, template binding, and CRM estimate handoff remain intentionally unwired.
 > - Phase 4 (material/labor draft generation + template binding): **shipped — see [phase-4 doc](./blueprint-importer-phase-4-draft-generation.md). Draft-only; no final pricing, no CRM handoff.**
-> - Phase 5 (CRM estimate handoff contract + integration review docs): **shipped — docs only. See [phase-5 handoff contract](./blueprint-importer-phase-5-crm-handoff-contract.md), [CRM/estimate integration inventory](./blueprint-crm-estimate-integration-inventory.md), and [CRM handoff review gates](./blueprint-crm-handoff-review-gates.md). No code, no DB, no endpoint, no worker, no UI changes. Recommends Phase 5.5 (schema/contracts) before Phase 6 (preview implementation) because two existing estimate header tables exist and `estimate_line_items` lacks provenance / idempotency surfaces.**
+> - Phase 5 (CRM estimate handoff contract + integration review docs): **shipped — docs only. See [phase-5 handoff contract](./blueprint-importer-phase-5-crm-handoff-contract.md), [CRM/estimate integration inventory](./blueprint-crm-estimate-integration-inventory.md), and [CRM handoff review gates](./blueprint-crm-handoff-review-gates.md).**
+> - Phase 5.5 (CRM handoff schema + contracts): **shipped — see [phase-5.5 doc](./blueprint-importer-phase-5-5-handoff-schema-contracts.md). Canonical target chosen: `enhanced_estimates`. Three staging/provenance tables created (no live writes). Shared TS + Python contracts + JSON schemas + 8 examples. `estimate_line_items` NOT altered (bridge table preferred). Runtime unwired; Phase 6 (preview implementation) blocked behind review.**
 
 ---
 

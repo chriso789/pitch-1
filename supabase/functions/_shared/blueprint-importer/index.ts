@@ -17,3 +17,5 @@ export * from "./review-flag-codes.ts";
 export * from "./phase4-formulas.ts";
 export * from "./phase4-templates.ts";
 export * from "./phase4-generator.ts";
+// Phase 5.5 — CRM handoff schema/contracts (pure helpers; no IO; not yet runtime-wired).
+export * from "./crm-handoff.ts";

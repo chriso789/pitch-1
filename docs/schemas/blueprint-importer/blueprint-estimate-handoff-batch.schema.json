@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pitch-crm.ai/schemas/blueprint-importer/blueprint-estimate-handoff-batch.schema.json",
+  "title": "BlueprintEstimateHandoffBatch",
+  "description": "Phase 5.5 staging surface — schema only. No runtime writes.",
+  "type": "object",
+  "required": [
+    "tenant_id", "import_session_id", "target_context_type",
+    "canonical_estimate_target_table", "status", "pricing_mode",
+    "catalog_mode", "custom_line_mode", "deterministic_batch_key"
+  ],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "tenant_id": { "type": "string", "format": "uuid" },
+    "import_session_id": { "type": "string", "format": "uuid" },
+    "target_context_type": {
+      "type": "string",
+      "enum": ["project","opportunity","lead","estimate","contact","standalone"]
+    },
+    "target_context_id": { "type": ["string","null"], "format": "uuid" },
+    "canonical_estimate_target_table": { "type": "string", "enum": ["enhanced_estimates"] },
+    "canonical_estimate_target_id": { "type": ["string","null"], "format": "uuid" },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft","preview_requested","preview_created","user_review_required",
+        "user_approved_for_estimate","live_write_requested","live_written",
+        "superseded","cancelled","failed"
+      ]
+    },
+    "pricing_mode": { "type": "string", "enum": ["quantity_only","ready_for_pricing_review"] },
+    "catalog_mode": { "type": "string", "enum": ["catalog_resolved_only","user_approved_custom_lines","preview_only"] },
+    "custom_line_mode": { "type": "string", "enum": ["disabled","enabled"] },
+    "deterministic_batch_key": { "type": "string", "minLength": 16 },
+    "source_draft_hash": { "type": ["string","null"] },
+    "blocking_review_flag_ids": { "type": "array", "items": { "type": "string", "format": "uuid" } },
+    "warning_review_flag_ids": { "type": "array", "items": { "type": "string", "format": "uuid" } },
+    "metadata": { "type": "object" },
+    "created_by": { "type": ["string","null"], "format": "uuid" },
+    "approved_by": { "type": ["string","null"], "format": "uuid" },
+    "approved_at": { "type": ["string","null"], "format": "date-time" }
+  },
+  "additionalProperties": false
+}

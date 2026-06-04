@@ -5291,6 +5291,318 @@ export type Database = {
           },
         ]
       }
+      blueprint_estimate_handoff_batches: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          blocking_review_flag_ids: string[]
+          canonical_estimate_target_id: string | null
+          canonical_estimate_target_table: string
+          catalog_mode: string
+          created_at: string
+          created_by: string | null
+          custom_line_mode: string
+          deterministic_batch_key: string
+          id: string
+          import_session_id: string
+          metadata: Json
+          pricing_mode: string
+          source_draft_hash: string | null
+          status: string
+          target_context_id: string | null
+          target_context_type: string
+          tenant_id: string
+          updated_at: string
+          warning_review_flag_ids: string[]
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          blocking_review_flag_ids?: string[]
+          canonical_estimate_target_id?: string | null
+          canonical_estimate_target_table?: string
+          catalog_mode?: string
+          created_at?: string
+          created_by?: string | null
+          custom_line_mode?: string
+          deterministic_batch_key: string
+          id?: string
+          import_session_id: string
+          metadata?: Json
+          pricing_mode?: string
+          source_draft_hash?: string | null
+          status?: string
+          target_context_id?: string | null
+          target_context_type: string
+          tenant_id: string
+          updated_at?: string
+          warning_review_flag_ids?: string[]
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          blocking_review_flag_ids?: string[]
+          canonical_estimate_target_id?: string | null
+          canonical_estimate_target_table?: string
+          catalog_mode?: string
+          created_at?: string
+          created_by?: string | null
+          custom_line_mode?: string
+          deterministic_batch_key?: string
+          id?: string
+          import_session_id?: string
+          metadata?: Json
+          pricing_mode?: string
+          source_draft_hash?: string | null
+          status?: string
+          target_context_id?: string | null
+          target_context_type?: string
+          tenant_id?: string
+          updated_at?: string
+          warning_review_flag_ids?: string[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "blueprint_estimate_handoff_batches_import_session_id_fkey"
+            columns: ["import_session_id"]
+            isOneToOne: false
+            referencedRelation: "blueprint_import_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      blueprint_estimate_line_candidates: {
+        Row: {
+          accepted_trade_id: string
+          blocking_review_flag_ids: string[]
+          catalog_item_id: string | null
+          catalog_resolution_status: string
+          cost_status: string
+          created_at: string
+          description: string | null
+          deterministic_handoff_key: string
+          formula_inputs: Json
+          formula_key: string | null
+          handoff_allowed: boolean
+          handoff_batch_id: string
+          handoff_blockers: Json
+          id: string
+          import_session_id: string
+          item_key: string
+          item_name: string | null
+          metadata: Json
+          plan_path_ids: string[]
+          pricing_status: string
+          provenance_summary: Json
+          quantity: number | null
+          source_document_ids: string[]
+          source_draft_line_id: string
+          source_draft_line_type: string
+          source_measurement_ids: string[]
+          status: string
+          template_binding_id: string | null
+          tenant_id: string
+          trade_id: string
+          unit: string | null
+          updated_at: string
+          user_review_status: string
+          warning_review_flag_ids: string[]
+        }
+        Insert: {
+          accepted_trade_id: string
+          blocking_review_flag_ids?: string[]
+          catalog_item_id?: string | null
+          catalog_resolution_status?: string
+          cost_status?: string
+          created_at?: string
+          description?: string | null
+          deterministic_handoff_key: string
+          formula_inputs?: Json
+          formula_key?: string | null
+          handoff_allowed?: boolean
+          handoff_batch_id: string
+          handoff_blockers?: Json
+          id?: string
+          import_session_id: string
+          item_key: string
+          item_name?: string | null
+          metadata?: Json
+          plan_path_ids: string[]
+          pricing_status?: string
+          provenance_summary?: Json
+          quantity?: number | null
+          source_document_ids?: string[]
+          source_draft_line_id: string
+          source_draft_line_type: string
+          source_measurement_ids: string[]
+          status?: string
+          template_binding_id?: string | null
+          tenant_id: string
+          trade_id: string
+          unit?: string | null
+          updated_at?: string
+          user_review_status?: string
+          warning_review_flag_ids?: string[]
+        }
+        Update: {
+          accepted_trade_id?: string
+          blocking_review_flag_ids?: string[]
+          catalog_item_id?: string | null
+          catalog_resolution_status?: string
+          cost_status?: string
+          created_at?: string
+          description?: string | null
+          deterministic_handoff_key?: string
+          formula_inputs?: Json
+          formula_key?: string | null
+          handoff_allowed?: boolean
+          handoff_batch_id?: string
+          handoff_blockers?: Json
+          id?: string
+          import_session_id?: string
+          item_key?: string
+          item_name?: string | null
+          metadata?: Json
+          plan_path_ids?: string[]
+          pricing_status?: string
+          provenance_summary?: Json
+          quantity?: number | null
+          source_document_ids?: string[]
+          source_draft_line_id?: string
+          source_draft_line_type?: string
+          source_measurement_ids?: string[]
+          status?: string
+          template_binding_id?: string | null
+          tenant_id?: string
+          trade_id?: string
+          unit?: string | null
+          updated_at?: string
+          user_review_status?: string
+          warning_review_flag_ids?: string[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "blueprint_estimate_line_candidates_handoff_batch_id_fkey"
+            columns: ["handoff_batch_id"]
+            isOneToOne: false
+            referencedRelation: "blueprint_estimate_handoff_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "blueprint_estimate_line_candidates_import_session_id_fkey"
+            columns: ["import_session_id"]
+            isOneToOne: false
+            referencedRelation: "blueprint_import_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      blueprint_estimate_line_provenance: {
+        Row: {
+          accepted_trade_id: string
+          approved_at: string | null
+          approved_by: string | null
+          canonical_estimate_target_id: string | null
+          canonical_estimate_target_table: string
+          created_at: string
+          deterministic_handoff_key: string
+          formula_inputs: Json
+          formula_key: string | null
+          handoff_batch_id: string
+          id: string
+          import_session_id: string
+          line_candidate_id: string
+          live_estimate_line_item_id: string | null
+          live_written_at: string | null
+          live_written_by: string | null
+          metadata: Json
+          plan_path_ids: string[]
+          source_document_ids: string[]
+          source_draft_line_id: string
+          source_draft_line_type: string
+          source_measurement_ids: string[]
+          template_binding_id: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          accepted_trade_id: string
+          approved_at?: string | null
+          approved_by?: string | null
+          canonical_estimate_target_id?: string | null
+          canonical_estimate_target_table?: string
+          created_at?: string
+          deterministic_handoff_key: string
+          formula_inputs?: Json
+          formula_key?: string | null
+          handoff_batch_id: string
+          id?: string
+          import_session_id: string
+          line_candidate_id: string
+          live_estimate_line_item_id?: string | null
+          live_written_at?: string | null
+          live_written_by?: string | null
+          metadata?: Json
+          plan_path_ids: string[]
+          source_document_ids?: string[]
+          source_draft_line_id: string
+          source_draft_line_type: string
+          source_measurement_ids: string[]
+          template_binding_id?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          accepted_trade_id?: string
+          approved_at?: string | null
+          approved_by?: string | null
+          canonical_estimate_target_id?: string | null
+          canonical_estimate_target_table?: string
+          created_at?: string
+          deterministic_handoff_key?: string
+          formula_inputs?: Json
+          formula_key?: string | null
+          handoff_batch_id?: string
+          id?: string
+          import_session_id?: string
+          line_candidate_id?: string
+          live_estimate_line_item_id?: string | null
+          live_written_at?: string | null
+          live_written_by?: string | null
+          metadata?: Json
+          plan_path_ids?: string[]
+          source_document_ids?: string[]
+          source_draft_line_id?: string
+          source_draft_line_type?: string
+          source_measurement_ids?: string[]
+          template_binding_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "blueprint_estimate_line_provenance_handoff_batch_id_fkey"
+            columns: ["handoff_batch_id"]
+            isOneToOne: false
+            referencedRelation: "blueprint_estimate_handoff_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "blueprint_estimate_line_provenance_import_session_id_fkey"
+            columns: ["import_session_id"]
+            isOneToOne: false
+            referencedRelation: "blueprint_import_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "blueprint_estimate_line_provenance_line_candidate_id_fkey"
+            columns: ["line_candidate_id"]
+            isOneToOne: false
+            referencedRelation: "blueprint_estimate_line_candidates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       blueprint_import_sessions: {
         Row: {
           contract_version: string
