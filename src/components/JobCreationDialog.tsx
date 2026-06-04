@@ -215,9 +215,27 @@ export const JobCreationDialog: React.FC<JobCreationDialogProps> = ({
               <Checkbox
                 id="useSameAddress"
                 checked={formData.useSameAddress}
-                onCheckedChange={(checked) => 
-                  setFormData(prev => ({ ...prev, useSameAddress: checked as boolean }))
-                }
+                onCheckedChange={(checked) => {
+                  const isChecked = checked as boolean;
+                  setFormData(prev => ({ ...prev, useSameAddress: isChecked }));
+                  if (isChecked && contact?.address_street) {
+                    const street = contact.address_street || '';
+                    const city = contact.address_city || '';
+                    const state = contact.address_state || '';
+                    const zip = contact.address_zip || '';
+                    setVerifiedAddress({
+                      street,
+                      city,
+                      state,
+                      zip,
+                      formatted_address: [street, city, `${state} ${zip}`.trim()]
+                        .filter(Boolean)
+                        .join(', '),
+                    });
+                  } else if (!isChecked) {
+                    setVerifiedAddress(null);
+                  }
+                }}
               />
               <Label htmlFor="useSameAddress" className="text-sm">
                 Use same address as contact ({contact.address_street || "No address on file"})
