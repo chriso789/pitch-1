@@ -84,6 +84,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   const [dryRunBlastId, setDryRunBlastId] = useState<string | null>(null);
   const [previewTemplateIndex, setPreviewTemplateIndex] = useState(0);
   const [rotateTemplates, setRotateTemplates] = useState<boolean>(false);
+  const [excludePriorBlasts, setExcludePriorBlasts] = useState<boolean>(true);
   const lastGoalRef = useRef<string>('');
 
   // Template editor state — save/edit sms_templates for this tenant
