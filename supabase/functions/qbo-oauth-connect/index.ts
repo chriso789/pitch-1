@@ -165,7 +165,11 @@ async function handleServerCallback(reqUrl: URL): Promise<Response> {
       intuit_tid: tokenTid,
       body: errBody.slice(0, 200),
     });
-    return redirectToSettings({ status: "exchange_failed", reason: `http_${tokenResp.status}`, intuit_tid: tokenTid ?? undefined });
+    return redirectToSettings({
+      status: "exchange_failed",
+      reason: `http_${tokenResp.status}`,
+      ...(tokenTid ? { intuit_tid: tokenTid } : {}),
+    });
   }
 
   const tokens = (await tokenResp.json()) as TokenResponse;
