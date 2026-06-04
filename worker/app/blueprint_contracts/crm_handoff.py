@@ -306,3 +306,177 @@ def summarize_candidate_provenance(candidate: BlueprintEstimateLineCandidate) ->
         "template_binding_id": candidate.template_binding_id,
         "accepted_trade_id": candidate.accepted_trade_id,
     }
+
+
+# ===========================================================================
+# Phase 7.5 — Approval object + resolver + pricing contract (shape only).
+# Pure helpers. Side-effect free. NOT registered or imported by worker runtime.
+# ===========================================================================
+
+ApprovalStatus = Literal[
+    "approval_not_started",
+    "approval_in_review",
+    "approval_ready",
+    "approved_for_live_handoff",
+    "approval_revoked",
+    "approval_superseded",
+    "approval_failed",
+]
+
+CatalogResolverMatchStatus = Literal[
+    "resolved",
+    "unresolved",
+    "ambiguous",
+    "inactive_item",
+    "missing_labor_rate",
+    "blocked",
+]
+
+QuantityOnlySafetyStatus = Literal[
+    "blocked_quantity_only_unsafe",
+    "allowed_pricing_required",
+    "deferred_pending_pricing_contract",
+]
+
+
+@dataclass
+class ApprovalObject:
+    contract_version: str
+    approval_statement_version: str
+    import_session_id: str
+    handoff_batch_id: str
+    catalog_mode: CatalogHandoffMode
+    pricing_mode: PricingMode
+    custom_line_mode: CustomLineMode
+    approval_status: ApprovalStatus
+    approved_by: Optional[str] = None
+    approved_at: Optional[str] = None
+    target_enhanced_estimate_id: Optional[str] = None
+    included_candidate_ids: list[str] = field(default_factory=list)
+    excluded_candidate_ids: list[str] = field(default_factory=list)
+    acknowledged_warning_ids: list[str] = field(default_factory=list)
+    resolved_blocker_ids: list[str] = field(default_factory=list)
+    source_draft_hash: Optional[str] = None
+    approval_blockers: list[str] = field(default_factory=list)
+    approval_warnings: list[str] = field(default_factory=list)
+    deterministic_approval_hash: Optional[str] = None
+
+
+def create_deterministic_approval_hash(
+    *,
+    contract_version: str,
+    approval_statement_version: str,
+    import_session_id: str,
+    handoff_batch_id: str,
+    target_enhanced_estimate_id: Optional[str],
+    included_candidate_ids: list[str],
+    excluded_candidate_ids: list[str],
+    acknowledged_warning_ids: list[str],
+    resolved_blocker_ids: list[str],
+    catalog_mode: CatalogHandoffMode,
+    pricing_mode: PricingMode,
+    custom_line_mode: CustomLineMode,
+    source_draft_hash: Optional[str],
+) -> str:
+    payload = ":".join([
+        contract_version,
+        approval_statement_version,
+        import_session_id,
+        handoff_batch_id,
+        target_enhanced_estimate_id or "null",
+        _sorted_uuid_list(included_candidate_ids),
+        _sorted_uuid_list(excluded_candidate_ids),
+        _sorted_uuid_list(acknowledged_warning_ids),
+        _sorted_uuid_list(resolved_blocker_ids),
+        catalog_mode,
+        pricing_mode,
+        custom_line_mode,
+        source_draft_hash or "null",
+    ])
+    return _sha256(payload)
+
+
+def validate_approval_object_shape(a: ApprovalObject) -> list[str]:
+    blockers: list[str] = []
+    if not a.included_candidate_ids:
+        blockers.append("APPROVAL_MISSING_INCLUDED_CANDIDATES")
+    if a.approval_blockers:
+        blockers.append("APPROVAL_UNRESOLVED_BLOCKERS_REMAIN")
+    if a.catalog_mode != "catalog_resolved_only" and a.custom_line_mode != "enabled":
+        blockers.append("APPROVAL_CATALOG_MODE_REQUIRES_RESOLVER")
+    if a.custom_line_mode == "enabled" and "CUSTOM_LINE_MODE_REVIEWED" not in a.resolved_blocker_ids:
+        blockers.append("APPROVAL_CUSTOM_LINE_MODE_NOT_APPROVED")
+    return blockers
+
+
+def validate_target_status_for_live_write(status: str) -> dict[str, Any]:
+    if status == "draft":
+        return {"can_live_write": True, "blocker": None}
+    if status == "sent":
+        return {"can_live_write": False, "blocker": "TARGET_ESTIMATE_SENT"}
+    if status == "signed":
+        return {"can_live_write": False, "blocker": "TARGET_ESTIMATE_APPROVED"}
+    return {"can_live_write": False, "blocker": "TARGET_ESTIMATE_STATUS_UNKNOWN"}
+
+
+def validate_source_draft_hash_fresh(approval_hash: Optional[str], current_hash: Optional[str]) -> bool:
+    return approval_hash is not None and approval_hash == current_hash
+
+
+def decide_quantity_only_safety(mode: PricingMode) -> QuantityOnlySafetyStatus:
+    # estimate_line_items unit_cost/extended_cost/total_price are NOT NULL
+    # default 0 in the live schema; quantity-only writes would corrupt totals.
+    if mode == "quantity_only":
+        return "blocked_quantity_only_unsafe"
+    if mode == "ready_for_pricing_review":
+        return "allowed_pricing_required"
+    return "deferred_pending_pricing_contract"
+
+
+def validate_quantity_only_mode_allowed(mode: PricingMode) -> list[str]:
+    if decide_quantity_only_safety(mode) == "blocked_quantity_only_unsafe":
+        return ["PRICING_REQUIRED_BUT_UNAVAILABLE"]
+    return []
+
+
+@dataclass
+class CatalogResolverOutput:
+    resolver_version: str
+    resolver_mode: Literal[
+        "deterministic_catalog_only", "deterministic_with_user_confirmation"
+    ]
+    tenant_id: str
+    source_candidate_id: str
+    trade_id: str
+    item_key: str
+    candidate_type: SourceDraftLineType
+    match_status: CatalogResolverMatchStatus
+    match_confidence: float
+    normalized_item_name: Optional[str] = None
+    matched_catalog_table: Optional[str] = None
+    matched_catalog_item_id: Optional[str] = None
+    labor_rate_id: Optional[str] = None
+    match_rule_id: Optional[str] = None
+    blockers: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    provenance: dict[str, Any] = field(default_factory=dict)
+
+
+def validate_catalog_resolver_output(o: CatalogResolverOutput) -> list[str]:
+    blockers = list(o.blockers or [])
+
+    def _add(code: str) -> None:
+        if code not in blockers:
+            blockers.append(code)
+
+    if o.match_status == "ambiguous":
+        _add("CATALOG_MATCH_AMBIGUOUS")
+    if o.match_status == "inactive_item":
+        _add("CATALOG_ITEM_INACTIVE")
+    if o.match_status == "missing_labor_rate":
+        _add("LABOR_RATE_MISSING")
+    if o.match_status == "unresolved":
+        _add("CATALOG_UNRESOLVED_LIVE_HANDOFF")
+    if o.match_status == "resolved" and o.match_confidence < 0.9:
+        _add("CATALOG_MATCH_AMBIGUOUS")
+    return blockers
