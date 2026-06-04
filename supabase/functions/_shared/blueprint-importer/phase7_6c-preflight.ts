@@ -338,25 +338,23 @@ function evaluateMaterial(
     }
   }
 
-  // Cost resolution.
-  const picked = pickTrustedUnitCost(binding, target);
-  if (picked.unit_cost === null) {
-    // No trusted positive cost.
-    const cs = binding.cost_source_type === "catalog" || binding.cost_source_type === "labor_rate"
-      ? "missing"
-      : "missing";
-    blockers.push("CATALOG_RESOLVED_COST_MISSING", "MATERIAL_UNIT_COST_MISSING");
-    // If binding declared no pricing rule at all:
-    if (binding.pricing_source_type === "unresolved" || binding.pricing_source_type === "disabled") {
-      blockers.push("MATERIAL_PRICING_RULE_MISSING");
-    }
-    return baseResult(cs, "catalog_resolved_cost_missing", {
+  // Cost resolution. Detect explicit zero first to surface the zero-unsafe blocker.
+  const zeroBinding = typeof binding.unit_cost === "number" && binding.unit_cost === 0;
+  const zeroTarget = !!target && binding.cost_source_type === "catalog" &&
+    typeof target.base_unit_cost === "number" && target.base_unit_cost === 0;
+  if (zeroBinding || zeroTarget) {
+    blockers.push("MATERIAL_UNIT_COST_ZERO_UNSAFE", "ZERO_DEFAULT_PRICING_UNSAFE");
+    return baseResult("zero_unsafe", "blocked", {
       target_present: true, tenant_safe: tenantSafe, active, active_verifiable: activeVerifiable, unit_compatible: unitCompatible,
     });
   }
-  if (picked.unit_cost === 0) {
-    blockers.push("MATERIAL_UNIT_COST_ZERO_UNSAFE", "ZERO_DEFAULT_PRICING_UNSAFE");
-    return baseResult("zero_unsafe", "blocked", {
+  const picked = pickTrustedUnitCost(binding, target);
+  if (picked.unit_cost === null) {
+    blockers.push("CATALOG_RESOLVED_COST_MISSING", "MATERIAL_UNIT_COST_MISSING");
+    if (binding.pricing_source_type === "unresolved" || binding.pricing_source_type === "disabled") {
+      blockers.push("MATERIAL_PRICING_RULE_MISSING");
+    }
+    return baseResult("missing", "catalog_resolved_cost_missing", {
       target_present: true, tenant_safe: tenantSafe, active, active_verifiable: activeVerifiable, unit_compatible: unitCompatible,
     });
   }
