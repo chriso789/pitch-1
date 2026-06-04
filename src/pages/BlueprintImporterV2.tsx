@@ -742,6 +742,26 @@ function Phase6Panel({ sessionId, summary }: { sessionId: string; summary: Sessi
                 <div className="text-[10px] text-muted-foreground italic">{resolverSummary.push_to_estimate_disabled_reason}</div>
               </div>
             )}
+            {preflightSummary && (
+              <div className="rounded border bg-background p-2 text-xs space-y-1">
+                <div className="font-semibold uppercase text-muted-foreground">Phase 7.6c pricing preflight (preview-only)</div>
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant="default">ready {preflightSummary.ready_for_pricing_review}</Badge>
+                  <Badge variant="destructive">blocked {preflightSummary.blocked}</Badge>
+                  {preflightSummary.preview_cost_total !== null && (
+                    <Badge variant="secondary">preview cost ${preflightSummary.preview_cost_total.toFixed(2)}</Badge>
+                  )}
+                </div>
+                {Object.keys(preflightSummary.blocker_counts).length > 0 && (
+                  <div className="text-destructive">Blockers: {Object.entries(preflightSummary.blocker_counts).map(([k, v]) => `${k}×${v}`).join(", ")}</div>
+                )}
+                {Object.keys(preflightSummary.warning_counts).length > 0 && (
+                  <div className="text-amber-600">Warnings: {Object.entries(preflightSummary.warning_counts).map(([k, v]) => `${k}×${v}`).join(", ")}</div>
+                )}
+                <div className="text-[10px] text-muted-foreground italic">{preflightSummary.push_to_estimate_disabled_reason}</div>
+                <div className="text-[10px] text-muted-foreground italic">{preflightSummary.final_pricing_disabled_reason}</div>
+              </div>
+            )}
             <CandidateTable candidates={preview.candidates} onReview={reviewCandidate} />
           </CardContent>
         </Card>
