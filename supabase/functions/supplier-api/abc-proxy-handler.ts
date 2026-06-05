@@ -851,6 +851,199 @@ export const handle = async (req) => {
       return json({ success: r.ok, environment: env, endpoint, request: payload, status: r.status, body: r.json ?? r.text, error_code });
     }
 
+    // ---------------- price_items_record_history ----------------
+    // Calls ABC Price Items and records every result line into
+    // supplier_price_history under a supplier_pricing_runs run. Does NOT
+    // overwrite estimate cost. Reference / fulfillment pricing only.
+    if (action === "price_items_record_history") {
+      const sourceContext = body.source_context;
+      const rawItems = Array.isArray((body as any).items) ? (body as any).items : [];
+      type InItem = {
+        template_item_id?: string | null;
+        estimate_line_item_id?: string | null;
+        itemNumber?: string;
+        itemDescription?: string | null;
+        uom?: string | null;
+        quantity?: number | null;
+      };
+      const items: InItem[] = rawItems;
+
+      if (!sourceContext || !["template", "estimate", "project", "order"].includes(sourceContext)) {
+        return json({ success: false, error: "source_context required (template|estimate|project|order)" }, 400);
+      }
+      if (!body.shipToNumber || !body.branchNumber) {
+        return json({ success: false, error: "shipToNumber and branchNumber required" }, 400);
+      }
+      if (!items.length || !items.every((i) => i && typeof i.itemNumber === "string" && i.itemNumber.length > 0)) {
+        return json({ success: false, error: "items[] required; each must have itemNumber" }, 400);
+      }
+
+      // 1) Open run (service role)
+      let runId: string;
+      try {
+        const r = await startPricingRun(supabase, {
+          tenant_id: tenant_id!,
+          supplier: "abc",
+          source_context: sourceContext,
+          source_id: body.source_id ?? null,
+          environment: env,
+          ship_to_number: body.shipToNumber,
+          branch_number: body.branchNumber,
+          created_by: userId,
+          metadata: { route: "supplier-api/abc/proxy", action },
+        });
+        runId = r.id;
+      } catch (e: any) {
+        return json({ success: false, error: "pricing_run_start_failed", details: e?.message ?? String(e) }, 500);
+      }
+
+      // 2) Call ABC Price Items
+      const endpoint = `${cfg.apiBase}/pricing/v2/prices`;
+      const abcLines = items.map((l, i) => ({
+        id: String(i + 1),
+        itemNumber: l.itemNumber!,
+        quantity: Number(l.quantity) || 1,
+        uom: (l.uom || "EA").toString().toUpperCase(),
+      }));
+      const payload = {
+        requestId: `PITCH-PRICE-RUN-${runId}`,
+        shipToNumber: body.shipToNumber,
+        branchNumber: body.branchNumber,
+        purpose: body.purpose || "estimating",
+        lines: abcLines,
+      };
+
+      const r = await callAbc(tok.token, "POST", endpoint, payload);
+      const error_code = r.ok ? null : mapAbcError(r.status, r.json);
+      await auditCall(supabase, {
+        tenant_id, environment: env, action, endpoint,
+        request_body_redacted: payload,
+        status_code: r.status, response_body: r.json ?? r.text, error_code,
+        duration_ms: Date.now() - startedAt, created_by: userId,
+      });
+
+      // 3) Build history rows for every input item, joined to ABC response by id/itemNumber
+      const respLines: any[] = Array.isArray(r.json?.lines)
+        ? r.json.lines
+        : Array.isArray(r.json?.prices)
+          ? r.json.prices
+          : Array.isArray(r.json)
+            ? r.json
+            : [];
+
+      const findResp = (idx: number, itemNumber: string) => {
+        const byId = respLines.find((x) => String(x?.id ?? "") === String(idx + 1));
+        if (byId) return byId;
+        return respLines.find(
+          (x) => String(x?.itemNumber ?? x?.item_number ?? "").toUpperCase() === itemNumber.toUpperCase(),
+        );
+      };
+
+      const isWaf = r.status === 499 || error_code === "abc_waf_blocked";
+      const errorSummary = isWaf
+        ? "abc_waf_blocked"
+        : r.ok
+          ? null
+          : (error_code ?? `abc_http_${r.status}`);
+
+      const historyRows: PriceHistoryLineInput[] = items.map((it, idx) => {
+        const match = r.ok ? findResp(idx, it.itemNumber!) : null;
+        const unitPrice = match
+          ? Number(
+              match.unitPrice ?? match.unit_price ?? match.price ?? match.netPrice ?? match.net_price,
+            )
+          : NaN;
+        const extPrice = match
+          ? Number(match.extendedPrice ?? match.extended_price ?? match.totalPrice ?? match.total_price)
+          : NaN;
+        const availability = match
+          ? (match.availability ?? match.availabilityStatus ?? match.status ?? null)
+          : null;
+        const lineStatus: PriceHistoryLineInput["status"] = r.ok && match
+          ? "ok"
+          : isWaf
+            ? "unavailable"
+            : "error";
+
+        return {
+          tenant_id: tenant_id!,
+          pricing_run_id: runId,
+          supplier: "abc",
+          template_id: sourceContext === "template" ? (body.source_id ?? null) : null,
+          template_item_id: sourceContext === "template" ? (it.template_item_id ?? null) : null,
+          estimate_id: sourceContext === "estimate" ? (body.source_id ?? null) : null,
+          estimate_line_item_id: sourceContext === "estimate" ? (it.estimate_line_item_id ?? null) : null,
+          supplier_item_number: it.itemNumber ?? null,
+          supplier_item_description: (match?.description ?? match?.itemDescription ?? it.itemDescription) ?? null,
+          uom: ((match?.uom ?? match?.unitOfMeasure ?? it.uom) ?? "EA").toString().toUpperCase(),
+          quantity: Number(it.quantity) || 1,
+          unit_price: Number.isFinite(unitPrice) ? unitPrice : null,
+          extended_price: Number.isFinite(extPrice) ? extPrice : null,
+          availability: availability ? String(availability) : null,
+          ship_to_number: body.shipToNumber ?? null,
+          branch_number: body.branchNumber ?? null,
+          price_source: "abc_price_items",
+          raw_response: match ?? (r.ok ? null : { error_code, status: r.status, body: r.json ?? r.text }),
+          status: lineStatus,
+          created_by: userId,
+        };
+      });
+
+      let recordedCount = 0;
+      try {
+        const ins = await recordPriceHistoryBulk(supabase, historyRows);
+        recordedCount = ins.inserted;
+      } catch (e) {
+        console.warn("[supplier-api abc] recordPriceHistoryBulk failed", e);
+      }
+
+      // 4) Complete run
+      const okCount = historyRows.filter((h) => h.status === "ok").length;
+      const finalStatus: Exclude<PricingRunStatus, "running"> = r.ok
+        ? (okCount === historyRows.length ? "completed" : okCount > 0 ? "partial" : "failed")
+        : "failed";
+
+      try {
+        await completePricingRun(supabase, runId, {
+          status: finalStatus,
+          error_summary: errorSummary,
+          metadata_patch: {
+            abc_status: r.status,
+            abc_error_code: error_code,
+            recorded_count: recordedCount,
+            requested_count: historyRows.length,
+          },
+        });
+      } catch (e) {
+        console.warn("[supplier-api abc] completePricingRun failed", e);
+      }
+
+      return json({
+        success: r.ok,
+        environment: env,
+        endpoint,
+        run_id: runId,
+        run_status: finalStatus,
+        recorded_count: recordedCount,
+        requested_count: historyRows.length,
+        error_code,
+        error_summary: errorSummary,
+        lines: historyRows.map((h) => ({
+          template_item_id: h.template_item_id,
+          estimate_line_item_id: h.estimate_line_item_id,
+          itemNumber: h.supplier_item_number,
+          uom: h.uom,
+          quantity: h.quantity,
+          unit_price: h.unit_price,
+          extended_price: h.extended_price,
+          availability: h.availability,
+          status: h.status,
+        })),
+      });
+    }
+
+
+
 
     // ---------------- get_order_status ----------------
     if (action === "get_order_status") {
