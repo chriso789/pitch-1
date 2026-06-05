@@ -4,6 +4,7 @@ import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 
 const Dashboard = React.lazy(() => import("@/pages/Dashboard"));
 const AbcValidateDebug = React.lazy(() => import("@/pages/AbcValidateDebug"));
+const SrsPricingHistoryDebug = React.lazy(() => import("@/pages/SrsPricingHistoryDebug"));
 const Pipeline = React.lazy(() => import("@/pages/Pipeline"));
 const Production = React.lazy(() => import("@/pages/Production"));
 const ClientList = React.lazy(() => import("@/pages/ClientList"));
@@ -120,6 +121,7 @@ export default function ProtectedRoutes() {
       <Routes>
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
         <Route path="/debug/abc-validate" element={<ProtectedRoute><AbcValidateDebug /></ProtectedRoute>} />
+        <Route path="/debug/srs-pricing-history" element={<ProtectedRoute><SrsPricingHistoryDebug /></ProtectedRoute>} />
         <Route path="/pipeline" element={<ProtectedRoute><Pipeline /></ProtectedRoute>} />
         <Route path="/production" element={<ProtectedRoute><Production /></ProtectedRoute>} />
         <Route path="/production/:projectId" element={<ProtectedRoute><ProductionDetail /></ProtectedRoute>} />
