@@ -121,6 +121,7 @@ export default function ProtectedRoutes() {
       <Routes>
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
         <Route path="/debug/abc-validate" element={<ProtectedRoute><AbcValidateDebug /></ProtectedRoute>} />
+        <Route path="/abc-validate-debug" element={<ProtectedRoute><AbcValidateDebug /></ProtectedRoute>} />
         <Route path="/debug/srs-pricing-history" element={<ProtectedRoute><SrsPricingHistoryDebug /></ProtectedRoute>} />
         <Route path="/pipeline" element={<ProtectedRoute><Pipeline /></ProtectedRoute>} />
         <Route path="/production" element={<ProtectedRoute><Production /></ProtectedRoute>} />
