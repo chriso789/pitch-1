@@ -45,7 +45,7 @@ export default function SrsPricingHistoryDebug() {
       // ---- fetch activeBranchProducts via srs-api-proxy ----
       const { data: prodResp, error: prodErr } = await supabase.functions.invoke(
         "srs-api-proxy",
-        { body: { action: "get_products", params: { branch_code: branchCode } } }
+        { body: { action: "get_products", tenant_id: conn.tenant_id, branch_code: branchCode } }
       );
       log.step5_get_products_error = prodErr
         ? { message: prodErr.message, ctx: (prodErr as any).context ?? null }
