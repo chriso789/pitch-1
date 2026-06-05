@@ -49,7 +49,7 @@ app.post("/proxy", (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic no
 // ---------------------------------------------------------------------------
 // POST /pricing/record-history
 // ---------------------------------------------------------------------------
-const pricingRecordHistoryHandler = async (c: any) => {
+app.post("/pricing/record-history", async (c) => {
   const tenantId = c.get("tenantId") as string;
   const userId = c.get("userId") as string;
   const svc = serviceClient();
