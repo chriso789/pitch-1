@@ -65,7 +65,7 @@ const CommunicationsHub = () => {
 
   return (
     <GlobalLayout>
-    <div className="h-[calc(100dvh-8rem)] max-h-[calc(100dvh-8rem)] min-h-0 flex flex-col overflow-hidden">
+    <div className="h-[calc(100dvh-10.5rem)] max-h-[calc(100dvh-10.5rem)] min-h-0 flex flex-col overflow-hidden">
       {/* Header */}
       <div className="border-b px-4 py-3 shrink-0">
         <div className="flex items-center justify-between">
