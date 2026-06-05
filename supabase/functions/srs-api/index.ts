@@ -404,7 +404,12 @@ const pricingRecordHistoryHandler = async (c: any) => {
       status: r.status,
     })),
   });
-});
+};
+
+// Register handler at multiple paths so we work regardless of how the edge
+// runtime delivers the URL (with or without the /srs-api prefix).
+app.post("/pricing/record-history", pricingRecordHistoryHandler);
+app.post("/srs-api/pricing/record-history", pricingRecordHistoryHandler);
 
 Deno.serve((req) => {
   const url = new URL(req.url);
