@@ -10,7 +10,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { SMSThread, SMSMessage, useCommunications } from '@/hooks/useCommunications';
 import { supabase } from '@/integrations/supabase/client';
@@ -240,7 +239,7 @@ export const SMSConversationThread = ({
   }
 
   return (
-    <Card className="h-full flex flex-col">
+    <Card className="h-full min-h-0 flex flex-col overflow-hidden">
       <CardHeader className="pb-3 border-b shrink-0">
         <div className="flex items-center gap-3">
           {onBack && (
@@ -276,7 +275,7 @@ export const SMSConversationThread = ({
         />
         
         {/* Messages */}
-        <ScrollArea className="flex-1 min-h-0 p-4" ref={scrollRef}>
+        <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto p-4 overscroll-contain">
           {loading ? (
             <div className="flex items-center justify-center h-full">
               <Loader2 className="h-6 w-6 animate-spin" />
@@ -340,7 +339,7 @@ export const SMSConversationThread = ({
               })}
             </div>
           )}
-        </ScrollArea>
+        </div>
 
         {/* Message Input */}
         <div className="p-4 border-t shrink-0">
