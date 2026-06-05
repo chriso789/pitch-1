@@ -82,7 +82,7 @@ export const PlatformAdmin = () => {
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState("active");
+  const [activeTab, setActiveTab] = useState("communications");
   const { toast } = useToast();
 
   useEffect(() => {
