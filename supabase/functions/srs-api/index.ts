@@ -395,6 +395,8 @@ app.post("/pricing/record-history", async (c) => {
 
 Deno.serve((req) => {
   const url = new URL(req.url);
+  const originalPath = url.pathname;
+  console.log("[srs-api inbound]", req.method, originalPath);
   if (url.pathname.startsWith("/srs-api/")) {
     url.pathname = url.pathname.slice("/srs-api".length) || "/";
     return app.fetch(new Request(url.toString(), req));
