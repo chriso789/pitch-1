@@ -372,11 +372,17 @@ const Dashboard = () => {
     toast.success('Opening print dialog');
   };
 
+  const formatPctChange = (n?: number) => {
+    if (!n || !Number.isFinite(n)) return '0%';
+    const sign = n > 0 ? '+' : '';
+    return `${sign}${n.toFixed(1)}%`;
+  };
+
   const metrics = [
     {
       title: "Total Revenue",
       value: revenueData?.total ? `$${revenueData.total.toLocaleString()}` : "$0",
-      change: revenueData?.change ? `+${revenueData.change.toFixed(1)}%` : "0%",
+      change: formatPctChange(revenueData?.change),
       icon: DollarSign,
       color: "text-success"
     },
@@ -397,7 +403,7 @@ const Dashboard = () => {
     {
       title: "Avg Profit Margin",
       value: profitMargin?.value ? `${profitMargin.value.toFixed(1)}%` : "0%",
-      change: profitMargin?.change ? `+${profitMargin.change.toFixed(1)}%` : "0%",
+      change: profitMargin?.source === 'target' ? 'target' : formatPctChange(profitMargin?.change),
       icon: TrendingUp,
       color: "text-success"
     }
