@@ -448,7 +448,7 @@ app.post("/pricing/record-history", async (c) => {
         srs_status: srsCallStatus,
         requested_count: rows.length,
         priced_count: okCount,
-        unmapped_count: unmapped.length,
+        unmapped_count: skipped.length,
         recorded_count: recorded,
       },
     });
@@ -465,7 +465,7 @@ app.post("/pricing/record-history", async (c) => {
     job_account_number: hasValidJan ? jan : null,
     requested_count: rows.length,
     priced_count: okCount,
-    unmapped_count: unmapped.length,
+    unmapped_count: skipped.length,
     recorded_count: recorded,
     srs_status: srsCallStatus,
     error_summary: errorSummary,
