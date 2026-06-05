@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { buildSupplierVerifiedInvoice } from "../_shared/supplier-verified-invoice.ts";
+import { verifyAuthAndTenant } from "../_shared/auth-tenant.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -240,19 +241,54 @@ Deno.serve(async (req) => {
   const ip = req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || null;
   const userAgent = req.headers.get("user-agent") || null;
 
-  // Resolve caller identity from JWT (best-effort)
+  // Parse body once so we can read the requested tenant_id for verification.
+  let body: any;
+  try {
+    body = await req.json();
+  } catch {
+    return new Response(JSON.stringify({ error: "invalid_json" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  // SECURITY: never trust body.tenant_id from a user-facing caller. Resolve from JWT +
+  // user_company_access. Background workers (poller, pricing-refresh, pricelist-backfill)
+  // authenticate with the service-role key and may pass body.tenant_id directly.
+  const authHeader = req.headers.get("authorization") || "";
+  const bearer = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+  const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  const isServiceRoleCaller = !!SERVICE_ROLE && bearer === SERVICE_ROLE;
+
+  let tenant_id: string;
   let actorUserId: string | null = null;
   let actorEmail: string | null = null;
-  try {
-    const authHeader = req.headers.get("authorization") || "";
-    if (authHeader.startsWith("Bearer ")) {
+
+  if (isServiceRoleCaller) {
+    // Trusted internal worker call — body.tenant_id is authoritative.
+    const requested = body && typeof body.tenant_id === "string" ? body.tenant_id : null;
+    if (!requested) {
+      return new Response(JSON.stringify({ error: "tenant_id required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    tenant_id = requested;
+  } else {
+    const requestedTenantId = body && typeof body.tenant_id === "string" ? body.tenant_id : null;
+    const auth = await verifyAuthAndTenant(req, requestedTenantId);
+    if (auth.error) return auth.error;
+    tenant_id = auth.tenantId;
+    actorUserId = auth.userId;
+    try {
       const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY") || "", {
         global: { headers: { Authorization: authHeader } },
       });
       const { data: { user } } = await userClient.auth.getUser();
-      if (user) { actorUserId = user.id; actorEmail = user.email ?? null; }
-    }
-  } catch (_) { /* anonymous call ok */ }
+      if (user) actorEmail = user.email ?? null;
+    } catch (_) { /* email best-effort */ }
+  }
+
 
   async function audit(args: {
     tenant_id: string;
@@ -281,15 +317,9 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const body = await req.json();
-    const { action, tenant_id, ...params } = body;
+    const { action, tenant_id: _ignoredBodyTenant, ...params } = body;
+    // tenant_id is the server-resolved value from auth above; ignore body.tenant_id.
 
-    if (!tenant_id) {
-      return new Response(JSON.stringify({ error: "tenant_id required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
 
     // ------------------------------------------------------------------
     // Credential write actions: must run BEFORE we require an existing row.
