@@ -289,18 +289,6 @@ Deno.serve(async (req) => {
     } catch (_) { /* email best-effort */ }
   }
 
-  const actorUserId = auth.userId;
-  let actorEmail: string | null = null;
-  try {
-    const authHeader = req.headers.get("authorization") || "";
-    if (authHeader.startsWith("Bearer ")) {
-      const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY") || "", {
-        global: { headers: { Authorization: authHeader } },
-      });
-      const { data: { user } } = await userClient.auth.getUser();
-      if (user) actorEmail = user.email ?? null;
-    }
-  } catch (_) { /* email is best-effort */ }
 
   async function audit(args: {
     tenant_id: string;
