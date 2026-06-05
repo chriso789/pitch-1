@@ -312,12 +312,12 @@ app.post("/pricing/record-history", async (c) => {
           ? srsResponse.data
           : [];
 
-  const findFor = (productNumber: string, productId: number) => {
+  const findFor = (productNumber: string, productId: number | null) => {
     const pnUp = productNumber.toUpperCase();
     return respList.find((r) => {
       const a = String(r?.productNumber ?? r?.product_number ?? "").toUpperCase();
       const b = String(r?.productId ?? r?.product_id ?? "");
-      return (a && a === pnUp) || (b && Number(b) === productId);
+      return (a && a === pnUp) || (productId != null && b && Number(b) === productId);
     }) ?? null;
   };
 
@@ -331,6 +331,7 @@ app.post("/pricing/record-history", async (c) => {
     match: any | null,
     status: PriceHistoryLineInput["status"],
     rawOverride?: unknown,
+    priceSourceOverride?: string,
   ): PriceHistoryLineInput => {
     const unitPrice = match
       ? Number(match.unitPrice ?? match.unit_price ?? match.price ?? match.netPrice ?? match.net_price)
@@ -341,6 +342,11 @@ app.post("/pricing/record-history", async (c) => {
     const availability = match
       ? (match.availability ?? match.availabilityStatus ?? match.stockStatus ?? null)
       : null;
+    const defaultSource = status === "ok"
+      ? "srs_price_api"
+      : status === "unavailable"
+        ? "catalog_unmapped"
+        : "srs_price_api";
     return {
       tenant_id: tenantId,
       pricing_run_id: runId,
@@ -360,7 +366,7 @@ app.post("/pricing/record-history", async (c) => {
       account_number: customerCode || null,
       branch_number: branchCode,
       job_account_number: hasValidJan ? String(jan) : null,
-      price_source: status === "ok" ? "srs_price_api" : status === "unavailable" ? "catalog_unmapped" : "srs_price_api",
+      price_source: priceSourceOverride ?? defaultSource,
       raw_response: rawOverride ?? match ?? null,
       status,
       created_by: userId,
@@ -388,16 +394,22 @@ app.post("/pricing/record-history", async (c) => {
     ));
   }
 
-  for (const u of unmapped) {
+  for (const u of skipped) {
+    const m = u.mapping ?? null;
+    const productNumber = (m?.supplier_item_number ?? String(u.item.productNumber ?? "").trim()) || null;
+    const pid = m?.supplier_product_id
+      ? Number(m.supplier_product_id) || null
+      : Number.isFinite(Number(u.item.productId)) ? Number(u.item.productId) : null;
     rows.push(buildLine(
       u.item,
-      Number.isFinite(Number(u.item.productId)) ? Number(u.item.productId) : null,
-      String(u.item.productNumber ?? "").trim() || null,
-      String(u.item.uom || "EA").toUpperCase(),
+      pid,
+      productNumber,
+      String(m?.default_uom || u.item.uom || "EA").toUpperCase(),
       Number(u.item.quantity) || 1,
       null,
       "unavailable",
-      { reason: u.reason },
+      { reason: u.reason, mapping_id: m?.id ?? null, mapping_status: m?.mapping_status ?? null },
+      u.price_source,
     ));
   }
 
