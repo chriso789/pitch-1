@@ -857,12 +857,10 @@ export const Settings = () => {
       <div className="flex gap-6 min-h-[600px]">
         {/* Desktop Sidebar */}
         {!isMobile && (
-          <Card className="w-64 shrink-0">
-            <ScrollArea className="h-[calc(100vh-240px)]">
-              <div className="p-4">
-                <SidebarContent />
-              </div>
-            </ScrollArea>
+          <Card className="w-64 shrink-0 self-start">
+            <div className="p-4">
+              <SidebarContent />
+            </div>
           </Card>
         )}
 
