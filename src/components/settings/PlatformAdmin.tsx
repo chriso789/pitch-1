@@ -196,93 +196,9 @@ export const PlatformAdmin = () => {
         />
       </div>
 
-      {/* Stats Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-primary/10 rounded-lg">
-                <Building2 className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{activeCompanies.length}</p>
-                <p className="text-sm text-muted-foreground">Active Companies</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card 
-          className="cursor-pointer hover:border-primary transition-colors"
-          onClick={() => setActiveTab("inactive")}
-        >
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-destructive/10 rounded-lg">
-                <Power className="h-5 w-5 text-destructive" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{inactiveCompanies.length}</p>
-                <p className="text-sm text-muted-foreground">Inactive Companies</p>
-                <p className="text-xs text-primary">Click to view</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-green-500/10 rounded-lg">
-                <Users className="h-5 w-5 text-green-500" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">
-                  {companies.reduce((sum, c) => sum + (c.user_count || 0), 0)}
-                </p>
-                <p className="text-sm text-muted-foreground">Total Users</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-500/10 rounded-lg">
-                <MapPin className="h-5 w-5 text-blue-500" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">
-                  {companies.reduce((sum, c) => sum + (c.location_count || 0), 0)}
-                </p>
-                <p className="text-sm text-muted-foreground">Total Locations</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Search companies by name or email..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-10"
-        />
-      </div>
-
-      {/* Companies Tabs */}
+      {/* Platform Tabs (company management lives in "Manage All Companies") */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="flex flex-wrap h-auto gap-1 justify-start">
-          <TabsTrigger value="active">
-            Active ({activeCompanies.length})
-          </TabsTrigger>
-          <TabsTrigger value="inactive">
-            Inactive ({inactiveCompanies.length})
-          </TabsTrigger>
-          <TabsTrigger value="all">
-            All ({filteredCompanies.length})
-          </TabsTrigger>
           <TabsTrigger value="communications" className="gap-1">
             <Megaphone className="h-3 w-3" />
             Communications
