@@ -544,3 +544,17 @@ function SetupAccountImpl() {
     </div>
   );
 }
+
+export default function SetupAccount() {
+  return (
+    <>
+      <SEO
+        title="Set Up Your Account — Pitch CRM"
+        description="Finish setting up your Pitch CRM account."
+        path="/setup-account"
+        noindex
+      />
+      <SetupAccountImpl />
+    </>
+  );
+}

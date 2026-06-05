@@ -295,4 +295,16 @@ const ConfirmEmailImpl = () => {
   );
 };
 
+const ConfirmEmail = () => (
+  <>
+    <SEO
+      title="Confirm Email — Pitch CRM"
+      description="Confirm your email address to activate your Pitch CRM account."
+      path="/auth/confirm-email"
+      noindex
+    />
+    <ConfirmEmailImpl />
+  </>
+);
+
 export default ConfirmEmail;

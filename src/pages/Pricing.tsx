@@ -97,6 +97,15 @@ export default function Pricing() {
         title="Pricing — Pitch CRM Plans for Roofing & Construction Teams"
         description="Simple per-user pricing for Pitch CRM, Live Canvass, and AI Measuring. Save $46,000+/year vs AccuLynx, JobNimbus, and EagleView."
         path="/pricing"
+        jsonLd={{
+          "@context": "https://schema.org",
+          "@type": "FAQPage",
+          mainEntity: faqs.map((f) => ({
+            "@type": "Question",
+            name: f.question,
+            acceptedAnswer: { "@type": "Answer", text: f.answer },
+          })),
+        }}
       />
       {/* Navigation */}
       <nav className="border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">

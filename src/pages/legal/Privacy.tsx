@@ -1,10 +1,16 @@
 import React from 'react';
 import LegalPageLayout from '@/components/legal/LegalPageLayout';
 import { BRAND } from '@/lib/branding/legal';
+import { SEO } from '@/components/seo/SEO';
 
 const Privacy = () => {
   return (
     <LegalPageLayout title="Privacy Policy" lastUpdated="January 18, 2025">
+      <SEO
+        title="Privacy Policy — Pitch CRM"
+        description="How Pitch CRM collects, uses, and protects personal and business data on our construction CRM platform."
+        path="/legal/privacy"
+      />
       <section>
         <h2>1. Introduction</h2>
         <p>
