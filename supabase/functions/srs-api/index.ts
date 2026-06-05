@@ -393,4 +393,15 @@ app.post("/pricing/record-history", async (c) => {
   });
 });
 
-Deno.serve(app.fetch);
+Deno.serve((req) => {
+  const url = new URL(req.url);
+  if (url.pathname.startsWith("/srs-api/")) {
+    url.pathname = url.pathname.slice("/srs-api".length) || "/";
+    return app.fetch(new Request(url.toString(), req));
+  }
+  if (url.pathname === "/srs-api") {
+    url.pathname = "/";
+    return app.fetch(new Request(url.toString(), req));
+  }
+  return app.fetch(req);
+});
