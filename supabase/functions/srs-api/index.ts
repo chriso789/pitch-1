@@ -26,20 +26,7 @@ const SRS_SOURCE_SYSTEM = "PITCH";
 
 const app = createRouter("srs-api");
 
-// Debug: surface the actual pathname Hono saw when no route matched.
-app.notFound((c) => {
-  const u = new URL(c.req.url);
-  return c.json({
-    ok: false,
-    error: "Route not registered on this function.",
-    code: "route_not_found",
-    debug_pathname: u.pathname,
-    debug_method: c.req.method,
-  }, 404);
-});
-
 app.get("/__health", (c) => jsonOk(c, { fn: "srs-api", ok: true }));
-app.all("/__echo", (c) => c.json({ ok: true, pathname: new URL(c.req.url).pathname, method: c.req.method, build: "2026-06-05T04:09Z" }));
 
 app.use("/*", requireAuth);
 app.use("/*", requireTenant);
