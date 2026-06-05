@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
+import { buildSupplierVerifiedInvoice } from "../_shared/supplier-verified-invoice.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -1718,6 +1719,58 @@ Deno.serve(async (req) => {
                 status_message: sd?.statusMessage || `Confirmed by SRS via poll: ${newStatus}`,
                 raw_webhook_data: sd,
               });
+
+              // Build supplier-verified vendor invoice on acceptance with verified pricing
+              if (/^accepted$/i.test(newStatus)) {
+                try {
+                  const { data: fullOrder } = await supabase
+                    .from("srs_orders")
+                    .select("id, tenant_id, project_id, srs_order_id, srs_order_items(*)")
+                    .eq("id", o.id)
+                    .maybeSingle();
+                  const remoteLines: any[] = Array.isArray(sd?.lineItems)
+                    ? sd.lineItems
+                    : Array.isArray(sd?.orderLineItemDetails)
+                    ? sd.orderLineItemDetails
+                    : [];
+                  if (fullOrder?.tenant_id && remoteLines.length) {
+                    const localByCode = new Map<string, any>();
+                    for (const li of fullOrder.srs_order_items || []) {
+                      if (li.srs_product_id != null) {
+                        localByCode.set(String(li.srs_product_id), li);
+                      }
+                    }
+                    const lines = remoteLines.map((rl: any) => {
+                      const code = String(rl.productId ?? rl.srs_product_id ?? rl.itemNumber ?? "");
+                      const local = localByCode.get(code);
+                      const qty = Number(rl.quantity ?? local?.quantity ?? 0);
+                      const unit = Number(rl.unitPrice ?? rl.price ?? rl.unit_price ?? 0);
+                      return {
+                        description: String(rl.productName ?? rl.description ?? local?.product_name ?? "Material"),
+                        quantity: qty,
+                        unit_price: unit,
+                        line_total: Number(rl.lineTotal ?? rl.extendedPrice ?? qty * unit),
+                        supplier_item_number: code || null,
+                        unit_of_measure: rl.uom ?? local?.uom ?? null,
+                        baseline_unit_price: local?.unit_price != null ? Number(local.unit_price) : null,
+                      };
+                    });
+                    await buildSupplierVerifiedInvoice({
+                      supabase,
+                      tenant_id: String(fullOrder.tenant_id),
+                      project_id: fullOrder.project_id ?? null,
+                      supplier: "srs",
+                      source_order_table: "srs_orders",
+                      source_order_id: fullOrder.id,
+                      supplier_order_id: fullOrder.srs_order_id,
+                      vendor_name: "SRS Distribution",
+                      lines,
+                    });
+                  }
+                } catch (invErr: any) {
+                  console.error("[srs-poll] verified-invoice build failed", invErr?.message || invErr);
+                }
+              }
             }
             polled.push({ id: o.id, outcome: "confirmed", status: newStatus });
           } catch (e: any) {

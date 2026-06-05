@@ -48848,6 +48848,44 @@ export type Database = {
           },
         ]
       }
+      srs_order_baseline_snapshots: {
+        Row: {
+          created_at: string
+          id: string
+          lock_reason: string
+          order_id: string
+          snapshot: Json
+          supplier: string | null
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          lock_reason: string
+          order_id: string
+          snapshot: Json
+          supplier?: string | null
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          lock_reason?: string
+          order_id?: string
+          snapshot?: Json
+          supplier?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "srs_order_baseline_snapshots_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "srs_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       srs_order_documents: {
         Row: {
           captured_at: string | null
@@ -48997,6 +49035,9 @@ export type Database = {
       }
       srs_orders: {
         Row: {
+          baseline_lock_reason: string | null
+          baseline_locked_at: string | null
+          baseline_supplier: string | null
           branch_code: string
           branch_name: string | null
           created_at: string
@@ -49019,6 +49060,9 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          baseline_lock_reason?: string | null
+          baseline_locked_at?: string | null
+          baseline_supplier?: string | null
           branch_code: string
           branch_name?: string | null
           created_at?: string
@@ -49041,6 +49085,9 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          baseline_lock_reason?: string | null
+          baseline_locked_at?: string | null
+          baseline_supplier?: string | null
           branch_code?: string
           branch_name?: string | null
           created_at?: string
