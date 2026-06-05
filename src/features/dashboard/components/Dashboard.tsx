@@ -56,6 +56,7 @@ const Dashboard = () => {
   const { user } = useCurrentUser();
   const { activeCompany } = useCompanySwitcher();
   const { currentLocationId, currentLocation } = useLocation();
+  const effectiveTenantId = useEffectiveTenantId();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 90),
     to: new Date()
