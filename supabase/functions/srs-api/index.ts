@@ -39,6 +39,7 @@ app.notFound((c) => {
 });
 
 app.get("/__health", (c) => jsonOk(c, { fn: "srs-api", ok: true }));
+app.all("/__echo", (c) => c.json({ ok: true, pathname: new URL(c.req.url).pathname, method: c.req.method, build: "2026-06-05T04:09Z" }));
 
 app.use("/*", requireAuth);
 app.use("/*", requireTenant);
