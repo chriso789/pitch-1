@@ -263,3 +263,148 @@ export async function completePricingRun(
     .eq("id", runId);
   if (error) throw new Error(`completePricingRun failed: ${error.message}`);
 }
+
+// ---------------------------------------------------------------------------
+// SKU mapping gate
+//
+// Pricing routes MUST consult template_item_supplier_mappings before calling
+// any supplier price API. If a template_item is not approved for the supplier
+// (or the approved SKU field is null), we DO NOT call the supplier — we just
+// write an `unavailable` history row tagged with the reason so the run is
+// honest about why nothing came back.
+// ---------------------------------------------------------------------------
+
+export interface SupplierMappingRow {
+  id: string;
+  template_item_id: string;
+  supplier: SupplierKey | string;
+  supplier_item_number: string | null;
+  supplier_product_id: string | null;
+  supplier_item_description: string | null;
+  valid_uoms: string[];
+  default_uom: string | null;
+  branch_scope: string[];
+  account_scope: string[];
+  ship_to_scope: string[];
+  availability_status: string | null;
+  mapping_status:
+    | "unmapped"
+    | "auto_matched"
+    | "needs_review"
+    | "approved"
+    | "rejected";
+  match_confidence: number | null;
+  last_checked_at: string | null;
+}
+
+export type MappingGateDecision =
+  | {
+      kind: "approved";
+      mapping: SupplierMappingRow;
+      sku: string;
+      uom: string;
+    }
+  | {
+      kind: "skip";
+      reason:
+        | "mapping_missing"
+        | "mapping_needs_review"
+        | "mapping_rejected"
+        | "mapping_missing_sku"
+        | "uom_not_in_valid_set"
+        | "branch_out_of_scope";
+      mapping: SupplierMappingRow | null;
+    };
+
+/** Load mappings keyed by template_item_id for (tenant, supplier). */
+export async function loadSupplierMappingsForTemplateItems(
+  supabase: SupabaseClient,
+  args: {
+    tenant_id: string;
+    supplier: SupplierKey | string;
+    template_item_ids: string[];
+  },
+): Promise<Map<string, SupplierMappingRow>> {
+  assertTenant(args.tenant_id, "loadSupplierMappingsForTemplateItems");
+  const ids = Array.from(
+    new Set(args.template_item_ids.filter((x) => typeof x === "string" && x)),
+  );
+  if (!ids.length) return new Map();
+  const { data, error } = await supabase
+    .from("template_item_supplier_mappings")
+    .select(
+      "id, template_item_id, supplier, supplier_item_number, supplier_product_id, supplier_item_description, valid_uoms, default_uom, branch_scope, account_scope, ship_to_scope, availability_status, mapping_status, match_confidence, last_checked_at",
+    )
+    .eq("tenant_id", args.tenant_id)
+    .eq("supplier", args.supplier)
+    .in("template_item_id", ids);
+  if (error) {
+    throw new Error(
+      `loadSupplierMappingsForTemplateItems failed: ${error.message}`,
+    );
+  }
+  const map = new Map<string, SupplierMappingRow>();
+  for (const row of (data ?? []) as SupplierMappingRow[]) {
+    map.set(row.template_item_id, row);
+  }
+  return map;
+}
+
+/** Decide whether a line is safe to send to the supplier price API. */
+export function evaluateMappingGate(args: {
+  mapping: SupplierMappingRow | null | undefined;
+  requested_uom?: string | null;
+  branch_number?: string | null;
+}): MappingGateDecision {
+  const m = args.mapping ?? null;
+  if (!m) return { kind: "skip", reason: "mapping_missing", mapping: null };
+  if (m.mapping_status === "rejected") {
+    return { kind: "skip", reason: "mapping_rejected", mapping: m };
+  }
+  if (m.mapping_status !== "approved") {
+    return { kind: "skip", reason: "mapping_needs_review", mapping: m };
+  }
+  const sku = (m.supplier_item_number ?? "").trim();
+  if (!sku) {
+    return { kind: "skip", reason: "mapping_missing_sku", mapping: m };
+  }
+  if (
+    Array.isArray(m.branch_scope) &&
+    m.branch_scope.length > 0 &&
+    args.branch_number &&
+    !m.branch_scope.includes(args.branch_number)
+  ) {
+    return { kind: "skip", reason: "branch_out_of_scope", mapping: m };
+  }
+  const uom = String(
+    args.requested_uom || m.default_uom || (m.valid_uoms?.[0] ?? "EA"),
+  ).toUpperCase();
+  if (
+    Array.isArray(m.valid_uoms) &&
+    m.valid_uoms.length > 0 &&
+    !m.valid_uoms.map((u) => u.toUpperCase()).includes(uom)
+  ) {
+    return { kind: "skip", reason: "uom_not_in_valid_set", mapping: m };
+  }
+  return { kind: "approved", mapping: m, sku, uom };
+}
+
+/** Map a gate skip reason → price_source token persisted on price history. */
+export function priceSourceForSkip(
+  reason: Exclude<MappingGateDecision, { kind: "approved" }>["reason"],
+): string {
+  switch (reason) {
+    case "mapping_missing":
+      return "mapping_missing";
+    case "mapping_needs_review":
+      return "mapping_needs_review";
+    case "mapping_rejected":
+      return "mapping_rejected";
+    case "mapping_missing_sku":
+      return "mapping_missing_sku";
+    case "uom_not_in_valid_set":
+      return "mapping_uom_invalid";
+    case "branch_out_of_scope":
+      return "mapping_branch_out_of_scope";
+  }
+}

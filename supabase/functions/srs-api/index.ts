@@ -16,8 +16,12 @@ import {
   startPricingRun,
   recordPriceHistoryBulk,
   completePricingRun,
+  loadSupplierMappingsForTemplateItems,
+  evaluateMappingGate,
+  priceSourceForSkip,
   type PriceHistoryLineInput,
   type PricingRunStatus,
+  type SupplierMappingRow,
 } from "../_shared/supplier-pricing-history.ts";
 
 const SRS_STAGING_URL = "https://services-qa.roofhub.pro";
@@ -108,15 +112,90 @@ app.post("/pricing/record-history", async (c) => {
     return jsonErr(c, "pricing_run_start_failed", e?.message ?? String(e), 500);
   }
 
-  // ---- partition items: priced vs unmapped (no validated productId) ----
-  const priceable: Array<{ idx: number; item: InItem; productId: number; productNumber: string; uom: string; quantity: number }> = [];
-  const unmapped: Array<{ idx: number; item: InItem; reason: string }> = [];
+  // ---- load approved mappings for any template_item_ids on the request ----
+  const tplIds = items
+    .map((it) => (typeof it.template_item_id === "string" ? it.template_item_id : null))
+    .filter((x): x is string => !!x);
+  let mappings = new Map<string, SupplierMappingRow>();
+  try {
+    if (tplIds.length) {
+      mappings = await loadSupplierMappingsForTemplateItems(svc, {
+        tenant_id: tenantId,
+        supplier: "srs",
+        template_item_ids: tplIds,
+      });
+    }
+  } catch (e) {
+    console.warn("[srs-api/pricing/record-history] mapping load failed", e);
+  }
+
+  // ---- partition items via mapping gate ----
+  // Items WITH template_item_id are gated by template_item_supplier_mappings.
+  // Items WITHOUT template_item_id (debug / ad-hoc) fall back to the legacy
+  // "needs a validated productId" path so the debug page keeps working.
+  const priceable: Array<{
+    idx: number;
+    item: InItem;
+    productId: number | null;
+    productNumber: string;
+    uom: string;
+    quantity: number;
+    mapping?: SupplierMappingRow;
+  }> = [];
+  const skipped: Array<{
+    idx: number;
+    item: InItem;
+    reason: string;
+    price_source: string;
+    mapping?: SupplierMappingRow | null;
+  }> = [];
 
   items.forEach((it, idx) => {
+    const requestedUom = String(it.uom || "EA").toUpperCase();
+    const qty = Number(it.quantity) || 1;
+    const tplId = typeof it.template_item_id === "string" ? it.template_item_id : null;
+
+    if (tplId) {
+      const mapping = mappings.get(tplId) ?? null;
+      const decision = evaluateMappingGate({
+        mapping,
+        requested_uom: requestedUom,
+        branch_number: branchCode,
+      });
+      if (decision.kind === "approved") {
+        priceable.push({
+          idx,
+          item: it,
+          productId: decision.mapping.supplier_product_id
+            ? Number(decision.mapping.supplier_product_id) || null
+            : null,
+          productNumber: decision.sku,
+          uom: decision.uom,
+          quantity: qty,
+          mapping: decision.mapping,
+        });
+      } else {
+        skipped.push({
+          idx,
+          item: it,
+          reason: decision.reason,
+          price_source: priceSourceForSkip(decision.reason),
+          mapping: decision.mapping,
+        });
+      }
+      return;
+    }
+
+    // Legacy debug path — no template_item_id, require a validated productId.
     const pidNum = Number(it.productId);
     const productNumber = String(it.productNumber ?? "").trim();
     if (!Number.isFinite(pidNum) || pidNum <= 0) {
-      unmapped.push({ idx, item: it, reason: "missing_validated_product_id" });
+      skipped.push({
+        idx,
+        item: it,
+        reason: "missing_validated_product_id",
+        price_source: "catalog_unmapped",
+      });
       return;
     }
     priceable.push({
@@ -124,8 +203,8 @@ app.post("/pricing/record-history", async (c) => {
       item: it,
       productId: pidNum,
       productNumber: productNumber || String(pidNum),
-      uom: String(it.uom || "EA").toUpperCase(),
-      quantity: Number(it.quantity) || 1,
+      uom: requestedUom,
+      quantity: qty,
     });
   });
 
@@ -233,12 +312,12 @@ app.post("/pricing/record-history", async (c) => {
           ? srsResponse.data
           : [];
 
-  const findFor = (productNumber: string, productId: number) => {
+  const findFor = (productNumber: string, productId: number | null) => {
     const pnUp = productNumber.toUpperCase();
     return respList.find((r) => {
       const a = String(r?.productNumber ?? r?.product_number ?? "").toUpperCase();
       const b = String(r?.productId ?? r?.product_id ?? "");
-      return (a && a === pnUp) || (b && Number(b) === productId);
+      return (a && a === pnUp) || (productId != null && b && Number(b) === productId);
     }) ?? null;
   };
 
@@ -252,6 +331,7 @@ app.post("/pricing/record-history", async (c) => {
     match: any | null,
     status: PriceHistoryLineInput["status"],
     rawOverride?: unknown,
+    priceSourceOverride?: string,
   ): PriceHistoryLineInput => {
     const unitPrice = match
       ? Number(match.unitPrice ?? match.unit_price ?? match.price ?? match.netPrice ?? match.net_price)
@@ -262,6 +342,11 @@ app.post("/pricing/record-history", async (c) => {
     const availability = match
       ? (match.availability ?? match.availabilityStatus ?? match.stockStatus ?? null)
       : null;
+    const defaultSource = status === "ok"
+      ? "srs_price_api"
+      : status === "unavailable"
+        ? "catalog_unmapped"
+        : "srs_price_api";
     return {
       tenant_id: tenantId,
       pricing_run_id: runId,
@@ -281,7 +366,7 @@ app.post("/pricing/record-history", async (c) => {
       account_number: customerCode || null,
       branch_number: branchCode,
       job_account_number: hasValidJan ? String(jan) : null,
-      price_source: status === "ok" ? "srs_price_api" : status === "unavailable" ? "catalog_unmapped" : "srs_price_api",
+      price_source: priceSourceOverride ?? defaultSource,
       raw_response: rawOverride ?? match ?? null,
       status,
       created_by: userId,
@@ -309,16 +394,22 @@ app.post("/pricing/record-history", async (c) => {
     ));
   }
 
-  for (const u of unmapped) {
+  for (const u of skipped) {
+    const m = u.mapping ?? null;
+    const productNumber = (m?.supplier_item_number ?? String(u.item.productNumber ?? "").trim()) || null;
+    const pid = m?.supplier_product_id
+      ? Number(m.supplier_product_id) || null
+      : Number.isFinite(Number(u.item.productId)) ? Number(u.item.productId) : null;
     rows.push(buildLine(
       u.item,
-      Number.isFinite(Number(u.item.productId)) ? Number(u.item.productId) : null,
-      String(u.item.productNumber ?? "").trim() || null,
-      String(u.item.uom || "EA").toUpperCase(),
+      pid,
+      productNumber,
+      String(m?.default_uom || u.item.uom || "EA").toUpperCase(),
       Number(u.item.quantity) || 1,
       null,
       "unavailable",
-      { reason: u.reason },
+      { reason: u.reason, mapping_id: m?.id ?? null, mapping_status: m?.mapping_status ?? null },
+      u.price_source,
     ));
   }
 
@@ -357,7 +448,7 @@ app.post("/pricing/record-history", async (c) => {
         srs_status: srsCallStatus,
         requested_count: rows.length,
         priced_count: okCount,
-        unmapped_count: unmapped.length,
+        unmapped_count: skipped.length,
         recorded_count: recorded,
       },
     });
@@ -374,7 +465,7 @@ app.post("/pricing/record-history", async (c) => {
     job_account_number: hasValidJan ? jan : null,
     requested_count: rows.length,
     priced_count: okCount,
-    unmapped_count: unmapped.length,
+    unmapped_count: skipped.length,
     recorded_count: recorded,
     srs_status: srsCallStatus,
     error_summary: errorSummary,
@@ -391,6 +482,172 @@ app.post("/pricing/record-history", async (c) => {
       status: r.status,
     })),
   });
+});
+
+// ---------------------------------------------------------------------------
+// POST /pricing/catalog-search
+// Search activeBranchProducts for SKUs the user can approve as a mapping.
+// Only returns rows where productNumber is non-null (real, pricing-API-safe).
+// ---------------------------------------------------------------------------
+app.post("/pricing/catalog-search", async (c) => {
+  const tenantId = c.get("tenantId") as string;
+  const svc = serviceClient();
+  let body: any;
+  try { body = await c.req.json(); } catch { body = {}; }
+
+  const branchCode = String(body?.branch_code ?? "").trim();
+  const query = String(body?.q ?? body?.query ?? "").trim().toLowerCase();
+  const limit = Math.min(Math.max(Number(body?.limit) || 50, 1), 200);
+
+  const { data: connection } = await svc
+    .from("srs_connections")
+    .select("default_branch_code, environment")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  const effectiveBranch = branchCode || String(connection?.default_branch_code || "").trim();
+  if (!effectiveBranch) return jsonErr(c, "missing_branch_code", "branch_code or default_branch_code required", 400);
+
+  // Reuse the existing get_products edge function via a direct invoke pattern
+  // would couple us; instead, query the cached supplier_products table when
+  // present. Fall back to empty list.
+  let rows: any[] = [];
+  try {
+    const q = svc
+      .from("srs_active_branch_products")
+      .select("product_id, product_number, product_name, manufacturer, category, uom, default_uom, branch_code, last_seen_at")
+      .eq("tenant_id", tenantId)
+      .eq("branch_code", effectiveBranch)
+      .not("product_number", "is", null)
+      .limit(limit);
+    const { data, error } = await q;
+    if (error) {
+      // Table may not exist for this tenant yet — return empty + hint.
+      return jsonOk(c, { branch_code: effectiveBranch, results: [], note: `catalog_unavailable:${error.message}` });
+    }
+    rows = (data ?? []) as any[];
+  } catch (e: any) {
+    return jsonOk(c, { branch_code: effectiveBranch, results: [], note: `catalog_error:${e?.message ?? String(e)}` });
+  }
+
+  const filtered = query
+    ? rows.filter((r) => {
+        const hay = [
+          r.product_number, r.product_name, r.manufacturer, r.category,
+        ].map((x) => String(x ?? "").toLowerCase()).join(" ");
+        return hay.includes(query);
+      })
+    : rows;
+
+  return jsonOk(c, {
+    branch_code: effectiveBranch,
+    count: filtered.length,
+    results: filtered.slice(0, limit),
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /mapping/list?template_item_ids=a,b,c
+// ---------------------------------------------------------------------------
+app.get("/mapping/list", async (c) => {
+  const tenantId = c.get("tenantId") as string;
+  const svc = serviceClient();
+  const idsParam = c.req.query("template_item_ids") || "";
+  const ids = idsParam.split(",").map((x) => x.trim()).filter(Boolean);
+  let q = svc.from("template_item_supplier_mappings").select("*").eq("tenant_id", tenantId).eq("supplier", "srs");
+  if (ids.length) q = q.in("template_item_id", ids);
+  const { data, error } = await q;
+  if (error) return jsonErr(c, "mapping_list_failed", error.message, 500);
+  return jsonOk(c, { mappings: data ?? [] });
+});
+
+// ---------------------------------------------------------------------------
+// POST /mapping/approve
+// Persist an SRS mapping as `approved`. Stores BOTH productNumber and productId.
+// Rejects when productNumber is null — caller must select a catalog row with
+// a real SKU before approving.
+// ---------------------------------------------------------------------------
+app.post("/mapping/approve", async (c) => {
+  const tenantId = c.get("tenantId") as string;
+  const userId = c.get("userId") as string;
+  const svc = serviceClient();
+  let body: any;
+  try { body = await c.req.json(); } catch { return jsonErr(c, "invalid_json", "Body must be JSON", 400); }
+
+  const templateItemId = String(body?.template_item_id ?? "").trim();
+  if (!templateItemId) return jsonErr(c, "missing_template_item_id", "template_item_id required", 400);
+
+  const productNumber = body?.product_number == null ? null : String(body.product_number).trim();
+  if (!productNumber) {
+    return jsonErr(c, "missing_product_number",
+      "SRS approve requires a real productNumber (catalog rows with productNumber=null are needs_review only)",
+      400);
+  }
+  const productId = body?.product_id == null ? null : String(body.product_id).trim();
+  const productName = body?.product_name == null ? null : String(body.product_name);
+  const uomsIn = Array.isArray(body?.valid_uoms) ? body.valid_uoms.map((u: any) => String(u).toUpperCase()) : [];
+  const defaultUom = body?.default_uom ? String(body.default_uom).toUpperCase() : (uomsIn[0] ?? null);
+  const branchScope = Array.isArray(body?.branch_scope) ? body.branch_scope.map((b: any) => String(b)) : [];
+
+  const upsert = {
+    tenant_id: tenantId,
+    template_item_id: templateItemId,
+    supplier: "srs" as const,
+    supplier_item_number: productNumber,
+    supplier_product_id: productId,
+    supplier_item_description: productName,
+    valid_uoms: uomsIn,
+    default_uom: defaultUom,
+    branch_scope: branchScope,
+    mapping_status: "approved" as const,
+    match_confidence: body?.match_confidence ?? null,
+    match_reason: body?.match_reason ?? "manual_approve",
+    raw_catalog_payload: body?.raw_catalog_payload ?? null,
+    last_checked_at: new Date().toISOString(),
+    approved_by: userId,
+    approved_at: new Date().toISOString(),
+    // legacy mirror so older code paths keep working
+    supplier_item_code: productNumber,
+    review_state: "approved",
+    uom: defaultUom,
+  };
+
+  const { data, error } = await svc
+    .from("template_item_supplier_mappings")
+    .upsert(upsert, { onConflict: "tenant_id,template_item_id,supplier" })
+    .select("*")
+    .single();
+  if (error) return jsonErr(c, "mapping_approve_failed", error.message, 500);
+  return jsonOk(c, { mapping: data });
+});
+
+// ---------------------------------------------------------------------------
+// POST /mapping/reject  — mark mapping_status=rejected (or remove if not exists)
+// ---------------------------------------------------------------------------
+app.post("/mapping/reject", async (c) => {
+  const tenantId = c.get("tenantId") as string;
+  const userId = c.get("userId") as string;
+  const svc = serviceClient();
+  let body: any;
+  try { body = await c.req.json(); } catch { return jsonErr(c, "invalid_json", "Body must be JSON", 400); }
+  const templateItemId = String(body?.template_item_id ?? "").trim();
+  if (!templateItemId) return jsonErr(c, "missing_template_item_id", "template_item_id required", 400);
+
+  const { data, error } = await svc
+    .from("template_item_supplier_mappings")
+    .upsert({
+      tenant_id: tenantId,
+      template_item_id: templateItemId,
+      supplier: "srs",
+      mapping_status: "rejected",
+      match_reason: body?.reason ?? "manual_reject",
+      approved_by: userId,
+      approved_at: new Date().toISOString(),
+      review_state: "rejected",
+    }, { onConflict: "tenant_id,template_item_id,supplier" })
+    .select("*")
+    .single();
+  if (error) return jsonErr(c, "mapping_reject_failed", error.message, 500);
+  return jsonOk(c, { mapping: data });
 });
 
 // Supabase edge runtime delivers the URL with the function name prefix

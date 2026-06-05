@@ -52674,58 +52674,106 @@ export type Database = {
       }
       template_item_supplier_mappings: {
         Row: {
+          account_scope: string[]
+          approved_at: string | null
+          approved_by: string | null
+          availability_status: string | null
+          branch_scope: string[]
           color_name: string | null
           confidence: number | null
           created_at: string
           created_by: string | null
+          default_uom: string | null
           id: string
+          last_checked_at: string | null
+          mapping_status: string
+          match_confidence: number | null
+          match_reason: string | null
           match_source: string
+          raw_catalog_payload: Json | null
           review_state: string
           reviewed_at: string | null
           reviewed_by: string | null
+          ship_to_scope: string[]
           supplier: string
           supplier_description: string | null
-          supplier_item_code: string
+          supplier_item_code: string | null
+          supplier_item_description: string | null
+          supplier_item_number: string | null
+          supplier_product_id: string | null
           template_item_id: string
           tenant_id: string
           uom: string | null
           updated_at: string
+          valid_uoms: string[]
         }
         Insert: {
+          account_scope?: string[]
+          approved_at?: string | null
+          approved_by?: string | null
+          availability_status?: string | null
+          branch_scope?: string[]
           color_name?: string | null
           confidence?: number | null
           created_at?: string
           created_by?: string | null
+          default_uom?: string | null
           id?: string
+          last_checked_at?: string | null
+          mapping_status?: string
+          match_confidence?: number | null
+          match_reason?: string | null
           match_source?: string
+          raw_catalog_payload?: Json | null
           review_state?: string
           reviewed_at?: string | null
           reviewed_by?: string | null
+          ship_to_scope?: string[]
           supplier: string
           supplier_description?: string | null
-          supplier_item_code: string
+          supplier_item_code?: string | null
+          supplier_item_description?: string | null
+          supplier_item_number?: string | null
+          supplier_product_id?: string | null
           template_item_id: string
           tenant_id?: string
           uom?: string | null
           updated_at?: string
+          valid_uoms?: string[]
         }
         Update: {
+          account_scope?: string[]
+          approved_at?: string | null
+          approved_by?: string | null
+          availability_status?: string | null
+          branch_scope?: string[]
           color_name?: string | null
           confidence?: number | null
           created_at?: string
           created_by?: string | null
+          default_uom?: string | null
           id?: string
+          last_checked_at?: string | null
+          mapping_status?: string
+          match_confidence?: number | null
+          match_reason?: string | null
           match_source?: string
+          raw_catalog_payload?: Json | null
           review_state?: string
           reviewed_at?: string | null
           reviewed_by?: string | null
+          ship_to_scope?: string[]
           supplier?: string
           supplier_description?: string | null
-          supplier_item_code?: string
+          supplier_item_code?: string | null
+          supplier_item_description?: string | null
+          supplier_item_number?: string | null
+          supplier_product_id?: string | null
           template_item_id?: string
           tenant_id?: string
           uom?: string | null
           updated_at?: string
+          valid_uoms?: string[]
         }
         Relationships: [
           {
