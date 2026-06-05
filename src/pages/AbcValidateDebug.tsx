@@ -39,19 +39,15 @@ export default function AbcValidateDebug() {
         sandboxDemo: true,
         shipToNumber: "2010466-2",
         branchNumber: "1209",
-        lines: [
-          {
-            itemNumber: "02OCTDUMP",
-            itemDescription: "Sandbox Demo Item 02OCTDUMP",
-            uom: "EA",
-            quantity: 1,
-            priceOverride: {
-              value: 1.0,
-              reason:
-                "Sandbox Price Items call WAF-blocked; payload validation only for ABC demo.",
-            },
-          },
-        ],
+        itemNumber: "02OCTDUMP",
+        itemDescription: "Sandbox Demo Item 02OCTDUMP",
+        uom: "EA",
+        quantity: 1,
+        priceOverride: {
+          value: 1.0,
+          reason:
+            "Sandbox Price Items call WAF-blocked; payload validation only for ABC demo.",
+        },
         jobsiteContact: {
           name: "Demo Contact",
           email: "demo@example.com",
