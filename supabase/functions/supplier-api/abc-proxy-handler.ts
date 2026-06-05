@@ -10,6 +10,13 @@
 //   POST {apiBase}/product/v1/search/items          - product search
 //   GET  {apiBase}/product/v1/items/{itemNumber}    - get item
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
+import {
+  startPricingRun,
+  recordPriceHistoryBulk,
+  completePricingRun,
+  type PriceHistoryLineInput,
+  type PricingRunStatus,
+} from "../_shared/supplier-pricing-history.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -297,6 +304,7 @@ interface ProxyRequest {
     | "start_oauth"
     | "sync_accounts"
     | "price_items"
+    | "price_items_record_history"
     | "get_branches"
     | "get_branch"
     | "search_products"
@@ -308,6 +316,10 @@ interface ProxyRequest {
     | "get_order_status"
     | "register_webhook"
     | "list_webhooks";
+
+  // price_items_record_history extras
+  source_context?: "template" | "estimate" | "project" | "order";
+  source_id?: string | null;
 
   environment?: "staging" | "sandbox" | "production";
   tenant_id?: string;
