@@ -313,7 +313,7 @@ export function SupplierSkuMappingPanel({ templateItemId, templateItemName }: Pr
     [callRoute, load, templateItemId, toast],
   );
 
-  const summary = useMemo(() => ({
+  const summary = useMemo<{ abcStatus: MappingStatus | "missing"; srsStatus: MappingStatus | "missing" }>(() => ({
     abcStatus: abc?.mapping_status ?? "missing",
     srsStatus: srs?.mapping_status ?? "missing",
   }), [abc, srs]);
