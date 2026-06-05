@@ -37222,6 +37222,7 @@ export type Database = {
       }
       project_cost_invoice_line_items: {
         Row: {
+          baseline_unit_price: number | null
           brand: string | null
           color: string | null
           created_at: string
@@ -37230,15 +37231,19 @@ export type Database = {
           invoice_id: string
           line_number: number | null
           line_total: number | null
+          match_status: string | null
           material_category: string | null
           normalized_description: string | null
           pipeline_entry_id: string | null
+          price_variance_pct: number | null
           project_id: string | null
+          purchase_order_item_id: string | null
           quantity: number | null
           raw_json: Json | null
           search_text: unknown
           sku: string | null
           style: string | null
+          supplier_item_number: string | null
           tenant_id: string
           unit_of_measure: string | null
           unit_price: number | null
@@ -37246,6 +37251,7 @@ export type Database = {
           vendor_name: string | null
         }
         Insert: {
+          baseline_unit_price?: number | null
           brand?: string | null
           color?: string | null
           created_at?: string
@@ -37254,15 +37260,19 @@ export type Database = {
           invoice_id: string
           line_number?: number | null
           line_total?: number | null
+          match_status?: string | null
           material_category?: string | null
           normalized_description?: string | null
           pipeline_entry_id?: string | null
+          price_variance_pct?: number | null
           project_id?: string | null
+          purchase_order_item_id?: string | null
           quantity?: number | null
           raw_json?: Json | null
           search_text?: unknown
           sku?: string | null
           style?: string | null
+          supplier_item_number?: string | null
           tenant_id: string
           unit_of_measure?: string | null
           unit_price?: number | null
@@ -37270,6 +37280,7 @@ export type Database = {
           vendor_name?: string | null
         }
         Update: {
+          baseline_unit_price?: number | null
           brand?: string | null
           color?: string | null
           created_at?: string
@@ -37278,15 +37289,19 @@ export type Database = {
           invoice_id?: string
           line_number?: number | null
           line_total?: number | null
+          match_status?: string | null
           material_category?: string | null
           normalized_description?: string | null
           pipeline_entry_id?: string | null
+          price_variance_pct?: number | null
           project_id?: string | null
+          purchase_order_item_id?: string | null
           quantity?: number | null
           raw_json?: Json | null
           search_text?: unknown
           sku?: string | null
           style?: string | null
+          supplier_item_number?: string | null
           tenant_id?: string
           unit_of_measure?: string | null
           unit_price?: number | null
@@ -37299,6 +37314,13 @@ export type Database = {
             columns: ["invoice_id"]
             isOneToOne: false
             referencedRelation: "project_cost_invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_cost_invoice_line_items_purchase_order_item_id_fkey"
+            columns: ["purchase_order_item_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_order_items"
             referencedColumns: ["id"]
           },
         ]
@@ -37322,10 +37344,13 @@ export type Database = {
           notes: string | null
           pipeline_entry_id: string | null
           project_id: string | null
+          purchase_order_id: string | null
           rejection_reason: string | null
           service_address: string | null
+          source: string | null
           status: string | null
           subtotal: number | null
+          supplier: string | null
           tax_amount: number | null
           tenant_id: string
           updated_at: string | null
@@ -37349,10 +37374,13 @@ export type Database = {
           notes?: string | null
           pipeline_entry_id?: string | null
           project_id?: string | null
+          purchase_order_id?: string | null
           rejection_reason?: string | null
           service_address?: string | null
+          source?: string | null
           status?: string | null
           subtotal?: number | null
+          supplier?: string | null
           tax_amount?: number | null
           tenant_id: string
           updated_at?: string | null
@@ -37376,10 +37404,13 @@ export type Database = {
           notes?: string | null
           pipeline_entry_id?: string | null
           project_id?: string | null
+          purchase_order_id?: string | null
           rejection_reason?: string | null
           service_address?: string | null
+          source?: string | null
           status?: string | null
           subtotal?: number | null
+          supplier?: string | null
           tax_amount?: number | null
           tenant_id?: string
           updated_at?: string | null
@@ -37440,6 +37471,13 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_cost_invoices_purchase_order_id_fkey"
+            columns: ["purchase_order_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_orders"
             referencedColumns: ["id"]
           },
           {
@@ -38837,6 +38875,53 @@ export type Database = {
           },
         ]
       }
+      purchase_order_baseline_snapshots: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          lock_reason: string
+          lock_supplier: string | null
+          purchase_order_id: string
+          snapshot_lines: Json
+          snapshot_subtotal: number | null
+          snapshot_total: number | null
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          lock_reason: string
+          lock_supplier?: string | null
+          purchase_order_id: string
+          snapshot_lines?: Json
+          snapshot_subtotal?: number | null
+          snapshot_total?: number | null
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          lock_reason?: string
+          lock_supplier?: string | null
+          purchase_order_id?: string
+          snapshot_lines?: Json
+          snapshot_subtotal?: number | null
+          snapshot_total?: number | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_order_baseline_snapshots_purchase_order_id_fkey"
+            columns: ["purchase_order_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       purchase_order_items: {
         Row: {
           created_at: string | null
@@ -38925,6 +39010,9 @@ export type Database = {
       purchase_orders: {
         Row: {
           actual_delivery_date: string | null
+          baseline_lock_reason: string | null
+          baseline_locked_at: string | null
+          baseline_supplier: string | null
           beacon_message: string | null
           beacon_message_code: string | null
           beacon_order_id: string | null
@@ -38943,6 +39031,8 @@ export type Database = {
           shipping_amount: number | null
           status: string | null
           subtotal: number | null
+          supplier_confirmed_at: string | null
+          supplier_invoice_id: string | null
           tax_amount: number | null
           tenant_id: string
           total_amount: number | null
@@ -38952,6 +39042,9 @@ export type Database = {
         }
         Insert: {
           actual_delivery_date?: string | null
+          baseline_lock_reason?: string | null
+          baseline_locked_at?: string | null
+          baseline_supplier?: string | null
           beacon_message?: string | null
           beacon_message_code?: string | null
           beacon_order_id?: string | null
@@ -38970,6 +39063,8 @@ export type Database = {
           shipping_amount?: number | null
           status?: string | null
           subtotal?: number | null
+          supplier_confirmed_at?: string | null
+          supplier_invoice_id?: string | null
           tax_amount?: number | null
           tenant_id: string
           total_amount?: number | null
@@ -38979,6 +39074,9 @@ export type Database = {
         }
         Update: {
           actual_delivery_date?: string | null
+          baseline_lock_reason?: string | null
+          baseline_locked_at?: string | null
+          baseline_supplier?: string | null
           beacon_message?: string | null
           beacon_message_code?: string | null
           beacon_order_id?: string | null
@@ -38997,6 +39095,8 @@ export type Database = {
           shipping_amount?: number | null
           status?: string | null
           subtotal?: number | null
+          supplier_confirmed_at?: string | null
+          supplier_invoice_id?: string | null
           tax_amount?: number | null
           tenant_id?: string
           total_amount?: number | null
@@ -52788,6 +52888,8 @@ export type Database = {
       template_items: {
         Row: {
           active: boolean
+          cost_breakdown: Json | null
+          cost_source: string | null
           coverage_per_unit: number | null
           created_at: string
           description: string | null
@@ -52797,6 +52899,7 @@ export type Database = {
           id: string
           item_name: string
           item_type: string | null
+          last_cost_refresh_at: string | null
           manufacturer: string | null
           measurement_type: string | null
           pricing_type: string | null
@@ -52811,6 +52914,8 @@ export type Database = {
         }
         Insert: {
           active?: boolean
+          cost_breakdown?: Json | null
+          cost_source?: string | null
           coverage_per_unit?: number | null
           created_at?: string
           description?: string | null
@@ -52820,6 +52925,7 @@ export type Database = {
           id?: string
           item_name: string
           item_type?: string | null
+          last_cost_refresh_at?: string | null
           manufacturer?: string | null
           measurement_type?: string | null
           pricing_type?: string | null
@@ -52834,6 +52940,8 @@ export type Database = {
         }
         Update: {
           active?: boolean
+          cost_breakdown?: Json | null
+          cost_source?: string | null
           coverage_per_unit?: number | null
           created_at?: string
           description?: string | null
@@ -52843,6 +52951,7 @@ export type Database = {
           id?: string
           item_name?: string
           item_type?: string | null
+          last_cost_refresh_at?: string | null
           manufacturer?: string | null
           measurement_type?: string | null
           pricing_type?: string | null
@@ -53384,6 +53493,71 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: true
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_imported_price_sheets: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          currency: string
+          id: string
+          item_description: string | null
+          sku: string | null
+          source_filename: string | null
+          source_row_number: number | null
+          supplier_label: string | null
+          template_item_id: string | null
+          tenant_id: string
+          unit_price: number
+          uom: string | null
+          updated_at: string
+          valid_from: string | null
+          valid_until: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          id?: string
+          item_description?: string | null
+          sku?: string | null
+          source_filename?: string | null
+          source_row_number?: number | null
+          supplier_label?: string | null
+          template_item_id?: string | null
+          tenant_id: string
+          unit_price: number
+          uom?: string | null
+          updated_at?: string
+          valid_from?: string | null
+          valid_until?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          id?: string
+          item_description?: string | null
+          sku?: string | null
+          source_filename?: string | null
+          source_row_number?: number | null
+          supplier_label?: string | null
+          template_item_id?: string | null
+          tenant_id?: string
+          unit_price?: number
+          uom?: string | null
+          updated_at?: string
+          valid_from?: string | null
+          valid_until?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_imported_price_sheets_template_item_id_fkey"
+            columns: ["template_item_id"]
+            isOneToOne: false
+            referencedRelation: "template_items"
             referencedColumns: ["id"]
           },
         ]
