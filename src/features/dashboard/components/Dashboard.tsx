@@ -15,6 +15,7 @@ import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
+import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useCompanySwitcher } from "@/hooks/useCompanySwitcher";
 import { useLocation } from "@/contexts/LocationContext";
@@ -55,6 +56,7 @@ const Dashboard = () => {
   const { user } = useCurrentUser();
   const { activeCompany } = useCompanySwitcher();
   const { currentLocationId, currentLocation } = useLocation();
+  const effectiveTenantId = useEffectiveTenantId();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 90),
     to: new Date()
@@ -222,71 +224,120 @@ const Dashboard = () => {
     retry: 2
   });
 
-  // Revenue and active projects
+  // Revenue — sum of estimated_value on won pipeline entries (completed/closed)
+  // Falls back to project_invoices total if pipeline_entries values are empty.
   const { data: revenueData } = useQuery({
-    queryKey: ['dashboard-revenue', dateRange],
+    queryKey: ['dashboard-revenue', effectiveTenantId, currentLocationId],
+    enabled: !!effectiveTenantId,
     queryFn: async () => {
-      const { data: projects } = await supabase
-        .from('projects')
-        .select('budget_data')
-        .eq('status', 'active');
-      
-      const totalRevenue = projects?.reduce((sum, p) => {
-        const budgetTotal = (p.budget_data as any)?.total || 0;
-        return sum + budgetTotal;
-      }, 0) || 0;
-      
-      return { total: totalRevenue, change: 0 };
+      let q = supabase
+        .from('pipeline_entries')
+        .select('estimated_value, status, updated_at, location_id')
+        .eq('tenant_id', effectiveTenantId!)
+        .in('status', ['completed', 'closed']);
+      if (currentLocationId) q = q.eq('location_id', currentLocationId);
+      const { data } = await q;
+
+      const total = (data || []).reduce(
+        (s, r: any) => s + (Number(r.estimated_value) || 0),
+        0
+      );
+
+      // % change vs prior month (based on updated_at)
+      const now = new Date();
+      const startThis = new Date(now.getFullYear(), now.getMonth(), 1);
+      const startPrev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const sumIn = (from: Date, to: Date) =>
+        (data || [])
+          .filter((r: any) => {
+            const d = new Date(r.updated_at);
+            return d >= from && d < to;
+          })
+          .reduce((s, r: any) => s + (Number(r.estimated_value) || 0), 0);
+      const thisMonth = sumIn(startThis, now);
+      const prevMonth = sumIn(startPrev, startThis);
+      const change = prevMonth > 0 ? ((thisMonth - prevMonth) / prevMonth) * 100 : 0;
+
+      return { total, change };
     }
   });
 
   const { data: activeProjects = 0 } = useQuery({
-    queryKey: ['dashboard-active-projects'],
+    queryKey: ['dashboard-active-projects', effectiveTenantId, currentLocationId],
+    enabled: !!effectiveTenantId,
     queryFn: async () => {
-      const { count } = await supabase
+      let q = supabase
         .from('projects')
         .select('*', { count: 'exact', head: true })
+        .eq('tenant_id', effectiveTenantId!)
         .eq('status', 'active');
+      if (currentLocationId) q = q.eq('location_id', currentLocationId);
+      const { count } = await q;
       return count || 0;
     }
   });
 
+  // Completed this month — pipeline_entries marked completed in current month
+  // (projects.actual_completion_date is rarely populated in practice).
   const { data: completedThisMonth = 0 } = useQuery({
-    queryKey: ['dashboard-completed-month'],
+    queryKey: ['dashboard-completed-month', effectiveTenantId, currentLocationId],
+    enabled: !!effectiveTenantId,
     queryFn: async () => {
-      const startOfMonth = new Date();
-      startOfMonth.setDate(1);
-      startOfMonth.setHours(0,0,0,0);
-      
-      const { count } = await supabase
-        .from('projects')
+      const start = new Date();
+      start.setDate(1);
+      start.setHours(0, 0, 0, 0);
+
+      let q = supabase
+        .from('pipeline_entries')
         .select('*', { count: 'exact', head: true })
+        .eq('tenant_id', effectiveTenantId!)
         .eq('status', 'completed')
-        .gte('actual_completion_date', startOfMonth.toISOString());
+        .gte('updated_at', start.toISOString());
+      if (currentLocationId) q = q.eq('location_id', currentLocationId);
+      const { count } = await q;
       return count || 0;
     }
   });
 
+  // Profit margin — actual margin from completed entries' estimates when present,
+  // otherwise falls back to the tenant's average target margin from calc templates.
   const { data: profitMargin } = useQuery({
-    queryKey: ['dashboard-profit-margin'],
+    queryKey: ['dashboard-profit-margin', effectiveTenantId, currentLocationId],
+    enabled: !!effectiveTenantId,
     queryFn: async () => {
-      const { data: projects } = await supabase
-        .from('projects')
-        .select('budget_data')
-        .in('status', ['active', 'completed']);
-      
-      const margins = projects?.map(p => {
-        const budget = (p.budget_data as any) || {};
-        const total = budget.total || 0;
-        const cost = budget.total_cost || 0;
-        return total > 0 ? ((total - cost) / total) * 100 : 0;
-      }).filter(m => m > 0) || [];
-      
-      const avgMargin = margins.length > 0 
-        ? margins.reduce((a, b) => a + b, 0) / margins.length 
+      let q = supabase
+        .from('pipeline_entries')
+        .select('id, estimates(actual_margin_percent, selling_price), location_id')
+        .eq('tenant_id', effectiveTenantId!)
+        .in('status', ['completed', 'closed']);
+      if (currentLocationId) q = q.eq('location_id', currentLocationId);
+      const { data } = await q;
+
+      const margins: number[] = [];
+      (data || []).forEach((r: any) => {
+        const est = Array.isArray(r.estimates) ? r.estimates[0] : r.estimates;
+        const m = Number(est?.actual_margin_percent);
+        if (Number.isFinite(m) && m > 0) margins.push(m);
+      });
+
+      if (margins.length > 0) {
+        const value = margins.reduce((a, b) => a + b, 0) / margins.length;
+        return { value, change: 0, source: 'actual' as const };
+      }
+
+      // Fallback: average target margin from tenant's active calc templates
+      const { data: tpl } = await supabase
+        .from('estimate_calculation_templates')
+        .select('target_profit_percentage')
+        .eq('tenant_id', effectiveTenantId!)
+        .eq('is_active', true);
+      const targets = (tpl || [])
+        .map((t: any) => Number(t.target_profit_percentage))
+        .filter((n) => Number.isFinite(n) && n > 0);
+      const value = targets.length > 0
+        ? targets.reduce((a, b) => a + b, 0) / targets.length
         : 0;
-      
-      return { value: avgMargin, change: 0 };
+      return { value, change: 0, source: 'target' as const };
     }
   });
 
@@ -321,11 +372,17 @@ const Dashboard = () => {
     toast.success('Opening print dialog');
   };
 
+  const formatPctChange = (n?: number) => {
+    if (!n || !Number.isFinite(n)) return '0%';
+    const sign = n > 0 ? '+' : '';
+    return `${sign}${n.toFixed(1)}%`;
+  };
+
   const metrics = [
     {
       title: "Total Revenue",
       value: revenueData?.total ? `$${revenueData.total.toLocaleString()}` : "$0",
-      change: revenueData?.change ? `+${revenueData.change.toFixed(1)}%` : "0%",
+      change: formatPctChange(revenueData?.change),
       icon: DollarSign,
       color: "text-success"
     },
@@ -346,7 +403,7 @@ const Dashboard = () => {
     {
       title: "Avg Profit Margin",
       value: profitMargin?.value ? `${profitMargin.value.toFixed(1)}%` : "0%",
-      change: profitMargin?.change ? `+${profitMargin.change.toFixed(1)}%` : "0%",
+      change: profitMargin?.source === 'target' ? 'target' : formatPctChange(profitMargin?.change),
       icon: TrendingUp,
       color: "text-success"
     }
