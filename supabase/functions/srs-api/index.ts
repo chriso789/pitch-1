@@ -406,22 +406,6 @@ const pricingRecordHistoryHandler = async (c: any) => {
   });
 };
 
-// Register handler at multiple paths so we work regardless of how the edge
-// runtime delivers the URL (with or without the /srs-api prefix).
-app.post("/pricing/record-history", pricingRecordHistoryHandler);
-app.post("/srs-api/pricing/record-history", pricingRecordHistoryHandler);
-
-Deno.serve((req) => {
-  const url = new URL(req.url);
-  const originalPath = url.pathname;
-  console.log("[srs-api inbound]", req.method, originalPath);
-  if (url.pathname.startsWith("/srs-api/")) {
-    url.pathname = url.pathname.slice("/srs-api".length) || "/";
-    return app.fetch(new Request(url.toString(), req));
-  }
-  if (url.pathname === "/srs-api") {
-    url.pathname = "/";
-    return app.fetch(new Request(url.toString(), req));
-  }
-  return app.fetch(req);
-});
+// Supabase edge runtime delivers the URL with the path AFTER the function
+// name (e.g. /pricing/record-history), so Hono can match directly.
+Deno.serve(app.fetch);
