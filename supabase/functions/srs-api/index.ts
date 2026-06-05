@@ -404,7 +404,7 @@ app.post("/pricing/record-history", async (c) => {
       status: r.status,
     })),
   });
-};
+});
 
 // Supabase edge runtime delivers the URL with the path AFTER the function
 // name (e.g. /pricing/record-history), so Hono can match directly.
