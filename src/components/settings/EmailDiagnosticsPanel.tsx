@@ -77,7 +77,7 @@ export const EmailDiagnosticsPanel = () => {
           *,
           tenants:tenant_id (name)
         `)
-        .order('created_at', { ascending: false })
+        .order('sent_at', { ascending: false, nullsFirst: false })
         .limit(50);
 
       if (error) throw error;
