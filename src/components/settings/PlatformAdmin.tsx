@@ -261,41 +261,8 @@ export const PlatformAdmin = () => {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="active" className="mt-4">
-          <CompanyGrid 
-            companies={activeCompanies} 
-            loading={loading}
-            onToggleStatus={toggleCompanyStatus}
-            onViewDetails={(company) => {
-              setSelectedCompany(company);
-              setDetailsOpen(true);
-            }}
-          />
-        </TabsContent>
 
-        <TabsContent value="inactive" className="mt-4">
-          <CompanyGrid 
-            companies={inactiveCompanies} 
-            loading={loading}
-            onToggleStatus={toggleCompanyStatus}
-            onViewDetails={(company) => {
-              setSelectedCompany(company);
-              setDetailsOpen(true);
-            }}
-          />
-        </TabsContent>
 
-        <TabsContent value="all" className="mt-4">
-          <CompanyGrid 
-            companies={filteredCompanies} 
-            loading={loading}
-            onToggleStatus={toggleCompanyStatus}
-            onViewDetails={(company) => {
-              setSelectedCompany(company);
-              setDetailsOpen(true);
-            }}
-          />
-        </TabsContent>
 
         <TabsContent value="communications" className="mt-4">
           <PlatformCommunications />
