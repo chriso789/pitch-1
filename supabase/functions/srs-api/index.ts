@@ -406,6 +406,18 @@ app.post("/pricing/record-history", async (c) => {
   });
 });
 
-// Supabase edge runtime delivers the URL with the path AFTER the function
-// name (e.g. /pricing/record-history), so Hono can match directly.
-Deno.serve(app.fetch);
+// Supabase edge runtime delivers the URL with the function name prefix
+// (e.g. /srs-api/pricing/record-history). Strip it so Hono matches routes
+// declared as /pricing/record-history.
+Deno.serve((req) => {
+  const url = new URL(req.url);
+  if (url.pathname.startsWith("/srs-api/")) {
+    url.pathname = url.pathname.slice("/srs-api".length) || "/";
+    return app.fetch(new Request(url.toString(), req));
+  }
+  if (url.pathname === "/srs-api") {
+    url.pathname = "/";
+    return app.fetch(new Request(url.toString(), req));
+  }
+  return app.fetch(req);
+});
