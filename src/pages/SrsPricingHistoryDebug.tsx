@@ -110,14 +110,29 @@ export default function SrsPricingHistoryDebug() {
       };
       log.step7_request_body = body;
 
-      const { data: priceResp, error: priceErr } = await supabase.functions.invoke(
-        "srs-api/pricing/record-history",
-        { body }
+      // Use raw fetch so we can capture the actual response body on non-2xx.
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
+      const rawResp = await fetch(
+        `${supabaseUrl}/functions/v1/srs-api/pricing/record-history`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: anonKey,
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify(body),
+        }
       );
+      const rawText = await rawResp.text();
+      let priceResp: any = null;
+      try { priceResp = JSON.parse(rawText); } catch { priceResp = { raw: rawText }; }
+      log.step7_response_status = rawResp.status;
       log.step7_response_data = priceResp;
-      log.step7_response_error = priceErr
-        ? { message: priceErr.message, ctx: (priceErr as any).context ?? null }
-        : null;
+      log.step7_response_error = rawResp.ok
+        ? null
+        : { status: rawResp.status, body: priceResp };
 
       const runId =
         priceResp?.run_id ?? priceResp?.data?.run_id ?? priceResp?.runId ?? null;
