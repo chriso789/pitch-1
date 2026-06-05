@@ -416,4 +416,16 @@ const ResetPasswordImpl: React.FC = () => {
   );
 };
 
+const ResetPassword: React.FC = () => (
+  <>
+    <SEO
+      title="Reset Password — Pitch CRM"
+      description="Set a new password for your Pitch CRM account."
+      path="/reset-password"
+      noindex
+    />
+    <ResetPasswordImpl />
+  </>
+);
+
 export default ResetPassword;
