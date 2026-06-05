@@ -393,6 +393,9 @@ app.post("/pricing/record-history", async (c) => {
   });
 });
 
+// Supabase edge runtime delivers the URL with the function name prefix
+// (e.g. /srs-api/pricing/record-history). Strip it so Hono matches routes
+// declared as /pricing/record-history.
 Deno.serve((req) => {
   const url = new URL(req.url);
   if (url.pathname.startsWith("/srs-api/")) {
