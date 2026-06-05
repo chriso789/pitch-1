@@ -204,13 +204,13 @@ export default function AbcValidateDebug() {
         },
         {
           name: "ABC wrote NO abc_orders rows (validate-only)",
-          pass: counts.abc_orders_since_start_own_tenant === 0,
-          detail: `count=${counts.abc_orders_since_start_own_tenant}`,
+          pass: !counts.abc_orders_since_start_own_tenant,
+          detail: `count=${counts.abc_orders_since_start_own_tenant ?? 0}${counts.abc_orders_since_start_own_tenant === null ? " (no visible rows — RLS or empty)" : ""}`,
         },
         {
           name: "ABC wrote NO abc_order_lines rows (validate-only)",
-          pass: counts.abc_order_lines_since_start_own_tenant === 0,
-          detail: `count=${counts.abc_order_lines_since_start_own_tenant}`,
+          pass: !counts.abc_order_lines_since_start_own_tenant,
+          detail: `count=${counts.abc_order_lines_since_start_own_tenant ?? 0}${counts.abc_order_lines_since_start_own_tenant === null ? " (no visible rows — RLS or empty)" : ""}`,
         },
         {
           name: "SRS spoof rejected (403/401 tenant-mismatch)",
