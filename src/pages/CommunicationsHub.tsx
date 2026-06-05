@@ -198,17 +198,17 @@ const CommunicationsHub = () => {
           </TabsContent>
 
           {/* Sent Tab */}
-          <TabsContent value="sent" className="flex-1 m-0 overflow-hidden">
-            <div className="h-full grid grid-cols-1 lg:grid-cols-2 gap-0 lg:divide-x">
-              <div className="h-full overflow-hidden">
+          <TabsContent value="sent" className="flex-1 min-h-0 m-0 overflow-hidden">
+            <div className="h-full min-h-0 grid grid-cols-1 lg:grid-cols-2 gap-0 lg:divide-x">
+              <div className="h-full min-h-0 overflow-hidden">
                 <SentMessagesList
                   onSelect={(r) => setSelectedSent(r)}
                   selectedKey={selectedSent?.contact_id || selectedSent?.phone || undefined}
                 />
               </div>
-              <div className="h-full hidden lg:block">
+              <div className="h-full min-h-0 hidden lg:block">
                 {selectedSent ? (
-                  <div className="h-full p-4">
+                  <div className="h-full min-h-0 p-4 overflow-hidden">
                     <SMSConversationThread
                       key={selectedSent.contact_id || selectedSent.phone}
                       contactId={selectedSent.contact_id || undefined}
@@ -230,15 +230,15 @@ const CommunicationsHub = () => {
           </TabsContent>
 
           {/* SMS Tab */}
-          <TabsContent value="sms" className="flex-1 m-0 overflow-hidden">
-            <div className="h-full grid grid-cols-1 lg:grid-cols-2 gap-0 lg:divide-x">
-              <div className={`h-full overflow-hidden ${isMobile && selectedThread ? 'hidden' : ''}`}>
+          <TabsContent value="sms" className="flex-1 min-h-0 m-0 overflow-hidden">
+            <div className="h-full min-h-0 grid grid-cols-1 lg:grid-cols-2 gap-0 lg:divide-x">
+              <div className={`h-full min-h-0 overflow-hidden ${isMobile && selectedThread ? 'hidden' : ''}`}>
                 <SMSThreadList 
                   onSelectThread={handleSelectThread}
                   selectedThreadId={selectedThread?.id}
                 />
               </div>
-              <div className={`h-full overflow-hidden ${isMobile && !selectedThread ? 'hidden' : ''}`}>
+              <div className={`h-full min-h-0 overflow-hidden ${isMobile && !selectedThread ? 'hidden' : ''}`}>
                 <SMSConversationThread
                   thread={selectedThread || undefined}
                   onBack={() => setSelectedThread(null)}
