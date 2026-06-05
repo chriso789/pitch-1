@@ -63,8 +63,12 @@ export const EmailDiagnosticsPanel = () => {
 
   useEffect(() => {
     loadEmailLogs();
-    runDiagnostics();
   }, []);
+
+  useEffect(() => {
+    runDiagnostics();
+     
+  }, [emailLogs]);
 
   const loadEmailLogs = async () => {
     try {
