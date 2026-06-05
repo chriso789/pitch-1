@@ -72,7 +72,17 @@ export function createRouter(functionName: string) {
 
 
   // Default 404 → not_migrated envelope so scaffolded routes are obvious
-  app.notFound((c) => jsonErr(c, "route_not_found", "Route not registered on this function.", 404));
+  app.notFound((c) => {
+    const u = new URL(c.req.url);
+    return c.json({
+      ok: false,
+      error: "Route not registered on this function.",
+      code: "route_not_found",
+      debug_pathname: u.pathname,
+      debug_method: c.req.method,
+      requestId: c.get("requestId"),
+    }, 404);
+  });
 
   app.onError((err, c) => {
     console.error(`[${functionName}] error:`, err);
