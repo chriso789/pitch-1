@@ -8,8 +8,9 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2, AlertCircle, CheckCircle, Eye, EyeOff, Shield, ArrowLeft, Rocket } from 'lucide-react';
+import { SEO } from '@/components/seo/SEO';
 
-const ResetPassword: React.FC = () => {
+const ResetPasswordImpl: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
@@ -414,5 +415,17 @@ const ResetPassword: React.FC = () => {
     </div>
   );
 };
+
+const ResetPassword: React.FC = () => (
+  <>
+    <SEO
+      title="Reset Password — Pitch CRM"
+      description="Set a new password for your Pitch CRM account."
+      path="/reset-password"
+      noindex
+    />
+    <ResetPasswordImpl />
+  </>
+);
 
 export default ResetPassword;

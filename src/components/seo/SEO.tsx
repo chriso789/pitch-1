@@ -5,11 +5,12 @@ interface SEOProps {
   description: string;
   path: string;
   jsonLd?: Record<string, unknown> | Record<string, unknown>[];
+  noindex?: boolean;
 }
 
 const SITE_URL = "https://pitch-crm.ai";
 
-export function SEO({ title, description, path, jsonLd }: SEOProps) {
+export function SEO({ title, description, path, jsonLd, noindex }: SEOProps) {
   const url = `${SITE_URL}${path}`;
   return (
     <Helmet>
@@ -22,6 +23,7 @@ export function SEO({ title, description, path, jsonLd }: SEOProps) {
       <meta property="og:type" content="website" />
       <meta name="twitter:title" content={title} />
       <meta name="twitter:description" content={description} />
+      {noindex && <meta name="robots" content="noindex,nofollow" />}
       {jsonLd && (
         <script type="application/ld+json">{JSON.stringify(jsonLd)}</script>
       )}

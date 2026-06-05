@@ -8,8 +8,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, Eye, EyeOff, CheckCircle2, XCircle, Shield } from 'lucide-react';
+import { SEO } from '@/components/seo/SEO';
 
-const ConfirmEmail = () => {
+const ConfirmEmailImpl = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   
@@ -293,5 +294,17 @@ const ConfirmEmail = () => {
     </div>
   );
 };
+
+const ConfirmEmail = () => (
+  <>
+    <SEO
+      title="Confirm Email — Pitch CRM"
+      description="Confirm your email address to activate your Pitch CRM account."
+      path="/auth/confirm-email"
+      noindex
+    />
+    <ConfirmEmailImpl />
+  </>
+);
 
 export default ConfirmEmail;

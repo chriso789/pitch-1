@@ -7,10 +7,11 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { Eye, EyeOff, Lock, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { SEO } from '@/components/seo/SEO';
 
 type SetupState = 'loading' | 'ready' | 'success' | 'error';
 
-export default function SetupAccount() {
+function SetupAccountImpl() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   
@@ -541,5 +542,19 @@ export default function SetupAccount() {
         </Card>
       </div>
     </div>
+  );
+}
+
+export default function SetupAccount() {
+  return (
+    <>
+      <SEO
+        title="Set Up Your Account — Pitch CRM"
+        description="Finish setting up your Pitch CRM account."
+        path="/setup-account"
+        noindex
+      />
+      <SetupAccountImpl />
+    </>
   );
 }

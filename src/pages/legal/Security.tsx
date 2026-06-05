@@ -1,10 +1,16 @@
 import React from 'react';
 import LegalPageLayout from '@/components/legal/LegalPageLayout';
 import { BRAND } from '@/lib/branding/legal';
+import { SEO } from '@/components/seo/SEO';
 
 const Security = () => {
   return (
     <LegalPageLayout title="Security Policy" lastUpdated="January 18, 2025">
+      <SEO
+        title="Security Policy — Pitch CRM"
+        description="Pitch CRM's security practices, infrastructure, and data protection measures for construction businesses."
+        path="/legal/security"
+      />
       <section>
         <h2>1. Our Commitment to Security</h2>
         <p>

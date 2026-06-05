@@ -1,10 +1,16 @@
 import React from 'react';
 import LegalPageLayout from '@/components/legal/LegalPageLayout';
 import { BRAND } from '@/lib/branding/legal';
+import { SEO } from '@/components/seo/SEO';
 
 const Terms = () => {
   return (
     <LegalPageLayout title="Terms of Service" lastUpdated="January 18, 2025">
+      <SEO
+        title="Terms of Service — Pitch CRM"
+        description="The terms governing use of the Pitch CRM platform for roofing and construction teams."
+        path="/legal/terms"
+      />
       <section>
         <h2>1. Agreement to Terms</h2>
         <p>
