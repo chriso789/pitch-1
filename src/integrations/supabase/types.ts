@@ -51630,6 +51630,101 @@ export type Database = {
         }
         Relationships: []
       }
+      supplier_price_history: {
+        Row: {
+          account_number: string | null
+          availability: string | null
+          branch_number: string | null
+          checked_at: string
+          created_by: string | null
+          estimate_id: string | null
+          estimate_line_item_id: string | null
+          extended_price: number | null
+          id: string
+          job_account_number: string | null
+          price_source: string | null
+          pricing_run_id: string | null
+          purchase_order_id: string | null
+          purchase_order_item_id: string | null
+          quantity: number | null
+          raw_response: Json
+          ship_to_number: string | null
+          status: string
+          supplier: string
+          supplier_item_description: string | null
+          supplier_item_number: string | null
+          template_id: string | null
+          template_item_id: string | null
+          tenant_id: string
+          unit_price: number | null
+          uom: string | null
+        }
+        Insert: {
+          account_number?: string | null
+          availability?: string | null
+          branch_number?: string | null
+          checked_at?: string
+          created_by?: string | null
+          estimate_id?: string | null
+          estimate_line_item_id?: string | null
+          extended_price?: number | null
+          id?: string
+          job_account_number?: string | null
+          price_source?: string | null
+          pricing_run_id?: string | null
+          purchase_order_id?: string | null
+          purchase_order_item_id?: string | null
+          quantity?: number | null
+          raw_response?: Json
+          ship_to_number?: string | null
+          status?: string
+          supplier: string
+          supplier_item_description?: string | null
+          supplier_item_number?: string | null
+          template_id?: string | null
+          template_item_id?: string | null
+          tenant_id: string
+          unit_price?: number | null
+          uom?: string | null
+        }
+        Update: {
+          account_number?: string | null
+          availability?: string | null
+          branch_number?: string | null
+          checked_at?: string
+          created_by?: string | null
+          estimate_id?: string | null
+          estimate_line_item_id?: string | null
+          extended_price?: number | null
+          id?: string
+          job_account_number?: string | null
+          price_source?: string | null
+          pricing_run_id?: string | null
+          purchase_order_id?: string | null
+          purchase_order_item_id?: string | null
+          quantity?: number | null
+          raw_response?: Json
+          ship_to_number?: string | null
+          status?: string
+          supplier?: string
+          supplier_item_description?: string | null
+          supplier_item_number?: string | null
+          template_id?: string | null
+          template_item_id?: string | null
+          tenant_id?: string
+          unit_price?: number | null
+          uom?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_price_history_pricing_run_id_fkey"
+            columns: ["pricing_run_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_pricing_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       supplier_price_list_items: {
         Row: {
           agreed_price_basis: string | null
@@ -51948,6 +52043,63 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      supplier_pricing_runs: {
+        Row: {
+          account_number: string | null
+          branch_number: string | null
+          completed_at: string | null
+          created_by: string | null
+          environment: string | null
+          error_summary: string | null
+          id: string
+          job_account_number: string | null
+          metadata: Json
+          ship_to_number: string | null
+          source_context: string
+          source_id: string | null
+          started_at: string
+          status: string
+          supplier: string
+          tenant_id: string
+        }
+        Insert: {
+          account_number?: string | null
+          branch_number?: string | null
+          completed_at?: string | null
+          created_by?: string | null
+          environment?: string | null
+          error_summary?: string | null
+          id?: string
+          job_account_number?: string | null
+          metadata?: Json
+          ship_to_number?: string | null
+          source_context: string
+          source_id?: string | null
+          started_at?: string
+          status?: string
+          supplier: string
+          tenant_id: string
+        }
+        Update: {
+          account_number?: string | null
+          branch_number?: string | null
+          completed_at?: string | null
+          created_by?: string | null
+          environment?: string | null
+          error_summary?: string | null
+          id?: string
+          job_account_number?: string | null
+          metadata?: Json
+          ship_to_number?: string | null
+          source_context?: string
+          source_id?: string | null
+          started_at?: string
+          status?: string
+          supplier?: string
+          tenant_id?: string
+        }
+        Relationships: []
       }
       synthetic_test_cases: {
         Row: {
