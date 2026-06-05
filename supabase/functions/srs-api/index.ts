@@ -484,6 +484,172 @@ app.post("/pricing/record-history", async (c) => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// POST /pricing/catalog-search
+// Search activeBranchProducts for SKUs the user can approve as a mapping.
+// Only returns rows where productNumber is non-null (real, pricing-API-safe).
+// ---------------------------------------------------------------------------
+app.post("/pricing/catalog-search", async (c) => {
+  const tenantId = c.get("tenantId") as string;
+  const svc = serviceClient();
+  let body: any;
+  try { body = await c.req.json(); } catch { body = {}; }
+
+  const branchCode = String(body?.branch_code ?? "").trim();
+  const query = String(body?.q ?? body?.query ?? "").trim().toLowerCase();
+  const limit = Math.min(Math.max(Number(body?.limit) || 50, 1), 200);
+
+  const { data: connection } = await svc
+    .from("srs_connections")
+    .select("default_branch_code, environment")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  const effectiveBranch = branchCode || String(connection?.default_branch_code || "").trim();
+  if (!effectiveBranch) return jsonErr(c, "missing_branch_code", "branch_code or default_branch_code required", 400);
+
+  // Reuse the existing get_products edge function via a direct invoke pattern
+  // would couple us; instead, query the cached supplier_products table when
+  // present. Fall back to empty list.
+  let rows: any[] = [];
+  try {
+    const q = svc
+      .from("srs_active_branch_products")
+      .select("product_id, product_number, product_name, manufacturer, category, uom, default_uom, branch_code, last_seen_at")
+      .eq("tenant_id", tenantId)
+      .eq("branch_code", effectiveBranch)
+      .not("product_number", "is", null)
+      .limit(limit);
+    const { data, error } = await q;
+    if (error) {
+      // Table may not exist for this tenant yet — return empty + hint.
+      return jsonOk(c, { branch_code: effectiveBranch, results: [], note: `catalog_unavailable:${error.message}` });
+    }
+    rows = (data ?? []) as any[];
+  } catch (e: any) {
+    return jsonOk(c, { branch_code: effectiveBranch, results: [], note: `catalog_error:${e?.message ?? String(e)}` });
+  }
+
+  const filtered = query
+    ? rows.filter((r) => {
+        const hay = [
+          r.product_number, r.product_name, r.manufacturer, r.category,
+        ].map((x) => String(x ?? "").toLowerCase()).join(" ");
+        return hay.includes(query);
+      })
+    : rows;
+
+  return jsonOk(c, {
+    branch_code: effectiveBranch,
+    count: filtered.length,
+    results: filtered.slice(0, limit),
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /mapping/list?template_item_ids=a,b,c
+// ---------------------------------------------------------------------------
+app.get("/mapping/list", async (c) => {
+  const tenantId = c.get("tenantId") as string;
+  const svc = serviceClient();
+  const idsParam = c.req.query("template_item_ids") || "";
+  const ids = idsParam.split(",").map((x) => x.trim()).filter(Boolean);
+  let q = svc.from("template_item_supplier_mappings").select("*").eq("tenant_id", tenantId).eq("supplier", "srs");
+  if (ids.length) q = q.in("template_item_id", ids);
+  const { data, error } = await q;
+  if (error) return jsonErr(c, "mapping_list_failed", error.message, 500);
+  return jsonOk(c, { mappings: data ?? [] });
+});
+
+// ---------------------------------------------------------------------------
+// POST /mapping/approve
+// Persist an SRS mapping as `approved`. Stores BOTH productNumber and productId.
+// Rejects when productNumber is null — caller must select a catalog row with
+// a real SKU before approving.
+// ---------------------------------------------------------------------------
+app.post("/mapping/approve", async (c) => {
+  const tenantId = c.get("tenantId") as string;
+  const userId = c.get("userId") as string;
+  const svc = serviceClient();
+  let body: any;
+  try { body = await c.req.json(); } catch { return jsonErr(c, "invalid_json", "Body must be JSON", 400); }
+
+  const templateItemId = String(body?.template_item_id ?? "").trim();
+  if (!templateItemId) return jsonErr(c, "missing_template_item_id", "template_item_id required", 400);
+
+  const productNumber = body?.product_number == null ? null : String(body.product_number).trim();
+  if (!productNumber) {
+    return jsonErr(c, "missing_product_number",
+      "SRS approve requires a real productNumber (catalog rows with productNumber=null are needs_review only)",
+      400);
+  }
+  const productId = body?.product_id == null ? null : String(body.product_id).trim();
+  const productName = body?.product_name == null ? null : String(body.product_name);
+  const uomsIn = Array.isArray(body?.valid_uoms) ? body.valid_uoms.map((u: any) => String(u).toUpperCase()) : [];
+  const defaultUom = body?.default_uom ? String(body.default_uom).toUpperCase() : (uomsIn[0] ?? null);
+  const branchScope = Array.isArray(body?.branch_scope) ? body.branch_scope.map((b: any) => String(b)) : [];
+
+  const upsert = {
+    tenant_id: tenantId,
+    template_item_id: templateItemId,
+    supplier: "srs" as const,
+    supplier_item_number: productNumber,
+    supplier_product_id: productId,
+    supplier_item_description: productName,
+    valid_uoms: uomsIn,
+    default_uom: defaultUom,
+    branch_scope: branchScope,
+    mapping_status: "approved" as const,
+    match_confidence: body?.match_confidence ?? null,
+    match_reason: body?.match_reason ?? "manual_approve",
+    raw_catalog_payload: body?.raw_catalog_payload ?? null,
+    last_checked_at: new Date().toISOString(),
+    approved_by: userId,
+    approved_at: new Date().toISOString(),
+    // legacy mirror so older code paths keep working
+    supplier_item_code: productNumber,
+    review_state: "approved",
+    uom: defaultUom,
+  };
+
+  const { data, error } = await svc
+    .from("template_item_supplier_mappings")
+    .upsert(upsert, { onConflict: "tenant_id,template_item_id,supplier" })
+    .select("*")
+    .single();
+  if (error) return jsonErr(c, "mapping_approve_failed", error.message, 500);
+  return jsonOk(c, { mapping: data });
+});
+
+// ---------------------------------------------------------------------------
+// POST /mapping/reject  — mark mapping_status=rejected (or remove if not exists)
+// ---------------------------------------------------------------------------
+app.post("/mapping/reject", async (c) => {
+  const tenantId = c.get("tenantId") as string;
+  const userId = c.get("userId") as string;
+  const svc = serviceClient();
+  let body: any;
+  try { body = await c.req.json(); } catch { return jsonErr(c, "invalid_json", "Body must be JSON", 400); }
+  const templateItemId = String(body?.template_item_id ?? "").trim();
+  if (!templateItemId) return jsonErr(c, "missing_template_item_id", "template_item_id required", 400);
+
+  const { data, error } = await svc
+    .from("template_item_supplier_mappings")
+    .upsert({
+      tenant_id: tenantId,
+      template_item_id: templateItemId,
+      supplier: "srs",
+      mapping_status: "rejected",
+      match_reason: body?.reason ?? "manual_reject",
+      approved_by: userId,
+      approved_at: new Date().toISOString(),
+      review_state: "rejected",
+    }, { onConflict: "tenant_id,template_item_id,supplier" })
+    .select("*")
+    .single();
+  if (error) return jsonErr(c, "mapping_reject_failed", error.message, 500);
+  return jsonOk(c, { mapping: data });
+});
+
 // Supabase edge runtime delivers the URL with the function name prefix
 // (e.g. /srs-api/pricing/record-history). Strip it so Hono matches routes
 // declared as /pricing/record-history.
