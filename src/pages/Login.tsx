@@ -15,6 +15,7 @@ import { initSession, clearAllSessionData } from '@/services/sessionManager';
 import { getDeviceFingerprint, getDeviceName } from '@/services/deviceFingerprint';
 import { clearAllAppLocalStorage } from '@/components/layout/GlobalLoadingHandler';
 import { BRAND } from '@/lib/branding/legal';
+import { SEO } from '@/components/seo/SEO';
 
 // Helper to clean up stale localStorage on Login mount
 const cleanupStaleLocalStorage = () => {
@@ -572,8 +573,14 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
     }
   };
 
+  const isSignup = initialTab === 'signup';
   return (
     <div className="min-h-screen min-h-[100dvh] flex items-center justify-center gradient-hero p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] relative overflow-hidden">
+      <SEO
+        title={isSignup ? 'Sign Up — Pitch CRM Free Trial' : 'Log In — Pitch CRM'}
+        description={isSignup ? 'Start your 14-day free Pitch CRM trial. AI roof measurements, power dialer, and proposals built for roofing and construction teams.' : 'Log in to Pitch CRM to manage leads, estimates, AI roof measurements, and your sales pipeline.'}
+        path={isSignup ? '/signup' : '/login'}
+      />
       {/* Animated gradient orbs for depth */}
       <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-[hsl(214_80%_45%/0.3)] blur-[80px] animate-pulse" />
       <div className="absolute bottom-[-15%] right-[-10%] w-[45%] h-[45%] rounded-full bg-[hsl(142_76%_36%/0.2)] blur-[80px] animate-pulse [animation-delay:1s]" />
