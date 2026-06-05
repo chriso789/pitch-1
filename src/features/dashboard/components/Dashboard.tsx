@@ -15,6 +15,7 @@ import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
+import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useCompanySwitcher } from "@/hooks/useCompanySwitcher";
 import { useLocation } from "@/contexts/LocationContext";
