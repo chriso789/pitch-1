@@ -252,13 +252,43 @@ Deno.serve(async (req) => {
     });
   }
 
-  // SECURITY: never trust body.tenant_id. Resolve from JWT + user_company_access.
-  // verifyAuthAndTenant returns 401 if no JWT, 403 if requested tenant_id is not accessible
-  // (unless the caller has the master role).
-  const requestedTenantId = (body && typeof body.tenant_id === "string") ? body.tenant_id : null;
-  const auth = await verifyAuthAndTenant(req, requestedTenantId);
-  if (auth.error) return auth.error;
-  const tenant_id = auth.tenantId; // canonical, server-resolved
+  // SECURITY: never trust body.tenant_id from a user-facing caller. Resolve from JWT +
+  // user_company_access. Background workers (poller, pricing-refresh, pricelist-backfill)
+  // authenticate with the service-role key and may pass body.tenant_id directly.
+  const authHeader = req.headers.get("authorization") || "";
+  const bearer = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+  const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  const isServiceRoleCaller = !!SERVICE_ROLE && bearer === SERVICE_ROLE;
+
+  let tenant_id: string;
+  let actorUserId: string | null = null;
+  let actorEmail: string | null = null;
+
+  if (isServiceRoleCaller) {
+    // Trusted internal worker call — body.tenant_id is authoritative.
+    const requested = body && typeof body.tenant_id === "string" ? body.tenant_id : null;
+    if (!requested) {
+      return new Response(JSON.stringify({ error: "tenant_id required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    tenant_id = requested;
+  } else {
+    const requestedTenantId = body && typeof body.tenant_id === "string" ? body.tenant_id : null;
+    const auth = await verifyAuthAndTenant(req, requestedTenantId);
+    if (auth.error) return auth.error;
+    tenant_id = auth.tenantId;
+    actorUserId = auth.userId;
+    try {
+      const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY") || "", {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: { user } } = await userClient.auth.getUser();
+      if (user) actorEmail = user.email ?? null;
+    } catch (_) { /* email best-effort */ }
+  }
+
   const actorUserId = auth.userId;
   let actorEmail: string | null = null;
   try {
