@@ -112,15 +112,90 @@ app.post("/pricing/record-history", async (c) => {
     return jsonErr(c, "pricing_run_start_failed", e?.message ?? String(e), 500);
   }
 
-  // ---- partition items: priced vs unmapped (no validated productId) ----
-  const priceable: Array<{ idx: number; item: InItem; productId: number; productNumber: string; uom: string; quantity: number }> = [];
-  const unmapped: Array<{ idx: number; item: InItem; reason: string }> = [];
+  // ---- load approved mappings for any template_item_ids on the request ----
+  const tplIds = items
+    .map((it) => (typeof it.template_item_id === "string" ? it.template_item_id : null))
+    .filter((x): x is string => !!x);
+  let mappings = new Map<string, SupplierMappingRow>();
+  try {
+    if (tplIds.length) {
+      mappings = await loadSupplierMappingsForTemplateItems(svc, {
+        tenant_id: tenantId,
+        supplier: "srs",
+        template_item_ids: tplIds,
+      });
+    }
+  } catch (e) {
+    console.warn("[srs-api/pricing/record-history] mapping load failed", e);
+  }
+
+  // ---- partition items via mapping gate ----
+  // Items WITH template_item_id are gated by template_item_supplier_mappings.
+  // Items WITHOUT template_item_id (debug / ad-hoc) fall back to the legacy
+  // "needs a validated productId" path so the debug page keeps working.
+  const priceable: Array<{
+    idx: number;
+    item: InItem;
+    productId: number | null;
+    productNumber: string;
+    uom: string;
+    quantity: number;
+    mapping?: SupplierMappingRow;
+  }> = [];
+  const skipped: Array<{
+    idx: number;
+    item: InItem;
+    reason: string;
+    price_source: string;
+    mapping?: SupplierMappingRow | null;
+  }> = [];
 
   items.forEach((it, idx) => {
+    const requestedUom = String(it.uom || "EA").toUpperCase();
+    const qty = Number(it.quantity) || 1;
+    const tplId = typeof it.template_item_id === "string" ? it.template_item_id : null;
+
+    if (tplId) {
+      const mapping = mappings.get(tplId) ?? null;
+      const decision = evaluateMappingGate({
+        mapping,
+        requested_uom: requestedUom,
+        branch_number: branchCode,
+      });
+      if (decision.kind === "approved") {
+        priceable.push({
+          idx,
+          item: it,
+          productId: decision.mapping.supplier_product_id
+            ? Number(decision.mapping.supplier_product_id) || null
+            : null,
+          productNumber: decision.sku,
+          uom: decision.uom,
+          quantity: qty,
+          mapping: decision.mapping,
+        });
+      } else {
+        skipped.push({
+          idx,
+          item: it,
+          reason: decision.reason,
+          price_source: priceSourceForSkip(decision.reason),
+          mapping: decision.mapping,
+        });
+      }
+      return;
+    }
+
+    // Legacy debug path — no template_item_id, require a validated productId.
     const pidNum = Number(it.productId);
     const productNumber = String(it.productNumber ?? "").trim();
     if (!Number.isFinite(pidNum) || pidNum <= 0) {
-      unmapped.push({ idx, item: it, reason: "missing_validated_product_id" });
+      skipped.push({
+        idx,
+        item: it,
+        reason: "missing_validated_product_id",
+        price_source: "catalog_unmapped",
+      });
       return;
     }
     priceable.push({
@@ -128,8 +203,8 @@ app.post("/pricing/record-history", async (c) => {
       item: it,
       productId: pidNum,
       productNumber: productNumber || String(pidNum),
-      uom: String(it.uom || "EA").toUpperCase(),
-      quantity: Number(it.quantity) || 1,
+      uom: requestedUom,
+      quantity: qty,
     });
   });
 
