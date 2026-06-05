@@ -46,7 +46,9 @@ export const SmartTemplateEditor = () => {
     deleteItem,
     reorderGroups,
     reorderItems,
+    refetch,
   } = useTemplateEditor(templateId);
+
 
   const [showAddGroupDialog, setShowAddGroupDialog] = useState(false);
   const [showAddItemDialog, setShowAddItemDialog] = useState(false);
