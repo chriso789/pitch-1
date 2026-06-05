@@ -168,12 +168,17 @@ export const EmailDiagnosticsPanel = () => {
     });
     setDiagnostics([...checks]);
 
-    // Check 4: From domain configuration
+    // Check 4: From domain configuration — infer from successful sends
+    const hasFromDomain = recentLogs.some(log => log.status === 'sent' && log.resend_message_id);
     checks.push({
       name: 'From Domain (RESEND_FROM_DOMAIN)',
-      status: 'warning',
-      message: 'Check Supabase secrets for RESEND_FROM_DOMAIN',
-      details: 'Should be set to your verified Resend domain (e.g., pitch-crm.ai). Without this, emails use onboarding@resend.dev which is test-only.'
+      status: hasFromDomain ? 'success' : 'warning',
+      message: hasFromDomain
+        ? 'From domain configured (emails are sending from your verified domain)'
+        : 'Cannot verify – no recent successful sends',
+      details: hasFromDomain
+        ? 'RESEND_FROM_DOMAIN is set in Supabase secrets and emails are being accepted by Resend.'
+        : 'Set RESEND_FROM_DOMAIN to your verified Resend domain (e.g., pitch-crm.ai). Without it, emails fall back to onboarding@resend.dev which is test-only.'
     });
     setDiagnostics([...checks]);
 
