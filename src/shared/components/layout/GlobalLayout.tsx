@@ -36,11 +36,11 @@ export const GlobalLayout = ({ children }: GlobalLayoutProps) => {
   );
 
   return (
-    <div className="flex min-h-screen w-full">
+    <div className="flex h-screen w-full overflow-hidden">
       <CollapsibleSidebar mobileOpen={mobileOpen} onMobileOpenChange={setMobileOpen}>
         <Sidebar />
       </CollapsibleSidebar>
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 min-w-0 overflow-auto">
         <div className={cn(
           "border-b glass-heavy sticky top-0 z-40 shadow-[0_1px_3px_hsl(214_100%_25%/0.06),0_4px_12px_hsl(214_100%_25%/0.04)] pt-[env(safe-area-inset-top,0px)]",
           isMobileApp() && "pt-[max(env(safe-area-inset-top,0px),2.5rem)]"
