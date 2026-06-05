@@ -46,7 +46,9 @@ export const SmartTemplateEditor = () => {
     deleteItem,
     reorderGroups,
     reorderItems,
+    refetch,
   } = useTemplateEditor(templateId);
+
 
   const [showAddGroupDialog, setShowAddGroupDialog] = useState(false);
   const [showAddItemDialog, setShowAddItemDialog] = useState(false);
@@ -94,12 +96,52 @@ export const SmartTemplateEditor = () => {
   };
 
   const handleUpdateCosts = async () => {
-    toast({ title: 'Updating costs from supplier...' });
-    // TODO: Implement cost update from supplier API
-    setTimeout(() => {
-      toast({ title: 'Costs updated successfully' });
-    }, 1500);
+    if (!templateId) return;
+    toast({ title: 'Refreshing costs from suppliers…' });
+    try {
+      const { edgeApi } = await import('@/lib/edgeApi');
+      const resp = await edgeApi<{
+        items_total: number;
+        items_updated: number;
+        items: Array<{
+          item_name: string;
+          previous_unit_cost: number;
+          new_unit_cost: number;
+          cost_source: string;
+          contributors: Array<{ supplier: string; unit_price: number }>;
+        }>;
+      }>('supplier-api', '/templates/cost-refresh', { template_id: templateId });
+
+      const data = resp.data;
+      if (!data) {
+        throw new Error(resp.error || 'No data returned');
+      }
+
+      const unresolved = data.items.filter((i) => i.cost_source === 'unresolved').length;
+      const fromImported = data.items.filter((i) => i.cost_source === 'imported_sheet').length;
+      const fromAvg = data.items.filter((i) => i.cost_source === 'supplier_avg').length;
+      const fromSingle = data.items.filter((i) => i.cost_source?.startsWith('supplier_single_')).length;
+
+      toast({
+        title: `Updated ${data.items_updated}/${data.items_total} items`,
+        description: [
+          fromAvg ? `${fromAvg} averaged across suppliers` : null,
+          fromSingle ? `${fromSingle} from single supplier` : null,
+          fromImported ? `${fromImported} from imported sheet` : null,
+          unresolved ? `${unresolved} unresolved (no price found)` : null,
+        ].filter(Boolean).join(' · ') || 'No changes',
+      });
+      await refetch();
+
+    } catch (err: any) {
+      toast({
+        title: 'Cost refresh failed',
+        description: err?.message || String(err),
+        variant: 'destructive',
+      });
+    }
   };
+
 
   if (loading) {
     return (
