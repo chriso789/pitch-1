@@ -100,7 +100,7 @@ export const SmartTemplateEditor = () => {
     toast({ title: 'Refreshing costs from suppliers…' });
     try {
       const { edgeApi } = await import('@/lib/edgeApi');
-      const data = await edgeApi<{
+      const resp = await edgeApi<{
         items_total: number;
         items_updated: number;
         items: Array<{
@@ -111,6 +111,11 @@ export const SmartTemplateEditor = () => {
           contributors: Array<{ supplier: string; unit_price: number }>;
         }>;
       }>('supplier-api', '/templates/cost-refresh', { template_id: templateId });
+
+      const data = resp.data;
+      if (!data) {
+        throw new Error(resp.error || 'No data returned');
+      }
 
       const unresolved = data.items.filter((i) => i.cost_source === 'unresolved').length;
       const fromImported = data.items.filter((i) => i.cost_source === 'imported_sheet').length;
@@ -127,6 +132,7 @@ export const SmartTemplateEditor = () => {
         ].filter(Boolean).join(' · ') || 'No changes',
       });
       await refetch();
+
     } catch (err: any) {
       toast({
         title: 'Cost refresh failed',
