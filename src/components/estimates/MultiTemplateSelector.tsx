@@ -63,6 +63,36 @@ const supabaseClient = supabase as any;
 
 const clampProfitPercent = (percent: number) => Math.round(Math.max(-100, Math.min(85, percent)) * 100) / 100;
 
+const serializeStoredLineItem = (item: LineItem) => ({
+  id: item.id,
+  item_name: item.item_name,
+  description: item.description,
+  notes: item.notes,
+  qty: item.qty,
+  qty_original: item.qty_original,
+  unit: item.unit,
+  unit_cost: item.unit_cost,
+  unit_cost_original: item.unit_cost_original,
+  line_total: item.line_total,
+  is_override: item.is_override,
+  sort_order: item.sort_order,
+  trade_type: item.trade_type,
+  trade_label: item.trade_label,
+  exclude_from_overhead: item.exclude_from_overhead,
+});
+
+const buildStoredLineItems = (
+  materialItems: LineItem[],
+  laborItems: LineItem[],
+  turnkeyItems: LineItem[],
+  changeOrderItems: LineItem[],
+) => ({
+  materials: materialItems.map(serializeStoredLineItem),
+  labor: laborItems.map(serializeStoredLineItem),
+  turnkey: turnkeyItems.map(serializeStoredLineItem),
+  change_orders: changeOrderItems.map(serializeStoredLineItem),
+});
+
 interface CompanyInfo {
   name: string;
   logo_url?: string | null;
