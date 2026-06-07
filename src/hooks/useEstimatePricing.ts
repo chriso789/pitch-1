@@ -127,6 +127,14 @@ export function useEstimatePricing(
     [lineItems]
   );
 
+  // Turnkey items: subcontracted/bundled scopes — priced like labor (no sales tax)
+  const turnkeyItems = useMemo(() =>
+    lineItems
+      .filter(item => item.item_type === 'turnkey')
+      .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)),
+    [lineItems]
+  );
+
   // Change order items are excluded from all cost/pricing calculations
   const changeOrderItems = useMemo(() =>
     lineItems
@@ -138,7 +146,9 @@ export function useEstimatePricing(
   // Calculate pricing breakdown
   const breakdown = useMemo((): PricingBreakdown => {
     const materialsTotal = materialItems.reduce((sum, item) => sum + item.line_total, 0);
-    const laborTotal = laborItems.reduce((sum, item) => sum + item.line_total, 0);
+    const laborTotal =
+      laborItems.reduce((sum, item) => sum + item.line_total, 0) +
+      turnkeyItems.reduce((sum, item) => sum + item.line_total, 0);
     const directCost = materialsTotal + laborTotal;
 
     // Items flagged as exclude_from_overhead are pass-through:
