@@ -62,6 +62,7 @@ export interface UseEstimatePricingReturn {
   lineItems: LineItem[];
   materialItems: LineItem[];
   laborItems: LineItem[];
+  turnkeyItems: LineItem[];
   changeOrderItems: LineItem[];
   breakdown: PricingBreakdown;
   config: PricingConfig;
