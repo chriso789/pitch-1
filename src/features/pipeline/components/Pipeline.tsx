@@ -66,6 +66,7 @@ const Pipeline = () => {
     lastEmailMinDays: '' as string, // days since last outbound email (e.g. estimate sent)
   });
   const [searchQuery, setSearchQuery] = useState('');
+  const [columnMinDays, setColumnMinDays] = useState<Record<string, string>>({});
   const [selectedJobs, setSelectedJobs] = useState<string[]>([]);
   const [bulkActionMode, setBulkActionMode] = useState(false);
   const [stageTotals, setStageTotals] = useState({});
@@ -1373,7 +1374,19 @@ const Pipeline = () => {
           <ScrollArea className="w-full">
             <div className="flex gap-6 pb-4 min-w-max">
               {jobStages.map((stage) => {
-                const stageEntries = (pipelineData[stage.key] || []).map(transformToKanbanEntry);
+                const rawEntries = pipelineData[stage.key] || [];
+                const minDays = columnMinDays[stage.key];
+                const minDaysNum = minDays ? Number(minDays) : null;
+                const nowMs = Date.now();
+                const filteredRaw = minDaysNum !== null && !isNaN(minDaysNum)
+                  ? rawEntries.filter((e: any) => {
+                      const ts = e.status_entered_at || e.updated_at || e.created_at;
+                      if (!ts) return false;
+                      const days = Math.floor((nowMs - new Date(ts).getTime()) / 86400000);
+                      return days >= minDaysNum;
+                    })
+                  : rawEntries;
+                const stageEntries = filteredRaw.map(transformToKanbanEntry);
                 
                 return (
                   <div key={stage.key} className="min-w-[160px]">
@@ -1382,7 +1395,10 @@ const Pipeline = () => {
                       title={stage.name}
                       color={stage.color}
                       icon={stage.icon}
-                      count={(pipelineData[stage.key] || []).length}
+                      count={rawEntries.length}
+                      filteredCount={filteredRaw.length}
+                      minDays={minDays || ''}
+                      onMinDaysChange={(v) => setColumnMinDays(prev => ({ ...prev, [stage.key]: v }))}
                       total={formatCurrency(stageTotals[stage.key] || 0)}
                       items={stageEntries.map(entry => entry.id)}
                     >
