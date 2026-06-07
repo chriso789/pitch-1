@@ -1146,6 +1146,8 @@ export function SectionedLineItemsTable({
           )}
         </TableBody>
       </Table>
+      </DndContext>
     </div>
   );
 }
+
