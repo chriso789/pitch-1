@@ -209,6 +209,7 @@ interface MultiTemplateSelectorProps {
   clearEditingEstimateId?: string | null;
   previewEstimateRequestId?: string | null;
   onPreviewEstimateRequestHandled?: () => void;
+  onCurrentEditingChange?: (estimateId: string | null) => void;
 }
 
 export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
@@ -219,7 +220,8 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   saveChangesRef,
   clearEditingEstimateId,
   previewEstimateRequestId,
-  onPreviewEstimateRequestHandled
+  onPreviewEstimateRequestHandled,
+  onCurrentEditingChange,
 }) => {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
