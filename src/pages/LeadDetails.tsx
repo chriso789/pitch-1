@@ -252,6 +252,7 @@ const LeadDetails = () => {
   const saveEstimateChangesRef = useRef<(() => Promise<void>) | null>(null);
   const [deletedEstimateId, setDeletedEstimateId] = useState<string | null>(null);
   const [previewEstimateRequestId, setPreviewEstimateRequestId] = useState<string | null>(null);
+  const [currentMtsEditingId, setCurrentMtsEditingId] = useState<string | null>(null);
 
 
   // Handle unsaved changes state from MultiTemplateSelector
