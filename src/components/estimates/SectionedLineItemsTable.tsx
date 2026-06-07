@@ -636,11 +636,27 @@ export function SectionedLineItemsTable({
                     </>
                   )}
 
+                  {/* Turnkey for this trade */}
+                  {group.turnkey.length > 0 && (
+                    <>
+                      {renderSectionHeader(
+                        'TURNKEY',
+                        <Wrench className="h-4 w-4" />,
+                        group.turnkey.length
+                      )}
+                      {renderSortableItems(group.turnkey)}
+                      {renderSectionSubtotal(
+                        'Turnkey Subtotal',
+                        group.turnkey.filter(i => !i.exclude_from_overhead).reduce((sum, i) => sum + i.line_total, 0)
+                      )}
+                    </>
+                  )}
+
                   {/* Per-trade Add Item buttons */}
                   {editable && onAddTradeItem && (
                     <TableRow className="hover:bg-muted/30">
                       <TableCell colSpan={totalCols} className="py-2">
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 flex-wrap">
                           <Button 
                             variant="ghost" 
                             size="sm" 
@@ -658,6 +674,15 @@ export function SectionedLineItemsTable({
                           >
                             <Plus className="h-4 w-4 mr-2" />
                             Add Labor Item
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => onAddTradeItem(group.type, 'turnkey')}
+                            className="text-muted-foreground hover:text-foreground"
+                          >
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add Turnkey Item
                           </Button>
                         </div>
                       </TableCell>
