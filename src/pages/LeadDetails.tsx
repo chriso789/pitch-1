@@ -757,6 +757,7 @@ const LeadDetails = () => {
               clearEditingEstimateId={deletedEstimateId}
               previewEstimateRequestId={previewEstimateRequestId}
               onPreviewEstimateRequestHandled={() => setPreviewEstimateRequestId(null)}
+              onCurrentEditingChange={setCurrentMtsEditingId}
             />
 
           </div>
