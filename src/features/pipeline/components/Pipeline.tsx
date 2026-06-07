@@ -1375,19 +1375,22 @@ const Pipeline = () => {
             <div className="flex gap-6 pb-4 min-w-max">
               {jobStages.map((stage) => {
                 const rawEntries = pipelineData[stage.key] || [];
-                const minDays = columnMinDays[stage.key];
-                const minDaysNum = minDays ? Number(minDays) : null;
+                const sortDir = columnSort[stage.key];
                 const nowMs = Date.now();
-                const filteredRaw = minDaysNum !== null && !isNaN(minDaysNum)
-                  ? rawEntries.filter((e: any) => {
-                      const ts = e.status_entered_at || e.updated_at || e.created_at;
-                      if (!ts) return false;
-                      const days = Math.floor((nowMs - new Date(ts).getTime()) / 86400000);
-                      return days >= minDaysNum;
+                const daysInStatus = (e: any) => {
+                  const ts = e.status_entered_at || e.updated_at || e.created_at;
+                  if (!ts) return -1;
+                  return Math.floor((nowMs - new Date(ts).getTime()) / 86400000);
+                };
+                const sortedRaw = sortDir
+                  ? [...rawEntries].sort((a: any, b: any) => {
+                      const da = daysInStatus(a);
+                      const db = daysInStatus(b);
+                      return sortDir === 'asc' ? da - db : db - da;
                     })
                   : rawEntries;
-                const stageEntries = filteredRaw.map(transformToKanbanEntry);
-                
+                const stageEntries = sortedRaw.map(transformToKanbanEntry);
+
                 return (
                   <div key={stage.key} className="min-w-[160px]">
                     <KanbanColumn
@@ -1396,9 +1399,12 @@ const Pipeline = () => {
                       color={stage.color}
                       icon={stage.icon}
                       count={rawEntries.length}
-                      filteredCount={filteredRaw.length}
-                      minDays={minDays || ''}
-                      onMinDaysChange={(v) => setColumnMinDays(prev => ({ ...prev, [stage.key]: v }))}
+                      sortDir={sortDir}
+                      onToggleSort={() => setColumnSort(prev => {
+                        const cur = prev[stage.key];
+                        const next = cur === 'desc' ? 'asc' : cur === 'asc' ? undefined : 'desc';
+                        return { ...prev, [stage.key]: next };
+                      })}
                       total={formatCurrency(stageTotals[stage.key] || 0)}
                       items={stageEntries.map(entry => entry.id)}
                     >
