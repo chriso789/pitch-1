@@ -955,6 +955,22 @@ export function SectionedLineItemsTable({
                 </TableRow>
               )}
               {laborItems.length > 0 && renderSectionSubtotal('Labor Subtotal', displayLaborTotal)}
+
+              {/* Turnkey Section */}
+              {turnkeyItems.length > 0 && (
+                <>
+                  {renderSectionHeader(
+                    'TURNKEY',
+                    <Wrench className="h-4 w-4" />,
+                    turnkeyItems.length
+                  )}
+                  {renderSortableItems(turnkeyItems)}
+                  {renderSectionSubtotal(
+                    'Turnkey Subtotal',
+                    turnkeyItems.filter(i => !i.exclude_from_overhead).reduce((sum, i) => sum + i.line_total, 0)
+                  )}
+                </>
+              )}
             </>
           )}
 
