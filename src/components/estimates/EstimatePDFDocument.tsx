@@ -961,6 +961,7 @@ const FirstPage: React.FC<{
   showTerms,
   finePrintContent,
   estimateName,
+  changeOrdersBlock,
 }) => {
   return (
     <div className="space-y-2">
