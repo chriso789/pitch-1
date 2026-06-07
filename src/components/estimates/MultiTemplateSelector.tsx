@@ -729,7 +729,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           const newTradeLineItems: Record<string, LineItem[]> = {};
           restoredSections.forEach(section => {
             const itemsForSection = allItems.filter(
-              i => (i.trade_type || 'roofing') === section.tradeType
+              i => i.item_type !== 'change_order' && (i.trade_type || 'roofing') === section.tradeType
             );
             newTradeLineItems[section.id] = itemsForSection.map(i => ({
               ...i,
