@@ -27,6 +27,7 @@ Deno.serve(async (req: Request) => {
 
     const {
       items = [],
+      change_order_items = [],
       project_title,
       customer_name,
       property_address,
@@ -48,14 +49,22 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // Compact item list for the model
-    const itemSummary = (items as IncomingItem[]).map((it) => {
+    const formatItems = (arr: IncomingItem[]) => arr.map((it) => {
       const type = it.item_type ? `[${it.item_type}]` : '';
       const trade = it.trade_type ? `(${it.trade_type})` : '';
       const qty = it.qty != null ? `${it.qty}${it.unit ? ' ' + it.unit : ''}` : '';
       const desc = it.description ? ` — ${it.description}` : '';
       return `- ${type}${trade} ${it.item_name || 'Item'} ${qty}${desc}`.trim();
     }).join('\n');
+
+    const itemSummary = formatItems(items as IncomingItem[]);
+    const hasChangeOrders = Array.isArray(change_order_items) && change_order_items.length > 0;
+    const changeOrderSummary = hasChangeOrders ? formatItems(change_order_items as IncomingItem[]) : '';
+
+    const changeOrderSection = hasChangeOrders ? `
+
+Potential Change Orders
+A short intro sentence explaining these are optional/conditional items that may be added if site conditions or customer selections require them, followed by a bulleted list (one tight sentence each, leading "- ") describing each potential change order in customer-friendly language. Do NOT include pricing.` : '';
 
     const systemPrompt = `You are a senior roofing project manager writing the "Project Scope" section of a customer-facing proposal for ${company_name || 'a professional roofing contractor'}.
 
@@ -68,7 +77,7 @@ One short paragraph (2–3 sentences) introducing the project, the property, and
 
 Scope of Work
 A bulleted list of 6–12 concise bullets covering the work in logical order (e.g. Tear-Off & Prep, Decking & Repairs, Underlayment & Ice/Water Shield, Flashings & Penetrations, Main System Installation, Ventilation, Ridge & Detailing, Cleanup & Final Walkthrough). Each bullet: one tight sentence starting with a strong verb. Reference material brand/system at a high level when relevant. Use a leading "- " for each bullet. No numbered lists.
-
+${changeOrderSection}
 Closing
 One short paragraph (1–2 sentences) reassuring the customer about quality, cleanup, warranty-readiness, and next steps.
 
@@ -76,7 +85,7 @@ Style:
 - Tone: ${tone}. Confident, reassuring, professional. No hype.
 - Plain text only — no markdown bold/italics (no **, no _).
 - Do NOT invent work not implied by the line items.
-- Keep the entire scope under ~350 words.
+- Keep the entire scope under ~400 words.
 ${extra_instructions ? `\nAdditional instructions: ${extra_instructions}` : ''}`;
 
     const userPrompt = `Project: ${project_title || 'Roofing project'}
@@ -85,7 +94,7 @@ Address: ${property_address || 'Property'}
 
 Line items from the estimate:
 ${itemSummary}
-
+${hasChangeOrders ? `\nPotential Change Order items (optional/conditional add-ons — include them in a dedicated "Potential Change Orders" section):\n${changeOrderSummary}\n` : ''}
 Write the customer-friendly Project Scope now.`;
 
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {

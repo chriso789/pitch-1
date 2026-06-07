@@ -885,18 +885,20 @@ export function EstimatePreviewPanel({
       });
       return;
     }
+    const mapItem = (it: any) => ({
+      item_name: it.item_name,
+      description: it.description ?? it.notes ?? null,
+      qty: it.qty,
+      unit: it.unit,
+      item_type: it.item_type,
+      trade_type: it.trade_type,
+    });
     setIsGeneratingNarrative(true);
     try {
       const { data, error } = await supabase.functions.invoke('estimate-scope-narrative', {
         body: {
-          items: combined.map((it) => ({
-            item_name: it.item_name,
-            description: (it as any).description ?? (it as any).notes ?? null,
-            qty: it.qty,
-            unit: it.unit,
-            item_type: (it as any).item_type,
-            trade_type: (it as any).trade_type,
-          })),
+          items: combined.map(mapItem),
+          change_order_items: (changeOrderItems || []).map(mapItem),
           project_title: estimateDisplayName || templateName || estimateNumber,
           customer_name: customerName,
           property_address: customerAddress,
