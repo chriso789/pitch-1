@@ -690,7 +690,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     }
     if (changeOrderItems.length > 0) {
       const coTotal = changeOrderItems.reduce((sum, item) => sum + item.line_total, 0);
-      estimateNodes.push(
+      const changeOrdersNode = (
         <div key="change-orders-page" className="space-y-3">
           <div className="flex items-center gap-2 mb-2">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-amber-500" viewBox="0 0 20 20" fill="currentColor">
@@ -737,6 +737,16 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
           </div>
         </div>
       );
+      // Insert BEFORE the closing page (the page that holds terms/signature).
+      // If a signature page exists within estimateNodes, splice in front of it;
+      // otherwise insert before the last estimate page.
+      const insertIdx = estimateSignatureRelIdx !== undefined
+        ? estimateSignatureRelIdx
+        : Math.max(0, estimateNodes.length - 1);
+      estimateNodes.splice(insertIdx, 0, changeOrdersNode);
+      if (estimateSignatureRelIdx !== undefined) {
+        estimateSignatureRelIdx = estimateSignatureRelIdx + 1;
+      }
     }
     // --- Append additional estimates inline so they group with the main estimate
     //     content BEFORE photos/warranty/attachments, respecting page order. ---
