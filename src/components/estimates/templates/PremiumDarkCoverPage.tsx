@@ -59,10 +59,11 @@ export const PremiumDarkCoverPage: React.FC<CoverPageProps> = ({
         </div>
         <div className="flex items-center gap-4">
           {yearStr && (
-            <div className="text-[10px] tracking-[0.3em] text-[#A0A0A0] border border-[#333] px-3 py-1.5">
+            <div className="inline-flex items-center justify-center text-[10px] tracking-[0.3em] text-[#A0A0A0] border border-[#333] px-3" style={{ height: 24, lineHeight: 1 }}>
               EST. {yearStr}
             </div>
           )}
+
           {yearsInBusiness && (
             <div className="text-[9px] text-[#555]">{yearsInBusiness}+ years</div>
           )}

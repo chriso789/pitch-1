@@ -137,12 +137,13 @@ export const EstimateCoverPage: React.FC<EstimateCoverPageProps> = ({
           </div>
           <div className="text-right">
             <div
-              className="inline-block px-3 py-1 text-[10px] font-bold tracking-[0.3em] text-white border border-white/60 rounded-sm backdrop-blur-sm"
-              style={{ background: 'rgba(255,255,255,0.08)' }}
+              className="inline-flex items-center justify-center px-3 text-[10px] font-bold tracking-[0.3em] text-white border border-white/60 rounded-sm backdrop-blur-sm"
+              style={{ background: 'rgba(255,255,255,0.08)', height: 22, lineHeight: 1 }}
             >
               EST. {yearStr}
             </div>
           </div>
+
         </div>
 
         {/* Bottom of hero — oversized PROPOSAL wordmark */}

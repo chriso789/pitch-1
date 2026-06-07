@@ -170,8 +170,8 @@ export function useMultiPagePDFGeneration() {
         const isPhotoPage = pageElement.querySelector('.bg-teal-500') !== null; // Photo page has teal dot
         const isImageHeavy = isAttachmentPage || isPhotoPage;
         
-        // Use lower scale to keep PDF size manageable (prevents 413 errors on upload)
-        const captureScale = isImageHeavy ? 1.2 : 1.5;
+        // Higher scale for text-heavy pages → crisp typography & logos in PDF
+        const captureScale = isImageHeavy ? 1.5 : 2.5;
 
         // Capture page to canvas with adaptive settings
         const canvas = await html2canvas(pageElement, {
@@ -183,7 +183,7 @@ export function useMultiPagePDFGeneration() {
           imageTimeout: 5000,
           onclone: (_clonedDoc, clonedElement) => {
             applyPDFStyles(clonedElement);
-            
+
             // For photo pages, downscale images in the clone to speed up capture
             if (isImageHeavy) {
               const clonedImages = clonedElement.querySelectorAll('img');
@@ -205,23 +205,25 @@ export function useMultiPagePDFGeneration() {
         if (i > 0) {
           pdf.addPage();
         }
-        
+
         const xOffset = 10;
         const yOffset = 10;
-        
-        // Use JPEG compression for ALL pages to keep PDF size under storage limits
+
+        // PNG for crisp text pages, JPEG for image-heavy to control size
         const imageData = isImageHeavy
-          ? canvas.toDataURL('image/jpeg', 0.6)
-          : canvas.toDataURL('image/jpeg', 0.75);
-        
+          ? canvas.toDataURL('image/jpeg', 0.72)
+          : canvas.toDataURL('image/png');
+        const imageFormat = isImageHeavy ? 'JPEG' : 'PNG';
+
         pdf.addImage(
           imageData,
-          'JPEG',
+          imageFormat,
           xOffset,
           yOffset,
           imgWidth,
           Math.min(imgHeight, pageHeight - 20)
         );
+
 
         // ====== Capture signature line anchor (customer signature) ======
         // The page element is captured 1:1 then placed inside [10mm, 10mm, imgWidth, imgHeight]

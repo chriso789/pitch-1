@@ -62,10 +62,11 @@ export const WarmCraftsmanCoverPage: React.FC<CoverPageProps> = ({
           </div>
           <div className="text-right">
             {yearStr && (
-              <div className="px-4 py-2 border-2 border-[#C9956B]/60 rounded-full text-[#C9956B] text-[10px] font-bold tracking-[0.3em]">
+              <div className="inline-flex items-center justify-center px-4 border-2 border-[#C9956B]/60 rounded-full text-[#C9956B] text-[10px] font-bold tracking-[0.3em]" style={{ height: 28, lineHeight: 1 }}>
                 EST. {yearStr}
               </div>
             )}
+
             {yearsInBusiness && (
               <div className="text-[9px] text-[#F5F0E8]/40 mt-1.5 text-center">
                 {yearsInBusiness}+ Years of Service
