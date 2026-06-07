@@ -1009,6 +1009,9 @@ const FirstPage: React.FC<{
         </p>
       )}
 
+      {/* Potential Change Orders rendered ABOVE the price totals */}
+      {!opts.showOnlyTotal && isOnlyChunk && changeOrdersBlock}
+
       {/* Summary (only show if this is the only/last items page) */}
       {!opts.showOnlyTotal && isOnlyChunk && (
         <PricingSummary breakdown={breakdown} config={config} opts={opts} />
