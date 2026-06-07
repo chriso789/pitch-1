@@ -615,11 +615,13 @@ export function SectionedLineItemsTable({
 
   return (
     <div className={className}>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleGlobalDragEnd}>
       <Table>
         <TableHeader>
           <TableRow>
             {editable && onReorderItems && <TableHead className="w-8" />}
             <TableHead className="w-[40%]">Item</TableHead>
+
             <TableHead className="text-right w-[20%]">Qty</TableHead>
             <TableHead className="text-right w-[15%]">Unit Cost</TableHead>
             <TableHead className="text-right w-[15%]">Total</TableHead>
