@@ -52,14 +52,15 @@ import { MaterialAutocomplete } from './MaterialAutocomplete';
 interface SectionedLineItemsTableProps {
   materialItems: LineItem[];
   laborItems: LineItem[];
+  turnkeyItems?: LineItem[];
   changeOrderItems?: LineItem[];
   materialsTotal: number;
   laborTotal: number;
   onUpdateItem: (id: string, updates: Partial<LineItem>) => void;
   onDeleteItem?: (id: string) => void;
   onResetItem?: (id: string) => void;
-  onAddItem?: (type: 'material' | 'labor' | 'change_order') => void;
-  onAddTradeItem?: (tradeType: string, type: 'material' | 'labor') => void;
+  onAddItem?: (type: 'material' | 'labor' | 'turnkey' | 'change_order') => void;
+  onAddTradeItem?: (tradeType: string, type: 'material' | 'labor' | 'turnkey') => void;
   onReorderItems?: (reorderedIds: string[]) => void;
   /** Active trade types declared by the parent — ensures multi-trade layout even for trades with zero items */
   activeTrades?: Array<{ type: string; label: string }>;
@@ -74,7 +75,7 @@ interface SectionedLineItemsTableProps {
   className?: string;
   // Inline add item form props
   isAddingItem?: boolean;
-  addingItemType?: 'material' | 'labor' | 'change_order';
+  addingItemType?: 'material' | 'labor' | 'turnkey' | 'change_order';
   addingTradeType?: string;
   newItem?: { item_name: string; qty: number; unit: string; unit_cost: number; notes?: string; material_id?: string };
   onNewItemChange?: (item: { item_name: string; qty: number; unit: string; unit_cost: number; notes?: string; material_id?: string }) => void;
