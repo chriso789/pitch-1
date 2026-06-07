@@ -864,15 +864,26 @@ export function SectionedLineItemsTable({
               {editable && onAddItem && (
                 <TableRow className="hover:bg-muted/30">
                   <TableCell colSpan={totalCols} className="py-2">
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      onClick={() => onAddItem('labor')}
-                      className="text-muted-foreground hover:text-foreground"
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Labor Item
-                    </Button>
+                    <div className="flex gap-2 flex-wrap">
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => onAddItem('labor')}
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Labor Item
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onAddItem('turnkey')}
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Turnkey Item
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               )}
