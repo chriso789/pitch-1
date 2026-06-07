@@ -400,40 +400,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     
     setSavingLineItems(true);
     try {
-      const lineItemsJson = {
-        materials: materialItems.map(item => ({
-          id: item.id,
-          item_name: item.item_name,
-          description: item.description,
-          notes: item.notes,
-          qty: item.qty,
-          qty_original: item.qty_original,
-          unit: item.unit,
-          unit_cost: item.unit_cost,
-          unit_cost_original: item.unit_cost_original,
-          line_total: item.line_total,
-          is_override: item.is_override,
-          sort_order: item.sort_order,
-          trade_type: item.trade_type,
-          trade_label: item.trade_label,
-        })),
-        labor: laborItems.map(item => ({
-          id: item.id,
-          item_name: item.item_name,
-          description: item.description,
-          notes: item.notes,
-          qty: item.qty,
-          qty_original: item.qty_original,
-          unit: item.unit,
-          unit_cost: item.unit_cost,
-          unit_cost_original: item.unit_cost_original,
-          line_total: item.line_total,
-          is_override: item.is_override,
-          sort_order: item.sort_order,
-          trade_type: item.trade_type,
-          trade_label: item.trade_label,
-        })),
-      };
+      const lineItemsJson = buildStoredLineItems(materialItems, laborItems, turnkeyItems, changeOrderItems);
 
       const { error } = await supabase.functions.invoke('update-estimate-line-items', {
         body: {
@@ -1639,40 +1606,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         : null;
 
       // Build line items JSON for storage
-      const lineItemsJson = {
-        materials: materialItems.map(item => ({
-          id: item.id,
-          item_name: item.item_name,
-          description: item.description,
-          notes: item.notes,
-          qty: item.qty,
-          qty_original: item.qty_original,
-          unit: item.unit,
-          unit_cost: item.unit_cost,
-          unit_cost_original: item.unit_cost_original,
-          line_total: item.line_total,
-          is_override: item.is_override,
-          sort_order: item.sort_order,
-          trade_type: item.trade_type,
-          trade_label: item.trade_label,
-        })),
-        labor: laborItems.map(item => ({
-          id: item.id,
-          item_name: item.item_name,
-          description: item.description,
-          notes: item.notes,
-          qty: item.qty,
-          qty_original: item.qty_original,
-          unit: item.unit,
-          unit_cost: item.unit_cost,
-          unit_cost_original: item.unit_cost_original,
-          line_total: item.line_total,
-          is_override: item.is_override,
-          sort_order: item.sort_order,
-          trade_type: item.trade_type,
-          trade_label: item.trade_label,
-        })),
-      };
+      const lineItemsJson = buildStoredLineItems(materialItems, laborItems, turnkeyItems, changeOrderItems);
 
       const preTaxGrossProfit = breakdown.preTaxSellingPrice - breakdown.materialsTotal - breakdown.laborTotal - breakdown.overheadAmount;
       const actualProfitPercent = breakdown.preTaxSellingPrice > 0
