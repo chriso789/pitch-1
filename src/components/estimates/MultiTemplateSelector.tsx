@@ -628,7 +628,9 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   useEffect(() => {
     // Skip merging when editing a loaded estimate (items come from DB)
     if (isEditingLoadedEstimate && Object.keys(tradeLineItems).length === 0) return;
-    const merged = Object.values(tradeLineItems).flat();
+    const mergedTradeItems = Object.values(tradeLineItems).flat();
+    const standaloneItems = lineItems.filter(item => item.item_type === 'change_order');
+    const merged = [...mergedTradeItems, ...standaloneItems];
     if (merged.length > 0 || lineItems.length > 0) {
       setLineItems(merged);
     }
@@ -2116,11 +2118,13 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     updateLineItem(id, updates);
     // Also update tradeLineItems so merge effect doesn't overwrite edits
     setTradeLineItems(prev => {
+      let foundInTradeItems = false;
       const next = { ...prev };
       for (const key of Object.keys(next)) {
         next[key] = next[key].map(item => {
           if (item.id !== id) return item;
-          const updated = { ...item, ...updates };
+          foundInTradeItems = true;
+          const updated = { ...item, ...updates, is_override: updates.is_override ?? true };
           // Recalculate line_total when qty or unit_cost changes
           if ('qty' in updates || 'unit_cost' in updates) {
             updated.line_total = (updated.qty || 0) * (updated.unit_cost || 0);
@@ -2128,6 +2132,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           return updated;
         });
       }
+      if (!foundInTradeItems) return prev;
       return next;
     });
   };
