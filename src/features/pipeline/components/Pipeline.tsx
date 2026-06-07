@@ -66,7 +66,7 @@ const Pipeline = () => {
     lastEmailMinDays: '' as string, // days since last outbound email (e.g. estimate sent)
   });
   const [searchQuery, setSearchQuery] = useState('');
-  const [columnMinDays, setColumnMinDays] = useState<Record<string, string>>({});
+  const [columnSort, setColumnSort] = useState<Record<string, 'asc' | 'desc' | undefined>>({});
   const [selectedJobs, setSelectedJobs] = useState<string[]>([]);
   const [bulkActionMode, setBulkActionMode] = useState(false);
   const [stageTotals, setStageTotals] = useState({});
