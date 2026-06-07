@@ -711,8 +711,17 @@ const LeadDetails = () => {
             {/* Saved Estimates List */}
             <SavedEstimatesList 
               pipelineEntryId={id!} 
+              currentEditingId={currentMtsEditingId}
               onEditEstimate={(estimateId) => {
-                navigate(`/lead/${id}?tab=estimate&editEstimate=${estimateId}`);
+                // If already editing this estimate, skip navigation and just scroll
+                // the editor into view so the user sees the active editor.
+                if (currentMtsEditingId !== estimateId) {
+                  navigate(`/lead/${id}?tab=estimate&editEstimate=${estimateId}`);
+                }
+                // Scroll the editor section into view so it's obvious which estimate is open
+                requestAnimationFrame(() => {
+                  estimateSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                });
               }}
               onShareEstimate={(estimateId) => {
                 // Open the preview in-place; navigating here remounts the lead page and closes the dialog.
