@@ -543,7 +543,7 @@ export function SectionedLineItemsTable({
   // Get unique trade groups in order
   const tradeGroups = useMemo(() => {
     if (!hasMultipleTrades) return null;
-    const allItems = [...materialItems, ...laborItems];
+    const allItems = [...materialItems, ...laborItems, ...turnkeyItems];
     const seen = new Map<string, string>(); // trade_type -> trade_label
     // Start with activeTrades from parent to ensure all trades are represented
     if (activeTrades) {
@@ -559,8 +559,9 @@ export function SectionedLineItemsTable({
       label,
       materials: materialItems.filter(i => i.trade_type === type),
       labor: laborItems.filter(i => i.trade_type === type),
+      turnkey: turnkeyItems.filter(i => i.trade_type === type),
     }));
-  }, [hasMultipleTrades, materialItems, laborItems]);
+  }, [hasMultipleTrades, materialItems, laborItems, turnkeyItems]);
 
   const TRADE_ICONS: Record<string, string> = {
     roofing: '🏠',
