@@ -751,19 +751,21 @@ const LeadDetails = () => {
             />
 
             {/* Existing Template Selector */}
-            <MultiTemplateSelector
-              pipelineEntryId={id!}
-              onCalculationsUpdate={(calculations) => {
-                console.log('Template calculations updated:', calculations);
-                refetchRequirements();
-              }}
-              onUnsavedChangesChange={handleUnsavedChangesChange}
-              saveChangesRef={saveEstimateChangesRef}
-              clearEditingEstimateId={deletedEstimateId}
-              previewEstimateRequestId={previewEstimateRequestId}
-              onPreviewEstimateRequestHandled={() => setPreviewEstimateRequestId(null)}
-              onCurrentEditingChange={setCurrentMtsEditingId}
-            />
+            <div id="estimate-editor-anchor" className="scroll-mt-24">
+              <MultiTemplateSelector
+                pipelineEntryId={id!}
+                onCalculationsUpdate={(calculations) => {
+                  console.log('Template calculations updated:', calculations);
+                  refetchRequirements();
+                }}
+                onUnsavedChangesChange={handleUnsavedChangesChange}
+                saveChangesRef={saveEstimateChangesRef}
+                clearEditingEstimateId={deletedEstimateId}
+                previewEstimateRequestId={previewEstimateRequestId}
+                onPreviewEstimateRequestHandled={() => setPreviewEstimateRequestId(null)}
+                onCurrentEditingChange={setCurrentMtsEditingId}
+              />
+            </div>
 
           </div>
         );
