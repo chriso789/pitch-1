@@ -888,7 +888,7 @@ export function SectionedLineItemsTable({
                 </TableRow>
               )}
               {/* Inline Add Labor Form */}
-              {isAddingItem && addingItemType === 'labor' && newItem && onNewItemChange && (
+              {isAddingItem && (addingItemType === 'labor' || addingItemType === 'turnkey') && newItem && onNewItemChange && (
                 <TableRow className="bg-primary/5 border-2 border-primary/30">
                   <TableCell colSpan={totalCols} className="py-3">
                     <div className="flex items-end gap-2 flex-wrap">
