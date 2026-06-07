@@ -477,13 +477,43 @@ export function SectionedLineItemsTable({
       return items.map(item => <SortableItemRow key={item.id} item={item} />);
     }
     return (
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd(items)}>
-        <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
-          {items.map(item => <SortableItemRow key={item.id} item={item} />)}
-        </SortableContext>
-      </DndContext>
+      <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
+        {items.map(item => <SortableItemRow key={item.id} item={item} />)}
+      </SortableContext>
     );
   };
+
+  // Resolve which section an item id belongs to (cross-section drag support)
+  const sectionOfItem = (id: string): 'material' | 'labor' | 'turnkey' | 'change_order' | null => {
+    if (materialItems.some(i => i.id === id)) return 'material';
+    if (laborItems.some(i => i.id === id)) return 'labor';
+    if (turnkeyItems.some(i => i.id === id)) return 'turnkey';
+    if (changeOrderItems.some(i => i.id === id)) return 'change_order';
+    return null;
+  };
+
+  const handleGlobalDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const fromSection = sectionOfItem(String(active.id));
+    const toSection = sectionOfItem(String(over.id));
+    if (!fromSection || !toSection) return;
+
+    // Cross-section drop: convert item_type (e.g. change_order → material/labor)
+    if (fromSection !== toSection) {
+      onUpdateItem(String(active.id), { item_type: toSection });
+      return;
+    }
+
+    // Same-section reorder
+    const items =
+      fromSection === 'material' ? materialItems
+      : fromSection === 'labor' ? laborItems
+      : fromSection === 'turnkey' ? turnkeyItems
+      : changeOrderItems;
+    handleDragEnd(items)(event);
+  };
+
 
   // Calculate total columns for colSpan: base 4 + editable actions + drag handle
   const hasDragHandle = editable && !!onReorderItems;
