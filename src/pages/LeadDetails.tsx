@@ -713,15 +713,20 @@ const LeadDetails = () => {
               pipelineEntryId={id!} 
               currentEditingId={currentMtsEditingId}
               onEditEstimate={(estimateId) => {
-                // If already editing this estimate, skip navigation and just scroll
-                // the editor into view so the user sees the active editor.
                 if (currentMtsEditingId !== estimateId) {
                   navigate(`/lead/${id}?tab=estimate&editEstimate=${estimateId}`);
                 }
-                // Scroll the editor section into view so it's obvious which estimate is open
-                requestAnimationFrame(() => {
-                  estimateSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                });
+                // Scroll the editor (not the section top) into view so the
+                // user actually sees the loaded estimate instead of the list.
+                const scrollToEditor = () => {
+                  const el = document.getElementById('estimate-editor-anchor');
+                  if (el) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }
+                };
+                requestAnimationFrame(scrollToEditor);
+                setTimeout(scrollToEditor, 400);
+                setTimeout(scrollToEditor, 1200);
               }}
               onShareEstimate={(estimateId) => {
                 // Open the preview in-place; navigating here remounts the lead page and closes the dialog.
@@ -746,19 +751,21 @@ const LeadDetails = () => {
             />
 
             {/* Existing Template Selector */}
-            <MultiTemplateSelector
-              pipelineEntryId={id!}
-              onCalculationsUpdate={(calculations) => {
-                console.log('Template calculations updated:', calculations);
-                refetchRequirements();
-              }}
-              onUnsavedChangesChange={handleUnsavedChangesChange}
-              saveChangesRef={saveEstimateChangesRef}
-              clearEditingEstimateId={deletedEstimateId}
-              previewEstimateRequestId={previewEstimateRequestId}
-              onPreviewEstimateRequestHandled={() => setPreviewEstimateRequestId(null)}
-              onCurrentEditingChange={setCurrentMtsEditingId}
-            />
+            <div id="estimate-editor-anchor" className="scroll-mt-24">
+              <MultiTemplateSelector
+                pipelineEntryId={id!}
+                onCalculationsUpdate={(calculations) => {
+                  console.log('Template calculations updated:', calculations);
+                  refetchRequirements();
+                }}
+                onUnsavedChangesChange={handleUnsavedChangesChange}
+                saveChangesRef={saveEstimateChangesRef}
+                clearEditingEstimateId={deletedEstimateId}
+                previewEstimateRequestId={previewEstimateRequestId}
+                onPreviewEstimateRequestHandled={() => setPreviewEstimateRequestId(null)}
+                onCurrentEditingChange={setCurrentMtsEditingId}
+              />
+            </div>
 
           </div>
         );
