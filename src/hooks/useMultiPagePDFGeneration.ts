@@ -170,8 +170,8 @@ export function useMultiPagePDFGeneration() {
         const isPhotoPage = pageElement.querySelector('.bg-teal-500') !== null; // Photo page has teal dot
         const isImageHeavy = isAttachmentPage || isPhotoPage;
         
-        // Higher scale for text-heavy pages → crisp typography & logos in PDF
-        const captureScale = isImageHeavy ? 1.5 : 2.5;
+        // Balance crisp typography with email-friendly file size (<10MB target)
+        const captureScale = isImageHeavy ? 1.35 : 1.85;
 
         // Capture page to canvas with adaptive settings
         const canvas = await html2canvas(pageElement, {
@@ -209,20 +209,21 @@ export function useMultiPagePDFGeneration() {
         const xOffset = 10;
         const yOffset = 10;
 
-        // PNG for crisp text pages, JPEG for image-heavy to control size
+        // JPEG everywhere — text pages get higher quality for crispness,
+        // image-heavy pages get aggressive compression to keep total <10MB
         const imageData = isImageHeavy
-          ? canvas.toDataURL('image/jpeg', 0.72)
-          : canvas.toDataURL('image/png');
-        const imageFormat = isImageHeavy ? 'JPEG' : 'PNG';
+          ? canvas.toDataURL('image/jpeg', 0.6)
+          : canvas.toDataURL('image/jpeg', 0.82);
 
         pdf.addImage(
           imageData,
-          imageFormat,
+          'JPEG',
           xOffset,
           yOffset,
           imgWidth,
           Math.min(imgHeight, pageHeight - 20)
         );
+
 
 
         // ====== Capture signature line anchor (customer signature) ======
