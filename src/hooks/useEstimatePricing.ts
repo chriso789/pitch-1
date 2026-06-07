@@ -234,7 +234,7 @@ export function useEstimatePricing(
       salesTaxAmount,
       totalWithTax,
     };
-  }, [materialItems, laborItems, config, isFixedPrice, fixedPrice]);
+  }, [materialItems, laborItems, turnkeyItems, config, isFixedPrice, fixedPrice]);
 
 
   // Update a single line item
