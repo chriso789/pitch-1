@@ -1277,37 +1277,9 @@ export function EstimatePreviewPanel({
 
               {/* Toggle Sections */}
               <div className="space-y-4">
-                {/* Header Section */}
-                <div className="space-y-2">
-                  <h4 className="font-medium flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wide">
-                    <Building2 className="h-3 w-3" />
-                    Header
-                  </h4>
-                  <div className="space-y-2 pl-2">
-                    <ToggleRow
-                      label="Company Logo"
-                      checked={options.showCompanyLogo}
-                      onChange={(v) => updateOption('showCompanyLogo', v)}
-                    />
-                    <ToggleRow
-                      label="Company Info"
-                      checked={options.showCompanyInfo}
-                      onChange={(v) => updateOption('showCompanyInfo', v)}
-                    />
-                    <ToggleRow
-                      label="Page Header"
-                      checked={options.showPageHeader}
-                      onChange={(v) => updateOption('showPageHeader', v)}
-                    />
-                    <ToggleRow
-                      label="Page Footer"
-                      checked={options.showPageFooter}
-                      onChange={(v) => updateOption('showPageFooter', v)}
-                    />
-                  </div>
-                </div>
+                {/* Header section removed — Company Logo, Company Info, Page Header, and Page Footer are always shown in quotes */}
 
-                <Separator />
+
 
                 {/* Customer Section */}
                 <div className="space-y-2">
