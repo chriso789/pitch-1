@@ -1033,10 +1033,13 @@ const ItemsContinuationPage: React.FC<{
   opts: PDFComponentOptions;
   showTerms: boolean;
   finePrintContent?: string;
-}> = ({ items, blocks, isLastPage, breakdown, config, opts, showTerms, finePrintContent }) => {
+  changeOrdersBlock?: React.ReactNode;
+}> = ({ items, blocks, isLastPage, breakdown, config, opts, showTerms, finePrintContent, changeOrdersBlock }) => {
   return (
     <div className="space-y-3">
       <ItemsTable blocks={blocks} opts={opts} continued markupFactor={breakdown ? (breakdown.directCost > 0 ? breakdown.sellingPrice / breakdown.directCost : 1) : 1} />
+
+      {isLastPage && changeOrdersBlock}
 
       {isLastPage && breakdown && config && (
         <PricingSummary breakdown={breakdown} config={config} opts={opts} />
