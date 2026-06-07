@@ -689,63 +689,13 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
       );
     }
     if (changeOrderItems.length > 0) {
-      const coTotal = changeOrderItems.reduce((sum, item) => sum + item.line_total, 0);
-      const changeOrdersNode = (
-        <div key="change-orders-page" className="space-y-3">
-          <div className="flex items-center gap-2 mb-2">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-amber-500" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-            </svg>
-            <h3 className="text-sm font-semibold text-gray-900">Potential Change Orders</h3>
-          </div>
-          <p className="text-xs text-gray-500 italic mb-2">
-            The following items are not included in the contract total above. They represent potential additional work that may be required based on site conditions discovered during the project.
-          </p>
-          <div className="border border-amber-200 rounded overflow-hidden">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="bg-amber-50">
-                  <th className="text-left py-1.5 px-2 font-semibold text-gray-700">Item</th>
-                  <th className="text-right py-1.5 px-2 font-semibold text-gray-700 w-16">Qty</th>
-                  <th className="text-right py-1.5 px-2 font-semibold text-gray-700 w-16">Unit</th>
-                  <th className="text-right py-1.5 px-2 font-semibold text-gray-700 w-20">Unit Cost</th>
-                  <th className="text-right py-1.5 px-2 font-semibold text-gray-700 w-20">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {changeOrderItems.map((item, idx) => (
-                  <tr key={item.id || idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-amber-50/30'}>
-                    <td className="py-1 px-2 text-gray-800">{item.item_name}</td>
-                    <td className="py-1 px-2 text-right text-gray-700">{item.qty}</td>
-                    <td className="py-1 px-2 text-right text-gray-700">{item.unit}</td>
-                    <td className="py-1 px-2 text-right text-gray-700">{formatCurrency(item.unit_cost)}</td>
-                    <td className="py-1 px-2 text-right font-medium text-gray-800">{formatCurrency(item.line_total)}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="border-t border-amber-300 bg-amber-50">
-                  <td colSpan={4} className="py-1.5 px-2 text-right font-semibold text-gray-800">
-                    Potential Additional Total:
-                  </td>
-                  <td className="py-1.5 px-2 text-right font-bold text-amber-700">
-                    {formatCurrency(coTotal)}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        </div>
-      );
-      // Insert BEFORE the closing page (the page that holds terms/signature).
-      // If a signature page exists within estimateNodes, splice in front of it;
-      // otherwise insert before the last estimate page.
-      const insertIdx = estimateSignatureRelIdx !== undefined
-        ? estimateSignatureRelIdx
-        : Math.max(0, estimateNodes.length - 1);
-      estimateNodes.splice(insertIdx, 0, changeOrdersNode);
-      if (estimateSignatureRelIdx !== undefined) {
-        estimateSignatureRelIdx = estimateSignatureRelIdx + 1;
+      const changeOrdersBlock = <ChangeOrdersBlock items={changeOrderItems} />;
+      // Inject into the page rendering the PricingSummary (last items page),
+      // above the totals — not as a separate page.
+      const targetIdx = estimateNodes.length - 1;
+      const target = estimateNodes[targetIdx] as React.ReactElement;
+      if (target) {
+        estimateNodes[targetIdx] = React.cloneElement(target, { changeOrdersBlock });
       }
     }
     // --- Append additional estimates inline so they group with the main estimate
@@ -935,6 +885,53 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
 };
 
 // First Page Content
+const ChangeOrdersBlock: React.FC<{ items: LineItem[] }> = ({ items }) => {
+  const coTotal = items.reduce((sum, item) => sum + item.line_total, 0);
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 mb-2">
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-amber-500" viewBox="0 0 20 20" fill="currentColor">
+          <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+        </svg>
+        <h3 className="text-sm font-semibold text-gray-900">Potential Change Orders</h3>
+      </div>
+      <p className="text-xs text-gray-500 italic mb-2">
+        The following items are not included in the contract total below. They represent potential additional work that may be required based on site conditions discovered during the project.
+      </p>
+      <div className="border border-amber-200 rounded overflow-hidden">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="bg-amber-50">
+              <th className="text-left py-1.5 px-2 font-semibold text-gray-700">Item</th>
+              <th className="text-right py-1.5 px-2 font-semibold text-gray-700 w-16">Qty</th>
+              <th className="text-right py-1.5 px-2 font-semibold text-gray-700 w-16">Unit</th>
+              <th className="text-right py-1.5 px-2 font-semibold text-gray-700 w-20">Unit Cost</th>
+              <th className="text-right py-1.5 px-2 font-semibold text-gray-700 w-20">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item, idx) => (
+              <tr key={item.id || idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-amber-50/30'}>
+                <td className="py-1 px-2 text-gray-800">{item.item_name}</td>
+                <td className="py-1 px-2 text-right text-gray-700">{item.qty}</td>
+                <td className="py-1 px-2 text-right text-gray-700">{item.unit}</td>
+                <td className="py-1 px-2 text-right text-gray-700">{formatCurrency(item.unit_cost)}</td>
+                <td className="py-1 px-2 text-right font-medium text-gray-800">{formatCurrency(item.line_total)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="border-t border-amber-300 bg-amber-50">
+              <td colSpan={4} className="py-1.5 px-2 text-right font-semibold text-gray-800">Potential Additional Total:</td>
+              <td className="py-1.5 px-2 text-right font-bold text-amber-700">{formatCurrency(coTotal)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  );
+};
+
 const FirstPage: React.FC<{
   customerName: string;
   customerAddress: string;
@@ -949,6 +946,7 @@ const FirstPage: React.FC<{
   showTerms: boolean;
   finePrintContent?: string;
   estimateName?: string;
+  changeOrdersBlock?: React.ReactNode;
 }> = ({
   customerName,
   customerAddress,
@@ -963,6 +961,7 @@ const FirstPage: React.FC<{
   showTerms,
   finePrintContent,
   estimateName,
+  changeOrdersBlock,
 }) => {
   return (
     <div className="space-y-2">
@@ -1010,6 +1009,9 @@ const FirstPage: React.FC<{
         </p>
       )}
 
+      {/* Potential Change Orders rendered ABOVE the price totals */}
+      {!opts.showOnlyTotal && isOnlyChunk && changeOrdersBlock}
+
       {/* Summary (only show if this is the only/last items page) */}
       {!opts.showOnlyTotal && isOnlyChunk && (
         <PricingSummary breakdown={breakdown} config={config} opts={opts} />
@@ -1031,10 +1033,13 @@ const ItemsContinuationPage: React.FC<{
   opts: PDFComponentOptions;
   showTerms: boolean;
   finePrintContent?: string;
-}> = ({ items, blocks, isLastPage, breakdown, config, opts, showTerms, finePrintContent }) => {
+  changeOrdersBlock?: React.ReactNode;
+}> = ({ items, blocks, isLastPage, breakdown, config, opts, showTerms, finePrintContent, changeOrdersBlock }) => {
   return (
     <div className="space-y-3">
       <ItemsTable blocks={blocks} opts={opts} continued markupFactor={breakdown ? (breakdown.directCost > 0 ? breakdown.sellingPrice / breakdown.directCost : 1) : 1} />
+
+      {isLastPage && changeOrdersBlock}
 
       {isLastPage && breakdown && config && (
         <PricingSummary breakdown={breakdown} config={config} opts={opts} />
