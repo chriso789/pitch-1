@@ -629,12 +629,11 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     // Skip merging when editing a loaded estimate (items come from DB)
     if (isEditingLoadedEstimate && Object.keys(tradeLineItems).length === 0) return;
     const mergedTradeItems = Object.values(tradeLineItems).flat();
-    setLineItems(current => {
-      const standaloneItems = current.filter(item => item.item_type === 'change_order');
-      const merged = [...mergedTradeItems, ...standaloneItems];
-      if (merged.length === 0 && current.length === 0) return current;
-      return merged;
-    });
+    const standaloneItems = lineItems.filter(item => item.item_type === 'change_order');
+    const merged = [...mergedTradeItems, ...standaloneItems];
+    if (merged.length > 0 || lineItems.length > 0) {
+      setLineItems(merged);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tradeLineItems, isEditingLoadedEstimate]);
 
