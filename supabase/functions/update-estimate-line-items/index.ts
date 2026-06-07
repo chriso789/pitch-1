@@ -20,6 +20,8 @@ interface LineItem {
 interface LineItemsJson {
   materials: LineItem[];
   labor: LineItem[];
+  turnkey?: LineItem[];
+  change_orders?: LineItem[];
 }
 
 interface PricingConfig {
@@ -159,8 +161,10 @@ Deno.serve(async (req) => {
     }
 
     // Calculate totals from line items
-    const materialsTotal = lineItemsData.materials.reduce((sum, item) => sum + (item.line_total || 0), 0);
-    const laborTotal = lineItemsData.labor.reduce((sum, item) => sum + (item.line_total || 0), 0);
+    const materialsTotal = (lineItemsData.materials || []).reduce((sum, item) => sum + (item.line_total || 0), 0);
+    const laborTotal =
+      (lineItemsData.labor || []).reduce((sum, item) => sum + (item.line_total || 0), 0) +
+      (lineItemsData.turnkey || []).reduce((sum, item) => sum + (item.line_total || 0), 0);
     const directCost = materialsTotal + laborTotal;
 
     // Use provided selling price or calculate from estimate
@@ -274,7 +278,7 @@ Deno.serve(async (req) => {
         labor_cost: laborTotal,
         actual_profit_amount: profitAmount,
         actual_profit_percent: profitPercent,
-        line_items_count: lineItemsData.materials.length + lineItemsData.labor.length
+        line_items_count: (lineItemsData.materials || []).length + (lineItemsData.labor || []).length + (lineItemsData.turnkey || []).length + (lineItemsData.change_orders || []).length
       }
     });
 
