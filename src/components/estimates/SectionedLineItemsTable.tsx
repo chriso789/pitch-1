@@ -17,6 +17,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import {
   Package,
   Hammer,
+  Wrench,
   Pencil,
   Check,
   X,
@@ -52,14 +53,15 @@ import { MaterialAutocomplete } from './MaterialAutocomplete';
 interface SectionedLineItemsTableProps {
   materialItems: LineItem[];
   laborItems: LineItem[];
+  turnkeyItems?: LineItem[];
   changeOrderItems?: LineItem[];
   materialsTotal: number;
   laborTotal: number;
   onUpdateItem: (id: string, updates: Partial<LineItem>) => void;
   onDeleteItem?: (id: string) => void;
   onResetItem?: (id: string) => void;
-  onAddItem?: (type: 'material' | 'labor' | 'change_order') => void;
-  onAddTradeItem?: (tradeType: string, type: 'material' | 'labor') => void;
+  onAddItem?: (type: 'material' | 'labor' | 'turnkey' | 'change_order') => void;
+  onAddTradeItem?: (tradeType: string, type: 'material' | 'labor' | 'turnkey') => void;
   onReorderItems?: (reorderedIds: string[]) => void;
   /** Active trade types declared by the parent — ensures multi-trade layout even for trades with zero items */
   activeTrades?: Array<{ type: string; label: string }>;
@@ -74,7 +76,7 @@ interface SectionedLineItemsTableProps {
   className?: string;
   // Inline add item form props
   isAddingItem?: boolean;
-  addingItemType?: 'material' | 'labor' | 'change_order';
+  addingItemType?: 'material' | 'labor' | 'turnkey' | 'change_order';
   addingTradeType?: string;
   newItem?: { item_name: string; qty: number; unit: string; unit_cost: number; notes?: string; material_id?: string };
   onNewItemChange?: (item: { item_name: string; qty: number; unit: string; unit_cost: number; notes?: string; material_id?: string }) => void;
@@ -98,6 +100,7 @@ interface EditableCell {
 export function SectionedLineItemsTable({
   materialItems,
   laborItems,
+  turnkeyItems = [],
   changeOrderItems = [],
   materialsTotal,
   laborTotal,
@@ -541,7 +544,7 @@ export function SectionedLineItemsTable({
   // Get unique trade groups in order
   const tradeGroups = useMemo(() => {
     if (!hasMultipleTrades) return null;
-    const allItems = [...materialItems, ...laborItems];
+    const allItems = [...materialItems, ...laborItems, ...turnkeyItems];
     const seen = new Map<string, string>(); // trade_type -> trade_label
     // Start with activeTrades from parent to ensure all trades are represented
     if (activeTrades) {
@@ -557,8 +560,9 @@ export function SectionedLineItemsTable({
       label,
       materials: materialItems.filter(i => i.trade_type === type),
       labor: laborItems.filter(i => i.trade_type === type),
+      turnkey: turnkeyItems.filter(i => i.trade_type === type),
     }));
-  }, [hasMultipleTrades, materialItems, laborItems]);
+  }, [hasMultipleTrades, materialItems, laborItems, turnkeyItems]);
 
   const TRADE_ICONS: Record<string, string> = {
     roofing: '🏠',
@@ -632,11 +636,27 @@ export function SectionedLineItemsTable({
                     </>
                   )}
 
+                  {/* Turnkey for this trade */}
+                  {group.turnkey.length > 0 && (
+                    <>
+                      {renderSectionHeader(
+                        'TURNKEY',
+                        <Wrench className="h-4 w-4" />,
+                        group.turnkey.length
+                      )}
+                      {renderSortableItems(group.turnkey)}
+                      {renderSectionSubtotal(
+                        'Turnkey Subtotal',
+                        group.turnkey.filter(i => !i.exclude_from_overhead).reduce((sum, i) => sum + i.line_total, 0)
+                      )}
+                    </>
+                  )}
+
                   {/* Per-trade Add Item buttons */}
                   {editable && onAddTradeItem && (
                     <TableRow className="hover:bg-muted/30">
                       <TableCell colSpan={totalCols} className="py-2">
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 flex-wrap">
                           <Button 
                             variant="ghost" 
                             size="sm" 
@@ -655,6 +675,15 @@ export function SectionedLineItemsTable({
                             <Plus className="h-4 w-4 mr-2" />
                             Add Labor Item
                           </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => onAddTradeItem(group.type, 'turnkey')}
+                            className="text-muted-foreground hover:text-foreground"
+                          >
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add Turnkey Item
+                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -666,7 +695,7 @@ export function SectionedLineItemsTable({
                       <TableCell colSpan={totalCols} className="py-3">
                         <div className="flex items-end gap-2 flex-wrap">
                           <div className="flex-1 min-w-[200px]">
-                            <Label className="text-xs">Item Name ({addingItemType === 'material' ? 'Material' : 'Labor'})</Label>
+                            <Label className="text-xs">Item Name ({addingItemType === 'material' ? 'Material' : addingItemType === 'turnkey' ? 'Turnkey' : 'Labor'})</Label>
                             <MaterialAutocomplete
                               value={newItem.item_name}
                               onChange={(value) => onNewItemChange({ ...newItem, item_name: value })}
@@ -835,20 +864,31 @@ export function SectionedLineItemsTable({
               {editable && onAddItem && (
                 <TableRow className="hover:bg-muted/30">
                   <TableCell colSpan={totalCols} className="py-2">
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      onClick={() => onAddItem('labor')}
-                      className="text-muted-foreground hover:text-foreground"
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Labor Item
-                    </Button>
+                    <div className="flex gap-2 flex-wrap">
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => onAddItem('labor')}
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Labor Item
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onAddItem('turnkey')}
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Turnkey Item
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               )}
               {/* Inline Add Labor Form */}
-              {isAddingItem && addingItemType === 'labor' && newItem && onNewItemChange && (
+              {isAddingItem && (addingItemType === 'labor' || addingItemType === 'turnkey') && newItem && onNewItemChange && (
                 <TableRow className="bg-primary/5 border-2 border-primary/30">
                   <TableCell colSpan={totalCols} className="py-3">
                     <div className="flex items-end gap-2 flex-wrap">
@@ -915,6 +955,22 @@ export function SectionedLineItemsTable({
                 </TableRow>
               )}
               {laborItems.length > 0 && renderSectionSubtotal('Labor Subtotal', displayLaborTotal)}
+
+              {/* Turnkey Section */}
+              {turnkeyItems.length > 0 && (
+                <>
+                  {renderSectionHeader(
+                    'TURNKEY',
+                    <Wrench className="h-4 w-4" />,
+                    turnkeyItems.length
+                  )}
+                  {renderSortableItems(turnkeyItems)}
+                  {renderSectionSubtotal(
+                    'Turnkey Subtotal',
+                    turnkeyItems.filter(i => !i.exclude_from_overhead).reduce((sum, i) => sum + i.line_total, 0)
+                  )}
+                </>
+              )}
             </>
           )}
 

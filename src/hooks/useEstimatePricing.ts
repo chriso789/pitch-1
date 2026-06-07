@@ -7,7 +7,7 @@ export interface LineItem {
   item_name: string;
   description?: string;           // Product description for consumer-facing PDFs
   notes?: string;                 // Color/specs for supplier orders
-  item_type: 'material' | 'labor' | 'change_order';
+  item_type: 'material' | 'labor' | 'turnkey' | 'change_order';
   labor_phase?: 'tear_off' | 'install'; // For labor items: tear_off runs before materials, install after
   qty: number;
   qty_original?: number;
@@ -62,6 +62,7 @@ export interface UseEstimatePricingReturn {
   lineItems: LineItem[];
   materialItems: LineItem[];
   laborItems: LineItem[];
+  turnkeyItems: LineItem[];
   changeOrderItems: LineItem[];
   breakdown: PricingBreakdown;
   config: PricingConfig;
@@ -126,6 +127,14 @@ export function useEstimatePricing(
     [lineItems]
   );
 
+  // Turnkey items: subcontracted/bundled scopes — priced like labor (no sales tax)
+  const turnkeyItems = useMemo(() =>
+    lineItems
+      .filter(item => item.item_type === 'turnkey')
+      .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)),
+    [lineItems]
+  );
+
   // Change order items are excluded from all cost/pricing calculations
   const changeOrderItems = useMemo(() =>
     lineItems
@@ -137,12 +146,14 @@ export function useEstimatePricing(
   // Calculate pricing breakdown
   const breakdown = useMemo((): PricingBreakdown => {
     const materialsTotal = materialItems.reduce((sum, item) => sum + item.line_total, 0);
-    const laborTotal = laborItems.reduce((sum, item) => sum + item.line_total, 0);
+    const laborTotal =
+      laborItems.reduce((sum, item) => sum + item.line_total, 0) +
+      turnkeyItems.reduce((sum, item) => sum + item.line_total, 0);
     const directCost = materialsTotal + laborTotal;
 
     // Items flagged as exclude_from_overhead are pass-through:
     // no overhead, no profit — added to selling price at cost.
-    const passThroughTotal = [...materialItems, ...laborItems]
+    const passThroughTotal = [...materialItems, ...laborItems, ...turnkeyItems]
       .filter(i => i.exclude_from_overhead)
       .reduce((sum, item) => sum + item.line_total, 0);
     const coreDirectCost = Math.max(0, directCost - passThroughTotal);
@@ -223,7 +234,7 @@ export function useEstimatePricing(
       salesTaxAmount,
       totalWithTax,
     };
-  }, [materialItems, laborItems, config, isFixedPrice, fixedPrice]);
+  }, [materialItems, laborItems, turnkeyItems, config, isFixedPrice, fixedPrice]);
 
 
   // Update a single line item
@@ -280,6 +291,7 @@ export function useEstimatePricing(
     lineItems,
     materialItems,
     laborItems,
+    turnkeyItems,
     changeOrderItems,
     breakdown,
     config,

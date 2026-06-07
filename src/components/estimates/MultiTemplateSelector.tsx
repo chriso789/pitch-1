@@ -243,7 +243,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
    
   // Add line item state
   const [isAddingItem, setIsAddingItem] = useState(false);
-  const [newItemType, setNewItemType] = useState<'material' | 'labor' | 'change_order'>('material');
+  const [newItemType, setNewItemType] = useState<'material' | 'labor' | 'turnkey' | 'change_order'>('material');
   const [activeAddTradeType, setActiveAddTradeType] = useState<string | null>(null);
   const [newItem, setNewItem] = useState({
     item_name: '',
@@ -301,6 +301,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     lineItems,
     materialItems,
     laborItems,
+    turnkeyItems,
     changeOrderItems,
     breakdown,
     config,
@@ -835,7 +836,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   };
 
   // Handle adding a new line item
-  const handleAddLineItem = (type: 'material' | 'labor' | 'change_order') => {
+  const handleAddLineItem = (type: 'material' | 'labor' | 'turnkey' | 'change_order') => {
     setNewItemType(type);
     setActiveAddTradeType(null);
     setNewItem({ item_name: '', qty: 1, unit: 'ea', unit_cost: 0 });
@@ -843,7 +844,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   };
 
   // Handle adding a line item for a specific trade (multi-trade mode)
-  const handleAddTradeLineItem = (tradeType: string, type: 'material' | 'labor') => {
+  const handleAddTradeLineItem = (tradeType: string, type: 'material' | 'labor' | 'turnkey') => {
     setNewItemType(type);
     setActiveAddTradeType(tradeType);
     setNewItem({ item_name: '', qty: 1, unit: 'ea', unit_cost: 0 });
@@ -2701,6 +2702,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
             <SectionedLineItemsTable
               materialItems={materialItems}
               laborItems={laborItems}
+              turnkeyItems={turnkeyItems}
               changeOrderItems={changeOrderItems}
               materialsTotal={breakdown.materialsTotal}
               laborTotal={breakdown.laborTotal}
