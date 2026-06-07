@@ -153,7 +153,7 @@ export function useEstimatePricing(
 
     // Items flagged as exclude_from_overhead are pass-through:
     // no overhead, no profit — added to selling price at cost.
-    const passThroughTotal = [...materialItems, ...laborItems]
+    const passThroughTotal = [...materialItems, ...laborItems, ...turnkeyItems]
       .filter(i => i.exclude_from_overhead)
       .reduce((sum, item) => sum + item.line_total, 0);
     const coreDirectCost = Math.max(0, directCost - passThroughTotal);
