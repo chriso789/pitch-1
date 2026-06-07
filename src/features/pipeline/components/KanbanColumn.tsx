@@ -2,8 +2,7 @@ import React from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
-import { TrendingUp, Clock, X } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { TrendingUp, ArrowDownWideNarrow, ArrowUpWideNarrow, ArrowUpDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -16,9 +15,8 @@ interface KanbanColumnProps {
   total: string;
   children: React.ReactNode;
   items?: string[];
-  minDays?: string;
-  onMinDaysChange?: (value: string) => void;
-  filteredCount?: number;
+  sortDir?: 'asc' | 'desc';
+  onToggleSort?: () => void;
 }
 
 export const KanbanColumn: React.FC<KanbanColumnProps> = ({
@@ -30,12 +28,17 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
   total,
   children,
   items = [],
-  minDays = '',
-  onMinDaysChange,
-  filteredCount,
+  sortDir,
+  onToggleSort,
 }) => {
   const { isOver, setNodeRef } = useDroppable({ id });
-  const hasFilter = !!minDays;
+
+  const SortIcon = sortDir === 'asc' ? ArrowUpWideNarrow : sortDir === 'desc' ? ArrowDownWideNarrow : ArrowUpDown;
+  const sortLabel = sortDir === 'asc'
+    ? 'Days in status: ascending'
+    : sortDir === 'desc'
+    ? 'Days in status: descending'
+    : 'Sort by days in status';
 
   return (
     <div className="space-y-2">
@@ -49,38 +52,25 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
               <div className="text-[10px] font-medium text-center truncate">{title}</div>
             </div>
             <div className="flex items-center justify-between w-full text-[9px]">
-              <span className="text-muted-foreground">
-                {hasFilter && filteredCount !== undefined ? `${filteredCount}/${count}` : count}
-              </span>
+              <span className="text-muted-foreground">{count}</span>
               <div className="flex items-center gap-0.5">
                 <TrendingUp className="h-2.5 w-2.5 text-success" />
                 <span className="font-semibold text-success text-[9px]">{total}</span>
               </div>
             </div>
-            {onMinDaysChange && (
-              <div className="flex items-center gap-1 w-full mt-1">
-                <Clock className="h-2.5 w-2.5 text-muted-foreground flex-shrink-0" />
-                <Input
-                  type="number"
-                  min={0}
-                  placeholder="Min days in status"
-                  value={minDays}
-                  onChange={(e) => onMinDaysChange(e.target.value)}
-                  className="h-5 px-1 text-[9px] flex-1"
-                  title="Show only cards that have been in this status at least N days"
-                />
-                {hasFilter && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-4 w-4 p-0 flex-shrink-0"
-                    onClick={() => onMinDaysChange('')}
-                    title="Clear filter"
-                  >
-                    <X className="h-2.5 w-2.5" />
-                  </Button>
-                )}
-              </div>
+            {onToggleSort && (
+              <Button
+                variant={sortDir ? "secondary" : "ghost"}
+                size="sm"
+                onClick={onToggleSort}
+                title={sortLabel}
+                className="h-6 w-full px-1.5 text-[9px] gap-1 font-normal"
+              >
+                <SortIcon className="h-3 w-3" />
+                <span className="truncate">
+                  {sortDir === 'asc' ? 'Days ↑' : sortDir === 'desc' ? 'Days ↓' : 'Sort by days'}
+                </span>
+              </Button>
             )}
           </CardTitle>
         </CardHeader>
