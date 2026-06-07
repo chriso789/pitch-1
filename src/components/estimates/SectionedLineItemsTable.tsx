@@ -695,7 +695,7 @@ export function SectionedLineItemsTable({
                       <TableCell colSpan={totalCols} className="py-3">
                         <div className="flex items-end gap-2 flex-wrap">
                           <div className="flex-1 min-w-[200px]">
-                            <Label className="text-xs">Item Name ({addingItemType === 'material' ? 'Material' : 'Labor'})</Label>
+                            <Label className="text-xs">Item Name ({addingItemType === 'material' ? 'Material' : addingItemType === 'turnkey' ? 'Turnkey' : 'Labor'})</Label>
                             <MaterialAutocomplete
                               value={newItem.item_name}
                               onChange={(value) => onNewItemChange({ ...newItem, item_name: value })}
