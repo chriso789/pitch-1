@@ -1201,15 +1201,16 @@ export function EstimatePreviewPanel({
       onChange={handlePhotoFilesSelected}
     />
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-7xl w-[95vw] max-h-[95vh] p-0 overflow-hidden [&>button:last-child]:hidden sm:rounded-lg">
+      <DialogContent className="max-w-7xl w-[95vw] max-h-[95vh] p-0 overflow-hidden [&>button]:hidden sm:rounded-lg">
         <DialogHeader className="px-6 py-4 border-b relative z-10">
-          <DialogTitle className="flex items-center gap-2 pr-12">
+          <DialogTitle className="flex items-center gap-2 pr-14">
             <Eye className="h-5 w-5" />
             Preview Estimate
           </DialogTitle>
-           <button
+          <button
             type="button"
-            className="absolute right-4 top-1/2 -translate-y-1/2 z-[70] rounded-md border bg-background p-1.5 shadow-sm transition-colors hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+            aria-label="Close preview"
+            className="absolute right-4 top-1/2 -translate-y-1/2 z-[80] inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-background text-foreground shadow-sm transition-colors hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
             onClick={() => onOpenChange(false)}
           >
             <X className="h-5 w-5" />
