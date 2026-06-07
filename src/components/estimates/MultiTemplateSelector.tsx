@@ -209,6 +209,7 @@ interface MultiTemplateSelectorProps {
   clearEditingEstimateId?: string | null;
   previewEstimateRequestId?: string | null;
   onPreviewEstimateRequestHandled?: () => void;
+  onCurrentEditingChange?: (estimateId: string | null) => void;
 }
 
 export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
@@ -219,7 +220,8 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   saveChangesRef,
   clearEditingEstimateId,
   previewEstimateRequestId,
-  onPreviewEstimateRequestHandled
+  onPreviewEstimateRequestHandled,
+  onCurrentEditingChange,
 }) => {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
@@ -381,6 +383,12 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   useEffect(() => {
     onUnsavedChangesChange?.(hasUnsavedChanges, hasUnsavedChanges ? currentEstimateName : undefined);
   }, [hasUnsavedChanges, currentEstimateName, onUnsavedChangesChange]);
+
+  // Notify parent when the currently-edited estimate id changes so the saved
+  // estimates list can mark/scroll to the active row and avoid no-op navigations.
+  useEffect(() => {
+    onCurrentEditingChange?.(existingEstimateId);
+  }, [existingEstimateId, onCurrentEditingChange]);
 
   // Expose save function to parent via ref
   useEffect(() => {
