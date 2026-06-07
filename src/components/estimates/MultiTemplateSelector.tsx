@@ -677,6 +677,8 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       if (lineItemsData) {
         const materials = lineItemsData.materials || [];
         const labor = lineItemsData.labor || [];
+        const turnkey = lineItemsData.turnkey || [];
+        const changeOrders = lineItemsData.change_orders || lineItemsData.changeOrders || [];
         
         const allItems: LineItem[] = [
           ...materials.map((item: any) => ({
@@ -686,6 +688,14 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           ...labor.map((item: any) => ({
             ...item,
             item_type: 'labor' as const,
+          })),
+          ...turnkey.map((item: any) => ({
+            ...item,
+            item_type: 'turnkey' as const,
+          })),
+          ...changeOrders.map((item: any) => ({
+            ...item,
+            item_type: 'change_order' as const,
           })),
         ];
 
@@ -1869,40 +1879,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     let userId: string | null = null;
     
     try {
-      const lineItemsJson = {
-        materials: materialItems.map(item => ({
-          id: item.id,
-          item_name: item.item_name,
-          description: item.description,
-          notes: item.notes,
-          qty: item.qty,
-          qty_original: item.qty_original,
-          unit: item.unit,
-          unit_cost: item.unit_cost,
-          unit_cost_original: item.unit_cost_original,
-          line_total: item.line_total,
-          is_override: item.is_override,
-          sort_order: item.sort_order,
-          trade_type: item.trade_type,
-          trade_label: item.trade_label,
-        })),
-        labor: laborItems.map(item => ({
-          id: item.id,
-          item_name: item.item_name,
-          description: item.description,
-          notes: item.notes,
-          qty: item.qty,
-          qty_original: item.qty_original,
-          unit: item.unit,
-          unit_cost: item.unit_cost,
-          unit_cost_original: item.unit_cost_original,
-          line_total: item.line_total,
-          is_override: item.is_override,
-          sort_order: item.sort_order,
-          trade_type: item.trade_type,
-          trade_label: item.trade_label,
-        })),
-      };
+      const lineItemsJson = buildStoredLineItems(materialItems, laborItems, turnkeyItems, changeOrderItems);
 
       const { data, error } = await supabase.functions.invoke('update-estimate-line-items', {
         body: {
