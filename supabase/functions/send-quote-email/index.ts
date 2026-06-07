@@ -351,6 +351,36 @@ Deno.serve(async (req: Request) => {
 </html>
     `;
 
+    // Try to fetch the quote PDF and attach it
+    const pdfUrlToAttach = body.pdf_url || estimate.pdf_url;
+    let attachments: Array<{ filename: string; content: string }> | undefined;
+    if (pdfUrlToAttach) {
+      try {
+        const pdfResp = await fetch(pdfUrlToAttach);
+        if (pdfResp.ok) {
+          const buf = new Uint8Array(await pdfResp.arrayBuffer());
+          // base64 encode (chunked to avoid call stack overflow on large files)
+          let binary = "";
+          const chunk = 0x8000;
+          for (let i = 0; i < buf.length; i += chunk) {
+            binary += String.fromCharCode.apply(null, Array.from(buf.subarray(i, i + chunk)) as any);
+          }
+          const base64 = btoa(binary);
+          const safeName = (estimate.display_name || estimate.estimate_number || "quote")
+            .toString()
+            .replace(/[^a-z0-9-_]+/gi, "-")
+            .replace(/^-+|-+$/g, "")
+            .slice(0, 80);
+          attachments = [{ filename: `${safeName || "quote"}.pdf`, content: base64 }];
+          console.log("[send-quote-email] PDF attached:", { bytes: buf.length, filename: attachments[0].filename });
+        } else {
+          console.warn("[send-quote-email] PDF fetch failed:", pdfResp.status, pdfUrlToAttach);
+        }
+      } catch (e) {
+        console.warn("[send-quote-email] PDF attachment skipped:", e instanceof Error ? e.message : String(e));
+      }
+    }
+
     // Send email via Resend
     const emailResult = await resend.emails.send({
       from: `${fromName} <${fromEmail}>`,
@@ -359,7 +389,8 @@ Deno.serve(async (req: Request) => {
       ...(body.bcc?.length ? { bcc: body.bcc } : {}),
       reply_to: replyTo,
       subject: body.subject || `Your Quote from ${companyName} - ${estimate.display_name || estimate.estimate_number}`,
-      html: emailHtml
+      html: emailHtml,
+      ...(attachments ? { attachments } : {}),
     });
 
     console.log("[send-quote-email] Email sent:", { 
