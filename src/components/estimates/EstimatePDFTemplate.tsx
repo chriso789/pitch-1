@@ -1,6 +1,7 @@
 import React from 'react';
 import { type LineItem } from '@/hooks/useEstimatePricing';
 import { type PDFComponentOptions, getDefaultOptions } from './PDFComponentOptions';
+import { safeText } from '@/lib/safeText';
 
 interface CompanyInfo {
   name: string;
