@@ -1,5 +1,6 @@
 // Sectioned line items table with Materials and Labor sections
 import React, { useState, useMemo } from 'react';
+import { safeText } from '@/lib/safeText';
 import {
   Table,
   TableBody,
@@ -406,7 +407,7 @@ export function SectionedLineItemsTable({
           <div className="flex items-start gap-1">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1">
-                <span className="truncate">{item.item_name}</span>
+                <span className="truncate">{safeText(item.item_name)}</span>
                 {item.is_override && (
                   <Badge variant="outline" className="text-xs shrink-0">Modified</Badge>
                 )}
@@ -415,7 +416,7 @@ export function SectionedLineItemsTable({
               <DescriptionEditor item={item} />
               {item.notes && (
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  <span className="text-amber-600 font-medium">Color/Specs:</span> {item.notes}
+                  <span className="text-amber-600 font-medium">Color/Specs:</span> {safeText(item.notes)}
                 </p>
               )}
             </div>

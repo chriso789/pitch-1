@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { safeText } from '@/lib/safeText';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
@@ -196,7 +197,7 @@ export const EstimateLineItems: React.FC<EstimateLineItemsProps> = ({
               <tbody>
                 {lineItems.map((item, index) => (
                   <tr key={item.template_item_id || index} className="border-b border-border/50">
-                    <td className="py-2 px-3 font-medium">{item.item_name}</td>
+                    <td className="py-2 px-3 font-medium">{safeText(item.item_name)}</td>
                     <td className="py-2 px-3 text-right tabular-nums">{item.qty.toFixed(2)}</td>
                     <td className="py-2 px-3 text-right tabular-nums">{formatCurrency(item.unit_cost)}</td>
                     <td className="py-2 px-3 text-right tabular-nums font-medium">
