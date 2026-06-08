@@ -816,8 +816,9 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
             <TableBody>
               {lineItems.map((item) => (
                 <TableRow key={item.id}>
-                  <TableCell className="font-medium align-top">
-                    <div>{item.item_name}</div>
+                  <TableCell className="font-medium align-top min-w-0">
+                    <div className="truncate" title={item.item_name}>{item.item_name}</div>
+
                     {sectionType === 'material' && matchSupplier && effectiveTenantId && (
                       <InlineSupplierMatch
                         tenantId={effectiveTenantId}
