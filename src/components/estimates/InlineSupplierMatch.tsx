@@ -350,11 +350,11 @@ function SrsSearchInline({
                 onClick={() => { onPick(String(pid)); setOpen(false); }}
                 className="w-full text-left px-3 py-2 text-xs hover:bg-accent flex items-start gap-2 border-b last:border-b-0"
               >
-                <span className="font-mono text-muted-foreground shrink-0 w-24 truncate">{pid}</span>
+                <span className="font-mono text-muted-foreground shrink-0 w-24 truncate">{safeText(pid)}</span>
                 <span className="flex-1">
-                  <span className="block">{p.productName || p.description || '—'}</span>
+                  <span className="block">{safeText(p.productName) || safeText(p.description) || '—'}</span>
                   <span className="block text-[10px] text-muted-foreground">
-                    {p.option ? `Option: ${p.option}` : ''}{p.uom ? ` · UoM: ${p.uom}` : ''}
+                    {p.option ? `Option: ${safeText(p.option)}` : ''}{p.uom ? ` · UoM: ${safeText(p.uom)}` : ''}
                   </span>
                 </span>
               </button>
