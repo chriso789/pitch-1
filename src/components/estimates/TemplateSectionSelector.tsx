@@ -746,7 +746,7 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
               value={matchSupplier || ''}
               onValueChange={(v) => {
                 setMatchSupplier(v as SupplierKey);
-                if (v === 'abc') setMatchBranch(abcConnection.defaultBranchCode || matchBranch);
+                if (v === 'abc') setMatchBranch(abcConnection.defaultBranchCode || (abcConnection.environment !== 'production' ? '1209' : '') || matchBranch);
                 if (v === 'srs') setMatchBranch(srsConnected?.branch || matchBranch);
                 setCatalogLoadedKey('');
               }}
