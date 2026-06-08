@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { safeText } from "@/lib/safeText";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -502,8 +503,8 @@ export const BudgetTracker = ({ projectId, pipelineEntryId, budgetItems, onRefre
               <div key={item.id} className="p-3 bg-muted/30 rounded-lg">
                 <div className="flex justify-between items-start mb-2">
                   <div>
-                    <h4 className="font-medium text-sm">{item.item_name}</h4>
-                    <p className="text-xs text-muted-foreground">{item.category} {item.vendor_name ? `• ${item.vendor_name}` : ''}</p>
+                    <h4 className="font-medium text-sm">{safeText(item.item_name)}</h4>
+                    <p className="text-xs text-muted-foreground">{safeText(item.category)} {item.vendor_name ? `• ${safeText(item.vendor_name)}` : ''}</p>
                   </div>
                   {Math.abs(item.variance_percent) > 10 && (
                     <Badge variant={item.variance_amount > 0 ? "destructive" : "default"} className="text-xs">
