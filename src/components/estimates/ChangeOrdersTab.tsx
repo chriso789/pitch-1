@@ -434,7 +434,7 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
               const price = Number(it.unit_price ?? it.price ?? it.rate ?? 0) || 0;
               const total = Number(it.line_total ?? it.total ?? qty * price) || 0;
               const row = {
-                description: `[${co.co_number}] ${it.description || it.name || it.code || co.title}`,
+                description: `[${co.co_number}] ${pickStr(it.description) || pickStr(it.name) || pickStr(it.code) || co.title}`,
                 quantity: qty,
                 unit_price: price,
                 line_total: total,
