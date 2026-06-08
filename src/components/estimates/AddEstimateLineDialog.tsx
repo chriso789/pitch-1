@@ -647,7 +647,7 @@ function LaborLineItemForm({ measurements, onAddLine, onClose }: LaborLineItemFo
                 >
                   <div>
                     <div className="font-medium text-xs">{preset.name}</div>
-                    <div className="text-xs text-muted-foreground">{preset.description}</div>
+                    <div className="text-xs text-muted-foreground">{safeText(preset.description)}</div>
                   </div>
                 </Button>
               ))}
