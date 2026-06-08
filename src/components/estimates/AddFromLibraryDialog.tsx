@@ -284,7 +284,7 @@ const ItemList: React.FC<{
               </div>
               {item.description && (
                 <p className="text-xs text-muted-foreground truncate mt-0.5">
-                  {item.description}
+                  {safeText(item.description)}
                 </p>
               )}
             </div>
