@@ -387,12 +387,20 @@ export function PushToSupplierDialog({
     const abcOpt = suppliers.find(s => s.key === 'abc');
     if (!abcOpt || abcOpt.status !== 'connected') return;
     const isSandbox = abcOpt.environment !== 'production';
-    if (allowSandboxDefaults && isSandbox) {
-      if (!branchCode.trim()) setBranchCode('1209');
-      if (!abcShipToNumber.trim()) setAbcShipToNumber('2010466-2');
+    if (!isSandbox) return;
+    // In sandbox, every tenant should land on the ABC sandbox demo branch so
+    // the test flow is one-click. If the connection synced real branches,
+    // prefer the first synced branch; otherwise fall back to the well-known
+    // sandbox branch number.
+    if (!branchCode.trim()) {
+      const firstSynced = abcCatalog.branches[0]?.branch_number;
+      setBranchCode(firstSynced || '1209');
+    }
+    if (allowSandboxDefaults && !abcShipToNumber.trim()) {
+      setAbcShipToNumber('2010466-2');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected, suppliers, allowSandboxDefaults]);
+  }, [selected, suppliers, allowSandboxDefaults, abcCatalog.branches]);
 
 
   const totalCost = useMemo(
