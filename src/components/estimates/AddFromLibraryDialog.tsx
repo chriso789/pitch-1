@@ -1,3 +1,4 @@
+import { safeText } from '@/lib/safeText';
 import React, { useState, useEffect } from 'react';
 import {
   Dialog,

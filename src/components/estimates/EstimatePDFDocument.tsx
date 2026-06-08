@@ -4,6 +4,7 @@
  * This component renders the estimate as explicit letter-sized pages,
  * ensuring text/rows are never cut mid-page and footer is always at bottom.
  */
+import { safeText } from '@/lib/safeText';
 import React, { useMemo } from 'react';
 import { type LineItem } from '@/hooks/useEstimatePricing';
 import { type PDFComponentOptions, getDefaultOptions } from './PDFComponentOptions';

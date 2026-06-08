@@ -1,3 +1,4 @@
+import { safeText } from '@/lib/safeText';
 import { useState, useEffect } from "react";
 import { safeEvalFormula } from "@/lib/safeFormulaEval";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
