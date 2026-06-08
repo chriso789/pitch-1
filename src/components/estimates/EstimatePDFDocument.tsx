@@ -1061,7 +1061,7 @@ const ItemsTable: React.FC<{ blocks: RenderBlock[]; opts: PDFComponentOptions; c
         <div className="font-medium text-xs text-gray-900">{item.item_name}</div>
         {opts.showItemDescriptions && item.description && (
           <div className="text-[10px] text-gray-500 leading-snug">
-            {item.description}
+            {safeText(item.description)}
           </div>
         )}
         {item.notes && (
