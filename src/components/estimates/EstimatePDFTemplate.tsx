@@ -1,6 +1,7 @@
 import React from 'react';
 import { type LineItem } from '@/hooks/useEstimatePricing';
 import { type PDFComponentOptions, getDefaultOptions } from './PDFComponentOptions';
+import { safeText } from '@/lib/safeText';
 
 interface CompanyInfo {
   name: string;
@@ -277,15 +278,15 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
                     .map((item, idx) => (
                   <tr key={item.id || idx} className="border-b border-gray-100">
                     <td className="py-2">
-                      <div className="font-medium text-gray-900">{item.item_name}</div>
+                      <div className="font-medium text-gray-900">{safeText(item.item_name)}</div>
                       {opts.showItemDescriptions && item.description && (
                         <div className="text-xs text-gray-500 mt-0.5 leading-snug">
-                          {item.description}
+                          {safeText(item.description)}
                         </div>
                       )}
                       {item.notes && (
                         <div className="text-xs text-gray-500 mt-0.5 leading-snug italic">
-                          {item.notes}
+                          {safeText(item.notes)}
                         </div>
                       )}
                     </td>
@@ -331,12 +332,12 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
               {materialItems.map((item, idx) => (
                 <tr key={item.id || idx} className="border-b border-gray-100">
                   <td className="py-1.5">
-                    <div className="text-gray-900">{item.item_name}</div>
+                    <div className="text-gray-900">{safeText(item.item_name)}</div>
                     {item.description && item.description !== item.item_name && (
-                      <div className="text-[10px] text-gray-500 leading-snug">{item.description}</div>
+                      <div className="text-[10px] text-gray-500 leading-snug">{safeText(item.description)}</div>
                     )}
                     {item.notes && (
-                      <div className="text-[10px] text-gray-500 mt-0.5 leading-snug italic">{item.notes}</div>
+                      <div className="text-[10px] text-gray-500 mt-0.5 leading-snug italic">{safeText(item.notes)}</div>
                     )}
                   </td>
                   {opts.showLineItemQuantities && (
@@ -403,9 +404,9 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
               {laborItems.map((item, idx) => (
                 <tr key={item.id || idx} className="border-b border-gray-100">
                   <td className="py-1.5">
-                    <div className="text-gray-900">{item.item_name}</div>
+                    <div className="text-gray-900">{safeText(item.item_name)}</div>
                     {item.description && item.description !== item.item_name && (
-                      <div className="text-[10px] text-gray-500 leading-snug">{item.description}</div>
+                      <div className="text-[10px] text-gray-500 leading-snug">{safeText(item.description)}</div>
                     )}
                   </td>
                   {opts.showLineItemQuantities && (

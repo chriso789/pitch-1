@@ -1,3 +1,4 @@
+import { safeText } from '@/lib/safeText';
 import { useState, useEffect } from "react";
 import { safeEvalFormula } from "@/lib/safeFormulaEval";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -347,7 +348,7 @@ export function AddEstimateLineDialog({
                           >
                             <div>
                               <div className="font-medium text-xs">{preset.name}</div>
-                              <div className="text-xs text-muted-foreground">{preset.description}</div>
+                              <div className="text-xs text-muted-foreground">{safeText(preset.description)}</div>
                             </div>
                           </Button>
                         ))}
@@ -646,7 +647,7 @@ function LaborLineItemForm({ measurements, onAddLine, onClose }: LaborLineItemFo
                 >
                   <div>
                     <div className="font-medium text-xs">{preset.name}</div>
-                    <div className="text-xs text-muted-foreground">{preset.description}</div>
+                    <div className="text-xs text-muted-foreground">{safeText(preset.description)}</div>
                   </div>
                 </Button>
               ))}
