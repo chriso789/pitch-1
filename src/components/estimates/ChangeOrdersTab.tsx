@@ -112,10 +112,17 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
   const [lineDraft, setLineDraft] = useState<{ description: string; quantity: string; unit_price: string }>({ description: '', quantity: '1', unit_price: '0' });
   const [savingLine, setSavingLine] = useState(false);
 
+  const pickStr = (v: any): string => {
+    if (v == null) return '';
+    if (typeof v === 'string') return v;
+    if (typeof v === 'object') return String(v.description || v.name || v.code || '');
+    return String(v);
+  };
+
   const beginEditLine = (coId: string, idx: number, item: any) => {
     setEditingLine({ coId, idx });
     setLineDraft({
-      description: item.description || item.name || item.code || '',
+      description: pickStr(item.description) || pickStr(item.name) || pickStr(item.code) || '',
       quantity: String(item.quantity ?? item.qty ?? 1),
       unit_price: String(item.unit_price ?? item.price ?? item.rate ?? 0),
     });
