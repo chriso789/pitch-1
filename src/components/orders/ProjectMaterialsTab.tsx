@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { safeText } from '@/lib/safeText';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Truck, Loader2 } from 'lucide-react';
@@ -98,10 +99,10 @@ export function ProjectMaterialsTab({
                 <tbody>
                   {items.map((it, i) => (
                     <tr key={i} className="border-t">
-                      <td className="p-2">{it.item_name}</td>
-                      <td className="p-2"><code className="text-xs">{it.srs_item_code || '—'}</code></td>
-                      <td className="p-2 text-right">{it.quantity}</td>
-                      <td className="p-2">{it.unit}</td>
+                      <td className="p-2">{safeText(it.item_name)}</td>
+                      <td className="p-2"><code className="text-xs">{safeText(it.srs_item_code) || '—'}</code></td>
+                      <td className="p-2 text-right">{safeText(it.quantity)}</td>
+                      <td className="p-2">{safeText(it.unit)}</td>
                       <td className="p-2 text-right">${it.unit_cost.toFixed(2)}</td>
                       <td className="p-2 text-right">${(it.quantity * it.unit_cost).toFixed(2)}</td>
                     </tr>

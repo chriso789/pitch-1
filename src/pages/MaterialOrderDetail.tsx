@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { safeText } from '@/lib/safeText';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -336,7 +337,7 @@ export default function MaterialOrderDetail() {
             <CardTitle>Notes</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm">{order.notes}</p>
+            <p className="text-sm">{safeText(order.notes)}</p>
           </CardContent>
         </Card>
       )}
@@ -363,7 +364,7 @@ export default function MaterialOrderDetail() {
                   <TableCell className="font-mono text-sm">
                     {item.srs_item_code || item.product_id || 'N/A'}
                   </TableCell>
-                  <TableCell>{item.item_description}</TableCell>
+                  <TableCell>{safeText(item.item_description)}</TableCell>
                   <TableCell className="text-right">{item.quantity}</TableCell>
                   <TableCell className="text-right">{formatCurrency(item.unit_price)}</TableCell>
                   <TableCell className="text-right font-semibold">

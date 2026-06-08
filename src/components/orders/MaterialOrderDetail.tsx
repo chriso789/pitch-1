@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { safeText } from '@/lib/safeText';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -168,7 +169,7 @@ export const MaterialOrderDetail: React.FC<MaterialOrderDetailProps> = ({ orderI
             {order.notes && (
               <div className="col-span-2">
                 <p className="text-sm text-muted-foreground">Notes</p>
-                <p className="text-sm">{order.notes}</p>
+                <p className="text-sm">{safeText(order.notes)}</p>
               </div>
             )}
           </div>
@@ -200,7 +201,7 @@ export const MaterialOrderDetail: React.FC<MaterialOrderDetailProps> = ({ orderI
                   <TableCell className="font-mono text-sm">
                     {item.srs_item_code || 'N/A'}
                   </TableCell>
-                  <TableCell>{item.item_description}</TableCell>
+                  <TableCell>{safeText(item.item_description)}</TableCell>
                   <TableCell className="text-right">{item.quantity}</TableCell>
                   <TableCell className="text-right">
                     {formatCurrency(item.unit_price)}
