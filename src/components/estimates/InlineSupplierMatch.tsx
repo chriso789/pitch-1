@@ -12,6 +12,7 @@ import {
 } from '@/components/orders/AbcCatalogControls';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2, DollarSign, Search, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { safeText } from '@/lib/safeText';
 import {
   abcProductId,
   abcProductText,
@@ -205,12 +206,12 @@ export function InlineSupplierMatch({
     <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
       {sku ? (
         <>
-          <span className="font-mono text-foreground/80">{supplierBadge} #{sku}</span>
+          <span className="font-mono text-foreground/80">{supplierBadge} #{safeText(sku)}</span>
           {matchedDesc && (
-            <span className="truncate max-w-[260px]" title={matchedDesc}>· {matchedDesc}</span>
+            <span className="truncate max-w-[260px]" title={safeText(matchedDesc)}>· {safeText(matchedDesc)}</span>
           )}
-          {matchedColor && <span>· {matchedColor}</span>}
-          {matchedUom && <span>· {matchedUom}</span>}
+          {matchedColor && <span>· {safeText(matchedColor)}</span>}
+          {matchedUom && <span>· {safeText(matchedUom)}</span>}
           {supplier === 'abc' && (
             <PriceBadge
               status={(item.abc_price_status as AbcLineState['abc_price_status']) || null}
@@ -349,11 +350,11 @@ function SrsSearchInline({
                 onClick={() => { onPick(String(pid)); setOpen(false); }}
                 className="w-full text-left px-3 py-2 text-xs hover:bg-accent flex items-start gap-2 border-b last:border-b-0"
               >
-                <span className="font-mono text-muted-foreground shrink-0 w-24 truncate">{pid}</span>
+                <span className="font-mono text-muted-foreground shrink-0 w-24 truncate">{safeText(pid)}</span>
                 <span className="flex-1">
-                  <span className="block">{p.productName || p.description || '—'}</span>
+                  <span className="block">{safeText(p.productName) || safeText(p.description) || '—'}</span>
                   <span className="block text-[10px] text-muted-foreground">
-                    {p.option ? `Option: ${p.option}` : ''}{p.uom ? ` · UoM: ${p.uom}` : ''}
+                    {p.option ? `Option: ${safeText(p.option)}` : ''}{p.uom ? ` · UoM: ${safeText(p.uom)}` : ''}
                   </span>
                 </span>
               </button>
