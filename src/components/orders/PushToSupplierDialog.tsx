@@ -229,7 +229,7 @@ export function PushToSupplierDialog({
     const hydrated = items.map((it) => {
       if (it.color_specs && it.color_specs.trim()) return it;
       const { colors } = colorsForItem(it.item_name);
-      const haystack = `${it.notes || ''} ${(it as any).description || ''}`.toLowerCase();
+      const haystack = `${(it as any).notes || ''} ${it.description || ''}`.toLowerCase();
       const matched = colors.find((c) => haystack.includes(c.toLowerCase()));
       return matched ? { ...it, color_specs: matched } : it;
     });
