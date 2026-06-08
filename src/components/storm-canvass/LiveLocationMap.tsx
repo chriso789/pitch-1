@@ -196,6 +196,10 @@ export default function LiveLocationMap({
             userLocation={userLocation}
             onPropertyClick={handleParcelClick}
           />
+          <ProjectContactMarkersLayer
+            map={map.current}
+            onContactClick={handleParcelClick}
+          />
           {routeData && destination && (
             <RouteVisualization
               map={map.current}
