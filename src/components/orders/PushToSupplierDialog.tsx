@@ -221,7 +221,19 @@ export function PushToSupplierDialog({
   // (which pass a freshly mapped `items` array each time) would wipe out
   // user edits like picked SRS productIds.
   useEffect(() => {
-    if (open) setEditableItems(items);
+    if (!open) return;
+    // Hydrate color_specs from free-text notes/description when the estimate
+    // line stored the color there (e.g. "Charcoal" written in the Notes
+    // popover). This keeps the Push-to-Supplier color dropdown in sync with
+    // whatever color was already picked upstream on the estimate.
+    const hydrated = items.map((it) => {
+      if (it.color_specs && it.color_specs.trim()) return it;
+      const { colors } = colorsForItem(it.item_name);
+      const haystack = `${(it as any).notes || ''} ${it.description || ''}`.toLowerCase();
+      const matched = colors.find((c) => haystack.includes(c.toLowerCase()));
+      return matched ? { ...it, color_specs: matched } : it;
+    });
+    setEditableItems(hydrated);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -375,12 +387,20 @@ export function PushToSupplierDialog({
     const abcOpt = suppliers.find(s => s.key === 'abc');
     if (!abcOpt || abcOpt.status !== 'connected') return;
     const isSandbox = abcOpt.environment !== 'production';
-    if (allowSandboxDefaults && isSandbox) {
-      if (!branchCode.trim()) setBranchCode('1209');
-      if (!abcShipToNumber.trim()) setAbcShipToNumber('2010466-2');
+    if (!isSandbox) return;
+    // In sandbox, every tenant should land on the ABC sandbox demo branch so
+    // the test flow is one-click. If the connection synced real branches,
+    // prefer the first synced branch; otherwise fall back to the well-known
+    // sandbox branch number.
+    if (!branchCode.trim()) {
+      const firstSynced = abcCatalog.branches[0]?.branch_number;
+      setBranchCode(firstSynced || '1209');
+    }
+    if (allowSandboxDefaults && !abcShipToNumber.trim()) {
+      setAbcShipToNumber('2010466-2');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected, suppliers, allowSandboxDefaults]);
+  }, [selected, suppliers, allowSandboxDefaults, abcCatalog.branches]);
 
 
   const totalCost = useMemo(
