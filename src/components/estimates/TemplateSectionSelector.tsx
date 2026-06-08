@@ -800,7 +800,8 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
       {/* Line Items Table */}
       {!isLoadingData && lineItems.length > 0 && (
         <div className="border rounded-lg overflow-hidden">
-          <Table>
+          <Table className="table-fixed">
+
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[30%]">Item Name</TableHead>
