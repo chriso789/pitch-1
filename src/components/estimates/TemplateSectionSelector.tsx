@@ -800,7 +800,8 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
       {/* Line Items Table */}
       {!isLoadingData && lineItems.length > 0 && (
         <div className="border rounded-lg overflow-hidden">
-          <Table>
+          <Table className="table-fixed">
+
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[30%]">Item Name</TableHead>
@@ -815,8 +816,9 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
             <TableBody>
               {lineItems.map((item) => (
                 <TableRow key={item.id}>
-                  <TableCell className="font-medium align-top">
-                    <div>{item.item_name}</div>
+                  <TableCell className="font-medium align-top min-w-0">
+                    <div className="truncate" title={item.item_name}>{item.item_name}</div>
+
                     {sectionType === 'material' && matchSupplier && effectiveTenantId && (
                       <InlineSupplierMatch
                         tenantId={effectiveTenantId}

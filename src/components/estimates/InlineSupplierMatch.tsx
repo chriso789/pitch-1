@@ -203,7 +203,7 @@ export function InlineSupplierMatch({
   const supplierBadge = supplier === 'abc' ? 'ABC' : 'SRS';
 
   return (
-    <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
+    <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground min-w-0">
       {sku ? (
         <>
           <span className="font-mono text-foreground/80">{supplierBadge} #{safeText(sku)}</span>
