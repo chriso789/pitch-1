@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type WheelEvent } from 'react';
+import { safeText } from '@/lib/safeText';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -1061,7 +1062,7 @@ export function PushToSupplierDialog({
                             <tr key={i} className={`border-t ${colorMissing ? 'bg-destructive/5' : ''}`}>
                               <td className="p-2">
                                 <div className="flex items-center gap-2">
-                                  <span>{it.item_name}</span>
+                                  <span>{safeText(it.item_name)}</span>
                                   {it.requires_color && (
                                     <Badge variant="outline" className="text-[10px]">Color req.</Badge>
                                   )}
@@ -1126,7 +1127,7 @@ export function PushToSupplierDialog({
                                   className="h-7 w-20 text-right"
                                 />
                               </td>
-                              <td className="p-2">{it.unit}</td>
+                              <td className="p-2">{safeText(it.unit)}</td>
                               <td className="p-2">
                                 {(() => {
                                   const { brand, colors } = colorsForItem(it.item_name);
