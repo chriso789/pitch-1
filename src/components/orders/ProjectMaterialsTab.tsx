@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { safeText } from '@/lib/safeText';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Truck, Loader2 } from 'lucide-react';

@@ -1,4 +1,5 @@
 import React from 'react';
+import { safeText } from '@/lib/safeText';
 import { Badge } from '@/components/ui/badge';
 import { AlertTriangle, CheckCircle, Clock, RefreshCw } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
@@ -150,7 +151,7 @@ export const LivePricingStatus: React.FC<LivePricingStatusProps> = ({
           <div className="space-y-1 max-h-32 overflow-y-auto">
             {stalePrices.slice(0, 5).map((item, idx) => (
               <div key={idx} className="flex items-center justify-between text-xs bg-background/50 rounded px-2 py-1">
-                <span className="truncate flex-1">{item.item_description}</span>
+                <span className="truncate flex-1">{safeText(item.item_description)}</span>
                 <Badge variant="outline" className="ml-2 text-xs">
                   {item.last_price_updated 
                     ? formatDistanceToNow(new Date(item.last_price_updated), { addSuffix: true })

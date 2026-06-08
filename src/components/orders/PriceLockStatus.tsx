@@ -1,4 +1,5 @@
 import React from 'react';
+import { safeText } from '@/lib/safeText';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Lock, TrendingDown, TrendingUp, AlertTriangle } from 'lucide-react';
@@ -150,7 +151,7 @@ export const PriceLockStatus: React.FC<PriceLockStatusProps> = ({ items }) => {
                   className="flex items-center justify-between text-sm bg-yellow-50 border border-yellow-200 rounded p-2"
                 >
                   <div className="flex-1">
-                    <div className="font-medium">{item.item_description}</div>
+                    <div className="font-medium">{safeText(item.item_description)}</div>
                     <div className="text-xs text-muted-foreground">
                       Qty: {item.quantity} × ${item.unit_price.toFixed(2)}
                       {item.live_unit_price && (
