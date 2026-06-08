@@ -12,6 +12,7 @@ import {
 } from '@/components/orders/AbcCatalogControls';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2, DollarSign, Search, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { safeText } from '@/lib/safeText';
 import {
   abcProductId,
   abcProductText,
