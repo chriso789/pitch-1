@@ -221,7 +221,19 @@ export function PushToSupplierDialog({
   // (which pass a freshly mapped `items` array each time) would wipe out
   // user edits like picked SRS productIds.
   useEffect(() => {
-    if (open) setEditableItems(items);
+    if (!open) return;
+    // Hydrate color_specs from free-text notes/description when the estimate
+    // line stored the color there (e.g. "Charcoal" written in the Notes
+    // popover). This keeps the Push-to-Supplier color dropdown in sync with
+    // whatever color was already picked upstream on the estimate.
+    const hydrated = items.map((it) => {
+      if (it.color_specs && it.color_specs.trim()) return it;
+      const { colors } = colorsForItem(it.item_name);
+      const haystack = `${it.notes || ''} ${(it as any).description || ''}`.toLowerCase();
+      const matched = colors.find((c) => haystack.includes(c.toLowerCase()));
+      return matched ? { ...it, color_specs: matched } : it;
+    });
+    setEditableItems(hydrated);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
