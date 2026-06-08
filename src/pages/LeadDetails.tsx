@@ -1,5 +1,6 @@
 // Lead Details Page - Unified Lead/Project lifecycle view
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { safeText } from '@/lib/safeText';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
 import { LiveOrderTracker } from "@/components/orders/LiveOrderTracker";
@@ -594,7 +595,7 @@ const LeadDetails = () => {
               const budgetItems = lineItems.map((li: any) => ({
                 project_id: id!,
                 tenant_id: entry.tenant_id,
-                item_name: li.description || li.name || 'Line Item',
+                item_name: safeText(li.description) || safeText(li.name) || 'Line Item',
                 category: (li.type === 'Labor' || li.category === 'Labor') ? 'Labor' : 'Material',
                 budgeted_quantity: li.quantity || 1,
                 budgeted_unit_cost: li.unit_price || li.unitPrice || 0,
