@@ -872,6 +872,30 @@ export default function PropertyInfoPanel({
         )}
         style={(isFieldMobileMode || isAppMode) ? { paddingBottom: 'env(safe-area-inset-bottom, 0px)' } : undefined}
       >
+        {/* Swipe-down handle + close — lets reps dismiss the panel and get back to the map */}
+        <div
+          className="sticky top-0 z-50 flex items-center justify-between px-3 pt-2 pb-1 bg-background border-b cursor-pointer touch-none select-none"
+          onClick={() => onOpenChange(false)}
+          onTouchStart={(e) => { (e.currentTarget as any)._startY = e.touches[0].clientY; }}
+          onTouchMove={(e) => {
+            const startY = (e.currentTarget as any)._startY;
+            if (startY != null && e.touches[0].clientY - startY > 40) {
+              onOpenChange(false);
+            }
+          }}
+        >
+          <div className="flex-1 flex justify-center">
+            <div className="h-1.5 w-12 rounded-full bg-muted-foreground/40" />
+          </div>
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={(e) => { e.stopPropagation(); onOpenChange(false); }}
+            className="absolute right-2 top-1.5 h-8 w-8 rounded-full bg-muted hover:bg-muted-foreground/20 flex items-center justify-center text-foreground"
+          >
+            ✕
+          </button>
+        </div>
         {isFieldMobileMode ? (
           <PropertyInfoPanelMobileBody
             ownerName={ownerName}
