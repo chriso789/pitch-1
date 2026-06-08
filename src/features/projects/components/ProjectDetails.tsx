@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { safeText } from "@/lib/safeText";
 import { BackButton } from "@/shared/components/BackButton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -723,7 +724,7 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
                   {costs.map((cost: any) => (
                     <div key={cost.id} className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
                       <div>
-                        <p className="font-medium">{cost.description}</p>
+                        <p className="font-medium">{safeText(cost.description)}</p>
                         <p className="text-sm text-muted-foreground">
                           {cost.vendor_name} - {new Date(cost.cost_date).toLocaleDateString()}
                         </p>
