@@ -3,6 +3,7 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import RouteVisualization from './RouteVisualization';
 import PropertyMarkersLayer from './PropertyMarkersLayer';
+import ProjectContactMarkersLayer from './ProjectContactMarkersLayer';
 import { useMapboxToken } from '@/hooks/useMapboxToken';
 import { Loader2 } from 'lucide-react';
 import { MapStyle } from './MapStyleToggle';
@@ -194,6 +195,10 @@ export default function LiveLocationMap({
             map={map.current}
             userLocation={userLocation}
             onPropertyClick={handleParcelClick}
+          />
+          <ProjectContactMarkersLayer
+            map={map.current}
+            onContactClick={handleParcelClick}
           />
           {routeData && destination && (
             <RouteVisualization
