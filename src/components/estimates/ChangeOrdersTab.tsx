@@ -855,7 +855,10 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
                                       </Badge>
                                     )}
                                     <span className="truncate">
-                                      {it.description || it.name || it.code || `Line ${idx + 1}`}
+                                      {(() => {
+                                        const pick = (v: any) => (typeof v === 'string' ? v : (v && typeof v === 'object' ? (v.description || v.name || v.code) : v));
+                                        return pick(it.description) || pick(it.name) || pick(it.code) || `Line ${idx + 1}`;
+                                      })()}
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-3 text-right flex-shrink-0">
