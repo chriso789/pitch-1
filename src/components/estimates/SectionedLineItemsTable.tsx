@@ -1,5 +1,6 @@
 // Sectioned line items table with Materials and Labor sections
 import React, { useState, useMemo } from 'react';
+import { safeText } from '@/lib/safeText';
 import {
   Table,
   TableBody,
