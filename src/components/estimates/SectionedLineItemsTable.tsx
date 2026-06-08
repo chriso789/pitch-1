@@ -338,24 +338,23 @@ export function SectionedLineItemsTable({
       );
     }
 
-    {(() => {
-      const desc = typeof item.description === 'string'
-        ? item.description
-        : (item.description && typeof item.description === 'object'
-            ? String((item.description as any).description || (item.description as any).name || (item.description as any).code || '')
-            : (item.description == null ? '' : String(item.description)));
-      if (desc && desc !== item.item_name) {
-        return (
-          <p
-            className="text-xs text-muted-foreground mt-0.5 cursor-pointer hover:text-foreground"
-            onClick={() => editable && setEditing(true)}
-          >
-            {desc}
-          </p>
-        );
-      }
-      return null;
-    })()}
+    const rawDesc = item.description as any;
+    const desc = typeof rawDesc === 'string'
+      ? rawDesc
+      : (rawDesc && typeof rawDesc === 'object'
+          ? String(rawDesc.description || rawDesc.name || rawDesc.code || '')
+          : (rawDesc == null ? '' : String(rawDesc)));
+
+    if (desc && desc !== item.item_name) {
+      return (
+        <p
+          className="text-xs text-muted-foreground mt-0.5 cursor-pointer hover:text-foreground"
+          onClick={() => editable && setEditing(true)}
+        >
+          {desc}
+        </p>
+      );
+    }
 
     if (editable) {
       return (
