@@ -1581,7 +1581,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
                           const lt = Number(li.line_total ?? li.total ?? li.amount) || (q * u);
                           return (
                             <div key={idx} className="flex justify-between text-xs py-0.5">
-                              <span className="text-muted-foreground truncate mr-2">{li.description}</span>
+                              <span className="text-muted-foreground truncate mr-2">{safeText(li.description)}</span>
                               <span className="font-medium whitespace-nowrap">
                                 {q} {li.unit || 'ea'} × {formatCurrency(u)} = {formatCurrency(lt)}
                               </span>
