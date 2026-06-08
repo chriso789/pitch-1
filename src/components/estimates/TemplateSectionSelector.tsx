@@ -286,14 +286,18 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
         return '';
       });
       // Seed branch from user pref / connection default.
+      // Sandbox fallback: ABC sandbox tenants get the demo branch '1209'.
+      const isAbcSandbox = abcConnection.isConnected && abcConnection.environment !== 'production';
       setMatchBranch((prev) => {
         if (prev) return prev;
-        if (abcConnection.isConnected) return prefs.abc || abcConnection.defaultBranchCode || '';
+        if (abcConnection.isConnected) {
+          return prefs.abc || abcConnection.defaultBranchCode || (isAbcSandbox ? '1209' : '');
+        }
         return prefs.srs || (srsRow as any)?.default_branch_code || '';
       });
     })();
     return () => { cancelled = true; };
-  }, [sectionType, effectiveTenantId, abcConnection.isConnected, abcConnection.defaultBranchCode]);
+  }, [sectionType, effectiveTenantId, abcConnection.isConnected, abcConnection.defaultBranchCode, abcConnection.environment]);
 
   // Load ABC catalog once per (branch, supplier) so the inline match can
   // resolve descriptions + auto-pick best matches. We search with a broad
