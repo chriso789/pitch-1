@@ -150,73 +150,105 @@ export default function BlueprintImporterV2() {
               </Alert>
             )}
 
-            <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {summary.detected_trades.map((dt) => {
-                const isAccepted = acceptedTradeIds.has(dt.trade_id);
-                const tradeMeasurements = summary.measurements.filter((m) => m.trade_id === dt.trade_id);
-                const allHavePlanPath = tradeMeasurements.length > 0 && tradeMeasurements.every((m) => !!m.plan_path_id);
-                const paintBlocked = dt.trade_id === "paint_coatings" && !wallSourcePresent && !acceptedTradeIds.has("exterior_walls_siding");
-                const futureBlocked = dt.support_status === "future_supported";
-                const measOnly = dt.support_status === "measurement_object_only";
-                const disabled = isAccepted || futureBlocked || measOnly || paintBlocked || !allHavePlanPath;
+            {summary.detected_trades.length === 0 ? (
+              <Card className="border-dashed">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <CardTitle className="text-lg">No quote-able trades detected</CardTitle>
+                    <Badge variant="outline">
+                      {(summary.source_documents?.[0] as any)?.document_type ?? "unknown document"}
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm text-muted-foreground">
+                  <p>
+                    The uploaded document did not produce any extractable roof or wall measurements,
+                    so the importer has nothing to base trade detection on. This usually means the
+                    file is a permit, spec sheet, or generic plan page rather than a Roofr / EagleView
+                    report.
+                  </p>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>Upload a Roofr or EagleView <strong>Roof Report</strong> to detect roofing + gutters / fascia / trim.</li>
+                    <li>Upload an EagleView <strong>Wall Report</strong> to detect exterior walls / siding + paint.</li>
+                    <li>For a generic blueprint set, use the manual measurement entry in a future phase.</li>
+                  </ul>
+                  {(summary as any)?.session?.metadata?.classifier && (
+                    <div className="rounded-md border bg-muted/40 p-2 text-xs font-mono">
+                      classifier: {JSON.stringify((summary as any).session.metadata.classifier)}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ) : (
+              <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {summary.detected_trades.map((dt) => {
+                  const isAccepted = acceptedTradeIds.has(dt.trade_id);
+                  const tradeMeasurements = summary.measurements.filter((m) => m.trade_id === dt.trade_id);
+                  const allHavePlanPath = tradeMeasurements.length > 0 && tradeMeasurements.every((m) => !!m.plan_path_id);
+                  const paintBlocked = dt.trade_id === "paint_coatings" && !wallSourcePresent && !acceptedTradeIds.has("exterior_walls_siding");
+                  const futureBlocked = dt.support_status === "future_supported";
+                  const measOnly = dt.support_status === "measurement_object_only";
+                  const disabled = isAccepted || futureBlocked || measOnly || paintBlocked || !allHavePlanPath;
 
-                const reason = isAccepted ? "Already accepted"
-                  : measOnly ? "Measurement-object-only — cannot be a top-level trade in MVP"
-                  : futureBlocked ? "Future-supported only — requires Phase 4 sheet intelligence"
-                  : paintBlocked ? "Requires Exterior Walls / Siding source in this session"
-                  : !allHavePlanPath ? "Missing PlanPath provenance for one or more measurements"
-                  : "";
+                  const reason = isAccepted ? "Already accepted"
+                    : measOnly ? "Measurement-object-only — cannot be a top-level trade in MVP"
+                    : futureBlocked ? "Future-supported only — requires Phase 4 sheet intelligence"
+                    : paintBlocked ? "Requires Exterior Walls / Siding source in this session"
+                    : !allHavePlanPath ? "Missing PlanPath provenance for one or more measurements"
+                    : "";
 
-                return (
-                  <Card key={dt.id} className={isAccepted ? "border-primary/60" : ""}>
-                    <CardHeader className="pb-3">
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-lg">{TRADE_LABELS[dt.trade_id] ?? dt.trade_id}</CardTitle>
-                        <SupportBadge status={dt.support_status} />
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        Confidence {(dt.confidence * 100).toFixed(0)}% · {tradeMeasurements.length} measurement{tradeMeasurements.length === 1 ? "" : "s"}
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      {tradeMeasurements.length > 0 ? (
-                        <ul className="text-sm space-y-1 max-h-44 overflow-auto rounded border p-2 bg-muted/30">
-                          {tradeMeasurements.slice(0, 8).map((m) => (
-                            <li key={m.id} className="flex justify-between gap-2">
-                              <span className="font-mono text-xs">{m.measurement_key}</span>
-                              <span className="text-xs">
-                                {m.quantity != null ? `${m.quantity}${m.unit ? " " + m.unit : ""}` : (m.normalized_value ? "table" : "—")}
-                                {!m.plan_path_id && <Badge variant="destructive" className="ml-2">no PlanPath</Badge>}
-                              </span>
-                            </li>
-                          ))}
-                          {tradeMeasurements.length > 8 && (
-                            <li className="text-xs text-muted-foreground italic">+ {tradeMeasurements.length - 8} more…</li>
-                          )}
-                        </ul>
-                      ) : (
-                        <p className="text-xs text-muted-foreground italic">No measurements extracted for this trade.</p>
-                      )}
+                  return (
+                    <Card key={dt.id} className={isAccepted ? "border-primary/60" : ""}>
+                      <CardHeader className="pb-3">
+                        <div className="flex items-center justify-between">
+                          <CardTitle className="text-lg">{TRADE_LABELS[dt.trade_id] ?? dt.trade_id}</CardTitle>
+                          <SupportBadge status={dt.support_status} />
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Confidence {(dt.confidence * 100).toFixed(0)}% · {tradeMeasurements.length} measurement{tradeMeasurements.length === 1 ? "" : "s"}
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        {tradeMeasurements.length > 0 ? (
+                          <ul className="text-sm space-y-1 max-h-44 overflow-auto rounded border p-2 bg-muted/30">
+                            {tradeMeasurements.slice(0, 8).map((m) => (
+                              <li key={m.id} className="flex justify-between gap-2">
+                                <span className="font-mono text-xs">{m.measurement_key}</span>
+                                <span className="text-xs">
+                                  {m.quantity != null ? `${m.quantity}${m.unit ? " " + m.unit : ""}` : (m.normalized_value ? "table" : "—")}
+                                  {!m.plan_path_id && <Badge variant="destructive" className="ml-2">no PlanPath</Badge>}
+                                </span>
+                              </li>
+                            ))}
+                            {tradeMeasurements.length > 8 && (
+                              <li className="text-xs text-muted-foreground italic">+ {tradeMeasurements.length - 8} more…</li>
+                            )}
+                          </ul>
+                        ) : (
+                          <p className="text-xs text-muted-foreground italic">No measurements extracted for this trade.</p>
+                        )}
 
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="inline-block">
-                            <Button
-                              disabled={disabled || accepting === dt.trade_id}
-                              onClick={() => handleAccept(dt.trade_id, dt.id)}
-                              size="sm"
-                            >
-                              {isAccepted ? "Accepted" : accepting === dt.trade_id ? "Accepting…" : "Accept trade"}
-                            </Button>
-                          </span>
-                        </TooltipTrigger>
-                        {reason && <TooltipContent>{reason}</TooltipContent>}
-                      </Tooltip>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </section>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="inline-block">
+                              <Button
+                                disabled={disabled || accepting === dt.trade_id}
+                                onClick={() => handleAccept(dt.trade_id, dt.id)}
+                                size="sm"
+                              >
+                                {isAccepted ? "Accepted" : accepting === dt.trade_id ? "Accepting…" : "Accept trade"}
+                              </Button>
+                            </span>
+                          </TooltipTrigger>
+                          {reason && <TooltipContent>{reason}</TooltipContent>}
+                        </Tooltip>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </section>
+            )}
+
 
             <Separator />
 
