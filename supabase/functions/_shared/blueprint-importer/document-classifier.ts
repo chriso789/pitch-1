@@ -30,9 +30,15 @@ export interface DocumentClassification {
 const EAGLEVIEW_BRAND_RE = /eagle[\s-]?view/i;
 const ROOFR_BRAND_RE = /\broofr\b/i;
 const ROOF_REPORT_RE = /\b(roof\s+report|total\s+roof\s+area|predominant\s+pitch|ridges?\s*\(ft\)|hips?\s*\(ft\))/i;
-const WALL_REPORT_RE = /\b(wall\s+report|total\s+wall\s+area|wall\s+facets|inside\s+corners|outside\s+corners|window\s+&\s+door\s+area|fascia)/i;
+const WALL_REPORT_RE = /\b(wall\s+report|total\s+wall\s+area|wall\s+facets|inside\s+corners|outside\s+corners|window\s+&\s+door\s+area)/i;
 const SPEC_BOOK_RE = /\b(specifications|spec\s+book|division\s+\d{2}|section\s+\d{6})/i;
 const BLUEPRINT_SET_RE = /\b(sheet\s+(?:a|s|e|m|p)-?\d+|architectural\s+plans?|plan\s+set)/i;
+// Brand-less fallback requires a STRONG, report-specific phrase — generic
+// words like "fascia" or "wall" alone are not enough (they appear in permits,
+// inspections, and HOA letters). Without these we degrade to `unknown` so the
+// session shows a clean empty-state instead of a noisy 0-confidence wall_report.
+const STRONG_ROOF_RE = /\b(total\s+roof\s+area|predominant\s+pitch|ridges?\s*\(ft\)|hips?\s*\(ft\))/i;
+const STRONG_WALL_RE = /\b(total\s+wall\s+area|wall\s+facets|window\s+&\s+door\s+area)/i;
 
 export function classifyBlueprintDocument(rawText: string): DocumentClassification {
   const text = String(rawText ?? "");
@@ -44,6 +50,8 @@ export function classifyBlueprintDocument(rawText: string): DocumentClassificati
   const hitWall = WALL_REPORT_RE.test(text);
   const hitSpec = SPEC_BOOK_RE.test(text);
   const hitBlueprint = BLUEPRINT_SET_RE.test(text);
+  const hitStrongRoof = STRONG_ROOF_RE.test(text);
+  const hitStrongWall = STRONG_WALL_RE.test(text);
 
   if (hitEv) signals.push("brand:eagleview");
   if (hitRoofr) signals.push("brand:roofr");
@@ -51,6 +59,8 @@ export function classifyBlueprintDocument(rawText: string): DocumentClassificati
   if (hitWall) signals.push("section:wall_report");
   if (hitSpec) signals.push("section:spec_book");
   if (hitBlueprint) signals.push("section:blueprint_set");
+  if (hitStrongRoof) signals.push("strong:roof_report_signal");
+  if (hitStrongWall) signals.push("strong:wall_report_signal");
 
   // EagleView wall report — wall signals AND EagleView brand
   if (hitEv && hitWall && !hitRoof) {
@@ -64,12 +74,12 @@ export function classifyBlueprintDocument(rawText: string): DocumentClassificati
   if (hitRoofr && hitRoof) {
     return mk("roofr_roof_report", "roofr", 0.95, signals, "roof_report", "roofr");
   }
-  // Fallback: roof-like content without brand
-  if (hitRoof && !hitWall) {
-    return mk("eagleview_roof_report", "unknown", 0.55, signals, "roof_report", "unknown");
+  // Brand-less fallback: only accept when a STRONG report-specific signal is present.
+  if (hitStrongRoof && !hitStrongWall) {
+    return mk("eagleview_roof_report", "unknown", 0.6, signals, "roof_report", "unknown");
   }
-  if (hitWall) {
-    return mk("eagleview_wall_report", "unknown", 0.55, signals, "wall_report", "unknown");
+  if (hitStrongWall) {
+    return mk("eagleview_wall_report", "unknown", 0.6, signals, "wall_report", "unknown");
   }
   if (hitSpec) {
     return mk("spec_book", "user_uploaded_blueprint", 0.6, signals, "spec_book", "user_uploaded_blueprint");
