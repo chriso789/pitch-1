@@ -281,7 +281,16 @@ app.post("/parse/blueprint", async (c) => {
       .update({ status: "classifying", status_message: "extracting page text" })
       .eq("id", document_id).eq("tenant_id", tenantId);
 
-    const bytes = await downloadStorageObject(svc, "blueprints", doc.file_path);
+    let bytes: Uint8Array;
+    try {
+      bytes = await downloadStorageObject(svc, "blueprints", doc.file_path);
+    } catch (primaryError) {
+      try {
+        bytes = await downloadStorageObject(svc, "blueprint-documents", doc.file_path);
+      } catch {
+        throw primaryError;
+      }
+    }
     const text = await extractPdfText(bytes);
 
     const classifications = text.pages.map((p, i) => classifyBlueprintPage(i + 1, p));
@@ -1880,7 +1889,15 @@ app.post("/blueprint-importer/v2/import-from-plan-document", async (c) => {
 
   let bytes: Uint8Array;
   try {
-    bytes = await downloadStorageObject(svc, "blueprints", pd.file_path);
+    try {
+      bytes = await downloadStorageObject(svc, "blueprints", pd.file_path);
+    } catch (primaryError) {
+      try {
+        bytes = await downloadStorageObject(svc, "blueprint-documents", pd.file_path);
+      } catch {
+        throw primaryError;
+      }
+    }
   } catch (e) {
     return jsonErr(c, "fetch_failed", e instanceof Error ? e.message : String(e), 500);
   }

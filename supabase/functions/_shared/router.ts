@@ -12,7 +12,7 @@ import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 
 export const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-route, x-shim-from",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-route, x-shim-from, x-tenant-id",
   "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
 };
 
@@ -184,6 +184,33 @@ export async function requireTenant(c: Context<RouterEnv>, next: Next) {
   if (!userId) return jsonErr(c, "unauthorized", "Auth required before tenant resolution", 401);
   // Resolve effective tenant via the existing helper RPC if present, else direct read.
   const svc = serviceClient();
+  const profileResult = await svc
+    .from("profiles")
+    .select("tenant_id,active_tenant_id")
+    .eq("id", userId)
+    .maybeSingle();
+  const requestedTenantId = c.req.header("x-tenant-id")?.trim() || null;
+  if (requestedTenantId) {
+    const hasProfileAccess = profileResult.data?.tenant_id === requestedTenantId || profileResult.data?.active_tenant_id === requestedTenantId;
+    const { data: requestedAccess } = hasProfileAccess
+      ? { data: { tenant_id: requestedTenantId } }
+      : await svc
+        .from("user_company_access")
+        .select("tenant_id")
+        .eq("user_id", userId)
+        .eq("tenant_id", requestedTenantId)
+        .maybeSingle();
+    if (!requestedAccess?.tenant_id) return jsonErr(c, "no_tenant", "No access to requested tenant", 403);
+    c.set("tenantId", requestedTenantId);
+    await next();
+    return;
+  }
+  const effectiveTenantId = profileResult.data?.active_tenant_id ?? profileResult.data?.tenant_id ?? null;
+  if (effectiveTenantId) {
+    c.set("tenantId", String(effectiveTenantId));
+    await next();
+    return;
+  }
   const { data, error } = await svc
     .from("user_company_access")
     .select("tenant_id")

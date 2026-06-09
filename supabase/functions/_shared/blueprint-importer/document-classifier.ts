@@ -32,7 +32,7 @@ const ROOFR_BRAND_RE = /\broofr\b/i;
 const ROOF_REPORT_RE = /\b(roof\s+report|total\s+roof\s+area|predominant\s+pitch|ridges?\s*\(ft\)|hips?\s*\(ft\))/i;
 const WALL_REPORT_RE = /\b(wall\s+report|total\s+wall\s+area|wall\s+facets|inside\s+corners|outside\s+corners|window\s+&\s+door\s+area)/i;
 const SPEC_BOOK_RE = /\b(specifications|spec\s+book|division\s+\d{2}|section\s+\d{6})/i;
-const BLUEPRINT_SET_RE = /\b(sheet\s+(?:a|s|e|m|p)-?\d+|architectural\s+plans?|plan\s+set)/i;
+const BLUEPRINT_SET_RE = /\b(sheet\s+(?:a|s|e|m|p|ex)-?\d+|sheet\s+number|sheet\s+title|architectural\s+plans?|floor\s+plan|demo\s+plan|issued\s+for\s+permit|plan\s+set)/i;
 // Brand-less fallback requires a STRONG, report-specific phrase — generic
 // words like "fascia" or "wall" alone are not enough (they appear in permits,
 // inspections, and HOA letters). Without these we degrade to `unknown` so the
@@ -74,6 +74,12 @@ export function classifyBlueprintDocument(rawText: string): DocumentClassificati
   if (hitRoofr && hitRoof) {
     return mk("roofr_roof_report", "roofr", 0.95, signals, "roof_report", "roofr");
   }
+  // Generic plan/permit sheets can contain phrases like "total roof area".
+  // Without an EagleView/Roofr brand, keep them as blueprint sets so they use
+  // manual measurement mode instead of being mislabeled as vendor reports.
+  if (hitBlueprint) {
+    return mk("blueprint_set", "user_uploaded_blueprint", 0.6, signals, "blueprint_set", "user_uploaded_blueprint");
+  }
   // Brand-less fallback: only accept when a STRONG report-specific signal is present.
   if (hitStrongRoof && !hitStrongWall) {
     return mk("eagleview_roof_report", "unknown", 0.6, signals, "roof_report", "unknown");
@@ -83,9 +89,6 @@ export function classifyBlueprintDocument(rawText: string): DocumentClassificati
   }
   if (hitSpec) {
     return mk("spec_book", "user_uploaded_blueprint", 0.6, signals, "spec_book", "user_uploaded_blueprint");
-  }
-  if (hitBlueprint) {
-    return mk("blueprint_set", "user_uploaded_blueprint", 0.6, signals, "blueprint_set", "user_uploaded_blueprint");
   }
   return mk("unknown", "unknown", 0.0, signals, "unknown", "unknown");
 }

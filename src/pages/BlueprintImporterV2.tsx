@@ -100,9 +100,9 @@ export default function BlueprintImporterV2() {
         <header className="space-y-2">
           <h1 className="text-3xl font-bold tracking-tight">Trade Quote Workbench</h1>
           <p className="text-muted-foreground">
-            Detect quote-able trades from Roofr / EagleView reports or generic blueprints,
-            accept the trades you want to quote, store measurements with provenance, and
-            apply them to templates to generate material &amp; labor drafts.
+            Review uploaded blueprint sets, permits, and measurement reports, then accept
+            the trades you want to quote, store measurements with provenance, and apply
+            them to templates to generate material &amp; labor drafts.
           </p>
           <Alert>
             <ShieldAlert className="h-4 w-4" />
@@ -162,15 +162,14 @@ export default function BlueprintImporterV2() {
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm text-muted-foreground">
                   <p>
-                    The uploaded document did not produce any extractable roof or wall measurements,
-                    so the importer has nothing to base trade detection on. This usually means the
-                    file is a permit, spec sheet, or generic plan page rather than a Roofr / EagleView
-                    report.
+                    The uploaded document was treated as a blueprint or permit set, not an
+                    EagleView/Roofr measurement report. No deterministic roof or wall quantities
+                    were extracted, so trade detection needs manual measurement input.
                   </p>
                   <ul className="list-disc pl-5 space-y-1">
-                    <li>Upload a Roofr or EagleView <strong>Roof Report</strong> to detect roofing + gutters / fascia / trim.</li>
-                    <li>Upload an EagleView <strong>Wall Report</strong> to detect exterior walls / siding + paint.</li>
-                    <li>For a generic blueprint set, use the manual measurement entry in a future phase.</li>
+                    <li>Use blueprint pages for manual takeoff when the file is a plan or permit set.</li>
+                    <li>Use Roofr/EagleView reports only when you are intentionally importing vendor measurement summaries.</li>
+                    <li>Review page classifications before converting measurements into material quantities.</li>
                   </ul>
                   {(summary as any)?.session?.metadata?.classifier && (
                     <div className="rounded-md border bg-muted/40 p-2 text-xs font-mono">

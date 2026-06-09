@@ -36,10 +36,11 @@ export default function BlueprintDocumentDetail() {
     setOpening(true);
     try {
       // Reuse existing session if present, otherwise run import.
-      const existing = await findWorkbenchSessionByPlanDocument(id);
+      const documentTenantId = data?.document?.tenant_id as string | undefined;
+      const existing = await findWorkbenchSessionByPlanDocument(id, documentTenantId);
       let sessionId = existing.session_id;
       if (!sessionId) {
-        const created = await importBlueprintFromPlanDocument(id);
+        const created = await importBlueprintFromPlanDocument(id, documentTenantId);
         sessionId = created.session_id;
         if (created.manual_measurement_required) {
           toast({

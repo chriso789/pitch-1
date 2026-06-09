@@ -45,10 +45,11 @@ export function BlueprintUploadCard({ onUploaded }: { onUploaded: () => void }) 
       const result = await uploadBlueprintDocument({
         file_name: file.name,
         file_path: path,
+        tenant_id: tenantId,
         property_address: propertyAddress || undefined,
       });
       // Kick off the actual parser pipeline (rasterize + classify chain)
-      await parseBlueprintDocument(result.document.id).catch(() => {});
+      await parseBlueprintDocument(result.document.id, tenantId).catch(() => {});
       toast({ title: "Uploaded", description: "Parsing queued" });
       setPropertyAddress("");
       onUploaded();

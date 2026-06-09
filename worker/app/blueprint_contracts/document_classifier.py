@@ -36,7 +36,7 @@ _ROOFR = re.compile(r"\broofr\b", re.IGNORECASE)
 _ROOF = re.compile(r"\b(roof\s+report|total\s+roof\s+area|predominant\s+pitch|ridges?\s*\(ft\)|hips?\s*\(ft\))", re.IGNORECASE)
 _WALL = re.compile(r"\b(wall\s+report|total\s+wall\s+area|wall\s+facets|inside\s+corners|outside\s+corners|window\s+&\s+door\s+area|fascia)", re.IGNORECASE)
 _SPEC = re.compile(r"\b(specifications|spec\s+book|division\s+\d{2}|section\s+\d{6})", re.IGNORECASE)
-_BLUEPRINT = re.compile(r"\b(sheet\s+(a|s|e|m|p)-?\d+|architectural\s+plans?|plan\s+set)", re.IGNORECASE)
+_BLUEPRINT = re.compile(r"\b(sheet\s+(a|s|e|m|p|ex)-?\d+|sheet\s+number|sheet\s+title|architectural\s+plans?|floor\s+plan|demo\s+plan|issued\s+for\s+permit|plan\s+set)", re.IGNORECASE)
 
 
 def classify_blueprint_document(text: str) -> DocumentClassification:
@@ -61,12 +61,12 @@ def classify_blueprint_document(text: str) -> DocumentClassification:
         return DocumentClassification("eagleview_roof_report", "eagleview", 0.95, signals, "roof_report", "eagleview")
     if rf and roof:
         return DocumentClassification("roofr_roof_report", "roofr", 0.95, signals, "roof_report", "roofr")
+    if bp:
+        return DocumentClassification("blueprint_set", "user_uploaded_blueprint", 0.6, signals, "blueprint_set", "user_uploaded_blueprint")
     if roof and not wall:
         return DocumentClassification("eagleview_roof_report", "unknown", 0.55, signals, "roof_report", "unknown")
     if wall:
         return DocumentClassification("eagleview_wall_report", "unknown", 0.55, signals, "wall_report", "unknown")
     if spec:
         return DocumentClassification("spec_book", "user_uploaded_blueprint", 0.6, signals, "spec_book", "user_uploaded_blueprint")
-    if bp:
-        return DocumentClassification("blueprint_set", "user_uploaded_blueprint", 0.6, signals, "blueprint_set", "user_uploaded_blueprint")
     return DocumentClassification("unknown", "unknown", 0.0, signals, "unknown", "unknown")

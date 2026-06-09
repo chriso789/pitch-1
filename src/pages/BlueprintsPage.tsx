@@ -106,7 +106,7 @@ export default function BlueprintsPage() {
       }]);
       if (insErr) throw insErr;
 
-      await parseBlueprintDocument(docId).catch((e) => {
+      await parseBlueprintDocument(docId, tenantId).catch((e) => {
         console.warn("parseBlueprintDocument failed", e);
       });
 
