@@ -1889,7 +1889,15 @@ app.post("/blueprint-importer/v2/import-from-plan-document", async (c) => {
 
   let bytes: Uint8Array;
   try {
-    bytes = await downloadStorageObject(svc, "blueprints", pd.file_path);
+    try {
+      bytes = await downloadStorageObject(svc, "blueprints", pd.file_path);
+    } catch (primaryError) {
+      try {
+        bytes = await downloadStorageObject(svc, "blueprint-documents", pd.file_path);
+      } catch {
+        throw primaryError;
+      }
+    }
   } catch (e) {
     return jsonErr(c, "fetch_failed", e instanceof Error ? e.message : String(e), 500);
   }
