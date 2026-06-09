@@ -30,29 +30,44 @@ Deno.serve(async (req) => {
     }
     if (!document_id) throw new Error("document_id required");
 
-    const { data: prof } = await supabase
-      .from("profiles").select("tenant_id").eq("id", userData.user.id).maybeSingle();
-    const tenantId = prof?.tenant_id;
-    if (!tenantId) throw new Error("no tenant for user");
-
     const { data: document, error: docErr } = await supabase
       .from("plan_documents").select("*")
-      .eq("id", document_id).eq("tenant_id", tenantId).single();
+      .eq("id", document_id).maybeSingle();
     if (docErr) throw docErr;
+    if (!document) {
+      return new Response(JSON.stringify({ ok: false, error: "Document not found" }), {
+        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const { data: access } = await supabase
+      .from("user_company_access")
+      .select("tenant_id")
+      .eq("user_id", userData.user.id)
+      .eq("tenant_id", document.tenant_id)
+      .maybeSingle();
+    const { data: prof } = await supabase
+      .from("profiles").select("tenant_id,active_tenant_id").eq("id", userData.user.id).maybeSingle();
+    const hasProfileAccess = prof?.tenant_id === document.tenant_id || prof?.active_tenant_id === document.tenant_id;
+    if (!access && !hasProfileAccess) {
+      return new Response(JSON.stringify({ ok: false, error: "Document not found" }), {
+        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const { data: pages, error: pagesErr } = await supabase
       .from("plan_pages").select("*")
-      .eq("document_id", document_id).order("page_number");
+      .eq("document_id", document_id).eq("tenant_id", document.tenant_id).order("page_number");
     if (pagesErr) throw pagesErr;
 
     const pageIds = (pages || []).map((p: any) => p.id);
     const empty = { data: [], error: null } as const;
     const [geom, dims, pitch, refs, specs] = await Promise.all([
-      pageIds.length ? supabase.from("plan_geometry").select("*").in("page_id", pageIds) : empty,
-      pageIds.length ? supabase.from("plan_dimensions").select("*").in("page_id", pageIds) : empty,
-      pageIds.length ? supabase.from("plan_pitch_notes").select("*").in("page_id", pageIds) : empty,
-      pageIds.length ? supabase.from("plan_detail_refs").select("*").in("page_id", pageIds) : empty,
-      supabase.from("plan_specs").select("*").eq("document_id", document_id),
+      pageIds.length ? supabase.from("plan_geometry").select("*").eq("tenant_id", document.tenant_id).in("page_id", pageIds) : empty,
+      pageIds.length ? supabase.from("plan_dimensions").select("*").eq("tenant_id", document.tenant_id).in("page_id", pageIds) : empty,
+      pageIds.length ? supabase.from("plan_pitch_notes").select("*").eq("tenant_id", document.tenant_id).in("page_id", pageIds) : empty,
+      pageIds.length ? supabase.from("plan_detail_refs").select("*").eq("tenant_id", document.tenant_id).in("source_page_id", pageIds) : empty,
+      supabase.from("plan_specs").select("*").eq("document_id", document_id).eq("tenant_id", document.tenant_id),
     ]);
     for (const r of [geom, dims, pitch, refs, specs]) if (r.error) throw r.error;
 
