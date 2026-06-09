@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Loader2, Workflow } from "lucide-react";
@@ -7,7 +7,11 @@ import {
   importBlueprintFromPlanDocument,
   findWorkbenchSessionByPlanDocument,
 } from "@/integrations/blueprintImporterV2Api";
-import { BlueprintPageList } from "@/components/blueprint/BlueprintPageList";
+import {
+  BlueprintPageList,
+  guessTradeFromPage,
+} from "@/components/blueprint/BlueprintPageList";
+import { BlueprintPerPageBreakdown } from "@/components/blueprint/BlueprintPerPageBreakdown";
 import { BlueprintSpecsPanel } from "@/components/blueprint/BlueprintSpecsPanel";
 import { toast } from "@/hooks/use-toast";
 
@@ -17,12 +21,19 @@ export default function BlueprintDocumentDetail() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [opening, setOpening] = useState(false);
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [trades, setTrades] = useState<Record<string, string>>({});
 
   async function load() {
     setLoading(true);
     try {
       const result = await getBlueprintDocument(id);
       setData(result);
+      // Seed trade guesses for every page
+      const seeded: Record<string, string> = {};
+      for (const p of result?.pages ?? []) seeded[p.id] = guessTradeFromPage(p);
+      setTrades(seeded);
+      setSelected({});
     } catch (e: any) {
       toast({ title: "Failed to load", description: e.message, variant: "destructive" });
     } finally {
@@ -35,7 +46,6 @@ export default function BlueprintDocumentDetail() {
   async function openWorkbench() {
     setOpening(true);
     try {
-      // Reuse existing session if present, otherwise run import.
       const documentTenantId = data?.document?.tenant_id as string | undefined;
       const existing = await findWorkbenchSessionByPlanDocument(id, documentTenantId);
       let sessionId = existing.session_id;
@@ -56,6 +66,11 @@ export default function BlueprintDocumentDetail() {
       setOpening(false);
     }
   }
+
+  const selectedPages = useMemo(
+    () => (data?.pages ?? []).filter((p: any) => selected[p.id]),
+    [data, selected],
+  );
 
   if (loading) return <div className="p-6 flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>;
   if (!data) return <div className="p-6">Document not found.</div>;
@@ -80,11 +95,29 @@ export default function BlueprintDocumentDetail() {
 
       <BlueprintPageList
         pages={data.pages}
+        selected={selected}
+        onToggle={(pageId, v) => setSelected((s) => ({ ...s, [pageId]: v }))}
+        onToggleAll={(v) => {
+          const next: Record<string, boolean> = {};
+          if (v) for (const p of data.pages) next[p.id] = true;
+          setSelected(next);
+        }}
+        trades={trades}
+        onTradeChange={(pageId, trade) => setTrades((t) => ({ ...t, [pageId]: trade }))}
         onExtractGeometry={async (pageId) => {
           await extractRoofPlanGeometry({ page_id: pageId });
           toast({ title: "Geometry extraction queued" });
           await load();
         }}
+      />
+
+      <BlueprintPerPageBreakdown
+        pages={selectedPages}
+        trades={trades}
+        dimensions={data.dimensions ?? []}
+        geometry={data.geometry ?? []}
+        pitchNotes={data.pitch_notes ?? []}
+        detailRefs={data.detail_refs ?? []}
       />
 
       <BlueprintSpecsPanel specs={data.specs} />
