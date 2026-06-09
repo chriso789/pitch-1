@@ -32,7 +32,7 @@ const ROOFR_BRAND_RE = /\broofr\b/i;
 const ROOF_REPORT_RE = /\b(roof\s+report|total\s+roof\s+area|predominant\s+pitch|ridges?\s*\(ft\)|hips?\s*\(ft\))/i;
 const WALL_REPORT_RE = /\b(wall\s+report|total\s+wall\s+area|wall\s+facets|inside\s+corners|outside\s+corners|window\s+&\s+door\s+area)/i;
 const SPEC_BOOK_RE = /\b(specifications|spec\s+book|division\s+\d{2}|section\s+\d{6})/i;
-const BLUEPRINT_SET_RE = /\b(sheet\s+(?:a|s|e|m|p)-?\d+|architectural\s+plans?|plan\s+set)/i;
+const BLUEPRINT_SET_RE = /\b(sheet\s+(?:a|s|e|m|p|ex)-?\d+|sheet\s+number|sheet\s+title|architectural\s+plans?|floor\s+plan|demo\s+plan|issued\s+for\s+permit|plan\s+set)/i;
 // Brand-less fallback requires a STRONG, report-specific phrase — generic
 // words like "fascia" or "wall" alone are not enough (they appear in permits,
 // inspections, and HOA letters). Without these we degrade to `unknown` so the
