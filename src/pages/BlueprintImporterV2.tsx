@@ -98,12 +98,22 @@ export default function BlueprintImporterV2() {
     <TooltipProvider>
       <div className="container mx-auto p-6 space-y-6 max-w-6xl">
         <header className="space-y-2">
-          <h1 className="text-3xl font-bold tracking-tight">Blueprint Importer v2</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Trade Quote Workbench</h1>
           <p className="text-muted-foreground">
-            Deterministic Roofr/EagleView report parsing → detected trades → user acceptance.
-            Material list, labor pricing, and CRM estimate handoff are not enabled until Phase 4.
+            Detect quote-able trades from Roofr / EagleView reports or generic blueprints,
+            accept the trades you want to quote, store measurements with provenance, and
+            apply them to templates to generate material &amp; labor drafts.
           </p>
+          <Alert>
+            <ShieldAlert className="h-4 w-4" />
+            <AlertTitle>Push to Estimate is disabled</AlertTitle>
+            <AlertDescription>
+              This workbench stores trade selections, measurements, and template draft outputs only.
+              Live CRM estimate handoff and final pricing remain disabled until the next phase is approved.
+            </AlertDescription>
+          </Alert>
         </header>
+
 
         {!sessionId && (
           <Card>

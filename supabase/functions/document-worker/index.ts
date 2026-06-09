@@ -1834,7 +1834,376 @@ app.post("/blueprint-importer/v2/pricing-preflight/get", async (c) => {
   });
 });
 
+// =============================================================================
+// Trade Quote Workbench Completion Phase — additive routes only.
+// Bridges from plan_documents → blueprint import session, supports manual
+// measurement entry, and provides a by-document workbench lookup. These
+// routes MUST NOT write to estimate_line_items, enhanced_estimates,
+// proposal_*, work_order_*, purchase_order_*, project_cost_invoice_*, or
+// production_* tables.
+// =============================================================================
+
+// ---- POST /blueprint-importer/v2/import-from-plan-document ------------------
+// Idempotent: returns existing session for (tenant_id, source_context_type=
+// 'plan_document', source_context_id=plan_document_id) when present. Otherwise
+// loads the plan_documents row, fetches the file from the "blueprints" bucket,
+// classifies, parses (Roofr/EagleView roof/EagleView wall), and persists
+// session + source_document + plan_paths + measurements + detected_trades.
+// Falls back to a blueprint_set session with manual_measurement_required when
+// no MVP parser matches or the PDF has no selectable text.
+app.post("/blueprint-importer/v2/import-from-plan-document", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const userId = c.get("userId") ?? null;
+  const body = (await c.req.json().catch(() => ({}))) as { plan_document_id?: string };
+  if (!body.plan_document_id) return jsonErr(c, "bad_request", "plan_document_id required", 400);
+  const svc = serviceClient();
+
+  const { data: pd, error: pdErr } = await svc.from("plan_documents")
+    .select("id, tenant_id, file_path, file_name, page_count, property_address")
+    .eq("id", body.plan_document_id)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (pdErr || !pd) return jsonErr(c, "not_found", "plan_document not found in tenant", 404);
+
+  const { data: existing } = await svc.from("blueprint_import_sessions")
+    .select("id, status")
+    .eq("tenant_id", tenantId)
+    .eq("source_context_type", "plan_document")
+    .eq("source_context_id", pd.id)
+    .neq("status", "superseded")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (existing?.id) {
+    return jsonOk(c, { session_id: existing.id, plan_document_id: pd.id, reused: true });
+  }
+
+  let bytes: Uint8Array;
+  try {
+    bytes = await downloadStorageObject(svc, "blueprints", pd.file_path);
+  } catch (e) {
+    return jsonErr(c, "fetch_failed", e instanceof Error ? e.message : String(e), 500);
+  }
+
+  const pdfText = await extractPdfText(bytes);
+
+  // Create a manual-mode blueprint_set session when no selectable text or no MVP parser match.
+  const createManualBlueprintSession = async (reason: string, classifier: unknown, pageCount: number | null) => {
+    const { data: session, error: sErr } = await svc.from("blueprint_import_sessions").insert({
+      tenant_id: tenantId,
+      source_context_type: "plan_document",
+      source_context_id: pd.id,
+      status: "parsed",
+      contract_version: "blueprint-importer-v2",
+      metadata: { plan_document_id: pd.id, classifier, manual_measurement_required: true, reason },
+      created_by: userId,
+    }).select("id").single();
+    if (sErr || !session) return jsonErr(c, "session_insert_failed", sErr?.message ?? "unknown", 500);
+
+    await svc.from("blueprint_source_documents").insert({
+      import_session_id: session.id,
+      tenant_id: tenantId,
+      storage_path: pd.file_path,
+      document_reference: pd.id,
+      document_type: "blueprint_set",
+      provider: "user_uploaded_blueprint",
+      original_filename: pd.file_name,
+      page_count: pageCount,
+      property_address: pd.property_address ?? null,
+      extraction_status: "skipped",
+      metadata: { reason, manual_measurement_required: true, classifier },
+    });
+
+    const manualCode = (REVIEW_FLAG_CODES as Record<string, string>).MANUAL_MEASUREMENT_REQUIRED ?? "manual_measurement_required";
+    await svc.from("blueprint_review_flags").insert([
+      flag(session.id, tenantId, null, "import_session", "warning", manualCode, "Deterministic takeoff is not available for this document. Use manual measurement entry to populate the trades you want to quote.", false),
+    ]);
+
+    return jsonOk(c, { session_id: session.id, plan_document_id: pd.id, reused: false, manual_measurement_required: true, reason });
+  };
+
+  if (!pdfText.has_selectable_text) {
+    return createManualBlueprintSession("no_selectable_text", null, pd.page_count ?? null);
+  }
+
+  const cls = classifyBlueprintDocument(pdfText.full_text);
+
+  type ParserOutcome = {
+    parser: "eagleview_roof" | "roofr_roof" | "eagleview_wall" | "none";
+    data: Record<string, unknown> | null;
+    confidence: number;
+    requires_review: boolean;
+    missing_fields: string[];
+    field_confidences: Record<string, number>;
+  };
+  const candidates: ParserOutcome[] = [];
+  if (cls.document_type === "eagleview_roof_report" || cls.db_document_type === "roof_report") {
+    const ev = parseEagleViewRoofReport(pdfText.full_text);
+    candidates.push({ parser: "eagleview_roof", data: ev.data as unknown as Record<string, unknown>, confidence: ev.overall_confidence, requires_review: ev.requires_review, missing_fields: ev.missing_fields, field_confidences: ev.field_confidences });
+  }
+  if (cls.document_type === "roofr_roof_report" || cls.db_document_type === "roof_report") {
+    const rf = parseRoofrRoofReport(pdfText.full_text);
+    candidates.push({ parser: "roofr_roof", data: rf.data as unknown as Record<string, unknown>, confidence: rf.overall_confidence, requires_review: rf.requires_review, missing_fields: rf.missing_fields, field_confidences: rf.field_confidences });
+  }
+  if (cls.document_type === "eagleview_wall_report" || cls.db_document_type === "wall_report") {
+    const wl = parseEagleViewWallReport(pdfText.full_text);
+    candidates.push({ parser: "eagleview_wall", data: wl.data as unknown as Record<string, unknown>, confidence: wl.overall_confidence, requires_review: wl.requires_review, missing_fields: wl.missing_fields, field_confidences: wl.field_confidences });
+  }
+  const winner = candidates.sort((a, b) => b.confidence - a.confidence)[0];
+
+  if (!winner || winner.parser === "none" || !winner.data) {
+    return createManualBlueprintSession("no_mvp_parser_match", cls, pdfText.page_count);
+  }
+
+  const dHash = await deterministicSessionHash({
+    tenant_id: tenantId,
+    document_type: cls.db_document_type,
+    provider: cls.db_provider,
+    normalized_extraction: winner.data,
+  });
+
+  const { data: prior } = await svc.from("blueprint_import_sessions")
+    .select("id").eq("tenant_id", tenantId).eq("deterministic_hash", dHash)
+    .neq("status", "superseded").maybeSingle();
+  if (prior?.id) {
+    await svc.from("blueprint_import_sessions").update({ status: "superseded", updated_at: new Date().toISOString() }).eq("id", prior.id).eq("tenant_id", tenantId);
+  }
+
+  const { data: session, error: sErr } = await svc.from("blueprint_import_sessions").insert({
+    tenant_id: tenantId,
+    source_context_type: "plan_document",
+    source_context_id: pd.id,
+    status: "parsed",
+    contract_version: "blueprint-importer-v2",
+    deterministic_hash: dHash,
+    metadata: { plan_document_id: pd.id, classifier: cls, parser: winner.parser, supersedes: prior?.id ?? null },
+    created_by: userId,
+  }).select("id").single();
+  if (sErr || !session) return jsonErr(c, "session_insert_failed", sErr?.message ?? "unknown", 500);
+  const sessionId = session.id as string;
+
+  const { data: srcDoc, error: dErr } = await svc.from("blueprint_source_documents").insert({
+    import_session_id: sessionId,
+    tenant_id: tenantId,
+    storage_path: pd.file_path,
+    document_reference: pd.id,
+    document_type: cls.db_document_type,
+    provider: cls.db_provider,
+    original_filename: pd.file_name,
+    page_count: pdfText.page_count,
+    property_address: pd.property_address ?? null,
+    extraction_status: "succeeded",
+    metadata: {
+      missing_fields: winner.missing_fields,
+      field_confidences: winner.field_confidences,
+      overall_confidence: winner.confidence,
+    },
+  }).select("id").single();
+  if (dErr || !srcDoc) return jsonErr(c, "source_doc_insert_failed", dErr?.message ?? "unknown", 500);
+  const srcDocId = srcDoc.id as string;
+
+  const mapCtx = { document_type: cls.db_document_type as "roof_report" | "wall_report", provider: cls.db_provider, file_name: pd.file_name };
+  const mapped =
+    cls.db_document_type === "roof_report"
+      ? mapRoofExtractionToMeasurements(winner.data as never, mapCtx)
+      : cls.db_document_type === "wall_report"
+        ? mapWallExtractionToMeasurements(winner.data as never, mapCtx)
+        : [];
+
+  const planPathRows = mapped.map((m) => ({
+    import_session_id: sessionId,
+    tenant_id: tenantId,
+    source_document_id: srcDocId,
+    path_type: m.plan_path.path_type,
+    file_name: m.plan_path.file_name,
+    document_type: m.plan_path.document_type,
+    provider: m.plan_path.provider,
+    page_number: m.plan_path.page_number ?? null,
+    section_label: m.plan_path.section_label ?? null,
+    table_label: m.plan_path.table_label ?? null,
+    diagram_label: m.plan_path.diagram_label ?? null,
+    source_text_excerpt: m.plan_path.source_text_excerpt ?? null,
+    confidence: m.plan_path.confidence,
+  }));
+  let insertedPlanPaths: { id: string }[] = [];
+  if (planPathRows.length) {
+    const { data, error } = await svc.from("blueprint_plan_paths").insert(planPathRows).select("id");
+    if (error) return jsonErr(c, "plan_path_insert_failed", error.message, 500);
+    insertedPlanPaths = data ?? [];
+  }
+
+  const moRows = mapped.map((m, idx) => ({
+    import_session_id: sessionId,
+    tenant_id: tenantId,
+    source_document_id: srcDocId,
+    trade_id: m.measurement.trade_id,
+    measurement_key: m.measurement.measurement_key,
+    measurement_group: m.measurement.measurement_group,
+    quantity: m.measurement.quantity,
+    unit: m.measurement.unit,
+    confidence: m.measurement.confidence,
+    source_value_raw: m.measurement.source_value_raw ?? null,
+    normalized_value: m.measurement.normalized_value ?? null,
+    plan_path_id: insertedPlanPaths[idx]?.id ?? null,
+    page_number: m.measurement.page_number ?? null,
+    metadata: { ...(m.measurement.metadata ?? {}), measurement_source: "report_extraction" },
+  }));
+  if (moRows.length) {
+    const { error } = await svc.from("blueprint_measurement_objects").insert(moRows);
+    if (error) return jsonErr(c, "measurement_insert_failed", error.message, 500);
+  }
+
+  const detected =
+    cls.db_document_type === "roof_report"
+      ? detectTradesFromRoofReport(winner.data as never, cls.db_provider)
+      : cls.db_document_type === "wall_report"
+        ? detectTradesFromWallReport(winner.data as never, cls.db_provider)
+        : [];
+  if (detected.length) {
+    const { error } = await svc.from("blueprint_detected_trades").insert(detected.map((d) => ({
+      import_session_id: sessionId,
+      tenant_id: tenantId,
+      trade_id: d.trade_id,
+      support_status: d.support_status,
+      confidence: d.confidence,
+      detection_signals: d.detection_signals,
+      source_document_ids: [srcDocId],
+      status: "detected",
+    })));
+    if (error) return jsonErr(c, "detected_trade_insert_failed", error.message, 500);
+  }
+
+  await svc.from("blueprint_import_sessions").update({
+    status: "trades_detected",
+    updated_at: new Date().toISOString(),
+  }).eq("id", sessionId).eq("tenant_id", tenantId);
+
+  return jsonOk(c, {
+    session_id: sessionId,
+    plan_document_id: pd.id,
+    reused: false,
+    classifier: cls,
+    parser: winner.parser,
+    measurement_count: moRows.length,
+    detected_trade_count: detected.length,
+  });
+});
+
+// ---- POST /blueprint-importer/v2/measurements/upsert-manual ----------------
+// Manual measurement entry for blueprint sheets where deterministic takeoff is
+// not available. PlanPath is always written (provenance is mandatory). The
+// measurement is tagged metadata.measurement_source='user_manual' so the UI
+// can render a "Manual" badge and downstream draft generation can distinguish
+// user-entered from report-extracted values.
+interface ManualMeasurementBody {
+  session_id: string;
+  trade_id: string;
+  measurement_key: string;
+  measurement_group: string;
+  quantity: number | null;
+  unit: string;
+  page_number?: number | null;
+  section_label?: string | null;
+  source_text_excerpt?: string | null;
+  note?: string | null;
+  source_document_id?: string | null;
+  measurement_id?: string | null; // when set → update existing row
+}
+
+app.post("/blueprint-importer/v2/measurements/upsert-manual", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const userId = c.get("userId") ?? null;
+  const body = (await c.req.json().catch(() => ({}))) as ManualMeasurementBody;
+  if (!body?.session_id || !body?.trade_id || !body?.measurement_key || !body?.unit) {
+    return jsonErr(c, "bad_request", "session_id, trade_id, measurement_key, unit required", 400);
+  }
+  const svc = serviceClient();
+
+  const { data: session } = await svc.from("blueprint_import_sessions")
+    .select("id").eq("id", body.session_id).eq("tenant_id", tenantId).maybeSingle();
+  if (!session) return jsonErr(c, "not_found", "session not found", 404);
+
+  let srcDocId: string | null = body.source_document_id ?? null;
+  if (!srcDocId) {
+    const { data: sd } = await svc.from("blueprint_source_documents")
+      .select("id").eq("import_session_id", body.session_id).eq("tenant_id", tenantId)
+      .order("created_at", { ascending: true }).limit(1).maybeSingle();
+    srcDocId = sd?.id ?? null;
+  }
+
+  const { data: pp, error: ppErr } = await svc.from("blueprint_plan_paths").insert({
+    import_session_id: body.session_id,
+    tenant_id: tenantId,
+    source_document_id: srcDocId,
+    path_type: "user_entry",
+    page_number: body.page_number ?? null,
+    section_label: body.section_label ?? null,
+    source_text_excerpt: body.source_text_excerpt ?? body.note ?? "manual entry",
+    confidence: 1.0,
+  }).select("id").single();
+  if (ppErr || !pp) return jsonErr(c, "plan_path_insert_failed", ppErr?.message ?? "unknown", 500);
+
+  const meta = {
+    measurement_source: "user_manual",
+    created_by: userId,
+    manual_note: body.note ?? null,
+  };
+
+  if (body.measurement_id) {
+    const { data, error } = await svc.from("blueprint_measurement_objects").update({
+      quantity: body.quantity,
+      unit: body.unit,
+      plan_path_id: pp.id,
+      page_number: body.page_number ?? null,
+      metadata: meta,
+      confidence: 1.0,
+    }).eq("id", body.measurement_id).eq("tenant_id", tenantId)
+      .select("id").maybeSingle();
+    if (error) return jsonErr(c, "measurement_update_failed", error.message, 500);
+    return jsonOk(c, { measurement_id: data?.id, plan_path_id: pp.id, mode: "update" });
+  }
+
+  const { data, error } = await svc.from("blueprint_measurement_objects").insert({
+    import_session_id: body.session_id,
+    tenant_id: tenantId,
+    source_document_id: srcDocId,
+    trade_id: body.trade_id,
+    measurement_key: body.measurement_key,
+    measurement_group: body.measurement_group,
+    quantity: body.quantity,
+    unit: body.unit,
+    confidence: 1.0,
+    source_value_raw: body.note ?? null,
+    plan_path_id: pp.id,
+    page_number: body.page_number ?? null,
+    metadata: meta,
+  }).select("id").single();
+  if (error || !data) return jsonErr(c, "measurement_insert_failed", error?.message ?? "unknown", 500);
+  return jsonOk(c, { measurement_id: data.id, plan_path_id: pp.id, mode: "insert" });
+});
+
+// ---- POST /blueprint-importer/v2/workbench/by-document ---------------------
+// Resolves a plan_document_id to the active (non-superseded) import session id.
+// Used by BlueprintDocumentDetail's "Open Trade Quote Workbench" entry point.
+app.post("/blueprint-importer/v2/workbench/by-document", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const body = (await c.req.json().catch(() => ({}))) as { plan_document_id?: string };
+  if (!body.plan_document_id) return jsonErr(c, "bad_request", "plan_document_id required", 400);
+  const svc = serviceClient();
+  const { data } = await svc.from("blueprint_import_sessions")
+    .select("id, status")
+    .eq("tenant_id", tenantId)
+    .eq("source_context_type", "plan_document")
+    .eq("source_context_id", body.plan_document_id)
+    .neq("status", "superseded")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return jsonOk(c, { session_id: data?.id ?? null, status: data?.status ?? null });
+});
+
 serveRouter(app);
+
 
 
 

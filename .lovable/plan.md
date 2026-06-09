@@ -1,136 +1,151 @@
-## Context
 
-I searched the codebase: there is **no `Lock Material Baseline` button** currently rendered in `src/components/orders/MaterialOrderDetail.tsx`, `PriceLockStatus.tsx`, `ProjectMaterialsTab.tsx`, or anywhere under `src/components/orders/*`. The only lock UI is the read-only `PriceLockStatus` panel that *displays* whether prices were locked at PO creation. So "remove the button" becomes "make sure no such button gets added and keep the lock as an automatic state transition only."
+# Blueprint Importer v2 — Trade Quote Workbench Completion
 
-The real work is the three behavioral changes:
-1. Auto-lock the material baseline on export OR on supplier send.
-2. When a supplier (SRS / ABC / QXO) returns a confirmed order payload with verified line prices, build a vendor invoice from it.
-3. Template "Update Costs" pulls a per-item average across the tenant's connected suppliers, falling back to the tenant's uploaded price sheet — never cross-tenant.
+## Scope (this phase only)
 
-User confirmed:
-- Pricing scope: **only on next Update Costs click** (no retroactive backfill).
-- Supplier-verified invoice lands **as a vendor invoice on the project** (same surface AI invoice processing writes to).
-- Multi-tenancy is non-negotiable — tenant_id filtering everywhere.
+Deliver the end-to-end **workbench** flow:
 
----
+1. Open a blueprint/report PDF → land in a Blueprint Import Session.
+2. See **Detected Trades** with support status, confidence, source pages.
+3. Accept the trades you want to quote (with contract rules).
+4. See/store **Measurements** under accepted trades, each with a **PlanPath**.
+5. Enter **Manual Measurements** for trades where deterministic takeoff isn't available.
+6. **Apply to Template** → required inputs view → save **template binding**.
+7. **Populate Material Draft / Generate Labor Draft** → review draft lines (no pricing, no CRM write).
+8. Review flags + blockers visible throughout.
 
-## Part 1 — Material baseline auto-lock
+## Hard non-goals
 
-**No new UI button.** Auto-lock happens on two server-side triggers.
+- No writes to `estimate_line_items`, `enhanced_estimates`, `proposal_tier_items`, proposal/work-order/PO/invoice/production tables.
+- No catalog/labor table mutation, no pricing, no live handoff route.
+- No standalone edge functions — extend `document-worker` route family only.
+- No stub geometry skill output stored as real measurements; no AI in math path.
+- No automatic blueprint-sheet takeoff for drywall/framing/MEP/etc.
 
-### 1a. Lock on Export Material Order
-Edge function (existing CSV/PDF export path in `MaterialLineItemsExport.tsx`) writes:
-- `purchase_orders.baseline_locked_at = now()`
-- `purchase_orders.baseline_lock_reason = 'export'`
-- snapshot each `purchase_order_items.unit_price / line_total / quantity` into a new `purchase_order_baseline_snapshots` row (one row per export, immutable).
+## Required reading (verified first, no code before this)
 
-If `baseline_locked_at` is already set, export still succeeds but does NOT overwrite the lock — it appends a new snapshot row with `lock_reason='re_export'`.
+- `docs/blueprint-trade-catalog.md`
+- `docs/blueprint-estimate-mapping-contract.md`
+- `docs/blueprint-mvp-phase-plan.md`
+- `docs/blueprint-importer-phase-3-runtime-detection.md`
+- `docs/blueprint-importer-phase-4-draft-generation.md`
+- `docs/blueprint-importer-phase-7-6c-pricing-preflight.md`
+- `docs/blueprint-importer-phase-7-8-live-handoff-hardening.md`
+- `supabase/functions/document-worker/index.ts` (blueprint v2 route family)
+- Existing blueprint upload routes (`upload-blueprint-document`, `parse-blueprint-document`, `classify-blueprint-pages`)
+- `plan_documents` + all `blueprint_*` tables
+- `src/pages/BlueprintImporterV2.tsx`, `BlueprintDocumentDetail.tsx`, `BlueprintReviewPage.tsx`
+- `src/integrations/blueprintImporterV2Api.ts`, `blueprintApi.ts`
+- `worker/app/skills_registry.py` + skill files to mark real vs stub
 
-### 1b. Lock on Push to Supplier
-In `srs-api/orders/v2/submit`, `supplier-api/abc/orders/submit`, and the QXO equivalent (when wired), once the supplier accepts the submission (status `queued` / `submitted` / `accepted`):
-- Set `purchase_orders.baseline_locked_at = now()`, `baseline_lock_reason = 'supplier_submit'`, `baseline_supplier = 'srs'|'abc'|'qxo'`.
-- Snapshot to `purchase_order_baseline_snapshots`.
+If any required flow is missing/contradictory/unsafe → stop and report before coding.
 
-### 1c. Frontend
-- Remove any code path that would render a manual lock button (none exists today — guard with a `// no manual lock; auto-locked on export/submit` comment in `MaterialOrderDetail.tsx`).
-- `PriceLockStatus` panel reads `baseline_locked_at` + `baseline_lock_reason` directly and shows "Locked on export" / "Locked on submit to SRS" instead of just timestamp.
+## Workflow
 
----
+```text
+plan_documents row
+   │
+   ▼
+blueprint_import_sessions  ◄── idempotent on (tenant_id, plan_document_id)
+   │
+   ├── blueprint_source_documents  (1+; report or blueprint_set)
+   │
+   ├── blueprint_detected_trades   (auto from extractor + classifier)
+   │
+   ├── blueprint_accepted_trades   (user choice; contract-gated)
+   │       │
+   │       ├── blueprint_measurement_objects   (auto OR user_manual; PlanPath required)
+   │       │       └── blueprint_plan_paths
+   │       │
+   │       ├── blueprint_template_bindings     (template_id + required/missing inputs)
+   │       │
+   │       ├── blueprint_material_draft_lines  (only when inputs complete & user clicks)
+   │       └── blueprint_labor_draft_lines     (only when inputs complete & user clicks)
+   │
+   └── blueprint_review_flags      (blockers + warnings)
+```
 
-## Part 2 — Supplier-verified vendor invoice
+## DB changes (additive only, if needed)
 
-When supplier order status flips to `accepted` AND payload contains line-level confirmed pricing (SRS `orderConfirmation.items[].unitPrice`, ABC `order.lines[].confirmedPrice`, QXO equivalent), the cron poller / webhook handler will:
+Verify first whether existing columns can carry:
+- `blueprint_measurement_objects.measurement_source` ∈ {`report_extraction`, `derived`, `user_manual`, `placeholder`}
+- `blueprint_measurement_objects.created_by`
+- `blueprint_template_bindings.binding_status` already exists — confirm enum covers `pending|ready|blocked|rejected|superseded`.
+- `blueprint_material_draft_lines.source_measurement_ids uuid[]`, `plan_path_ids uuid[]`
+- `blueprint_labor_draft_lines.source_measurement_ids uuid[]`, `plan_path_ids uuid[]`
+- Idempotency keys: `(import_session_id, accepted_trade_id, template_id, line_key)` unique on draft lines.
 
-1. Look up the matching `purchase_order` via supplier order id.
-2. Build a `vendor_invoices` row scoped to the same `tenant_id` and `project_id`:
-   - `invoice_number` = supplier's confirmation/invoice number
-   - `vendor_id` = the supplier vendor row for that tenant
-   - `source = 'supplier_order_confirmation'`
-   - `purchase_order_id` = link back
-   - `total_amount` = sum of confirmed lines + tax + freight
-   - `status = 'pending_review'`
-3. Build `vendor_invoice_line_items` rows. Each line is matched back to the PO item by `template_item_supplier_mappings.supplier_item_number` (the approved-SKU table from the prior phase). Items the supplier returns that don't match a mapped SKU go in with `match_status='unmatched'` and force the invoice into review.
-4. Compute a `price_variance_vs_baseline` per line by joining against `purchase_order_baseline_snapshots`. Significant deltas (>5%) get flagged.
+Any missing columns → one additive migration with `IF NOT EXISTS`, RLS unchanged (tenant_id already enforced), `NOTIFY pgrst, 'reload schema';`. **No new tables unless contract demands it.** No changes to estimate/proposal tables.
 
-No estimate mutation — vendor invoice is independent.
+## Routes (extend `document-worker` blueprint-importer/v2 family)
 
-### Required tenant gates
-- Lookup `purchase_order → tenant_id` server-side; never trust the supplier payload's tenant.
-- Webhook resolves supplier order id → PO → tenant, then writes with that tenant_id explicitly.
+- `POST /blueprint-importer/v2/import-from-plan-document` — idempotent session+source-doc create from a `plan_documents.id`.
+- `POST /blueprint-importer/v2/detect-trades` — runs extractor over source docs, writes `blueprint_detected_trades` + `blueprint_measurement_objects` + `blueprint_plan_paths` + flags. Idempotent per `import_session_id`.
+- `POST /blueprint-importer/v2/accept-trades` — body: `[{trade_id, measurement_mode, template_id?, assumptions?}]`. Enforces contract gates (no `windows_doors` standalone; `paint_coatings` requires wall source).
+- `POST /blueprint-importer/v2/measurements/upsert-manual` — manual measurement entry with required PlanPath.
+- `POST /blueprint-importer/v2/apply-template` — writes/updates `blueprint_template_bindings`; recomputes required/missing inputs.
+- `POST /blueprint-importer/v2/draft/material` — generates `blueprint_material_draft_lines` only if binding is `ready`.
+- `POST /blueprint-importer/v2/draft/labor` — same for labor.
+- `GET /blueprint-importer/v2/workbench/:sessionId` and `…/by-document/:planDocumentId` — returns hydrated workbench payload.
 
----
+All routes: validate tenant via `_shared/auth` + `_shared/tenant`, RLS-safe queries, idempotent, structured error envelope, no live-estimate writes.
 
-## Part 3 — Template "Update Costs" — multi-supplier averaging
+## Extractors (deterministic only)
 
-### 3a. New tenant-scoped catalog of supplier price points
-Reuse `supplier_price_history` (already written by the SRS pricing-history pipeline) and extend it so ABC and QXO write into the same table with `supplier` column. Schema additions:
-- `supplier text not null check (supplier in ('srs','abc','qxo','imported'))`
-- `tenant_id uuid not null`
-- `template_item_id uuid` (nullable — present when refresh originated from a template)
-- index `(tenant_id, supplier, template_item_id, checked_at desc)`
+Inside worker, expand `worker/app/blueprint_contracts/` with three extractors:
 
-### 3b. Imported price sheet
-New table `tenant_imported_price_sheets`:
-- `tenant_id, supplier_label, sku, description, uom, unit_price, currency, valid_from, valid_until, source_filename`
-- RLS: tenant-only. No cross-tenant reads.
-- CSV upload UI in template settings (out of scope of this prompt's wiring — DB + RLS only here; UI is a follow-on).
+- `roofr_roof_report_extractor.py`
+- `eagleview_roof_report_extractor.py`
+- `eagleview_wall_report_extractor.py`
 
-### 3c. Update Costs resolver
-On "Update Costs" click in `TemplateDetailsPanel`, frontend calls a new edge function `template-cost-refresh` that, for each template item:
+Each takes the already-parsed report payload (existing parser output) and emits typed measurement objects + PlanPaths against the keys listed in the request. No OCR fallback; no inference.
 
-1. Look up `template_item_supplier_mappings` rows for this tenant + item where `mapping_status='approved'`.
-2. For each approved mapping, fetch the most recent **successful** price from `supplier_price_history` (status='ok', non-null unit_price, within last 30 days). Stale > 30 days triggers a live pricing call to that supplier's `/price` route, written back to history.
-3. Collect the resulting per-supplier prices into an array.
-4. If **0 connected-supplier prices** are available, fall back to the tenant's `tenant_imported_price_sheets` row for that template item (matched via mapping or SKU column on template_items). If still nothing → mark item `cost_source='unresolved'`, do not overwrite existing cost.
-5. If **1+ supplier prices**: `unit_cost = average(prices)`, `cost_source = 'supplier_avg'`, persist the contributing supplier list + per-supplier prices to `template_items.cost_breakdown` (jsonb) for audit.
-6. Recalculate `template_items.line_total` per the existing engine standards memory (never overwrite `selling_price` — only `unit_cost`; selling price recomputes via margin formula).
+For generic blueprint sets: classifier emits detected trades only, all measurements as `measurement_source='placeholder'`, `status='manual_measurement_required'`. No quantities.
 
-### 3d. Tenant isolation
-- Edge function resolves `tenant_id` from JWT via `_shared/tenant.ts`, never from body.
-- Every `supplier_price_history`, `template_item_supplier_mappings`, `tenant_imported_price_sheets`, and `template_items` query carries `.eq('tenant_id', resolvedTenantId)`.
-- RLS on all three tables: tenant-only SELECT/INSERT/UPDATE; service_role for edge functions.
+## Geometry safety
 
-### 3e. Scope
-- Only runs when the user clicks Update Costs. No bulk backfill, no cron.
-- Does NOT touch estimates or active POs.
+Audit `worker/app/skills_registry.py` and skills. Any skill currently returning stubbed/fake geometry is marked in a small `STUB_SKILLS` set and the workbench refuses to consume their output as real measurements (flag: `geometry_worker_stub_not_allowed`). Document real vs stub in workbench doc.
 
----
+## UI
 
-## Technical details
+`src/pages/BlueprintImporterV2.tsx` becomes the workbench shell. Add components under `src/components/blueprint/workbench/`:
 
-### Migrations
-1. `purchase_orders`: add `baseline_locked_at timestamptz`, `baseline_lock_reason text`, `baseline_supplier text`.
-2. New `purchase_order_baseline_snapshots` (tenant_id, po_id, lock_reason, snapshot_jsonb, created_at) + GRANT + RLS.
-3. `supplier_price_history`: add `supplier`, `template_item_id` columns + index + update CHECK constraint.
-4. New `tenant_imported_price_sheets` + GRANT + RLS.
-5. `template_items`: add `cost_source text`, `cost_breakdown jsonb`.
+- `WorkbenchHeader` — doc name/type/provider/session status/address/flag summary.
+- `DetectedTradesPanel` — trade cards with status badges (`Accept` / `Locked` / `Manual measurement required`).
+- `AcceptedTradePanel` — per accepted trade:
+  - measurements list with PlanPath links,
+  - missing inputs,
+  - template selector,
+  - assumptions form,
+  - `Apply Template`, `Populate Material Draft`, `Generate Labor Draft`.
+- `DraftLinesPreview` — material + labor draft tables with source/PlanPath columns.
+- `ManualMeasurementForm` — modal for `measurements/upsert-manual`.
+- `FutureActionsDisabledBar` — fixed disabled message: *“Push to Estimate is disabled until live CRM handoff is approved. This workbench stores trade selections, measurements, and template draft outputs only.”*
 
-### Edge function changes
-- `srs-api`: in `/orders/v2/submit` success path → write baseline lock + snapshot. In `/orders/poll` (or webhook) when status flips to `accepted` with confirmed prices → call shared `buildVendorInvoiceFromSupplierOrder()`.
-- `supplier-api` (ABC): mirror the same two hooks.
-- New `_shared/supplier-order-to-invoice.ts`: pure function that takes (tenant_id, po_id, supplier_payload) → writes vendor_invoices + lines.
-- New `template-cost-refresh`: implements Part 3 resolver.
+`BlueprintDocumentDetail.tsx` gets a prominent **Open Trade Quote Workbench** action that calls `import-from-plan-document` then routes to the workbench.
 
-### Frontend
-- `MaterialOrderDetail.tsx`: PriceLockStatus shows lock reason + supplier.
-- `TemplateDetailsPanel.tsx`: replace existing `onUpdateCosts` to call new `template-cost-refresh` edge function and show per-item supplier source in a small popover.
-- `MaterialLineItemsExport.tsx`: on successful export, call lock-on-export RPC.
+## Tests
 
-### Out of scope
-- CSV upload UI for `tenant_imported_price_sheets` (table + RLS only).
-- QXO wiring (the prior plan still has QXO paused).
-- Any retroactive recompute of existing templates.
-- Any change to estimate selling-price or commission logic.
+Vitest (frontend/api integration) + Python tests (extractors). Coverage list matches the request: session idempotency, trade-detection rules per report type, contract gates, measurement persistence with PlanPath, manual measurement, template binding required/missing, draft line idempotency + provenance, workbench GET shape, safety asserts (no `estimate_line_items` writes, no stub geometry stored).
 
----
+## Docs
 
-## Sequence
-1. Migration (Part 1a/b columns + 3 new tables/columns).
-2. `_shared/supplier-order-to-invoice.ts` shared builder.
-3. Hook into `srs-api` submit + poll/webhook; hook into `supplier-api` ABC equivalents.
-4. `template-cost-refresh` edge function + wire `TemplateDetailsPanel` button to it.
-5. Lock-on-export hook in `MaterialLineItemsExport.tsx`.
-6. Update `PriceLockStatus` to show lock reason/supplier.
-7. Smoke test: SRS submit → baseline locks → simulate accepted payload → vendor invoice appears under project financials.
+- New: `docs/blueprint-importer-trade-quote-workbench-completion.md` (full scope/non-goals/routes/UI/tests/gaps/checklist).
+- Touch only the workbench status line in `docs/blueprint-mvp-phase-plan.md`.
 
-Reply "go" and I'll start with the migration.
+## Verification report
+
+End-of-phase report covering every bullet in the request (docs re-read, routes, UI, DB tables written/not-written, tests, deviations, remaining blockers, recommended next phase).
+
+## Sequencing
+
+1. **Audit pass** — read all required docs + existing routes/tables/UI/skills; produce gap notes.
+2. **Schema check + (if needed) one additive migration**.
+3. **Extractors** for Roofr/EagleView roof/EagleView wall + generic blueprint placeholder path.
+4. **Routes** in `document-worker` blueprint-importer/v2 namespace.
+5. **API client** updates in `blueprintImporterV2Api.ts`.
+6. **UI workbench** components + page wiring.
+7. **Tests**.
+8. **Docs + verification report**.
+
+Stop after this phase. Wait for review before any live handoff or full sheet takeoff.
