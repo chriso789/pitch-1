@@ -1845,7 +1845,7 @@ app.post("/blueprint-importer/v2/pricing-preflight/get", async (c) => {
 
 // ---- POST /blueprint-importer/v2/import-from-plan-document ------------------
 // Idempotent: returns existing session for (tenant_id, source_context_type=
-// 'plan_document', source_context_id=plan_document_id) when present. Otherwise
+// 'standalone', source_context_id=plan_document_id) when present. Otherwise
 // loads the plan_documents row, fetches the file from the "blueprints" bucket,
 // classifies, parses (Roofr/EagleView roof/EagleView wall), and persists
 // session + source_document + plan_paths + measurements + detected_trades.
@@ -1868,7 +1868,7 @@ app.post("/blueprint-importer/v2/import-from-plan-document", async (c) => {
   const { data: existing } = await svc.from("blueprint_import_sessions")
     .select("id, status")
     .eq("tenant_id", tenantId)
-    .eq("source_context_type", "plan_document")
+    .eq("source_context_type", "standalone")
     .eq("source_context_id", pd.id)
     .neq("status", "superseded")
     .order("created_at", { ascending: false })
@@ -1891,11 +1891,11 @@ app.post("/blueprint-importer/v2/import-from-plan-document", async (c) => {
   const createManualBlueprintSession = async (reason: string, classifier: unknown, pageCount: number | null) => {
     const { data: session, error: sErr } = await svc.from("blueprint_import_sessions").insert({
       tenant_id: tenantId,
-      source_context_type: "plan_document",
+      source_context_type: "standalone",
       source_context_id: pd.id,
       status: "parsed",
       contract_version: "blueprint-importer-v2",
-      metadata: { plan_document_id: pd.id, classifier, manual_measurement_required: true, reason },
+      metadata: { source_origin: "plan_document", plan_document_id: pd.id, classifier, manual_measurement_required: true, reason },
       created_by: userId,
     }).select("id").single();
     if (sErr || !session) return jsonErr(c, "session_insert_failed", sErr?.message ?? "unknown", 500);
@@ -1971,12 +1971,12 @@ app.post("/blueprint-importer/v2/import-from-plan-document", async (c) => {
 
   const { data: session, error: sErr } = await svc.from("blueprint_import_sessions").insert({
     tenant_id: tenantId,
-    source_context_type: "plan_document",
+    source_context_type: "standalone",
     source_context_id: pd.id,
     status: "parsed",
     contract_version: "blueprint-importer-v2",
     deterministic_hash: dHash,
-    metadata: { plan_document_id: pd.id, classifier: cls, parser: winner.parser, supersedes: prior?.id ?? null },
+    metadata: { source_origin: "plan_document", plan_document_id: pd.id, classifier: cls, parser: winner.parser, supersedes: prior?.id ?? null },
     created_by: userId,
   }).select("id").single();
   if (sErr || !session) return jsonErr(c, "session_insert_failed", sErr?.message ?? "unknown", 500);
