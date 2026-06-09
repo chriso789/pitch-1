@@ -93,21 +93,23 @@ export interface ImportFromPlanDocumentResult {
   reason?: string;
 }
 
-export async function importBlueprintFromPlanDocument(plan_document_id: string) {
+export async function importBlueprintFromPlanDocument(plan_document_id: string, tenant_id?: string) {
   const { data, error } = await edgeApi<ImportFromPlanDocumentResult>(
     "document-worker",
     "/blueprint-importer/v2/import-from-plan-document",
     { plan_document_id },
+    tenant_id ? { headers: { "x-tenant-id": tenant_id } } : undefined,
   );
   if (error) throw new Error(error);
   return data!;
 }
 
-export async function findWorkbenchSessionByPlanDocument(plan_document_id: string) {
+export async function findWorkbenchSessionByPlanDocument(plan_document_id: string, tenant_id?: string) {
   const { data, error } = await edgeApi<{ session_id: string | null; status: string | null }>(
     "document-worker",
     "/blueprint-importer/v2/workbench/by-document",
     { plan_document_id },
+    tenant_id ? { headers: { "x-tenant-id": tenant_id } } : undefined,
   );
   if (error) throw new Error(error);
   return data!;
