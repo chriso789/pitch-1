@@ -16,6 +16,7 @@ export async function uploadBlueprintDocument(payload: {
   property_address?: string;
   file_name: string;
   file_path: string;
+  tenant_id?: string;
   contact_id?: string;
   pipeline_entry_id?: string;
 }) {
