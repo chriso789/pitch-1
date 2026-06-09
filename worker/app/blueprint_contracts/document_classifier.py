@@ -61,12 +61,12 @@ def classify_blueprint_document(text: str) -> DocumentClassification:
         return DocumentClassification("eagleview_roof_report", "eagleview", 0.95, signals, "roof_report", "eagleview")
     if rf and roof:
         return DocumentClassification("roofr_roof_report", "roofr", 0.95, signals, "roof_report", "roofr")
+    if bp:
+        return DocumentClassification("blueprint_set", "user_uploaded_blueprint", 0.6, signals, "blueprint_set", "user_uploaded_blueprint")
     if roof and not wall:
         return DocumentClassification("eagleview_roof_report", "unknown", 0.55, signals, "roof_report", "unknown")
     if wall:
         return DocumentClassification("eagleview_wall_report", "unknown", 0.55, signals, "wall_report", "unknown")
     if spec:
         return DocumentClassification("spec_book", "user_uploaded_blueprint", 0.6, signals, "spec_book", "user_uploaded_blueprint")
-    if bp:
-        return DocumentClassification("blueprint_set", "user_uploaded_blueprint", 0.6, signals, "blueprint_set", "user_uploaded_blueprint")
     return DocumentClassification("unknown", "unknown", 0.0, signals, "unknown", "unknown")
