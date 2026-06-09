@@ -31,19 +31,47 @@ interface CanvassiqProperty {
 
 // Disposition colors matching the reference design
 const DISPOSITION_COLORS: Record<string, string> = {
-  not_contacted: '#D4A84B',    // Yellow/gold outline
-  new_roof: '#8B6914',         // Brown  
-  unqualified: '#DC2626',      // Red
-  old_roof_marker: '#DC2626',  // Red
-  interested: '#22C55E',       // Green
-  sold: '#22C55E',             // Green
-  qualified: '#22C55E',        // Green
-  not_interested: '#DC2626',   // Red
-  not_home: '#9CA3AF',         // Gray
-  follow_up: '#EAB308',        // Yellow
-  past_customer: '#0D9488',    // Teal - completed project
-  default: '#D4A84B',          // Yellow outline (not contacted)
+  not_contacted: '#D4A84B',
+  new_roof: '#8B6914',
+  unqualified: '#DC2626',
+  old_roof_marker: '#DC2626',
+  interested: '#22C55E',
+  sold: '#22C55E',
+  qualified: '#22C55E',
+  not_interested: '#DC2626',
+  not_home: '#9CA3AF',
+  follow_up: '#EAB308',
+  past_customer: '#0D9488',
+  default: '#D4A84B',
 };
+
+// CRM project / pipeline status → pin color (overrides canvassiq disposition)
+const CRM_STATUS_COLORS: Record<string, string> = {
+  new: '#6366F1', contacted: '#6366F1',
+  appointment_set: '#0EA5E9', inspection_scheduled: '#0EA5E9',
+  inspection_complete: '#06B6D4',
+  estimate_sent: '#F59E0B', estimate_approved: '#22C55E',
+  contract_signed: '#22C55E', legal_review: '#A855F7',
+  in_production: '#10B981', completed: '#0D9488',
+  closed_won: '#22C55E', closed_lost: '#EF4444',
+  active: '#10B981', on_hold: '#F59E0B', cancelled: '#EF4444',
+};
+
+function formatCrmStatus(s?: string | null): string {
+  if (!s) return '';
+  return s.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
+function coordKey(lat: number, lng: number): string {
+  // ~10m grid so canvassiq property coords match contact coords
+  return `${lat.toFixed(4)}|${lng.toFixed(4)}`;
+}
+
+interface CrmOverlay {
+  status: string;
+  isProject: boolean;
+  ownerName: string;
+}
 
 // Get marker size based on zoom level - always show house numbers at zoom 14+
 function getMarkerSize(zoom: number): { size: number; showNumber: boolean; fontSize: number } {
@@ -152,56 +180,47 @@ export default function PropertyMarkersLayer({
     return offsets;
   }, []);
 
-  const createMarkerElement = useCallback((property: CanvassiqProperty, zoom: number): HTMLDivElement => {
+  const createMarkerElement = useCallback((
+    property: CanvassiqProperty,
+    zoom: number,
+    crm?: CrmOverlay,
+  ): HTMLDivElement => {
     const container = document.createElement('div');
-    const color = getDispositionColor(property.disposition);
+    const baseColor = getDispositionColor(property.disposition);
+    const color = crm ? (CRM_STATUS_COLORS[crm.status] || baseColor) : baseColor;
     const { size, showNumber, fontSize } = getMarkerSize(zoom);
     const { number: streetNumber, streetName } = getStreetInfo(property.address);
-    const isNotContacted = !property.disposition || property.disposition === 'not_contacted';
+    const isNotContacted = !crm && (!property.disposition || property.disposition === 'not_contacted');
     const borderWidth = size >= 24 ? 3 : size >= 16 ? 2 : 1;
     const showStreetLabel = zoom >= 17 && streetName;
 
     container.className = 'property-marker';
     container.style.cssText = `
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      pointer-events: auto;
-      cursor: pointer;
+      display: flex; flex-direction: column; align-items: center;
+      pointer-events: auto; cursor: pointer; position: relative;
     `;
 
-    // Circle element
     const circle = document.createElement('div');
     if (isNotContacted) {
       circle.style.cssText = `
-        width: ${size}px;
-        height: ${size}px;
+        width: ${size}px; height: ${size}px;
         background-color: #FFFFFF;
         border: ${borderWidth}px solid ${color};
         border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        display: flex; align-items: center; justify-content: center;
         box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-        font-size: ${fontSize}px;
-        font-weight: 600;
-        color: #1F2937;
+        font-size: ${fontSize}px; font-weight: 600; color: #1F2937;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       `;
     } else {
       circle.style.cssText = `
-        width: ${size}px;
-        height: ${size}px;
+        width: ${size}px; height: ${size}px;
         background-color: ${color};
         border: ${borderWidth}px solid white;
         border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        display: flex; align-items: center; justify-content: center;
         box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-        font-size: ${fontSize}px;
-        font-weight: 600;
-        color: white;
+        font-size: ${fontSize}px; font-weight: 600; color: white;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       `;
     }
@@ -212,31 +231,70 @@ export default function PropertyMarkersLayer({
 
     container.appendChild(circle);
 
-    // Street name label below the circle at zoom 17+
-    if (showStreetLabel) {
+    // CRM project/lead badge (small dot in corner to flag it's in the CRM)
+    if (crm) {
+      const dot = document.createElement('div');
+      dot.style.cssText = `
+        position: absolute; top: -2px; right: -2px;
+        width: ${Math.max(8, Math.round(size * 0.35))}px;
+        height: ${Math.max(8, Math.round(size * 0.35))}px;
+        background: white; border: 2px solid ${color};
+        border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+      `;
+      if (crm.isProject) {
+        const inner = document.createElement('div');
+        inner.style.cssText = `
+          width: 4px; height: 4px; background: ${color}; border-radius: 50%;
+        `;
+        dot.appendChild(inner);
+      }
+      container.appendChild(dot);
+    }
+
+    // CRM status / owner label below pin at zoom 16+
+    if (crm && zoom >= 16) {
+      const label = document.createElement('div');
+      const txt = `${crm.isProject ? 'PROJECT · ' : ''}${formatCrmStatus(crm.status).toUpperCase()}`;
+      label.textContent = txt;
+      label.style.cssText = `
+        margin-top: 2px; font-size: 8px; font-weight: 700;
+        color: #FFFFFF; background: ${color};
+        padding: 1px 4px; border-radius: 3px; white-space: nowrap;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+      `;
+      container.appendChild(label);
+
+      if (crm.ownerName && zoom >= 17) {
+        const owner = document.createElement('div');
+        owner.textContent = crm.ownerName;
+        owner.style.cssText = `
+          margin-top: 1px; font-size: 8px; font-weight: 600;
+          color: #1F2937; background: rgba(255,255,255,0.9);
+          padding: 0 3px; border-radius: 2px; white-space: nowrap;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        `;
+        container.appendChild(owner);
+      }
+    } else if (showStreetLabel) {
       const label = document.createElement('div');
       label.textContent = streetName;
       label.style.cssText = `
-        margin-top: 1px;
-        font-size: 8px;
-        font-weight: 600;
-        color: #1F2937;
-        background: rgba(255,255,255,0.85);
-        padding: 0px 3px;
-        border-radius: 2px;
-        white-space: nowrap;
-        max-width: 60px;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        margin-top: 1px; font-size: 8px; font-weight: 600;
+        color: #1F2937; background: rgba(255,255,255,0.85);
+        padding: 0px 3px; border-radius: 2px; white-space: nowrap;
+        max-width: 60px; overflow: hidden; text-overflow: ellipsis;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        text-shadow: 0 0 2px white;
-        line-height: 1.2;
+        text-shadow: 0 0 2px white; line-height: 1.2;
       `;
       container.appendChild(label);
     }
 
     return container;
   }, []);
+
 
   const clearMarkers = useCallback(() => {
     markersRef.current.forEach(marker => marker.remove());
@@ -297,9 +355,75 @@ export default function PropertyMarkersLayer({
       const validProperties = (properties || []).filter((p: any) => p.lat && p.lng);
       const offsets = computeOffsets(validProperties);
 
+      // ---- Fetch CRM contacts (leads + projects) in same bounds to overlay status on pins ----
+      const crmByCoord = new Map<string, CrmOverlay>();
+      const crmByAddr = new Map<string, CrmOverlay>();
+      try {
+        const { data: contacts } = await supabase
+          .from('contacts')
+          .select(`
+            id, first_name, last_name, address_street, latitude, longitude,
+            lifecycle_stage, assigned_to,
+            pipeline_entries(id, status, assigned_to,
+              projects(id, status)
+            )
+          `)
+          .eq('tenant_id', profile.tenant_id)
+          .not('latitude', 'is', null)
+          .not('longitude', 'is', null)
+          .gte('latitude', minLat).lte('latitude', maxLat)
+          .gte('longitude', minLng).lte('longitude', maxLng)
+          .limit(500);
+
+        const ownerIds = new Set<string>();
+        (contacts || []).forEach((c: any) => {
+          if (c.assigned_to) ownerIds.add(c.assigned_to);
+          (c.pipeline_entries || []).forEach((pe: any) => pe.assigned_to && ownerIds.add(pe.assigned_to));
+        });
+        const ownerNameById = new Map<string, string>();
+        if (ownerIds.size > 0) {
+          const { data: profs } = await supabase
+            .from('profiles')
+            .select('id, first_name, last_name')
+            .in('id', Array.from(ownerIds));
+          (profs || []).forEach((p: any) => {
+            ownerNameById.set(p.id, `${p.first_name || ''} ${p.last_name || ''}`.trim() || 'Unassigned');
+          });
+        }
+
+        (contacts || []).forEach((c: any) => {
+          const pe = (c.pipeline_entries || [])[0];
+          const project = pe?.projects?.[0];
+          const status = project?.status || pe?.status || c.lifecycle_stage;
+          if (!status) return;
+          const ownerId = pe?.assigned_to || c.assigned_to;
+          const overlay: CrmOverlay = {
+            status,
+            isProject: !!project,
+            ownerName: ownerId ? (ownerNameById.get(ownerId) || 'Unassigned') : 'Unassigned',
+          };
+          crmByCoord.set(coordKey(c.latitude, c.longitude), overlay);
+          if (c.address_street) {
+            const m = String(c.address_street).match(/^\s*(\d+)/);
+            if (m) crmByAddr.set(m[1], overlay);
+          }
+        });
+      } catch (e) {
+        console.warn('[PropertyMarkersLayer] CRM overlay fetch failed', e);
+      }
+
+      const findOverlay = (p: any): CrmOverlay | undefined => {
+        const direct = crmByCoord.get(coordKey(p.lat, p.lng));
+        if (direct) return direct;
+        const info = getStreetInfo(p.address);
+        if (info.number) return crmByAddr.get(info.number);
+        return undefined;
+      };
+
       // Create markers for each property
       validProperties.forEach((property: any) => {
-        const el = createMarkerElement(property as CanvassiqProperty, zoom);
+        const overlay = findOverlay(property);
+        const el = createMarkerElement(property as CanvassiqProperty, zoom, overlay);
         
         el.addEventListener('click', (e) => {
           e.stopPropagation();
