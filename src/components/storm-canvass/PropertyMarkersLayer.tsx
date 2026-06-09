@@ -355,9 +355,75 @@ export default function PropertyMarkersLayer({
       const validProperties = (properties || []).filter((p: any) => p.lat && p.lng);
       const offsets = computeOffsets(validProperties);
 
+      // ---- Fetch CRM contacts (leads + projects) in same bounds to overlay status on pins ----
+      const crmByCoord = new Map<string, CrmOverlay>();
+      const crmByAddr = new Map<string, CrmOverlay>();
+      try {
+        const { data: contacts } = await supabase
+          .from('contacts')
+          .select(`
+            id, first_name, last_name, address_street, latitude, longitude,
+            lifecycle_stage, assigned_to,
+            pipeline_entries(id, status, assigned_to,
+              projects(id, status)
+            )
+          `)
+          .eq('tenant_id', profile.tenant_id)
+          .not('latitude', 'is', null)
+          .not('longitude', 'is', null)
+          .gte('latitude', minLat).lte('latitude', maxLat)
+          .gte('longitude', minLng).lte('longitude', maxLng)
+          .limit(500);
+
+        const ownerIds = new Set<string>();
+        (contacts || []).forEach((c: any) => {
+          if (c.assigned_to) ownerIds.add(c.assigned_to);
+          (c.pipeline_entries || []).forEach((pe: any) => pe.assigned_to && ownerIds.add(pe.assigned_to));
+        });
+        const ownerNameById = new Map<string, string>();
+        if (ownerIds.size > 0) {
+          const { data: profs } = await supabase
+            .from('profiles')
+            .select('id, first_name, last_name')
+            .in('id', Array.from(ownerIds));
+          (profs || []).forEach((p: any) => {
+            ownerNameById.set(p.id, `${p.first_name || ''} ${p.last_name || ''}`.trim() || 'Unassigned');
+          });
+        }
+
+        (contacts || []).forEach((c: any) => {
+          const pe = (c.pipeline_entries || [])[0];
+          const project = pe?.projects?.[0];
+          const status = project?.status || pe?.status || c.lifecycle_stage;
+          if (!status) return;
+          const ownerId = pe?.assigned_to || c.assigned_to;
+          const overlay: CrmOverlay = {
+            status,
+            isProject: !!project,
+            ownerName: ownerId ? (ownerNameById.get(ownerId) || 'Unassigned') : 'Unassigned',
+          };
+          crmByCoord.set(coordKey(c.latitude, c.longitude), overlay);
+          if (c.address_street) {
+            const m = String(c.address_street).match(/^\s*(\d+)/);
+            if (m) crmByAddr.set(m[1], overlay);
+          }
+        });
+      } catch (e) {
+        console.warn('[PropertyMarkersLayer] CRM overlay fetch failed', e);
+      }
+
+      const findOverlay = (p: any): CrmOverlay | undefined => {
+        const direct = crmByCoord.get(coordKey(p.lat, p.lng));
+        if (direct) return direct;
+        const info = getStreetInfo(p.address);
+        if (info.number) return crmByAddr.get(info.number);
+        return undefined;
+      };
+
       // Create markers for each property
       validProperties.forEach((property: any) => {
-        const el = createMarkerElement(property as CanvassiqProperty, zoom);
+        const overlay = findOverlay(property);
+        const el = createMarkerElement(property as CanvassiqProperty, zoom, overlay);
         
         el.addEventListener('click', (e) => {
           e.stopPropagation();
