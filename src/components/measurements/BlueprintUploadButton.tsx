@@ -65,7 +65,7 @@ export const BlueprintUploadButton: React.FC<BlueprintUploadButtonProps> = ({
         pipeline_entry_id: pipelineEntryId,
       });
 
-      await parseBlueprintDocument(result.document.id).catch(() => {});
+      await parseBlueprintDocument(result.document.id, tenantId).catch(() => {});
 
       toast({
         title: 'Blueprint uploaded',
