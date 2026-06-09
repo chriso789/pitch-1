@@ -45,6 +45,7 @@ export function BlueprintUploadCard({ onUploaded }: { onUploaded: () => void }) 
       const result = await uploadBlueprintDocument({
         file_name: file.name,
         file_path: path,
+        tenant_id: tenantId,
         property_address: propertyAddress || undefined,
       });
       // Kick off the actual parser pipeline (rasterize + classify chain)
