@@ -180,56 +180,47 @@ export default function PropertyMarkersLayer({
     return offsets;
   }, []);
 
-  const createMarkerElement = useCallback((property: CanvassiqProperty, zoom: number): HTMLDivElement => {
+  const createMarkerElement = useCallback((
+    property: CanvassiqProperty,
+    zoom: number,
+    crm?: CrmOverlay,
+  ): HTMLDivElement => {
     const container = document.createElement('div');
-    const color = getDispositionColor(property.disposition);
+    const baseColor = getDispositionColor(property.disposition);
+    const color = crm ? (CRM_STATUS_COLORS[crm.status] || baseColor) : baseColor;
     const { size, showNumber, fontSize } = getMarkerSize(zoom);
     const { number: streetNumber, streetName } = getStreetInfo(property.address);
-    const isNotContacted = !property.disposition || property.disposition === 'not_contacted';
+    const isNotContacted = !crm && (!property.disposition || property.disposition === 'not_contacted');
     const borderWidth = size >= 24 ? 3 : size >= 16 ? 2 : 1;
     const showStreetLabel = zoom >= 17 && streetName;
 
     container.className = 'property-marker';
     container.style.cssText = `
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      pointer-events: auto;
-      cursor: pointer;
+      display: flex; flex-direction: column; align-items: center;
+      pointer-events: auto; cursor: pointer; position: relative;
     `;
 
-    // Circle element
     const circle = document.createElement('div');
     if (isNotContacted) {
       circle.style.cssText = `
-        width: ${size}px;
-        height: ${size}px;
+        width: ${size}px; height: ${size}px;
         background-color: #FFFFFF;
         border: ${borderWidth}px solid ${color};
         border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        display: flex; align-items: center; justify-content: center;
         box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-        font-size: ${fontSize}px;
-        font-weight: 600;
-        color: #1F2937;
+        font-size: ${fontSize}px; font-weight: 600; color: #1F2937;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       `;
     } else {
       circle.style.cssText = `
-        width: ${size}px;
-        height: ${size}px;
+        width: ${size}px; height: ${size}px;
         background-color: ${color};
         border: ${borderWidth}px solid white;
         border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        display: flex; align-items: center; justify-content: center;
         box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-        font-size: ${fontSize}px;
-        font-weight: 600;
-        color: white;
+        font-size: ${fontSize}px; font-weight: 600; color: white;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       `;
     }
@@ -240,31 +231,70 @@ export default function PropertyMarkersLayer({
 
     container.appendChild(circle);
 
-    // Street name label below the circle at zoom 17+
-    if (showStreetLabel) {
+    // CRM project/lead badge (small dot in corner to flag it's in the CRM)
+    if (crm) {
+      const dot = document.createElement('div');
+      dot.style.cssText = `
+        position: absolute; top: -2px; right: -2px;
+        width: ${Math.max(8, Math.round(size * 0.35))}px;
+        height: ${Math.max(8, Math.round(size * 0.35))}px;
+        background: white; border: 2px solid ${color};
+        border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+      `;
+      if (crm.isProject) {
+        const inner = document.createElement('div');
+        inner.style.cssText = `
+          width: 4px; height: 4px; background: ${color}; border-radius: 50%;
+        `;
+        dot.appendChild(inner);
+      }
+      container.appendChild(dot);
+    }
+
+    // CRM status / owner label below pin at zoom 16+
+    if (crm && zoom >= 16) {
+      const label = document.createElement('div');
+      const txt = `${crm.isProject ? 'PROJECT · ' : ''}${formatCrmStatus(crm.status).toUpperCase()}`;
+      label.textContent = txt;
+      label.style.cssText = `
+        margin-top: 2px; font-size: 8px; font-weight: 700;
+        color: #FFFFFF; background: ${color};
+        padding: 1px 4px; border-radius: 3px; white-space: nowrap;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+      `;
+      container.appendChild(label);
+
+      if (crm.ownerName && zoom >= 17) {
+        const owner = document.createElement('div');
+        owner.textContent = crm.ownerName;
+        owner.style.cssText = `
+          margin-top: 1px; font-size: 8px; font-weight: 600;
+          color: #1F2937; background: rgba(255,255,255,0.9);
+          padding: 0 3px; border-radius: 2px; white-space: nowrap;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        `;
+        container.appendChild(owner);
+      }
+    } else if (showStreetLabel) {
       const label = document.createElement('div');
       label.textContent = streetName;
       label.style.cssText = `
-        margin-top: 1px;
-        font-size: 8px;
-        font-weight: 600;
-        color: #1F2937;
-        background: rgba(255,255,255,0.85);
-        padding: 0px 3px;
-        border-radius: 2px;
-        white-space: nowrap;
-        max-width: 60px;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        margin-top: 1px; font-size: 8px; font-weight: 600;
+        color: #1F2937; background: rgba(255,255,255,0.85);
+        padding: 0px 3px; border-radius: 2px; white-space: nowrap;
+        max-width: 60px; overflow: hidden; text-overflow: ellipsis;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        text-shadow: 0 0 2px white;
-        line-height: 1.2;
+        text-shadow: 0 0 2px white; line-height: 1.2;
       `;
       container.appendChild(label);
     }
 
     return container;
   }, []);
+
 
   const clearMarkers = useCallback(() => {
     markersRef.current.forEach(marker => marker.remove());
