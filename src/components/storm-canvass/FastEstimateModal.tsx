@@ -3,11 +3,13 @@
  */
 
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Calculator, Loader2, CheckCircle, Home, Ruler, DollarSign, ChevronDown } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -44,8 +46,11 @@ export default function FastEstimateModal({
   property,
 }: FastEstimateModalProps) {
   const [loading, setLoading] = useState(false);
+  const [creatingProposal, setCreatingProposal] = useState(false);
   const [result, setResult] = useState<EstimateResult | null>(null);
   const [selectedTier, setSelectedTier] = useState<string>('better');
+  const navigate = useNavigate();
+  const effectiveTenantId = useEffectiveTenantId();
 
   const runEstimate = async () => {
     if (!property?.lat || !property?.lng) {
@@ -236,17 +241,19 @@ export default function FastEstimateModal({
 
               {/* Action Buttons */}
               <div className="flex gap-2 pt-2">
-                <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
+                <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)} disabled={creatingProposal}>
                   Close
                 </Button>
-                <Button 
+                <Button
                   className="flex-1"
-                  onClick={() => {
-                    toast.info('Creating full proposal...');
-                    onOpenChange(false);
-                  }}
+                  disabled={creatingProposal || !selectedEstimate}
+                  onClick={() => handleCreateProposal()}
                 >
-                  <DollarSign className="h-4 w-4 mr-1" />
+                  {creatingProposal ? (
+                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  ) : (
+                    <DollarSign className="h-4 w-4 mr-1" />
+                  )}
                   Create Proposal
                 </Button>
               </div>
@@ -256,4 +263,110 @@ export default function FastEstimateModal({
       </DialogContent>
     </Dialog>
   );
+
+  async function handleCreateProposal() {
+    if (!result || !selectedEstimate) return;
+    if (!property?.id) {
+      toast.error('Property ID not available');
+      return;
+    }
+    if (!effectiveTenantId) {
+      toast.error('Tenant not loaded yet — try again in a moment');
+      return;
+    }
+
+    setCreatingProposal(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not signed in');
+
+      // 1. Ensure contact exists for this canvass property
+      const { data: contactId, error: syncError } = await supabase.rpc(
+        'sync_canvassiq_property_to_contact',
+        { p_property_id: property.id }
+      );
+      if (syncError) throw syncError;
+      if (!contactId) throw new Error('Could not link contact');
+
+      // 2. Find or create a pipeline entry for that contact
+      let pipelineEntryId: string | null = null;
+      const { data: existingEntries } = await supabase
+        .from('pipeline_entries')
+        .select('id, status')
+        .eq('tenant_id', effectiveTenantId)
+        .eq('contact_id', contactId as string)
+        .not('status', 'in', '("closed_lost","closed_won")')
+        .limit(1);
+
+      if (existingEntries && existingEntries.length > 0) {
+        pipelineEntryId = existingEntries[0].id;
+      } else {
+        const { data: newEntry, error: peError } = await supabase
+          .from('pipeline_entries')
+          .insert({
+            tenant_id: effectiveTenantId,
+            contact_id: contactId as string,
+            status: 'lead',
+            priority: 'medium',
+            estimated_value: selectedEstimate.total,
+            assigned_to: user.id,
+            created_by: user.id,
+            notes: 'Created from Canvass Fast Estimate',
+            metadata: { source: 'canvass_fast_estimate', property_id: property.id },
+          } as any)
+          .select('id')
+          .single();
+        if (peError) throw peError;
+        pipelineEntryId = newEntry.id;
+      }
+
+      // 3. Build line items and create the estimate
+      const lineItems = [
+        {
+          name: `Roof Replacement — ${selectedEstimate.label}`,
+          description: `${result.total_area_sqft.toLocaleString()} sq ft · ${result.total_squares} squares · ${result.pitch} pitch · ${result.face_count} facets`,
+          quantity: result.total_area_sqft,
+          unit: 'sqft',
+          unit_price: selectedEstimate.price_per_sqft,
+          line_total: selectedEstimate.total,
+        },
+      ];
+
+      const { data: estimate, error: estError } = await supabase
+        .from('estimates')
+        .insert({
+          tenant_id: effectiveTenantId,
+          pipeline_entry_id: pipelineEntryId,
+          estimate_number: `EST-${Date.now()}`,
+          status: 'draft',
+          line_items: lineItems,
+          parameters: {
+            source: 'canvass_fast_estimate',
+            tier: selectedEstimate.tier,
+            measurement: {
+              total_area_sqft: result.total_area_sqft,
+              total_squares: result.total_squares,
+              pitch: result.pitch,
+              face_count: result.face_count,
+              perimeter_ft: result.perimeter_ft,
+              ridge_ft: result.ridge_ft,
+            },
+          },
+          selling_price: selectedEstimate.total,
+          created_by: user.id,
+        } as any)
+        .select('id')
+        .single();
+      if (estError) throw estError;
+
+      toast.success('Proposal created');
+      onOpenChange(false);
+      navigate(`/lead/${pipelineEntryId}?tab=estimate&editEstimate=${estimate.id}`);
+    } catch (err: any) {
+      console.error('Create proposal error:', err);
+      toast.error(err.message || 'Failed to create proposal');
+    } finally {
+      setCreatingProposal(false);
+    }
+  }
 }
