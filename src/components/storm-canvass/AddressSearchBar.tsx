@@ -131,8 +131,13 @@ export default function AddressSearchBar({ userLocation, onAddressSelect }: Addr
         {isLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
       </div>
 
+      {/*
+        On mobile, render the dropdown ABOVE the input so the iOS keyboard
+        (which docks to the bottom) doesn't cover the suggestions. On md+
+        screens render it below the input as usual.
+      */}
       {open && suggestions.length > 0 && (
-        <CommandList className="absolute top-full left-0 right-0 mt-1 z-50 max-h-80 overflow-y-auto rounded-md border bg-popover shadow-lg">
+        <CommandList className="absolute left-0 right-0 z-50 max-h-80 overflow-y-auto rounded-md border bg-popover shadow-lg bottom-full mb-1 md:bottom-auto md:top-full md:mt-1 md:mb-0">
           <CommandGroup>
             {suggestions.map((place) => {
               const distance = calculateDistanceToPlace(place);
@@ -163,7 +168,7 @@ export default function AddressSearchBar({ userLocation, onAddressSelect }: Addr
       )}
 
       {open && !isLoading && suggestions.length === 0 && searchQuery.length >= 3 && (
-        <CommandList className="absolute top-full left-0 right-0 mt-1 z-50 rounded-md border bg-popover shadow-lg">
+        <CommandList className="absolute left-0 right-0 z-50 rounded-md border bg-popover shadow-lg bottom-full mb-1 md:bottom-auto md:top-full md:mt-1 md:mb-0">
           <CommandEmpty className="p-4 text-sm text-muted-foreground text-center">
             No results found
           </CommandEmpty>
