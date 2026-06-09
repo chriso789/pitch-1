@@ -292,16 +292,11 @@ export default function LiveCanvassingPage() {
         // permissions API not supported, proceed normally
       }
 
-      if (permissionState === 'denied') {
-        toast({
-          title: 'Location Access Required',
-          description: 'Please enable location access in your browser settings (click the lock icon in the address bar), then refresh this page.',
-          variant: 'destructive',
-        });
-      }
-
-      // Only attempt getCurrentPosition if permission isn't already denied
-      if (permissionState !== 'denied') {
+      // NOTE: Do NOT trigger a destructive toast based on permissions.query alone.
+      // iOS Safari caches 'denied' even after the user re-enables location, which
+      // produces a sticky red banner. Only show the toast on an actual code === 1
+      // error from getCurrentPosition (handled below).
+      {
         let gotLock = false;
 
         // Stage 1: strict fresh fix (up to 3 attempts)
