@@ -49,7 +49,7 @@ export function BlueprintUploadCard({ onUploaded }: { onUploaded: () => void }) 
         property_address: propertyAddress || undefined,
       });
       // Kick off the actual parser pipeline (rasterize + classify chain)
-      await parseBlueprintDocument(result.document.id).catch(() => {});
+      await parseBlueprintDocument(result.document.id, tenantId).catch(() => {});
       toast({ title: "Uploaded", description: "Parsing queued" });
       setPropertyAddress("");
       onUploaded();
