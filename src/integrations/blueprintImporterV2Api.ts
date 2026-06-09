@@ -80,6 +80,64 @@ export async function fetchBlueprintImportSession(session_id: string) {
   return data!;
 }
 
+// Trade Quote Workbench Completion Phase — additive helpers.
+export interface ImportFromPlanDocumentResult {
+  session_id: string;
+  plan_document_id: string;
+  reused: boolean;
+  manual_measurement_required?: boolean;
+  classifier?: unknown;
+  parser?: string;
+  measurement_count?: number;
+  detected_trade_count?: number;
+  reason?: string;
+}
+
+export async function importBlueprintFromPlanDocument(plan_document_id: string) {
+  const { data, error } = await edgeApi<ImportFromPlanDocumentResult>(
+    "document-worker",
+    "/blueprint-importer/v2/import-from-plan-document",
+    { plan_document_id },
+  );
+  if (error) throw new Error(error);
+  return data!;
+}
+
+export async function findWorkbenchSessionByPlanDocument(plan_document_id: string) {
+  const { data, error } = await edgeApi<{ session_id: string | null; status: string | null }>(
+    "document-worker",
+    "/blueprint-importer/v2/workbench/by-document",
+    { plan_document_id },
+  );
+  if (error) throw new Error(error);
+  return data!;
+}
+
+export interface UpsertManualMeasurementParams {
+  session_id: string;
+  trade_id: string;
+  measurement_key: string;
+  measurement_group: string;
+  quantity: number | null;
+  unit: string;
+  page_number?: number | null;
+  section_label?: string | null;
+  source_text_excerpt?: string | null;
+  note?: string | null;
+  source_document_id?: string | null;
+  measurement_id?: string | null;
+}
+
+export async function upsertManualBlueprintMeasurement(params: UpsertManualMeasurementParams) {
+  const { data, error } = await edgeApi<{ measurement_id: string; plan_path_id: string; mode: "insert" | "update" }>(
+    "document-worker",
+    "/blueprint-importer/v2/measurements/upsert-manual",
+    params as unknown as Record<string, unknown>,
+  );
+  if (error) throw new Error(error);
+  return data!;
+}
+
 export async function acceptBlueprintTrade(params: {
   session_id: string;
   trade_id: string;
