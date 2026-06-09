@@ -113,13 +113,16 @@ export function serveRouter(app: Hono<RouterEnv>) {
 
     let route = req.headers.get("x-route") ?? "";
     let bodyBytes: Uint8Array | null = null;
+    const mayHaveBody = req.method !== "GET" && req.method !== "HEAD";
 
-    if (!route && req.method !== "GET" && req.method !== "HEAD") {
+    if (mayHaveBody) {
       bodyBytes = new Uint8Array(await req.arrayBuffer());
-      try {
-        const parsed = JSON.parse(new TextDecoder().decode(bodyBytes));
-        if (parsed && typeof parsed.__route === "string") route = parsed.__route;
-      } catch { /* non-JSON body, leave route blank */ }
+      if (!route) {
+        try {
+          const parsed = JSON.parse(new TextDecoder().decode(bodyBytes));
+          if (parsed && typeof parsed.__route === "string") route = parsed.__route;
+        } catch { /* non-JSON body, leave route blank */ }
+      }
     }
 
     if (!route) {
