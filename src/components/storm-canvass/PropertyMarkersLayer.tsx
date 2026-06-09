@@ -31,19 +31,47 @@ interface CanvassiqProperty {
 
 // Disposition colors matching the reference design
 const DISPOSITION_COLORS: Record<string, string> = {
-  not_contacted: '#D4A84B',    // Yellow/gold outline
-  new_roof: '#8B6914',         // Brown  
-  unqualified: '#DC2626',      // Red
-  old_roof_marker: '#DC2626',  // Red
-  interested: '#22C55E',       // Green
-  sold: '#22C55E',             // Green
-  qualified: '#22C55E',        // Green
-  not_interested: '#DC2626',   // Red
-  not_home: '#9CA3AF',         // Gray
-  follow_up: '#EAB308',        // Yellow
-  past_customer: '#0D9488',    // Teal - completed project
-  default: '#D4A84B',          // Yellow outline (not contacted)
+  not_contacted: '#D4A84B',
+  new_roof: '#8B6914',
+  unqualified: '#DC2626',
+  old_roof_marker: '#DC2626',
+  interested: '#22C55E',
+  sold: '#22C55E',
+  qualified: '#22C55E',
+  not_interested: '#DC2626',
+  not_home: '#9CA3AF',
+  follow_up: '#EAB308',
+  past_customer: '#0D9488',
+  default: '#D4A84B',
 };
+
+// CRM project / pipeline status → pin color (overrides canvassiq disposition)
+const CRM_STATUS_COLORS: Record<string, string> = {
+  new: '#6366F1', contacted: '#6366F1',
+  appointment_set: '#0EA5E9', inspection_scheduled: '#0EA5E9',
+  inspection_complete: '#06B6D4',
+  estimate_sent: '#F59E0B', estimate_approved: '#22C55E',
+  contract_signed: '#22C55E', legal_review: '#A855F7',
+  in_production: '#10B981', completed: '#0D9488',
+  closed_won: '#22C55E', closed_lost: '#EF4444',
+  active: '#10B981', on_hold: '#F59E0B', cancelled: '#EF4444',
+};
+
+function formatCrmStatus(s?: string | null): string {
+  if (!s) return '';
+  return s.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
+function coordKey(lat: number, lng: number): string {
+  // ~10m grid so canvassiq property coords match contact coords
+  return `${lat.toFixed(4)}|${lng.toFixed(4)}`;
+}
+
+interface CrmOverlay {
+  status: string;
+  isProject: boolean;
+  ownerName: string;
+}
 
 // Get marker size based on zoom level - always show house numbers at zoom 14+
 function getMarkerSize(zoom: number): { size: number; showNumber: boolean; fontSize: number } {
