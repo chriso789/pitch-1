@@ -63,8 +63,13 @@ export async function getBlueprintDocument(document_id: string) {
   return data;
 }
 
-export async function parseBlueprintDocument(document_id: string) {
-  const { data, error } = await edgeApi("document-worker", "/parse/blueprint", { document_id });
+export async function parseBlueprintDocument(document_id: string, tenant_id?: string) {
+  const { data, error } = await edgeApi(
+    "document-worker",
+    "/parse/blueprint",
+    { document_id },
+    tenant_id ? { headers: { "x-tenant-id": tenant_id } } : undefined,
+  );
   if (error) throw new Error(error);
   return data;
 }
