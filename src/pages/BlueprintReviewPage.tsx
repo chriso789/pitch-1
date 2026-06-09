@@ -59,7 +59,7 @@ export default function BlueprintReviewPage() {
     if (!id) return;
     await supabase.from("plan_documents").update({ status: "uploaded", status_message: null }).eq("id", id);
     try {
-      await parseBlueprintDocument(id);
+      await parseBlueprintDocument(id, doc?.tenant_id);
       toast({ title: "Re-parsing started" });
     } catch (e: any) {
       toast({ title: "Failed", description: e?.message ?? String(e), variant: "destructive" });
