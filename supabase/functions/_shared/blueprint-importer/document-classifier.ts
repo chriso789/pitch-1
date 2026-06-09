@@ -74,6 +74,12 @@ export function classifyBlueprintDocument(rawText: string): DocumentClassificati
   if (hitRoofr && hitRoof) {
     return mk("roofr_roof_report", "roofr", 0.95, signals, "roof_report", "roofr");
   }
+  // Generic plan/permit sheets can contain phrases like "total roof area".
+  // Without an EagleView/Roofr brand, keep them as blueprint sets so they use
+  // manual measurement mode instead of being mislabeled as vendor reports.
+  if (hitBlueprint) {
+    return mk("blueprint_set", "user_uploaded_blueprint", 0.6, signals, "blueprint_set", "user_uploaded_blueprint");
+  }
   // Brand-less fallback: only accept when a STRONG report-specific signal is present.
   if (hitStrongRoof && !hitStrongWall) {
     return mk("eagleview_roof_report", "unknown", 0.6, signals, "roof_report", "unknown");
@@ -83,9 +89,6 @@ export function classifyBlueprintDocument(rawText: string): DocumentClassificati
   }
   if (hitSpec) {
     return mk("spec_book", "user_uploaded_blueprint", 0.6, signals, "spec_book", "user_uploaded_blueprint");
-  }
-  if (hitBlueprint) {
-    return mk("blueprint_set", "user_uploaded_blueprint", 0.6, signals, "blueprint_set", "user_uploaded_blueprint");
   }
   return mk("unknown", "unknown", 0.0, signals, "unknown", "unknown");
 }
