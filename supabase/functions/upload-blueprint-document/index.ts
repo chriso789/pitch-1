@@ -28,17 +28,30 @@ Deno.serve(async (req) => {
     if (!tenantId) throw new Error("no tenant for user");
 
     const body = await req.json();
-    const { property_address, file_name, file_path, contact_id, pipeline_entry_id } = body || {};
+    const { property_address, file_name, file_path, contact_id, pipeline_entry_id, tenant_id } = body || {};
     if (!file_name || !file_path) {
       return new Response(JSON.stringify({ error: "file_name and file_path required" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+    const requestedTenantId = typeof tenant_id === "string" ? tenant_id : String(file_path).split("/")[0];
+    let effectiveTenantId = tenantId;
+    if (requestedTenantId && requestedTenantId !== tenantId) {
+      const { data: access, error: accessErr } = await supabase
+        .from("user_company_access")
+        .select("tenant_id")
+        .eq("user_id", userId)
+        .eq("tenant_id", requestedTenantId)
+        .maybeSingle();
+      if (accessErr || !access?.tenant_id) throw new Error("no access to selected company");
+      effectiveTenantId = requestedTenantId;
+    }
+
     const { data: doc, error } = await supabase
       .from("plan_documents")
       .insert({
-        tenant_id: tenantId,
+        tenant_id: effectiveTenantId,
         uploaded_by: userId,
         contact_id: contact_id ?? null,
         pipeline_entry_id: pipeline_entry_id ?? null,
@@ -52,7 +65,7 @@ Deno.serve(async (req) => {
     if (error) throw error;
 
     await supabase.from("plan_parse_jobs").insert({
-      tenant_id: tenantId,
+      tenant_id: effectiveTenantId,
       document_id: doc.id,
       job_type: "classify_pages",
       status: "queued",
