@@ -184,6 +184,17 @@ export async function requireTenant(c: Context<RouterEnv>, next: Next) {
   if (!userId) return jsonErr(c, "unauthorized", "Auth required before tenant resolution", 401);
   // Resolve effective tenant via the existing helper RPC if present, else direct read.
   const svc = serviceClient();
+  const profileResult = await svc
+    .from("profiles")
+    .select("tenant_id,active_tenant_id")
+    .eq("id", userId)
+    .maybeSingle();
+  const effectiveTenantId = profileResult.data?.active_tenant_id ?? profileResult.data?.tenant_id ?? null;
+  if (effectiveTenantId) {
+    c.set("tenantId", String(effectiveTenantId));
+    await next();
+    return;
+  }
   const { data, error } = await svc
     .from("user_company_access")
     .select("tenant_id")
