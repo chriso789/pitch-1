@@ -598,7 +598,7 @@ export default function GooglePropertyMarkersLayer({
           const chunk = areaPropertyIds.slice(i, i + CHUNK_SIZE);
           const { data: chunkData, error: chunkErr } = await supabase
             .from('canvassiq_properties')
-            .select('id, lat, lng, disposition, address, owner_name, phone_numbers, emails, homeowner, searchbug_data, tenant_id, created_at, normalized_address_key, building_snapped')
+            .select('id, lat, lng, disposition, contact_id, address, owner_name, phone_numbers, emails, homeowner, searchbug_data, tenant_id, created_at, normalized_address_key, building_snapped')
             .eq('tenant_id', effectiveTenantId)
             .in('id', chunk)
             .gte('lat', sw.lat())
@@ -612,7 +612,7 @@ export default function GooglePropertyMarkersLayer({
       } else {
         const res = await supabase
           .from('canvassiq_properties')
-          .select('id, lat, lng, disposition, address, owner_name, phone_numbers, emails, homeowner, searchbug_data, tenant_id, created_at, normalized_address_key, building_snapped')
+          .select('id, lat, lng, disposition, contact_id, address, owner_name, phone_numbers, emails, homeowner, searchbug_data, tenant_id, created_at, normalized_address_key, building_snapped')
           .eq('tenant_id', effectiveTenantId)
           .gte('lat', sw.lat())
           .lte('lat', ne.lat())
@@ -625,8 +625,28 @@ export default function GooglePropertyMarkersLayer({
 
       // Bail if this load is already stale or component unmounted
       if (thisLoadVersion < loadVersionRef.current || !mountedRef.current) return;
+
+      const { data: contactStatusRows, error: contactStatusError } = await supabase
+        .from('contacts')
+        .select('id, address_street, latitude, longitude, qualification_status, lead_status, lifecycle_stage, canvassiq_property_id, updated_at')
+        .eq('tenant_id', effectiveTenantId)
+        .not('latitude', 'is', null)
+        .not('longitude', 'is', null)
+        .gte('latitude', sw.lat())
+        .lte('latitude', ne.lat())
+        .gte('longitude', sw.lng())
+        .lte('longitude', ne.lng())
+        .order('updated_at', { ascending: false })
+        .limit(limit * 2);
+
+      if (contactStatusError) {
+        console.warn('[GooglePropertyMarkersLayer] Contact status fallback unavailable:', contactStatusError);
+      }
       
-      const properties = rawProperties ? deduplicateProperties(rawProperties as CanvassiqProperty[]) : [];
+      const contactStatusFallbacks = (contactStatusRows || []) as ContactStatusFallback[];
+      const properties = rawProperties
+        ? deduplicateProperties(applyContactStatusFallbacks(rawProperties as CanvassiqProperty[], contactStatusFallbacks))
+        : [];
       
       if (error) {
         console.error('Error loading properties:', error);
@@ -693,7 +713,7 @@ export default function GooglePropertyMarkersLayer({
             // Re-query after loading new parcels
             const { data: newRawProperties } = await supabase
               .from('canvassiq_properties')
-              .select('id, lat, lng, disposition, address, owner_name, phone_numbers, emails, homeowner, searchbug_data, tenant_id, created_at, normalized_address_key, building_snapped')
+              .select('id, lat, lng, disposition, contact_id, address, owner_name, phone_numbers, emails, homeowner, searchbug_data, tenant_id, created_at, normalized_address_key, building_snapped')
               .eq('tenant_id', effectiveTenantId)
               .gte('lat', sw.lat())
               .lte('lat', ne.lat())
@@ -708,7 +728,9 @@ export default function GooglePropertyMarkersLayer({
               return;
             }
 
-            const newProperties = newRawProperties ? deduplicateProperties(newRawProperties as CanvassiqProperty[]) : [];
+            const newProperties = newRawProperties
+              ? deduplicateProperties(applyContactStatusFallbacks(newRawProperties as CanvassiqProperty[], contactStatusFallbacks))
+              : [];
             reconcileMarkers(newProperties, zoom, thisLoadVersion);
           }
           
