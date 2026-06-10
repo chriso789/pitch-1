@@ -103,6 +103,13 @@ function getStreetNumber(address: PropertyAddress): string {
   return match ? match[1] : '';
 }
 
+function getStreetNameKey(address: PropertyAddress): string {
+  const parsed = parseAddress(address);
+  const explicitName = String(parsed?.street_name || '').trim();
+  const streetText = explicitName || getStreetText(address).replace(/^\d+\s*/, '').trim();
+  return streetText ? normalizeAddressKeyClient(streetText) : '';
+}
+
 // Unified address key normalizer — matches the server-side normalizeAddressKey exactly
 function normalizeAddressKeyClient(streetOrFormatted: string): string {
   return streetOrFormatted
@@ -246,7 +253,7 @@ function distanceMeters(lat1: number, lng1: number, lat2: number, lng2: number):
 // Deduplicate properties by normalized address key
 // Prefer: building_snapped=true, then newest created_at
 // Properties with same key but >20m apart are treated as separate lots
-function deduplicateProperties(properties: CanvassiqProperty[]): CanvassiqProperty[] {
+function deduplicateProperties(properties: CanvassiqProperty[], contacts: ContactStatusFallback[] = []): CanvassiqProperty[] {
   const addressMap = new Map<string, CanvassiqProperty>();
   
   for (const property of properties) {
@@ -347,26 +354,20 @@ function deduplicateProperties(properties: CanvassiqProperty[]): CanvassiqProper
     }
   }
 
-  // Tertiary dedup: collapse pins from different STREET NAMES that physically
-  // sit on the same lot. Geocoders sometimes return the same house under two
-  // street aliases (e.g. "4063 Cherokee St" and "4063 Fonsica Ave" at the
-  // same coordinates). If two pins share the same house number and are within
-  // ~18m of each other, treat them as one property. Prefer disposition >
-  // building-snapped > newest.
-  // Build a tally of how often each street name appears across the dataset,
-  // so when two co-located pins disagree on street name we can keep the one
-  // belonging to the dominant street and drop the alias.
-  const streetOf = (p: CanvassiqProperty): string => {
-    const parsed = parseAddress(p.address);
-    const name = String(parsed?.street_name || '').toLowerCase().trim();
-    if (name) return name;
-    return getStreetText(p.address).toLowerCase().replace(/^\d+\s*/, '').trim();
-  };
-  const streetCounts = new Map<string, number>();
+  // Tertiary dedup: Google reverse-geocoding can produce two street names for
+  // the same block. If two street names repeatedly share the same house numbers
+  // within one local block, keep the street that has saved statuses / stronger
+  // coverage and remove the alias street from the map.
+  const streetStats = new Map<string, { count: number; statusCount: number; snappedCount: number; latest: number }>();
   for (const p of addressMap.values()) {
-    const s = streetOf(p);
+    const s = getStreetNameKey(p.address);
     if (!s) continue;
-    streetCounts.set(s, (streetCounts.get(s) ?? 0) + 1);
+    const stats = streetStats.get(s) ?? { count: 0, statusCount: 0, snappedCount: 0, latest: 0 };
+    stats.count += 1;
+    if (p.disposition) stats.statusCount += 1;
+    if (p.building_snapped === true) stats.snappedCount += 1;
+    stats.latest = Math.max(stats.latest, new Date(p.created_at || 0).getTime());
+    streetStats.set(s, stats);
   }
 
   const remaining = Array.from(addressMap.entries());
@@ -384,10 +385,10 @@ function deduplicateProperties(properties: CanvassiqProperty[]): CanvassiqProper
       const dist = distanceMeters(propA.lat, propA.lng, propB.lat, propB.lng);
       if (dist > 18) continue;
 
-      const streetA = streetOf(propA);
-      const streetB = streetOf(propB);
-      const countA = streetCounts.get(streetA) ?? 0;
-      const countB = streetCounts.get(streetB) ?? 0;
+      const streetA = getStreetNameKey(propA.address);
+      const streetB = getStreetNameKey(propB.address);
+      const countA = streetStats.get(streetA)?.count ?? 0;
+      const countB = streetStats.get(streetB)?.count ?? 0;
       const aHasStatus = Boolean(propA.disposition);
       const bHasStatus = Boolean(propB.disposition);
       const aSnapped = propA.building_snapped === true;
@@ -414,6 +415,58 @@ function deduplicateProperties(properties: CanvassiqProperty[]): CanvassiqProper
         addressMap.delete(keyA);
         removed.add(keyA);
         break;
+      }
+    }
+  }
+
+  const blockAliasMatches = new Map<string, { a: string; b: string; numbers: Set<string> }>();
+  const afterExactDedupe = Array.from(addressMap.entries());
+  for (let i = 0; i < afterExactDedupe.length; i++) {
+    const [, propA] = afterExactDedupe[i];
+    const numA = getStreetNumber(propA.address);
+    const streetA = getStreetNameKey(propA.address);
+    if (!numA || !streetA) continue;
+    for (let j = i + 1; j < afterExactDedupe.length; j++) {
+      const [, propB] = afterExactDedupe[j];
+      const numB = getStreetNumber(propB.address);
+      const streetB = getStreetNameKey(propB.address);
+      if (!numB || numA !== numB || !streetB || streetA === streetB) continue;
+      if (distanceMeters(propA.lat, propA.lng, propB.lat, propB.lng) > 55) continue;
+      const [a, b] = [streetA, streetB].sort();
+      const pairKey = `${a}|${b}`;
+      const match = blockAliasMatches.get(pairKey) ?? { a, b, numbers: new Set<string>() };
+      match.numbers.add(numA);
+      blockAliasMatches.set(pairKey, match);
+    }
+  }
+
+  for (const match of blockAliasMatches.values()) {
+    if (match.numbers.size < 2) continue;
+
+    const statsA = streetStats.get(match.a) ?? { count: 0, statusCount: 0, snappedCount: 0, latest: 0 };
+    const statsB = streetStats.get(match.b) ?? { count: 0, statusCount: 0, snappedCount: 0, latest: 0 };
+    let contactVotesA = 0;
+    let contactVotesB = 0;
+    for (const contact of contacts) {
+      const contactNumber = getStreetNumber(contact.address_street);
+      if (!contactNumber || !match.numbers.has(contactNumber)) continue;
+      const contactStreet = getStreetNameKey(contact.address_street);
+      if (contactStreet === match.a) contactVotesA += 1;
+      if (contactStreet === match.b) contactVotesB += 1;
+    }
+
+    let keepStreet = '';
+    if (contactVotesA !== contactVotesB) keepStreet = contactVotesA > contactVotesB ? match.a : match.b;
+    else if (statsA.statusCount !== statsB.statusCount) keepStreet = statsA.statusCount > statsB.statusCount ? match.a : match.b;
+    else if (statsA.count !== statsB.count) keepStreet = statsA.count > statsB.count ? match.a : match.b;
+    else if (statsA.snappedCount !== statsB.snappedCount) keepStreet = statsA.snappedCount > statsB.snappedCount ? match.a : match.b;
+    else if (statsA.latest !== statsB.latest) keepStreet = statsA.latest > statsB.latest ? match.a : match.b;
+    if (!keepStreet) continue;
+
+    const dropStreet = keepStreet === match.a ? match.b : match.a;
+    for (const [key, property] of Array.from(addressMap.entries())) {
+      if (getStreetNameKey(property.address) === dropStreet && match.numbers.has(getStreetNumber(property.address))) {
+        addressMap.delete(key);
       }
     }
   }
@@ -729,7 +782,7 @@ export default function GooglePropertyMarkersLayer({
       
       const contactStatusFallbacks = (contactStatusRows || []) as ContactStatusFallback[];
       const properties = rawProperties
-        ? deduplicateProperties(applyContactStatusFallbacks(rawProperties as CanvassiqProperty[], contactStatusFallbacks))
+        ? deduplicateProperties(applyContactStatusFallbacks(rawProperties as CanvassiqProperty[], contactStatusFallbacks), contactStatusFallbacks)
         : [];
       
       if (error) {
@@ -813,7 +866,7 @@ export default function GooglePropertyMarkersLayer({
             }
 
             const newProperties = newRawProperties
-              ? deduplicateProperties(applyContactStatusFallbacks(newRawProperties as CanvassiqProperty[], contactStatusFallbacks))
+              ? deduplicateProperties(applyContactStatusFallbacks(newRawProperties as CanvassiqProperty[], contactStatusFallbacks), contactStatusFallbacks)
               : [];
             reconcileMarkers(newProperties, zoom, thisLoadVersion);
           }
