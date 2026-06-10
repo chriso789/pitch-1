@@ -253,7 +253,7 @@ function distanceMeters(lat1: number, lng1: number, lat2: number, lng2: number):
 // Deduplicate properties by normalized address key
 // Prefer: building_snapped=true, then newest created_at
 // Properties with same key but >20m apart are treated as separate lots
-function deduplicateProperties(properties: CanvassiqProperty[]): CanvassiqProperty[] {
+function deduplicateProperties(properties: CanvassiqProperty[], contacts: ContactStatusFallback[] = []): CanvassiqProperty[] {
   const addressMap = new Map<string, CanvassiqProperty>();
   
   for (const property of properties) {
@@ -445,8 +445,19 @@ function deduplicateProperties(properties: CanvassiqProperty[]): CanvassiqProper
 
     const statsA = streetStats.get(match.a) ?? { count: 0, statusCount: 0, snappedCount: 0, latest: 0 };
     const statsB = streetStats.get(match.b) ?? { count: 0, statusCount: 0, snappedCount: 0, latest: 0 };
+    let contactVotesA = 0;
+    let contactVotesB = 0;
+    for (const contact of contacts) {
+      const contactNumber = getStreetNumber(contact.address_street);
+      if (!contactNumber || !match.numbers.has(contactNumber)) continue;
+      const contactStreet = getStreetNameKey(contact.address_street);
+      if (contactStreet === match.a) contactVotesA += 1;
+      if (contactStreet === match.b) contactVotesB += 1;
+    }
+
     let keepStreet = '';
-    if (statsA.statusCount !== statsB.statusCount) keepStreet = statsA.statusCount > statsB.statusCount ? match.a : match.b;
+    if (contactVotesA !== contactVotesB) keepStreet = contactVotesA > contactVotesB ? match.a : match.b;
+    else if (statsA.statusCount !== statsB.statusCount) keepStreet = statsA.statusCount > statsB.statusCount ? match.a : match.b;
     else if (statsA.count !== statsB.count) keepStreet = statsA.count > statsB.count ? match.a : match.b;
     else if (statsA.snappedCount !== statsB.snappedCount) keepStreet = statsA.snappedCount > statsB.snappedCount ? match.a : match.b;
     else if (statsA.latest !== statsB.latest) keepStreet = statsA.latest > statsB.latest ? match.a : match.b;
@@ -771,7 +782,7 @@ export default function GooglePropertyMarkersLayer({
       
       const contactStatusFallbacks = (contactStatusRows || []) as ContactStatusFallback[];
       const properties = rawProperties
-        ? deduplicateProperties(applyContactStatusFallbacks(rawProperties as CanvassiqProperty[], contactStatusFallbacks))
+        ? deduplicateProperties(applyContactStatusFallbacks(rawProperties as CanvassiqProperty[], contactStatusFallbacks), contactStatusFallbacks)
         : [];
       
       if (error) {
@@ -855,7 +866,7 @@ export default function GooglePropertyMarkersLayer({
             }
 
             const newProperties = newRawProperties
-              ? deduplicateProperties(applyContactStatusFallbacks(newRawProperties as CanvassiqProperty[], contactStatusFallbacks))
+              ? deduplicateProperties(applyContactStatusFallbacks(newRawProperties as CanvassiqProperty[], contactStatusFallbacks), contactStatusFallbacks)
               : [];
             reconcileMarkers(newProperties, zoom, thisLoadVersion);
           }
