@@ -27,6 +27,7 @@ export default function BlueprintDocumentDetail() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [opening, setOpening] = useState(false);
+  const [describing, setDescribing] = useState(false);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [trades, setTrades] = useState<Record<string, string>>({});
 
