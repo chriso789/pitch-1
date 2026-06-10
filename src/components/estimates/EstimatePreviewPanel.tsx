@@ -276,6 +276,9 @@ export function EstimatePreviewPanel({
   const [isEstimatesOpen, setIsEstimatesOpen] = useState(true);
   const { generateMultiPagePDF, isGenerating: isGeneratingPDF } = useMultiPagePDFGeneration();
   const [isGeneratingNarrative, setIsGeneratingNarrative] = useState(false);
+  // Per-additional-estimate AI scope narratives, keyed by estimate id.
+  // The main estimate's narrative lives on options.scopeNarrative.
+  const [additionalScopeNarratives, setAdditionalScopeNarratives] = useState<Record<string, string>>({});
   const { toast } = useToast();
   const previewRef = useRef<HTMLDivElement>(null);
   const photoUploadRef = useRef<HTMLInputElement>(null);
