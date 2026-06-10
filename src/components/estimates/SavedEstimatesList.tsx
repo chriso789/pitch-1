@@ -183,6 +183,10 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
   });
 
   const currentSelectedId = externalSelectedId ?? (pipelineData?.metadata as any)?.selected_estimate_id;
+  const combineMode: boolean = !!(pipelineData?.metadata as any)?.combine_estimates;
+  const selectedIds: string[] = Array.isArray((pipelineData?.metadata as any)?.selected_estimate_ids)
+    ? (pipelineData?.metadata as any).selected_estimate_ids
+    : (currentSelectedId ? [currentSelectedId] : []);
 
   const { data: estimates, isLoading } = useQuery({
     queryKey: ['saved-estimates', pipelineEntryId],
