@@ -347,13 +347,13 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
     },
     {
       id: 'estimate',
-      label: 'Estimate',
+      label: 'Selling Price',
       icon: Calculator,
       value: calculations?.measurements?.roof_area_sq_ft 
         ? formatSquares(calculations.measurements.roof_area_sq_ft)
         : '—',
       hint: calculations?.measurements?.has_template ? null : 'Select template',
-      description: 'Estimate templates and calculations'
+      description: 'Selling price from active estimate(s)'
     },
     {
       id: 'materials',
