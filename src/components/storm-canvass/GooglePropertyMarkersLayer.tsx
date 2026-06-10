@@ -353,6 +353,22 @@ function deduplicateProperties(properties: CanvassiqProperty[]): CanvassiqProper
   // same coordinates). If two pins share the same house number and are within
   // ~18m of each other, treat them as one property. Prefer disposition >
   // building-snapped > newest.
+  // Build a tally of how often each street name appears across the dataset,
+  // so when two co-located pins disagree on street name we can keep the one
+  // belonging to the dominant street and drop the alias.
+  const streetOf = (p: CanvassiqProperty): string => {
+    const parsed = parseAddress(p.address);
+    const name = String(parsed?.street_name || '').toLowerCase().trim();
+    if (name) return name;
+    return getStreetText(p.address).toLowerCase().replace(/^\d+\s*/, '').trim();
+  };
+  const streetCounts = new Map<string, number>();
+  for (const p of addressMap.values()) {
+    const s = streetOf(p);
+    if (!s) continue;
+    streetCounts.set(s, (streetCounts.get(s) ?? 0) + 1);
+  }
+
   const remaining = Array.from(addressMap.entries());
   const removed = new Set<string>();
   for (let i = 0; i < remaining.length; i++) {
@@ -367,18 +383,30 @@ function deduplicateProperties(properties: CanvassiqProperty[]): CanvassiqProper
       if (numA !== numB) continue;
       const dist = distanceMeters(propA.lat, propA.lng, propB.lat, propB.lng);
       if (dist > 18) continue;
+
+      const streetA = streetOf(propA);
+      const streetB = streetOf(propB);
+      const countA = streetCounts.get(streetA) ?? 0;
+      const countB = streetCounts.get(streetB) ?? 0;
       const aHasStatus = Boolean(propA.disposition);
       const bHasStatus = Boolean(propB.disposition);
       const aSnapped = propA.building_snapped === true;
       const bSnapped = propB.building_snapped === true;
+
       let keepA = true;
+      // 1) Saved disposition always wins.
       if (aHasStatus !== bHasStatus) keepA = aHasStatus;
+      // 2) Otherwise prefer the dominant street name (the real street).
+      else if (streetA !== streetB && countA !== countB) keepA = countA > countB;
+      // 3) Then building-snapped.
       else if (aSnapped !== bSnapped) keepA = aSnapped;
+      // 4) Then newest.
       else {
         const aDate = new Date(propA.created_at || 0).getTime();
         const bDate = new Date(propB.created_at || 0).getTime();
         keepA = aDate >= bDate;
       }
+
       if (keepA) {
         addressMap.delete(keyB);
         removed.add(keyB);
