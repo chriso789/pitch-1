@@ -150,6 +150,51 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
 
   const salesRepOverheadRate = salesRepData ?? 10;
 
+  // Fetch combine-estimates state from pipeline_entries metadata
+  const { data: combineState } = useQuery({
+    queryKey: ['pipeline-entry-combine', pipelineEntryId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('pipeline_entries')
+        .select('metadata')
+        .eq('id', pipelineEntryId!)
+        .maybeSingle();
+      if (error) throw error;
+      const meta = (data?.metadata as any) || {};
+      return {
+        combine: !!meta.combine_estimates,
+        ids: Array.isArray(meta.selected_estimate_ids) ? (meta.selected_estimate_ids as string[]) : [],
+      };
+    },
+    enabled: !!pipelineEntryId,
+  });
+
+  // When combine mode is on, fetch all selected estimates and sum totals
+  const { data: combinedTotals } = useQuery({
+    queryKey: ['combined-estimate-totals', pipelineEntryId, combineState?.ids?.join(',')],
+    queryFn: async () => {
+      const ids = combineState?.ids || [];
+      if (ids.length === 0) return null;
+      const { data, error } = await supabase
+        .from('enhanced_estimates')
+        .select('id, material_cost, labor_cost, selling_price, sales_tax_amount, overhead_amount')
+        .in('id', ids);
+      if (error) throw error;
+      const sum = (k: string) => (data || []).reduce((s, r: any) => s + (Number(r[k]) || 0), 0);
+      return {
+        count: data?.length || 0,
+        materials: sum('material_cost'),
+        labor: sum('labor_cost'),
+        selling_price: sum('selling_price'),
+        sales_tax: sum('sales_tax_amount'),
+        overhead: sum('overhead_amount'),
+      };
+    },
+    enabled: !!pipelineEntryId && !!combineState?.combine && (combineState?.ids?.length || 0) > 0,
+  });
+
+  const isCombined = !!combineState?.combine && !!combinedTotals && combinedTotals.count > 1;
+
   // Mutation to update estimate selling price and recalculate profit
   const updatePriceMutation = useMutation({
     mutationFn: async (newPrice: number) => {
