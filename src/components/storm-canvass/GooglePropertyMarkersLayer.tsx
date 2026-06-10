@@ -17,7 +17,7 @@ interface GooglePropertyMarkersLayerProps {
   symbolSettings?: SymbolSettings;
 }
 
-type PropertyAddress = string | Record<string, unknown> | null;
+type PropertyAddress = string | number | boolean | Record<string, unknown> | unknown[] | null;
 
 interface CanvassiqProperty {
   id: string;
@@ -145,6 +145,8 @@ function normalizeAddressKeyClient(streetOrFormatted: string): string {
 
 function parseAddress(address: PropertyAddress): Record<string, unknown> | null {
   if (!address) return null;
+  if (typeof address !== 'string' && typeof address !== 'object') return { formatted: String(address) };
+  if (Array.isArray(address)) return null;
   if (typeof address === 'string') {
     try {
       return JSON.parse(address) as Record<string, unknown>;
@@ -152,7 +154,7 @@ function parseAddress(address: PropertyAddress): Record<string, unknown> | null 
       return { formatted: address };
     }
   }
-  return address;
+  return address as Record<string, unknown>;
 }
 
 function getStreetText(address: PropertyAddress): string {
