@@ -253,9 +253,13 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Build tracking URL using APP_URL (published domain)
-    const appUrl = Deno.env.get("FRONTEND_URL") || Deno.env.get("APP_URL") || "https://pitch-crm.ai";
+    // Build tracking URL. Always prefer the canonical production domain so
+    // emails never link to a stale preview / legacy lovable.app host.
+    const canonicalAppUrl = "https://pitch-crm.ai";
+    const envAppUrl = Deno.env.get("FRONTEND_URL") || Deno.env.get("APP_URL") || "";
+    const appUrl = /pitch-crm\.ai/i.test(envAppUrl) ? envAppUrl.replace(/\/+$/, "") : canonicalAppUrl;
     const viewQuoteUrl = `${appUrl}/view-quote/${trackingToken}`;
+    console.log("[send-quote-email] View quote URL:", viewQuoteUrl);
 
     // Email sender config - use verified domain from resolved tenant
     const defaultFromDomain = Deno.env.get("RESEND_FROM_DOMAIN") || "resend.dev";
@@ -356,25 +360,42 @@ Deno.serve(async (req: Request) => {
     let attachments: Array<{ filename: string; content: string }> | undefined;
     if (pdfUrlToAttach) {
       try {
-        const pdfResp = await fetch(pdfUrlToAttach);
-        if (pdfResp.ok) {
-          const buf = new Uint8Array(await pdfResp.arrayBuffer());
-          // base64 encode (chunked to avoid call stack overflow on large files)
-          let binary = "";
-          const chunk = 0x8000;
-          for (let i = 0; i < buf.length; i += chunk) {
-            binary += String.fromCharCode.apply(null, Array.from(buf.subarray(i, i + chunk)) as any);
-          }
-          const base64 = btoa(binary);
-          const safeName = (estimate.display_name || estimate.estimate_number || "quote")
-            .toString()
-            .replace(/[^a-z0-9-_]+/gi, "-")
-            .replace(/^-+|-+$/g, "")
-            .slice(0, 80);
-          attachments = [{ filename: `${safeName || "quote"}.pdf`, content: base64 }];
-          console.log("[send-quote-email] PDF attached:", { bytes: buf.length, filename: attachments[0].filename });
+        // Resolve to a fetchable URL. If it's a storage path (not http/https),
+        // create a short-lived signed URL from the documents bucket.
+        let fetchableUrl: string | null = null;
+        if (/^https?:\/\//i.test(pdfUrlToAttach)) {
+          fetchableUrl = pdfUrlToAttach;
         } else {
-          console.warn("[send-quote-email] PDF fetch failed:", pdfResp.status, pdfUrlToAttach);
+          const { data: signed, error: signedErr } = await supabase.storage
+            .from("documents")
+            .createSignedUrl(pdfUrlToAttach, 60 * 10); // 10 min
+          if (signedErr) {
+            console.warn("[send-quote-email] Signed URL failed for PDF path:", pdfUrlToAttach, signedErr.message);
+          } else {
+            fetchableUrl = signed?.signedUrl || null;
+          }
+        }
+
+        if (fetchableUrl) {
+          const pdfResp = await fetch(fetchableUrl);
+          if (pdfResp.ok) {
+            const buf = new Uint8Array(await pdfResp.arrayBuffer());
+            let binary = "";
+            const chunk = 0x8000;
+            for (let i = 0; i < buf.length; i += chunk) {
+              binary += String.fromCharCode.apply(null, Array.from(buf.subarray(i, i + chunk)) as any);
+            }
+            const base64 = btoa(binary);
+            const safeName = (estimate.display_name || estimate.estimate_number || "quote")
+              .toString()
+              .replace(/[^a-z0-9-_]+/gi, "-")
+              .replace(/^-+|-+$/g, "")
+              .slice(0, 80);
+            attachments = [{ filename: `${safeName || "quote"}.pdf`, content: base64 }];
+            console.log("[send-quote-email] PDF attached:", { bytes: buf.length, filename: attachments[0].filename });
+          } else {
+            console.warn("[send-quote-email] PDF fetch failed:", pdfResp.status, fetchableUrl);
+          }
         }
       } catch (e) {
         console.warn("[send-quote-email] PDF attachment skipped:", e instanceof Error ? e.message : String(e));
