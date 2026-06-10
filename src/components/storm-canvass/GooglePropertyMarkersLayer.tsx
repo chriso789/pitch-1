@@ -177,6 +177,65 @@ function getAddressCore(key: string): string {
   return match ? `${match[1]}_${match[2]}` : key;
 }
 
+function normalizeStatusKey(status?: string | null): string | null {
+  if (!status) return null;
+  const key = status.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  if (!key || ['new', 'lead', 'new_lead', 'prospect', 'not_contacted'].includes(key)) return null;
+  return key;
+}
+
+function getContactFallbackDisposition(contact: ContactStatusFallback): string | null {
+  const qualificationStatus = normalizeStatusKey(contact.qualification_status);
+  if (qualificationStatus) return qualificationStatus;
+
+  const leadStatus = normalizeStatusKey(contact.lead_status);
+  if (leadStatus && !['open', 'active'].includes(leadStatus)) return leadStatus;
+
+  const lifecycleStage = normalizeStatusKey(contact.lifecycle_stage);
+  if (lifecycleStage && lifecycleStage !== 'prospect') return lifecycleStage;
+
+  return null;
+}
+
+function getContactAddressKey(contact: ContactStatusFallback): string {
+  return contact.address_street ? normalizeAddressKeyClient(contact.address_street) : '';
+}
+
+function applyContactStatusFallbacks(
+  properties: CanvassiqProperty[],
+  contacts: ContactStatusFallback[]
+): CanvassiqProperty[] {
+  if (!contacts.length) return properties;
+
+  const contactsWithStatus = contacts
+    .map((contact) => ({ contact, disposition: getContactFallbackDisposition(contact) }))
+    .filter((entry): entry is { contact: ContactStatusFallback; disposition: string } => Boolean(entry.disposition));
+
+  if (!contactsWithStatus.length) return properties;
+
+  return properties.map((property) => {
+    if (property.disposition) return property;
+
+    const propertyKey = getNormalizedAddressKey(property);
+    const propertyCore = getAddressCore(propertyKey);
+    const matched = contactsWithStatus.find(({ contact }) => {
+      if (contact.canvassiq_property_id === property.id || contact.id === property.contact_id) return true;
+
+      const contactKey = getContactAddressKey(contact);
+      if (!contactKey) return false;
+      const sameAddress = contactKey === propertyKey || getAddressCore(contactKey) === propertyCore;
+      if (!sameAddress) return false;
+
+      const contactLat = Number(contact.latitude);
+      const contactLng = Number(contact.longitude);
+      if (!Number.isFinite(contactLat) || !Number.isFinite(contactLng)) return true;
+      return distanceMeters(property.lat, property.lng, contactLat, contactLng) <= 35;
+    });
+
+    return matched ? { ...property, disposition: matched.disposition, contact_id: matched.contact.id } : property;
+  });
+}
+
 // Haversine distance in meters between two lat/lng points
 function distanceMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const dLat = (lat2 - lat1) * 111000;
