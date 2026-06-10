@@ -158,11 +158,13 @@ export default function LiveCanvassingPage() {
   const interactionTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   const handleUserMapInteraction = useCallback(() => {
+    // Pause auto-follow indefinitely once the user moves the map.
+    // It only resumes when they tap the recenter button.
     setUserInteractionPaused(true);
-    if (interactionTimerRef.current) clearTimeout(interactionTimerRef.current);
-    interactionTimerRef.current = setTimeout(() => {
-      setUserInteractionPaused(false);
-    }, 5000); // Resume auto-follow after 5 seconds
+    if (interactionTimerRef.current) {
+      clearTimeout(interactionTimerRef.current);
+      interactionTimerRef.current = null;
+    }
   }, []);
   
   useEffect(() => {
