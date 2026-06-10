@@ -276,6 +276,9 @@ export function EstimatePreviewPanel({
   const [isEstimatesOpen, setIsEstimatesOpen] = useState(true);
   const { generateMultiPagePDF, isGenerating: isGeneratingPDF } = useMultiPagePDFGeneration();
   const [isGeneratingNarrative, setIsGeneratingNarrative] = useState(false);
+  // Per-additional-estimate AI scope narratives, keyed by estimate id.
+  // The main estimate's narrative lives on options.scopeNarrative.
+  const [additionalScopeNarratives, setAdditionalScopeNarratives] = useState<Record<string, string>>({});
   const { toast } = useToast();
   const previewRef = useRef<HTMLDivElement>(null);
   const photoUploadRef = useRef<HTMLInputElement>(null);
@@ -893,26 +896,79 @@ export function EstimatePreviewPanel({
       item_type: it.item_type,
       trade_type: it.trade_type,
     });
-    setIsGeneratingNarrative(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('estimate-scope-narrative', {
-        body: {
-          items: combined.map(mapItem),
-          change_order_items: (changeOrderItems || []).map(mapItem),
-          project_title: estimateDisplayName || templateName || estimateNumber,
+
+    // Build one generation task per estimate (main + each selected additional).
+    // Each estimate has its OWN name + line items so the AI produces a
+    // distinct scope per estimate, not a single shared description.
+    type ScopeTask = { key: string; payload: Record<string, any> };
+    const tasks: ScopeTask[] = [];
+    tasks.push({
+      key: '__main__',
+      payload: {
+        items: combined.map(mapItem),
+        change_order_items: (changeOrderItems || []).map(mapItem),
+        project_title: estimateDisplayName || templateName || estimateNumber,
+        customer_name: customerName,
+        property_address: customerAddress,
+        company_name: companyInfo?.name,
+        tone: 'professional',
+      },
+    });
+    Array.from(selectedAdditionalIds).forEach((estId) => {
+      const fetched = fetchedEstimates.get(estId);
+      if (!fetched) return;
+      const addCombined = [...fetched.materialItems, ...fetched.laborItems];
+      if (addCombined.length === 0) return;
+      tasks.push({
+        key: estId,
+        payload: {
+          items: addCombined.map(mapItem),
+          // Additional estimates don't carry change orders in this panel.
+          change_order_items: [],
+          project_title: fetched.estimateName || fetched.estimateNumber,
           customer_name: customerName,
           property_address: customerAddress,
           company_name: companyInfo?.name,
           tone: 'professional',
+          extra_instructions:
+            'This estimate is one of several combined into a single proposal. Write a scope that is clearly specific to THIS estimate\'s products, brand/system, and work — do not repeat language from the other estimates.',
         },
       });
-      if (error) throw error;
-      const narrative = (data as any)?.narrative?.trim();
-      if (!narrative) throw new Error('No narrative returned');
-      setOptions((prev) => ({ ...prev, useScopeNarrative: true, scopeNarrative: narrative }));
+    });
+
+    setIsGeneratingNarrative(true);
+    try {
+      const results = await Promise.all(
+        tasks.map(async (t) => {
+          const { data, error } = await supabase.functions.invoke('estimate-scope-narrative', {
+            body: t.payload,
+          });
+          if (error) throw error;
+          const narrative = (data as any)?.narrative?.trim();
+          if (!narrative) throw new Error('No narrative returned');
+          return { key: t.key, narrative };
+        }),
+      );
+
+      const mainResult = results.find((r) => r.key === '__main__');
+      const additionalMap: Record<string, string> = {};
+      results.forEach((r) => {
+        if (r.key !== '__main__') additionalMap[r.key] = r.narrative;
+      });
+
+      setOptions((prev) => ({
+        ...prev,
+        useScopeNarrative: true,
+        scopeNarrative: mainResult?.narrative || prev.scopeNarrative,
+      }));
+      setAdditionalScopeNarratives(additionalMap);
+
       toast({
-        title: 'AI Scope generated',
-        description: 'Customer-friendly project scope is ready. Edit as needed.',
+        title: results.length > 1 ? `AI Scopes generated (${results.length})` : 'AI Scope generated',
+        description:
+          results.length > 1
+            ? 'A distinct customer-friendly scope was generated for each combined estimate.'
+            : 'Customer-friendly project scope is ready. Edit as needed.',
       });
     } catch (e: any) {
       console.error('[scope-narrative] error', e);
@@ -925,6 +981,7 @@ export function EstimatePreviewPanel({
       setIsGeneratingNarrative(false);
     }
   };
+
 
   // Generate safe filename from display name, template name, or estimate number
   const getFilename = useCallback(() => {
@@ -1848,15 +1905,20 @@ export function EstimatePreviewPanel({
                     pageOrder={pageOrder}
                     templateStyle={activeTemplateStyle}
                     additionalEstimates={Array.from(selectedAdditionalIds)
-                      .map((estId) => fetchedEstimates.get(estId))
-                      .filter((d): d is NonNullable<typeof d> => !!d)
-                      .map((d) => ({
+                      .map((estId) => {
+                        const d = fetchedEstimates.get(estId);
+                        if (!d) return null;
+                        return { estId, d };
+                      })
+                      .filter((x): x is { estId: string; d: FetchedEstimateData } => !!x)
+                      .map(({ estId, d }) => ({
                         estimateNumber: d.estimateNumber,
                         estimateName: d.estimateName,
                         materialItems: d.materialItems,
                         laborItems: d.laborItems,
                         breakdown: d.breakdown,
                         config: d.config,
+                        scopeNarrative: additionalScopeNarratives[estId],
                       }))}
                   />
 
