@@ -388,11 +388,14 @@ app.post("/classify-pages", async (c) => {
       const cls = classifyBlueprintPage(p.page_number, p.raw_text || "");
       await svc.from("plan_pages").update({
         page_type: cls.page_type,
+        page_subtype: cls.page_subtype,
         page_type_confidence: cls.confidence,
         sheet_name: cls.sheet_name,
         sheet_number: cls.sheet_number,
         scale_text: cls.scale_text,
+        scale_source: cls.scale_text ? "pdf_text" : null,
       }).eq("id", p.id).eq("tenant_id", tenantId);
+
       results.push({ page_number: cls.page_number, page_type: cls.page_type, confidence: cls.confidence, requires_review: cls.requires_review });
       sum += cls.confidence;
       if (cls.requires_review) needsReview = true;
