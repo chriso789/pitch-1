@@ -41,21 +41,20 @@ export interface PricingConfig {
 }
 
 export interface PricingBreakdown {
-  materialsTotal: number;
+  materialsTotal: number;        // Raw materials cost (pre-tax)
   laborTotal: number;
-  directCost: number;
-  overheadAmount: number;
-  totalCost: number;
+  salesTaxAmount: number;        // Sales tax on materials COST — treated as direct cost line
+  directCost: number;            // materials + labor + sales tax
+  overheadAmount: number;        // Overhead applied on direct cost (incl. tax) → scales with tax
+  totalCost: number;             // directCost + overhead
   profitAmount: number;
-  netProfit: number; // Net profit before commission (for profit_split display)
+  netProfit: number;
   repCommissionAmount: number;
-  sellingPrice: number; // NOW INCLUDES TAX (customer-facing total)
-  preTaxSellingPrice: number; // Internal: selling price before tax
+  sellingPrice: number;          // Final customer price
+  preTaxSellingPrice: number;    // = sellingPrice (tax is a cost component now)
   actualProfitMargin: number;
-  // Sales tax (applied to materials portion only - labor is tax-exempt)
-  materialsSellingPortion: number; // Materials portion of selling price for tax calculation
-  salesTaxAmount: number; // Internal tracking only - baked into sellingPrice
-  totalWithTax: number; // Same as sellingPrice (backward compatibility)
+  materialsSellingPortion: number;
+  totalWithTax: number;          // Backward compat = sellingPrice
 }
 
 export interface UseEstimatePricingReturn {
