@@ -261,11 +261,11 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
     },
     {
       id: 'estimate',
-      label: 'Estimate',
+      label: 'Selling Price',
       icon: Calculator,
       value: hasSelectedEstimate ? formatCurrency(hyperlinkData.sale_price) : '—',
       hint: !hasSelectedEstimate ? 'Select estimate' : null,
-      description: 'Estimate templates and calculations'
+      description: 'Selling price from active estimate(s)'
     },
     {
       id: 'materials',
