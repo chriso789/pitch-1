@@ -323,58 +323,84 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
     enabled: !!pipelineEntryId && !!estimates && estimates.length > 0,
   });
 
-  const handleSelectEstimate = async (estimateId: string) => {
-    const isCurrentlySelected = currentSelectedId === estimateId;
-    const newSelectedId = isCurrentlySelected ? null : estimateId;
-    
+  const persistMetadata = async (patch: Record<string, any>) => {
+    const { data: currentEntry } = await supabase
+      .from('pipeline_entries')
+      .select('metadata')
+      .eq('id', pipelineEntryId)
+      .single();
+    const currentMetadata = (currentEntry?.metadata as Record<string, any>) || {};
+    const { error } = await supabase
+      .from('pipeline_entries')
+      .update({ metadata: { ...currentMetadata, ...patch } })
+      .eq('id', pipelineEntryId);
+    if (error) throw error;
+    queryClient.invalidateQueries({ queryKey: ['pipeline-entry-metadata', pipelineEntryId] });
+    queryClient.invalidateQueries({ queryKey: ['pipeline-selected-estimate', pipelineEntryId] });
+    queryClient.invalidateQueries({ queryKey: ['enhanced-estimate-items', pipelineEntryId] });
+    queryClient.invalidateQueries({ queryKey: ['lead-requirements', pipelineEntryId] });
+    queryClient.invalidateQueries({ queryKey: ['hyperlink-data', pipelineEntryId] });
+    queryClient.invalidateQueries({ queryKey: ['estimate-costs', pipelineEntryId] });
+  };
+
+  const handleToggleCombineMode = async (next: boolean) => {
     try {
-      // Get current metadata
-      const { data: currentEntry } = await supabase
-        .from('pipeline_entries')
-        .select('metadata')
-        .eq('id', pipelineEntryId)
-        .single();
+      const patch: Record<string, any> = { combine_estimates: next };
+      if (!next) {
+        // Collapse back to a single primary selection
+        const primary = selectedIds[0] || currentSelectedId || null;
+        patch.selected_estimate_id = primary;
+        patch.selected_estimate_ids = primary ? [primary] : [];
+      } else {
+        patch.selected_estimate_ids = selectedIds.length > 0 ? selectedIds : (currentSelectedId ? [currentSelectedId] : []);
+      }
+      await persistMetadata(patch);
+      toast({
+        title: next ? 'Combine Mode On' : 'Combine Mode Off',
+        description: next
+          ? 'Select multiple estimates to sum their selling prices.'
+          : 'Only one active estimate at a time.',
+      });
+    } catch (error) {
+      console.error('Error toggling combine mode:', error);
+      toast({ title: 'Error', description: 'Could not update combine mode.', variant: 'destructive' });
+    }
+  };
 
-      const currentMetadata = (currentEntry?.metadata as Record<string, any>) || {};
-
-      // Update the pipeline entry metadata
-      const { error } = await supabase
-        .from('pipeline_entries')
-        .update({ 
-          metadata: { 
-            ...currentMetadata,
-            selected_estimate_id: newSelectedId 
-          }
-        })
-        .eq('id', pipelineEntryId);
-
-      if (error) throw error;
-
-      // Invalidate queries to refresh - including the hyperlink bar and TemplateSectionSelector
-      queryClient.invalidateQueries({ queryKey: ['pipeline-entry-metadata', pipelineEntryId] });
-      queryClient.invalidateQueries({ queryKey: ['pipeline-selected-estimate', pipelineEntryId] });
-      queryClient.invalidateQueries({ queryKey: ['enhanced-estimate-items', pipelineEntryId] });
-      queryClient.invalidateQueries({ queryKey: ['lead-requirements', pipelineEntryId] });
-      queryClient.invalidateQueries({ queryKey: ['hyperlink-data', pipelineEntryId] });
-      queryClient.invalidateQueries({ queryKey: ['estimate-costs', pipelineEntryId] });
-      
-      // Call external handler if provided
-      if (onEstimateSelect && newSelectedId) {
-        onEstimateSelect(newSelectedId);
+  const handleSelectEstimate = async (estimateId: string) => {
+    try {
+      if (combineMode) {
+        const isOn = selectedIds.includes(estimateId);
+        const nextIds = isOn ? selectedIds.filter((x) => x !== estimateId) : [...selectedIds, estimateId];
+        await persistMetadata({
+          selected_estimate_ids: nextIds,
+          // Keep selected_estimate_id pointing at the first selection so legacy consumers still resolve a record
+          selected_estimate_id: nextIds[0] || null,
+        });
+        if (onEstimateSelect && nextIds.length > 0) onEstimateSelect(nextIds[0]);
+        return;
       }
 
+      const isCurrentlySelected = currentSelectedId === estimateId;
+      const newSelectedId = isCurrentlySelected ? null : estimateId;
+      await persistMetadata({
+        selected_estimate_id: newSelectedId,
+        selected_estimate_ids: newSelectedId ? [newSelectedId] : [],
+      });
+      if (onEstimateSelect && newSelectedId) onEstimateSelect(newSelectedId);
+
       toast({
-        title: newSelectedId ? "Estimate Selected" : "Estimate Deselected",
-        description: newSelectedId 
+        title: newSelectedId ? 'Estimate Selected' : 'Estimate Deselected',
+        description: newSelectedId
           ? "This estimate is now active for the project's materials and labor."
-          : "No estimate is currently selected for this project.",
+          : 'No estimate is currently selected for this project.',
       });
     } catch (error) {
       console.error('Error selecting estimate:', error);
       toast({
-        title: "Error",
-        description: "Failed to update estimate selection.",
-        variant: "destructive",
+        title: 'Error',
+        description: 'Failed to update estimate selection.',
+        variant: 'destructive',
       });
     }
   };
