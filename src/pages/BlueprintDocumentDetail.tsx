@@ -30,8 +30,26 @@ export default function BlueprintDocumentDetail() {
   const [loading, setLoading] = useState(true);
   const [opening, setOpening] = useState(false);
   const [describing, setDescribing] = useState(false);
+  const [rendering, setRendering] = useState(false);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [trades, setTrades] = useState<Record<string, string>>({});
+
+  async function renderAllPages() {
+    setRendering(true);
+    try {
+      const result = await rasterizeBlueprintPages({ document_id: id, force: false });
+      toast({
+        title: "Rendering complete",
+        description: `${result?.rendered ?? 0} new page(s) rendered, ${result?.skipped ?? 0} already had images.`,
+      });
+      await load();
+    } catch (e: any) {
+      toast({ title: "Render failed", description: e.message, variant: "destructive" });
+    } finally {
+      setRendering(false);
+    }
+  }
+
 
   async function load() {
     setLoading(true);
