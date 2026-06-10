@@ -66,6 +66,34 @@ export function BlueprintPageList({
 }) {
   const allSelected = pages.length > 0 && pages.every((p) => selected[p.id]);
   const someSelected = pages.some((p) => selected[p.id]);
+  const [previewPage, setPreviewPage] = useState<any | null>(null);
+  const [scaleEdits, setScaleEdits] = useState<Record<string, string>>({});
+
+  const previewUrl = useMemo(() => {
+    if (!previewPage?.image_path) return "";
+    return supabase.storage.from("blueprint-pages").getPublicUrl(previewPage.image_path).data.publicUrl;
+  }, [previewPage]);
+
+  async function saveScale(page: any) {
+    const next = (scaleEdits[page.id] ?? "").trim();
+    if (next === (page.scale_text || "")) return;
+    const { error } = await supabase
+      .from("plan_pages")
+      .update({ scale_text: next || null })
+      .eq("id", page.id);
+    if (error) toast({ title: "Failed to save scale", description: error.message, variant: "destructive" });
+    else toast({ title: "Scale saved" });
+  }
+
+  const previewTitle = previewPage
+    ? [
+        `Page ${previewPage.page_number}`,
+        previewPage.sheet_number || previewPage.sheet_name,
+        previewPage.page_title,
+      ]
+        .filter(Boolean)
+        .join(" — ")
+    : "";
 
   return (
     <Card>
@@ -90,7 +118,7 @@ export function BlueprintPageList({
                 </th>
                 <th className="py-2 pr-3">#</th>
                 <th className="py-2 pr-3">Detected Type</th>
-                <th className="py-2 pr-3">Sheet</th>
+                <th className="py-2 pr-3">Sheet / Title</th>
                 <th className="py-2 pr-3">Trade to quote</th>
                 <th className="py-2 pr-3">Scale</th>
                 <th className="py-2 pr-3">Review</th>
@@ -100,6 +128,7 @@ export function BlueprintPageList({
             <tbody className="divide-y">
               {pages.map((page) => {
                 const trade = trades[page.id] ?? guessTradeFromPage(page);
+                const scaleVal = scaleEdits[page.id] ?? (page.scale_text || "");
                 return (
                   <tr key={page.id}>
                     <td className="py-2 pr-3">
@@ -114,7 +143,14 @@ export function BlueprintPageList({
                       <Badge variant="outline">{page.page_type}</Badge>
                     </td>
                     <td className="py-2 pr-3">
-                      {page.sheet_number || page.sheet_name || page.page_title || "—"}
+                      <div className="font-medium">
+                        {page.sheet_number || page.sheet_name || "—"}
+                      </div>
+                      {page.page_title && (
+                        <div className="text-xs text-muted-foreground line-clamp-1">
+                          {page.page_title}
+                        </div>
+                      )}
                     </td>
                     <td className="py-2 pr-3">
                       <Select
@@ -133,7 +169,17 @@ export function BlueprintPageList({
                         </SelectContent>
                       </Select>
                     </td>
-                    <td className="py-2 pr-3">{page.scale_text || "—"}</td>
+                    <td className="py-2 pr-3">
+                      <Input
+                        value={scaleVal}
+                        placeholder='e.g. 1/4" = 1&apos;-0"'
+                        className="h-8 w-32"
+                        onChange={(e) =>
+                          setScaleEdits((s) => ({ ...s, [page.id]: e.target.value }))
+                        }
+                        onBlur={() => saveScale(page)}
+                      />
+                    </td>
                     <td className="py-2 pr-3">
                       <Badge
                         variant={
@@ -149,6 +195,13 @@ export function BlueprintPageList({
                     </td>
                     <td className="py-2 pr-3">
                       <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setPreviewPage(page)}
+                        >
+                          Preview
+                        </Button>
                         <Button size="sm" variant="outline" asChild>
                           <Link to={`/blueprints/page/${page.id}`}>Review</Link>
                         </Button>
@@ -170,6 +223,36 @@ export function BlueprintPageList({
           </table>
         </div>
       </CardContent>
+
+      <Dialog open={!!previewPage} onOpenChange={(o) => !o && setPreviewPage(null)}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>{previewTitle || "Blueprint page"}</DialogTitle>
+            {previewPage && (
+              <div className="flex flex-wrap gap-2 text-xs text-muted-foreground pt-1">
+                <Badge variant="outline">{previewPage.page_type}</Badge>
+                {previewPage.scale_text && <span>Scale: {previewPage.scale_text}</span>}
+                {previewPage.page_title && previewPage.sheet_number && (
+                  <span>· {previewPage.page_title}</span>
+                )}
+              </div>
+            )}
+          </DialogHeader>
+          <div className="bg-muted/30 rounded-md overflow-hidden max-h-[70vh] flex items-center justify-center">
+            {previewUrl ? (
+              <img
+                src={previewUrl}
+                alt={previewTitle}
+                className="max-h-[70vh] w-auto object-contain"
+              />
+            ) : (
+              <p className="text-muted-foreground text-sm p-8">
+                No rendered preview image for this page yet.
+              </p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
