@@ -314,36 +314,40 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       id: 'estimate',
       label: 'Selling Price',
       icon: Calculator,
-      value: hasSelectedEstimate ? formatCurrency(hyperlinkData.sale_price) : '—',
-      hint: !hasSelectedEstimate ? 'Select estimate' : null,
+      value: (isCombined || hasSelectedEstimate) ? formatCurrency(effectiveSalePrice) : '—',
+      hint: isCombined ? `${combinedTotals!.count} combined` : (!hasSelectedEstimate ? 'Select estimate' : null),
       description: 'Selling price from active estimate(s)'
     },
     {
       id: 'materials',
       label: hasActualMaterials 
         ? `Materials: ${formatCurrency(actualMaterialCost)} (actual)`
-        : `Materials: ${formatCurrency(hyperlinkData.materials)}`,
+        : `Materials: ${formatCurrency(effectiveMaterials)}`,
       icon: Package,
-      value: formatCurrency(hasActualMaterials ? actualMaterialCost : hyperlinkData.materials),
+      value: formatCurrency(hasActualMaterials ? actualMaterialCost : effectiveMaterials),
       hint: hasActualMaterials 
-        ? `Est: ${formatCurrency(hyperlinkData.materials)}`
-        : lockStatus?.material_cost_locked_at 
-          ? 'Locked ✓' 
-          : (hyperlinkData.sections?.materials?.status === 'pending' ? 'Pending' : null),
+        ? `Est: ${formatCurrency(effectiveMaterials)}`
+        : isCombined
+          ? `${combinedTotals!.count} combined`
+          : lockStatus?.material_cost_locked_at 
+            ? 'Locked ✓' 
+            : (hyperlinkData.sections?.materials?.status === 'pending' ? 'Pending' : null),
       description: 'Material costs and specifications'
     },
     {
       id: 'labor',
       label: hasActualLabor 
         ? `Labor: ${formatCurrency(actualLaborCost)} (actual)`
-        : `Labor: ${formatCurrency(hyperlinkData.labor)}`,
+        : `Labor: ${formatCurrency(effectiveLabor)}`,
       icon: Hammer,
-      value: formatCurrency(hasActualLabor ? actualLaborCost : hyperlinkData.labor),
+      value: formatCurrency(hasActualLabor ? actualLaborCost : effectiveLabor),
       hint: hasActualLabor 
-        ? `Est: ${formatCurrency(hyperlinkData.labor)}`
-        : lockStatus?.labor_cost_locked_at 
-          ? 'Locked ✓' 
-          : (hyperlinkData.sections?.labor?.status === 'pending' ? 'Pending' : null),
+        ? `Est: ${formatCurrency(effectiveLabor)}`
+        : isCombined
+          ? `${combinedTotals!.count} combined`
+          : lockStatus?.labor_cost_locked_at 
+            ? 'Locked ✓' 
+            : (hyperlinkData.sections?.labor?.status === 'pending' ? 'Pending' : null),
       description: 'Labor costs per square'
     },
     {
@@ -359,24 +363,23 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       label: 'Profit',
       icon: TrendingUp,
       value: (() => {
-        // Always recalculate profit margin from actual numbers — don't trust stored margin_pct
-        const effectiveMaterial = hasActualMaterials ? actualMaterialCost : hyperlinkData.materials;
-        const effectiveLabor = hasActualLabor ? actualLaborCost : hyperlinkData.labor;
-        const salePrice = hyperlinkData.sale_price;
+        const effMaterial = hasActualMaterials ? actualMaterialCost : effectiveMaterials;
+        const effLabor = hasActualLabor ? actualLaborCost : effectiveLabor;
+        const salePrice = effectiveSalePrice;
         const overhead = calculateRepOverhead() + otherChargesTotal;
-        const profit = salePrice - effectiveMaterial - effectiveLabor - overhead;
+        const profit = salePrice - effMaterial - effLabor - overhead;
         const margin = salePrice > 0 ? (profit / salePrice) * 100 : 0;
         return `${Math.round(margin)}%`;
       })(),
-      hint: (hasActualMaterials || hasActualLabor) ? 'Actual' : null,
+      hint: (hasActualMaterials || hasActualLabor) ? 'Actual' : (isCombined ? 'Combined' : null),
       description: 'Target gross margin percentage'
     },
     {
       id: 'total',
       label: 'Total',
       icon: DollarSign,
-      value: formatCurrency(hyperlinkData.sale_price),
-      hint: null,
+      value: formatCurrency(effectiveSalePrice),
+      hint: isCombined ? `${combinedTotals!.count} combined` : null,
       description: 'Final selling price with guaranteed margin'
     },
     {
