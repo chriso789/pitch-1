@@ -1905,15 +1905,20 @@ export function EstimatePreviewPanel({
                     pageOrder={pageOrder}
                     templateStyle={activeTemplateStyle}
                     additionalEstimates={Array.from(selectedAdditionalIds)
-                      .map((estId) => fetchedEstimates.get(estId))
-                      .filter((d): d is NonNullable<typeof d> => !!d)
-                      .map((d) => ({
+                      .map((estId) => {
+                        const d = fetchedEstimates.get(estId);
+                        if (!d) return null;
+                        return { estId, d };
+                      })
+                      .filter((x): x is { estId: string; d: FetchedEstimateData } => !!x)
+                      .map(({ estId, d }) => ({
                         estimateNumber: d.estimateNumber,
                         estimateName: d.estimateName,
                         materialItems: d.materialItems,
                         laborItems: d.laborItems,
                         breakdown: d.breakdown,
                         config: d.config,
+                        scopeNarrative: additionalScopeNarratives[estId],
                       }))}
                   />
 
