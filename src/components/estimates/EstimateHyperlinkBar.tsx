@@ -412,7 +412,7 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
   function getDescriptionForSection(key: string) {
     switch (key) {
       case 'documents': return 'Project documents and files';
-      case 'estimate': return 'Estimate templates and calculations';
+      case 'estimate': return 'Selling price from active estimate(s)';
       case 'measurements': return 'Roof measurements and template mapping';
       case 'materials': return 'Material costs and specifications';
       case 'labor': return 'Labor costs per square';
