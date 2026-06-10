@@ -73,3 +73,11 @@ export async function parseBlueprintDocument(document_id: string, tenant_id?: st
   if (error) throw new Error(error);
   return data;
 }
+
+export async function describeBlueprintDocument(document_id: string) {
+  const { data, error } = await supabase.functions.invoke("describe-blueprint-document", {
+    body: { document_id },
+  });
+  if (error) throw error;
+  return data;
+}

@@ -1330,3 +1330,6 @@ verify_jwt = false
 
 [functions.estimate-scope-narrative]
 verify_jwt = true
+
+[functions.describe-blueprint-document]
+verify_jwt = true

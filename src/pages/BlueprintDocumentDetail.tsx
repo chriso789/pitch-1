@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Loader2, Workflow } from "lucide-react";
-import { extractRoofPlanGeometry, getBlueprintDocument } from "@/integrations/blueprintApi";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { ArrowLeft, Loader2, Sparkles, Workflow } from "lucide-react";
+import {
+  describeBlueprintDocument,
+  extractRoofPlanGeometry,
+  getBlueprintDocument,
+} from "@/integrations/blueprintApi";
 import {
   importBlueprintFromPlanDocument,
   findWorkbenchSessionByPlanDocument,
@@ -21,6 +27,7 @@ export default function BlueprintDocumentDetail() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [opening, setOpening] = useState(false);
+  const [describing, setDescribing] = useState(false);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [trades, setTrades] = useState<Record<string, string>>({});
 
@@ -67,10 +74,30 @@ export default function BlueprintDocumentDetail() {
     }
   }
 
+  async function generateDescription() {
+    setDescribing(true);
+    try {
+      const result = await describeBlueprintDocument(id);
+      if (!result?.ok) throw new Error(result?.error || "AI description failed");
+      toast({
+        title: "AI description generated",
+        description: `Updated ${result.pages_updated ?? 0} pages with summaries.`,
+      });
+      await load();
+    } catch (e: any) {
+      toast({ title: "AI description failed", description: e.message, variant: "destructive" });
+    } finally {
+      setDescribing(false);
+    }
+  }
+
   const selectedPages = useMemo(
     () => (data?.pages ?? []).filter((p: any) => selected[p.id]),
     [data, selected],
   );
+
+  const aiDescription = (data?.document?.metadata as any)?.ai_description as string | undefined;
+  const aiTrades = ((data?.document?.metadata as any)?.ai_trades_present as string[] | undefined) || [];
 
   if (loading) return <div className="p-6 flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>;
   if (!data) return <div className="p-6">Document not found.</div>;
@@ -87,11 +114,45 @@ export default function BlueprintDocumentDetail() {
             <p className="text-sm text-muted-foreground">{data.document.property_address || "No address"}</p>
           </div>
         </div>
-        <Button onClick={openWorkbench} disabled={opening}>
-          {opening ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Workflow className="h-4 w-4 mr-2" />}
-          Open Trade Quote Workbench
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={generateDescription} variant="outline" disabled={describing}>
+            {describing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
+            {aiDescription ? "Regenerate AI Description" : "Generate AI Description"}
+          </Button>
+          <Button onClick={openWorkbench} disabled={opening}>
+            {opening ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Workflow className="h-4 w-4 mr-2" />}
+            Open Trade Quote Workbench
+          </Button>
+        </div>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-primary" /> AI plan description
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {aiDescription ? (
+            <>
+              <p className="text-sm whitespace-pre-wrap leading-relaxed">{aiDescription}</p>
+              {aiTrades.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {aiTrades.map((t) => (
+                    <Badge key={t} variant="secondary" className="capitalize">{t}</Badge>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No AI description yet. Click <strong>Generate AI Description</strong> to summarize what
+              these blueprints cover, identify the trades present, and back-fill missing page titles
+              and scales.
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       <BlueprintPageList
         pages={data.pages}
