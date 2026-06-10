@@ -114,11 +114,45 @@ export default function BlueprintDocumentDetail() {
             <p className="text-sm text-muted-foreground">{data.document.property_address || "No address"}</p>
           </div>
         </div>
-        <Button onClick={openWorkbench} disabled={opening}>
-          {opening ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Workflow className="h-4 w-4 mr-2" />}
-          Open Trade Quote Workbench
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={generateDescription} variant="outline" disabled={describing}>
+            {describing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
+            {aiDescription ? "Regenerate AI Description" : "Generate AI Description"}
+          </Button>
+          <Button onClick={openWorkbench} disabled={opening}>
+            {opening ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Workflow className="h-4 w-4 mr-2" />}
+            Open Trade Quote Workbench
+          </Button>
+        </div>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-primary" /> AI plan description
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {aiDescription ? (
+            <>
+              <p className="text-sm whitespace-pre-wrap leading-relaxed">{aiDescription}</p>
+              {aiTrades.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {aiTrades.map((t) => (
+                    <Badge key={t} variant="secondary" className="capitalize">{t}</Badge>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No AI description yet. Click <strong>Generate AI Description</strong> to summarize what
+              these blueprints cover, identify the trades present, and back-fill missing page titles
+              and scales.
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       <BlueprintPageList
         pages={data.pages}
