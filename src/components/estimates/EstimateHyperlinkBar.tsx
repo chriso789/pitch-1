@@ -150,6 +150,51 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
 
   const salesRepOverheadRate = salesRepData ?? 10;
 
+  // Fetch combine-estimates state from pipeline_entries metadata
+  const { data: combineState } = useQuery({
+    queryKey: ['pipeline-entry-combine', pipelineEntryId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('pipeline_entries')
+        .select('metadata')
+        .eq('id', pipelineEntryId!)
+        .maybeSingle();
+      if (error) throw error;
+      const meta = (data?.metadata as any) || {};
+      return {
+        combine: !!meta.combine_estimates,
+        ids: Array.isArray(meta.selected_estimate_ids) ? (meta.selected_estimate_ids as string[]) : [],
+      };
+    },
+    enabled: !!pipelineEntryId,
+  });
+
+  // When combine mode is on, fetch all selected estimates and sum totals
+  const { data: combinedTotals } = useQuery({
+    queryKey: ['combined-estimate-totals', pipelineEntryId, combineState?.ids?.join(',')],
+    queryFn: async () => {
+      const ids = combineState?.ids || [];
+      if (ids.length === 0) return null;
+      const { data, error } = await supabase
+        .from('enhanced_estimates')
+        .select('id, material_cost, labor_cost, selling_price, sales_tax_amount, overhead_amount')
+        .in('id', ids);
+      if (error) throw error;
+      const sum = (k: string) => (data || []).reduce((s, r: any) => s + (Number(r[k]) || 0), 0);
+      return {
+        count: data?.length || 0,
+        materials: sum('material_cost'),
+        labor: sum('labor_cost'),
+        selling_price: sum('selling_price'),
+        sales_tax: sum('sales_tax_amount'),
+        overhead: sum('overhead_amount'),
+      };
+    },
+    enabled: !!pipelineEntryId && !!combineState?.combine && (combineState?.ids?.length || 0) > 0,
+  });
+
+  const isCombined = !!combineState?.combine && !!combinedTotals && combinedTotals.count > 1;
+
   // Mutation to update estimate selling price and recalculate profit
   const updatePriceMutation = useMutation({
     mutationFn: async (newPrice: number) => {
@@ -245,9 +290,15 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
 
   // Calculate overhead based on sales rep's effective overhead rate on FULL tax-included price
   const calculateRepOverhead = () => {
-    const salePrice = hyperlinkData?.sale_price || calculations?.selling_price || 0;
+    const salePrice = (isCombined ? combinedTotals!.selling_price : hyperlinkData?.sale_price) || calculations?.selling_price || 0;
     return salePrice * (salesRepOverheadRate / 100);
   };
+
+  // Effective values: when combine mode is on, sum across selected estimates
+  const effectiveSalePrice = isCombined ? combinedTotals!.selling_price : (hyperlinkData?.sale_price || 0);
+  const effectiveMaterials = isCombined ? combinedTotals!.materials : (hyperlinkData?.materials || 0);
+  const effectiveLabor = isCombined ? combinedTotals!.labor : (hyperlinkData?.labor || 0);
+  const effectiveOverheadFromEstimate = isCombined ? combinedTotals!.overhead : 0;
 
   // Build links from the new RPC response structure
   const links = hyperlinkData ? [
@@ -263,36 +314,40 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       id: 'estimate',
       label: 'Selling Price',
       icon: Calculator,
-      value: hasSelectedEstimate ? formatCurrency(hyperlinkData.sale_price) : '—',
-      hint: !hasSelectedEstimate ? 'Select estimate' : null,
+      value: (isCombined || hasSelectedEstimate) ? formatCurrency(effectiveSalePrice) : '—',
+      hint: isCombined ? `${combinedTotals!.count} combined` : (!hasSelectedEstimate ? 'Select estimate' : null),
       description: 'Selling price from active estimate(s)'
     },
     {
       id: 'materials',
       label: hasActualMaterials 
         ? `Materials: ${formatCurrency(actualMaterialCost)} (actual)`
-        : `Materials: ${formatCurrency(hyperlinkData.materials)}`,
+        : `Materials: ${formatCurrency(effectiveMaterials)}`,
       icon: Package,
-      value: formatCurrency(hasActualMaterials ? actualMaterialCost : hyperlinkData.materials),
+      value: formatCurrency(hasActualMaterials ? actualMaterialCost : effectiveMaterials),
       hint: hasActualMaterials 
-        ? `Est: ${formatCurrency(hyperlinkData.materials)}`
-        : lockStatus?.material_cost_locked_at 
-          ? 'Locked ✓' 
-          : (hyperlinkData.sections?.materials?.status === 'pending' ? 'Pending' : null),
+        ? `Est: ${formatCurrency(effectiveMaterials)}`
+        : isCombined
+          ? `${combinedTotals!.count} combined`
+          : lockStatus?.material_cost_locked_at 
+            ? 'Locked ✓' 
+            : (hyperlinkData.sections?.materials?.status === 'pending' ? 'Pending' : null),
       description: 'Material costs and specifications'
     },
     {
       id: 'labor',
       label: hasActualLabor 
         ? `Labor: ${formatCurrency(actualLaborCost)} (actual)`
-        : `Labor: ${formatCurrency(hyperlinkData.labor)}`,
+        : `Labor: ${formatCurrency(effectiveLabor)}`,
       icon: Hammer,
-      value: formatCurrency(hasActualLabor ? actualLaborCost : hyperlinkData.labor),
+      value: formatCurrency(hasActualLabor ? actualLaborCost : effectiveLabor),
       hint: hasActualLabor 
-        ? `Est: ${formatCurrency(hyperlinkData.labor)}`
-        : lockStatus?.labor_cost_locked_at 
-          ? 'Locked ✓' 
-          : (hyperlinkData.sections?.labor?.status === 'pending' ? 'Pending' : null),
+        ? `Est: ${formatCurrency(effectiveLabor)}`
+        : isCombined
+          ? `${combinedTotals!.count} combined`
+          : lockStatus?.labor_cost_locked_at 
+            ? 'Locked ✓' 
+            : (hyperlinkData.sections?.labor?.status === 'pending' ? 'Pending' : null),
       description: 'Labor costs per square'
     },
     {
@@ -308,24 +363,23 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       label: 'Profit',
       icon: TrendingUp,
       value: (() => {
-        // Always recalculate profit margin from actual numbers — don't trust stored margin_pct
-        const effectiveMaterial = hasActualMaterials ? actualMaterialCost : hyperlinkData.materials;
-        const effectiveLabor = hasActualLabor ? actualLaborCost : hyperlinkData.labor;
-        const salePrice = hyperlinkData.sale_price;
+        const effMaterial = hasActualMaterials ? actualMaterialCost : effectiveMaterials;
+        const effLabor = hasActualLabor ? actualLaborCost : effectiveLabor;
+        const salePrice = effectiveSalePrice;
         const overhead = calculateRepOverhead() + otherChargesTotal;
-        const profit = salePrice - effectiveMaterial - effectiveLabor - overhead;
+        const profit = salePrice - effMaterial - effLabor - overhead;
         const margin = salePrice > 0 ? (profit / salePrice) * 100 : 0;
         return `${Math.round(margin)}%`;
       })(),
-      hint: (hasActualMaterials || hasActualLabor) ? 'Actual' : null,
+      hint: (hasActualMaterials || hasActualLabor) ? 'Actual' : (isCombined ? 'Combined' : null),
       description: 'Target gross margin percentage'
     },
     {
       id: 'total',
       label: 'Total',
       icon: DollarSign,
-      value: formatCurrency(hyperlinkData.sale_price),
-      hint: null,
+      value: formatCurrency(effectiveSalePrice),
+      hint: isCombined ? `${combinedTotals!.count} combined` : null,
       description: 'Final selling price with guaranteed margin'
     },
     {
