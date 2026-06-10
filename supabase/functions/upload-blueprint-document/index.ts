@@ -72,9 +72,33 @@ Deno.serve(async (req) => {
       input_json: { file_path },
     });
 
+    // Kick off page rasterization in the background — non-blocking so the
+    // upload response stays fast. The rasterizer is idempotent and self-healing.
+    try {
+      const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+      const SR_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      // Fire-and-forget; do not await
+      fetch(`${SUPABASE_URL}/functions/v1/rasterize-blueprint-pages`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${SR_KEY}`,
+          apikey: SR_KEY,
+        },
+        body: JSON.stringify({ document_id: doc.id }),
+      }).catch(() => {});
+    } catch { /* ignore */ }
+
     return new Response(JSON.stringify({ ok: true, document: doc }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+  } catch (err: any) {
+    return new Response(JSON.stringify({ ok: false, error: String(err instanceof Error ? err.message : err) }), {
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+});
+
   } catch (err: any) {
     return new Response(JSON.stringify({ ok: false, error: String(err instanceof Error ? err.message : err) }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
