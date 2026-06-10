@@ -3,12 +3,14 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Loader2, Sparkles, Workflow } from "lucide-react";
+import { ArrowLeft, Loader2, Sparkles, Workflow, RefreshCw } from "lucide-react";
 import {
   describeBlueprintDocument,
   extractRoofPlanGeometry,
   getBlueprintDocument,
+  rasterizeBlueprintPages,
 } from "@/integrations/blueprintApi";
+
 import {
   importBlueprintFromPlanDocument,
   findWorkbenchSessionByPlanDocument,
@@ -28,8 +30,26 @@ export default function BlueprintDocumentDetail() {
   const [loading, setLoading] = useState(true);
   const [opening, setOpening] = useState(false);
   const [describing, setDescribing] = useState(false);
+  const [rendering, setRendering] = useState(false);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [trades, setTrades] = useState<Record<string, string>>({});
+
+  async function renderAllPages() {
+    setRendering(true);
+    try {
+      const result = await rasterizeBlueprintPages({ document_id: id, force: false });
+      toast({
+        title: "Rendering complete",
+        description: `${result?.rendered ?? 0} new page(s) rendered, ${result?.skipped ?? 0} already had images.`,
+      });
+      await load();
+    } catch (e: any) {
+      toast({ title: "Render failed", description: e.message, variant: "destructive" });
+    } finally {
+      setRendering(false);
+    }
+  }
+
 
   async function load() {
     setLoading(true);
@@ -114,7 +134,11 @@ export default function BlueprintDocumentDetail() {
             <p className="text-sm text-muted-foreground">{data.document.property_address || "No address"}</p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <Button onClick={renderAllPages} variant="outline" disabled={rendering}>
+            {rendering ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+            Render Page Images
+          </Button>
           <Button onClick={generateDescription} variant="outline" disabled={describing}>
             {describing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
             {aiDescription ? "Regenerate AI Description" : "Generate AI Description"}
@@ -125,6 +149,7 @@ export default function BlueprintDocumentDetail() {
           </Button>
         </div>
       </div>
+
 
       <Card>
         <CardHeader>
@@ -170,7 +195,9 @@ export default function BlueprintDocumentDetail() {
           toast({ title: "Geometry extraction queued" });
           await load();
         }}
+        onPagesUpdated={load}
       />
+
 
       <BlueprintPerPageBreakdown
         pages={selectedPages}

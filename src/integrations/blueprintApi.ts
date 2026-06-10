@@ -81,3 +81,16 @@ export async function describeBlueprintDocument(document_id: string) {
   if (error) throw error;
   return data;
 }
+
+export async function rasterizeBlueprintPages(input: {
+  document_id?: string;
+  page_id?: string;
+  force?: boolean;
+}) {
+  const { data, error } = await supabase.functions.invoke("rasterize-blueprint-pages", {
+    body: input,
+  });
+  if (error) throw error;
+  return data;
+}
+

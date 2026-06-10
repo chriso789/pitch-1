@@ -1333,3 +1333,7 @@ verify_jwt = true
 
 [functions.describe-blueprint-document]
 verify_jwt = true
+
+[functions.rasterize-blueprint-pages]
+verify_jwt = false
+
