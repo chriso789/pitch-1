@@ -9,7 +9,7 @@ import { type SymbolSettings, DEFAULT_DISPOSITION_SYMBOLS } from './MapSymbolSet
 interface GooglePropertyMarkersLayerProps {
   map: google.maps.Map;
   userLocation: { lat: number; lng: number };
-  onPropertyClick: (property: any) => void;
+  onPropertyClick: (property: CanvassiqProperty) => void;
   onLoadingChange?: (isLoading: boolean) => void;
   onPropertiesLoaded?: (count: number) => void;
   refreshKey?: number;
@@ -17,12 +17,15 @@ interface GooglePropertyMarkersLayerProps {
   symbolSettings?: SymbolSettings;
 }
 
+type PropertyAddress = string | number | boolean | Record<string, unknown> | unknown[] | null;
+
 interface CanvassiqProperty {
   id: string;
   lat: number;
   lng: number;
   disposition: string | null;
-  address: any;
+  contact_id?: string | null;
+  address: PropertyAddress;
   owner_name: string | null;
   tenant_id: string;
   created_at: string;
@@ -30,16 +33,32 @@ interface CanvassiqProperty {
   building_snapped?: boolean | null;
 }
 
+interface ContactStatusFallback {
+  id: string;
+  address_street: string | null;
+  latitude: number | string | null;
+  longitude: number | string | null;
+  qualification_status: string | null;
+  lead_status: string | null;
+  lifecycle_stage: string | null;
+  canvassiq_property_id: string | null;
+  updated_at: string | null;
+}
+
 // Disposition colors matching the original design
 const DISPOSITION_COLORS: Record<string, string> = {
   not_contacted: '#D4A84B',
   interested: '#22C55E',
+  qualified: '#3B82F6',
   not_interested: '#DC2626',
+  unqualified: '#DC2626',
   follow_up: '#EAB308',
   not_home: '#6B7280',
   callback: '#8B5CF6',
   converted: '#10B981',
   past_customer: '#0D9488',
+  new_roof: '#0EA5E9',
+  do_not_contact: '#991B1B',
 };
 
 const DEFAULT_COLOR = '#D4A84B';
@@ -76,24 +95,10 @@ function getVisibleGridCells(bounds: google.maps.LatLngBounds): string[] {
   return cells;
 }
 
-function getStreetNumber(address: any): string {
-  if (!address) return '';
-  
-  let parsed = address;
-  if (typeof address === 'string') {
-    try {
-      parsed = JSON.parse(address);
-    } catch {
-      const match = address.match(/^(\d+)/);
-      return match ? match[1] : '';
-    }
-  }
-  
-  if (parsed?.street_number) {
-    return parsed.street_number;
-  }
-  
-  const street = parsed?.street || parsed?.formatted || parsed?.address_line1 || '';
+function getStreetNumber(address: PropertyAddress): string {
+  const parsed = parseAddress(address);
+  if (parsed?.street_number) return String(parsed.street_number);
+  const street = getStreetText(address);
   const match = street.match(/^(\d+)/);
   return match ? match[1] : '';
 }
@@ -124,6 +129,25 @@ function normalizeAddressKeyClient(streetOrFormatted: string): string {
     .replace(/ /g, "_");
 }
 
+function parseAddress(address: PropertyAddress): Record<string, unknown> | null {
+  if (!address) return null;
+  if (typeof address !== 'string' && typeof address !== 'object') return { formatted: String(address) };
+  if (Array.isArray(address)) return null;
+  if (typeof address === 'string') {
+    try {
+      return JSON.parse(address) as Record<string, unknown>;
+    } catch {
+      return { formatted: address };
+    }
+  }
+  return address as Record<string, unknown>;
+}
+
+function getStreetText(address: PropertyAddress): string {
+  const parsed = parseAddress(address);
+  return String(parsed?.street || parsed?.formatted || parsed?.address_line1 || '');
+}
+
 // Get normalized address key for deduplication — ALWAYS returns address-based key, never falls back to id
 function getNormalizedAddressKey(property: CanvassiqProperty): string {
   // Use pre-computed key DIRECTLY if available — server already normalized it
@@ -132,22 +156,15 @@ function getNormalizedAddressKey(property: CanvassiqProperty): string {
   }
   
   // Fallback: compute from address fields
-  let parsed = property.address;
-  if (typeof parsed === 'string') {
-    try {
-      parsed = JSON.parse(parsed);
-    } catch {
-      const raw = property.address?.trim();
-      return raw ? normalizeAddressKeyClient(raw) : '';
-    }
-  }
+  const parsed = parseAddress(property.address);
+  if (!parsed) return '';
   
-  const streetNumber = parsed?.street_number || '';
-  const streetName = parsed?.street_name || parsed?.street || '';
+  const streetNumber = String(parsed.street_number || '');
+  const streetName = String(parsed.street_name || parsed.street || '');
   const combined = `${streetNumber} ${streetName}`.trim();
   if (combined && combined.length > 1) return normalizeAddressKeyClient(combined);
 
-  const formatted = parsed?.formatted || parsed?.address_line1 || '';
+  const formatted = String(parsed.formatted || parsed.address_line1 || '');
   if (formatted) return normalizeAddressKeyClient(formatted);
 
   return '';
@@ -158,6 +175,65 @@ function getAddressCore(key: string): string {
   // Extract leading digits and first word after them
   const match = key.match(/^(\d+)_([a-z]+)/);
   return match ? `${match[1]}_${match[2]}` : key;
+}
+
+function normalizeStatusKey(status?: string | null): string | null {
+  if (!status) return null;
+  const key = status.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  if (!key || ['new', 'lead', 'new_lead', 'prospect', 'not_contacted'].includes(key)) return null;
+  return key;
+}
+
+function getContactFallbackDisposition(contact: ContactStatusFallback): string | null {
+  const qualificationStatus = normalizeStatusKey(contact.qualification_status);
+  if (qualificationStatus) return qualificationStatus;
+
+  const leadStatus = normalizeStatusKey(contact.lead_status);
+  if (leadStatus && !['open', 'active'].includes(leadStatus)) return leadStatus;
+
+  const lifecycleStage = normalizeStatusKey(contact.lifecycle_stage);
+  if (lifecycleStage && lifecycleStage !== 'prospect') return lifecycleStage;
+
+  return null;
+}
+
+function getContactAddressKey(contact: ContactStatusFallback): string {
+  return contact.address_street ? normalizeAddressKeyClient(contact.address_street) : '';
+}
+
+function applyContactStatusFallbacks(
+  properties: CanvassiqProperty[],
+  contacts: ContactStatusFallback[]
+): CanvassiqProperty[] {
+  if (!contacts.length) return properties;
+
+  const contactsWithStatus = contacts
+    .map((contact) => ({ contact, disposition: getContactFallbackDisposition(contact) }))
+    .filter((entry): entry is { contact: ContactStatusFallback; disposition: string } => Boolean(entry.disposition));
+
+  if (!contactsWithStatus.length) return properties;
+
+  return properties.map((property) => {
+    if (property.disposition) return property;
+
+    const propertyKey = getNormalizedAddressKey(property);
+    const propertyCore = getAddressCore(propertyKey);
+    const matched = contactsWithStatus.find(({ contact }) => {
+      if (contact.canvassiq_property_id === property.id || contact.id === property.contact_id) return true;
+
+      const contactKey = getContactAddressKey(contact);
+      if (!contactKey) return false;
+      const sameAddress = contactKey === propertyKey || getAddressCore(contactKey) === propertyCore;
+      if (!sameAddress) return false;
+
+      const contactLat = Number(contact.latitude);
+      const contactLng = Number(contact.longitude);
+      if (!Number.isFinite(contactLat) || !Number.isFinite(contactLng)) return true;
+      return distanceMeters(property.lat, property.lng, contactLat, contactLng) <= 35;
+    });
+
+    return matched ? { ...property, disposition: matched.disposition, contact_id: matched.contact.id } : property;
+  });
 }
 
 // Haversine distance in meters between two lat/lng points
@@ -195,8 +271,14 @@ function deduplicateProperties(properties: CanvassiqProperty[]): CanvassiqProper
       } else {
         const currentSnapped = property.building_snapped === true;
         const existingSnapped = existing.building_snapped === true;
+        const currentHasStatus = Boolean(property.disposition);
+        const existingHasStatus = Boolean(existing.disposition);
         
-        if (currentSnapped && !existingSnapped) {
+        if (currentHasStatus && !existingHasStatus) {
+          addressMap.set(key, property);
+        } else if (!currentHasStatus && existingHasStatus) {
+          continue;
+        } else if (currentSnapped && !existingSnapped) {
           addressMap.set(key, property);
         } else if (currentSnapped === existingSnapped) {
           const currentDate = new Date(property.created_at || 0).getTime();
@@ -240,7 +322,14 @@ function deduplicateProperties(properties: CanvassiqProperty[]): CanvassiqProper
       // Keep snapped, then newest
       const currentSnapped = property.building_snapped === true;
       const existingSnapped = existing.property.building_snapped === true;
-      if (currentSnapped && !existingSnapped) {
+      const currentHasStatus = Boolean(property.disposition);
+      const existingHasStatus = Boolean(existing.property.disposition);
+      if (currentHasStatus && !existingHasStatus) {
+        addressMap.delete(existing.key);
+        coreMap.set(core, { key, property });
+      } else if (!currentHasStatus && existingHasStatus) {
+        addressMap.delete(key);
+      } else if (currentSnapped && !existingSnapped) {
         addressMap.delete(existing.key);
         coreMap.set(core, { key, property });
       } else if (!currentSnapped && existingSnapped) {
@@ -384,7 +473,7 @@ export default function GooglePropertyMarkersLayer({
     // At zoom ≥ 19, extract first word of street name for disambiguation
     let streetLabel = streetNumber;
     if (showStreetName && streetNumber && property.address) {
-      const parts = property.address.replace(/^\d+\s*/, '').split(/\s+/);
+      const parts = getStreetText(property.address).replace(/^\d+\s*/, '').split(/\s+/);
       const firstWord = parts[0] || '';
       if (firstWord) {
         streetLabel = `${streetNumber} ${firstWord}`;
@@ -512,17 +601,17 @@ export default function GooglePropertyMarkersLayer({
       // Calculate limit based on zoom
       const limit = zoom >= 17 ? 500 : zoom >= 15 ? 300 : 100;
       
-      let rawProperties: any[] | null = null;
-      let error: any = null;
+      let rawProperties: CanvassiqProperty[] | null = null;
+      let error: { message?: string } | null = null;
 
       if (areaPropertyIds && areaPropertyIds.length > 0) {
-        const allResults: any[] = [];
+        const allResults: CanvassiqProperty[] = [];
         const CHUNK_SIZE = 100;
         for (let i = 0; i < areaPropertyIds.length; i += CHUNK_SIZE) {
           const chunk = areaPropertyIds.slice(i, i + CHUNK_SIZE);
           const { data: chunkData, error: chunkErr } = await supabase
             .from('canvassiq_properties')
-            .select('id, lat, lng, disposition, address, owner_name, phone_numbers, emails, homeowner, searchbug_data, tenant_id, created_at, normalized_address_key, building_snapped')
+            .select('id, lat, lng, disposition, contact_id, address, owner_name, phone_numbers, emails, homeowner, searchbug_data, tenant_id, created_at, normalized_address_key, building_snapped')
             .eq('tenant_id', effectiveTenantId)
             .in('id', chunk)
             .gte('lat', sw.lat())
@@ -536,7 +625,7 @@ export default function GooglePropertyMarkersLayer({
       } else {
         const res = await supabase
           .from('canvassiq_properties')
-          .select('id, lat, lng, disposition, address, owner_name, phone_numbers, emails, homeowner, searchbug_data, tenant_id, created_at, normalized_address_key, building_snapped')
+          .select('id, lat, lng, disposition, contact_id, address, owner_name, phone_numbers, emails, homeowner, searchbug_data, tenant_id, created_at, normalized_address_key, building_snapped')
           .eq('tenant_id', effectiveTenantId)
           .gte('lat', sw.lat())
           .lte('lat', ne.lat())
@@ -549,8 +638,28 @@ export default function GooglePropertyMarkersLayer({
 
       // Bail if this load is already stale or component unmounted
       if (thisLoadVersion < loadVersionRef.current || !mountedRef.current) return;
+
+      const { data: contactStatusRows, error: contactStatusError } = await supabase
+        .from('contacts')
+        .select('id, address_street, latitude, longitude, qualification_status, lead_status, lifecycle_stage, canvassiq_property_id, updated_at')
+        .eq('tenant_id', effectiveTenantId)
+        .not('latitude', 'is', null)
+        .not('longitude', 'is', null)
+        .gte('latitude', sw.lat())
+        .lte('latitude', ne.lat())
+        .gte('longitude', sw.lng())
+        .lte('longitude', ne.lng())
+        .order('updated_at', { ascending: false })
+        .limit(limit * 2);
+
+      if (contactStatusError) {
+        console.warn('[GooglePropertyMarkersLayer] Contact status fallback unavailable:', contactStatusError);
+      }
       
-      const properties = rawProperties ? deduplicateProperties(rawProperties as CanvassiqProperty[]) : [];
+      const contactStatusFallbacks = (contactStatusRows || []) as ContactStatusFallback[];
+      const properties = rawProperties
+        ? deduplicateProperties(applyContactStatusFallbacks(rawProperties as CanvassiqProperty[], contactStatusFallbacks))
+        : [];
       
       if (error) {
         console.error('Error loading properties:', error);
@@ -617,7 +726,7 @@ export default function GooglePropertyMarkersLayer({
             // Re-query after loading new parcels
             const { data: newRawProperties } = await supabase
               .from('canvassiq_properties')
-              .select('id, lat, lng, disposition, address, owner_name, phone_numbers, emails, homeowner, searchbug_data, tenant_id, created_at, normalized_address_key, building_snapped')
+              .select('id, lat, lng, disposition, contact_id, address, owner_name, phone_numbers, emails, homeowner, searchbug_data, tenant_id, created_at, normalized_address_key, building_snapped')
               .eq('tenant_id', effectiveTenantId)
               .gte('lat', sw.lat())
               .lte('lat', ne.lat())
@@ -632,7 +741,9 @@ export default function GooglePropertyMarkersLayer({
               return;
             }
 
-            const newProperties = newRawProperties ? deduplicateProperties(newRawProperties as CanvassiqProperty[]) : [];
+            const newProperties = newRawProperties
+              ? deduplicateProperties(applyContactStatusFallbacks(newRawProperties as CanvassiqProperty[], contactStatusFallbacks))
+              : [];
             reconcileMarkers(newProperties, zoom, thisLoadVersion);
           }
           
