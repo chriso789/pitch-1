@@ -1492,6 +1492,7 @@ export function UnifiedMeasurementPanel({
                   onSuccess={handleMeasurementSuccess}
                 />
               </div>
+              <BlueprintsForPipelineEntry pipelineEntryId={pipelineEntryId} />
             </CollapsibleContent>
           </Collapsible>
         </CardContent>
