@@ -271,8 +271,14 @@ function deduplicateProperties(properties: CanvassiqProperty[]): CanvassiqProper
       } else {
         const currentSnapped = property.building_snapped === true;
         const existingSnapped = existing.building_snapped === true;
+        const currentHasStatus = Boolean(property.disposition);
+        const existingHasStatus = Boolean(existing.disposition);
         
-        if (currentSnapped && !existingSnapped) {
+        if (currentHasStatus && !existingHasStatus) {
+          addressMap.set(key, property);
+        } else if (!currentHasStatus && existingHasStatus) {
+          continue;
+        } else if (currentSnapped && !existingSnapped) {
           addressMap.set(key, property);
         } else if (currentSnapped === existingSnapped) {
           const currentDate = new Date(property.created_at || 0).getTime();
@@ -316,7 +322,14 @@ function deduplicateProperties(properties: CanvassiqProperty[]): CanvassiqProper
       // Keep snapped, then newest
       const currentSnapped = property.building_snapped === true;
       const existingSnapped = existing.property.building_snapped === true;
-      if (currentSnapped && !existingSnapped) {
+      const currentHasStatus = Boolean(property.disposition);
+      const existingHasStatus = Boolean(existing.property.disposition);
+      if (currentHasStatus && !existingHasStatus) {
+        addressMap.delete(existing.key);
+        coreMap.set(core, { key, property });
+      } else if (!currentHasStatus && existingHasStatus) {
+        addressMap.delete(key);
+      } else if (currentSnapped && !existingSnapped) {
         addressMap.delete(existing.key);
         coreMap.set(core, { key, property });
       } else if (!currentSnapped && existingSnapped) {
