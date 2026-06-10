@@ -539,24 +539,52 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
     return null;
   }
 
+  const activeIds = combineMode ? selectedIds : (currentSelectedId ? [currentSelectedId] : []);
+  const combinedTotal = displayedEstimates
+    .filter((e) => activeIds.includes(e.id))
+    .reduce((sum, e) => sum + (Number(e.selling_price) || 0), 0);
+
   return (
     <Card>
       <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
           <CardTitle className="text-base flex items-center gap-2">
             <FileText className="h-4 w-4" />
             Saved Estimates ({displayedEstimates.length})
           </CardTitle>
-          {onCreateNew && (
-            <Button variant="outline" size="sm" onClick={onCreateNew}>
-              Create Another
-            </Button>
-          )}
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2 rounded-md border bg-muted/30 px-2.5 py-1.5">
+              <Layers className="h-3.5 w-3.5 text-muted-foreground" />
+              <Label htmlFor="combine-estimates-toggle" className="text-xs font-medium cursor-pointer">
+                Combine selling prices
+              </Label>
+              <Switch
+                id="combine-estimates-toggle"
+                checked={combineMode}
+                onCheckedChange={handleToggleCombineMode}
+              />
+            </div>
+            {onCreateNew && (
+              <Button variant="outline" size="sm" onClick={onCreateNew}>
+                Create Another
+              </Button>
+            )}
+          </div>
         </div>
+        {combineMode && (
+          <div className="mt-2 flex items-center justify-between rounded-md border border-primary/30 bg-primary/5 px-3 py-2">
+            <span className="text-xs font-medium text-muted-foreground">
+              Combined Selling Price ({activeIds.length} selected)
+            </span>
+            <span className="text-sm font-bold text-primary">{formatCurrency(combinedTotal)}</span>
+          </div>
+        )}
       </CardHeader>
       <CardContent className="space-y-1.5">
         {displayedEstimates.map((estimate) => {
-          const isSelected = currentSelectedId === estimate.id;
+          const isSelected = combineMode
+            ? activeIds.includes(estimate.id)
+            : currentSelectedId === estimate.id;
           return (
             <div
               key={estimate.id}
@@ -580,7 +608,7 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
                     {isSelected && (
                       <Badge variant="default" className="bg-primary text-primary-foreground text-[10px] h-4 px-1">
                         <Check className="h-2.5 w-2.5 mr-0.5" />
-                        Active
+                        {combineMode ? 'Included' : 'Active'}
                       </Badge>
                     )}
                     {estimate.pricing_tier && (
