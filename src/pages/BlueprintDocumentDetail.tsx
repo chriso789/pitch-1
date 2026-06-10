@@ -74,10 +74,30 @@ export default function BlueprintDocumentDetail() {
     }
   }
 
+  async function generateDescription() {
+    setDescribing(true);
+    try {
+      const result = await describeBlueprintDocument(id);
+      if (!result?.ok) throw new Error(result?.error || "AI description failed");
+      toast({
+        title: "AI description generated",
+        description: `Updated ${result.pages_updated ?? 0} pages with summaries.`,
+      });
+      await load();
+    } catch (e: any) {
+      toast({ title: "AI description failed", description: e.message, variant: "destructive" });
+    } finally {
+      setDescribing(false);
+    }
+  }
+
   const selectedPages = useMemo(
     () => (data?.pages ?? []).filter((p: any) => selected[p.id]),
     [data, selected],
   );
+
+  const aiDescription = (data?.document?.metadata as any)?.ai_description as string | undefined;
+  const aiTrades = ((data?.document?.metadata as any)?.ai_trades_present as string[] | undefined) || [];
 
   if (loading) return <div className="p-6 flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>;
   if (!data) return <div className="p-6">Document not found.</div>;
