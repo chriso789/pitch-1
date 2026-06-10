@@ -709,12 +709,21 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     //     content BEFORE photos/warranty/attachments, respecting page order. ---
     if (additionalEstimates && additionalEstimates.length > 0) {
       additionalEstimates.forEach((addEst, addIdx) => {
+        // Per-estimate opts: when this additional estimate has its own AI
+        // narrative, use it; otherwise fall back to its line items so each
+        // appended estimate shows DIFFERENT customer-friendly copy.
+        const addOpts: PDFComponentOptions = {
+          ...opts,
+          useScopeNarrative: !!(opts.useScopeNarrative && addEst.scopeNarrative),
+          scopeNarrative: addEst.scopeNarrative,
+        };
         const addItems = [...addEst.materialItems, ...addEst.laborItems];
+        const addScopeItems = addOpts.useScopeNarrative && addOpts.scopeNarrative ? [] : addItems;
         const { itemChunks: addItemChunks, blockChunks: addBlockChunks } = chunkItems(
-          addItems,
+          addScopeItems,
           MAX_ROWS_FIRST_PAGE,
           MAX_ROWS_CONTINUATION,
-          opts,
+          addOpts,
         );
         estimateNodes.push(
           <FirstPage
@@ -728,7 +737,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
             isOnlyChunk={addItemChunks.length <= 1}
             breakdown={addEst.breakdown}
             config={addEst.config}
-            opts={opts}
+            opts={addOpts}
             showTerms={false}
             estimateName={addEst.estimateName}
           />
@@ -743,13 +752,14 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
               isLastPage={isLast}
               breakdown={isLast ? addEst.breakdown : undefined}
               config={isLast ? addEst.config : undefined}
-              opts={opts}
+              opts={addOpts}
               showTerms={false}
             />
           );
         }
       });
     }
+
 
     sections['estimate_content'] = {
       nodes: estimateNodes,
