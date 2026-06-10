@@ -253,9 +253,13 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Build tracking URL using APP_URL (published domain)
-    const appUrl = Deno.env.get("FRONTEND_URL") || Deno.env.get("APP_URL") || "https://pitch-crm.ai";
+    // Build tracking URL. Always prefer the canonical production domain so
+    // emails never link to a stale preview / legacy lovable.app host.
+    const canonicalAppUrl = "https://pitch-crm.ai";
+    const envAppUrl = Deno.env.get("FRONTEND_URL") || Deno.env.get("APP_URL") || "";
+    const appUrl = /pitch-crm\.ai/i.test(envAppUrl) ? envAppUrl.replace(/\/+$/, "") : canonicalAppUrl;
     const viewQuoteUrl = `${appUrl}/view-quote/${trackingToken}`;
+    console.log("[send-quote-email] View quote URL:", viewQuoteUrl);
 
     // Email sender config - use verified domain from resolved tenant
     const defaultFromDomain = Deno.env.get("RESEND_FROM_DOMAIN") || "resend.dev";
