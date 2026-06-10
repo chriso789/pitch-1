@@ -358,12 +358,12 @@ function deduplicateProperties(properties: CanvassiqProperty[]): CanvassiqProper
   for (let i = 0; i < remaining.length; i++) {
     const [keyA, propA] = remaining[i];
     if (removed.has(keyA)) continue;
-    const numA = getStreetNumber(propA);
+    const numA = getStreetNumber(propA.address);
     if (!numA) continue;
     for (let j = i + 1; j < remaining.length; j++) {
       const [keyB, propB] = remaining[j];
       if (removed.has(keyB)) continue;
-      const numB = getStreetNumber(propB);
+      const numB = getStreetNumber(propB.address);
       if (numA !== numB) continue;
       const dist = distanceMeters(propA.lat, propA.lng, propB.lat, propB.lng);
       if (dist > 18) continue;
