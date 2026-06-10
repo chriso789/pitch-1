@@ -23,6 +23,7 @@ import { toast } from '@/components/ui/use-toast';
 import { ImportReportButton } from './ImportReportButton';
 import { PullMeasurementsButton } from './PullMeasurementsButton';
 import { BlueprintUploadButton } from './BlueprintUploadButton';
+import { BlueprintsForPipelineEntry } from './BlueprintsForPipelineEntry';
 import { TraceRoofButton } from './TraceRoofButton';
 
 import { ManualMeasurementButton } from '@/components/estimates/ManualMeasurementButton';
