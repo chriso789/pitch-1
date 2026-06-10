@@ -346,7 +346,50 @@ function deduplicateProperties(properties: CanvassiqProperty[]): CanvassiqProper
       }
     }
   }
-  
+
+  // Tertiary dedup: collapse pins from different STREET NAMES that physically
+  // sit on the same lot. Geocoders sometimes return the same house under two
+  // street aliases (e.g. "4063 Cherokee St" and "4063 Fonsica Ave" at the
+  // same coordinates). If two pins share the same house number and are within
+  // ~18m of each other, treat them as one property. Prefer disposition >
+  // building-snapped > newest.
+  const remaining = Array.from(addressMap.entries());
+  const removed = new Set<string>();
+  for (let i = 0; i < remaining.length; i++) {
+    const [keyA, propA] = remaining[i];
+    if (removed.has(keyA)) continue;
+    const numA = getStreetNumber(propA);
+    if (!numA) continue;
+    for (let j = i + 1; j < remaining.length; j++) {
+      const [keyB, propB] = remaining[j];
+      if (removed.has(keyB)) continue;
+      const numB = getStreetNumber(propB);
+      if (numA !== numB) continue;
+      const dist = distanceMeters(propA.lat, propA.lng, propB.lat, propB.lng);
+      if (dist > 18) continue;
+      const aHasStatus = Boolean(propA.disposition);
+      const bHasStatus = Boolean(propB.disposition);
+      const aSnapped = propA.building_snapped === true;
+      const bSnapped = propB.building_snapped === true;
+      let keepA = true;
+      if (aHasStatus !== bHasStatus) keepA = aHasStatus;
+      else if (aSnapped !== bSnapped) keepA = aSnapped;
+      else {
+        const aDate = new Date(propA.created_at || 0).getTime();
+        const bDate = new Date(propB.created_at || 0).getTime();
+        keepA = aDate >= bDate;
+      }
+      if (keepA) {
+        addressMap.delete(keyB);
+        removed.add(keyB);
+      } else {
+        addressMap.delete(keyA);
+        removed.add(keyA);
+        break;
+      }
+    }
+  }
+
   return Array.from(addressMap.values());
 }
 
