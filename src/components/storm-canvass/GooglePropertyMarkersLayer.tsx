@@ -22,6 +22,7 @@ interface CanvassiqProperty {
   lat: number;
   lng: number;
   disposition: string | null;
+  contact_id?: string | null;
   address: any;
   owner_name: string | null;
   tenant_id: string;
@@ -30,16 +31,32 @@ interface CanvassiqProperty {
   building_snapped?: boolean | null;
 }
 
+interface ContactStatusFallback {
+  id: string;
+  address_street: string | null;
+  latitude: number | string | null;
+  longitude: number | string | null;
+  qualification_status: string | null;
+  lead_status: string | null;
+  lifecycle_stage: string | null;
+  canvassiq_property_id: string | null;
+  updated_at: string | null;
+}
+
 // Disposition colors matching the original design
 const DISPOSITION_COLORS: Record<string, string> = {
   not_contacted: '#D4A84B',
   interested: '#22C55E',
+  qualified: '#3B82F6',
   not_interested: '#DC2626',
+  unqualified: '#DC2626',
   follow_up: '#EAB308',
   not_home: '#6B7280',
   callback: '#8B5CF6',
   converted: '#10B981',
   past_customer: '#0D9488',
+  new_roof: '#0EA5E9',
+  do_not_contact: '#991B1B',
 };
 
 const DEFAULT_COLOR = '#D4A84B';
