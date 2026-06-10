@@ -96,23 +96,9 @@ function getVisibleGridCells(bounds: google.maps.LatLngBounds): string[] {
 }
 
 function getStreetNumber(address: PropertyAddress): string {
-  if (!address) return '';
-  
-  let parsed: Record<string, unknown> | string = address;
-  if (typeof address === 'string') {
-    try {
-      parsed = JSON.parse(address) as Record<string, unknown>;
-    } catch {
-      const match = address.match(/^(\d+)/);
-      return match ? match[1] : '';
-    }
-  }
-  
-  if (typeof parsed !== 'string' && parsed?.street_number) {
-    return String(parsed.street_number);
-  }
-  
-  const street = typeof parsed === 'string' ? parsed : String(parsed?.street || parsed?.formatted || parsed?.address_line1 || '');
+  const parsed = parseAddress(address);
+  if (parsed?.street_number) return String(parsed.street_number);
+  const street = getStreetText(address);
   const match = street.match(/^(\d+)/);
   return match ? match[1] : '';
 }
