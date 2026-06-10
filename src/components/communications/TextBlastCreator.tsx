@@ -395,7 +395,18 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
 
     const matches = dedupedTemplates.filter(goalMatches);
     if (matches.length > 0) {
-      const top = matches.slice(0, 3);
+      // Order: initial (non-followup) templates first, then followups by ascending delay.
+      // Prevents alphabetical name order (e.g. "Final Follow Up" < "Initial") from
+      // making a follow-up template the de-facto opening message.
+      const ordered = [...matches].sort((a: any, b: any) => {
+        const aFollow = isFollowupTemplate(a) ? 1 : 0;
+        const bFollow = isFollowupTemplate(b) ? 1 : 0;
+        if (aFollow !== bFollow) return aFollow - bFollow;
+        const aDelay = typeof a.followup_delay_days === 'number' ? a.followup_delay_days : 0;
+        const bDelay = typeof b.followup_delay_days === 'number' ? b.followup_delay_days : 0;
+        return aDelay - bDelay;
+      });
+      const top = ordered.slice(0, 4);
       setSelectedTemplateIds(top.map((t: any) => t.id));
       setScript(top[0].template_body || '');
     } else {
