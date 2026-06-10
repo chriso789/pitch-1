@@ -195,7 +195,9 @@ export default function BlueprintDocumentDetail() {
           toast({ title: "Geometry extraction queued" });
           await load();
         }}
+        onPagesUpdated={load}
       />
+
 
       <BlueprintPerPageBreakdown
         pages={selectedPages}
