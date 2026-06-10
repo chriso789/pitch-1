@@ -197,9 +197,6 @@ export function EstimateBreakdownCard({
           <span className="text-lg font-semibold flex items-center gap-2">
             <DollarSign className="h-5 w-5" />
             SELLING PRICE
-            {config.salesTaxEnabled && (
-              <Badge variant="secondary" className="text-xs">Tax Included</Badge>
-            )}
           </span>
           <span className="text-2xl font-bold text-primary">
             {formatCurrency(breakdown.sellingPrice)}
