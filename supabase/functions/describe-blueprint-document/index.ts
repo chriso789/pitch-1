@@ -68,6 +68,14 @@ Deno.serve(async (req) => {
       "Return ONLY valid JSON matching the schema. Be concise, factual, and helpful. " +
       "Do not invent measurements that are not present in the excerpts.";
 
+    const subtypeEnum = [
+      "architectural", "interior_framing", "structural_framing", "drywall",
+      "interior_finishes", "rcp_ceiling", "flashing", "stucco", "siding",
+      "roofing", "waterproofing", "insulation", "millwork", "casework",
+      "door_schedule", "window_schedule", "mechanical", "electrical",
+      "plumbing", "fire_protection", "civil", "landscape", "demolition",
+    ];
+
     const userPrompt = JSON.stringify({
       file_name: doc.file_name,
       property_address: doc.property_address,
@@ -76,7 +84,7 @@ Deno.serve(async (req) => {
         document_summary:
           "2-4 sentence plain-English description of what this blueprint set covers (project type, scope, notable trades).",
         trades_present: "string[] of trades present (roofing, framing, electrical, plumbing, hvac, etc.)",
-        pages: "[{ page_number, ai_summary (1-2 sentence purpose of the sheet), scale (e.g. '1/4\" = 1'-0\"' or empty if unknown), page_title (best human-readable title) }]",
+        pages: `[{ page_number, ai_summary (1-2 sentence purpose of the sheet), scale (e.g. '1/4" = 1\\'-0"' or empty if unknown), page_title (best human-readable title), page_subtype (one of: ${subtypeEnum.join(", ")} or empty) }]`,
       },
     });
 
@@ -110,7 +118,6 @@ Deno.serve(async (req) => {
     const documentSummary = String(parsed.document_summary || "").slice(0, 4000);
     const trades = Array.isArray(parsed.trades_present) ? parsed.trades_present.slice(0, 20) : [];
 
-    // Persist on document.metadata
     const metadata = {
       ...((doc.metadata as Record<string, unknown> | null) || {}),
       ai_description: documentSummary,
@@ -120,7 +127,6 @@ Deno.serve(async (req) => {
     await svc.from("plan_documents").update({ metadata })
       .eq("id", document_id).eq("tenant_id", doc.tenant_id);
 
-    // Persist per-page summaries + scale
     const aiPages: any[] = Array.isArray(parsed.pages) ? parsed.pages : [];
     let updated = 0;
     for (const ap of aiPages) {
@@ -134,9 +140,14 @@ Deno.serve(async (req) => {
       }
       if (typeof ap.scale === "string" && ap.scale.trim() && !match.scale_text) {
         patch.scale_text = ap.scale.slice(0, 80);
+        patch.scale_source = "ai";
       }
       if (typeof ap.page_title === "string" && ap.page_title.trim() && !match.page_title) {
         patch.page_title = ap.page_title.slice(0, 240);
+      }
+      if (typeof ap.page_subtype === "string" && subtypeEnum.includes(ap.page_subtype)) {
+        // Only write when we don't already have a more specific one.
+        patch.page_subtype = ap.page_subtype;
       }
       if (Object.keys(patch).length) {
         await svc.from("plan_pages").update(patch)
@@ -144,6 +155,7 @@ Deno.serve(async (req) => {
         updated += 1;
       }
     }
+
 
     return json({
       ok: true,
