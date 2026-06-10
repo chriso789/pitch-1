@@ -261,11 +261,11 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
     },
     {
       id: 'estimate',
-      label: 'Estimate',
+      label: 'Selling Price',
       icon: Calculator,
       value: hasSelectedEstimate ? formatCurrency(hyperlinkData.sale_price) : '—',
       hint: !hasSelectedEstimate ? 'Select estimate' : null,
-      description: 'Estimate templates and calculations'
+      description: 'Selling price from active estimate(s)'
     },
     {
       id: 'materials',
@@ -347,13 +347,13 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
     },
     {
       id: 'estimate',
-      label: 'Estimate',
+      label: 'Selling Price',
       icon: Calculator,
       value: calculations?.measurements?.roof_area_sq_ft 
         ? formatSquares(calculations.measurements.roof_area_sq_ft)
         : '—',
       hint: calculations?.measurements?.has_template ? null : 'Select template',
-      description: 'Estimate templates and calculations'
+      description: 'Selling price from active estimate(s)'
     },
     {
       id: 'materials',
@@ -412,7 +412,7 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
   function getDescriptionForSection(key: string) {
     switch (key) {
       case 'documents': return 'Project documents and files';
-      case 'estimate': return 'Estimate templates and calculations';
+      case 'estimate': return 'Selling price from active estimate(s)';
       case 'measurements': return 'Roof measurements and template mapping';
       case 'materials': return 'Material costs and specifications';
       case 'labor': return 'Labor costs per square';

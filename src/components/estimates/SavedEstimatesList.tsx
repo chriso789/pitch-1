@@ -6,7 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, FileText, ExternalLink, Percent, Check, Pencil, Trash2, FileSignature, Copy, AlertTriangle } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Loader2, FileText, ExternalLink, Percent, Check, Pencil, Trash2, FileSignature, Copy, AlertTriangle, Layers } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import {
@@ -181,6 +183,10 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
   });
 
   const currentSelectedId = externalSelectedId ?? (pipelineData?.metadata as any)?.selected_estimate_id;
+  const combineMode: boolean = !!(pipelineData?.metadata as any)?.combine_estimates;
+  const selectedIds: string[] = Array.isArray((pipelineData?.metadata as any)?.selected_estimate_ids)
+    ? (pipelineData?.metadata as any).selected_estimate_ids
+    : (currentSelectedId ? [currentSelectedId] : []);
 
   const { data: estimates, isLoading } = useQuery({
     queryKey: ['saved-estimates', pipelineEntryId],
@@ -317,58 +323,84 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
     enabled: !!pipelineEntryId && !!estimates && estimates.length > 0,
   });
 
-  const handleSelectEstimate = async (estimateId: string) => {
-    const isCurrentlySelected = currentSelectedId === estimateId;
-    const newSelectedId = isCurrentlySelected ? null : estimateId;
-    
+  const persistMetadata = async (patch: Record<string, any>) => {
+    const { data: currentEntry } = await supabase
+      .from('pipeline_entries')
+      .select('metadata')
+      .eq('id', pipelineEntryId)
+      .single();
+    const currentMetadata = (currentEntry?.metadata as Record<string, any>) || {};
+    const { error } = await supabase
+      .from('pipeline_entries')
+      .update({ metadata: { ...currentMetadata, ...patch } })
+      .eq('id', pipelineEntryId);
+    if (error) throw error;
+    queryClient.invalidateQueries({ queryKey: ['pipeline-entry-metadata', pipelineEntryId] });
+    queryClient.invalidateQueries({ queryKey: ['pipeline-selected-estimate', pipelineEntryId] });
+    queryClient.invalidateQueries({ queryKey: ['enhanced-estimate-items', pipelineEntryId] });
+    queryClient.invalidateQueries({ queryKey: ['lead-requirements', pipelineEntryId] });
+    queryClient.invalidateQueries({ queryKey: ['hyperlink-data', pipelineEntryId] });
+    queryClient.invalidateQueries({ queryKey: ['estimate-costs', pipelineEntryId] });
+  };
+
+  const handleToggleCombineMode = async (next: boolean) => {
     try {
-      // Get current metadata
-      const { data: currentEntry } = await supabase
-        .from('pipeline_entries')
-        .select('metadata')
-        .eq('id', pipelineEntryId)
-        .single();
+      const patch: Record<string, any> = { combine_estimates: next };
+      if (!next) {
+        // Collapse back to a single primary selection
+        const primary = selectedIds[0] || currentSelectedId || null;
+        patch.selected_estimate_id = primary;
+        patch.selected_estimate_ids = primary ? [primary] : [];
+      } else {
+        patch.selected_estimate_ids = selectedIds.length > 0 ? selectedIds : (currentSelectedId ? [currentSelectedId] : []);
+      }
+      await persistMetadata(patch);
+      toast({
+        title: next ? 'Combine Mode On' : 'Combine Mode Off',
+        description: next
+          ? 'Select multiple estimates to sum their selling prices.'
+          : 'Only one active estimate at a time.',
+      });
+    } catch (error) {
+      console.error('Error toggling combine mode:', error);
+      toast({ title: 'Error', description: 'Could not update combine mode.', variant: 'destructive' });
+    }
+  };
 
-      const currentMetadata = (currentEntry?.metadata as Record<string, any>) || {};
-
-      // Update the pipeline entry metadata
-      const { error } = await supabase
-        .from('pipeline_entries')
-        .update({ 
-          metadata: { 
-            ...currentMetadata,
-            selected_estimate_id: newSelectedId 
-          }
-        })
-        .eq('id', pipelineEntryId);
-
-      if (error) throw error;
-
-      // Invalidate queries to refresh - including the hyperlink bar and TemplateSectionSelector
-      queryClient.invalidateQueries({ queryKey: ['pipeline-entry-metadata', pipelineEntryId] });
-      queryClient.invalidateQueries({ queryKey: ['pipeline-selected-estimate', pipelineEntryId] });
-      queryClient.invalidateQueries({ queryKey: ['enhanced-estimate-items', pipelineEntryId] });
-      queryClient.invalidateQueries({ queryKey: ['lead-requirements', pipelineEntryId] });
-      queryClient.invalidateQueries({ queryKey: ['hyperlink-data', pipelineEntryId] });
-      queryClient.invalidateQueries({ queryKey: ['estimate-costs', pipelineEntryId] });
-      
-      // Call external handler if provided
-      if (onEstimateSelect && newSelectedId) {
-        onEstimateSelect(newSelectedId);
+  const handleSelectEstimate = async (estimateId: string) => {
+    try {
+      if (combineMode) {
+        const isOn = selectedIds.includes(estimateId);
+        const nextIds = isOn ? selectedIds.filter((x) => x !== estimateId) : [...selectedIds, estimateId];
+        await persistMetadata({
+          selected_estimate_ids: nextIds,
+          // Keep selected_estimate_id pointing at the first selection so legacy consumers still resolve a record
+          selected_estimate_id: nextIds[0] || null,
+        });
+        if (onEstimateSelect && nextIds.length > 0) onEstimateSelect(nextIds[0]);
+        return;
       }
 
+      const isCurrentlySelected = currentSelectedId === estimateId;
+      const newSelectedId = isCurrentlySelected ? null : estimateId;
+      await persistMetadata({
+        selected_estimate_id: newSelectedId,
+        selected_estimate_ids: newSelectedId ? [newSelectedId] : [],
+      });
+      if (onEstimateSelect && newSelectedId) onEstimateSelect(newSelectedId);
+
       toast({
-        title: newSelectedId ? "Estimate Selected" : "Estimate Deselected",
-        description: newSelectedId 
+        title: newSelectedId ? 'Estimate Selected' : 'Estimate Deselected',
+        description: newSelectedId
           ? "This estimate is now active for the project's materials and labor."
-          : "No estimate is currently selected for this project.",
+          : 'No estimate is currently selected for this project.',
       });
     } catch (error) {
       console.error('Error selecting estimate:', error);
       toast({
-        title: "Error",
-        description: "Failed to update estimate selection.",
-        variant: "destructive",
+        title: 'Error',
+        description: 'Failed to update estimate selection.',
+        variant: 'destructive',
       });
     }
   };
@@ -507,24 +539,52 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
     return null;
   }
 
+  const activeIds = combineMode ? selectedIds : (currentSelectedId ? [currentSelectedId] : []);
+  const combinedTotal = displayedEstimates
+    .filter((e) => activeIds.includes(e.id))
+    .reduce((sum, e) => sum + (Number(e.selling_price) || 0), 0);
+
   return (
     <Card>
       <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
           <CardTitle className="text-base flex items-center gap-2">
             <FileText className="h-4 w-4" />
             Saved Estimates ({displayedEstimates.length})
           </CardTitle>
-          {onCreateNew && (
-            <Button variant="outline" size="sm" onClick={onCreateNew}>
-              Create Another
-            </Button>
-          )}
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2 rounded-md border bg-muted/30 px-2.5 py-1.5">
+              <Layers className="h-3.5 w-3.5 text-muted-foreground" />
+              <Label htmlFor="combine-estimates-toggle" className="text-xs font-medium cursor-pointer">
+                Combine selling prices
+              </Label>
+              <Switch
+                id="combine-estimates-toggle"
+                checked={combineMode}
+                onCheckedChange={handleToggleCombineMode}
+              />
+            </div>
+            {onCreateNew && (
+              <Button variant="outline" size="sm" onClick={onCreateNew}>
+                Create Another
+              </Button>
+            )}
+          </div>
         </div>
+        {combineMode && (
+          <div className="mt-2 flex items-center justify-between rounded-md border border-primary/30 bg-primary/5 px-3 py-2">
+            <span className="text-xs font-medium text-muted-foreground">
+              Combined Selling Price ({activeIds.length} selected)
+            </span>
+            <span className="text-sm font-bold text-primary">{formatCurrency(combinedTotal)}</span>
+          </div>
+        )}
       </CardHeader>
       <CardContent className="space-y-1.5">
         {displayedEstimates.map((estimate) => {
-          const isSelected = currentSelectedId === estimate.id;
+          const isSelected = combineMode
+            ? activeIds.includes(estimate.id)
+            : currentSelectedId === estimate.id;
           return (
             <div
               key={estimate.id}
@@ -548,7 +608,7 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
                     {isSelected && (
                       <Badge variant="default" className="bg-primary text-primary-foreground text-[10px] h-4 px-1">
                         <Check className="h-2.5 w-2.5 mr-0.5" />
-                        Active
+                        {combineMode ? 'Included' : 'Active'}
                       </Badge>
                     )}
                     {estimate.pricing_tier && (
