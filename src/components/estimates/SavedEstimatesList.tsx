@@ -341,6 +341,9 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
     queryClient.invalidateQueries({ queryKey: ['lead-requirements', pipelineEntryId] });
     queryClient.invalidateQueries({ queryKey: ['hyperlink-data', pipelineEntryId] });
     queryClient.invalidateQueries({ queryKey: ['estimate-costs', pipelineEntryId] });
+    queryClient.invalidateQueries({ queryKey: ['pipeline-entry-combine', pipelineEntryId] });
+    queryClient.invalidateQueries({ queryKey: ['combined-estimate-totals', pipelineEntryId] });
+    queryClient.invalidateQueries({ queryKey: ['profit-center-data', pipelineEntryId] });
   };
 
   const handleToggleCombineMode = async (next: boolean) => {
