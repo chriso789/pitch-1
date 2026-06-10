@@ -477,7 +477,18 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
 
 
   const selectedTemplates = useMemo(
-    () => dedupedTemplates.filter((t: any) => selectedTemplateIds.includes(t.id)),
+    () => {
+      const list = dedupedTemplates.filter((t: any) => selectedTemplateIds.includes(t.id));
+      return list.sort((a: any, b: any) => {
+        const aFollow = isFollowupTemplate(a) ? 1 : 0;
+        const bFollow = isFollowupTemplate(b) ? 1 : 0;
+        if (aFollow !== bFollow) return aFollow - bFollow;
+        const aDelay = typeof a.followup_delay_days === 'number' ? a.followup_delay_days : 0;
+        const bDelay = typeof b.followup_delay_days === 'number' ? b.followup_delay_days : 0;
+        return aDelay - bDelay;
+      });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [dedupedTemplates, selectedTemplateIds]
   );
 
