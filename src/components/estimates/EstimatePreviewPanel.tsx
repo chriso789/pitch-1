@@ -1840,7 +1840,11 @@ export function EstimatePreviewPanel({
                     createdAt={new Date().toISOString()}
                     templateAttachments={allAttachments}
                     jobPhotos={previewJobPhotos}
-                    skipWarrantyAndTerms={selectedAdditionalIds.size > 0}
+                    // Warranty + terms render once at the document level (after all
+                    // estimate content), so they should NOT be skipped when combining
+                    // additional estimates — appended estimates already pass
+                    // showTerms={false} internally to avoid duplicates.
+                    skipWarrantyAndTerms={false}
                     pageOrder={pageOrder}
                     templateStyle={activeTemplateStyle}
                     additionalEstimates={Array.from(selectedAdditionalIds)
