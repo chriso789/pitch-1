@@ -41,21 +41,20 @@ export interface PricingConfig {
 }
 
 export interface PricingBreakdown {
-  materialsTotal: number;
+  materialsTotal: number;        // Raw materials cost (pre-tax)
   laborTotal: number;
-  directCost: number;
-  overheadAmount: number;
-  totalCost: number;
+  salesTaxAmount: number;        // Sales tax on materials COST — treated as direct cost line
+  directCost: number;            // materials + labor + sales tax
+  overheadAmount: number;        // Overhead applied on direct cost (incl. tax) → scales with tax
+  totalCost: number;             // directCost + overhead
   profitAmount: number;
-  netProfit: number; // Net profit before commission (for profit_split display)
+  netProfit: number;
   repCommissionAmount: number;
-  sellingPrice: number; // NOW INCLUDES TAX (customer-facing total)
-  preTaxSellingPrice: number; // Internal: selling price before tax
+  sellingPrice: number;          // Final customer price
+  preTaxSellingPrice: number;    // = sellingPrice (tax is a cost component now)
   actualProfitMargin: number;
-  // Sales tax (applied to materials portion only - labor is tax-exempt)
-  materialsSellingPortion: number; // Materials portion of selling price for tax calculation
-  salesTaxAmount: number; // Internal tracking only - baked into sellingPrice
-  totalWithTax: number; // Same as sellingPrice (backward compatibility)
+  materialsSellingPortion: number;
+  totalWithTax: number;          // Backward compat = sellingPrice
 }
 
 export interface UseEstimatePricingReturn {
@@ -144,19 +143,38 @@ export function useEstimatePricing(
   );
 
   // Calculate pricing breakdown
+  //
+  // NEW MODEL: Sales tax on materials is a DIRECT COST line item.
+  //   directCost = materials + labor + salesTax
+  //   overhead   = directCost × overhead%   (so OH scales with tax)
+  //   profit     = solved so margin% is on selling price
+  //   selling    = directCost + overhead + profit  (no extra tax tacked on at the end)
   const breakdown = useMemo((): PricingBreakdown => {
     const materialsTotal = materialItems.reduce((sum, item) => sum + item.line_total, 0);
     const laborTotal =
       laborItems.reduce((sum, item) => sum + item.line_total, 0) +
       turnkeyItems.reduce((sum, item) => sum + item.line_total, 0);
-    const directCost = materialsTotal + laborTotal;
 
-    // Items flagged as exclude_from_overhead are pass-through:
-    // no overhead, no profit — added to selling price at cost.
+    // Pass-through items: cost only, no overhead/profit/tax
     const passThroughTotal = [...materialItems, ...laborItems, ...turnkeyItems]
       .filter(i => i.exclude_from_overhead)
       .reduce((sum, item) => sum + item.line_total, 0);
-    const coreDirectCost = Math.max(0, directCost - passThroughTotal);
+
+    // Sales tax applies to taxable materials cost only (exclude pass-through materials)
+    const taxableMaterialsCost = materialItems
+      .filter(i => !i.exclude_from_overhead)
+      .reduce((sum, item) => sum + item.line_total, 0);
+    const salesTaxAmount = config.salesTaxEnabled
+      ? taxableMaterialsCost * (config.salesTaxRate / 100)
+      : 0;
+
+    const directCost = materialsTotal + laborTotal + salesTaxAmount;
+
+    // Core cost base for overhead/profit (excludes pass-through, includes tax)
+    const coreDirectCost = Math.max(
+      0,
+      (materialsTotal + laborTotal - passThroughTotal) + salesTaxAmount
+    );
 
     let sellingPrice: number;
     let overheadAmount: number;
@@ -164,36 +182,27 @@ export function useEstimatePricing(
     let actualProfitMargin: number;
 
     if (isFixedPrice) {
-      // Fixed price mode: user-entered price IS the final tax-included price
-      const materialsRatio = directCost > 0 ? materialsTotal / directCost : 0;
-      const taxMultiplier = config.salesTaxEnabled
-        ? 1 + (materialsRatio * (config.salesTaxRate / 100))
-        : 1;
-
-      sellingPrice = fixedPrice! / taxMultiplier; // Pre-tax selling price
-      // Overhead/profit apply only to the core (non-pass-through) portion
+      // Fixed price mode: user-entered price IS the final price.
+      // Overhead applies to core direct cost (incl. tax), profit is the residual.
+      sellingPrice = fixedPrice!;
       const coreSelling = Math.max(0, sellingPrice - passThroughTotal);
-      overheadAmount = coreSelling * (config.overheadPercent / 100);
+      overheadAmount = coreDirectCost * (config.overheadPercent / 100);
       profitAmount = coreSelling - coreDirectCost - overheadAmount;
       actualProfitMargin = sellingPrice > 0 ? (profitAmount / sellingPrice) * 100 : 0;
     } else {
-      // Standard mode: solve for selling price algebraically using the CORE direct cost
+      // Standard mode: solve for selling price.
+      //   coreSelling = coreDirectCost × (1 + OH%) / (1 - profit%)
       const overheadDecimal = config.overheadPercent / 100;
       const profitDecimal = config.profitMarginPercent / 100;
-      const materialsRatioForTax = directCost > 0 ? materialsTotal / directCost : 0;
-      const taxFactor = config.salesTaxEnabled ? materialsRatioForTax * (config.salesTaxRate / 100) : 0;
 
-      const divisor = 1 - overheadDecimal * (1 + taxFactor) - profitDecimal;
-      let coreSelling: number;
-      if (divisor <= 0) {
-        coreSelling = coreDirectCost * 3; // Fallback
-      } else {
-        coreSelling = coreDirectCost / divisor;
-      }
+      overheadAmount = coreDirectCost * overheadDecimal;
+      const costPlusOverhead = coreDirectCost + overheadAmount;
 
-      profitAmount = coreSelling * profitDecimal;
-      const taxAmountForOverhead = coreSelling * taxFactor;
-      overheadAmount = (coreSelling + taxAmountForOverhead) * overheadDecimal;
+      const profitDivisor = 1 - profitDecimal;
+      const coreSelling =
+        profitDivisor > 0 ? costPlusOverhead / profitDivisor : costPlusOverhead * 3;
+
+      profitAmount = coreSelling - costPlusOverhead;
       sellingPrice = coreSelling + passThroughTotal;
       actualProfitMargin = config.profitMarginPercent;
     }
@@ -210,29 +219,22 @@ export function useEstimatePricing(
 
     const materialsRatio = directCost > 0 ? materialsTotal / directCost : 0;
     const materialsSellingPortion = sellingPrice * materialsRatio;
-    const salesTaxAmount = config.salesTaxEnabled
-      ? materialsSellingPortion * (config.salesTaxRate / 100)
-      : 0;
-
-    const preTaxSellingPrice = sellingPrice;
-    const finalSellingPrice = sellingPrice + salesTaxAmount;
-    const totalWithTax = finalSellingPrice;
 
     return {
       materialsTotal,
       laborTotal,
+      salesTaxAmount,
       directCost,
       overheadAmount,
       totalCost,
       profitAmount,
       netProfit,
       repCommissionAmount,
-      sellingPrice: finalSellingPrice,
-      preTaxSellingPrice,
+      sellingPrice,
+      preTaxSellingPrice: sellingPrice,
       actualProfitMargin,
       materialsSellingPortion,
-      salesTaxAmount,
-      totalWithTax,
+      totalWithTax: sellingPrice,
     };
   }, [materialItems, laborItems, turnkeyItems, config, isFixedPrice, fixedPrice]);
 
