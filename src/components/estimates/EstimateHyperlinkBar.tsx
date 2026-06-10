@@ -290,7 +290,7 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
 
   // Calculate overhead based on sales rep's effective overhead rate on FULL tax-included price
   const calculateRepOverhead = () => {
-    const salePrice = hyperlinkData?.sale_price || calculations?.selling_price || 0;
+    const salePrice = (isCombined ? combinedTotals!.selling_price : hyperlinkData?.sale_price) || calculations?.selling_price || 0;
     return salePrice * (salesRepOverheadRate / 100);
   };
 
