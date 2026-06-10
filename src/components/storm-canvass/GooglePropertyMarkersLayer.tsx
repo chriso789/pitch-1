@@ -485,7 +485,7 @@ export default function GooglePropertyMarkersLayer({
     // At zoom ≥ 19, extract first word of street name for disambiguation
     let streetLabel = streetNumber;
     if (showStreetName && streetNumber && property.address) {
-      const parts = property.address.replace(/^\d+\s*/, '').split(/\s+/);
+      const parts = getStreetText(property.address).replace(/^\d+\s*/, '').split(/\s+/);
       const firstWord = parts[0] || '';
       if (firstWord) {
         streetLabel = `${streetNumber} ${firstWord}`;
@@ -613,11 +613,11 @@ export default function GooglePropertyMarkersLayer({
       // Calculate limit based on zoom
       const limit = zoom >= 17 ? 500 : zoom >= 15 ? 300 : 100;
       
-      let rawProperties: any[] | null = null;
-      let error: any = null;
+      let rawProperties: CanvassiqProperty[] | null = null;
+      let error: { message?: string } | null = null;
 
       if (areaPropertyIds && areaPropertyIds.length > 0) {
-        const allResults: any[] = [];
+        const allResults: CanvassiqProperty[] = [];
         const CHUNK_SIZE = 100;
         for (let i = 0; i < areaPropertyIds.length; i += CHUNK_SIZE) {
           const chunk = areaPropertyIds.slice(i, i + CHUNK_SIZE);
