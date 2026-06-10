@@ -9,7 +9,7 @@ import { type SymbolSettings, DEFAULT_DISPOSITION_SYMBOLS } from './MapSymbolSet
 interface GooglePropertyMarkersLayerProps {
   map: google.maps.Map;
   userLocation: { lat: number; lng: number };
-  onPropertyClick: (property: any) => void;
+  onPropertyClick: (property: CanvassiqProperty) => void;
   onLoadingChange?: (isLoading: boolean) => void;
   onPropertiesLoaded?: (count: number) => void;
   refreshKey?: number;
@@ -17,13 +17,15 @@ interface GooglePropertyMarkersLayerProps {
   symbolSettings?: SymbolSettings;
 }
 
+type PropertyAddress = string | Record<string, unknown> | null;
+
 interface CanvassiqProperty {
   id: string;
   lat: number;
   lng: number;
   disposition: string | null;
   contact_id?: string | null;
-  address: any;
+  address: PropertyAddress;
   owner_name: string | null;
   tenant_id: string;
   created_at: string;
@@ -93,24 +95,24 @@ function getVisibleGridCells(bounds: google.maps.LatLngBounds): string[] {
   return cells;
 }
 
-function getStreetNumber(address: any): string {
+function getStreetNumber(address: PropertyAddress): string {
   if (!address) return '';
   
-  let parsed = address;
+  let parsed: Record<string, unknown> | string = address;
   if (typeof address === 'string') {
     try {
-      parsed = JSON.parse(address);
+      parsed = JSON.parse(address) as Record<string, unknown>;
     } catch {
       const match = address.match(/^(\d+)/);
       return match ? match[1] : '';
     }
   }
   
-  if (parsed?.street_number) {
-    return parsed.street_number;
+  if (typeof parsed !== 'string' && parsed?.street_number) {
+    return String(parsed.street_number);
   }
   
-  const street = parsed?.street || parsed?.formatted || parsed?.address_line1 || '';
+  const street = typeof parsed === 'string' ? parsed : String(parsed?.street || parsed?.formatted || parsed?.address_line1 || '');
   const match = street.match(/^(\d+)/);
   return match ? match[1] : '';
 }
