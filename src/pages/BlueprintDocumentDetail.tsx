@@ -134,7 +134,11 @@ export default function BlueprintDocumentDetail() {
             <p className="text-sm text-muted-foreground">{data.document.property_address || "No address"}</p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <Button onClick={renderAllPages} variant="outline" disabled={rendering}>
+            {rendering ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+            Render Page Images
+          </Button>
           <Button onClick={generateDescription} variant="outline" disabled={describing}>
             {describing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
             {aiDescription ? "Regenerate AI Description" : "Generate AI Description"}
@@ -145,6 +149,7 @@ export default function BlueprintDocumentDetail() {
           </Button>
         </div>
       </div>
+
 
       <Card>
         <CardHeader>
