@@ -294,6 +294,12 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
     return salePrice * (salesRepOverheadRate / 100);
   };
 
+  // Effective values: when combine mode is on, sum across selected estimates
+  const effectiveSalePrice = isCombined ? combinedTotals!.selling_price : (hyperlinkData?.sale_price || 0);
+  const effectiveMaterials = isCombined ? combinedTotals!.materials : (hyperlinkData?.materials || 0);
+  const effectiveLabor = isCombined ? combinedTotals!.labor : (hyperlinkData?.labor || 0);
+  const effectiveOverheadFromEstimate = isCombined ? combinedTotals!.overhead : 0;
+
   // Build links from the new RPC response structure
   const links = hyperlinkData ? [
     {
