@@ -110,27 +110,13 @@ export function EstimateBreakdownCard({
             </span>
             <span className="font-medium">{formatCurrency(breakdown.materialsTotal)}</span>
           </div>
-          
+
           <div className="flex items-center justify-between text-sm">
             <span className="flex items-center gap-2 text-muted-foreground">
               <Hammer className="h-4 w-4" />
               Labor Cost
             </span>
             <span className="font-medium">{formatCurrency(breakdown.laborTotal)}</span>
-          </div>
-          
-          <Separator className="my-2" />
-          
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Direct Cost</span>
-            <span className="font-medium">{formatCurrency(breakdown.directCost)}</span>
-          </div>
-          
-          <div className="flex items-center justify-between text-sm">
-            <span className="flex items-center gap-2 text-muted-foreground">
-              Overhead ({formatPercent(config.overheadPercent)})
-            </span>
-            <span className="font-medium">{formatCurrency(breakdown.overheadAmount)}</span>
           </div>
 
           {config.salesTaxEnabled && (
@@ -145,9 +131,25 @@ export function EstimateBreakdownCard({
 
           <Separator className="my-2" />
 
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">
+              Direct Cost {config.salesTaxEnabled && <span className="text-xs">(incl. tax)</span>}
+            </span>
+            <span className="font-medium">{formatCurrency(breakdown.directCost)}</span>
+          </div>
+
+          <div className="flex items-center justify-between text-sm">
+            <span className="flex items-center gap-2 text-muted-foreground">
+              Overhead ({formatPercent(config.overheadPercent)})
+            </span>
+            <span className="font-medium">{formatCurrency(breakdown.overheadAmount)}</span>
+          </div>
+
+          <Separator className="my-2" />
+
           <div className="flex items-center justify-between">
-            <span className="font-medium">Total Cost {config.salesTaxEnabled && <span className="text-xs text-muted-foreground font-normal">(incl. tax)</span>}</span>
-            <span className="font-semibold">{formatCurrency(breakdown.totalCost + (config.salesTaxEnabled ? breakdown.salesTaxAmount : 0))}</span>
+            <span className="font-medium">Total Cost</span>
+            <span className="font-semibold">{formatCurrency(breakdown.totalCost)}</span>
           </div>
         </div>
 
