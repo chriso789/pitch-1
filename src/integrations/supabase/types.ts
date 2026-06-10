@@ -34336,6 +34336,8 @@ export type Database = {
           pipeline_entry_id: string | null
           project_id: string | null
           property_address: string | null
+          rasterization_error: string | null
+          rasterization_status: string | null
           status: Database["public"]["Enums"]["plan_doc_status"]
           status_message: string | null
           tenant_id: string
@@ -34355,6 +34357,8 @@ export type Database = {
           pipeline_entry_id?: string | null
           project_id?: string | null
           property_address?: string | null
+          rasterization_error?: string | null
+          rasterization_status?: string | null
           status?: Database["public"]["Enums"]["plan_doc_status"]
           status_message?: string | null
           tenant_id: string
@@ -34374,6 +34378,8 @@ export type Database = {
           pipeline_entry_id?: string | null
           project_id?: string | null
           property_address?: string | null
+          rasterization_error?: string | null
+          rasterization_status?: string | null
           status?: Database["public"]["Enums"]["plan_doc_status"]
           status_message?: string | null
           tenant_id?: string
@@ -34458,16 +34464,19 @@ export type Database = {
           metadata: Json | null
           north_arrow_deg: number | null
           page_number: number
+          page_subtype: string | null
           page_title: string | null
           page_type: Database["public"]["Enums"]["plan_page_type"]
           page_type_confidence: number | null
           parse_status: string
           raw_text: string | null
           review_status: string
+          scale_source: string | null
           scale_text: string | null
           sheet_name: string | null
           sheet_number: string | null
           tenant_id: string
+          thumbnail_url: string | null
           updated_at: string
           width_px: number | null
         }
@@ -34481,16 +34490,19 @@ export type Database = {
           metadata?: Json | null
           north_arrow_deg?: number | null
           page_number: number
+          page_subtype?: string | null
           page_title?: string | null
           page_type?: Database["public"]["Enums"]["plan_page_type"]
           page_type_confidence?: number | null
           parse_status?: string
           raw_text?: string | null
           review_status?: string
+          scale_source?: string | null
           scale_text?: string | null
           sheet_name?: string | null
           sheet_number?: string | null
           tenant_id: string
+          thumbnail_url?: string | null
           updated_at?: string
           width_px?: number | null
         }
@@ -34504,16 +34516,19 @@ export type Database = {
           metadata?: Json | null
           north_arrow_deg?: number | null
           page_number?: number
+          page_subtype?: string | null
           page_title?: string | null
           page_type?: Database["public"]["Enums"]["plan_page_type"]
           page_type_confidence?: number | null
           parse_status?: string
           raw_text?: string | null
           review_status?: string
+          scale_source?: string | null
           scale_text?: string | null
           sheet_name?: string | null
           sheet_number?: string | null
           tenant_id?: string
+          thumbnail_url?: string | null
           updated_at?: string
           width_px?: number | null
         }

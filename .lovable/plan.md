@@ -1,151 +1,110 @@
+# Build Plan
 
-# Blueprint Importer v2 — Trade Quote Workbench Completion
+Four independent slices. Ship in this order so each one is testable before the next.
 
-## Scope (this phase only)
+## 1. Server-side page rasterization (fixes empty Preview + Plan Data)
 
-Deliver the end-to-end **workbench** flow:
+**Why it's empty today:** PDFs are uploaded but no process turns each page into an image. `plan_pages.image_url` stays null, so Preview shows "No rendered preview image" and the page detail shows "No page image".
 
-1. Open a blueprint/report PDF → land in a Blueprint Import Session.
-2. See **Detected Trades** with support status, confidence, source pages.
-3. Accept the trades you want to quote (with contract rules).
-4. See/store **Measurements** under accepted trades, each with a **PlanPath**.
-5. Enter **Manual Measurements** for trades where deterministic takeoff isn't available.
-6. **Apply to Template** → required inputs view → save **template binding**.
-7. **Populate Material Draft / Generate Labor Draft** → review draft lines (no pricing, no CRM write).
-8. Review flags + blockers visible throughout.
+**Approach:**
+- New Storage bucket `blueprint-page-images` (private, tenant-scoped path `{tenant_id}/{document_id}/page-{n}.jpg`).
+- New edge function `rasterize-blueprint-pages` that:
+  - Downloads the PDF from `blueprint-source-documents`.
+  - Uses `pdfjs-dist` (via `npm:` specifier) + `@napi-rs/canvas` substitute (`pdfjs-dist/legacy` headless render) to rasterize each page at ~150 DPI to JPEG 0.7.
+  - Uploads each page image, updates `plan_pages.image_url` and `plan_pages.thumbnail_url`.
+  - Idempotent: skips pages that already have `image_url`.
+- Called automatically at the end of `upload-blueprint-document` (fire-and-forget, non-blocking).
+- "Render this page" button in the page detail view to retry a single page on demand.
 
-## Hard non-goals
+**UI:**
+- Preview dialog and BlueprintDocumentDetail page already read `image_url`; just need it populated. Add a small "Rendering…" badge per page while `image_url` is null and a job is in-flight.
 
-- No writes to `estimate_line_items`, `enhanced_estimates`, `proposal_tier_items`, proposal/work-order/PO/invoice/production tables.
-- No catalog/labor table mutation, no pricing, no live handoff route.
-- No standalone edge functions — extend `document-worker` route family only.
-- No stub geometry skill output stored as real measurements; no AI in math path.
-- No automatic blueprint-sheet takeoff for drywall/framing/MEP/etc.
+## 2. Expanded trade taxonomy (kills "unknown")
 
-## Required reading (verified first, no code before this)
+**Two-stage classifier in `_shared/blueprint-importer/document-classifier.ts`:**
 
-- `docs/blueprint-trade-catalog.md`
-- `docs/blueprint-estimate-mapping-contract.md`
-- `docs/blueprint-mvp-phase-plan.md`
-- `docs/blueprint-importer-phase-3-runtime-detection.md`
-- `docs/blueprint-importer-phase-4-draft-generation.md`
-- `docs/blueprint-importer-phase-7-6c-pricing-preflight.md`
-- `docs/blueprint-importer-phase-7-8-live-handoff-hardening.md`
-- `supabase/functions/document-worker/index.ts` (blueprint v2 route family)
-- Existing blueprint upload routes (`upload-blueprint-document`, `parse-blueprint-document`, `classify-blueprint-pages`)
-- `plan_documents` + all `blueprint_*` tables
-- `src/pages/BlueprintImporterV2.tsx`, `BlueprintDocumentDetail.tsx`, `BlueprintReviewPage.tsx`
-- `src/integrations/blueprintImporterV2Api.ts`, `blueprintApi.ts`
-- `worker/app/skills_registry.py` + skill files to mark real vs stub
-
-If any required flow is missing/contradictory/unsafe → stop and report before coding.
-
-## Workflow
-
-```text
-plan_documents row
-   │
-   ▼
-blueprint_import_sessions  ◄── idempotent on (tenant_id, plan_document_id)
-   │
-   ├── blueprint_source_documents  (1+; report or blueprint_set)
-   │
-   ├── blueprint_detected_trades   (auto from extractor + classifier)
-   │
-   ├── blueprint_accepted_trades   (user choice; contract-gated)
-   │       │
-   │       ├── blueprint_measurement_objects   (auto OR user_manual; PlanPath required)
-   │       │       └── blueprint_plan_paths
-   │       │
-   │       ├── blueprint_template_bindings     (template_id + required/missing inputs)
-   │       │
-   │       ├── blueprint_material_draft_lines  (only when inputs complete & user clicks)
-   │       └── blueprint_labor_draft_lines     (only when inputs complete & user clicks)
-   │
-   └── blueprint_review_flags      (blockers + warnings)
+**Stage A — Rule-based (deterministic, free):**
+Map by sheet-number prefix + title keywords. New taxonomy:
+```
+A-### + keyword "framing"       → interior_framing
+A-### + keyword "drywall|gwb"   → drywall
+A-### + keyword "finish"        → interior_finishes
+A-### + keyword "reflected"     → rcp_ceiling
+A-### default                   → architectural
+S-###                           → structural_framing
+M-###                           → mechanical
+E-###                           → electrical
+P-###                           → plumbing
+FP-### / F-### + fire           → fire_protection
++ keywords: "flashing", "stucco", "siding", "roofing", "waterproofing",
+            "insulation", "millwork", "casework", "door schedule", "window schedule"
 ```
 
-## DB changes (additive only, if needed)
+**Stage B — AI fallback (only on remaining `unknown`):**
+Extend `describe-blueprint-document` to also send each unknown page's title + sheet number (and image if rendered) to Gemini Flash with a strict enum and write back `page_type` + `page_subtype` + `trades_present[]`.
 
-Verify first whether existing columns can carry:
-- `blueprint_measurement_objects.measurement_source` ∈ {`report_extraction`, `derived`, `user_manual`, `placeholder`}
-- `blueprint_measurement_objects.created_by`
-- `blueprint_template_bindings.binding_status` already exists — confirm enum covers `pending|ready|blocked|rejected|superseded`.
-- `blueprint_material_draft_lines.source_measurement_ids uuid[]`, `plan_path_ids uuid[]`
-- `blueprint_labor_draft_lines.source_measurement_ids uuid[]`, `plan_path_ids uuid[]`
-- Idempotency keys: `(import_session_id, accepted_trade_id, template_id, line_key)` unique on draft lines.
+**UI changes in `BlueprintPageList.tsx`:**
+- Show **Sheet # · Page title** as the primary label (use `page_title` from DB; back-fill via AI when missing).
+- Replace single `Detected Type` badge with `Detected Type` + `Sub-type` badges (e.g. `architectural` / `interior framing`).
+- Trade-to-quote dropdown options expanded to match new taxonomy.
 
-Any missing columns → one additive migration with `IF NOT EXISTS`, RLS unchanged (tenant_id already enforced), `NOTIFY pgrst, 'reload schema';`. **No new tables unless contract demands it.** No changes to estimate/proposal tables.
+## 3. Auto-extracted scale (replace input with editable display)
 
-## Routes (extend `document-worker` blueprint-importer/v2 family)
+- Extend `describe-blueprint-document` to also extract `scale_text` per page (regex first on extracted PDF text — `1/4" = 1'-0"`, `1:50`, etc.; AI fallback if not found).
+- In `BlueprintPageList.tsx`, replace the always-on `<Input>` with a read-only display chip that:
+  - Shows the extracted scale, or "—" if not found.
+  - Hover → "Edit" icon button → flips that single cell into an inline `<Input>` (manual override).
+  - Saves on blur to `plan_pages.scale_text` (already supported).
 
-- `POST /blueprint-importer/v2/import-from-plan-document` — idempotent session+source-doc create from a `plan_documents.id`.
-- `POST /blueprint-importer/v2/detect-trades` — runs extractor over source docs, writes `blueprint_detected_trades` + `blueprint_measurement_objects` + `blueprint_plan_paths` + flags. Idempotent per `import_session_id`.
-- `POST /blueprint-importer/v2/accept-trades` — body: `[{trade_id, measurement_mode, template_id?, assumptions?}]`. Enforces contract gates (no `windows_doors` standalone; `paint_coatings` requires wall source).
-- `POST /blueprint-importer/v2/measurements/upsert-manual` — manual measurement entry with required PlanPath.
-- `POST /blueprint-importer/v2/apply-template` — writes/updates `blueprint_template_bindings`; recomputes required/missing inputs.
-- `POST /blueprint-importer/v2/draft/material` — generates `blueprint_material_draft_lines` only if binding is `ready`.
-- `POST /blueprint-importer/v2/draft/labor` — same for labor.
-- `GET /blueprint-importer/v2/workbench/:sessionId` and `…/by-document/:planDocumentId` — returns hydrated workbench payload.
+## 4. Estimates: multi-select toggle + separate per-estimate orders
 
-All routes: validate tenant via `_shared/auth` + `_shared/tenant`, RLS-safe queries, idempotent, structured error envelope, no live-estimate writes.
+**Top "Estimate & Materials" bar (`src/features/estimates/...`):**
+- Add a "Combine selected" toggle in the Saved Estimates header.
+- When ON, ticking the circles on the left of each saved estimate adds it to the budget rollup at top: `Σ(Estimate)`, `Σ(Materials)`, `Σ(Labor)`, `Σ(Overhead)`, `Σ(Profit)`, `Σ(Total)`.
+- The currently-Active estimate is always included; other ticks add to it.
+- When OFF, behavior reverts to today (only Active estimate counts).
 
-## Extractors (deterministic only)
+**Per-estimate isolation for orders (important):**
+Material orders and labor orders are scoped to the *individual* estimate, not the combined view. The combined bar is presentation only — clicking "Send Material Order" or "Send Labor Order" still opens the per-estimate workflow so each estimate's PO/labor order goes out separately to the right vendor/crew. No data merging at the order layer.
 
-Inside worker, expand `worker/app/blueprint_contracts/` with three extractors:
+## Database changes
 
-- `roofr_roof_report_extractor.py`
-- `eagleview_roof_report_extractor.py`
-- `eagleview_wall_report_extractor.py`
+```sql
+-- 1. Storage bucket created via tool (not SQL)
 
-Each takes the already-parsed report payload (existing parser output) and emits typed measurement objects + PlanPaths against the keys listed in the request. No OCR fallback; no inference.
+-- 2. plan_pages additions
+ALTER TABLE public.plan_pages
+  ADD COLUMN IF NOT EXISTS thumbnail_url text,
+  ADD COLUMN IF NOT EXISTS page_subtype text,
+  ADD COLUMN IF NOT EXISTS scale_source text  -- 'pdf_text' | 'ai' | 'manual'
+  ;
 
-For generic blueprint sets: classifier emits detected trades only, all measurements as `measurement_source='placeholder'`, `status='manual_measurement_required'`. No quantities.
+-- 3. plan_documents additions
+ALTER TABLE public.plan_documents
+  ADD COLUMN IF NOT EXISTS rasterization_status text DEFAULT 'pending',
+  ADD COLUMN IF NOT EXISTS rasterization_error text;
+```
 
-## Geometry safety
+No new tables, no RLS changes needed (existing `plan_pages` / `plan_documents` policies cover the new columns).
 
-Audit `worker/app/skills_registry.py` and skills. Any skill currently returning stubbed/fake geometry is marked in a small `STUB_SKILLS` set and the workbench refuses to consume their output as real measurements (flag: `geometry_worker_stub_not_allowed`). Document real vs stub in workbench doc.
+## Files touched (summary)
 
-## UI
+**New:**
+- `supabase/functions/rasterize-blueprint-pages/index.ts`
 
-`src/pages/BlueprintImporterV2.tsx` becomes the workbench shell. Add components under `src/components/blueprint/workbench/`:
+**Edited:**
+- `supabase/functions/upload-blueprint-document/index.ts` — kick off rasterization
+- `supabase/functions/describe-blueprint-document/index.ts` — extract scale + classify unknowns
+- `supabase/functions/_shared/blueprint-importer/document-classifier.ts` — expanded taxonomy
+- `src/components/blueprint/BlueprintPageList.tsx` — sheet+title display, sub-type badge, scale display+edit
+- `src/components/blueprint/BlueprintPerPageBreakdown.tsx` — new trade labels
+- `src/pages/BlueprintDocumentDetail.tsx` — "Rendering…" state, retry button
+- `src/features/estimates/...` (Saved Estimates list + top bar) — combine toggle + summed bar
 
-- `WorkbenchHeader` — doc name/type/provider/session status/address/flag summary.
-- `DetectedTradesPanel` — trade cards with status badges (`Accept` / `Locked` / `Manual measurement required`).
-- `AcceptedTradePanel` — per accepted trade:
-  - measurements list with PlanPath links,
-  - missing inputs,
-  - template selector,
-  - assumptions form,
-  - `Apply Template`, `Populate Material Draft`, `Generate Labor Draft`.
-- `DraftLinesPreview` — material + labor draft tables with source/PlanPath columns.
-- `ManualMeasurementForm` — modal for `measurements/upsert-manual`.
-- `FutureActionsDisabledBar` — fixed disabled message: *“Push to Estimate is disabled until live CRM handoff is approved. This workbench stores trade selections, measurements, and template draft outputs only.”*
+## Out of scope (explicit)
 
-`BlueprintDocumentDetail.tsx` gets a prominent **Open Trade Quote Workbench** action that calls `import-from-plan-document` then routes to the workbench.
+- No changes to the order/PO submission flow itself — only adding the multi-select rollup view above it.
+- No changes to measurement/geometry pipelines.
+- No new auth or RLS.
 
-## Tests
-
-Vitest (frontend/api integration) + Python tests (extractors). Coverage list matches the request: session idempotency, trade-detection rules per report type, contract gates, measurement persistence with PlanPath, manual measurement, template binding required/missing, draft line idempotency + provenance, workbench GET shape, safety asserts (no `estimate_line_items` writes, no stub geometry stored).
-
-## Docs
-
-- New: `docs/blueprint-importer-trade-quote-workbench-completion.md` (full scope/non-goals/routes/UI/tests/gaps/checklist).
-- Touch only the workbench status line in `docs/blueprint-mvp-phase-plan.md`.
-
-## Verification report
-
-End-of-phase report covering every bullet in the request (docs re-read, routes, UI, DB tables written/not-written, tests, deviations, remaining blockers, recommended next phase).
-
-## Sequencing
-
-1. **Audit pass** — read all required docs + existing routes/tables/UI/skills; produce gap notes.
-2. **Schema check + (if needed) one additive migration**.
-3. **Extractors** for Roofr/EagleView roof/EagleView wall + generic blueprint placeholder path.
-4. **Routes** in `document-worker` blueprint-importer/v2 namespace.
-5. **API client** updates in `blueprintImporterV2Api.ts`.
-6. **UI workbench** components + page wiring.
-7. **Tests**.
-8. **Docs + verification report**.
-
-Stop after this phase. Wait for review before any live handoff or full sheet takeoff.
+Reply "go" and I'll implement in the order above (rasterization first, since that fixes the most visible bug).
