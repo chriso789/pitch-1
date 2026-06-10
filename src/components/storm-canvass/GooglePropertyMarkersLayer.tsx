@@ -143,6 +143,23 @@ function normalizeAddressKeyClient(streetOrFormatted: string): string {
     .replace(/ /g, "_");
 }
 
+function parseAddress(address: PropertyAddress): Record<string, unknown> | null {
+  if (!address) return null;
+  if (typeof address === 'string') {
+    try {
+      return JSON.parse(address) as Record<string, unknown>;
+    } catch {
+      return { formatted: address };
+    }
+  }
+  return address;
+}
+
+function getStreetText(address: PropertyAddress): string {
+  const parsed = parseAddress(address);
+  return String(parsed?.street || parsed?.formatted || parsed?.address_line1 || '');
+}
+
 // Get normalized address key for deduplication — ALWAYS returns address-based key, never falls back to id
 function getNormalizedAddressKey(property: CanvassiqProperty): string {
   // Use pre-computed key DIRECTLY if available — server already normalized it
@@ -151,22 +168,15 @@ function getNormalizedAddressKey(property: CanvassiqProperty): string {
   }
   
   // Fallback: compute from address fields
-  let parsed = property.address;
-  if (typeof parsed === 'string') {
-    try {
-      parsed = JSON.parse(parsed);
-    } catch {
-      const raw = property.address?.trim();
-      return raw ? normalizeAddressKeyClient(raw) : '';
-    }
-  }
+  const parsed = parseAddress(property.address);
+  if (!parsed) return '';
   
-  const streetNumber = parsed?.street_number || '';
-  const streetName = parsed?.street_name || parsed?.street || '';
+  const streetNumber = String(parsed.street_number || '');
+  const streetName = String(parsed.street_name || parsed.street || '');
   const combined = `${streetNumber} ${streetName}`.trim();
   if (combined && combined.length > 1) return normalizeAddressKeyClient(combined);
 
-  const formatted = parsed?.formatted || parsed?.address_line1 || '';
+  const formatted = String(parsed.formatted || parsed.address_line1 || '');
   if (formatted) return normalizeAddressKeyClient(formatted);
 
   return '';
