@@ -152,6 +152,12 @@ interface EstimatePDFDocumentProps {
     laborItems: LineItem[];
     breakdown: EstimatePDFDocumentProps['breakdown'];
     config: EstimatePDFDocumentProps['config'];
+    /**
+     * Per-estimate AI customer-friendly scope narrative. When provided AND
+     * the global `useScopeNarrative` toggle is on, this estimate renders its
+     * own distinct narrative instead of reusing the main estimate's scope.
+     */
+    scopeNarrative?: string;
   }>;
 }
 
