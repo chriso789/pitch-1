@@ -3,7 +3,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useLocation } from "@/contexts/LocationContext";
-import { useCompanySwitcher } from "@/hooks/useCompanySwitcher";
+import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
 import { canViewAllRecords } from "@/lib/roleUtils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard } from "@/components/dashboard/StatCard";
@@ -136,7 +136,7 @@ export const EnhancedClientList = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { currentLocationId, locations } = useLocation();
-  const { activeCompanyId } = useCompanySwitcher();
+  const effectiveTenantId = useEffectiveTenantId();
   const [activeView, setActiveView] = useState<ViewType>('contacts');
   const { statuses: contactStatuses } = useContactStatuses();
   const [preferredView, setPreferredView] = useState<ViewType>('contacts');
@@ -187,12 +187,14 @@ export const EnhancedClientList = () => {
 
   // Refetch data when location changes
   useEffect(() => {
-    loadUserPreferences();
-  }, []);
+    if (effectiveTenantId) {
+      loadUserPreferences();
+    }
+  }, [effectiveTenantId]);
 
   useEffect(() => {
     fetchData();
-  }, [currentLocationId]);
+  }, [currentLocationId, effectiveTenantId]);
 
   useEffect(() => {
     setActiveView(preferredView);
@@ -216,8 +218,6 @@ export const EnhancedClientList = () => {
   // Fetch reps assigned to current location using two-step query
   useEffect(() => {
     const fetchLocationReps = async () => {
-      // Use active_tenant_id for proper company scoping
-      const effectiveTenantId = userProfile?.active_tenant_id || userProfile?.tenant_id;
       if (!currentLocationId || !effectiveTenantId) {
         setLocationReps([]);
         return;
@@ -270,7 +270,7 @@ export const EnhancedClientList = () => {
     };
     
     fetchLocationReps();
-  }, [currentLocationId, userProfile?.active_tenant_id, userProfile?.tenant_id]);
+  }, [currentLocationId, effectiveTenantId]);
 
   // Reset rep filter when location changes, but preserve URL param
   useEffect(() => {
@@ -299,6 +299,7 @@ export const EnhancedClientList = () => {
         .from('app_settings')
         .select('setting_value')
         .eq('user_id', user.id)
+        .eq('tenant_id', effectiveTenantId)
         .eq('setting_key', 'preferred_client_view')
         .maybeSingle();
 
@@ -312,6 +313,7 @@ export const EnhancedClientList = () => {
         .from('app_settings')
         .select('setting_value')
         .eq('user_id', user.id)
+        .eq('tenant_id', effectiveTenantId)
         .eq('setting_key', 'preferred_contacts_display_mode')
         .maybeSingle();
 
@@ -335,7 +337,7 @@ export const EnhancedClientList = () => {
         .from('app_settings')
         .upsert({
           user_id: user.id,
-          tenant_id: userProfile?.tenant_id,
+          tenant_id: effectiveTenantId,
           setting_key: 'preferred_client_view',
           setting_value: view
         });
@@ -362,7 +364,7 @@ export const EnhancedClientList = () => {
         .from('app_settings')
         .upsert({
           user_id: user.id,
-          tenant_id: userProfile?.tenant_id,
+          tenant_id: effectiveTenantId,
           setting_key: 'preferred_contacts_display_mode',
           setting_value: mode
         });
@@ -403,10 +405,16 @@ export const EnhancedClientList = () => {
       console.log("Fetching contacts...");
       console.log("Current location filter:", currentLocationId);
       
-      // Prefer activeCompanyId from the company switcher (always fresh after switch).
-      // Falls back to profile.active_tenant_id / profile.tenant_id.
-      const effectiveTenantId = activeCompanyId || profile.active_tenant_id || profile.tenant_id;
-      console.log("Effective tenant ID:", effectiveTenantId, "(activeCompanyId:", activeCompanyId, ")");
+      if (!effectiveTenantId) {
+        console.log("No active company selected");
+        setContacts([]);
+        setJobs([]);
+        setPipelineEntries([]);
+        setPipelineLeads([]);
+        return;
+      }
+
+      console.log("Effective tenant ID:", effectiveTenantId);
       
       // Paginated fetch to bypass Supabase 1000 row server limit
       const BATCH_SIZE = 1000;
@@ -427,26 +435,18 @@ export const EnhancedClientList = () => {
               last_name
             )
           `)
-          .eq('is_deleted', false)
           .eq('tenant_id', effectiveTenantId)
+          .or('is_deleted.eq.false,is_deleted.is.null')
           .order("created_at", { ascending: false })
           .range(from, from + BATCH_SIZE - 1);
         
-        // Sales reps only see contacts assigned to them or created by them
-        if (profile && !canViewAllRecords(profile.role)) {
-          batchQuery = batchQuery.or(`assigned_to.eq.${user.id},created_by.eq.${user.id}`);
-        }
-
-        // Apply location filter - only show contacts explicitly assigned to this location
+        // Apply location filter when selected. Tenant and location access are enforced by RLS;
+        // do not add assigned/created-only filtering here or location-assigned users see an empty board.
         if (currentLocationId && locations.length > 0) {
           console.log("Applying location filter:", currentLocationId);
           batchQuery = batchQuery.eq('location_id', currentLocationId);
         } else if (locations.length > 0) {
-          // Locations exist but none selected yet — don't show unfiltered cross-location data
-          console.log("Waiting for location selection - locations exist but none selected");
-          setContacts([]);
-          setLoading(false);
-          return;
+          console.log("No location selected - showing all tenant contacts");
         } else {
           console.log("No locations configured - showing all contacts (backward compat)");
         }
@@ -596,7 +596,7 @@ export const EnhancedClientList = () => {
     } finally {
       setLoading(false);
     }
-  }, [currentLocationId, activeCompanyId, locations]);
+  }, [currentLocationId, effectiveTenantId, locations]);
 
   const filterData = () => {
     console.log(`=== FilterData called ===`);
