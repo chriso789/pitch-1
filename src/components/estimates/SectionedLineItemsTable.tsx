@@ -181,6 +181,10 @@ export function SectionedLineItemsTable({
   };
 
   const cancelEdit = () => {
+    // Blur active element before removing editing UI to prevent scroll jump
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
     setEditingCell(null);
     setEditValue('');
   };
