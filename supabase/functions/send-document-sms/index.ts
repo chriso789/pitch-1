@@ -72,7 +72,7 @@ const handler = async (req: Request) => {
 
     const { data: doc } = await admin
       .from("documents")
-      .select("id, tenant_id, pipeline_entry_id, contact_id, document_type, filename")
+      .select("id, tenant_id, pipeline_entry_id, contact_id, document_type, filename, file_path, mime_type")
       .eq("id", body.document_id)
       .maybeSingle();
     if (!doc) {
@@ -128,9 +128,24 @@ const handler = async (req: Request) => {
     const isInvoice = (doc.document_type || "").toLowerCase().includes("invoice") || docLabel.toLowerCase().includes("invoice");
     const docNoun = isInvoice ? "invoice" : "document";
     const firstName = body.recipient_name.split(" ")[0];
+
+    // Generate a long-lived signed URL to the PDF so we can attach it as MMS media.
+    // Fallback link is always included in the body in case the carrier strips media.
+    let mediaUrls: string[] = [];
+    if (doc.file_path) {
+      const { data: signed, error: signErr } = await admin.storage
+        .from("documents")
+        .createSignedUrl(doc.file_path, 60 * 60 * 24 * 30); // 30 days
+      if (signErr) {
+        console.warn("[send-document-sms] signed url failed:", signErr);
+      } else if (signed?.signedUrl) {
+        mediaUrls = [signed.signedUrl];
+      }
+    }
+
     const smsBody = body.message?.trim()
-      ? `${body.message.trim()}\n\n${viewUrl}`
-      : `Hi ${firstName}, here is your ${docNoun} from ${companyName}: ${viewUrl}`;
+      ? `${body.message.trim()}\n\nCan't open the PDF? View it here: ${viewUrl}`
+      : `Hi ${firstName}, your ${docNoun} from ${companyName} is attached. Can't open the PDF? View it here: ${viewUrl}`;
 
     // Call telnyx-send-sms via internal invoke
     const smsResp = await fetch(`${supabaseUrl}/functions/v1/telnyx-send-sms`, {
@@ -143,6 +158,7 @@ const handler = async (req: Request) => {
         to: body.recipient_phone,
         message: smsBody,
         contactId: body.contact_id || doc.contact_id || null,
+        mediaUrls,
       }),
     });
 

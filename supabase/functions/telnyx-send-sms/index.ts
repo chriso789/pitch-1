@@ -113,13 +113,17 @@ Deno.serve(async (req) => {
       tenantId = profile?.active_tenant_id || profile?.tenant_id;
     }
 
-    // Parse request body - now accepts locationId + blast linkage
-    const { to, message: rawMessage, contactId, jobId, fromNumber, locationId, blast_id, blast_item_id } = await req.json();
+    // Parse request body - now accepts locationId + blast linkage + MMS mediaUrls
+    const { to, message: rawMessage, contactId, jobId, fromNumber, locationId, blast_id, blast_item_id, mediaUrls } = await req.json();
     let message = rawMessage;
 
     if (!to || !message) {
       throw new Error('Missing required fields: to, message');
     }
+
+    const mediaUrlList: string[] = Array.isArray(mediaUrls)
+      ? mediaUrls.filter((u: unknown) => typeof u === 'string' && u.length > 0)
+      : [];
 
     if (contactId && tenantId) {
       const { data: contactForGreeting } = await supabaseAdmin
@@ -283,6 +287,7 @@ Deno.serve(async (req) => {
         to: formattedTo,
         text: message,
         messaging_profile_id: TELNYX_SMS_PROFILE_ID,
+        ...(mediaUrlList.length > 0 ? { media_urls: mediaUrlList, type: 'MMS' } : {}),
       }),
     });
 
