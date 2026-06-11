@@ -401,22 +401,34 @@ export const TotalsTab: React.FC<TotalsTabProps> = ({ pipelineEntryId }) => {
                 Documents created and saved to Documents.
               </div>
               {closeoutDocs.map((d) => (
-                <div key={d.documentId} className="flex items-center justify-between gap-3 rounded-md border p-3">
-                  <div className="flex items-center gap-2 min-w-0">
+                <div key={d.documentId} className="flex items-center justify-between gap-2 rounded-md border p-2.5">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
                     <FileText className="h-4 w-4 text-primary shrink-0" />
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">{d.label}</p>
-                      <p className="text-xs text-muted-foreground truncate">{d.filename}</p>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium truncate">{d.label}</p>
+                      <p className="text-[10px] text-muted-foreground truncate">{d.filename}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Button size="sm" variant="outline" onClick={() => handlePreview(d)}>
-                      <Eye className="h-3.5 w-3.5 mr-1.5" />
-                      Preview
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      className="h-7 w-7"
+                      onClick={() => handlePreview(d)}
+                      title="Preview"
+                      aria-label="Preview"
+                    >
+                      <Eye className="h-3.5 w-3.5" />
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => setShareDoc(d)}>
-                      <Share2 className="h-3.5 w-3.5 mr-1.5" />
-                      Share
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      className="h-7 w-7"
+                      onClick={() => setShareDoc(d)}
+                      title="Share"
+                      aria-label="Share"
+                    >
+                      <Share2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
                 </div>
