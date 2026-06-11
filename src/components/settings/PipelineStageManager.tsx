@@ -401,39 +401,45 @@ export const PipelineStageManager: React.FC = () => {
     }
   }, [effectiveTenantId]);
 
+  const persistOrder = async (ordered: PipelineStage[]) => {
+    try {
+      await Promise.all(
+        ordered.map((s, idx) =>
+          supabase
+            .from('pipeline_stages')
+            .update({ stage_order: idx + 1, updated_at: new Date().toISOString() })
+            .eq('id', s.id)
+        )
+      );
+      toast({ title: 'Success', description: 'Stage order updated' });
+    } catch (error) {
+      console.error('Error persisting stage order:', error);
+      toast({ title: 'Error', description: 'Failed to save new order', variant: 'destructive' });
+      await fetchStages();
+    }
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = stages.findIndex(s => s.id === active.id);
+    const newIndex = stages.findIndex(s => s.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    const reordered = arrayMove(stages, oldIndex, newIndex);
+    setStages(reordered); // optimistic
+    void persistOrder(reordered);
+  };
+
   const moveStage = async (stageId: string, direction: 'up' | 'down') => {
     const stageIndex = stages.findIndex(s => s.id === stageId);
     if (stageIndex === -1) return;
-    
     const targetIndex = direction === 'up' ? stageIndex - 1 : stageIndex + 1;
     if (targetIndex < 0 || targetIndex >= stages.length) return;
-    
     setReordering(stageId);
-    
-    const currentStage = stages[stageIndex];
-    const targetStage = stages[targetIndex];
-    
-    try {
-      // Swap stage_order values
-      await Promise.all([
-        supabase
-          .from('pipeline_stages')
-          .update({ stage_order: targetStage.stage_order, updated_at: new Date().toISOString() })
-          .eq('id', currentStage.id),
-        supabase
-          .from('pipeline_stages')
-          .update({ stage_order: currentStage.stage_order, updated_at: new Date().toISOString() })
-          .eq('id', targetStage.id)
-      ]);
-      
-      await fetchStages();
-      toast({ title: 'Success', description: 'Stage order updated' });
-    } catch (error) {
-      console.error('Error reordering stages:', error);
-      toast({ title: 'Error', description: 'Failed to reorder stages', variant: 'destructive' });
-    } finally {
-      setReordering(null);
-    }
+    const reordered = arrayMove(stages, stageIndex, targetIndex);
+    setStages(reordered);
+    await persistOrder(reordered);
+    setReordering(null);
   };
 
   const deleteStage = async (stageId: string) => {
