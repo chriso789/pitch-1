@@ -196,6 +196,7 @@ export const TotalsTab: React.FC<TotalsTabProps> = ({ pipelineEntryId }) => {
           documentId: result.invoiceDocumentId,
           filename: result.invoiceFilename,
           label: 'Paid-In-Full Invoice',
+          filePath: result.invoicePath,
         });
       }
       if (result.certificateDocumentId) {
@@ -203,9 +204,11 @@ export const TotalsTab: React.FC<TotalsTabProps> = ({ pipelineEntryId }) => {
           documentId: result.certificateDocumentId,
           filename: result.certificateFilename,
           label: 'Completion Certificate & Warranty',
+          filePath: result.certificatePath,
         });
       }
       setCloseoutDocs(docs);
+
       queryClient.invalidateQueries({ queryKey: ['documents', pipelineEntryId] });
       queryClient.invalidateQueries({ queryKey: ['project-ar-invoices', pipelineEntryId] });
       toast.success('Closeout documents created and saved to Documents');
