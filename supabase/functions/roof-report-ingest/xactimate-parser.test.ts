@@ -1,6 +1,7 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   buildPdfFileContentBlock,
+  completeMeasurementsFromDiagramGeometry,
   mergeMeasurementCompletenessFallback,
   needsInsuranceScopeVisionCompletenessFallback,
   parseXactimateInsuranceScopeText,
@@ -61,4 +62,26 @@ Deno.test("PDF multimodal payload uses file block required by AI gateway", () =>
       file_data: "data:application/pdf;base64,abc123",
     },
   });
+});
+
+Deno.test("diagram geometry totals can complete missing hip and valley measurements", () => {
+  const parsed = {
+    provider: "xactimate",
+    total_area_sqft: 3135.67,
+    facet_count: 9,
+    ridges_ft: 124.95,
+    hips_ft: 0,
+    valleys_ft: null,
+    eaves_ft: 304.64,
+  };
+
+  const completed = completeMeasurementsFromDiagramGeometry(parsed, {
+    diagram_found: true,
+    line_totals_ft: { hip: 78.5, valley: 24.75, ridge: 130, eave: 310 },
+  });
+
+  assertEquals(completed.ridges_ft, 124.95);
+  assertEquals(completed.hips_ft, 78.5);
+  assertEquals(completed.valleys_ft, 24.75);
+  assertEquals(completed.eaves_ft, 304.64);
 });
