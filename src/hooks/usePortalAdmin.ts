@@ -4,7 +4,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useCompanySwitcher } from "@/hooks/useCompanySwitcher";
+import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
 
 export interface PortalUser {
   id: string;
@@ -76,7 +76,7 @@ export const DEFAULT_PERMISSIONS: Omit<PortalPermissions, 'id' | 'contact_id'> =
 };
 
 export function usePortalStats() {
-  const { activeCompanyId } = useCompanySwitcher();
+  const activeCompanyId = useEffectiveTenantId();
 
   return useQuery({
     queryKey: ['portal-stats', activeCompanyId],
@@ -130,7 +130,7 @@ export function usePortalStats() {
 }
 
 export function usePortalUsers() {
-  const { activeCompanyId } = useCompanySwitcher();
+  const activeCompanyId = useEffectiveTenantId();
 
   return useQuery({
     queryKey: ['portal-users', activeCompanyId],
@@ -247,7 +247,7 @@ export function usePortalUsers() {
 }
 
 export function usePortalActivity(contactId?: string, limit = 50) {
-  const { activeCompanyId } = useCompanySwitcher();
+  const activeCompanyId = useEffectiveTenantId();
 
   return useQuery({
     queryKey: ['portal-activity', activeCompanyId, contactId, limit],
@@ -309,7 +309,7 @@ export function usePortalActivity(contactId?: string, limit = 50) {
 
 export function useUpdatePortalPermissions() {
   const queryClient = useQueryClient();
-  const { activeCompanyId } = useCompanySwitcher();
+  const activeCompanyId = useEffectiveTenantId();
 
   return useMutation({
     mutationFn: async ({
@@ -345,7 +345,7 @@ export function useUpdatePortalPermissions() {
 
 export function useRevokePortalAccess() {
   const queryClient = useQueryClient();
-  const { activeCompanyId } = useCompanySwitcher();
+  const activeCompanyId = useEffectiveTenantId();
 
   return useMutation({
     mutationFn: async (contactId: string) => {
