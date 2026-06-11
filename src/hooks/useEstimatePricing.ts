@@ -146,9 +146,9 @@ export function useEstimatePricing(
   //
   // NEW MODEL: Sales tax on materials is a DIRECT COST line item.
   //   directCost = materials + labor + salesTax
-  //   overhead   = directCost × overhead%   (so OH scales with tax)
-  //   profit     = solved so margin% is on selling price
-  //   selling    = directCost + overhead + profit  (no extra tax tacked on at the end)
+  //   overhead   = sellingPrice × overhead%   (OH is % of selling price, not cost)
+  //   profit     = sellingPrice × profit%
+  //   selling    = directCost / (1 - overhead% - profit%)
   const breakdown = useMemo((): PricingBreakdown => {
     const materialsTotal = materialItems.reduce((sum, item) => sum + item.line_total, 0);
     const laborTotal =
@@ -181,28 +181,25 @@ export function useEstimatePricing(
     let profitAmount: number;
     let actualProfitMargin: number;
 
+    const overheadDecimal = config.overheadPercent / 100;
+
     if (isFixedPrice) {
       // Fixed price mode: user-entered price IS the final price.
-      // Overhead applies to core direct cost (incl. tax), profit is the residual.
+      // Overhead = sellingPrice × OH%, profit is the residual.
       sellingPrice = fixedPrice!;
       const coreSelling = Math.max(0, sellingPrice - passThroughTotal);
-      overheadAmount = coreDirectCost * (config.overheadPercent / 100);
+      overheadAmount = coreSelling * overheadDecimal;
       profitAmount = coreSelling - coreDirectCost - overheadAmount;
       actualProfitMargin = sellingPrice > 0 ? (profitAmount / sellingPrice) * 100 : 0;
     } else {
-      // Standard mode: solve for selling price.
-      //   coreSelling = coreDirectCost × (1 + OH%) / (1 - profit%)
-      const overheadDecimal = config.overheadPercent / 100;
+      // Standard mode: solve for selling price so OH% and profit% are on selling.
+      //   coreSelling = coreDirectCost / (1 - OH% - profit%)
       const profitDecimal = config.profitMarginPercent / 100;
+      const denom = Math.max(0.01, 1 - overheadDecimal - profitDecimal);
+      const coreSelling = coreDirectCost / denom;
 
-      overheadAmount = coreDirectCost * overheadDecimal;
-      const costPlusOverhead = coreDirectCost + overheadAmount;
-
-      const profitDivisor = 1 - profitDecimal;
-      const coreSelling =
-        profitDivisor > 0 ? costPlusOverhead / profitDivisor : costPlusOverhead * 3;
-
-      profitAmount = coreSelling - costPlusOverhead;
+      overheadAmount = coreSelling * overheadDecimal;
+      profitAmount = coreSelling * profitDecimal;
       sellingPrice = coreSelling + passThroughTotal;
       actualProfitMargin = config.profitMarginPercent;
     }
