@@ -20,25 +20,32 @@ Deno.serve(async (req) => {
     if (!apiKey) throw new Error("Missing LOVABLE_API_KEY");
 
     const dataUrl = `data:${mime_type};base64,${document_base64}`;
+    const isPdf = mime_type === "application/pdf" || mime_type.includes("pdf");
+
+    const userContent: any[] = [
+      { type: "text", text: "Extract every row from this supplier price list. Return ALL rows — do not truncate." },
+    ];
+    if (isPdf) {
+      userContent.push({
+        type: "file",
+        file: { filename: "price-list.pdf", file_data: dataUrl },
+      });
+    } else {
+      userContent.push({ type: "image_url", image_url: { url: dataUrl } });
+    }
 
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "google/gemini-2.5-pro",
         messages: [
           {
             role: "system",
             content:
               "You extract supplier price-list / pricebook tables from PDFs and images for the roofing & construction industry. Read EVERY row in the price list — do not summarize, do not skip. For each row capture: sku (supplier or manufacturer item code), description (full product description), category (Shingles, Underlayment, Metal, Accessories, Vents, Fasteners, Adhesives, Coatings, Tools, Other), brand (manufacturer e.g. GAF, Owens Corning, CertainTeed, Atlas, Carlisle, etc.), uom (unit of measure: SQ, BDL, ROLL, EA, BX, LF, GAL, etc.), price (agreed unit price in dollars, numeric only — strip $ and commas). If a value isn't present, return null for that field. Never invent SKUs or prices.",
           },
-          {
-            role: "user",
-            content: [
-              { type: "text", text: "Extract every row from this supplier price list." },
-              { type: "image_url", image_url: { url: dataUrl } },
-            ],
-          },
+          { role: "user", content: userContent },
         ],
         tools: [
           {
