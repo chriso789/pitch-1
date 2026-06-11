@@ -333,5 +333,8 @@ export async function generateCloseoutDocuments(input: CloseoutInput): Promise<C
     certificateDocumentId,
     invoiceFilename,
     certificateFilename,
+    invoicePath,
+    certificatePath: certPath,
   };
 }
+
