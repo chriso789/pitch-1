@@ -2475,8 +2475,8 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
                               delete next[trade.id];
                               return next;
                             });
-                            // If this was the active roofing trade, clear selectedTemplateId
-                            if (trade.tradeType === 'roofing' && trade.templateId === selectedTemplateId) {
+                            // If this was the primary roofing trade, clear selectedTemplateId
+                            if (isPrimaryRoofing) {
                               setSelectedTemplateId('');
                             }
                           }}
