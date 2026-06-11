@@ -442,12 +442,7 @@ Be thorough - check ALL pages for data.`;
             role: "user", 
             content: [
               { type: "text", text: "Analyze this roof measurement report PDF and extract ALL measurements from EVERY page:" },
-              { 
-                type: "image_url", 
-                image_url: { 
-                  url: `data:application/pdf;base64,${pdfBase64}` 
-                } 
-              }
+              buildPdfFileContentBlock(pdfBase64)
             ]
           }
         ],
@@ -1333,6 +1328,23 @@ Deno.serve(async (req) => {
       }
     }
 
+    if (needsInsuranceScopeVisionCompletenessFallback(parsed, parsed?.provider || provider)) {
+      console.log("roof-report-ingest: Xactimate measurements missing hip/valley completeness — attempting full-PDF Vision completion...");
+      try {
+        const pdfBase64Fallback = bytesToBase64(pdfBytes);
+        const visionParsedFallback = await extractWithVision(pdfBase64Fallback);
+        parsed = mergeMeasurementCompletenessFallback(parsed, visionParsedFallback);
+        console.log("roof-report-ingest: Xactimate completeness merge result", {
+          ridges: parsed.ridges_ft,
+          hips: parsed.hips_ft,
+          valleys: parsed.valleys_ft,
+          eaves: parsed.eaves_ft,
+        });
+      } catch (visErr) {
+        console.error("roof-report-ingest: Xactimate completeness Vision fallback failed:", visErr);
+      }
+    }
+
     // Store raw + parsed
     const lead_id = body.lead_id ?? null;
 
@@ -1355,7 +1367,7 @@ Deno.serve(async (req) => {
 
     if (existingReport) {
       const existingParsed = (existingReport as any).parsed;
-      if (hasValidMeasurements(existingParsed)) {
+      if (hasValidMeasurements(existingParsed) && !needsInsuranceScopeVisionCompletenessFallback(existingParsed, existingParsed?.provider || provider)) {
         console.log("roof-report-ingest: Duplicate PDF detected, returning existing report:", existingReport.id);
         return new Response(
           JSON.stringify({ 
@@ -1464,8 +1476,8 @@ If no diagram is found, return: {"diagram_found": false}`;
               {
                 role: "user",
                 content: [
-                  { type: "text", text: "Find and extract the roof diagram geometry from this measurement report PDF:" },
-                  { type: "image_url", image_url: { url: `data:application/pdf;base64,${pdfBase64ForDiagram}` } }
+              { type: "text", text: "Find and extract the roof diagram geometry from this measurement report PDF:" },
+              buildPdfFileContentBlock(pdfBase64ForDiagram)
                 ]
               }
             ],
