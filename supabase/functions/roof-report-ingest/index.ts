@@ -77,11 +77,16 @@ function detectProvider(text: string): Provider {
     'xactware',
     'citizens claims',
     'claim number',
+    'claim #',
     'policy number',
+    'policy #',
     'covered damages',
     'price list:',
     'rcv',
     'acv',
+    'depreciation',
+    'replacement cost value',
+    'actual cash value',
     'quantity',
     'unit tax',
     'sketch1',
@@ -92,18 +97,24 @@ function detectProvider(text: string): Provider {
     'total ridge length',
     'total hip length',
     'total valley length',
-    'job_',                    // Job identifiers like "job_123456"
-    'slide insurance',         // Common Xactimate user
-    'independent adjuster',    // Insurance adjuster reports
+    'job_',
+    'slide insurance',
+    'independent adjuster',
+    'insured:',
+    'adjuster:',
+    'estimator:',
+    'date of loss',
     'xact estimate',
     'xact analysis',
-    'f1\n',                    // Facet labels F1, F2, etc
+    'f1\n',
     'f2\n',
     'f3\n',
-    'hip / ridge cap',         // Line item format
+    'hip / ridge cap',
     'hip & ridge cap',
     'drip edge',
     'starter',
+    'remove 3 tab',
+    'r&r',                     // "Remove & Replace" line items
   ];
   
   // Count matching patterns
