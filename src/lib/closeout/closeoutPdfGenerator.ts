@@ -167,32 +167,15 @@ async function htmlToPdfBlob(html: string): Promise<Blob> {
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter', compress: true });
     const pageWidth = 612;
     const pageHeight = 792;
-    // Scale canvas to full page width; slice across pages if taller than one page.
-    const imgWidth = pageWidth;
-    const pxPerPt = canvas.width / imgWidth;
-    const pageHeightPx = Math.floor(pageHeight * pxPerPt);
-    let renderedPx = 0;
-    let pageIndex = 0;
-    while (renderedPx < canvas.height) {
-      const sliceHeightPx = Math.min(pageHeightPx, canvas.height - renderedPx);
-      const sliceCanvas = document.createElement('canvas');
-      sliceCanvas.width = canvas.width;
-      sliceCanvas.height = sliceHeightPx;
-      const ctx = sliceCanvas.getContext('2d')!;
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
-      ctx.drawImage(
-        canvas,
-        0, renderedPx, canvas.width, sliceHeightPx,
-        0, 0, canvas.width, sliceHeightPx,
-      );
-      const imgData = sliceCanvas.toDataURL('image/png');
-      const sliceHeightPt = sliceHeightPx / pxPerPt;
-      if (pageIndex > 0) pdf.addPage();
-      pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, sliceHeightPt, undefined, 'SLOW');
-      renderedPx += sliceHeightPx;
-      pageIndex += 1;
-    }
+    // Single-page fit: scale to whichever dimension is constraining so the
+    // entire document fits on ONE letter page (one-pager contract).
+    const scale = Math.min(pageWidth / canvas.width, pageHeight / canvas.height);
+    const renderWidth = canvas.width * scale;
+    const renderHeight = canvas.height * scale;
+    const offsetX = (pageWidth - renderWidth) / 2;
+    const offsetY = 0;
+    const imgData = canvas.toDataURL('image/jpeg', 0.92);
+    pdf.addImage(imgData, 'JPEG', offsetX, offsetY, renderWidth, renderHeight, undefined, 'SLOW');
     return pdf.output('blob');
   } finally {
     document.body.removeChild(container);
@@ -257,7 +240,7 @@ export async function generateCloseoutDocuments(input: CloseoutInput): Promise<C
     alreadyPaid: input.totalPaid || input.contractTotal,
     contractTotal: input.contractTotal,
     paymentHistory: input.paymentHistory,
-  });
+  }, { singlePage: true });
 
   const invoiceFilename = `Paid-In-Full-${invoiceNumber}.pdf`;
   const invoicePath = `${input.tenantId}/${input.pipelineEntryId}/closeout/${invoiceFilename}`;
