@@ -53,7 +53,9 @@ interface CloseoutDoc {
   documentId: string;
   filename: string;
   label: string;
+  filePath?: string;
 }
+
 
 export const TotalsTab: React.FC<TotalsTabProps> = ({ pipelineEntryId }) => {
   const { activeTenantId } = useActiveTenantId();
