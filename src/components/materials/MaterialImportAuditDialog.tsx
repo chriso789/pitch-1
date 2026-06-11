@@ -296,12 +296,84 @@ export function MaterialImportAuditDialog({
     };
   };
 
+  const fileToBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        resolve(result.split(',')[1] || '');
+      };
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+
+  const handlePdfOrImageUpload = async (file: File) => {
+    try {
+      toast.info('Extracting items from document with AI…');
+      const base64 = await fileToBase64(file);
+      const { data, error } = await supabase.functions.invoke('parse-price-list-document', {
+        body: { document_base64: base64, mime_type: file.type || 'application/pdf' },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      const rows: any[] = Array.isArray(data?.rows) ? data.rows : [];
+      const importedItems: ImportedItem[] = rows
+        .map((r) => {
+          const name = (r.description || '').toString().trim();
+          const cost = typeof r.price === 'number' ? r.price : parseFloat(String(r.price || '').replace(/[$,]/g, ''));
+          if (!name || isNaN(cost) || cost <= 0) return null;
+          const code = (r.sku && String(r.sku).trim()) || generateCodeFromName(name);
+          return {
+            code,
+            name,
+            newCost: cost,
+            uom: (r.uom && String(r.uom).trim()) || 'EA',
+            category: (r.category && String(r.category).trim()) || (r.brand && String(r.brand).trim()) || '',
+            markupPct: 0.35,
+            supplierSku: r.sku ? String(r.sku).trim() : undefined,
+          } as ImportedItem;
+        })
+        .filter((i): i is ImportedItem => i !== null);
+
+      if (importedItems.length === 0) {
+        toast.error('No items could be extracted from the document.');
+        setStep('upload');
+        return;
+      }
+
+      const summary = analyzeImport(importedItems);
+      setAuditSummary(summary);
+      setAllItems([
+        ...summary.newItems,
+        ...summary.priceIncreases,
+        ...summary.priceDecreases,
+        ...summary.noChange,
+      ]);
+      setStep('review');
+    } catch (e: any) {
+      console.error('PDF parse error', e);
+      toast.error('Failed to extract from PDF: ' + (e.message || 'unknown error'));
+      setStep('upload');
+    }
+  };
+
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     setSourceFileName(file.name);
     setStep('analyzing');
+
+    const isPdfOrImage =
+      file.type === 'application/pdf' ||
+      file.type.startsWith('image/') ||
+      /\.(pdf|png|jpe?g|webp)$/i.test(file.name);
+
+    if (isPdfOrImage) {
+      handlePdfOrImageUpload(file);
+      return;
+    }
 
     Papa.parse(file, {
       header: true,
@@ -480,32 +552,33 @@ export function MaterialImportAuditDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5" />
-            Import Materials from CSV
+            Import Materials Price List
           </DialogTitle>
         </DialogHeader>
 
         {step === 'upload' && (
           <div className="space-y-4 py-4">
             <p className="text-sm text-muted-foreground">
-              Upload a CSV file with materials. The system will compare against existing items 
-              and show you any pricing differences before importing.
+              Upload a CSV, PDF, or image of your supplier price list. PDFs and images are parsed with AI.
+              The system will compare against existing items and show pricing differences before importing.
             </p>
             
             <div className="border-2 border-dashed rounded-lg p-8 text-center hover:border-primary/50 transition-colors">
               <Input
                 ref={fileInputRef}
                 type="file"
-                accept=".csv"
+                accept=".csv,.pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/*"
                 onChange={handleFileUpload}
                 className="hidden"
                 id="csv-file-input"
               />
               <label htmlFor="csv-file-input" className="cursor-pointer">
                 <Upload className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                <p className="font-medium">Click to upload CSV file</p>
+                <p className="font-medium">Click to upload CSV, PDF, or image</p>
                 <p className="text-xs text-muted-foreground mt-1">or drag and drop</p>
               </label>
             </div>
+
 
             <div className="bg-muted/50 rounded-lg p-4 text-sm">
               <p className="font-medium mb-2">Supported column names:</p>
