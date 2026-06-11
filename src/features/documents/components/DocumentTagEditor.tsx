@@ -342,15 +342,18 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
         }
 
         if (isPdfDoc) {
-          // Use public URL to bypass RLS issues with createSignedUrl()
-          const { data: urlData } = supabase.storage
+          // SmartDocs buckets are private; public URLs return 400/404. Always fetch via signed URL.
+          const { data: urlData, error: urlError } = await supabase.storage
             .from(bucket)
-            .getPublicUrl(document.file_path);
+            .createSignedUrl(document.file_path, 3600);
 
-          console.log("✅ Public URL created, fetching PDF...");
+          if (urlError || !urlData?.signedUrl) {
+            throw urlError || new Error("Failed to create document access URL");
+          }
+
+          console.log("✅ Signed URL created, fetching PDF...");
           
-          // Fetch PDF via public URL (no RLS issues)
-          const response = await fetch(urlData.publicUrl);
+          const response = await fetch(urlData.signedUrl);
           if (!response.ok) {
             throw new Error(`Failed to fetch PDF: ${response.status} ${response.statusText}`);
           }
@@ -366,24 +369,14 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
           // Store blob - we'll create fresh ArrayBuffer when loading
           setPdfBlob(blobData);
         } else {
-          // For images in smartdoc-assets (public bucket), use getPublicUrl
-          // For other buckets (private), use signed URL
-          if (bucket === 'smartdoc-assets') {
-            const { data: urlData } = supabase.storage
-              .from(bucket)
-              .getPublicUrl(document.file_path);
-            
-            console.log("✅ Using public URL for image in smartdoc-assets");
-            setDocumentUrl(urlData.publicUrl);
-          } else {
-            // Private bucket - use signed URL
-            const { data: urlData, error: urlError } = await supabase.storage
-              .from(bucket)
-              .createSignedUrl(document.file_path, 3600);
+          const { data: urlData, error: urlError } = await supabase.storage
+            .from(bucket)
+            .createSignedUrl(document.file_path, 3600);
 
-            if (urlError) throw urlError;
-            setDocumentUrl(urlData.signedUrl);
+          if (urlError || !urlData?.signedUrl) {
+            throw urlError || new Error("Failed to create document access URL");
           }
+          setDocumentUrl(urlData.signedUrl);
         }
         
         // Abort if document changed
@@ -1097,20 +1090,12 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
                   <Button 
                     variant="secondary"
                     onClick={async () => {
-                      // Use public URL for smartdoc-assets, signed URL for others
                       const bucket = resolveStorageBucket(document.document_type, document.file_path);
-                      if (bucket === 'smartdoc-assets') {
-                        const { data } = supabase.storage
-                          .from(bucket)
-                          .getPublicUrl(document.file_path);
-                        window.open(data.publicUrl, '_blank');
-                      } else {
-                        const { data } = await supabase.storage
-                          .from(bucket)
-                          .createSignedUrl(document.file_path, 3600);
-                        if (data?.signedUrl) {
-                          window.open(data.signedUrl, '_blank');
-                        }
+                      const { data } = await supabase.storage
+                        .from(bucket)
+                        .createSignedUrl(document.file_path, 3600);
+                      if (data?.signedUrl) {
+                        window.open(data.signedUrl, '_blank');
                       }
                     }}
                   >
