@@ -9,8 +9,9 @@ import {
 } from '@/components/ui/dialog';
 import {
   Loader2, DollarSign, Package, Hammer, Receipt, TrendingUp, FilePlus2,
-  ShieldCheck, FileCheck2, Share2, CheckCircle2, FileText,
+  ShieldCheck, FileCheck2, Share2, CheckCircle2, FileText, Eye,
 } from 'lucide-react';
+
 import { PaymentsTab } from './PaymentsTab';
 import { useCompanyInfo } from '@/hooks/useCompanyInfo';
 import { generateCloseoutDocuments } from '@/lib/closeout/closeoutPdfGenerator';
