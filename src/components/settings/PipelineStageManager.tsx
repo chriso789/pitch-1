@@ -18,6 +18,23 @@ import { useUserProfile } from '@/contexts/UserProfileContext';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { cn } from '@/lib/utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 interface PipelineStage {
   id: string;
@@ -350,6 +367,42 @@ const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave
   );
 };
 
+interface SortableStageRowProps {
+  id: string;
+  children: (
+    handle: {
+      setActivatorNodeRef: (el: HTMLElement | null) => void;
+      listeners: ReturnType<typeof useSortable>['listeners'];
+      attributes: ReturnType<typeof useSortable>['attributes'];
+    },
+    isDragging: boolean
+  ) => React.ReactNode;
+}
+
+const SortableStageRow: React.FC<SortableStageRowProps> = ({ id, children }) => {
+  const {
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+    listeners,
+    attributes,
+  } = useSortable({ id });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      {children({ setActivatorNodeRef, listeners, attributes }, isDragging)}
+    </div>
+  );
+};
+
 export const PipelineStageManager: React.FC = () => {
   const [stages, setStages] = useState<PipelineStage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -357,6 +410,13 @@ export const PipelineStageManager: React.FC = () => {
   const { toast } = useToast();
   const { profile } = useUserProfile();
   const effectiveTenantId = useEffectiveTenantId();
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+
 
   const fetchStages = async () => {
     if (!effectiveTenantId) return;
@@ -384,39 +444,45 @@ export const PipelineStageManager: React.FC = () => {
     }
   }, [effectiveTenantId]);
 
+  const persistOrder = async (ordered: PipelineStage[]) => {
+    try {
+      await Promise.all(
+        ordered.map((s, idx) =>
+          supabase
+            .from('pipeline_stages')
+            .update({ stage_order: idx + 1, updated_at: new Date().toISOString() })
+            .eq('id', s.id)
+        )
+      );
+      toast({ title: 'Success', description: 'Stage order updated' });
+    } catch (error) {
+      console.error('Error persisting stage order:', error);
+      toast({ title: 'Error', description: 'Failed to save new order', variant: 'destructive' });
+      await fetchStages();
+    }
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = stages.findIndex(s => s.id === active.id);
+    const newIndex = stages.findIndex(s => s.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    const reordered = arrayMove(stages, oldIndex, newIndex);
+    setStages(reordered); // optimistic
+    void persistOrder(reordered);
+  };
+
   const moveStage = async (stageId: string, direction: 'up' | 'down') => {
     const stageIndex = stages.findIndex(s => s.id === stageId);
     if (stageIndex === -1) return;
-    
     const targetIndex = direction === 'up' ? stageIndex - 1 : stageIndex + 1;
     if (targetIndex < 0 || targetIndex >= stages.length) return;
-    
     setReordering(stageId);
-    
-    const currentStage = stages[stageIndex];
-    const targetStage = stages[targetIndex];
-    
-    try {
-      // Swap stage_order values
-      await Promise.all([
-        supabase
-          .from('pipeline_stages')
-          .update({ stage_order: targetStage.stage_order, updated_at: new Date().toISOString() })
-          .eq('id', currentStage.id),
-        supabase
-          .from('pipeline_stages')
-          .update({ stage_order: currentStage.stage_order, updated_at: new Date().toISOString() })
-          .eq('id', targetStage.id)
-      ]);
-      
-      await fetchStages();
-      toast({ title: 'Success', description: 'Stage order updated' });
-    } catch (error) {
-      console.error('Error reordering stages:', error);
-      toast({ title: 'Error', description: 'Failed to reorder stages', variant: 'destructive' });
-    } finally {
-      setReordering(null);
-    }
+    const reordered = arrayMove(stages, stageIndex, targetIndex);
+    setStages(reordered);
+    await persistOrder(reordered);
+    setReordering(null);
   };
 
   const deleteStage = async (stageId: string) => {
@@ -554,118 +620,140 @@ export const PipelineStageManager: React.FC = () => {
           <CardContent>
             {/* Native scroll container for reliable cross-browser scrolling */}
             <div className="max-h-[calc(100vh-360px)] min-h-[300px] overflow-y-auto pr-2">
-              <div className="space-y-2 pb-4">
-                {stages.map((stage, index) => (
-                  <div
-                    key={stage.id}
-                    className={cn(
-                      "flex items-center gap-3 p-3 rounded-lg border bg-card transition-all",
-                      !stage.is_active && "opacity-50"
-                    )}
-                  >
-                    <GripVertical className="h-5 w-5 text-muted-foreground cursor-grab" />
-                    
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div
-                        className="w-4 h-4 rounded-full shrink-0"
-                        style={{ backgroundColor: stage.color }}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium truncate">{stage.name}</span>
-                          {!stage.is_active && (
-                            <Badge variant="secondary" className="text-xs">Inactive</Badge>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <code className="text-xs bg-muted px-1.5 py-0.5 rounded text-muted-foreground">
-                            {stage.key || generateStageKey(stage.name)}
-                          </code>
-                          {stage.description && (
-                            <p className="text-xs text-muted-foreground truncate">
-                              {stage.description}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                      <Badge variant="outline" className="shrink-0">
-                        {stage.probability_percent}%
-                      </Badge>
-                      {stage.is_conversion_point && (
-                        <Badge className="shrink-0 bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800">
-                          <ArrowRightCircle className="h-3 w-3 mr-1" />
-                          Converts to Project
-                        </Badge>
-                      )}
-                    </div>
-                    
-                    <div className="flex items-center gap-1">
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant={stage.is_conversion_point ? "default" : "ghost"}
-                              size="icon"
-                              className={cn(
-                                "h-8 w-8",
-                                stage.is_conversion_point && "bg-emerald-600 hover:bg-emerald-700 text-white"
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext items={stages.map(s => s.id)} strategy={verticalListSortingStrategy}>
+                  <div className="space-y-2 pb-4">
+                    {stages.map((stage) => (
+                      <SortableStageRow key={stage.id} id={stage.id}>
+                        {(handle, isDragging) => (
+                          <div
+                            className={cn(
+                              "flex items-center gap-3 p-3 rounded-lg border bg-card transition-all",
+                              !stage.is_active && "opacity-50",
+                              isDragging && "shadow-lg border-primary"
+                            )}
+                          >
+                            <button
+                              type="button"
+                              ref={handle.setActivatorNodeRef}
+                              {...handle.attributes}
+                              {...handle.listeners}
+                              className="cursor-grab active:cursor-grabbing touch-none text-muted-foreground hover:text-foreground shrink-0"
+                              aria-label="Drag to reorder"
+                            >
+                              <GripVertical className="h-5 w-5" />
+                            </button>
+
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                              <div
+                                className="w-4 h-4 rounded-full shrink-0"
+                                style={{ backgroundColor: stage.color }}
+                              />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium truncate">{stage.name}</span>
+                                  {!stage.is_active && (
+                                    <Badge variant="secondary" className="text-xs">Inactive</Badge>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <code className="text-xs bg-muted px-1.5 py-0.5 rounded text-muted-foreground">
+                                    {stage.key || generateStageKey(stage.name)}
+                                  </code>
+                                  {stage.description && (
+                                    <p className="text-xs text-muted-foreground truncate">
+                                      {stage.description}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                              <Badge variant="outline" className="shrink-0">
+                                {stage.probability_percent}%
+                              </Badge>
+                              {stage.is_conversion_point && (
+                                <Badge className="shrink-0 bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800">
+                                  <ArrowRightCircle className="h-3 w-3 mr-1" />
+                                  Converts to Project
+                                </Badge>
                               )}
-                              onClick={() => toggleConversionPoint(stage.id)}
-                            >
-                              <ArrowRightCircle className="h-4 w-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            {stage.is_conversion_point
-                              ? 'This stage converts leads to projects. Click to remove.'
-                              : 'Set as conversion point — leads reaching this stage become projects'}
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                      {reordering === stage.id && (
-                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                      )}
-                      
-                      <StageDialog
-                        stage={stage}
-                        existingStages={stages}
-                        onSave={fetchStages}
-                        trigger={
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                        }
-                      />
-                      
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete Stage?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This will permanently delete the "{stage.name}" stage. 
-                              Leads in this stage will need to be moved first.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={() => deleteStage(stage.id)}
-                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                            >
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </div>
+                            </div>
+
+                            <div className="flex items-center gap-1">
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant={stage.is_conversion_point ? "default" : "ghost"}
+                                      size="icon"
+                                      className={cn(
+                                        "h-8 w-8",
+                                        stage.is_conversion_point && "bg-emerald-600 hover:bg-emerald-700 text-white"
+                                      )}
+                                      onClick={() => toggleConversionPoint(stage.id)}
+                                    >
+                                      <ArrowRightCircle className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    {stage.is_conversion_point
+                                      ? 'This stage converts leads to projects. Click to remove.'
+                                      : 'Set as conversion point — leads reaching this stage become projects'}
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                              {reordering === stage.id && (
+                                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                              )}
+
+                              <StageDialog
+                                stage={stage}
+                                existingStages={stages}
+                                onSave={fetchStages}
+                                trigger={
+                                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                }
+                              />
+
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Delete Stage?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      This will permanently delete the "{stage.name}" stage.
+                                      Leads in this stage will need to be moved first.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() => deleteStage(stage.id)}
+                                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                    >
+                                      Delete
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </div>
+                          </div>
+                        )}
+                      </SortableStageRow>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </SortableContext>
+              </DndContext>
+
             </div>
           </CardContent>
         </Card>
