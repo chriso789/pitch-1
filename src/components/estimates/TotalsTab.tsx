@@ -221,6 +221,21 @@ export const TotalsTab: React.FC<TotalsTabProps> = ({ pipelineEntryId }) => {
     }
   };
 
+  const handlePreview = async (d: CloseoutDoc) => {
+    try {
+      if (!d.filePath) throw new Error('File path missing');
+      const { data, error } = await supabase.storage
+        .from('documents')
+        .createSignedUrl(d.filePath, 3600);
+      if (error || !data?.signedUrl) throw new Error(error?.message || 'Could not generate preview link');
+      window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to open preview');
+    }
+  };
+
+
+
   if (barLoading) {
     return (
       <div className="flex items-center justify-center h-40">
