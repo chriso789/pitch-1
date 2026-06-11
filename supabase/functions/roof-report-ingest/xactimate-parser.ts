@@ -147,6 +147,68 @@ export function mergeMeasurementCompletenessFallback(primary: any, fallback: any
   return merged;
 }
 
+export function parseMeasurementLengthFt(value: unknown): number | null {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (!value) return null;
+  const text = String(value).trim();
+  const feetInches = text.match(/(\d+(?:\.\d+)?)\s*(?:'|ft|feet)\s*(?:(\d+(?:\.\d+)?)\s*(?:"|in|inch|inches))?/i);
+  if (feetInches) {
+    const feet = Number(feetInches[1]);
+    const inches = feetInches[2] ? Number(feetInches[2]) : 0;
+    return Number.isFinite(feet) && Number.isFinite(inches) ? feet + inches / 12 : null;
+  }
+  const numeric = Number(text.replace(/,/g, ""));
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+export function deriveLineTotalsFromDiagramGeometry(diagramGeometry: any) {
+  const totals = {
+    ridges_ft: 0,
+    hips_ft: 0,
+    valleys_ft: 0,
+    rakes_ft: 0,
+    eaves_ft: 0,
+  };
+
+  const aiTotals = diagramGeometry?.line_totals_ft || diagramGeometry?.totals || {};
+  const aliases: Record<string, keyof typeof totals> = {
+    ridge: "ridges_ft",
+    ridges: "ridges_ft",
+    ridges_ft: "ridges_ft",
+    hip: "hips_ft",
+    hips: "hips_ft",
+    hips_ft: "hips_ft",
+    valley: "valleys_ft",
+    valleys: "valleys_ft",
+    valleys_ft: "valleys_ft",
+    rake: "rakes_ft",
+    rakes: "rakes_ft",
+    rakes_ft: "rakes_ft",
+    eave: "eaves_ft",
+    eaves: "eaves_ft",
+    eaves_ft: "eaves_ft",
+  };
+
+  for (const [key, totalKey] of Object.entries(aliases)) {
+    const parsed = parseMeasurementLengthFt(aiTotals[key]);
+    if (parsed && parsed > 0) totals[totalKey] = parsed;
+  }
+
+  for (const edge of Array.isArray(diagramGeometry?.edges) ? diagramGeometry.edges : []) {
+    const typeKey = aliases[String(edge?.type || "").toLowerCase()];
+    if (!typeKey || totals[typeKey] > 0) continue;
+    const length = parseMeasurementLengthFt(edge?.length_ft ?? edge?.length ?? edge?.label);
+    if (length && length > 0) totals[typeKey] += length;
+  }
+
+  return Object.fromEntries(Object.entries(totals).filter(([, value]) => value > 0));
+}
+
+export function completeMeasurementsFromDiagramGeometry(parsed: any, diagramGeometry: any) {
+  const diagramTotals = deriveLineTotalsFromDiagramGeometry(diagramGeometry);
+  return mergeMeasurementCompletenessFallback(parsed, diagramTotals);
+}
+
 export function buildPdfFileContentBlock(pdfBase64: string, filename = "roof-report.pdf") {
   return {
     type: "file" as const,
