@@ -12,6 +12,12 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import * as pdfjsLib from "npm:pdfjs-dist@4.3.136/legacy/build/pdf.mjs";
+import {
+  buildPdfFileContentBlock,
+  mergeMeasurementCompletenessFallback,
+  needsInsuranceScopeVisionCompletenessFallback,
+  parseXactimateInsuranceScopeText,
+} from "./xactimate-parser.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -331,129 +337,19 @@ function parseGeneric(textRaw: string) {
 // Xactimate parser
 // -----------------------------
 function parseXactimate(textRaw: string) {
-  const text = normalizeText(textRaw);
-  
-  // Surface Area: "2,335.95 Surface Area" or "Surface Area 2,335.95".
-  // OCR on Citizens scopes sometimes reads this as "Surface Are".
-  const surfaceAreaMatch = text.match(/([\d,]+(?:\.\d+)?)\s*Surface\s*Are?a?/i) 
-                        || text.match(/Surface\s*Are?a?\s*([\d,]+(?:\.\d+)?)/i);
-  const surfaceArea = surfaceAreaMatch ? parseFloatSafe(surfaceAreaMatch[1]) : null;
-  
-  // Number of Squares: "23.36 Number of Squares"
-  const squaresMatch = text.match(/([\d,]+(?:\.\d+)?)\s*Number\s*of\s*Squares/i)
-                    || text.match(/Number\s*of\s*Squares\s*([\d,]+(?:\.\d+)?)/i);
-  const squares = squaresMatch ? parseFloatSafe(squaresMatch[1]) : null;
-  
-  // Total Perimeter Length: "199.11 Total Perimeter Length"
-  const perimeterMatch = text.match(/([\d,]+(?:\.\d+)?)\s*Total\s*Perimeter\s*Length/i)
-                      || text.match(/Total\s*Perimeter\s*Length\s*([\d,]+(?:\.\d+)?)/i);
-  const perimeter = perimeterMatch ? parseFloatSafe(perimeterMatch[1]) : null;
-  
-  // Total Ridge Length: "32.81 Total Ridge Length"
-  const ridgeMatch = text.match(/([\d,]+(?:\.\d+)?)\s*Total\s*Ridge\s*Length/i)
-                  || text.match(/Total\s*Ridge\s*Length\s*([\d,]+(?:\.\d+)?)/i);
-  const ridge = ridgeMatch ? parseFloatSafe(ridgeMatch[1]) : null;
-  
-  // Total Hip Length: "94.58 Total Hip Length"
-  const hipMatch = text.match(/([\d,]+(?:\.\d+)?)\s*Total\s*Hip\s*Length/i)
-                || text.match(/Total\s*Hip\s*Length\s*([\d,]+(?:\.\d+)?)/i);
-  const hip = hipMatch ? parseFloatSafe(hipMatch[1]) : null;
-  
-  // Total Valley Length: "0 Total Valley Length"
-  const valleyMatch = text.match(/([\d,]+(?:\.\d+)?)\s*Total\s*Valley\s*Length/i)
-                   || text.match(/Total\s*Valley\s*Length\s*([\d,]+(?:\.\d+)?)/i);
-  const valley = valleyMatch ? parseFloatSafe(valleyMatch[1]) : null;
-  
-  // Total Rake Length (for gable roofs)
-  const rakeMatch = text.match(/([\d,]+(?:\.\d+)?)\s*Total\s*Rake\s*Length/i)
-                 || text.match(/Total\s*Rake\s*Length\s*([\d,]+(?:\.\d+)?)/i);
-  const rake = rakeMatch ? parseFloatSafe(rakeMatch[1]) : null;
-  
-  // Address from insurance scopes often spans multiple lines after "Property:".
-  const singleLineAddressMatch = text.match(/(\d+[^,\n]+,\s*[A-Z\s]+,\s*[A-Z]{2}\s*\d{5}(?:-\d{4})?)/i);
-  const propertyBlockMatch = text.match(/Property:\s*([\s\S]{0,220}?\b[A-Z]{2}\s+\d{5}(?:-\d{4})?)/i);
-  const address = singleLineAddressMatch
-    ? singleLineAddressMatch[1].trim()
-    : propertyBlockMatch
-      ? propertyBlockMatch[1].replace(/\s+/g, " ").trim()
-      : null;
-  
-  // Count unique facets (F1, F2, F3, F4 pattern in sketches)
-  const facetMatches = text.match(/\bF\d+\b/g);
-  const uniqueFacets = facetMatches ? new Set(facetMatches).size : null;
-  
-  // Calculate flat area from squares (squares × 100)
-  const flatArea = squares ? squares * 100 : null;
-  
-  // Drip edge from line item "Drip edge ... 199.11 LF" (also accept SF/EA/no unit)
-  const dripEdgeMatch = text.match(/Drip\s*edge[^0-9\n]*([\d,]+(?:\.\d+)?)\s*(?:LF|SF|EA|LN\.?\s*FT|FT)?/i);
-  const dripEdge = dripEdgeMatch ? parseFloatSafe(dripEdgeMatch[1]) : perimeter;
-  
-  // Hip/Ridge cap total from line item "Hip / Ridge cap ... 127.39 LF"
-  const hipRidgeCapMatch = text.match(/Hip\s*\/\s*Ridge\s*cap[^0-9\n]*([\d,]+(?:\.\d+)?)\s*(?:LF|SF|EA|LN\.?\s*FT|FT)?/i)
-                        || text.match(/Hip\s*&\s*Ridge\s*cap[^0-9\n]*([\d,]+(?:\.\d+)?)\s*(?:LF|SF|EA|LN\.?\s*FT|FT)?/i);
-  const hipRidgeCap = hipRidgeCapMatch ? parseFloatSafe(hipRidgeCapMatch[1]) : null;
-  
-  // Step flashing
-  const stepFlashingMatch = text.match(/Step\s*flashing[^0-9\n]*([\d,]+(?:\.\d+)?)\s*(?:LF|SF|EA|LN\.?\s*FT|FT)?/i);
-  const stepFlashing = stepFlashingMatch ? parseFloatSafe(stepFlashingMatch[1]) : null;
-  
-  // Starter from line item
-  const starterMatch = text.match(/Starter[^0-9\n]*([\d,]+(?:\.\d+)?)\s*(?:LF|SF|EA|LN\.?\s*FT|FT)?/i);
-  const starter = starterMatch ? parseFloatSafe(starterMatch[1]) : null;
-  
-  // Derive pitch from surface area vs flat area ratio
-  // If surfaceArea = 2336 and flatArea = 2276, ratio = 1.026 ≈ 6/12 pitch
-  let derivedPitch: string | null = null;
-  if (surfaceArea && flatArea && flatArea > 0) {
-    const ratio = surfaceArea / flatArea;
-    // Map ratio to pitch
-    if (ratio < 1.02) derivedPitch = "flat";
-    else if (ratio < 1.035) derivedPitch = "3/12";
-    else if (ratio < 1.055) derivedPitch = "4/12";
-    else if (ratio < 1.075) derivedPitch = "5/12";
-    else if (ratio < 1.095) derivedPitch = "6/12";
-    else if (ratio < 1.12) derivedPitch = "7/12";
-    else if (ratio < 1.15) derivedPitch = "8/12";
-    else if (ratio < 1.18) derivedPitch = "9/12";
-    else if (ratio < 1.21) derivedPitch = "10/12";
-    else if (ratio < 1.25) derivedPitch = "11/12";
-    else derivedPitch = "12/12";
-  }
-  
-  // Also try to find explicit pitch in text
-  const explicitPitchMatch = text.match(/(\d+)\s*\/\s*12\s*pitch/i) 
-                          || text.match(/pitch\s*[:=]?\s*(\d+)\s*\/\s*12/i);
-  const explicitPitch = explicitPitchMatch ? `${explicitPitchMatch[1]}/12` : null;
-  
+  const parsed = parseXactimateInsuranceScopeText(textRaw);
   console.log("roof-report-ingest: Xactimate parsed values:", {
-    surfaceArea, squares, flatArea, perimeter, ridge, hip, valley, 
-    derivedPitch, explicitPitch, facetCount: uniqueFacets
+    surfaceArea: parsed.total_area_sqft,
+    squares: parsed.squares,
+    flatArea: parsed.flat_area_sqft,
+    perimeter: parsed.perimeter_ft,
+    ridge: parsed.ridges_ft,
+    hip: parsed.hips_ft,
+    valley: parsed.valleys_ft,
+    pitch: parsed.predominant_pitch,
+    facetCount: parsed.facet_count,
   });
-  
-  return {
-    provider: "xactimate" as const,
-    address,
-    total_area_sqft: surfaceArea,        // Surface/pitched area (what you bill for)
-    pitched_area_sqft: surfaceArea,
-    flat_area_sqft: flatArea,            // Calculated from squares × 100
-    facet_count: uniqueFacets,
-    predominant_pitch: explicitPitch || derivedPitch,
-    ridges_ft: ridge,
-    hips_ft: hip,
-    valleys_ft: valley,
-    rakes_ft: rake || 0,                 // Hip roofs typically have 0 rakes
-    eaves_ft: perimeter,                 // Use perimeter as eaves for hip roofs
-    drip_edge_ft: dripEdge,
-    step_flashing_ft: stepFlashing,
-    perimeter_ft: perimeter,
-    pitches: null,
-    waste_table: null,
-    // Xactimate-specific extras
-    squares: squares,
-    hip_ridge_cap_lf: hipRidgeCap,
-    starter_lf: starter,
-  };
+  return parsed;
 }
 
 // -----------------------------
