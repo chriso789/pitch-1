@@ -187,7 +187,10 @@ export function SectionedLineItemsTable({
 
   const saveEdit = () => {
     if (!editingCell) return;
-    
+    // Blur active element before removing editing UI to prevent scroll jump
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
     const numValue = parseFloat(editValue);
     if (!isNaN(numValue) && numValue >= 0) {
       onUpdateItem(editingCell.itemId, { [editingCell.field]: numValue });
