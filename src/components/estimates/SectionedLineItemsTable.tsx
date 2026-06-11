@@ -181,13 +181,20 @@ export function SectionedLineItemsTable({
   };
 
   const cancelEdit = () => {
+    // Blur active element before removing editing UI to prevent scroll jump
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
     setEditingCell(null);
     setEditValue('');
   };
 
   const saveEdit = () => {
     if (!editingCell) return;
-    
+    // Blur active element before removing editing UI to prevent scroll jump
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
     const numValue = parseFloat(editValue);
     if (!isNaN(numValue) && numValue >= 0) {
       onUpdateItem(editingCell.itemId, { [editingCell.field]: numValue });
@@ -466,7 +473,12 @@ export function SectionedLineItemsTable({
                   size="icon"
                   variant="ghost"
                   className="h-6 w-6 text-destructive"
-                  onClick={() => onDeleteItem(item.id)}
+                  onClick={() => {
+                    if (document.activeElement instanceof HTMLElement) {
+                      document.activeElement.blur();
+                    }
+                    onDeleteItem(item.id);
+                  }}
                   title="Remove item"
                 >
                   <Trash2 className="h-3 w-3" />
