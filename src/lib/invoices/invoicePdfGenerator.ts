@@ -82,7 +82,7 @@ function buildInvoiceHtml(data: InvoicePdfData): string {
 
 
   return `
-  <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1f2937;background:#ffffff;width:100%;box-sizing:border-box">
+  <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1f2937;background:#ffffff;width:100%;min-height:1056px;box-sizing:border-box;display:flex;flex-direction:column">
     <!-- HEADER -->
     <div style="background:#0a2540;color:#ffffff;padding:24px 32px;display:flex;justify-content:space-between;align-items:center">
       <div style="display:flex;flex-direction:column;gap:6px">
@@ -182,7 +182,7 @@ function buildInvoiceHtml(data: InvoicePdfData): string {
     </div>
 
     <!-- FOOTER -->
-    <div style="margin-top:32px;border-top:2px solid #0a2540;padding:14px 32px;display:flex;justify-content:space-between;font-size:10px;color:#6b7280">
+    <div style="margin-top:auto;border-top:2px solid #0a2540;padding:14px 32px;display:flex;justify-content:space-between;font-size:10px;color:#6b7280">
       <div>${escape(company.name || '')}${company.phone ? ' • ' + escape(company.phone) : ''}${company.email ? ' • ' + escape(company.email) : ''}</div>
       <div>Invoice ${escape(data.invoiceNumber)}</div>
     </div>
