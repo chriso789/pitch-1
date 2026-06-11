@@ -253,7 +253,7 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
         .update({
           first_name: user.first_name,
           last_name: user.last_name,
-          personal_overhead_rate: user.personal_overhead_rate,
+          // personal_overhead_rate is managed by UserCommissionSettings — do not overwrite here
           phone: user.phone,
           email: user.email,
           company_email: user.company_email,
