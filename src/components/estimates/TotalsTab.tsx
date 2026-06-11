@@ -173,6 +173,29 @@ export const TotalsTab: React.FC<TotalsTabProps> = ({ pipelineEntryId }) => {
       }
       setCustomerInfo({ name: customer.name, email: customer.email, contactId });
 
+      // Load tenant workmanship warranty verbiage
+      let workmanshipWarranty: string | undefined;
+      try {
+        const { data: tenantRow } = await supabase
+          .from('tenants')
+          .select('warranty_terms')
+          .eq('id', activeTenantId)
+          .maybeSingle();
+        const raw = (tenantRow as any)?.warranty_terms;
+        if (raw) {
+          try {
+            const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            if (parsed?.workmanship && String(parsed.workmanship).trim()) {
+              workmanshipWarranty = String(parsed.workmanship).trim();
+            }
+          } catch {
+            if (typeof raw === 'string' && raw.trim()) workmanshipWarranty = raw.trim();
+          }
+        }
+      } catch (e) {
+        console.warn('Could not load tenant warranty terms', e);
+      }
+
       const result = await generateCloseoutDocuments({
         tenantId: activeTenantId,
         pipelineEntryId,
@@ -181,6 +204,7 @@ export const TotalsTab: React.FC<TotalsTabProps> = ({ pipelineEntryId }) => {
         customer,
         contractTotal: contractValue,
         totalPaid: totalPaid || contractValue,
+        warrantyText: workmanshipWarranty,
         paymentHistory: (payments || []).map((p: any) => ({
           date: format(new Date(p.payment_date), 'MMM d, yyyy'),
           amount: Number(p.amount) || 0,
@@ -188,6 +212,7 @@ export const TotalsTab: React.FC<TotalsTabProps> = ({ pipelineEntryId }) => {
           reference: p.reference_number || '',
         })),
       });
+
 
       if (result.error) throw new Error(result.error);
 
