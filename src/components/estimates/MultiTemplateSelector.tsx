@@ -2517,10 +2517,13 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           {/* Add Trade Button */}
           {(() => {
             const addedTradeTypes = tradeSections.map(t => t.tradeType);
-            const availableTrades = AVAILABLE_TRADES.filter(t => 
-              !addedTradeTypes.includes(t.value) && enabledTrades.includes(t.value)
+            // Roofing can be added multiple times (e.g. detached garage, second structure).
+            // All other trades remain single-instance.
+            const availableTrades = AVAILABLE_TRADES.filter(t =>
+              enabledTrades.includes(t.value) &&
+              (t.value === 'roofing' || !addedTradeTypes.includes(t.value))
             );
-            
+
             if (availableTrades.length === 0) return null;
             
             return (
