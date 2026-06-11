@@ -2490,20 +2490,20 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
                     <div className="px-3 pb-3 space-y-3">
                       <TemplateCombobox
                         templates={filteredTemplates}
-                        value={trade.tradeType === 'roofing' ? selectedTemplateId : trade.templateId}
+                        value={isPrimaryRoofing ? selectedTemplateId : trade.templateId}
                         onValueChange={(templateId) => {
                           setTradeSections(prev => prev.map(t =>
                             t.id === trade.id ? { ...t, templateId } : t
                           ));
                           // Use unified handler for ALL trades
-                          handleTradeTemplateSelect(trade.id, trade.tradeType, templateId);
+                          handleTradeTemplateSelect(trade.id, trade.tradeType, templateId, isPrimaryRoofing);
                         }}
                         placeholder={`Select ${trade.label} Template...`}
-                        disabled={isEditingLoadedEstimate && trade.tradeType === 'roofing'}
+                        disabled={isEditingLoadedEstimate && isPrimaryRoofing}
                       />
 
                       {/* Hint for roofing when creating new */}
-                      {trade.tradeType === 'roofing' && !isEditingLoadedEstimate && !selectedTemplateId && isCreatingNewEstimate && (
+                      {isPrimaryRoofing && !isEditingLoadedEstimate && !selectedTemplateId && isCreatingNewEstimate && (
                         <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg">
                           <p className="text-sm text-primary">
                             Select a template above to create a new estimate option for this project.
