@@ -1090,20 +1090,12 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
                   <Button 
                     variant="secondary"
                     onClick={async () => {
-                      // Use public URL for smartdoc-assets, signed URL for others
                       const bucket = resolveStorageBucket(document.document_type, document.file_path);
-                      if (bucket === 'smartdoc-assets') {
-                        const { data } = supabase.storage
-                          .from(bucket)
-                          .getPublicUrl(document.file_path);
-                        window.open(data.publicUrl, '_blank');
-                      } else {
-                        const { data } = await supabase.storage
-                          .from(bucket)
-                          .createSignedUrl(document.file_path, 3600);
-                        if (data?.signedUrl) {
-                          window.open(data.signedUrl, '_blank');
-                        }
+                      const { data } = await supabase.storage
+                        .from(bucket)
+                        .createSignedUrl(document.file_path, 3600);
+                      if (data?.signedUrl) {
+                        window.open(data.signedUrl, '_blank');
                       }
                     }}
                   >
