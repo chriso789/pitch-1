@@ -44,6 +44,12 @@ export const MobilePDFViewer: React.FC<MobilePDFViewerProps> = ({
     setIsLoading(true);
     setHasError(false);
     setZoom(100);
+    // <object>/<embed> onLoad is unreliable for PDFs (especially cross-origin
+    // signed URLs). Clear the loading overlay after a short delay so the
+    // viewer never gets stuck on "Loading PDF...".
+    if (!url) return;
+    const timer = setTimeout(() => setIsLoading(false), 1500);
+    return () => clearTimeout(timer);
   }, [url]);
 
   const handleOpenExternal = () => {
