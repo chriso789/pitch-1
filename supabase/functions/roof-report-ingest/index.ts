@@ -12,6 +12,13 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import * as pdfjsLib from "npm:pdfjs-dist@4.3.136/legacy/build/pdf.mjs";
+import {
+  buildPdfFileContentBlock,
+  completeMeasurementsFromDiagramGeometry,
+  mergeMeasurementCompletenessFallback,
+  needsInsuranceScopeVisionCompletenessFallback,
+  parseXactimateInsuranceScopeText,
+} from "./xactimate-parser.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -331,129 +338,19 @@ function parseGeneric(textRaw: string) {
 // Xactimate parser
 // -----------------------------
 function parseXactimate(textRaw: string) {
-  const text = normalizeText(textRaw);
-  
-  // Surface Area: "2,335.95 Surface Area" or "Surface Area 2,335.95".
-  // OCR on Citizens scopes sometimes reads this as "Surface Are".
-  const surfaceAreaMatch = text.match(/([\d,]+(?:\.\d+)?)\s*Surface\s*Are?a?/i) 
-                        || text.match(/Surface\s*Are?a?\s*([\d,]+(?:\.\d+)?)/i);
-  const surfaceArea = surfaceAreaMatch ? parseFloatSafe(surfaceAreaMatch[1]) : null;
-  
-  // Number of Squares: "23.36 Number of Squares"
-  const squaresMatch = text.match(/([\d,]+(?:\.\d+)?)\s*Number\s*of\s*Squares/i)
-                    || text.match(/Number\s*of\s*Squares\s*([\d,]+(?:\.\d+)?)/i);
-  const squares = squaresMatch ? parseFloatSafe(squaresMatch[1]) : null;
-  
-  // Total Perimeter Length: "199.11 Total Perimeter Length"
-  const perimeterMatch = text.match(/([\d,]+(?:\.\d+)?)\s*Total\s*Perimeter\s*Length/i)
-                      || text.match(/Total\s*Perimeter\s*Length\s*([\d,]+(?:\.\d+)?)/i);
-  const perimeter = perimeterMatch ? parseFloatSafe(perimeterMatch[1]) : null;
-  
-  // Total Ridge Length: "32.81 Total Ridge Length"
-  const ridgeMatch = text.match(/([\d,]+(?:\.\d+)?)\s*Total\s*Ridge\s*Length/i)
-                  || text.match(/Total\s*Ridge\s*Length\s*([\d,]+(?:\.\d+)?)/i);
-  const ridge = ridgeMatch ? parseFloatSafe(ridgeMatch[1]) : null;
-  
-  // Total Hip Length: "94.58 Total Hip Length"
-  const hipMatch = text.match(/([\d,]+(?:\.\d+)?)\s*Total\s*Hip\s*Length/i)
-                || text.match(/Total\s*Hip\s*Length\s*([\d,]+(?:\.\d+)?)/i);
-  const hip = hipMatch ? parseFloatSafe(hipMatch[1]) : null;
-  
-  // Total Valley Length: "0 Total Valley Length"
-  const valleyMatch = text.match(/([\d,]+(?:\.\d+)?)\s*Total\s*Valley\s*Length/i)
-                   || text.match(/Total\s*Valley\s*Length\s*([\d,]+(?:\.\d+)?)/i);
-  const valley = valleyMatch ? parseFloatSafe(valleyMatch[1]) : null;
-  
-  // Total Rake Length (for gable roofs)
-  const rakeMatch = text.match(/([\d,]+(?:\.\d+)?)\s*Total\s*Rake\s*Length/i)
-                 || text.match(/Total\s*Rake\s*Length\s*([\d,]+(?:\.\d+)?)/i);
-  const rake = rakeMatch ? parseFloatSafe(rakeMatch[1]) : null;
-  
-  // Address from insurance scopes often spans multiple lines after "Property:".
-  const singleLineAddressMatch = text.match(/(\d+[^,\n]+,\s*[A-Z\s]+,\s*[A-Z]{2}\s*\d{5}(?:-\d{4})?)/i);
-  const propertyBlockMatch = text.match(/Property:\s*([\s\S]{0,220}?\b[A-Z]{2}\s+\d{5}(?:-\d{4})?)/i);
-  const address = singleLineAddressMatch
-    ? singleLineAddressMatch[1].trim()
-    : propertyBlockMatch
-      ? propertyBlockMatch[1].replace(/\s+/g, " ").trim()
-      : null;
-  
-  // Count unique facets (F1, F2, F3, F4 pattern in sketches)
-  const facetMatches = text.match(/\bF\d+\b/g);
-  const uniqueFacets = facetMatches ? new Set(facetMatches).size : null;
-  
-  // Calculate flat area from squares (squares × 100)
-  const flatArea = squares ? squares * 100 : null;
-  
-  // Drip edge from line item "Drip edge ... 199.11 LF" (also accept SF/EA/no unit)
-  const dripEdgeMatch = text.match(/Drip\s*edge[^0-9\n]*([\d,]+(?:\.\d+)?)\s*(?:LF|SF|EA|LN\.?\s*FT|FT)?/i);
-  const dripEdge = dripEdgeMatch ? parseFloatSafe(dripEdgeMatch[1]) : perimeter;
-  
-  // Hip/Ridge cap total from line item "Hip / Ridge cap ... 127.39 LF"
-  const hipRidgeCapMatch = text.match(/Hip\s*\/\s*Ridge\s*cap[^0-9\n]*([\d,]+(?:\.\d+)?)\s*(?:LF|SF|EA|LN\.?\s*FT|FT)?/i)
-                        || text.match(/Hip\s*&\s*Ridge\s*cap[^0-9\n]*([\d,]+(?:\.\d+)?)\s*(?:LF|SF|EA|LN\.?\s*FT|FT)?/i);
-  const hipRidgeCap = hipRidgeCapMatch ? parseFloatSafe(hipRidgeCapMatch[1]) : null;
-  
-  // Step flashing
-  const stepFlashingMatch = text.match(/Step\s*flashing[^0-9\n]*([\d,]+(?:\.\d+)?)\s*(?:LF|SF|EA|LN\.?\s*FT|FT)?/i);
-  const stepFlashing = stepFlashingMatch ? parseFloatSafe(stepFlashingMatch[1]) : null;
-  
-  // Starter from line item
-  const starterMatch = text.match(/Starter[^0-9\n]*([\d,]+(?:\.\d+)?)\s*(?:LF|SF|EA|LN\.?\s*FT|FT)?/i);
-  const starter = starterMatch ? parseFloatSafe(starterMatch[1]) : null;
-  
-  // Derive pitch from surface area vs flat area ratio
-  // If surfaceArea = 2336 and flatArea = 2276, ratio = 1.026 ≈ 6/12 pitch
-  let derivedPitch: string | null = null;
-  if (surfaceArea && flatArea && flatArea > 0) {
-    const ratio = surfaceArea / flatArea;
-    // Map ratio to pitch
-    if (ratio < 1.02) derivedPitch = "flat";
-    else if (ratio < 1.035) derivedPitch = "3/12";
-    else if (ratio < 1.055) derivedPitch = "4/12";
-    else if (ratio < 1.075) derivedPitch = "5/12";
-    else if (ratio < 1.095) derivedPitch = "6/12";
-    else if (ratio < 1.12) derivedPitch = "7/12";
-    else if (ratio < 1.15) derivedPitch = "8/12";
-    else if (ratio < 1.18) derivedPitch = "9/12";
-    else if (ratio < 1.21) derivedPitch = "10/12";
-    else if (ratio < 1.25) derivedPitch = "11/12";
-    else derivedPitch = "12/12";
-  }
-  
-  // Also try to find explicit pitch in text
-  const explicitPitchMatch = text.match(/(\d+)\s*\/\s*12\s*pitch/i) 
-                          || text.match(/pitch\s*[:=]?\s*(\d+)\s*\/\s*12/i);
-  const explicitPitch = explicitPitchMatch ? `${explicitPitchMatch[1]}/12` : null;
-  
+  const parsed = parseXactimateInsuranceScopeText(textRaw);
   console.log("roof-report-ingest: Xactimate parsed values:", {
-    surfaceArea, squares, flatArea, perimeter, ridge, hip, valley, 
-    derivedPitch, explicitPitch, facetCount: uniqueFacets
+    surfaceArea: parsed.total_area_sqft,
+    squares: parsed.squares,
+    flatArea: parsed.flat_area_sqft,
+    perimeter: parsed.perimeter_ft,
+    ridge: parsed.ridges_ft,
+    hip: parsed.hips_ft,
+    valley: parsed.valleys_ft,
+    pitch: parsed.predominant_pitch,
+    facetCount: parsed.facet_count,
   });
-  
-  return {
-    provider: "xactimate" as const,
-    address,
-    total_area_sqft: surfaceArea,        // Surface/pitched area (what you bill for)
-    pitched_area_sqft: surfaceArea,
-    flat_area_sqft: flatArea,            // Calculated from squares × 100
-    facet_count: uniqueFacets,
-    predominant_pitch: explicitPitch || derivedPitch,
-    ridges_ft: ridge,
-    hips_ft: hip,
-    valleys_ft: valley,
-    rakes_ft: rake || 0,                 // Hip roofs typically have 0 rakes
-    eaves_ft: perimeter,                 // Use perimeter as eaves for hip roofs
-    drip_edge_ft: dripEdge,
-    step_flashing_ft: stepFlashing,
-    perimeter_ft: perimeter,
-    pitches: null,
-    waste_table: null,
-    // Xactimate-specific extras
-    squares: squares,
-    hip_ridge_cap_lf: hipRidgeCap,
-    starter_lf: starter,
-  };
+  return parsed;
 }
 
 // -----------------------------
@@ -504,6 +401,7 @@ Return ONLY a valid JSON object (no markdown, no explanation) with these fields.
   "ridges_ft": number or null,
   "hips_ft": number or null,
   "valleys_ft": number or null,
+  "line_totals_ft": { "ridge": number or null, "hip": number or null, "valley": number or null, "eave": number or null, "rake": number or null },
   "rakes_ft": number or null,
   "eaves_ft": number or null,
   "step_flashing_ft": number or null,
@@ -546,12 +444,7 @@ Be thorough - check ALL pages for data.`;
             role: "user", 
             content: [
               { type: "text", text: "Analyze this roof measurement report PDF and extract ALL measurements from EVERY page:" },
-              { 
-                type: "image_url", 
-                image_url: { 
-                  url: `data:application/pdf;base64,${pdfBase64}` 
-                } 
-              }
+              buildPdfFileContentBlock(pdfBase64)
             ]
           }
         ],
@@ -1437,6 +1330,23 @@ Deno.serve(async (req) => {
       }
     }
 
+    if (needsInsuranceScopeVisionCompletenessFallback(parsed, parsed?.provider || provider)) {
+      console.log("roof-report-ingest: Xactimate measurements missing hip/valley completeness — attempting full-PDF Vision completion...");
+      try {
+        const pdfBase64Fallback = bytesToBase64(pdfBytes);
+        const visionParsedFallback = await extractWithVision(pdfBase64Fallback);
+        parsed = mergeMeasurementCompletenessFallback(parsed, visionParsedFallback);
+        console.log("roof-report-ingest: Xactimate completeness merge result", {
+          ridges: parsed.ridges_ft,
+          hips: parsed.hips_ft,
+          valleys: parsed.valleys_ft,
+          eaves: parsed.eaves_ft,
+        });
+      } catch (visErr) {
+        console.error("roof-report-ingest: Xactimate completeness Vision fallback failed:", visErr);
+      }
+    }
+
     // Store raw + parsed
     const lead_id = body.lead_id ?? null;
 
@@ -1459,7 +1369,7 @@ Deno.serve(async (req) => {
 
     if (existingReport) {
       const existingParsed = (existingReport as any).parsed;
-      if (hasValidMeasurements(existingParsed)) {
+      if (hasValidMeasurements(existingParsed) && !needsInsuranceScopeVisionCompletenessFallback(existingParsed, existingParsed?.provider || provider)) {
         console.log("roof-report-ingest: Duplicate PDF detected, returning existing report:", existingReport.id);
         return new Response(
           JSON.stringify({ 
@@ -1533,8 +1443,9 @@ INSTRUCTIONS:
 2. Extract the diagram's geometry as structured data
 3. For each facet (roof plane), identify its approximate vertices as relative coordinates (0-1 range within the diagram)
 4. For each edge, identify its type (ridge, hip, valley, eave, rake) and the two vertices it connects
-5. Note any dimension labels (lengths in feet) shown on edges
-6. Note pitch markings on facets
+5. Note any dimension labels (lengths in feet) shown on edges. Convert feet/inches labels like 17' 6" to decimal feet.
+6. Sum the typed edges into line_totals_ft. This is required even when the scope summary says 0 hip/valley but the roof diagram clearly contains hip/valley lines.
+7. Note pitch markings on facets
 
 Return ONLY valid JSON (no markdown):
 {
@@ -1546,6 +1457,7 @@ Return ONLY valid JSON (no markdown):
   "edges": [
     {"from": "V1", "to": "V2", "type": "ridge|hip|valley|eave|rake", "length_ft": number or null, "label": "optional text"}
   ],
+  "line_totals_ft": {"ridge": number or null, "hip": number or null, "valley": number or null, "eave": number or null, "rake": number or null},
   "facets": [
     {"id": "F1", "vertices": ["V1","V2","V3"], "area_sqft": number or null, "pitch": "X/12" or null}
   ],
@@ -1568,8 +1480,8 @@ If no diagram is found, return: {"diagram_found": false}`;
               {
                 role: "user",
                 content: [
-                  { type: "text", text: "Find and extract the roof diagram geometry from this measurement report PDF:" },
-                  { type: "image_url", image_url: { url: `data:application/pdf;base64,${pdfBase64ForDiagram}` } }
+              { type: "text", text: "Find and extract the roof diagram geometry from this measurement report PDF:" },
+              buildPdfFileContentBlock(pdfBase64ForDiagram)
                 ]
               }
             ],
@@ -1614,12 +1526,22 @@ If no diagram is found, return: {"diagram_found": false}`;
                   console.warn("roof-report-ingest: Diagram storage upload failed:", diagramUploadErr.message);
                 }
                 
-                // Update the vendor report with diagram data
+                parsed = completeMeasurementsFromDiagramGeometry(parsed, diagramGeometry);
+                console.log("roof-report-ingest: Measurements after diagram completion", {
+                  ridges: parsed.ridges_ft,
+                  hips: parsed.hips_ft,
+                  valleys: parsed.valleys_ft,
+                  eaves: parsed.eaves_ft,
+                  rakes: parsed.rakes_ft,
+                });
+
+                // Update the vendor report with diagram data and completed measurements
                 const { error: updateErr } = await supabase
                   .from('roof_vendor_reports')
                   .update({
                     diagram_image_url: diagramImageUrl,
                     diagram_geometry: diagramGeometry,
+                    parsed,
                   })
                   .eq('id', reportRow.id);
                 
