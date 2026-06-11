@@ -14,6 +14,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import * as pdfjsLib from "npm:pdfjs-dist@4.3.136/legacy/build/pdf.mjs";
 import {
   buildPdfFileContentBlock,
+  completeMeasurementsFromDiagramGeometry,
   mergeMeasurementCompletenessFallback,
   needsInsuranceScopeVisionCompletenessFallback,
   parseXactimateInsuranceScopeText,
@@ -400,6 +401,7 @@ Return ONLY a valid JSON object (no markdown, no explanation) with these fields.
   "ridges_ft": number or null,
   "hips_ft": number or null,
   "valleys_ft": number or null,
+  "line_totals_ft": { "ridge": number or null, "hip": number or null, "valley": number or null, "eave": number or null, "rake": number or null },
   "rakes_ft": number or null,
   "eaves_ft": number or null,
   "step_flashing_ft": number or null,
@@ -1441,8 +1443,9 @@ INSTRUCTIONS:
 2. Extract the diagram's geometry as structured data
 3. For each facet (roof plane), identify its approximate vertices as relative coordinates (0-1 range within the diagram)
 4. For each edge, identify its type (ridge, hip, valley, eave, rake) and the two vertices it connects
-5. Note any dimension labels (lengths in feet) shown on edges
-6. Note pitch markings on facets
+5. Note any dimension labels (lengths in feet) shown on edges. Convert feet/inches labels like 17' 6" to decimal feet.
+6. Sum the typed edges into line_totals_ft. This is required even when the scope summary says 0 hip/valley but the roof diagram clearly contains hip/valley lines.
+7. Note pitch markings on facets
 
 Return ONLY valid JSON (no markdown):
 {
@@ -1454,6 +1457,7 @@ Return ONLY valid JSON (no markdown):
   "edges": [
     {"from": "V1", "to": "V2", "type": "ridge|hip|valley|eave|rake", "length_ft": number or null, "label": "optional text"}
   ],
+  "line_totals_ft": {"ridge": number or null, "hip": number or null, "valley": number or null, "eave": number or null, "rake": number or null},
   "facets": [
     {"id": "F1", "vertices": ["V1","V2","V3"], "area_sqft": number or null, "pitch": "X/12" or null}
   ],
@@ -1522,12 +1526,22 @@ If no diagram is found, return: {"diagram_found": false}`;
                   console.warn("roof-report-ingest: Diagram storage upload failed:", diagramUploadErr.message);
                 }
                 
-                // Update the vendor report with diagram data
+                parsed = completeMeasurementsFromDiagramGeometry(parsed, diagramGeometry);
+                console.log("roof-report-ingest: Measurements after diagram completion", {
+                  ridges: parsed.ridges_ft,
+                  hips: parsed.hips_ft,
+                  valleys: parsed.valleys_ft,
+                  eaves: parsed.eaves_ft,
+                  rakes: parsed.rakes_ft,
+                });
+
+                // Update the vendor report with diagram data and completed measurements
                 const { error: updateErr } = await supabase
                   .from('roof_vendor_reports')
                   .update({
                     diagram_image_url: diagramImageUrl,
                     diagram_geometry: diagramGeometry,
+                    parsed,
                   })
                   .eq('id', reportRow.id);
                 
