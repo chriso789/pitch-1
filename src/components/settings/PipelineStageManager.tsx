@@ -206,7 +206,7 @@ const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto p-4 sm:p-5">
         <DialogHeader>
           <DialogTitle>{stage ? 'Edit Pipeline Stage' : 'Add New Stage'}</DialogTitle>
         </DialogHeader>
