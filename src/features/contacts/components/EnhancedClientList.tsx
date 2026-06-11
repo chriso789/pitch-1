@@ -196,6 +196,37 @@ export const EnhancedClientList = () => {
     fetchData();
   }, [currentLocationId, effectiveTenantId]);
 
+  // Realtime sync: pick up canvass dispositions, new pipeline entries, and
+  // contact updates immediately so the board reflects field activity live.
+  useEffect(() => {
+    if (!effectiveTenantId) return;
+
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleRefresh = () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => fetchData(), 400);
+    };
+
+    const channel = supabase
+      .channel(`contacts-board-${effectiveTenantId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'pipeline_entries', filter: `tenant_id=eq.${effectiveTenantId}` },
+        scheduleRefresh
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'contacts', filter: `tenant_id=eq.${effectiveTenantId}` },
+        scheduleRefresh
+      )
+      .subscribe();
+
+    return () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      supabase.removeChannel(channel);
+    };
+  }, [effectiveTenantId]);
+
   useEffect(() => {
     setActiveView(preferredView);
   }, [preferredView]);
