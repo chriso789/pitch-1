@@ -1312,12 +1312,13 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   };
 
   // Handle template selection for ANY trade (roofing or non-roofing)
-  const handleTradeTemplateSelect = async (tradeSectionId: string, tradeType: string, templateId: string) => {
+  const handleTradeTemplateSelect = async (tradeSectionId: string, tradeType: string, templateId: string, isPrimaryRoofing: boolean = true) => {
     const tradeConfig = AVAILABLE_TRADES.find(t => t.value === tradeType);
     const tradeLabel = tradeConfig?.label || tradeType;
 
-    // For roofing trade, also maintain backward compat with selectedTemplateId
-    if (tradeType === 'roofing') {
+    // For the PRIMARY roofing trade, also maintain backward compat with selectedTemplateId.
+    // Secondary roofing sections (e.g. detached structures) keep their own templateId only.
+    if (tradeType === 'roofing' && isPrimaryRoofing) {
       handleTemplateSelect(templateId);
     }
 
@@ -2429,6 +2430,9 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           {tradeSections.map((trade, index) => {
             const tradeConfig = AVAILABLE_TRADES.find(t => t.value === trade.tradeType);
             const filteredTemplates = templates.filter(t => matchesTradeCategory(t.template_category, trade.tradeType));
+            const firstRoofingId = tradeSections.find(t => t.tradeType === 'roofing')?.id;
+            const isPrimaryRoofing = trade.tradeType === 'roofing' && trade.id === firstRoofingId;
+            
             
             return (
               <Collapsible 
@@ -2472,8 +2476,8 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
                               delete next[trade.id];
                               return next;
                             });
-                            // If this was the active roofing trade, clear selectedTemplateId
-                            if (trade.tradeType === 'roofing' && trade.templateId === selectedTemplateId) {
+                            // If this was the primary roofing trade, clear selectedTemplateId
+                            if (isPrimaryRoofing) {
                               setSelectedTemplateId('');
                             }
                           }}
@@ -2487,20 +2491,20 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
                     <div className="px-3 pb-3 space-y-3">
                       <TemplateCombobox
                         templates={filteredTemplates}
-                        value={trade.tradeType === 'roofing' ? selectedTemplateId : trade.templateId}
+                        value={isPrimaryRoofing ? selectedTemplateId : trade.templateId}
                         onValueChange={(templateId) => {
                           setTradeSections(prev => prev.map(t =>
                             t.id === trade.id ? { ...t, templateId } : t
                           ));
                           // Use unified handler for ALL trades
-                          handleTradeTemplateSelect(trade.id, trade.tradeType, templateId);
+                          handleTradeTemplateSelect(trade.id, trade.tradeType, templateId, isPrimaryRoofing);
                         }}
                         placeholder={`Select ${trade.label} Template...`}
-                        disabled={isEditingLoadedEstimate && trade.tradeType === 'roofing'}
+                        disabled={isEditingLoadedEstimate && isPrimaryRoofing}
                       />
 
                       {/* Hint for roofing when creating new */}
-                      {trade.tradeType === 'roofing' && !isEditingLoadedEstimate && !selectedTemplateId && isCreatingNewEstimate && (
+                      {isPrimaryRoofing && !isEditingLoadedEstimate && !selectedTemplateId && isCreatingNewEstimate && (
                         <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg">
                           <p className="text-sm text-primary">
                             Select a template above to create a new estimate option for this project.
@@ -2517,10 +2521,13 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           {/* Add Trade Button */}
           {(() => {
             const addedTradeTypes = tradeSections.map(t => t.tradeType);
-            const availableTrades = AVAILABLE_TRADES.filter(t => 
-              !addedTradeTypes.includes(t.value) && enabledTrades.includes(t.value)
+            // Roofing can be added multiple times (e.g. detached garage, second structure).
+            // All other trades remain single-instance.
+            const availableTrades = AVAILABLE_TRADES.filter(t =>
+              enabledTrades.includes(t.value) &&
+              (t.value === 'roofing' || !addedTradeTypes.includes(t.value))
             );
-            
+
             if (availableTrades.length === 0) return null;
             
             return (
