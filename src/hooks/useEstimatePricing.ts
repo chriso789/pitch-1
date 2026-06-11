@@ -45,7 +45,7 @@ export interface PricingBreakdown {
   laborTotal: number;
   salesTaxAmount: number;        // Sales tax on materials COST — treated as direct cost line
   directCost: number;            // materials + labor + sales tax
-  overheadAmount: number;        // Overhead applied on direct cost (incl. tax) → scales with tax
+  overheadAmount: number;        // Overhead applied as a percentage of selling price
   totalCost: number;             // directCost + overhead
   profitAmount: number;
   netProfit: number;
@@ -192,7 +192,9 @@ export function useEstimatePricing(
       profitAmount = coreSelling - coreDirectCost - overheadAmount;
       actualProfitMargin = sellingPrice > 0 ? (profitAmount / sellingPrice) * 100 : 0;
     } else {
-      // Standard mode: solve for selling price so OH% and profit% are on selling.
+      // Standard mode: solve for selling price so OH% and profit% are both
+      // percentages of the sale price, never percentages of direct cost.
+      //   directCost = sellingPrice - (sellingPrice × OH%) - (sellingPrice × profit%)
       //   coreSelling = coreDirectCost / (1 - OH% - profit%)
       const profitDecimal = config.profitMarginPercent / 100;
       const denom = Math.max(0.01, 1 - overheadDecimal - profitDecimal);
