@@ -552,32 +552,33 @@ export function MaterialImportAuditDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5" />
-            Import Materials from CSV
+            Import Materials Price List
           </DialogTitle>
         </DialogHeader>
 
         {step === 'upload' && (
           <div className="space-y-4 py-4">
             <p className="text-sm text-muted-foreground">
-              Upload a CSV file with materials. The system will compare against existing items 
-              and show you any pricing differences before importing.
+              Upload a CSV, PDF, or image of your supplier price list. PDFs and images are parsed with AI.
+              The system will compare against existing items and show pricing differences before importing.
             </p>
             
             <div className="border-2 border-dashed rounded-lg p-8 text-center hover:border-primary/50 transition-colors">
               <Input
                 ref={fileInputRef}
                 type="file"
-                accept=".csv"
+                accept=".csv,.pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/*"
                 onChange={handleFileUpload}
                 className="hidden"
                 id="csv-file-input"
               />
               <label htmlFor="csv-file-input" className="cursor-pointer">
                 <Upload className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                <p className="font-medium">Click to upload CSV file</p>
+                <p className="font-medium">Click to upload CSV, PDF, or image</p>
                 <p className="text-xs text-muted-foreground mt-1">or drag and drop</p>
               </label>
             </div>
+
 
             <div className="bg-muted/50 rounded-lg p-4 text-sm">
               <p className="font-medium mb-2">Supported column names:</p>
