@@ -220,22 +220,29 @@ export async function generateInvoicePdfBlob(data: InvoicePdfData): Promise<Blob
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter', compress: true });
     const pageWidth = 612;
     const pageHeight = 792;
-    // PNG keeps text crisp; jsPDF still compresses it.
-    const imgData = canvas.toDataURL('image/png');
-    // Fit entire invoice onto a single Letter page.
-    const ratio = canvas.width / canvas.height;
-    let renderWidth = pageWidth;
-    let renderHeight = renderWidth / ratio;
-    if (renderHeight > pageHeight) {
-      renderHeight = pageHeight;
-      renderWidth = renderHeight * ratio;
+    // Render at full Letter width; slice into additional pages instead of shrinking.
+    const imgWidth = pageWidth;
+    const pxPerPt = canvas.width / imgWidth;
+    const pageHeightPx = Math.floor(pageHeight * pxPerPt);
+    let renderedPx = 0;
+    let pageIndex = 0;
+
+    while (renderedPx < canvas.height) {
+      const sliceHeightPx = Math.min(pageHeightPx, canvas.height - renderedPx);
+      const sliceCanvas = document.createElement('canvas');
+      sliceCanvas.width = canvas.width;
+      sliceCanvas.height = sliceHeightPx;
+      const ctx = sliceCanvas.getContext('2d')!;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+      ctx.drawImage(canvas, 0, renderedPx, canvas.width, sliceHeightPx, 0, 0, canvas.width, sliceHeightPx);
+
+      if (pageIndex > 0) pdf.addPage();
+      pdf.addImage(sliceCanvas.toDataURL('image/png'), 'PNG', 0, 0, imgWidth, sliceHeightPx / pxPerPt, undefined, 'SLOW');
+
+      renderedPx += sliceHeightPx;
+      pageIndex += 1;
     }
-    const offsetX = (pageWidth - renderWidth) / 2;
-    const offsetY = (pageHeight - renderHeight) / 2;
-    pdf.addImage(imgData, 'PNG', offsetX, offsetY, renderWidth, renderHeight, undefined, 'FAST');
-
-
-
 
     return pdf.output('blob');
   } finally {
