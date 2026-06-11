@@ -473,7 +473,12 @@ export function SectionedLineItemsTable({
                   size="icon"
                   variant="ghost"
                   className="h-6 w-6 text-destructive"
-                  onClick={() => onDeleteItem(item.id)}
+                  onClick={() => {
+                    if (document.activeElement instanceof HTMLElement) {
+                      document.activeElement.blur();
+                    }
+                    onDeleteItem(item.id);
+                  }}
                   title="Remove item"
                 >
                   <Trash2 className="h-3 w-3" />
