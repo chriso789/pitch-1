@@ -1312,12 +1312,13 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   };
 
   // Handle template selection for ANY trade (roofing or non-roofing)
-  const handleTradeTemplateSelect = async (tradeSectionId: string, tradeType: string, templateId: string) => {
+  const handleTradeTemplateSelect = async (tradeSectionId: string, tradeType: string, templateId: string, isPrimaryRoofing: boolean = true) => {
     const tradeConfig = AVAILABLE_TRADES.find(t => t.value === tradeType);
     const tradeLabel = tradeConfig?.label || tradeType;
 
-    // For roofing trade, also maintain backward compat with selectedTemplateId
-    if (tradeType === 'roofing') {
+    // For the PRIMARY roofing trade, also maintain backward compat with selectedTemplateId.
+    // Secondary roofing sections (e.g. detached structures) keep their own templateId only.
+    if (tradeType === 'roofing' && isPrimaryRoofing) {
       handleTemplateSelect(templateId);
     }
 
