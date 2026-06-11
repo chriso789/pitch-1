@@ -367,6 +367,42 @@ const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave
   );
 };
 
+interface SortableStageRowProps {
+  id: string;
+  children: (
+    handle: {
+      setActivatorNodeRef: (el: HTMLElement | null) => void;
+      listeners: ReturnType<typeof useSortable>['listeners'];
+      attributes: ReturnType<typeof useSortable>['attributes'];
+    },
+    isDragging: boolean
+  ) => React.ReactNode;
+}
+
+const SortableStageRow: React.FC<SortableStageRowProps> = ({ id, children }) => {
+  const {
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+    listeners,
+    attributes,
+  } = useSortable({ id });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      {children({ setActivatorNodeRef, listeners, attributes }, isDragging)}
+    </div>
+  );
+};
+
 export const PipelineStageManager: React.FC = () => {
   const [stages, setStages] = useState<PipelineStage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -374,6 +410,13 @@ export const PipelineStageManager: React.FC = () => {
   const { toast } = useToast();
   const { profile } = useUserProfile();
   const effectiveTenantId = useEffectiveTenantId();
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+
 
   const fetchStages = async () => {
     if (!effectiveTenantId) return;
