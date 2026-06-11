@@ -369,14 +369,21 @@ export const TotalsTab: React.FC<TotalsTabProps> = ({ pipelineEntryId }) => {
                       <p className="text-xs text-muted-foreground truncate">{d.filename}</p>
                     </div>
                   </div>
-                  <Button size="sm" variant="outline" onClick={() => setShareDoc(d)}>
-                    <Share2 className="h-3.5 w-3.5 mr-1.5" />
-                    Share
-                  </Button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button size="sm" variant="outline" onClick={() => handlePreview(d)}>
+                      <Eye className="h-3.5 w-3.5 mr-1.5" />
+                      Preview
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setShareDoc(d)}>
+                      <Share2 className="h-3.5 w-3.5 mr-1.5" />
+                      Share
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
           )}
+
 
           <DialogFooter>
             {closeoutDocs.length === 0 ? (
