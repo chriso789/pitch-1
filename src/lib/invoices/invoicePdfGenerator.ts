@@ -82,7 +82,7 @@ function buildInvoiceHtml(data: InvoicePdfData): string {
 
 
   return `
-  <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1f2937;background:#ffffff;width:100%;box-sizing:border-box">
+  <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1f2937;background:#ffffff;width:100%;min-height:1056px;box-sizing:border-box;display:flex;flex-direction:column">
     <!-- HEADER -->
     <div style="background:#0a2540;color:#ffffff;padding:24px 32px;display:flex;justify-content:space-between;align-items:center">
       <div style="display:flex;flex-direction:column;gap:6px">
@@ -182,7 +182,7 @@ function buildInvoiceHtml(data: InvoicePdfData): string {
     </div>
 
     <!-- FOOTER -->
-    <div style="margin-top:32px;border-top:2px solid #0a2540;padding:14px 32px;display:flex;justify-content:space-between;font-size:10px;color:#6b7280">
+    <div style="margin-top:auto;border-top:2px solid #0a2540;padding:14px 32px;display:flex;justify-content:space-between;font-size:10px;color:#6b7280">
       <div>${escape(company.name || '')}${company.phone ? ' • ' + escape(company.phone) : ''}${company.email ? ' • ' + escape(company.email) : ''}</div>
       <div>Invoice ${escape(data.invoiceNumber)}</div>
     </div>
@@ -190,9 +190,10 @@ function buildInvoiceHtml(data: InvoicePdfData): string {
 }
 
 export async function generateInvoicePdfBlob(data: InvoicePdfData): Promise<Blob> {
+  const RENDER_WIDTH = 816; // 8.5in * 96dpi — maps cleanly to Letter width
   const container = document.createElement('div');
   container.innerHTML = buildInvoiceHtml(data);
-  container.style.cssText = `position:absolute;left:-9999px;top:0;width:780px;background:#fff;`;
+  container.style.cssText = `position:absolute;left:-9999px;top:0;width:${RENDER_WIDTH}px;min-height:1056px;background:#fff;`;
   document.body.appendChild(container);
 
   try {
@@ -213,28 +214,35 @@ export async function generateInvoicePdfBlob(data: InvoicePdfData): Promise<Blob
       useCORS: true,
       backgroundColor: '#ffffff',
       logging: false,
-      windowWidth: 780,
+      windowWidth: RENDER_WIDTH,
     });
 
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter', compress: true });
     const pageWidth = 612;
     const pageHeight = 792;
-    // PNG keeps text crisp; jsPDF still compresses it.
-    const imgData = canvas.toDataURL('image/png');
-    // Fit entire invoice onto a single Letter page.
-    const ratio = canvas.width / canvas.height;
-    let renderWidth = pageWidth;
-    let renderHeight = renderWidth / ratio;
-    if (renderHeight > pageHeight) {
-      renderHeight = pageHeight;
-      renderWidth = renderHeight * ratio;
+    // Render at full Letter width; slice into additional pages instead of shrinking.
+    const imgWidth = pageWidth;
+    const pxPerPt = canvas.width / imgWidth;
+    const pageHeightPx = Math.floor(pageHeight * pxPerPt);
+    let renderedPx = 0;
+    let pageIndex = 0;
+
+    while (renderedPx < canvas.height) {
+      const sliceHeightPx = Math.min(pageHeightPx, canvas.height - renderedPx);
+      const sliceCanvas = document.createElement('canvas');
+      sliceCanvas.width = canvas.width;
+      sliceCanvas.height = sliceHeightPx;
+      const ctx = sliceCanvas.getContext('2d')!;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+      ctx.drawImage(canvas, 0, renderedPx, canvas.width, sliceHeightPx, 0, 0, canvas.width, sliceHeightPx);
+
+      if (pageIndex > 0) pdf.addPage();
+      pdf.addImage(sliceCanvas.toDataURL('image/png'), 'PNG', 0, 0, imgWidth, sliceHeightPx / pxPerPt, undefined, 'SLOW');
+
+      renderedPx += sliceHeightPx;
+      pageIndex += 1;
     }
-    const offsetX = (pageWidth - renderWidth) / 2;
-    const offsetY = (pageHeight - renderHeight) / 2;
-    pdf.addImage(imgData, 'PNG', offsetX, offsetY, renderWidth, renderHeight, undefined, 'FAST');
-
-
-
 
     return pdf.output('blob');
   } finally {
