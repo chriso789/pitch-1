@@ -77,11 +77,16 @@ function detectProvider(text: string): Provider {
     'xactware',
     'citizens claims',
     'claim number',
+    'claim #',
     'policy number',
+    'policy #',
     'covered damages',
     'price list:',
     'rcv',
     'acv',
+    'depreciation',
+    'replacement cost value',
+    'actual cash value',
     'quantity',
     'unit tax',
     'sketch1',
@@ -92,18 +97,24 @@ function detectProvider(text: string): Provider {
     'total ridge length',
     'total hip length',
     'total valley length',
-    'job_',                    // Job identifiers like "job_123456"
-    'slide insurance',         // Common Xactimate user
-    'independent adjuster',    // Insurance adjuster reports
+    'job_',
+    'slide insurance',
+    'independent adjuster',
+    'insured:',
+    'adjuster:',
+    'estimator:',
+    'date of loss',
     'xact estimate',
     'xact analysis',
-    'f1\n',                    // Facet labels F1, F2, etc
+    'f1\n',
     'f2\n',
     'f3\n',
-    'hip / ridge cap',         // Line item format
+    'hip / ridge cap',
     'hip & ridge cap',
     'drip edge',
     'starter',
+    'remove 3 tab',
+    'r&r',                     // "Remove & Replace" line items
   ];
   
   // Count matching patterns
@@ -1393,6 +1404,36 @@ Deno.serve(async (req) => {
             console.log("roof-report-ingest: Using AI extraction result");
           }
         }
+      }
+    }
+
+    // FINAL FALLBACK: text-based parsers + AI-text extraction both failed.
+    // Send the whole PDF to Gemini Vision (same path image-based PDFs take).
+    // This catches insurance-scope / Xactimate-style supplements whose
+    // measurement tables don't trip our keyword detectors but are clearly
+    // visible in the rendered pages.
+    if (!hasValidMeasurements(parsed)) {
+      console.log("roof-report-ingest: Text parsers + AI text fallback yielded no measurements — attempting full-PDF Vision fallback...");
+      try {
+        const pdfBase64Fallback = bytesToBase64(pdfBytes);
+        const visionParsedFallback = await extractWithVision(pdfBase64Fallback);
+        if (visionParsedFallback && hasValidMeasurements(visionParsedFallback)) {
+          parsed = {
+            ...visionParsedFallback,
+            provider: visionParsedFallback.provider || parsed?.provider || provider,
+          };
+          console.log("roof-report-ingest: Full-PDF Vision fallback succeeded", {
+            total_area: parsed.total_area_sqft,
+            ridges: parsed.ridges_ft,
+            hips: parsed.hips_ft,
+            valleys: parsed.valleys_ft,
+            eaves: parsed.eaves_ft,
+          });
+        } else {
+          console.log("roof-report-ingest: Full-PDF Vision fallback also returned no valid measurements");
+        }
+      } catch (visErr) {
+        console.error("roof-report-ingest: Full-PDF Vision fallback failed:", visErr);
       }
     }
 
