@@ -224,12 +224,12 @@ export async function generateInvoicePdfBlob(
     const pageWidth = 612;
     const pageHeight = 792;
     if (options.singlePage) {
-      // Fill full Letter page width (no side margins) and vertically compress
-      // any overflow so the document stays on ONE page.
-      const widthScale = pageWidth / canvas.width;
-      const naturalHeight = canvas.height * widthScale;
-      const renderHeight = Math.min(naturalHeight, pageHeight);
-      pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, pageWidth, renderHeight, undefined, 'SLOW');
+      // Fit to page preserving aspect ratio (no stretching). Center horizontally.
+      const scale = Math.min(pageWidth / canvas.width, pageHeight / canvas.height);
+      const renderWidth = canvas.width * scale;
+      const renderHeight = canvas.height * scale;
+      const offsetX = (pageWidth - renderWidth) / 2;
+      pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', offsetX, 0, renderWidth, renderHeight, undefined, 'SLOW');
     } else {
       // Render at full Letter width; slice into additional pages instead of shrinking.
       const imgWidth = pageWidth;
