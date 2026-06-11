@@ -240,7 +240,7 @@ export async function generateCloseoutDocuments(input: CloseoutInput): Promise<C
     alreadyPaid: input.totalPaid || input.contractTotal,
     contractTotal: input.contractTotal,
     paymentHistory: input.paymentHistory,
-  });
+  }, { singlePage: true });
 
   const invoiceFilename = `Paid-In-Full-${invoiceNumber}.pdf`;
   const invoicePath = `${input.tenantId}/${input.pipelineEntryId}/closeout/${invoiceFilename}`;
