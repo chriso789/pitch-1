@@ -2426,10 +2426,6 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Trade Sections */}
-          {(() => {
-            const firstRoofingId = tradeSections.find(t => t.tradeType === 'roofing')?.id;
-            return null;
-          })()}
           {tradeSections.map((trade, index) => {
             const tradeConfig = AVAILABLE_TRADES.find(t => t.value === trade.tradeType);
             const filteredTemplates = templates.filter(t => matchesTradeCategory(t.template_category, trade.tradeType));
