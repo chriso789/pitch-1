@@ -190,9 +190,10 @@ function buildInvoiceHtml(data: InvoicePdfData): string {
 }
 
 export async function generateInvoicePdfBlob(data: InvoicePdfData): Promise<Blob> {
+  const RENDER_WIDTH = 816; // 8.5in * 96dpi — maps cleanly to Letter width
   const container = document.createElement('div');
   container.innerHTML = buildInvoiceHtml(data);
-  container.style.cssText = `position:absolute;left:-9999px;top:0;width:780px;background:#fff;`;
+  container.style.cssText = `position:absolute;left:-9999px;top:0;width:${RENDER_WIDTH}px;min-height:1056px;background:#fff;`;
   document.body.appendChild(container);
 
   try {
@@ -213,7 +214,7 @@ export async function generateInvoicePdfBlob(data: InvoicePdfData): Promise<Blob
       useCORS: true,
       backgroundColor: '#ffffff',
       logging: false,
-      windowWidth: 780,
+      windowWidth: RENDER_WIDTH,
     });
 
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter', compress: true });
