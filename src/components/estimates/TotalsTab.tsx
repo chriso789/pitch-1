@@ -61,18 +61,22 @@ export const TotalsTab: React.FC<TotalsTabProps> = ({ pipelineEntryId }) => {
     enabled: !!pipelineEntryId,
   });
 
+  // Mirror PaymentsTab query (no tenant_id filter) so the summary cards stay
+  // in sync with the payments list shown below. Filtering by activeTenantId here
+  // can hide payments recorded under a different effective tenant context,
+  // leaving Balance Due stuck at the full contract value even though payments
+  // exist on the project.
   const { data: payments } = useQuery({
-    queryKey: ['totals-payments', pipelineEntryId, activeTenantId],
+    queryKey: ['project-ar-payments', pipelineEntryId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('project_payments')
         .select('amount')
-        .eq('pipeline_entry_id', pipelineEntryId)
-        .eq('tenant_id', activeTenantId!);
+        .eq('pipeline_entry_id', pipelineEntryId);
       if (error) throw error;
       return data || [];
     },
-    enabled: !!pipelineEntryId && !!activeTenantId,
+    enabled: !!pipelineEntryId,
   });
 
   // Pull approved/invoiced change orders so their value rolls into Contract
