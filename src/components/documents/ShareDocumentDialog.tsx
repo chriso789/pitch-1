@@ -367,7 +367,7 @@ export function ShareDocumentDialog({
               <div className="space-y-2">
                 <Label htmlFor="rp">Recipient Phone</Label>
                 <Input id="rp" type="tel" value={recipientPhone} onChange={e => setRecipientPhone(e.target.value)} placeholder="(555) 123-4567" />
-                <p className="text-xs text-muted-foreground">A secure link to the document will be included in the text.</p>
+                <p className="text-xs text-muted-foreground">The PDF is sent as an attachment, with a secure backup link in case their carrier strips media.</p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="sms-msg">Message <span className="text-muted-foreground font-normal">(optional)</span></Label>
