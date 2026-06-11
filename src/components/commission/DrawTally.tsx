@@ -19,6 +19,7 @@ import { Plus, Trash2, Wallet } from 'lucide-react';
 import { formatCurrency } from '@/lib/commission-calculator';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 
 interface DrawTallyProps {
   tenantId: string;
@@ -30,12 +31,16 @@ interface DrawTallyProps {
 }
 
 export function DrawTally({
-  tenantId,
+  tenantId: tenantIdProp,
   totalEarnedCommissions,
   selectedRepId,
   isManager,
   pipelineEntryId,
 }: DrawTallyProps) {
+  // Always prefer the effective (impersonated) tenant so master users
+  // switched into another company see only that company's reps/jobs/draws.
+  const effectiveTenantId = useEffectiveTenantId();
+  const tenantId = effectiveTenantId || tenantIdProp;
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState('');
   const [drawDate, setDrawDate] = useState(format(new Date(), 'yyyy-MM-dd'));
