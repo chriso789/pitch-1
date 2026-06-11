@@ -223,12 +223,24 @@ export const useStormCanvass = () => {
 
       let pipelineCreated = false;
 
-      // Create pipeline entry if positive disposition
-      if (disposition.is_positive) {
+      // Always sync to contacts pipeline — create entry for any disposition
+      // so reps in the field immediately see the contact on the board with
+      // the status they selected in Storm Canvass.
+      if (profile?.tenant_id) {
+        const dispName = (disposition.name || '').toLowerCase();
+        let pipelineStatus = 'lead';
+        if (disposition.is_positive) pipelineStatus = 'lead';
+        else if (dispName.includes('callback')) pipelineStatus = 'callback';
+        else if (dispName.includes('not home') || dispName.includes('no answer')) pipelineStatus = 'not_home';
+        else if (dispName.includes('not interested')) pipelineStatus = 'not_interested';
+        else if (dispName.includes('appointment')) pipelineStatus = 'appointment_set';
+        else pipelineStatus = dispName.replace(/\s+/g, '_') || 'lead';
+
         const { data: existingPipeline } = await supabase
           .from('pipeline_entries')
           .select('id')
           .eq('contact_id', contactId)
+          .eq('tenant_id', profile.tenant_id)
           .maybeSingle();
 
         if (!existingPipeline) {
@@ -236,16 +248,28 @@ export const useStormCanvass = () => {
             .from('pipeline_entries')
             .insert({
               contact_id: contactId,
-              status: 'lead',
-              lead_quality_score: 80,
+              tenant_id: profile.tenant_id,
+              status: pipelineStatus,
+              lead_quality_score: disposition.is_positive ? 80 : 40,
               assigned_to: user.id,
               metadata: { source: 'canvassing', disposition: disposition.name },
-              created_by: user.id
+              created_by: user.id,
             });
 
           if (!pipelineError) {
             pipelineCreated = true;
+          } else {
+            console.error('Pipeline insert failed:', pipelineError);
           }
+        } else if (!isProtected) {
+          await supabase
+            .from('pipeline_entries')
+            .update({
+              status: pipelineStatus,
+              metadata: { source: 'canvassing', disposition: disposition.name },
+            })
+            .eq('id', existingPipeline.id)
+            .eq('tenant_id', profile.tenant_id);
         }
       }
 
