@@ -1396,6 +1396,36 @@ Deno.serve(async (req) => {
       }
     }
 
+    // FINAL FALLBACK: text-based parsers + AI-text extraction both failed.
+    // Send the whole PDF to Gemini Vision (same path image-based PDFs take).
+    // This catches insurance-scope / Xactimate-style supplements whose
+    // measurement tables don't trip our keyword detectors but are clearly
+    // visible in the rendered pages.
+    if (!hasValidMeasurements(parsed)) {
+      console.log("roof-report-ingest: Text parsers + AI text fallback yielded no measurements — attempting full-PDF Vision fallback...");
+      try {
+        const pdfBase64Fallback = bytesToBase64(pdfBytes);
+        const visionParsedFallback = await extractWithVision(pdfBase64Fallback);
+        if (visionParsedFallback && hasValidMeasurements(visionParsedFallback)) {
+          parsed = {
+            ...visionParsedFallback,
+            provider: visionParsedFallback.provider || parsed?.provider || provider,
+          };
+          console.log("roof-report-ingest: Full-PDF Vision fallback succeeded", {
+            total_area: parsed.total_area_sqft,
+            ridges: parsed.ridges_ft,
+            hips: parsed.hips_ft,
+            valleys: parsed.valleys_ft,
+            eaves: parsed.eaves_ft,
+          });
+        } else {
+          console.log("roof-report-ingest: Full-PDF Vision fallback also returned no valid measurements");
+        }
+      } catch (visErr) {
+        console.error("roof-report-ingest: Full-PDF Vision fallback failed:", visErr);
+      }
+    }
+
     // Store raw + parsed
     const lead_id = body.lead_id ?? null;
 
