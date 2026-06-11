@@ -403,9 +403,10 @@ export const EnhancedClientList = () => {
       console.log("Fetching contacts...");
       console.log("Current location filter:", currentLocationId);
       
-      // Use active_tenant_id from profile (set by company switcher), fallback to tenant_id
-      const effectiveTenantId = profile.active_tenant_id || profile.tenant_id;
-      console.log("Effective tenant ID:", effectiveTenantId);
+      // Prefer activeCompanyId from the company switcher (always fresh after switch).
+      // Falls back to profile.active_tenant_id / profile.tenant_id.
+      const effectiveTenantId = activeCompanyId || profile.active_tenant_id || profile.tenant_id;
+      console.log("Effective tenant ID:", effectiveTenantId, "(activeCompanyId:", activeCompanyId, ")");
       
       // Paginated fetch to bypass Supabase 1000 row server limit
       const BATCH_SIZE = 1000;
