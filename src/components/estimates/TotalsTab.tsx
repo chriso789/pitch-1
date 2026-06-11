@@ -9,8 +9,9 @@ import {
 } from '@/components/ui/dialog';
 import {
   Loader2, DollarSign, Package, Hammer, Receipt, TrendingUp, FilePlus2,
-  ShieldCheck, FileCheck2, Share2, CheckCircle2, FileText,
+  ShieldCheck, FileCheck2, Share2, CheckCircle2, FileText, Eye,
 } from 'lucide-react';
+
 import { PaymentsTab } from './PaymentsTab';
 import { useCompanyInfo } from '@/hooks/useCompanyInfo';
 import { generateCloseoutDocuments } from '@/lib/closeout/closeoutPdfGenerator';
@@ -53,7 +54,9 @@ interface CloseoutDoc {
   documentId: string;
   filename: string;
   label: string;
+  filePath?: string;
 }
+
 
 export const TotalsTab: React.FC<TotalsTabProps> = ({ pipelineEntryId }) => {
   const { activeTenantId } = useActiveTenantId();
@@ -194,6 +197,7 @@ export const TotalsTab: React.FC<TotalsTabProps> = ({ pipelineEntryId }) => {
           documentId: result.invoiceDocumentId,
           filename: result.invoiceFilename,
           label: 'Paid-In-Full Invoice',
+          filePath: result.invoicePath,
         });
       }
       if (result.certificateDocumentId) {
@@ -201,9 +205,11 @@ export const TotalsTab: React.FC<TotalsTabProps> = ({ pipelineEntryId }) => {
           documentId: result.certificateDocumentId,
           filename: result.certificateFilename,
           label: 'Completion Certificate & Warranty',
+          filePath: result.certificatePath,
         });
       }
       setCloseoutDocs(docs);
+
       queryClient.invalidateQueries({ queryKey: ['documents', pipelineEntryId] });
       queryClient.invalidateQueries({ queryKey: ['project-ar-invoices', pipelineEntryId] });
       toast.success('Closeout documents created and saved to Documents');
@@ -214,6 +220,21 @@ export const TotalsTab: React.FC<TotalsTabProps> = ({ pipelineEntryId }) => {
       setGenerating(false);
     }
   };
+
+  const handlePreview = async (d: CloseoutDoc) => {
+    try {
+      if (!d.filePath) throw new Error('File path missing');
+      const { data, error } = await supabase.storage
+        .from('documents')
+        .createSignedUrl(d.filePath, 3600);
+      if (error || !data?.signedUrl) throw new Error(error?.message || 'Could not generate preview link');
+      window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to open preview');
+    }
+  };
+
+
 
   if (barLoading) {
     return (
@@ -363,14 +384,21 @@ export const TotalsTab: React.FC<TotalsTabProps> = ({ pipelineEntryId }) => {
                       <p className="text-xs text-muted-foreground truncate">{d.filename}</p>
                     </div>
                   </div>
-                  <Button size="sm" variant="outline" onClick={() => setShareDoc(d)}>
-                    <Share2 className="h-3.5 w-3.5 mr-1.5" />
-                    Share
-                  </Button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button size="sm" variant="outline" onClick={() => handlePreview(d)}>
+                      <Eye className="h-3.5 w-3.5 mr-1.5" />
+                      Preview
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setShareDoc(d)}>
+                      <Share2 className="h-3.5 w-3.5 mr-1.5" />
+                      Share
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
           )}
+
 
           <DialogFooter>
             {closeoutDocs.length === 0 ? (

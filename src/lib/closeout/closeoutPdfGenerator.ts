@@ -206,8 +206,11 @@ export interface CloseoutResult {
   certificateDocumentId: string | null;
   invoiceFilename: string;
   certificateFilename: string;
+  invoicePath?: string;
+  certificatePath?: string;
   error?: string;
 }
+
 
 export async function generateCloseoutDocuments(input: CloseoutInput): Promise<CloseoutResult> {
   const today = new Date();
@@ -333,5 +336,8 @@ export async function generateCloseoutDocuments(input: CloseoutInput): Promise<C
     certificateDocumentId,
     invoiceFilename,
     certificateFilename,
+    invoicePath,
+    certificatePath: certPath,
   };
 }
+
