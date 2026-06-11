@@ -189,7 +189,10 @@ function buildInvoiceHtml(data: InvoicePdfData): string {
   </div>`;
 }
 
-export async function generateInvoicePdfBlob(data: InvoicePdfData): Promise<Blob> {
+export async function generateInvoicePdfBlob(
+  data: InvoicePdfData,
+  options: { singlePage?: boolean } = {},
+): Promise<Blob> {
   const RENDER_WIDTH = 816; // 8.5in * 96dpi — maps cleanly to Letter width
   const container = document.createElement('div');
   container.innerHTML = buildInvoiceHtml(data);
