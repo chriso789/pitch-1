@@ -136,7 +136,7 @@ Generated: 2026-05-22T14:13:02.699Z
 
 ## Frontend call sites still pointing to old function names
 
-- `abc-api-proxy` — src/components/orders/PushToQXOButton.tsx, src/components/orders/PushToSupplierDialog.tsx, src/components/settings/ABCConnectionSettings.tsx
+- `abc-api-proxy` — src/components/orders/PushToSupplierDialog.tsx, src/components/settings/ABCConnectionSettings.tsx
 - `admin-cleanup-sms-templates` — src/components/communications/TextBlastCreator.tsx
 - `admin-create-user` — src/components/settings/EnhancedCompanyOnboarding.tsx, src/components/settings/UserManagement.tsx, src/pages/onboarding/OnboardingWalkthrough.tsx
 - `admin-delete-user` — src/components/settings/UserManagement.tsx
