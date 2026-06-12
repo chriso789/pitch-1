@@ -328,10 +328,20 @@ export const UserManagement = () => {
         throw new Error(error.message || "Failed to create user");
       }
 
-      toast({
-        title: "User Created Successfully",
-        description: `${newUser.first_name} ${newUser.last_name} has been added. An onboarding email with password setup link has been sent.`,
-      });
+      const emailSent = (data as any)?.emailSent;
+      const emailError = (data as any)?.emailError;
+      if (emailSent === false) {
+        toast({
+          title: "User Created — Email NOT Sent",
+          description: `${newUser.first_name} ${newUser.last_name} was added, but the onboarding email failed${emailError ? `: ${emailError}` : ''}. Use "Resend Invite" on the user row to retry.`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "User Created Successfully",
+          description: `${newUser.first_name} ${newUser.last_name} has been added. An onboarding email with password setup link has been sent.`,
+        });
+      }
 
       setIsAddUserOpen(false);
       setNewUser({
