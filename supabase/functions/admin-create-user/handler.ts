@@ -428,7 +428,13 @@ const handler = async (req: Request): Promise<Response> => {
           role,
           pay_type: payType || 'commission'
         },
-        message: 'User created successfully. An onboarding email has been sent with password setup instructions.'
+        emailSent,
+        emailError,
+        message: emailSent
+          ? 'User created successfully. An onboarding email has been sent with password setup instructions.'
+          : skipInvitationEmail
+            ? 'User created successfully. Invitation email skipped by caller.'
+            : `User created, but the onboarding email failed to send${emailError ? `: ${emailError}` : ''}. Use "Resend Invite" to retry.`
       }),
       {
         status: 200,
