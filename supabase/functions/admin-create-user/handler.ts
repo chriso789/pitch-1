@@ -354,13 +354,18 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log('Company data for email:', companyData?.name, 'Owner:', ownerData?.first_name);
 
-    // Send role-specific onboarding email with company branding
-    // SKIP for owners - they get the comprehensive company onboarding email instead
-    if (skipInvitationEmail || role === 'owner') {
-      console.log(`Skipping user invitation email for ${role} - will receive company onboarding email`);
+    // Send role-specific onboarding email with company branding.
+    // Only skip when the caller explicitly opts out (e.g. the new-company
+    // onboarding flow that sends its own comprehensive owner email).
+    // The previous implicit `role === 'owner'` skip caused owners added to
+    // an EXISTING company (via User Management) to silently receive no email.
+    let emailSent = false;
+    let emailError: string | null = null;
+    if (skipInvitationEmail) {
+      console.log(`Skipping invitation email - caller requested skip (role: ${role})`);
     } else {
       try {
-        await supabase.functions.invoke('send-user-invitation', {
+        const { data: invData, error: invErr } = await supabase.functions.invoke('send-user-invitation', {
           body: {
             email,
             firstName,
@@ -388,9 +393,13 @@ const handler = async (req: Request): Promise<Response> => {
             ownerEmail: ownerData?.email || companyData?.owner_email || null
           }
         });
-        console.log('Onboarding email sent with company branding');
-      } catch (emailError) {
-        console.warn('Failed to send onboarding email:', emailError);
+        if (invErr) throw invErr;
+        if (invData && (invData as any).error) throw new Error((invData as any).error);
+        emailSent = true;
+        console.log('Onboarding email sent with company branding', invData);
+      } catch (err) {
+        emailError = err instanceof Error ? err.message : String(err);
+        console.error('Failed to send onboarding email:', emailError);
       }
     }
 
