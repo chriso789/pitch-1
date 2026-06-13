@@ -4,6 +4,7 @@ import { Loader2 } from 'lucide-react';
 import { useGoogleMapsToken } from '@/hooks/useGoogleMapsToken';
 import { loadGoogleMaps } from '@/lib/googleMapsLoader';
 import GooglePropertyMarkersLayer from './GooglePropertyMarkersLayer';
+import GoogleContactProjectMarkersLayer from './GoogleContactProjectMarkersLayer';
 import GoogleRouteVisualization from './GoogleRouteVisualization';
 import { MapStyle } from './MapStyleToggle';
 
@@ -292,6 +293,10 @@ export default function GoogleLiveLocationMap({
             areaPropertyIds={areaPropertyIds}
             refreshKey={refreshKey}
             symbolSettings={symbolSettings}
+          />
+          <GoogleContactProjectMarkersLayer
+            map={map.current}
+            onContactClick={onContactSelect}
           />
           {routeData?.polyline && destination && (
             <GoogleRouteVisualization
