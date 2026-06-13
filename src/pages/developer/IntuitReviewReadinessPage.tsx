@@ -101,6 +101,13 @@ export default function IntuitReviewReadinessPage() {
   const [connections, setConnections] = useState<QboConnectionRow[]>([]);
   const [legalDocs, setLegalDocs] = useState<any[]>([]);
   const [consents, setConsents] = useState<any[]>([]);
+  const [securityReviews, setSecurityReviews] = useState<any[]>([]);
+  const [supportContacts, setSupportContacts] = useState<any[]>([]);
+  const [savingReview, setSavingReview] = useState(false);
+  const [savingAnswers, setSavingAnswers] = useState(false);
+  const [savingSupport, setSavingSupport] = useState(false);
+  const [supportForm, setSupportForm] = useState({ subject: "", message: "" });
+  const [reviewNotes, setReviewNotes] = useState("");
 
   // Filters for API logs
   const [logFilters, setLogFilters] = useState<{ env: string; tid: string; successOnly: string }>({
@@ -122,7 +129,7 @@ export default function IntuitReviewReadinessPage() {
   const loadAll = async () => {
     setLoading(true);
     try {
-      const [l, t, c, d, ic] = await Promise.all([
+      const [l, t, c, d, ic, sr, sc] = await Promise.all([
         supabase
           .from("qbo_api_logs" as any)
           .select("id,tenant_id,realm_id,oauth_app_env,action,endpoint,method,http_status,intuit_tid,success,error_message,duration_ms,created_at")
@@ -149,12 +156,24 @@ export default function IntuitReviewReadinessPage() {
           .eq("integration", "qbo" as any)
           .order("accepted_at", { ascending: false })
           .limit(50),
+        supabase
+          .from("intuit_security_reviews" as any)
+          .select("id,reviewed_by,status,review_scope,notes,created_at")
+          .order("created_at", { ascending: false })
+          .limit(20),
+        supabase
+          .from("app_support_contacts" as any)
+          .select("id,tenant_id,user_id,subject,message,category,status,created_at,qbo_context")
+          .order("created_at", { ascending: false })
+          .limit(50),
       ]);
       if (l.data) setLogs(l.data as any);
       if (t.data) setTests(t.data as any);
       if (c.data) setConnections(c.data as any);
       if (d.data) setLegalDocs(d.data as any);
       if (ic.data) setConsents(ic.data as any);
+      if (sr.data) setSecurityReviews(sr.data as any);
+      if (sc.data) setSupportContacts(sc.data as any);
     } catch (e: any) {
       toast({ title: "Failed to load readiness data", description: e?.message ?? String(e), variant: "destructive" });
     } finally {
@@ -339,10 +358,10 @@ export default function IntuitReviewReadinessPage() {
       {
         section: "Security",
         question: "Security team regularly assesses vulnerabilities?",
-        recommendedAnswer: "Yes only if internal review cadence is documented; otherwise No.",
-        status: "unknown",
-        evidence: "Lovable + Supabase security linters run on each migration; security-rls-linter + tenant-isolation-auditor skills enforce per-PR. Document a written cadence before answering Yes.",
-        action: "Confirm/owner documents a quarterly review process before answering Yes.",
+        recommendedAnswer: "Yes only if a recent internal security review is recorded; otherwise No.",
+        status: securityReviews.some((r) => r.status === "completed" && new Date(r.created_at).getTime() > Date.now() - 1000 * 60 * 60 * 24 * 180) ? "pass" : "warn",
+        evidence: `intuit_security_reviews rows (last 180d): ${securityReviews.filter((r) => r.status === "completed" && new Date(r.created_at).getTime() > Date.now() - 1000 * 60 * 60 * 24 * 180).length}. Lovable + Supabase security linters also run on every migration.`,
+        action: securityReviews.length === 0 ? "Record an internal security review on the Security Checklist tab before answering Yes." : undefined,
       },
       {
         section: "Security",
@@ -401,7 +420,7 @@ export default function IntuitReviewReadinessPage() {
         evidence: "Settings → QuickBooks → 'Get support with this QuickBooks connection' card.",
       },
     ];
-  }, [logs, tests, consents, currentLegalDocs, hasIntuitTidEvidence, sandboxConnect, sandboxDisconnect, sandboxReconnect, validationErrorTest, webhookSigTest, totalLogs]);
+  }, [logs, tests, consents, currentLegalDocs, hasIntuitTidEvidence, sandboxConnect, sandboxDisconnect, sandboxReconnect, validationErrorTest, webhookSigTest, totalLogs, securityReviews]);
 
   const generatedAnswers = useMemo(() => {
     const lines: string[] = [];
@@ -459,6 +478,86 @@ export default function IntuitReviewReadinessPage() {
       toast({ title: "Failed to record test", description: e?.message ?? String(e), variant: "destructive" });
     } finally {
       setSavingTest(false);
+    }
+  };
+
+  const recordSecurityReview = async () => {
+    setSavingReview(true);
+    try {
+      const { error } = await supabase
+        .from("intuit_security_reviews" as any)
+        .insert({
+          reviewed_by: profile?.id,
+          status: "completed",
+          review_scope: "intuit_security_review",
+          notes: reviewNotes || null,
+          checklist: { recorded_via: "readiness_page" },
+        });
+      if (error) throw error;
+      toast({ title: "Security review recorded" });
+      setReviewNotes("");
+      await loadAll();
+    } catch (e: any) {
+      toast({ title: "Failed to record review", description: e?.message ?? String(e), variant: "destructive" });
+    } finally {
+      setSavingReview(false);
+    }
+  };
+
+  const persistAnswers = async () => {
+    setSavingAnswers(true);
+    try {
+      const payload = rows.map((r, i) => ({
+        question_key: `${r.section}::${r.question}`.toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 180) + "_" + i,
+        question_text: r.question,
+        recommended_answer: r.recommendedAnswer,
+        actual_answer: r.status === "pass" ? r.recommendedAnswer : null,
+        implementation_status: r.status,
+        evidence: { text: r.evidence, section: r.section },
+        action_needed: r.action ?? null,
+      }));
+      const { error } = await supabase
+        .from("intuit_review_answers" as any)
+        .upsert(payload, { onConflict: "question_key" });
+      if (error) throw error;
+      toast({ title: "Generated answers persisted", description: `${payload.length} rows saved.` });
+    } catch (e: any) {
+      toast({ title: "Failed to persist answers", description: e?.message ?? String(e), variant: "destructive" });
+    } finally {
+      setSavingAnswers(false);
+    }
+  };
+
+  const submitSupportTest = async () => {
+    if (!profile) return;
+    setSavingSupport(true);
+    try {
+      const tenant_id = (profile as any).tenant_id ?? (profile as any).active_tenant_id ?? null;
+      const activeConn = connections.find((c) => c.is_active);
+      const lastTid = logs.find((l) => !!l.intuit_tid)?.intuit_tid ?? null;
+      const { error } = await supabase
+        .from("app_support_contacts" as any)
+        .insert({
+          tenant_id,
+          user_id: profile.id,
+          category: "support",
+          subject: supportForm.subject || "Support test",
+          message: supportForm.message || null,
+          qbo_context: {
+            realm_id: activeConn?.realm_id ?? null,
+            qbo_company_name: activeConn?.qbo_company_name ?? null,
+            oauth_app_env: activeConn?.oauth_app_env ?? null,
+            last_intuit_tid: lastTid,
+          },
+        });
+      if (error) throw error;
+      toast({ title: "Support contact recorded" });
+      setSupportForm({ subject: "", message: "" });
+      await loadAll();
+    } catch (e: any) {
+      toast({ title: "Failed to record support contact", description: e?.message ?? String(e), variant: "destructive" });
+    } finally {
+      setSavingSupport(false);
     }
   };
 
@@ -772,6 +871,32 @@ export default function IntuitReviewReadinessPage() {
               </Table>
             </CardContent>
           </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Record internal security review</CardTitle>
+              <CardDescription>
+                Persists an <code>intuit_security_reviews</code> row. Required evidence for the
+                "Security team regularly assesses vulnerabilities" answer.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Textarea
+                placeholder="What was reviewed? Findings, mitigations, next steps."
+                value={reviewNotes}
+                onChange={(e) => setReviewNotes(e.target.value)}
+              />
+              <Button onClick={recordSecurityReview} disabled={savingReview}>
+                {savingReview ? "Saving…" : "Record Security Review"}
+              </Button>
+              <div className="text-xs text-muted-foreground">
+                Recent reviews: {securityReviews.length}
+                {securityReviews[0] && (
+                  <> · last {formatDistanceToNow(new Date(securityReviews[0].created_at), { addSuffix: true })}</>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* ---- Legal tab ---- */}
@@ -819,21 +944,53 @@ export default function IntuitReviewReadinessPage() {
         </TabsContent>
 
         {/* ---- Support tab ---- */}
-        <TabsContent value="support">
+        <TabsContent value="support" className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle>Support contact &amp; data-use statement</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
-              <div>
-                <strong>In-app support:</strong> Settings → QuickBooks → Support card (mailto with tenant_id, realm_id, qbo_company_name and last intuit_tid).
-              </div>
-              <div>
-                <strong>Data use:</strong> PITCH CRM accesses QuickBooks Online Accounting data only after the user authorizes the integration. Data is used to sync customers, items, invoices and payment status. Data is scoped to the customer's tenant via RLS; never sold; never shown to other tenants. Users may disconnect at any time from Settings → QuickBooks.
-              </div>
-              <div>
-                <strong>Active QBO connections in DB:</strong> {connections.length} ({connections.filter((c) => c.is_active).length} active).
-              </div>
+              <div><strong>In-app support:</strong> Settings → QuickBooks → Support card (mailto with tenant_id, realm_id, qbo_company_name and last intuit_tid).</div>
+              <div><strong>Data use:</strong> PITCH CRM accesses QuickBooks Online Accounting data only after the user authorizes the integration. Data is used to sync customers, items, invoices and payment status. Data is scoped to the customer's tenant via RLS; never sold; never shown to other tenants. Users may disconnect at any time from Settings → QuickBooks.</div>
+              <div><strong>Active QBO connections in DB:</strong> {connections.length} ({connections.filter((c) => c.is_active).length} active).</div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Submit a support test record</CardTitle>
+              <CardDescription>Writes to <code>app_support_contacts</code> with active QBO connection metadata. Never includes tokens.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Input placeholder="Subject" value={supportForm.subject} onChange={(e) => setSupportForm((f) => ({ ...f, subject: e.target.value }))} />
+              <Textarea placeholder="Message / what to test" value={supportForm.message} onChange={(e) => setSupportForm((f) => ({ ...f, message: e.target.value }))} />
+              <Button onClick={submitSupportTest} disabled={savingSupport}>{savingSupport ? "Sending…" : "Submit Support Test"}</Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Recent support contacts ({supportContacts.length})</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow><TableHead>When</TableHead><TableHead>Subject</TableHead><TableHead>Status</TableHead><TableHead>Tenant</TableHead></TableRow>
+                </TableHeader>
+                <TableBody>
+                  {supportContacts.map((c) => (
+                    <TableRow key={c.id}>
+                      <TableCell className="text-xs">{formatDistanceToNow(new Date(c.created_at), { addSuffix: true })}</TableCell>
+                      <TableCell className="text-xs">{c.subject ?? "—"}</TableCell>
+                      <TableCell className="text-xs">{c.status}</TableCell>
+                      <TableCell className="text-xs font-mono">{c.tenant_id?.slice(0, 8) ?? "—"}…</TableCell>
+                    </TableRow>
+                  ))}
+                  {supportContacts.length === 0 && (
+                    <TableRow><TableCell colSpan={4} className="text-center text-sm text-muted-foreground">No support contacts yet.</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
         </TabsContent>
@@ -842,21 +999,17 @@ export default function IntuitReviewReadinessPage() {
         <TabsContent value="generate">
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
                 <div>
                   <CardTitle>Generated Intuit review answers</CardTitle>
                   <CardDescription>Copy directly into the Intuit reviewer form. Items not Pass are marked DO NOT ANSWER YES YET.</CardDescription>
                 </div>
-                <Button
-                  variant="outline"
-                  className="gap-2"
-                  onClick={() => {
-                    navigator.clipboard.writeText(generatedAnswers);
-                    toast({ title: "Copied to clipboard" });
-                  }}
-                >
-                  <ClipboardCopy className="h-4 w-4" /> Copy
-                </Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" className="gap-2" onClick={() => { navigator.clipboard.writeText(generatedAnswers); toast({ title: "Copied to clipboard" }); }}>
+                    <ClipboardCopy className="h-4 w-4" /> Copy
+                  </Button>
+                  <Button onClick={persistAnswers} disabled={savingAnswers}>{savingAnswers ? "Saving…" : "Persist Answers"}</Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>

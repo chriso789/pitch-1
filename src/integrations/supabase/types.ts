@@ -4226,6 +4226,42 @@ export type Database = {
           },
         ]
       }
+      app_support_contacts: {
+        Row: {
+          category: string
+          created_at: string
+          id: string
+          message: string | null
+          qbo_context: Json
+          status: string
+          subject: string | null
+          tenant_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          category?: string
+          created_at?: string
+          id?: string
+          message?: string | null
+          qbo_context?: Json
+          status?: string
+          subject?: string | null
+          tenant_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          id?: string
+          message?: string | null
+          qbo_context?: Json
+          status?: string
+          subject?: string | null
+          tenant_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       appointment_history: {
         Row: {
           appointment_id: string
@@ -23083,6 +23119,75 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      intuit_review_answers: {
+        Row: {
+          action_needed: string | null
+          actual_answer: string | null
+          evidence: Json
+          id: string
+          implementation_status: string
+          question_key: string
+          question_text: string
+          recommended_answer: string
+          updated_at: string
+        }
+        Insert: {
+          action_needed?: string | null
+          actual_answer?: string | null
+          evidence?: Json
+          id?: string
+          implementation_status?: string
+          question_key: string
+          question_text: string
+          recommended_answer: string
+          updated_at?: string
+        }
+        Update: {
+          action_needed?: string | null
+          actual_answer?: string | null
+          evidence?: Json
+          id?: string
+          implementation_status?: string
+          question_key?: string
+          question_text?: string
+          recommended_answer?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      intuit_security_reviews: {
+        Row: {
+          checklist: Json
+          created_at: string
+          findings: Json
+          id: string
+          notes: string | null
+          review_scope: string
+          reviewed_by: string | null
+          status: string
+        }
+        Insert: {
+          checklist?: Json
+          created_at?: string
+          findings?: Json
+          id?: string
+          notes?: string | null
+          review_scope?: string
+          reviewed_by?: string | null
+          status?: string
+        }
+        Update: {
+          checklist?: Json
+          created_at?: string
+          findings?: Json
+          id?: string
+          notes?: string | null
+          review_scope?: string
+          reviewed_by?: string | null
+          status?: string
+        }
+        Relationships: []
       }
       inventory_items: {
         Row: {
