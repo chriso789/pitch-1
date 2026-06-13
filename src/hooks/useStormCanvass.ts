@@ -252,7 +252,8 @@ export const useStormCanvass = () => {
           activity_data: {
             disposition_id: dispositionId,
             disposition_name: disposition.name,
-            is_positive: disposition.is_positive,
+            disposition_key: disposition.key,
+            is_positive: isPositive,
             qualification_status: isProtected ? currentStatus : qualificationStatus,
             status_protected: isProtected,
             notes: notes || null,
@@ -266,14 +267,9 @@ export const useStormCanvass = () => {
       // so reps in the field immediately see the contact on the board with
       // the status they selected in Storm Canvass.
       if (profile?.tenant_id) {
-        const dispName = (disposition.name || '').toLowerCase();
-        let pipelineStatus = 'lead';
-        if (disposition.is_positive) pipelineStatus = 'lead';
-        else if (dispName.includes('callback')) pipelineStatus = 'callback';
-        else if (dispName.includes('not home') || dispName.includes('no answer')) pipelineStatus = 'not_home';
-        else if (dispName.includes('not interested')) pipelineStatus = 'not_interested';
-        else if (dispName.includes('appointment')) pipelineStatus = 'appointment_set';
-        else pipelineStatus = dispName.replace(/\s+/g, '_') || 'lead';
+        // Use the unified status key as the pipeline status so the kanban
+        // and contacts list show the SAME label the rep picked on the map.
+        const pipelineStatus = disposition.key || 'lead';
 
         const { data: existingPipeline } = await supabase
           .from('pipeline_entries')
@@ -289,9 +285,9 @@ export const useStormCanvass = () => {
               contact_id: contactId,
               tenant_id: profile.tenant_id,
               status: pipelineStatus,
-              lead_quality_score: disposition.is_positive ? 80 : 40,
+              lead_quality_score: isPositive ? 80 : 40,
               assigned_to: user.id,
-              metadata: { source: 'canvassing', disposition: disposition.name },
+              metadata: { source: 'canvassing', disposition: disposition.name, disposition_key: disposition.key },
               created_by: user.id,
             });
 
