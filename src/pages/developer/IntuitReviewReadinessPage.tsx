@@ -101,6 +101,13 @@ export default function IntuitReviewReadinessPage() {
   const [connections, setConnections] = useState<QboConnectionRow[]>([]);
   const [legalDocs, setLegalDocs] = useState<any[]>([]);
   const [consents, setConsents] = useState<any[]>([]);
+  const [securityReviews, setSecurityReviews] = useState<any[]>([]);
+  const [supportContacts, setSupportContacts] = useState<any[]>([]);
+  const [savingReview, setSavingReview] = useState(false);
+  const [savingAnswers, setSavingAnswers] = useState(false);
+  const [savingSupport, setSavingSupport] = useState(false);
+  const [supportForm, setSupportForm] = useState({ subject: "", message: "" });
+  const [reviewNotes, setReviewNotes] = useState("");
 
   // Filters for API logs
   const [logFilters, setLogFilters] = useState<{ env: string; tid: string; successOnly: string }>({
