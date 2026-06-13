@@ -60,3 +60,35 @@ _(add entries when introducing a non-routed function)_
 - `docusign-webhook` — DocuSign Connect URL.
 - `abc-oauth-callback`, OAuth callbacks — provider redirect URLs.
 - Cron-pinned workers listed in `supabase/config.toml`.
+- `qxo-sync-orchestrator` — internal worker. Runs all-tenant cron syncs AND per-tenant syncs initiated by `qxo-api POST /sync/tenant`. Both paths require the `x-internal-worker-secret` header matching `INTERNAL_WORKER_SECRET`. No JWT path. User-facing single-tenant sync goes through `qxo-api /sync/tenant`, which resolves the tenant from the JWT and then forwards to this worker with the internal secret.
+
+## QXO routed surface
+
+All QXO/Beacon actions are exposed via `qxo-api`. Frontend calls use:
+
+```ts
+edgeApi("qxo-api", "/orders/submit", { idempotency_key, ...payload });
+```
+
+Routes (all require auth + tenant + per-action scope; write routes require an idempotency key):
+
+| Route                       | Required scope        | Idempotent |
+| --------------------------- | --------------------- | ---------- |
+| `POST /orders/list`         | `order_status`        | —          |
+| `POST /orders/detail`       | `order_status`        | —          |
+| `POST /orders/pdf`          | `order_status`        | —          |
+| `POST /orders/submit`       | `order_submit`        | yes        |
+| `POST /orders/submit-quote` | `order_submit`        | yes        |
+| `POST /invoices/list`       | `invoice_read`        | —          |
+| `POST /invoices/pdf`        | `invoice_read`        | —          |
+| `POST /quotes/list`         | `pricing`             | —          |
+| `POST /quotes/detail`       | `pricing`             | —          |
+| `POST /quotes/revise`       | `order_submit`        | yes        |
+| `POST /quotes/reject`       | `order_submit`        | —          |
+| `POST /quotes/submit`       | `order_submit`        | yes        |
+| `POST /pricing/lookup`      | `pricing`             | —          |
+| `POST /sync/tenant`         | `order_status`        | —          |
+
+Legacy functions are now temporary shims that forward to `qxo-api` and never load supplier credentials directly:
+
+- `qxo-orders`, `qxo-invoices-v4`, `qxo-quotes`, `qxo-submit-order`, `qxo-submit-quote-order`, `qxo-push-order`, `qxo-pricing` → delete after 14 days of quiet logs.
