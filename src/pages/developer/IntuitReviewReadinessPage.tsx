@@ -951,21 +951,53 @@ export default function IntuitReviewReadinessPage() {
         </TabsContent>
 
         {/* ---- Support tab ---- */}
-        <TabsContent value="support">
+        <TabsContent value="support" className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle>Support contact &amp; data-use statement</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
-              <div>
-                <strong>In-app support:</strong> Settings → QuickBooks → Support card (mailto with tenant_id, realm_id, qbo_company_name and last intuit_tid).
-              </div>
-              <div>
-                <strong>Data use:</strong> PITCH CRM accesses QuickBooks Online Accounting data only after the user authorizes the integration. Data is used to sync customers, items, invoices and payment status. Data is scoped to the customer's tenant via RLS; never sold; never shown to other tenants. Users may disconnect at any time from Settings → QuickBooks.
-              </div>
-              <div>
-                <strong>Active QBO connections in DB:</strong> {connections.length} ({connections.filter((c) => c.is_active).length} active).
-              </div>
+              <div><strong>In-app support:</strong> Settings → QuickBooks → Support card (mailto with tenant_id, realm_id, qbo_company_name and last intuit_tid).</div>
+              <div><strong>Data use:</strong> PITCH CRM accesses QuickBooks Online Accounting data only after the user authorizes the integration. Data is used to sync customers, items, invoices and payment status. Data is scoped to the customer's tenant via RLS; never sold; never shown to other tenants. Users may disconnect at any time from Settings → QuickBooks.</div>
+              <div><strong>Active QBO connections in DB:</strong> {connections.length} ({connections.filter((c) => c.is_active).length} active).</div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Submit a support test record</CardTitle>
+              <CardDescription>Writes to <code>app_support_contacts</code> with active QBO connection metadata. Never includes tokens.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Input placeholder="Subject" value={supportForm.subject} onChange={(e) => setSupportForm((f) => ({ ...f, subject: e.target.value }))} />
+              <Textarea placeholder="Message / what to test" value={supportForm.message} onChange={(e) => setSupportForm((f) => ({ ...f, message: e.target.value }))} />
+              <Button onClick={submitSupportTest} disabled={savingSupport}>{savingSupport ? "Sending…" : "Submit Support Test"}</Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Recent support contacts ({supportContacts.length})</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow><TableHead>When</TableHead><TableHead>Subject</TableHead><TableHead>Status</TableHead><TableHead>Tenant</TableHead></TableRow>
+                </TableHeader>
+                <TableBody>
+                  {supportContacts.map((c) => (
+                    <TableRow key={c.id}>
+                      <TableCell className="text-xs">{formatDistanceToNow(new Date(c.created_at), { addSuffix: true })}</TableCell>
+                      <TableCell className="text-xs">{c.subject ?? "—"}</TableCell>
+                      <TableCell className="text-xs">{c.status}</TableCell>
+                      <TableCell className="text-xs font-mono">{c.tenant_id?.slice(0, 8) ?? "—"}…</TableCell>
+                    </TableRow>
+                  ))}
+                  {supportContacts.length === 0 && (
+                    <TableRow><TableCell colSpan={4} className="text-center text-sm text-muted-foreground">No support contacts yet.</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
         </TabsContent>
@@ -974,21 +1006,17 @@ export default function IntuitReviewReadinessPage() {
         <TabsContent value="generate">
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
                 <div>
                   <CardTitle>Generated Intuit review answers</CardTitle>
                   <CardDescription>Copy directly into the Intuit reviewer form. Items not Pass are marked DO NOT ANSWER YES YET.</CardDescription>
                 </div>
-                <Button
-                  variant="outline"
-                  className="gap-2"
-                  onClick={() => {
-                    navigator.clipboard.writeText(generatedAnswers);
-                    toast({ title: "Copied to clipboard" });
-                  }}
-                >
-                  <ClipboardCopy className="h-4 w-4" /> Copy
-                </Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" className="gap-2" onClick={() => { navigator.clipboard.writeText(generatedAnswers); toast({ title: "Copied to clipboard" }); }}>
+                    <ClipboardCopy className="h-4 w-4" /> Copy
+                  </Button>
+                  <Button onClick={persistAnswers} disabled={savingAnswers}>{savingAnswers ? "Saving…" : "Persist Answers"}</Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
