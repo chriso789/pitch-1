@@ -40116,9 +40116,13 @@ export type Database = {
         Row: {
           account_id: string | null
           account_number: string | null
+          authorization_method: string | null
+          authorization_status: string | null
+          authorized_by_user_id: string | null
           branch_contact_email: string | null
           branch_contact_name: string | null
           branch_contact_phone: string | null
+          connected_at: string | null
           connection_status: string
           created_at: string
           default_branch_code: string | null
@@ -40129,7 +40133,10 @@ export type Database = {
           last_error: string | null
           last_sync_at: string | null
           last_validated_at: string | null
+          last_verified_at: string | null
           profile_id: string | null
+          revoked_at: string | null
+          scopes: string[] | null
           site_id: string | null
           template_id: string | null
           template_name: string | null
@@ -40140,9 +40147,13 @@ export type Database = {
         Insert: {
           account_id?: string | null
           account_number?: string | null
+          authorization_method?: string | null
+          authorization_status?: string | null
+          authorized_by_user_id?: string | null
           branch_contact_email?: string | null
           branch_contact_name?: string | null
           branch_contact_phone?: string | null
+          connected_at?: string | null
           connection_status?: string
           created_at?: string
           default_branch_code?: string | null
@@ -40153,7 +40164,10 @@ export type Database = {
           last_error?: string | null
           last_sync_at?: string | null
           last_validated_at?: string | null
+          last_verified_at?: string | null
           profile_id?: string | null
+          revoked_at?: string | null
+          scopes?: string[] | null
           site_id?: string | null
           template_id?: string | null
           template_name?: string | null
@@ -40164,9 +40178,13 @@ export type Database = {
         Update: {
           account_id?: string | null
           account_number?: string | null
+          authorization_method?: string | null
+          authorization_status?: string | null
+          authorized_by_user_id?: string | null
           branch_contact_email?: string | null
           branch_contact_name?: string | null
           branch_contact_phone?: string | null
+          connected_at?: string | null
           connection_status?: string
           created_at?: string
           default_branch_code?: string | null
@@ -40177,7 +40195,10 @@ export type Database = {
           last_error?: string | null
           last_sync_at?: string | null
           last_validated_at?: string | null
+          last_verified_at?: string | null
           profile_id?: string | null
+          revoked_at?: string | null
+          scopes?: string[] | null
           site_id?: string | null
           template_id?: string | null
           template_name?: string | null
@@ -51706,6 +51727,48 @@ export type Database = {
         }
         Relationships: []
       }
+      supplier_audit_log: {
+        Row: {
+          action: string
+          created_at: string
+          id: string
+          idempotency_key: string | null
+          metadata: Json
+          request_id: string | null
+          result: string
+          supplier: string
+          supplier_account_id: string | null
+          tenant_id: string
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          id?: string
+          idempotency_key?: string | null
+          metadata?: Json
+          request_id?: string | null
+          result: string
+          supplier: string
+          supplier_account_id?: string | null
+          tenant_id: string
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          id?: string
+          idempotency_key?: string | null
+          metadata?: Json
+          request_id?: string | null
+          result?: string
+          supplier?: string
+          supplier_account_id?: string | null
+          tenant_id?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       supplier_catalog_items: {
         Row: {
           active: boolean | null
@@ -51789,6 +51852,45 @@ export type Database = {
           last_sync_at?: string | null
           region?: string | null
           supplier_name?: string
+        }
+        Relationships: []
+      }
+      supplier_idempotency_keys: {
+        Row: {
+          action: string
+          created_at: string
+          id: string
+          idempotency_key: string
+          request_hash: string | null
+          response_json: Json | null
+          status: string
+          supplier: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          id?: string
+          idempotency_key: string
+          request_hash?: string | null
+          response_json?: Json | null
+          status?: string
+          supplier: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          id?: string
+          idempotency_key?: string
+          request_hash?: string | null
+          response_json?: Json | null
+          status?: string
+          supplier?: string
+          tenant_id?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -52260,6 +52362,42 @@ export type Database = {
           status?: string
           supplier?: string
           tenant_id?: string
+        }
+        Relationships: []
+      }
+      supplier_rate_limits: {
+        Row: {
+          action: string
+          count: number
+          created_at: string
+          id: string
+          supplier: string
+          tenant_id: string
+          updated_at: string
+          user_id: string | null
+          window_start: string
+        }
+        Insert: {
+          action: string
+          count?: number
+          created_at?: string
+          id?: string
+          supplier: string
+          tenant_id: string
+          updated_at?: string
+          user_id?: string | null
+          window_start: string
+        }
+        Update: {
+          action?: string
+          count?: number
+          created_at?: string
+          id?: string
+          supplier?: string
+          tenant_id?: string
+          updated_at?: string
+          user_id?: string | null
+          window_start?: string
         }
         Relationships: []
       }
