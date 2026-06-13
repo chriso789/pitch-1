@@ -229,6 +229,10 @@ export function PushToSupplierDialog({
   // user edits like picked SRS productIds.
   useEffect(() => {
     if (!open) return;
+    // Reset QXO idempotency key for each fresh dialog open. A new key is
+    // generated lazily on first submit; double-clicks within the same open
+    // session dedupe at the qxo-api layer.
+    qxoIdempotencyKeyRef.current = null;
     // Hydrate color_specs from free-text notes/description when the estimate
     // line stored the color there (e.g. "Charcoal" written in the Notes
     // popover). This keeps the Push-to-Supplier color dropdown in sync with
