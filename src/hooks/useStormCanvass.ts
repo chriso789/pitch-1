@@ -41,6 +41,8 @@ export interface CanvassActivity {
 export interface Disposition {
   id: string;
   name: string;
+  /** Stable key matching contacts.qualification_status (e.g. "interested", "storm_damage"). */
+  key?: string;
   is_positive: boolean;
   color?: string;
 }
@@ -119,14 +121,42 @@ export const useStormCanvass = () => {
 
   const getDispositions = async (): Promise<Disposition[]> => {
     try {
+      // Unified source of truth: canvass dispositions == contact statuses for the tenant.
+      // This guarantees the option a rep picks on a pin is the exact same status that
+      // appears on the contact's record in the CRM contacts list.
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return [];
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('active_tenant_id, tenant_id')
+        .eq('id', user.id)
+        .single();
+
+      const tenantId = profile?.active_tenant_id || profile?.tenant_id;
+      if (!tenantId) return [];
+
       const { data, error } = await supabase
-        .from('dialer_dispositions')
-        .select('*')
+        .from('contact_statuses')
+        .select('id, name, key, color, is_active, status_order')
+        .eq('tenant_id', tenantId)
         .eq('is_active', true)
-        .order('name');
+        .order('status_order', { ascending: true });
 
       if (error) throw error;
-      return data || [];
+
+      const positiveKeys = new Set([
+        'interested', 'qualified', 'appointment_set', 'storm_damage',
+        'new_roof', 'past_customer', 'follow_up', 'callback',
+      ]);
+
+      return (data || []).map((s: any) => ({
+        id: s.id,
+        name: s.name,
+        key: s.key,
+        color: s.color,
+        is_positive: positiveKeys.has((s.key || '').toLowerCase()),
+      }));
     } catch (error: any) {
       toast({
         title: 'Error loading dispositions',
@@ -154,16 +184,23 @@ export const useStormCanvass = () => {
         .eq('id', user.id)
         .single();
 
-      // Get disposition details
+      // Get disposition details from the unified contact_statuses table
       const { data: disposition, error: dispError } = await supabase
-        .from('dialer_dispositions')
-        .select('name, is_positive')
+        .from('contact_statuses')
+        .select('name, key')
         .eq('id', dispositionId)
         .single();
 
       if (dispError || !disposition) {
         throw new Error('Disposition not found');
       }
+
+      const positiveKeys = new Set([
+        'interested', 'qualified', 'appointment_set', 'storm_damage',
+        'new_roof', 'past_customer', 'follow_up', 'callback',
+      ]);
+      const dispKey = (disposition.key || '').toLowerCase();
+      const isPositive = positiveKeys.has(dispKey);
 
       // Check current contact status before overwriting
       const { data: currentContact } = await supabase
@@ -176,7 +213,9 @@ export const useStormCanvass = () => {
       const currentStatus = currentContact?.qualification_status?.toLowerCase();
       const isProtected = currentStatus && protectedStatuses.includes(currentStatus);
 
-      const qualificationStatus = disposition.is_positive ? 'qualified' : 'not_interested';
+      // Use the EXACT status key from contact_statuses so the contacts list
+      // shows the same label the rep picked on the canvass map.
+      const qualificationStatus = disposition.key || 'lead';
 
       // Only update qualification_status if not in a protected lifecycle stage
       if (!isProtected) {
