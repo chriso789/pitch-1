@@ -358,10 +358,10 @@ export default function IntuitReviewReadinessPage() {
       {
         section: "Security",
         question: "Security team regularly assesses vulnerabilities?",
-        recommendedAnswer: "Yes only if internal review cadence is documented; otherwise No.",
-        status: "unknown",
-        evidence: "Lovable + Supabase security linters run on each migration; security-rls-linter + tenant-isolation-auditor skills enforce per-PR. Document a written cadence before answering Yes.",
-        action: "Confirm/owner documents a quarterly review process before answering Yes.",
+        recommendedAnswer: "Yes only if a recent internal security review is recorded; otherwise No.",
+        status: securityReviews.some((r) => r.status === "completed" && new Date(r.created_at).getTime() > Date.now() - 1000 * 60 * 60 * 24 * 180) ? "pass" : "warn",
+        evidence: `intuit_security_reviews rows (last 180d): ${securityReviews.filter((r) => r.status === "completed" && new Date(r.created_at).getTime() > Date.now() - 1000 * 60 * 60 * 24 * 180).length}. Lovable + Supabase security linters also run on every migration.`,
+        action: securityReviews.length === 0 ? "Record an internal security review on the Security Checklist tab before answering Yes." : undefined,
       },
       {
         section: "Security",
