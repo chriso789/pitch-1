@@ -1,63 +1,149 @@
-## Third-Party Aggregator Hardening — Phased Plan
+# QXO Runtime Tenant Isolation + Routed API Migration
 
-Pitch is a multi-tenant supplier aggregator (ABC / QXO / SRS). The biggest live risk is cross-tenant supplier access via QXO endpoints. We will land the work in five phases, in the order you specified (1 → 3 → 4 → 5), with QXO tenant gating shipped first.
+This is a stop-ship security PR. Goal: every QXO action runs behind `qxo-api` with JWT-resolved tenant, verified supplier connection, scope check, audit log, rate limit, and (for writes) idempotency. Body-supplied `tenant_id` is ignored everywhere in QXO.
 
-### Phase 1 — Save source-of-truth docs (small, do first)
-Create two markdown files committing the strategy:
-- `docs/integrations/production-readiness-audit.md` — the full audit you provided, verbatim, as the canonical reference.
-- `docs/integrations/third-party-aggregator-readiness.md` — explicit statement that Pitch is an aggregator (tenant → authorized user → connected supplier account → supplier API → audit → response stored under same tenant) plus the stop-ship risk list.
+## Order of work
 
-No code changes in this phase.
+### Step 1 — Recon (parallel reads, ~1 batch)
+Read current shape before touching anything:
+- `supabase/functions/_shared/router.ts` (confirm `serveRouter`, `requireAuth`, `requireTenant`, `jsonOk/jsonErr` signatures)
+- `supabase/functions/_shared/shim.ts`
+- `supabase/functions/_shared/qxo-auth.ts` (`getBeaconAuth` signature)
+- `supabase/functions/qxo-api/index.ts`
+- `supabase/functions/qxo-orders/index.ts`, `qxo-invoices-v4`, `qxo-quotes`, `qxo-submit-order`, `qxo-submit-quote-order`, `qxo-push-order`, `qxo-pricing`, `qxo-sync-orchestrator`, `qxo-save-credentials`
+- `src/components/orders/PushToSupplierDialog.tsx`
+- `src/lib/edgeApi.ts` (already in context — already supports the `edgeApi(fn, route, body)` pattern)
 
-### Phase 2 — QXO tenant verification (highest-priority code fix)
-Add hard tenant gating to QXO edge functions:
-- `supabase/functions/qxo-orders`
-- `supabase/functions/qxo-invoices-v4`
-- `supabase/functions/qxo-quotes`
-- `supabase/functions/qxo-sync-orchestrator`
-- `supabase/functions/qxo-submit-order` (verify + patch if needed)
+Confirm `user_company_access` column name (`tenant_id` vs `company_id`) and existence of any `has_role`/master helper.
 
-For each: resolve user from JWT (`getClaims`), resolve active tenant server-side via `user_company_access`, verify the QXO connection / credential / account row's `tenant_id` matches, reject mismatches with 403 + safe message, never trust `tenant_id` / `account_id` / `credential_id` from the body, never return credentials to the browser. Fail closed on any uncertainty. Add structured deny logs.
+### Step 2 — Migrations (single migration call, awaits approval)
 
-Also fix the supplier-boundary bug:
-- `src/components/orders/PushToQXOButton.tsx` currently calls `abc-api-proxy` with ABC payload shape. Either route it to the real QXO endpoint or delete it in favor of `PushToSupplierButton` / `PushToSupplierDialog`. Confirm direction with user during implementation — default plan: remove `PushToQXOButton` and replace any usages with `PushToSupplierButton`, since the shared dialog already routes per supplier.
+Three concerns in one migration:
 
-### Phase 3 — Shared integration primitives
-Scaffold `supabase/functions/_shared/integrations/`:
-- `tenant-guard.ts` — auth + tenant membership + supplier-connection-owns-tenant + scope check; single helper QXO/ABC/SRS routes call.
-- `credential-vault.ts` — tenant-scoped credential fetch, token refresh hook, redaction, never-to-browser invariant.
-- `idempotency.ts` — `tenant_id + supplier + action + idempotency_key` dedupe with stored result; backed by a new `supplier_idempotency_keys` table (migration in this phase).
-- `webhook-verify.ts` — per-supplier signature verifier, marks unsupported suppliers as `manual_review_required`.
-- `audit.ts` — structured supplier audit events written to a new `supplier_audit_log` table (migration in this phase), with token/secret redaction.
-- `rate-limit.ts` — per (tenant, user, supplier, action) sliding-window limiter using a new `supplier_rate_limits` table, returns 429 + audit event.
+1. `ALTER TABLE qxo_connections` adding `authorized_by_user_id`, `authorization_method`, `authorization_status`, `scopes text[]`, `connected_at`, `revoked_at`, `last_verified_at` + backfill (using `IS NULL OR = 'pending'`, not `IN ('pending', NULL)`) + composite index.
+2. `CREATE TABLE supplier_audit_log` + GRANTs (service_role only; authenticated SELECT gated to own-tenant via `has_role`/tenant helper if available, else no client policy) + RLS.
+3. `CREATE TABLE supplier_idempotency_keys` with UNIQUE (tenant_id, supplier, action, idempotency_key) + GRANTs (service_role only) + RLS.
+4. `CREATE TABLE supplier_rate_limits` with UNIQUE (tenant_id, user_id, supplier, action, window_start) + GRANTs (service_role only) + RLS.
 
-Migrations (one combined migration):
-- `supplier_idempotency_keys` (tenant_id, supplier, action, idempotency_key UNIQUE, response_jsonb, status, created_at)
-- `supplier_audit_log` (tenant_id, user_id, supplier, supplier_account_id, action, result, request_id, idempotency_key, metadata_jsonb, created_at)
-- `supplier_rate_limits` (tenant_id, user_id, supplier, action, window_start, count)
+All three new tables: service_role full, no anon/authenticated write policies. RLS enabled.
 
-All three: GRANTs to `service_role` only, RLS on, deny-all policies for `authenticated` except admin read on audit log.
+### Step 3 — Shared QXO integration helpers
 
-Wire the new helpers into QXO endpoints (Phase 2 endpoints get a follow-up patch to call `tenantGuard()`, `audit()`, `idempotency()`).
+Create under `supabase/functions/_shared/integrations/`:
 
-### Phase 4 — Customer authorization data model
-Add `supplier_connections` enhancements (or new table if missing) with:
-`tenant_id, supplier, supplier_account_id, authorized_by_user_id, authorization_method, authorization_status, scopes[], connected_at, revoked_at, last_verified_at, environment`.
+- **`qxo-tenant-guard.ts`** — exports `qxoTenantGuard(c, { action, requiredScope })`. Reads `userId`/`tenantId`/`requestId` from Hono context (NEVER body). Service-role client. Loads `qxo_connections` for that tenant; verifies `tenant_id` match, `connection_status='connected'`, `authorization_status='active'`, scope present. Throws via `jsonErr` on failure (403 `qxo_not_authorized` / 412 `qxo_connection_missing` / 403 `qxo_scope_missing`). Returns `{ userId, tenantId, requestId, qxoConnection }`. Never returns secrets.
+- **`qxo-audit.ts`** — `auditQxo({ tenantId, userId, action, result, requestId, idempotencyKey, supplierAccountId, metadata })` writes to `supplier_audit_log` with `supplier='qxo'`. Redacts any `token|secret|password|key` in metadata.
+- **`qxo-idempotency.ts`** — `withIdempotency({ tenantId, action, key, payload, run })`. SHA-256 the payload for `request_hash`. Atomically insert started row; on conflict: same hash → return stored response; different hash → 409 `idempotency_key_reused_with_different_payload`. After `run()`, update row with `succeeded`/`failed`/`pending_verification` and `response_json`.
+- **`qxo-rate-limit.ts`** — `checkRateLimit({ tenantId, userId, action, limit, windowSeconds })` using sliding window into `supplier_rate_limits`. Returns 429 on exceed; emits audit row.
 
-Inspect existing `abc_connections`, `qxo_connections`, `srs_connections` first — likely we add the missing fields (`scopes`, `authorization_method`, `authorization_status`, `authorized_by_user_id`, `last_verified_at`) rather than create a new table. Enforce in `tenant-guard.ts`: required scope must be present and `authorization_status='active'`.
+### Step 4 — Rewrite `qxo-api/index.ts`
 
-### Phase 5 — Compliance docs + supplier runbooks + CI
-- `docs/compliance/*` — privacy-policy, terms-of-use, api-acceptable-use, customer-authorization-form, information-security-policy, incident-response-plan, data-retention-policy, logging-and-audit-standard, insurance/coverage-requirements (all written for aggregator posture: no scraping, no resale, no token pooling, no browser-stored supplier passwords, no cross-customer price DB).
-- `docs/integrations/{abc,qxo,srs}-third-party-aggregator.md`, `docs/integrations/supplier-rate-limits.md`, `docs/integrations/supplier-webhooks.md`.
-- CI: add `.github/workflows/secret-scan.yml` (gitleaks), `.gitleaks.toml`, ensure `.gitignore` includes `.env`, `.env.*`, `!.env.example`, supplier dumps. Confirm `package.json` has `lint`, `typecheck`, `test`, `test:unit` (already present per ci.yml).
-- Add tests under `tests/integration/supplier-tenant-isolation.test.ts` covering: cross-tenant QXO read denied, cross-tenant order submit denied, revoked connection blocks pricing/order, missing `order_submit` scope blocks submit, duplicate idempotency key dedupes, audit row emitted on deny, secrets redacted from responses, `PushToQXOButton` (or replacement) never calls `abc-api-proxy`.
+Replace scaffold with:
 
-### Sequencing and confirmation
-Phase 1 ships immediately (docs only — no risk). Then Phase 2 (QXO gating + supplier-boundary fix) which is the actual stop-ship. Phase 3 + 4 land together because the guard needs the data-model fields. Phase 5 closes out compliance + CI.
+```ts
+const app = createRouter("qxo-api");
+app.get("/__health", (c) => jsonOk(c, { fn: "qxo-api", ok: true }));
+app.use("/*", requireAuth);
+app.use("/*", requireTenant);
+```
 
-I'll need one quick confirmation before Phase 2 implementation: **remove `PushToQXOButton.tsx` and migrate its callers to `PushToSupplierButton`, or keep the button and rewire it to a real QXO route?** I'll ask inline once Phase 1 is committed.
+Add routes (each: tenant guard with required scope → rate limit → audit → handler → audit). Handlers wrap the existing logic currently in the legacy functions, but load QXO creds only via `getBeaconAuth(supabase, resolvedTenantId)`:
 
-### Out of scope for this loop
-- ABC and SRS endpoint hardening (Phase 6, after the shared guard proves itself on QXO).
-- Real signature docs from suppliers that don't publish them (tracked as `manual_review_required` in `webhook-verify.ts`).
-- Billtrust quarantine (separate follow-up).
+- `POST /orders/list` (scope: `order_status`)
+- `POST /orders/detail` (`order_status`)
+- `POST /orders/pdf` (`order_status`)
+- `POST /orders/submit` (`order_submit`, idempotency required)
+- `POST /orders/submit-quote` (`order_submit`, idempotency required)
+- `POST /invoices/list` (`invoice_read`)
+- `POST /invoices/pdf` (`invoice_read`)
+- `POST /quotes/list` (`pricing`)
+- `POST /quotes/detail` (`pricing`)
+- `POST /quotes/revise` (`order_submit`, idempotency required)
+- `POST /quotes/reject` (`order_submit`)
+- `POST /quotes/submit` (`order_submit`, idempotency required)
+- `POST /pricing/lookup` (`pricing`)
+- `POST /sync/tenant` (`pricing` or `order_status`) — single-tenant sync only
+
+`serveRouter(app)` at bottom.
+
+Strict response envelope. No QXO username/password/access_token/refresh_token in any response or audit metadata.
+
+### Step 5 — Shim the seven legacy functions
+
+Replace each with `_shared/shim.ts` forwarder. Each shim:
+- preserves `Authorization`
+- adds `x-shim-from: <old-name>`
+- ignores `body.tenant_id`
+- maps to the corresponding `qxo-api` route (action-based for `qxo-quotes`)
+- carries the `// TEMPORARY SHIM — delete after references are migrated and logs are quiet for 14 days.` comment
+- never loads QXO creds itself
+
+`qxo-pricing` shim → `/pricing/lookup` (NOT the global API key path). If the legacy global-key path is currently in use, this PR drops it; document in the legacy file header and acceptance note.
+
+`qxo-push-order` → forward to `/orders/submit` (assume still in use; safer than 410).
+
+### Step 6 — Quarantine `qxo-sync-orchestrator`
+
+Keep as standalone worker. Require `x-internal-worker-secret` header matching `INTERNAL_WORKER_SECRET` env. Reject (401) otherwise. No JWT path. Iterates all connected tenants, calls per-tenant sync, writes audit row per tenant. Document under "Approved exceptions" in `docs/EDGE_FUNCTION_RULES.md`.
+
+User-triggered single-tenant sync goes through `qxo-api POST /sync/tenant` (resolved tenant only).
+
+### Step 7 — Fix `qxo-save-credentials`
+
+Audit existing membership check. Normalize to the column the rest of the repo uses (`user_company_access.tenant_id` per project memory). On save/finalize set `authorized_by_user_id = auth.uid()`, `authorization_method = 'api_key'`, `authorization_status = 'active'`, `scopes = ['pricing','catalog','order_submit','order_status','invoice_read','delivery_tracking']`, `connected_at = now()`, `last_verified_at = now()`. Master-role exception only if a `has_role` helper already exists.
+
+### Step 8 — Frontend: `PushToSupplierDialog.tsx`
+
+Replace the QXO branch's `supabase.functions.invoke('qxo-submit-order', { body: { tenant_id, ... }})` with:
+
+```ts
+const idempotencyKey = crypto.randomUUID();
+const { data, error } = await edgeApi("qxo-api", "/orders/submit", {
+  idempotency_key: idempotencyKey,
+  project_id: projectId,
+  job_id: projectId,
+  job_name: customerName,
+  job_number: jobNumber,
+  delivery_address: addr,
+  special_instruction: notes || (customerName ? `For ${customerName}` : undefined),
+  on_hold: false,
+  check_for_availability: "yes",
+  items: editableItems.map(...),
+});
+```
+
+Remove `tenant_id` from the payload. No other behavior changes.
+
+### Step 9 — Tests
+
+Add three integration test files under `tests/integration/`:
+- `qxo-tenant-isolation.test.ts` — cross-tenant denial across list/detail/submit/invoices/quotes/pricing; body `tenant_id` ignored; missing/revoked/expired/scope-missing connection blocks; audit row written on deny.
+- `qxo-order-idempotency.test.ts` — missing key → 400; same key+same payload → cached; same key+different payload → 409; never double-submits to supplier (mock asserts call count = 1).
+- `qxo-legacy-shims.test.ts` — each shim forwards, never loads creds, body tenant_id ignored.
+
+All supplier calls mocked (mock layer over `getBeaconAuth` + outbound `fetch`). Tests assert no `username|password|access_token|refresh_token` substrings appear in any response body or audit metadata.
+
+### Step 10 — Docs
+
+- Append QXO routes and the `qxo-sync-orchestrator` internal-worker exception to `docs/EDGE_FUNCTION_RULES.md`.
+- Update `docs/edge-function-current-status.md` (shim count +7, qxo-api with real routes +1, legacy migrated +7).
+
+## Out of scope (per user)
+
+- ABC / SRS / Billtrust hardening (deferred — same shared helpers apply later).
+- Cross-customer QXO price DB (forbidden).
+- Browser-stored QXO credentials (forbidden).
+- Portal scraping.
+- Pricing global-API-key path (this PR removes/deprecates it).
+
+## Confirmation requested before I start
+
+1. **Idempotency key source on `crypto.randomUUID()` per submit click** — that's correct only if the dialog mounts once per submission attempt. If users can rapid-click submit, the UUID changes on every click and we lose dedupe. Should I generate the key once when the dialog opens (so retries within the same dialog session dedupe) instead of per click? **Default: generate once on dialog open.**
+
+2. **`qxo-push-order`** — shim to `/orders/submit` or return 410? Repo audit will show usage; I'll default to shim unless zero references.
+
+3. **`supplier_audit_log` tenant-admin read policy** — if no `has_role('admin', auth.uid())` helper exists yet, I'll ship with **service-role-only** access (no client read). Confirm OK, or do you want me to add a minimal admin-read policy now?
+
+4. **One mega-migration vs four small ones** — I'll batch into one migration call (qxo_connections ALTER + three new tables) since they're a logical unit. Confirm OK.
+
+Once you say "go" (and answer Q1–Q3 if you want a non-default), I'll execute Steps 1→10 without further interruption.
