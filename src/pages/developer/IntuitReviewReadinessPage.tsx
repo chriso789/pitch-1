@@ -878,6 +878,32 @@ export default function IntuitReviewReadinessPage() {
               </Table>
             </CardContent>
           </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Record internal security review</CardTitle>
+              <CardDescription>
+                Persists an <code>intuit_security_reviews</code> row. Required evidence for the
+                "Security team regularly assesses vulnerabilities" answer.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Textarea
+                placeholder="What was reviewed? Findings, mitigations, next steps."
+                value={reviewNotes}
+                onChange={(e) => setReviewNotes(e.target.value)}
+              />
+              <Button onClick={recordSecurityReview} disabled={savingReview}>
+                {savingReview ? "Saving…" : "Record Security Review"}
+              </Button>
+              <div className="text-xs text-muted-foreground">
+                Recent reviews: {securityReviews.length}
+                {securityReviews[0] && (
+                  <> · last {formatDistanceToNow(new Date(securityReviews[0].created_at), { addSuffix: true })}</>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* ---- Legal tab ---- */}
