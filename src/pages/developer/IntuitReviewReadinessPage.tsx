@@ -484,23 +484,16 @@ export default function IntuitReviewReadinessPage() {
   const recordSecurityReview = async () => {
     setSavingReview(true);
     try {
-      const { error } = await supabase.functions.invoke("intuit-review-api", {
-        method: "POST" as any,
-        body: { notes: reviewNotes },
-      } as any);
-      // Fallback: invoke with raw path if needed
-      if (error) {
-        const { error: e2 } = await supabase
-          .from("intuit_security_reviews" as any)
-          .insert({
-            reviewed_by: profile?.id,
-            status: "completed",
-            review_scope: "intuit_security_review",
-            notes: reviewNotes || null,
-            checklist: { recorded_via: "readiness_page" },
-          });
-        if (e2) throw e2;
-      }
+      const { error } = await supabase
+        .from("intuit_security_reviews" as any)
+        .insert({
+          reviewed_by: profile?.id,
+          status: "completed",
+          review_scope: "intuit_security_review",
+          notes: reviewNotes || null,
+          checklist: { recorded_via: "readiness_page" },
+        });
+      if (error) throw error;
       toast({ title: "Security review recorded" });
       setReviewNotes("");
       await loadAll();
