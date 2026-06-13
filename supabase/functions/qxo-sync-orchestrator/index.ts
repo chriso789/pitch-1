@@ -269,9 +269,26 @@ async function syncOneTenant(supabase: any, conn: any): Promise<SyncResult> {
 }
 
 // ---------- Handler ----------
+//
+// SECURITY: this is an internal worker. It runs all-tenant cron syncs AND
+// per-tenant syncs initiated by qxo-api /sync/tenant. Both paths require
+// the INTERNAL_WORKER_SECRET header — there is no JWT path here.
+//
+// User-facing sync goes through `qxo-api POST /sync/tenant`, which resolves
+// the tenant from the caller's JWT and then forwards to this worker with the
+// internal secret.
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+
+  const INTERNAL_WORKER_SECRET = Deno.env.get('INTERNAL_WORKER_SECRET') ?? '';
+  const provided = req.headers.get('x-internal-worker-secret') ?? '';
+  if (!INTERNAL_WORKER_SECRET || provided !== INTERNAL_WORKER_SECRET) {
+    return new Response(
+      JSON.stringify({ ok: false, code: 'unauthorized_worker', error: 'Internal worker authentication required.' }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    );
+  }
 
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
@@ -318,11 +335,22 @@ Deno.serve(async (req) => {
     for (const conn of connections) {
       // Merge in secrets (username/password/tokens) from qxo_credentials.
       const full = await loadConnectionWithCredentials(supabase, conn.tenant_id).catch(() => null);
-      results.push(await syncOneTenant(supabase, full || conn));
+      const res = await syncOneTenant(supabase, full || conn);
+      results.push(res);
+      // Audit each tenant sync — supplier_audit_log keeps a per-tenant trail.
+      try {
+        await supabase.from('supplier_audit_log').insert({
+          tenant_id: conn.tenant_id,
+          supplier: 'qxo',
+          action: 'sync.tenant',
+          result: res.profile?.ok ? 'success' : 'failed',
+          metadata: { source: source || (tenant_id ? 'user_initiated' : 'cron'), profile: !!res.profile?.ok, invoices: !!res.invoices?.ok, balance: !!res.balance?.ok },
+        });
+      } catch { /* swallow */ }
     }
 
     return new Response(
-      JSON.stringify({ success: true, source: source || 'manual', tenants: results.length, results }),
+      JSON.stringify({ success: true, source: source || (tenant_id ? 'user_initiated' : 'cron'), tenants: results.length, results }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   } catch (e: any) {

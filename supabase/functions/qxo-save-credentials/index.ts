@@ -60,12 +60,13 @@ Deno.serve(async (req) => {
     if (!tenant_id) return json({ success: false, error: 'tenant_id is required' }, 400);
 
     // 2) Authorize: caller must be a member of the tenant.
+    //    user_company_access.tenant_id is the canonical column in this repo.
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
     const { data: access, error: accessErr } = await admin
       .from('user_company_access')
-      .select('user_id, company_id')
+      .select('user_id, tenant_id')
       .eq('user_id', user.id)
-      .eq('company_id', tenant_id)
+      .eq('tenant_id', tenant_id)
       .maybeSingle();
 
     if (accessErr) throw accessErr;
@@ -78,7 +79,9 @@ Deno.serve(async (req) => {
       if (!isMaster) return json({ success: false, error: 'Not authorized for this tenant' }, 403);
     }
 
-    // 3) Clear path: wipe secrets + mark disconnected.
+    const nowIso = new Date().toISOString();
+
+    // 3) Clear path: wipe secrets + mark disconnected + revoke authorization.
     if (clear) {
       await admin.from('qxo_credentials').delete().eq('tenant_id', tenant_id);
       await admin
@@ -88,6 +91,8 @@ Deno.serve(async (req) => {
           connection_status: 'disconnected',
           valid_indicator: false,
           last_error: null,
+          authorization_status: 'revoked',
+          revoked_at: nowIso,
         })
         .eq('tenant_id', tenant_id);
       return json({ success: true, cleared: true });
@@ -114,7 +119,8 @@ Deno.serve(async (req) => {
       .upsert(credPayload, { onConflict: 'tenant_id' });
     if (credErr) throw credErr;
 
-    // Ensure a qxo_connections row exists with the non-sensitive metadata.
+    // Ensure a qxo_connections row exists with the non-sensitive metadata
+    // AND the authorization metadata required by the tenant guard.
     const connPayload: Record<string, unknown> = {
       tenant_id,
       site_id: site_id || 'dealersChoice',
@@ -123,6 +129,13 @@ Deno.serve(async (req) => {
       connection_status: 'disconnected',
       valid_indicator: false,
       last_error: null,
+      authorized_by_user_id: user.id,
+      authorization_method: 'api_key',
+      authorization_status: 'active',
+      scopes: ['pricing', 'catalog', 'order_submit', 'order_status', 'invoice_read', 'delivery_tracking'],
+      connected_at: nowIso,
+      revoked_at: null,
+      last_verified_at: nowIso,
     };
     const { error: connErr } = await admin
       .from('qxo_connections')
