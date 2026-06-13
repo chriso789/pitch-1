@@ -129,7 +129,7 @@ export default function IntuitReviewReadinessPage() {
   const loadAll = async () => {
     setLoading(true);
     try {
-      const [l, t, c, d, ic] = await Promise.all([
+      const [l, t, c, d, ic, sr, sc] = await Promise.all([
         supabase
           .from("qbo_api_logs" as any)
           .select("id,tenant_id,realm_id,oauth_app_env,action,endpoint,method,http_status,intuit_tid,success,error_message,duration_ms,created_at")
@@ -156,12 +156,24 @@ export default function IntuitReviewReadinessPage() {
           .eq("integration", "qbo" as any)
           .order("accepted_at", { ascending: false })
           .limit(50),
+        supabase
+          .from("intuit_security_reviews" as any)
+          .select("id,reviewed_by,status,review_scope,notes,created_at")
+          .order("created_at", { ascending: false })
+          .limit(20),
+        supabase
+          .from("app_support_contacts" as any)
+          .select("id,tenant_id,user_id,subject,message,category,status,created_at,qbo_context")
+          .order("created_at", { ascending: false })
+          .limit(50),
       ]);
       if (l.data) setLogs(l.data as any);
       if (t.data) setTests(t.data as any);
       if (c.data) setConnections(c.data as any);
       if (d.data) setLegalDocs(d.data as any);
       if (ic.data) setConsents(ic.data as any);
+      if (sr.data) setSecurityReviews(sr.data as any);
+      if (sc.data) setSupportContacts(sc.data as any);
     } catch (e: any) {
       toast({ title: "Failed to load readiness data", description: e?.message ?? String(e), variant: "destructive" });
     } finally {
