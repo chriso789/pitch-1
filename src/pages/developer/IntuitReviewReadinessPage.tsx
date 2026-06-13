@@ -481,6 +481,93 @@ export default function IntuitReviewReadinessPage() {
     }
   };
 
+  const recordSecurityReview = async () => {
+    setSavingReview(true);
+    try {
+      const { error } = await supabase.functions.invoke("intuit-review-api", {
+        method: "POST" as any,
+        body: { notes: reviewNotes },
+      } as any);
+      // Fallback: invoke with raw path if needed
+      if (error) {
+        const { error: e2 } = await supabase
+          .from("intuit_security_reviews" as any)
+          .insert({
+            reviewed_by: profile?.id,
+            status: "completed",
+            review_scope: "intuit_security_review",
+            notes: reviewNotes || null,
+            checklist: { recorded_via: "readiness_page" },
+          });
+        if (e2) throw e2;
+      }
+      toast({ title: "Security review recorded" });
+      setReviewNotes("");
+      await loadAll();
+    } catch (e: any) {
+      toast({ title: "Failed to record review", description: e?.message ?? String(e), variant: "destructive" });
+    } finally {
+      setSavingReview(false);
+    }
+  };
+
+  const persistAnswers = async () => {
+    setSavingAnswers(true);
+    try {
+      const payload = rows.map((r, i) => ({
+        question_key: `${r.section}::${r.question}`.toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 180) + "_" + i,
+        question_text: r.question,
+        recommended_answer: r.recommendedAnswer,
+        actual_answer: r.status === "pass" ? r.recommendedAnswer : null,
+        implementation_status: r.status,
+        evidence: { text: r.evidence, section: r.section },
+        action_needed: r.action ?? null,
+      }));
+      const { error } = await supabase
+        .from("intuit_review_answers" as any)
+        .upsert(payload, { onConflict: "question_key" });
+      if (error) throw error;
+      toast({ title: "Generated answers persisted", description: `${payload.length} rows saved.` });
+    } catch (e: any) {
+      toast({ title: "Failed to persist answers", description: e?.message ?? String(e), variant: "destructive" });
+    } finally {
+      setSavingAnswers(false);
+    }
+  };
+
+  const submitSupportTest = async () => {
+    if (!profile) return;
+    setSavingSupport(true);
+    try {
+      const tenant_id = (profile as any).tenant_id ?? (profile as any).active_tenant_id ?? null;
+      const activeConn = connections.find((c) => c.is_active);
+      const lastTid = logs.find((l) => !!l.intuit_tid)?.intuit_tid ?? null;
+      const { error } = await supabase
+        .from("app_support_contacts" as any)
+        .insert({
+          tenant_id,
+          user_id: profile.id,
+          category: "support",
+          subject: supportForm.subject || "Support test",
+          message: supportForm.message || null,
+          qbo_context: {
+            realm_id: activeConn?.realm_id ?? null,
+            qbo_company_name: activeConn?.qbo_company_name ?? null,
+            oauth_app_env: activeConn?.oauth_app_env ?? null,
+            last_intuit_tid: lastTid,
+          },
+        });
+      if (error) throw error;
+      toast({ title: "Support contact recorded" });
+      setSupportForm({ subject: "", message: "" });
+      await loadAll();
+    } catch (e: any) {
+      toast({ title: "Failed to record support contact", description: e?.message ?? String(e), variant: "destructive" });
+    } finally {
+      setSavingSupport(false);
+    }
+  };
+
   if (!profile) {
     return <div className="p-6 text-muted-foreground">Loading profile…</div>;
   }
