@@ -12,6 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Truck, Loader2, Package, AlertCircle, Search } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { edgeApi } from '@/lib/edgeApi';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { useAbcConnectionStatus } from '@/hooks/useAbcConnectionStatus';
 import { useAbcCatalog } from '@/hooks/useAbcCatalog';
@@ -217,6 +218,11 @@ export function PushToSupplierDialog({
   const [srsCatalog, setSrsCatalog] = useState<any[]>([]);
   const [srsCatalogLoading, setSrsCatalogLoading] = useState(false);
   const [srsCatalogBranch, setSrsCatalogBranch] = useState<string>('');
+  // Idempotency key for QXO submits — generated once per dialog open so
+  // accidental double-clicks dedupe at the qxo-api layer.
+  const qxoIdempotencyKeyRef = useRef<string | null>(null);
+
+
 
   // Only sync from props when the dialog opens — otherwise parent re-renders
   // (which pass a freshly mapped `items` array each time) would wipe out
