@@ -420,7 +420,7 @@ export default function IntuitReviewReadinessPage() {
         evidence: "Settings → QuickBooks → 'Get support with this QuickBooks connection' card.",
       },
     ];
-  }, [logs, tests, consents, currentLegalDocs, hasIntuitTidEvidence, sandboxConnect, sandboxDisconnect, sandboxReconnect, validationErrorTest, webhookSigTest, totalLogs]);
+  }, [logs, tests, consents, currentLegalDocs, hasIntuitTidEvidence, sandboxConnect, sandboxDisconnect, sandboxReconnect, validationErrorTest, webhookSigTest, totalLogs, securityReviews]);
 
   const generatedAnswers = useMemo(() => {
     const lines: string[] = [];
