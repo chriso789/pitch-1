@@ -12,6 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Truck, Loader2, Package, AlertCircle, Search } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { edgeApi } from '@/lib/edgeApi';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { useAbcConnectionStatus } from '@/hooks/useAbcConnectionStatus';
 import { useAbcCatalog } from '@/hooks/useAbcCatalog';
@@ -217,12 +218,21 @@ export function PushToSupplierDialog({
   const [srsCatalog, setSrsCatalog] = useState<any[]>([]);
   const [srsCatalogLoading, setSrsCatalogLoading] = useState(false);
   const [srsCatalogBranch, setSrsCatalogBranch] = useState<string>('');
+  // Idempotency key for QXO submits — generated once per dialog open so
+  // accidental double-clicks dedupe at the qxo-api layer.
+  const qxoIdempotencyKeyRef = useRef<string | null>(null);
+
+
 
   // Only sync from props when the dialog opens — otherwise parent re-renders
   // (which pass a freshly mapped `items` array each time) would wipe out
   // user edits like picked SRS productIds.
   useEffect(() => {
     if (!open) return;
+    // Reset QXO idempotency key for each fresh dialog open. A new key is
+    // generated lazily on first submit; double-clicks within the same open
+    // session dedupe at the qxo-api layer.
+    qxoIdempotencyKeyRef.current = null;
     // Hydrate color_specs from free-text notes/description when the estimate
     // line stored the color there (e.g. "Charcoal" written in the Notes
     // popover). This keeps the Push-to-Supplier color dropdown in sync with
@@ -713,36 +723,40 @@ export function PushToSupplierDialog({
         });
       } else if (selected === 'qxo') {
         const addr = shipAddress ? parseAddress(shipAddress) : null;
-        const { data, error } = await supabase.functions.invoke('qxo-submit-order', {
-          body: {
-            tenant_id: tenantId,
-            project_id: projectId,
-            job_id: projectId,
-            job_name: customerName,
-            job_number: jobNumber,
-            delivery_address: addr,
-            special_instruction: notes || (customerName ? `For ${customerName}` : undefined),
-            on_hold: false,
-            check_for_availability: 'yes',
-            items: editableItems.map(i => ({
-              item_name: i.item_name,
-              qty: Number(i.quantity),
-              unit: i.unit,
-              unit_cost: Number(i.unit_cost),
-              unit_price: Number(i.unit_cost),
-              notes: i.color_specs ? `${i.description || ''}${i.description ? ' — ' : ''}Color: ${i.color_specs}` : i.description,
-              color_specs: i.color_specs || null,
-            })),
-          },
+        // Tenant is resolved server-side from the JWT; do NOT send tenant_id.
+        // Idempotency key is generated once per submission attempt so
+        // accidental double-clicks dedupe at the qxo-api layer.
+        const { data, error } = await edgeApi('qxo-api', '/orders/submit', {
+          idempotency_key: qxoIdempotencyKeyRef.current ?? (qxoIdempotencyKeyRef.current = crypto.randomUUID()),
+          project_id: projectId,
+          job_id: projectId,
+          job_name: customerName,
+          job_number: jobNumber,
+          delivery_address: addr,
+          special_instruction: notes || (customerName ? `For ${customerName}` : undefined),
+          on_hold: false,
+          check_for_availability: 'yes',
+          items: editableItems.map(i => ({
+            item_name: i.item_name,
+            qty: Number(i.quantity),
+            unit: i.unit,
+            unit_cost: Number(i.unit_cost),
+            unit_price: Number(i.unit_cost),
+            notes: i.color_specs ? `${i.description || ''}${i.description ? ' — ' : ''}Color: ${i.color_specs}` : i.description,
+            color_specs: i.color_specs || null,
+          })),
         });
-        if (error) throw error;
-        if (!data?.success) throw new Error(data?.message || data?.error || 'QXO rejected the order');
+        if (error) throw new Error(error);
+        const result = data as { beacon_order_id?: string | null; po_number?: string; message?: string | null } | null;
+        if (!result?.beacon_order_id && !result?.po_number) {
+          throw new Error(result?.message || 'QXO rejected the order');
+        }
 
         toast({
           title: 'Pushed to QXO',
-          description: data.beacon_order_id
-            ? `Beacon order ${data.beacon_order_id} created (PO ${data.po_number}).`
-            : `PO ${data.po_number} submitted.`,
+          description: result.beacon_order_id
+            ? `Beacon order ${result.beacon_order_id} created (PO ${result.po_number}).`
+            : `PO ${result.po_number} submitted.`,
         });
       } else if (selected === 'abc') {
         // UOM gate — ABC branches reject orders with an invalid UOM. Block
