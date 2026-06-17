@@ -365,6 +365,37 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
     ? filteredDocuments 
     : filteredDocuments.slice(0, RECENT_DOCS_LIMIT);
 
+  const handleApplySignature = async (envelopeId: string) => {
+    setApplyingSigFor(envelopeId);
+    try {
+      const { data, error } = await supabase.functions.invoke('countersign-envelope', {
+        body: { envelope_id: envelopeId },
+      });
+      if (error) throw error;
+      const payload = (data as any) || {};
+      if (payload.error?.code === 'NO_SIGNATURE') {
+        toast({
+          title: 'No saved signature',
+          description: 'Set up your signature in Settings → My Signature first.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      if (payload.error) throw new Error(payload.error.message || 'Failed to apply signature');
+      toast({ title: 'Signature applied', description: 'Document is now fully signed.' });
+      await fetchDocuments();
+    } catch (err: any) {
+      console.error('Apply signature failed:', err);
+      toast({
+        title: 'Could not apply signature',
+        description: err?.message || 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setApplyingSigFor(null);
+    }
+  };
+
   const handleFileUpload = async (file: File, category: string) => {
     setUploading(true);
     try {
