@@ -1696,45 +1696,65 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
       
       const estimateNumber = `${tenantPrefix}-${String((count || 0) + 1).padStart(5, '0')}`;
 
-      // Save estimate (tenant_id will be set by RLS/trigger)
-      const { data: newEstimate, error } = await (supabase
-        .from('enhanced_estimates') as any)
-        .insert({
-          pipeline_entry_id: pipelineEntryId,
-          estimate_number: estimateNumber,
-          customer_name: propertyDetails.customer_name || 'Unknown',
-          customer_address: propertyDetails.customer_address || '',
-          roof_area_sq_ft: calculationResults.roof_area_sq_ft || propertyDetails.roof_area_sq_ft || 0,
-          roof_pitch: propertyDetails.roof_pitch || '4/12',
-          complexity_level: propertyDetails.complexity_level || 'moderate',
-          material_cost: calculationResults.material_cost || 0,
-          material_markup_percent: 0,
-          material_total: calculationResults.material_cost || 0,
-          labor_hours: calculationResults.labor_hours || 0,
-          labor_rate_per_hour: calculationResults.labor_rate_per_hour || 50,
-          labor_cost: calculationResults.labor_cost || 0,
-          labor_markup_percent: 0,
-          labor_total: calculationResults.labor_cost || 0,
-          overhead_percent: excelConfig.overhead_percent || 20,
-          overhead_amount: calculationResults.overhead_amount || 0,
-          subtotal: calculationResults.cost_pre_profit || 0,
-          target_profit_percent: excelConfig.target_margin_percent || 30,
-          target_profit_amount: calculationResults.profit_amount || 0,
-          actual_profit_amount: calculationResults.profit_amount || 0,
-          actual_profit_percent: calculationResults.actual_margin_percent || 0,
-          selling_price: calculationResults.selling_price || 0,
-          price_per_sq_ft: calculationResults.roof_area_sq_ft > 0 ? (calculationResults.selling_price / calculationResults.roof_area_sq_ft) : 0,
-          permit_costs: 0,
-          waste_factor_percent: excelConfig.waste_factor_percent || 10,
-          contingency_percent: excelConfig.contingency_percent || 5,
-          line_items: lineItems as any || [],
-          status: 'draft',
-          created_by: user.id
-        })
-        .select()
-        .single();
+      // Build the estimate payload (shared between insert + draft-promotion paths)
+      const estimatePayload: any = {
+        pipeline_entry_id: pipelineEntryId,
+        estimate_number: estimateNumber,
+        customer_name: propertyDetails.customer_name || 'Unknown',
+        customer_address: propertyDetails.customer_address || '',
+        roof_area_sq_ft: calculationResults.roof_area_sq_ft || propertyDetails.roof_area_sq_ft || 0,
+        roof_pitch: propertyDetails.roof_pitch || '4/12',
+        complexity_level: propertyDetails.complexity_level || 'moderate',
+        material_cost: calculationResults.material_cost || 0,
+        material_markup_percent: 0,
+        material_total: calculationResults.material_cost || 0,
+        labor_hours: calculationResults.labor_hours || 0,
+        labor_rate_per_hour: calculationResults.labor_rate_per_hour || 50,
+        labor_cost: calculationResults.labor_cost || 0,
+        labor_markup_percent: 0,
+        labor_total: calculationResults.labor_cost || 0,
+        overhead_percent: excelConfig.overhead_percent || 20,
+        overhead_amount: calculationResults.overhead_amount || 0,
+        subtotal: calculationResults.cost_pre_profit || 0,
+        target_profit_percent: excelConfig.target_margin_percent || 30,
+        target_profit_amount: calculationResults.profit_amount || 0,
+        actual_profit_amount: calculationResults.profit_amount || 0,
+        actual_profit_percent: calculationResults.actual_margin_percent || 0,
+        selling_price: calculationResults.selling_price || 0,
+        price_per_sq_ft: calculationResults.roof_area_sq_ft > 0 ? (calculationResults.selling_price / calculationResults.roof_area_sq_ft) : 0,
+        permit_costs: 0,
+        waste_factor_percent: excelConfig.waste_factor_percent || 10,
+        contingency_percent: excelConfig.contingency_percent || 5,
+        line_items: lineItems as any || [],
+        status: 'draft',
+        property_details: {
+          ...propertyDetails,
+          is_auto_draft: false,
+          excel_config: excelConfig,
+          sales_rep_id: salesRepId || null,
+          secondary_rep_ids: secondaryRepIds,
+        },
+      };
 
-      if (error) throw error;
+      let newEstimate: any;
+      if (draftEstimateId) {
+        // Promote the existing auto-draft row instead of creating a duplicate
+        const { data, error } = await (supabase.from('enhanced_estimates') as any)
+          .update(estimatePayload)
+          .eq('id', draftEstimateId)
+          .select()
+          .single();
+        if (error) throw error;
+        newEstimate = data;
+        setDraftEstimateId(null);
+      } else {
+        const { data, error } = await (supabase.from('enhanced_estimates') as any)
+          .insert({ ...estimatePayload, created_by: user.id })
+          .select()
+          .single();
+        if (error) throw error;
+        newEstimate = data;
+      }
 
       // 📊 Performance Monitoring: Record save time
       const saveEndTime = Date.now();
