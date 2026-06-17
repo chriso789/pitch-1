@@ -36871,6 +36871,8 @@ export type Database = {
           photo_url: string | null
           reports_to_manager_id: string | null
           role: Database["public"]["Enums"]["app_role"] | null
+          signature_image_path: string | null
+          signature_updated_at: string | null
           suspended_at: string | null
           suspended_by: string | null
           suspension_reason: string | null
@@ -36923,6 +36925,8 @@ export type Database = {
           photo_url?: string | null
           reports_to_manager_id?: string | null
           role?: Database["public"]["Enums"]["app_role"] | null
+          signature_image_path?: string | null
+          signature_updated_at?: string | null
           suspended_at?: string | null
           suspended_by?: string | null
           suspension_reason?: string | null
@@ -36975,6 +36979,8 @@ export type Database = {
           photo_url?: string | null
           reports_to_manager_id?: string | null
           role?: Database["public"]["Enums"]["app_role"] | null
+          signature_image_path?: string | null
+          signature_updated_at?: string | null
           suspended_at?: string | null
           suspended_by?: string | null
           suspension_reason?: string | null

@@ -50,11 +50,12 @@ Deno.serve(async (req: Request) => {
       return errorResponse('NOT_FOUND', 'Envelope not found', 404);
     }
 
-    // Check if already completed
-    if (envelope.status === 'completed') {
+    // Check if already finalized or completed
+    if (envelope.status === 'completed' || envelope.status === 'awaiting_countersignature') {
       return successResponse({
-        message: 'Envelope already completed',
+        message: `Envelope already ${envelope.status}`,
         envelope_id: envelope.id,
+        status: envelope.status,
         signed_pdf_path: envelope.signed_pdf_path,
       });
     }
@@ -391,12 +392,13 @@ Deno.serve(async (req: Request) => {
     
     const finalPdfHash = await hashToken(pdfContent);
 
-    // Update envelope with completion status and signed PDF path
+    // Mark envelope as awaiting countersignature from the company representative.
+    // The sender triggers `countersign-envelope` to stamp their saved signature
+    // alongside the client's, mark the envelope completed, and send final emails.
     const { error: updateError } = await supabase
       .from('signature_envelopes')
       .update({
-        status: 'completed',
-        completed_at: new Date().toISOString(),
+        status: 'awaiting_countersignature',
         final_pdf_hash: finalPdfHash,
         signed_pdf_path: signedPdfPath,
       })
@@ -436,7 +438,7 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // --- Update enhanced_estimates status to 'signed' if linked ---
+    // --- Mark linked enhanced_estimate as awaiting countersignature ---
     try {
       const { data: linkedEstimate } = await supabase
         .from('enhanced_estimates')
@@ -445,41 +447,33 @@ Deno.serve(async (req: Request) => {
         .maybeSingle();
 
       if (linkedEstimate) {
-        const { error: estUpdateErr } = await supabase
+        await supabase
           .from('enhanced_estimates')
-          .update({ status: 'signed', signed_at: new Date().toISOString() })
+          .update({ status: 'awaiting_countersignature' })
           .eq('id', linkedEstimate.id);
-
-        if (estUpdateErr) {
-          console.error('Failed to update estimate status:', estUpdateErr);
-        } else {
-          console.log(`Estimate ${linkedEstimate.id} status updated to signed`);
-        }
       }
     } catch (estErr) {
       console.error('Error updating estimate status:', estErr);
     }
 
-    // Notify sender
+    // Notify sender that the client signed and they need to countersign
     await createNotification(supabase, {
       tenant_id: envelope.tenant_id,
       user_id: envelope.created_by,
-      type: 'envelope_completed',
-      title: 'Envelope Completed',
-      message: `"${envelope.title}" has been signed by all recipients`,
+      type: 'envelope_awaiting_countersignature',
+      title: 'Client Signed — Action Required',
+      message: `"${envelope.title}" was signed by the client. Add your countersignature to finalize.`,
       metadata: {
         envelope_id: envelope.id,
-        completed_at: new Date().toISOString(),
-        recipients_count: recipients?.length || 0,
         signed_pdf_path: signedPdfPath,
         document_id: documentId,
         action_url: `/signature-envelopes/${envelope.id}`,
       },
     });
 
-    // --- Send completion emails to all recipients AND the sender ---
+    // --- Completion emails are sent by `countersign-envelope` after the rep signs ---
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-    if (RESEND_API_KEY && signedPdfPath) {
+    if (false && RESEND_API_KEY && signedPdfPath) {
       try {
         // Get tenant info for branding
         const { data: tenant } = await supabase
@@ -611,7 +605,7 @@ Deno.serve(async (req: Request) => {
     await logAuditEvent(supabase, {
       tenant_id: envelope.tenant_id,
       actor_type: 'system',
-      action: 'envelope.completed',
+      action: 'envelope.client_signed',
       target_type: 'signature_envelope',
       target_id: envelope.id,
       ip_address: ip,
@@ -645,8 +639,7 @@ Deno.serve(async (req: Request) => {
 
     return successResponse({
       envelope_id: envelope.id,
-      status: 'completed',
-      completed_at: new Date().toISOString(),
+      status: 'awaiting_countersignature',
       final_pdf_hash: finalPdfHash,
       signed_pdf_path: signedPdfPath,
       document_id: documentId,

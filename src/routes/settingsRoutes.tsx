@@ -6,6 +6,7 @@ const SettingsPage = React.lazy(() => import("@/pages/Settings"));
 const AIAgentSettingsPage = React.lazy(() => import("@/pages/settings/AIAgentSettingsPage"));
 const AIAdminPage = React.lazy(() => import("@/pages/settings/AIAdminPage"));
 const CompanyReferralSettingsPage = React.lazy(() => import("@/pages/app/settings/CompanyReferralSettingsPage"));
+const MySignaturePage = React.lazy(() => import("@/pages/settings/MySignaturePage"));
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-background">
@@ -21,6 +22,7 @@ export default function SettingsRoutes() {
         <Route path="ai-agent" element={<ProtectedRoute><AIAgentSettingsPage /></ProtectedRoute>} />
         <Route path="ai-admin" element={<ProtectedRoute><AIAdminPage /></ProtectedRoute>} />
         <Route path="company-referrals" element={<ProtectedRoute><CompanyReferralSettingsPage /></ProtectedRoute>} />
+        <Route path="my-signature" element={<ProtectedRoute><MySignaturePage /></ProtectedRoute>} />
       </Routes>
     </Suspense>
   );

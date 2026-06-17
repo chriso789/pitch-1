@@ -10,6 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Loader2, FileText, ExternalLink, Percent, Check, Pencil, Trash2, FileSignature, Copy, AlertTriangle, Layers } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { toast as sonnerToast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
   AlertDialog,
@@ -301,28 +302,28 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
   const displayedEstimates = [...(estimates || [])];
 
   // Fetch signature envelopes linked to estimates for this pipeline entry
-  const { data: signatureEnvelopes } = useQuery({
+  const { data: signatureEnvelopes, refetch: refetchEnvelopes } = useQuery({
     queryKey: ['estimate-signature-envelopes', pipelineEntryId],
     queryFn: async () => {
       const estimateIds = estimates?.map(e => e.id) || [];
-      if (estimateIds.length === 0) return {};
+      if (estimateIds.length === 0) return {} as Record<string, { id: string; status: string; created_by: string | null }>;
 
       const { data, error } = await supabase
         .from('signature_envelopes')
-        .select('id, estimate_id, status')
+        .select('id, estimate_id, status, created_by')
         .in('estimate_id', estimateIds);
 
       if (error) throw error;
 
-      // Map estimate_id -> latest envelope status
-      const map: Record<string, string> = {};
+      // Map estimate_id -> envelope info, keeping the most relevant status
+      const rank = (s: string) =>
+        s === 'completed' ? 4 : s === 'awaiting_countersignature' ? 3 : s === 'sent' ? 2 : 1;
+      const map: Record<string, { id: string; status: string; created_by: string | null }> = {};
       for (const env of (data || [])) {
-        if (env.estimate_id) {
-          // Keep the most relevant status (completed > sent > pending)
-          const existing = map[env.estimate_id];
-          if (!existing || env.status === 'completed' || (env.status === 'sent' && existing === 'pending')) {
-            map[env.estimate_id] = env.status;
-          }
+        if (!env.estimate_id) continue;
+        const existing = map[env.estimate_id];
+        if (!existing || rank(env.status) > rank(existing.status)) {
+          map[env.estimate_id] = { id: env.id, status: env.status, created_by: env.created_by };
         }
       }
       return map;
@@ -656,19 +657,61 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
                     {estimate.is_auto_draft ? 'Auto-saved Draft' : estimate.status}
                   </Badge>
 
-                  {signatureEnvelopes?.[estimate.id] && (
-                    <Badge 
+                  {signatureEnvelopes?.[estimate.id] && (() => {
+                    const env = signatureEnvelopes[estimate.id];
+                    const label =
+                      env.status === 'completed' ? 'Signed'
+                      : env.status === 'awaiting_countersignature' ? 'Awaiting Rep Signature'
+                      : 'Awaiting Client Signature';
+                    const cls =
+                      env.status === 'completed'
+                        ? 'border-green-500 text-green-600 bg-green-50 dark:bg-green-950/30'
+                        : env.status === 'awaiting_countersignature'
+                          ? 'border-blue-500 text-blue-600 bg-blue-50 dark:bg-blue-950/30'
+                          : 'border-amber-500 text-amber-600 bg-amber-50 dark:bg-amber-950/30';
+                    return (
+                      <Badge variant="outline" className={cn('text-[10px] h-4 px-1', cls)}>
+                        <FileSignature className="h-2.5 w-2.5 mr-0.5" />
+                        {label}
+                      </Badge>
+                    );
+                  })()}
+                  {signatureEnvelopes?.[estimate.id]?.status === 'awaiting_countersignature' && (
+                    <Button
                       variant="outline"
-                      className={cn(
-                        "text-[10px] h-4 px-1",
-                        signatureEnvelopes[estimate.id] === 'completed'
-                          ? 'border-green-500 text-green-600 bg-green-50 dark:bg-green-950/30'
-                          : 'border-amber-500 text-amber-600 bg-amber-50 dark:bg-amber-950/30'
-                      )}
+                      size="sm"
+                      className="h-5 px-1.5 text-[10px] border-blue-500 text-blue-700 hover:bg-blue-50"
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        const env = signatureEnvelopes[estimate.id];
+                        const t = sonnerToast.loading('Countersigning…');
+                        try {
+                          const { data, error } = await supabase.functions.invoke('countersign-envelope', {
+                            body: { envelope_id: env.id },
+                          });
+                          if (error) throw error;
+                          if ((data as any)?.error) throw new Error((data as any).error.message || 'Failed');
+                          sonnerToast.success('Document fully signed', { id: t });
+                          refetchEnvelopes();
+                        } catch (err: any) {
+                          const msg = err?.message || 'Could not countersign';
+                          if (msg.toLowerCase().includes('signature')) {
+                            sonnerToast.error(
+                              <span>
+                                {msg}{' '}
+                                <a href="/settings/my-signature" className="underline">Set up signature</a>
+                              </span>,
+                              { id: t, duration: 8000 }
+                            );
+                          } else {
+                            sonnerToast.error(msg, { id: t });
+                          }
+                        }
+                      }}
                     >
                       <FileSignature className="h-2.5 w-2.5 mr-0.5" />
-                      {signatureEnvelopes[estimate.id] === 'completed' ? 'Signed' : 'Awaiting Signature'}
-                    </Badge>
+                      Countersign & Finalize
+                    </Button>
                   )}
                   {!estimate.is_recovered_pdf && (
                     <span className={`flex items-center gap-0.5 ${getProfitColor(estimate.actual_profit_percent || 0)}`}>
