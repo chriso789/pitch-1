@@ -303,32 +303,56 @@ export function MaterialCatalogManager() {
 
       <Tabs defaultValue="materials" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="materials">Materials ({materials.length})</TabsTrigger>
+          <TabsTrigger value="materials">Catalog ({filteredMaterials.length})</TabsTrigger>
           <TabsTrigger value="suppliers">Supplier Catalog</TabsTrigger>
         </TabsList>
 
         <TabsContent value="materials" className="space-y-4">
+          {/* Materials / Labor toggle */}
+          <div className="inline-flex rounded-md border bg-muted p-1">
+            <button
+              type="button"
+              onClick={() => setCatalogMode('materials')}
+              className={`px-4 py-1.5 text-sm font-medium rounded ${
+                catalogMode === 'materials' ? 'bg-background shadow-sm' : 'text-muted-foreground'
+              }`}
+            >
+              Materials
+            </button>
+            <button
+              type="button"
+              onClick={() => setCatalogMode('labor')}
+              className={`px-4 py-1.5 text-sm font-medium rounded ${
+                catalogMode === 'labor' ? 'bg-background shadow-sm' : 'text-muted-foreground'
+              }`}
+            >
+              Labor
+            </button>
+          </div>
+
           {/* Filters */}
           <div className="flex gap-4">
             <div className="relative flex-1 max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search materials..."
+                placeholder={`Search ${catalogMode}...`}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"
               />
             </div>
-            <Select value={selectedSection} onValueChange={setSelectedSection}>
-              <SelectTrigger className="w-[140px]">
-                <SelectValue placeholder="Section" />
-              </SelectTrigger>
-              <SelectContent>
-                {SECTIONS.map((s) => (
-                  <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {catalogMode === 'materials' && (
+              <Select value={selectedSection} onValueChange={setSelectedSection}>
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue placeholder="Section" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableSections.map((s) => (
+                    <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <Select value={selectedCategory} onValueChange={setSelectedCategory}>
               <SelectTrigger className="w-[200px]">
                 <SelectValue placeholder="All Categories" />
@@ -341,6 +365,7 @@ export function MaterialCatalogManager() {
               </SelectContent>
             </Select>
           </div>
+
 
           <div className="border rounded-lg">
             <Table>
