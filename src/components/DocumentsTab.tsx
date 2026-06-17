@@ -146,6 +146,9 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
 }) => {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
+  // Map: signed_pdf_path -> { envelopeId, title } for envelopes awaiting countersignature
+  const [awaitingCountersign, setAwaitingCountersign] = useState<Record<string, { envelopeId: string; title: string | null }>>({});
+  const [applyingSigFor, setApplyingSigFor] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [showAllDocs, setShowAllDocs] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
@@ -212,7 +215,7 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
 
   const fetchDocuments = async () => {
     try {
-      const [docsRes, invoicesRes] = await Promise.all([
+      const [docsRes, invoicesRes, envelopesRes] = await Promise.all([
         supabase
           .from('documents')
           .select(`
@@ -229,10 +232,23 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
           .select('id, invoice_type, vendor_name, crew_name, invoice_number, invoice_amount, document_url, document_name, notes, created_at, created_by')
           .eq('pipeline_entry_id', pipelineEntryId)
           .order('created_at', { ascending: false }),
+        supabase
+          .from('signature_envelopes')
+          .select('id, title, signed_pdf_path, status')
+          .eq('pipeline_entry_id', pipelineEntryId)
+          .eq('status', 'awaiting_countersignature'),
       ]);
 
       if (docsRes.error) throw docsRes.error;
       if (invoicesRes.error) throw invoicesRes.error;
+
+      const awaitingMap: Record<string, { envelopeId: string; title: string | null }> = {};
+      for (const env of (envelopesRes.data || [])) {
+        if (env.signed_pdf_path) {
+          awaitingMap[env.signed_pdf_path] = { envelopeId: env.id, title: env.title };
+        }
+      }
+      setAwaitingCountersign(awaitingMap);
 
       const docs = (docsRes.data || []) as any[];
       const linkedIds = new Set(docs.map(d => d.linked_invoice_id).filter(Boolean));
@@ -348,6 +364,37 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
   const displayedDocuments = showAllDocs 
     ? filteredDocuments 
     : filteredDocuments.slice(0, RECENT_DOCS_LIMIT);
+
+  const handleApplySignature = async (envelopeId: string) => {
+    setApplyingSigFor(envelopeId);
+    try {
+      const { data, error } = await supabase.functions.invoke('countersign-envelope', {
+        body: { envelope_id: envelopeId },
+      });
+      if (error) throw error;
+      const payload = (data as any) || {};
+      if (payload.error?.code === 'NO_SIGNATURE') {
+        toast({
+          title: 'No saved signature',
+          description: 'Set up your signature in Settings → My Signature first.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      if (payload.error) throw new Error(payload.error.message || 'Failed to apply signature');
+      toast({ title: 'Signature applied', description: 'Document is now fully signed.' });
+      await fetchDocuments();
+    } catch (err: any) {
+      console.error('Apply signature failed:', err);
+      toast({
+        title: 'Could not apply signature',
+        description: err?.message || 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setApplyingSigFor(null);
+    }
+  };
 
   const handleFileUpload = async (file: File, category: string) => {
     setUploading(true);
@@ -857,7 +904,9 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
               {folderDocuments.map((doc) => {
                 const Icon = getCategoryIcon(doc.document_type);
                 const category = getCategoryDetails(doc.document_type || 'other');
-                
+                const awaiting = doc.file_path ? awaitingCountersign[doc.file_path] : undefined;
+                const isApplying = awaiting && applyingSigFor === awaiting.envelopeId;
+
                 return (
                   <Card key={doc.id} className="hover:border-primary/50 transition-colors">
                     <CardContent className="flex items-center justify-between p-4">
@@ -877,26 +926,55 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
                           </div>
                         </div>
                         {/* Signature status badges */}
-                        {doc.signature_status === 'signed' && (
-                          <Badge variant="outline" className="text-green-600 border-green-600 gap-1">
-                            <CheckCircle className="h-3 w-3" />
-                            Signed
-                          </Badge>
-                        )}
-                        {doc.signature_status === 'sent' && (
-                          <Badge variant="outline" className="text-amber-600 border-amber-600 gap-1">
+                        {awaiting ? (
+                          <Badge variant="outline" className="text-blue-600 border-blue-600 gap-1">
                             <Clock className="h-3 w-3" />
-                            Awaiting
+                            Awaiting Rep Signature
                           </Badge>
-                        )}
-                        {doc.description?.includes('Signed on') && (
-                          <Badge variant="outline" className="text-green-600 border-green-600 gap-1">
-                            <CheckCircle className="h-3 w-3" />
-                            Signed
-                          </Badge>
+                        ) : (
+                          <>
+                            {doc.signature_status === 'signed' && (
+                              <Badge variant="outline" className="text-green-600 border-green-600 gap-1">
+                                <CheckCircle className="h-3 w-3" />
+                                Signed
+                              </Badge>
+                            )}
+                            {doc.signature_status === 'sent' && (
+                              <Badge variant="outline" className="text-amber-600 border-amber-600 gap-1">
+                                <Clock className="h-3 w-3" />
+                                Awaiting
+                              </Badge>
+                            )}
+                            {doc.description?.includes('Signed on') && (
+                              <Badge variant="outline" className="text-green-600 border-green-600 gap-1">
+                                <CheckCircle className="h-3 w-3" />
+                                Signed
+                              </Badge>
+                            )}
+                          </>
                         )}
                       </div>
                       <div className="flex items-center gap-1">
+                        {awaiting && (
+                          <Button
+                            size="sm"
+                            variant="default"
+                            className="mr-1 gap-1"
+                            disabled={!!isApplying}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleApplySignature(awaiting.envelopeId);
+                            }}
+                            title="Apply your saved signature and finalize"
+                          >
+                            {isApplying ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Pencil className="h-4 w-4" />
+                            )}
+                            {isApplying ? 'Applying…' : 'Apply Signature'}
+                          </Button>
+                        )}
                         <Button size="icon" variant="ghost" onClick={() => setRenameDoc({ id: doc.id, filename: doc.filename })} title="Rename">
                           <Pencil className="h-4 w-4" />
                         </Button>
@@ -1198,6 +1276,34 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      {(() => {
+                        const awaiting = doc.file_path ? awaitingCountersign[doc.file_path] : undefined;
+                        if (!awaiting) return null;
+                        const isApplying = applyingSigFor === awaiting.envelopeId;
+                        return (
+                          <>
+                            <Badge variant="outline" className="text-blue-600 border-blue-600 gap-1">
+                              <Clock className="h-3 w-3" />
+                              Awaiting Rep Signature
+                            </Badge>
+                            <Button
+                              size="sm"
+                              variant="default"
+                              className="gap-1"
+                              disabled={isApplying}
+                              onClick={() => handleApplySignature(awaiting.envelopeId)}
+                              title="Apply your saved signature and finalize"
+                            >
+                              {isApplying ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Pencil className="h-4 w-4" />
+                              )}
+                              {isApplying ? 'Applying…' : 'Apply Signature'}
+                            </Button>
+                          </>
+                        );
+                      })()}
                       <Button
                         size="icon"
                         variant="ghost"

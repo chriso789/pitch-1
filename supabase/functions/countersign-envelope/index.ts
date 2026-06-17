@@ -111,7 +111,12 @@ Deno.serve(async (req: Request) => {
     const pdfBytes = new Uint8Array(await pdfBlob.arrayBuffer());
 
     // Load signature anchor from the linked estimate (same source finalize-envelope uses)
-    let anchor: { pageIndex: number; xPt: number; yPt: number; widthPt: number } | null = null;
+    type Box = { xPt: number; yPt: number; widthPt: number };
+    let anchor: {
+      pageIndex: number; xPt: number; yPt: number; widthPt: number;
+      customerSig?: Box; customerDate?: Box;
+      companySig?: Box; companyDate?: Box;
+    } | null = null;
     try {
       const { data: linkedEstimate } = await supabase
         .from('enhanced_estimates')
@@ -140,7 +145,9 @@ Deno.serve(async (req: Request) => {
     const page = pdfDoc.getPage(targetPageIdx);
     const { height: pageH, width: pageW } = page.getSize();
 
-    // Sanity-check anchor; fall back to the right-half of the bottom signature block
+    // Prefer the precise company-side anchors. If not present (legacy
+    // estimates), derive the rep block from the legacy single anchor by
+    // taking the right half of the signature block area.
     const anchorValid =
       !!anchor &&
       anchor.yPt > 20 &&
@@ -148,16 +155,23 @@ Deno.serve(async (req: Request) => {
       anchor.xPt > 0 &&
       anchor.xPt < pageW;
 
-    const blockBottomY = anchorValid ? anchor!.yPt : Math.max(80, pageH * 0.18);
-    const blockLeftX = anchorValid ? anchor!.xPt : 60;
-    const blockWidth = anchorValid ? anchor!.widthPt : pageW - 120;
+    const fallbackBlockBottomY = anchorValid ? anchor!.yPt : Math.max(80, pageH * 0.18);
+    const fallbackBlockLeftX = anchorValid ? anchor!.xPt : 60;
+    const fallbackBlockWidth = anchorValid ? anchor!.widthPt : pageW - 120;
+    const fallbackHalfWidth = fallbackBlockWidth / 2;
+    const fallbackGutter = 24;
 
-    // Rep block sits to the right of client block, with a small gutter
-    const halfWidth = blockWidth / 2;
-    const gutter = 24;
-    const repSigX = blockLeftX + halfWidth + gutter;
-    const repMaxSigWidth = Math.min(halfWidth - gutter, 200);
-    const repMaxSigHeight = 28;
+    const companySigBox: Box = anchor?.companySig ?? {
+      xPt: fallbackBlockLeftX + fallbackHalfWidth + fallbackGutter,
+      yPt: fallbackBlockBottomY,
+      widthPt: Math.max(80, fallbackHalfWidth - fallbackGutter),
+    };
+    const companyDateBox: Box | null = anchor?.companyDate ?? null;
+
+    const repSigX = companySigBox.xPt;
+    const repSigY = companySigBox.yPt;
+    const repMaxSigWidth = Math.min(companySigBox.widthPt, 220);
+    const repMaxSigHeight = Math.min(28, (companyDateBox ? repSigY - companyDateBox.yPt - 4 : 28));
 
     // Tenant name for label
     let tenantName = 'Authorized Representative';
@@ -186,7 +200,6 @@ Deno.serve(async (req: Request) => {
         sigBytes = new Uint8Array(bin.length);
         for (let i = 0; i < bin.length; i++) sigBytes[i] = bin.charCodeAt(i);
       } else {
-        // Treat as a storage path under documents bucket
         const { data: imgBlob } = await supabase.storage.from('documents').download(rawSig);
         if (imgBlob) {
           sigBytes = new Uint8Array(await imgBlob.arrayBuffer());
@@ -215,49 +228,49 @@ Deno.serve(async (req: Request) => {
     const drawW = dims.width * scale;
     const drawH = dims.height * scale;
 
-    // Clear underlying area
+    // Mask only the company signature column above its line
     page.drawRectangle({
-      x: repSigX - 2,
-      y: blockBottomY - 40,
-      width: repMaxSigWidth + 20,
-      height: 68,
+      x: repSigX,
+      y: repSigY,
+      width: repMaxSigWidth,
+      height: drawH + 2,
       color: rgb(1, 1, 1),
     });
 
+    // Image bottom sits exactly on the signature line
     page.drawImage(embeddedImg, {
       x: repSigX,
-      y: blockBottomY - 2,
+      y: repSigY,
       width: drawW,
       height: drawH,
     });
 
-    page.drawText(repName, {
+    // Stamp date on the date line
+    if (companyDateBox) {
+      page.drawRectangle({
+        x: companyDateBox.xPt,
+        y: companyDateBox.yPt - 2,
+        width: companyDateBox.widthPt,
+        height: 14,
+        color: rgb(1, 1, 1),
+      });
+      page.drawText(signedDateStr, {
+        x: companyDateBox.xPt + 2,
+        y: companyDateBox.yPt + 2,
+        size: 10,
+        font: helveticaFont,
+        color: rgb(0, 0, 0),
+      });
+    }
+
+    // Small audit line (name + tenant) below the date line / signature line
+    const auditY = (companyDateBox ? companyDateBox.yPt : repSigY) - 12;
+    page.drawText(`${repName} — ${tenantName}  •  IP: ${ip || 'N/A'}`, {
       x: repSigX,
-      y: blockBottomY - 12,
-      size: 9,
-      font: helveticaBoldFont,
-      color: rgb(0, 0, 0),
-    });
-    page.drawText(`${tenantName} — Authorized Representative`, {
-      x: repSigX,
-      y: blockBottomY - 22,
-      size: 7,
+      y: auditY,
+      size: 6,
       font: helveticaFont,
-      color: rgb(0.3, 0.3, 0.3),
-    });
-    page.drawText(`Date: ${signedDateStr}`, {
-      x: repSigX,
-      y: blockBottomY - 32,
-      size: 8,
-      font: helveticaFont,
-      color: rgb(0.3, 0.3, 0.3),
-    });
-    page.drawText(`IP: ${ip || 'N/A'}`, {
-      x: repSigX,
-      y: blockBottomY - 42,
-      size: 7,
-      font: helveticaFont,
-      color: rgb(0.5, 0.5, 0.5),
+      color: rgb(0.55, 0.55, 0.55),
     });
 
     const finalBytes = await pdfDoc.save();

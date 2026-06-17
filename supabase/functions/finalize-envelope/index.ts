@@ -140,7 +140,13 @@ Deno.serve(async (req: Request) => {
             // Try to use a stored signature anchor (captured at PDF generation time)
             // so the signature image lands precisely on the printed signature line —
             // regardless of how long the terms-and-conditions text is.
-            let anchor: { pageIndex: number; xPt: number; yPt: number; widthPt: number; pageHeightPt?: number; pageWidthPt?: number } | null = null;
+            type Box = { xPt: number; yPt: number; widthPt: number };
+            let anchor: {
+              pageIndex: number; xPt: number; yPt: number; widthPt: number;
+              pageHeightPt?: number; pageWidthPt?: number;
+              customerSig?: Box; customerDate?: Box;
+              companySig?: Box; companyDate?: Box;
+            } | null = null;
             try {
               if (envelope.estimate_id) {
                 const { data: est } = await supabase
@@ -158,9 +164,7 @@ Deno.serve(async (req: Request) => {
 
             // Sanity-check the anchor: if it's off-page (negative y, beyond page,
             // or pointing to a non-existent page), discard it and fall back to a
-            // safe placement near the bottom of the last page. This handles the
-            // case where the HTML→PDF capture overflowed a page break and
-            // recorded coordinates outside the visible PDF area.
+            // safe placement near the bottom of the last page.
             if (anchor) {
               const validPage = Number.isInteger(anchor.pageIndex) && anchor.pageIndex >= 0 && anchor.pageIndex < pageCount;
               const probePage = validPage ? pdfDoc.getPage(anchor.pageIndex) : null;
@@ -181,14 +185,17 @@ Deno.serve(async (req: Request) => {
             }
 
             const { height: effPageH } = lastPage.getSize();
-            let sigX = anchor ? anchor.xPt : 60;
-            // Default fallback: place ~18% from the bottom of the last page,
-            // which is where most estimate templates put the signature block.
-            const signatureLineY = anchor ? anchor.yPt : Math.max(80, effPageH * 0.18);
-            const maxSigWidth = anchor ? Math.min(anchor.widthPt, 200) : 160;
-            const maxSigHeight = 28;
-            const sigSpacing = 240;
-            console.log(`Signature placement: anchor=${!!anchor} page=${effectivePageIdx} x=${sigX} y=${signatureLineY} w=${maxSigWidth} pageH=${effPageH}`);
+            // Precise per-field anchors (preferred); fallback to legacy single anchor.
+            const customerSigBox: Box = anchor?.customerSig ?? (anchor
+              ? { xPt: anchor.xPt, yPt: anchor.yPt, widthPt: anchor.widthPt }
+              : { xPt: 60, yPt: Math.max(80, effPageH * 0.18), widthPt: 200 });
+            const customerDateBox: Box | null = anchor?.customerDate ?? null;
+
+            let sigX = customerSigBox.xPt;
+            const signatureLineY = customerSigBox.yPt;
+            const maxSigWidth = Math.min(customerSigBox.widthPt, 220);
+            const maxSigHeight = Math.min(28, (customerDateBox ? signatureLineY - customerDateBox.yPt - 4 : 28));
+            console.log(`Signature placement: anchor=${!!anchor} page=${effectivePageIdx} sig=(${sigX},${signatureLineY},${maxSigWidth}) date=${customerDateBox ? `(${customerDateBox.xPt},${customerDateBox.yPt},${customerDateBox.widthPt})` : 'none'}`);
 
             for (const sig of signatures) {
               const meta = (sig.signature_metadata || {}) as Record<string, unknown>;
@@ -210,116 +217,96 @@ Deno.serve(async (req: Request) => {
                 const drawW = dims.width * scale;
                 const drawH = dims.height * scale;
 
-                // Mask any pre-printed "Date: _____" placeholder beneath the
-                // signature line BEFORE drawing the image, so neither the
-                // signature nor the audit metadata overlaps existing verbiage.
+                // Mask only the customer column above its signature line so the
+                // image doesn't collide with any pre-printed text in that column.
                 lastPage.drawRectangle({
-                  x: sigX - 2,
-                  y: signatureLineY - 40,
-                  width: maxSigWidth + 20,
-                  height: 38,
+                  x: sigX,
+                  y: signatureLineY,
+                  width: maxSigWidth,
+                  height: drawH + 2,
                   color: rgb(1, 1, 1),
                 });
 
-                // Place image so its bottom sits just above the signature line
-                // (sig image baseline ≈ 2pt above the printed line)
+                // Place image so its bottom sits exactly on the signature line.
                 lastPage.drawImage(embeddedImg, {
                   x: sigX,
-                  y: signatureLineY - 2,
+                  y: signatureLineY,
                   width: drawW,
                   height: drawH,
                 });
 
-                // Draw signer name, date, and IP BELOW the signature line
-                lastPage.drawText(recipientName, {
-                  x: sigX,
-                  y: signatureLineY - 12,
-                  size: 9,
-                  font: helveticaBoldFont,
+                console.log(`Embedded signature image for ${recipientName} at (${sigX},${signatureLineY})`);
+              };
+
+              // Helper: stamp the signed date on the date line.
+              const stampDate = () => {
+                if (!customerDateBox) return;
+                // Mask the date line area (clear underline + any placeholder)
+                lastPage.drawRectangle({
+                  x: customerDateBox.xPt,
+                  y: customerDateBox.yPt - 2,
+                  width: customerDateBox.widthPt,
+                  height: 14,
+                  color: rgb(1, 1, 1),
+                });
+                lastPage.drawText(signedDate, {
+                  x: customerDateBox.xPt + 2,
+                  y: customerDateBox.yPt + 2,
+                  size: 10,
+                  font: helveticaFont,
                   color: rgb(0, 0, 0),
                 });
-                lastPage.drawText(`Date: ${signedDate}`, {
-                  x: sigX,
-                  y: signatureLineY - 24,
-                  size: 8,
-                  font: helveticaFont,
-                  color: rgb(0.3, 0.3, 0.3),
-                });
-                lastPage.drawText(`IP: ${sig.ip_address || 'N/A'}`, {
-                  x: sigX,
-                  y: signatureLineY - 35,
-                  size: 7,
-                  font: helveticaFont,
-                  color: rgb(0.5, 0.5, 0.5),
-                });
+              };
 
-                console.log(`Embedded signature image + details for ${recipientName}`);
-                sigX += sigSpacing;
-                if (sigX + maxSigWidth > pageWidth - 40) {
-                  sigX = 60;
-                }
+              // Helper: stamp small audit line (name + IP) below the signature line.
+              const stampAudit = () => {
+                const auditY = (customerDateBox ? customerDateBox.yPt : signatureLineY) - 12;
+                lastPage.drawText(`${recipientName}  •  IP: ${sig.ip_address || 'N/A'}`, {
+                  x: sigX,
+                  y: auditY,
+                  size: 6,
+                  font: helveticaFont,
+                  color: rgb(0.55, 0.55, 0.55),
+                });
               };
 
               try {
                 if (sigImagePath) {
-                  // Case 1: Image stored in storage bucket
                   const { data: sigImgBlob } = await supabase.storage
                     .from('signatures')
                     .download(sigImagePath);
-
                   if (sigImgBlob) {
                     const sigImgBytes = new Uint8Array(await sigImgBlob.arrayBuffer());
                     await embedSigImage(sigImgBytes);
+                    stampDate();
+                    stampAudit();
                   }
                 } else if (sig.signature_data && sig.signature_data.startsWith('data:image')) {
-                  // Case 2: signature_data is a base64 data URL (even if type says 'typed')
-                  console.log(`Decoding inline base64 image for ${recipientName} (${sig.signature_data.length} chars)`);
                   const base64Data = sig.signature_data.split(',')[1];
                   const binaryStr = atob(base64Data);
                   const imgBytes = new Uint8Array(binaryStr.length);
-                  for (let i = 0; i < binaryStr.length; i++) {
-                    imgBytes[i] = binaryStr.charCodeAt(i);
-                  }
+                  for (let i = 0; i < binaryStr.length; i++) imgBytes[i] = binaryStr.charCodeAt(i);
                   await embedSigImage(imgBytes);
+                  stampDate();
+                  stampAudit();
                 } else if (sig.signature_data) {
-                  // Case 3: Plain text typed signature — render ON the signature line.
-                  // Mask the underlying "Date: ___" placeholder first.
+                  // Typed text signature — render on the signature line.
                   lastPage.drawRectangle({
-                    x: sigX - 2,
-                    y: signatureLineY - 40,
-                    width: maxSigWidth + 20,
-                    height: 38,
+                    x: sigX,
+                    y: signatureLineY,
+                    width: maxSigWidth,
+                    height: 20,
                     color: rgb(1, 1, 1),
                   });
                   lastPage.drawText(sig.signature_data, {
-                    x: sigX,
-                    y: signatureLineY + 4,
-                    size: 18,
+                    x: sigX + 2,
+                    y: signatureLineY + 3,
+                    size: 16,
                     font: helveticaBoldFont,
                     color: rgb(0, 0, 0.4),
                   });
-                  lastPage.drawText(recipientName, {
-                    x: sigX,
-                    y: signatureLineY - 12,
-                    size: 9,
-                    font: helveticaBoldFont,
-                    color: rgb(0, 0, 0),
-                  });
-                  lastPage.drawText(`Date: ${signedDate}`, {
-                    x: sigX,
-                    y: signatureLineY - 24,
-                    size: 8,
-                    font: helveticaFont,
-                    color: rgb(0.3, 0.3, 0.3),
-                  });
-                  lastPage.drawText(`IP: ${sig.ip_address || 'N/A'}`, {
-                    x: sigX,
-                    y: signatureLineY - 35,
-                    size: 7,
-                    font: helveticaFont,
-                    color: rgb(0.5, 0.5, 0.5),
-                  });
-                  sigX += sigSpacing;
+                  stampDate();
+                  stampAudit();
                 }
               } catch (embedErr) {
                 console.error('Could not embed signature on last page:', embedErr);
