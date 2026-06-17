@@ -604,7 +604,7 @@ Deno.serve(async (req: Request) => {
     await logAuditEvent(supabase, {
       tenant_id: envelope.tenant_id,
       actor_type: 'system',
-      action: 'envelope.completed',
+      action: 'envelope.client_signed',
       target_type: 'signature_envelope',
       target_id: envelope.id,
       ip_address: ip,
