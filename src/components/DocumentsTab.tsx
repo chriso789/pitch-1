@@ -146,6 +146,9 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
 }) => {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
+  // Map: signed_pdf_path -> { envelopeId, title } for envelopes awaiting countersignature
+  const [awaitingCountersign, setAwaitingCountersign] = useState<Record<string, { envelopeId: string; title: string | null }>>({});
+  const [applyingSigFor, setApplyingSigFor] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [showAllDocs, setShowAllDocs] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
