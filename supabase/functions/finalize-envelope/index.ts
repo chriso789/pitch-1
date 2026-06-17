@@ -437,7 +437,7 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // --- Update enhanced_estimates status to 'signed' if linked ---
+    // --- Mark linked enhanced_estimate as awaiting countersignature ---
     try {
       const { data: linkedEstimate } = await supabase
         .from('enhanced_estimates')
@@ -446,32 +446,24 @@ Deno.serve(async (req: Request) => {
         .maybeSingle();
 
       if (linkedEstimate) {
-        const { error: estUpdateErr } = await supabase
+        await supabase
           .from('enhanced_estimates')
-          .update({ status: 'signed', signed_at: new Date().toISOString() })
+          .update({ status: 'awaiting_countersignature' })
           .eq('id', linkedEstimate.id);
-
-        if (estUpdateErr) {
-          console.error('Failed to update estimate status:', estUpdateErr);
-        } else {
-          console.log(`Estimate ${linkedEstimate.id} status updated to signed`);
-        }
       }
     } catch (estErr) {
       console.error('Error updating estimate status:', estErr);
     }
 
-    // Notify sender
+    // Notify sender that the client signed and they need to countersign
     await createNotification(supabase, {
       tenant_id: envelope.tenant_id,
       user_id: envelope.created_by,
-      type: 'envelope_completed',
-      title: 'Envelope Completed',
-      message: `"${envelope.title}" has been signed by all recipients`,
+      type: 'envelope_awaiting_countersignature',
+      title: 'Client Signed — Action Required',
+      message: `"${envelope.title}" was signed by the client. Add your countersignature to finalize.`,
       metadata: {
         envelope_id: envelope.id,
-        completed_at: new Date().toISOString(),
-        recipients_count: recipients?.length || 0,
         signed_pdf_path: signedPdfPath,
         document_id: documentId,
         action_url: `/signature-envelopes/${envelope.id}`,
