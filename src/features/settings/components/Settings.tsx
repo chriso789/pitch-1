@@ -43,6 +43,7 @@ import { TrustedDevices } from "@/components/settings/TrustedDevices";
 import { CacheManagement } from "@/components/settings/CacheManagement";
 import { CompanyManagement } from "@/features/settings/components/CompanyManagement";
 import { CompanyActivityLog } from "@/features/settings/components/CompanyActivityLog";
+import MySignaturePanel from "@/features/settings/components/MySignaturePanel";
 import { PriceManagementDashboard } from "@/components/pricing/PriceManagementDashboard";
 import { PlatformAdmin } from "@/components/settings/PlatformAdmin";
 import { BatchRegenerationPanel } from "@/components/measurements/BatchRegenerationPanel";
@@ -149,6 +150,7 @@ const TAB_TO_CATEGORY: Record<string, string> = {
   "material-audit": "products",
   "supplier-connections": "business",
   "company-referrals": "business",
+  "my-signature": "general",
 };
 
 // Product-related tab keys that get merged into one sidebar entry
@@ -388,6 +390,21 @@ export const Settings = () => {
       });
     }
 
+    // Always add synthetic "My Signature" entry under General (per-user setting)
+    if (!groups["general"]) groups["general"] = [];
+    if (!groups["general"].some(t => t.tab_key === "my-signature")) {
+      groups["general"].push({
+        id: "my-signature-synthetic",
+        tab_key: "my-signature",
+        label: "My Signature",
+        description: "Saved representative signature stamped on signed documents",
+        icon_name: "Pen",
+        order_index: 101,
+        is_active: true,
+        required_role: null,
+      });
+    }
+
 
     // Add single "Products & Pricing" entry
     if (hasProductTab) {
@@ -573,6 +590,8 @@ export const Settings = () => {
         return <SupplierConnectionsSection supplierSubTab={supplierSubTab} setSupplierSubTab={setSupplierSubTab} />;
       case "company-referrals":
         return <CompanyReferralsSection />;
+      case "my-signature":
+        return <MySignaturePanel />;
       case "security":
         return (
           <div className="space-y-6">
