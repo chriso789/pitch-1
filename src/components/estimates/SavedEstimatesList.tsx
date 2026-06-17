@@ -210,6 +210,7 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
           pdf_url,
           created_at,
           template_id,
+          property_details,
           estimate_calculation_templates(name),
           profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
         `)
@@ -233,6 +234,7 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
             pdf_url,
             created_at,
             template_id,
+            property_details,
             estimate_calculation_templates(name)
           `)
           .eq('pipeline_entry_id', pipelineEntryId)
@@ -243,6 +245,7 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
           ...est,
           template_name: est.estimate_calculation_templates?.name || 'Custom',
           created_by_name: undefined,
+          is_auto_draft: !!(est.property_details as any)?.is_auto_draft,
         })) as SavedEstimate[];
       }
 
@@ -250,8 +253,10 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
         ...est,
         template_name: est.estimate_calculation_templates?.name || 'Custom',
         created_by_name: est.profiles ? `${est.profiles.first_name || ''} ${est.profiles.last_name || ''}`.trim() : undefined,
+        is_auto_draft: !!(est.property_details as any)?.is_auto_draft,
       })) as SavedEstimate[];
     },
+
     enabled: !!pipelineEntryId,
   });
 
