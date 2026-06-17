@@ -2053,8 +2053,18 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
     performNewEstimate();
   };
 
-  const performNewEstimate = () => {
+  const performNewEstimate = async () => {
+    // Discard any in-flight auto-draft for this session
+    if (draftEstimateId) {
+      try {
+        await supabase.from('enhanced_estimates').delete().eq('id', draftEstimateId);
+      } catch (e) {
+        console.warn('Failed to delete prior draft:', e);
+      }
+      setDraftEstimateId(null);
+    }
     // Reset all form fields to create a new estimate
+    isRestoringDraftRef.current = true;
     setEditingEstimateId(null);
     setLineItems([
       {
@@ -2080,7 +2090,9 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
     setCalculationResults(null);
     setHasUnsavedChanges(false);
     setShowNewEstimateConfirm(false);
+    setTimeout(() => { isRestoringDraftRef.current = false; }, 600);
     
+    loadSavedEstimates();
     toast({
       title: "New Estimate",
       description: "Form cleared for new estimate",
