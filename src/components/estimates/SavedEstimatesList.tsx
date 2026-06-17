@@ -653,8 +653,9 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
               <div className="flex items-center justify-between mt-1.5 pl-6">
                 <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
                   <Badge className={cn(getStatusBadge(estimate.status), "text-[10px] h-4 px-1")} variant="secondary">
-                    {estimate.status}
+                    {estimate.is_auto_draft ? 'Auto-saved Draft' : estimate.status}
                   </Badge>
+
                   {signatureEnvelopes?.[estimate.id] && (
                     <Badge 
                       variant="outline"
