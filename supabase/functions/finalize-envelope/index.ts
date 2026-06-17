@@ -638,8 +638,7 @@ Deno.serve(async (req: Request) => {
 
     return successResponse({
       envelope_id: envelope.id,
-      status: 'completed',
-      completed_at: new Date().toISOString(),
+      status: 'awaiting_countersignature',
       final_pdf_hash: finalPdfHash,
       signed_pdf_path: signedPdfPath,
       document_id: documentId,
