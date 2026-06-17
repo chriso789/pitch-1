@@ -299,6 +299,7 @@ Deno.serve(async (req: Request) => {
       .update({
         status: 'completed',
         completed_at: completedAt,
+        countersigned_at: completedAt,
         final_pdf_hash: finalHash,
         signed_pdf_path: finalPath,
       })
