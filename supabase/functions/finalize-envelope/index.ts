@@ -139,7 +139,7 @@ Deno.serve(async (req: Request) => {
             // Try to use a stored signature anchor (captured at PDF generation time)
             // so the signature image lands precisely on the printed signature line —
             // regardless of how long the terms-and-conditions text is.
-            let anchor: { pageIndex: number; xPt: number; yPt: number; widthPt: number } | null = null;
+            let anchor: { pageIndex: number; xPt: number; yPt: number; widthPt: number; pageHeightPt?: number; pageWidthPt?: number } | null = null;
             try {
               if (envelope.estimate_id) {
                 const { data: est } = await supabase
@@ -155,18 +155,39 @@ Deno.serve(async (req: Request) => {
               console.warn('Could not load signature_anchor:', e);
             }
 
+            // Sanity-check the anchor: if it's off-page (negative y, beyond page,
+            // or pointing to a non-existent page), discard it and fall back to a
+            // safe placement near the bottom of the last page. This handles the
+            // case where the HTML→PDF capture overflowed a page break and
+            // recorded coordinates outside the visible PDF area.
+            if (anchor) {
+              const validPage = Number.isInteger(anchor.pageIndex) && anchor.pageIndex >= 0 && anchor.pageIndex < pageCount;
+              const probePage = validPage ? pdfDoc.getPage(anchor.pageIndex) : null;
+              const probeH = probePage ? probePage.getSize().height : pageHeight;
+              const probeW = probePage ? probePage.getSize().width : pageWidth;
+              const yOk = anchor.yPt > 20 && anchor.yPt < probeH - 10;
+              const xOk = anchor.xPt >= 0 && anchor.xPt < probeW - 20;
+              if (!validPage || !yOk || !xOk) {
+                console.warn(`Discarding off-page signature_anchor (page=${anchor.pageIndex} x=${anchor.xPt} y=${anchor.yPt} pageH=${probeH}); falling back to last-page default.`);
+                anchor = null;
+              }
+            }
+
             // If anchor specifies a different page, switch to it for drawing.
             const effectivePageIdx = anchor && anchor.pageIndex < pageCount ? anchor.pageIndex : targetPageIdx;
             if (effectivePageIdx !== targetPageIdx) {
               lastPage = pdfDoc.getPage(effectivePageIdx);
             }
 
+            const { height: effPageH } = lastPage.getSize();
             let sigX = anchor ? anchor.xPt : 60;
-            const signatureLineY = anchor ? anchor.yPt : 138;
+            // Default fallback: place ~18% from the bottom of the last page,
+            // which is where most estimate templates put the signature block.
+            const signatureLineY = anchor ? anchor.yPt : Math.max(80, effPageH * 0.18);
             const maxSigWidth = anchor ? Math.min(anchor.widthPt, 200) : 160;
             const maxSigHeight = 28;
             const sigSpacing = 240;
-            console.log(`Signature placement: anchor=${!!anchor} page=${effectivePageIdx} x=${sigX} y=${signatureLineY} w=${maxSigWidth} pageH=${pageHeight}`);
+            console.log(`Signature placement: anchor=${!!anchor} page=${effectivePageIdx} x=${sigX} y=${signatureLineY} w=${maxSigWidth} pageH=${effPageH}`);
 
             for (const sig of signatures) {
               const meta = (sig.signature_metadata || {}) as Record<string, unknown>;
