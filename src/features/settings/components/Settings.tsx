@@ -590,6 +590,8 @@ export const Settings = () => {
         return <SupplierConnectionsSection supplierSubTab={supplierSubTab} setSupplierSubTab={setSupplierSubTab} />;
       case "company-referrals":
         return <CompanyReferralsSection />;
+      case "my-signature":
+        return <MySignaturePanel />;
       case "security":
         return (
           <div className="space-y-6">
