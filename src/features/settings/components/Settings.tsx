@@ -150,6 +150,7 @@ const TAB_TO_CATEGORY: Record<string, string> = {
   "material-audit": "products",
   "supplier-connections": "business",
   "company-referrals": "business",
+  "my-signature": "general",
 };
 
 // Product-related tab keys that get merged into one sidebar entry
