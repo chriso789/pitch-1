@@ -234,9 +234,11 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
           .order('created_at', { ascending: false }),
         supabase
           .from('signature_envelopes')
-          .select('id, title, signed_pdf_path, status')
+          .select('id, title, signed_pdf_path, status, countersigned_at')
           .eq('pipeline_entry_id', pipelineEntryId)
-          .eq('status', 'awaiting_countersignature'),
+          .in('status', ['awaiting_countersignature', 'completed'])
+          .is('countersigned_at', null)
+          .not('signed_pdf_path', 'is', null),
       ]);
 
       if (docsRes.error) throw docsRes.error;

@@ -46804,6 +46804,7 @@ export type Database = {
         Row: {
           completed_at: string | null
           contact_id: string | null
+          countersigned_at: string | null
           created_at: string
           created_by: string | null
           document_url: string | null
@@ -46827,6 +46828,7 @@ export type Database = {
         Insert: {
           completed_at?: string | null
           contact_id?: string | null
+          countersigned_at?: string | null
           created_at?: string
           created_by?: string | null
           document_url?: string | null
@@ -46850,6 +46852,7 @@ export type Database = {
         Update: {
           completed_at?: string | null
           contact_id?: string | null
+          countersigned_at?: string | null
           created_at?: string
           created_by?: string | null
           document_url?: string | null
