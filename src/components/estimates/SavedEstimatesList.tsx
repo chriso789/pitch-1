@@ -301,28 +301,28 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
   const displayedEstimates = [...(estimates || [])];
 
   // Fetch signature envelopes linked to estimates for this pipeline entry
-  const { data: signatureEnvelopes } = useQuery({
+  const { data: signatureEnvelopes, refetch: refetchEnvelopes } = useQuery({
     queryKey: ['estimate-signature-envelopes', pipelineEntryId],
     queryFn: async () => {
       const estimateIds = estimates?.map(e => e.id) || [];
-      if (estimateIds.length === 0) return {};
+      if (estimateIds.length === 0) return {} as Record<string, { id: string; status: string; created_by: string | null }>;
 
       const { data, error } = await supabase
         .from('signature_envelopes')
-        .select('id, estimate_id, status')
+        .select('id, estimate_id, status, created_by')
         .in('estimate_id', estimateIds);
 
       if (error) throw error;
 
-      // Map estimate_id -> latest envelope status
-      const map: Record<string, string> = {};
+      // Map estimate_id -> envelope info, keeping the most relevant status
+      const rank = (s: string) =>
+        s === 'completed' ? 4 : s === 'awaiting_countersignature' ? 3 : s === 'sent' ? 2 : 1;
+      const map: Record<string, { id: string; status: string; created_by: string | null }> = {};
       for (const env of (data || [])) {
-        if (env.estimate_id) {
-          // Keep the most relevant status (completed > sent > pending)
-          const existing = map[env.estimate_id];
-          if (!existing || env.status === 'completed' || (env.status === 'sent' && existing === 'pending')) {
-            map[env.estimate_id] = env.status;
-          }
+        if (!env.estimate_id) continue;
+        const existing = map[env.estimate_id];
+        if (!existing || rank(env.status) > rank(existing.status)) {
+          map[env.estimate_id] = { id: env.id, status: env.status, created_by: env.created_by };
         }
       }
       return map;
