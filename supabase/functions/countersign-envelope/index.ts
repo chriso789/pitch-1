@@ -456,14 +456,13 @@ Deno.serve(async (req: Request) => {
 
     await logAuditEvent(supabase, {
       tenant_id: envelope.tenant_id,
-      actor_type: 'user',
-      actor_id: callerId,
+      actor_user_id: callerId,
       action: 'envelope.countersigned',
       target_type: 'signature_envelope',
       target_id: envelope.id,
       ip_address: ip,
       user_agent: userAgent,
-      metadata: {
+      changes: {
         final_pdf_hash: finalHash,
         signed_pdf_path: finalPath,
         document_id: documentId,
