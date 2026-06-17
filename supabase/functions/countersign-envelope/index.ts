@@ -77,7 +77,7 @@ Deno.serve(async (req: Request) => {
     // Load rep profile + saved signature
     const { data: repProfile } = await supabase
       .from('profiles')
-      .select('id, full_name, email, tenant_id, signature_image_path')
+      .select('id, first_name, last_name, email, tenant_id, signature_image_path')
       .eq('id', callerId)
       .maybeSingle();
 
