@@ -391,12 +391,13 @@ Deno.serve(async (req: Request) => {
     
     const finalPdfHash = await hashToken(pdfContent);
 
-    // Update envelope with completion status and signed PDF path
+    // Mark envelope as awaiting countersignature from the company representative.
+    // The sender triggers `countersign-envelope` to stamp their saved signature
+    // alongside the client's, mark the envelope completed, and send final emails.
     const { error: updateError } = await supabase
       .from('signature_envelopes')
       .update({
-        status: 'completed',
-        completed_at: new Date().toISOString(),
+        status: 'awaiting_countersignature',
         final_pdf_hash: finalPdfHash,
         signed_pdf_path: signedPdfPath,
       })
