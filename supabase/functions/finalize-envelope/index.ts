@@ -50,11 +50,12 @@ Deno.serve(async (req: Request) => {
       return errorResponse('NOT_FOUND', 'Envelope not found', 404);
     }
 
-    // Check if already completed
-    if (envelope.status === 'completed') {
+    // Check if already finalized or completed
+    if (envelope.status === 'completed' || envelope.status === 'awaiting_countersignature') {
       return successResponse({
-        message: 'Envelope already completed',
+        message: `Envelope already ${envelope.status}`,
         envelope_id: envelope.id,
+        status: envelope.status,
         signed_pdf_path: envelope.signed_pdf_path,
       });
     }
