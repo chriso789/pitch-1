@@ -656,19 +656,61 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
                     {estimate.is_auto_draft ? 'Auto-saved Draft' : estimate.status}
                   </Badge>
 
-                  {signatureEnvelopes?.[estimate.id] && (
-                    <Badge 
+                  {signatureEnvelopes?.[estimate.id] && (() => {
+                    const env = signatureEnvelopes[estimate.id];
+                    const label =
+                      env.status === 'completed' ? 'Signed'
+                      : env.status === 'awaiting_countersignature' ? 'Awaiting Rep Signature'
+                      : 'Awaiting Client Signature';
+                    const cls =
+                      env.status === 'completed'
+                        ? 'border-green-500 text-green-600 bg-green-50 dark:bg-green-950/30'
+                        : env.status === 'awaiting_countersignature'
+                          ? 'border-blue-500 text-blue-600 bg-blue-50 dark:bg-blue-950/30'
+                          : 'border-amber-500 text-amber-600 bg-amber-50 dark:bg-amber-950/30';
+                    return (
+                      <Badge variant="outline" className={cn('text-[10px] h-4 px-1', cls)}>
+                        <FileSignature className="h-2.5 w-2.5 mr-0.5" />
+                        {label}
+                      </Badge>
+                    );
+                  })()}
+                  {signatureEnvelopes?.[estimate.id]?.status === 'awaiting_countersignature' && (
+                    <Button
                       variant="outline"
-                      className={cn(
-                        "text-[10px] h-4 px-1",
-                        signatureEnvelopes[estimate.id] === 'completed'
-                          ? 'border-green-500 text-green-600 bg-green-50 dark:bg-green-950/30'
-                          : 'border-amber-500 text-amber-600 bg-amber-50 dark:bg-amber-950/30'
-                      )}
+                      size="sm"
+                      className="h-5 px-1.5 text-[10px] border-blue-500 text-blue-700 hover:bg-blue-50"
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        const env = signatureEnvelopes[estimate.id];
+                        const t = toast.loading('Countersigning…');
+                        try {
+                          const { data, error } = await supabase.functions.invoke('countersign-envelope', {
+                            body: { envelope_id: env.id },
+                          });
+                          if (error) throw error;
+                          if ((data as any)?.error) throw new Error((data as any).error.message || 'Failed');
+                          toast.success('Document fully signed', { id: t });
+                          refetchEnvelopes();
+                        } catch (err: any) {
+                          const msg = err?.message || 'Could not countersign';
+                          if (msg.toLowerCase().includes('signature')) {
+                            toast.error(
+                              <span>
+                                {msg}{' '}
+                                <a href="/settings/my-signature" className="underline">Set up signature</a>
+                              </span>,
+                              { id: t, duration: 8000 }
+                            );
+                          } else {
+                            toast.error(msg, { id: t });
+                          }
+                        }
+                      }}
                     >
                       <FileSignature className="h-2.5 w-2.5 mr-0.5" />
-                      {signatureEnvelopes[estimate.id] === 'completed' ? 'Signed' : 'Awaiting Signature'}
-                    </Badge>
+                      Countersign & Finalize
+                    </Button>
                   )}
                   {!estimate.is_recovered_pdf && (
                     <span className={`flex items-center gap-0.5 ${getProfitColor(estimate.actual_profit_percent || 0)}`}>
