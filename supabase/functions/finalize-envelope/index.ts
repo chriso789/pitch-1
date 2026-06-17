@@ -470,9 +470,9 @@ Deno.serve(async (req: Request) => {
       },
     });
 
-    // --- Send completion emails to all recipients AND the sender ---
+    // --- Completion emails are sent by `countersign-envelope` after the rep signs ---
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-    if (RESEND_API_KEY && signedPdfPath) {
+    if (false && RESEND_API_KEY && signedPdfPath) {
       try {
         // Get tenant info for branding
         const { data: tenant } = await supabase
