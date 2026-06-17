@@ -246,29 +246,40 @@ export function useMultiPagePDFGeneration() {
           const sigLine = pageElement.querySelector('[data-signature-line="customer"]') as HTMLElement | null;
           if (sigLine) {
             const pageRect = pageElement.getBoundingClientRect();
-            const lineRect = sigLine.getBoundingClientRect();
-            // Position relative to page element (CSS pixels)
-            const relX = lineRect.left - pageRect.left;
-            const relY = lineRect.bottom - pageRect.top; // baseline of the line (bottom border)
-            const relW = lineRect.width;
-            // Scale CSS px → mm in the printed image area
             const mmPerCssPx = imgWidth / pageRect.width;
-            const xMm = xOffset + relX * mmPerCssPx;
-            const yMmFromTop = yOffset + relY * mmPerCssPx;
-            const widthMm = relW * mmPerCssPx;
-            // Convert to PDF points; PDF y-origin is bottom-left
-            const xPt = xMm * MM_TO_PT;
-            const yPt = (pageHeight - yMmFromTop) * MM_TO_PT;
-            const widthPt = widthMm * MM_TO_PT;
+
+            const toAnchor = (el: HTMLElement): AnchorBox => {
+              const r = el.getBoundingClientRect();
+              const relX = r.left - pageRect.left;
+              const relY = r.bottom - pageRect.top;
+              const xMm = xOffset + relX * mmPerCssPx;
+              const yMmFromTop = yOffset + relY * mmPerCssPx;
+              const widthMm = r.width * mmPerCssPx;
+              return {
+                xPt: xMm * MM_TO_PT,
+                yPt: (pageHeight - yMmFromTop) * MM_TO_PT,
+                widthPt: widthMm * MM_TO_PT,
+              };
+            };
+
+            const customerSig = toAnchor(sigLine);
+            const customerDateEl = pageElement.querySelector('[data-date-line="customer"]') as HTMLElement | null;
+            const companySigEl = pageElement.querySelector('[data-signature-line="company"]') as HTMLElement | null;
+            const companyDateEl = pageElement.querySelector('[data-date-line="company"]') as HTMLElement | null;
+
             signatureAnchor = {
               pageIndex: i,
-              xPt,
-              yPt,
-              widthPt,
+              xPt: customerSig.xPt,
+              yPt: customerSig.yPt,
+              widthPt: customerSig.widthPt,
               pageWidthPt: pageWidth * MM_TO_PT,
               pageHeightPt: pageHeight * MM_TO_PT,
+              customerSig,
+              customerDate: customerDateEl ? toAnchor(customerDateEl) : undefined,
+              companySig: companySigEl ? toAnchor(companySigEl) : undefined,
+              companyDate: companyDateEl ? toAnchor(companyDateEl) : undefined,
             };
-            console.log(`📐 Captured signature anchor on page ${i}:`, signatureAnchor);
+            console.log(`📐 Captured signature anchors on page ${i}:`, signatureAnchor);
           }
         }
 
