@@ -10,6 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Loader2, FileText, ExternalLink, Percent, Check, Pencil, Trash2, FileSignature, Copy, AlertTriangle, Layers } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { toast as sonnerToast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
   AlertDialog,
