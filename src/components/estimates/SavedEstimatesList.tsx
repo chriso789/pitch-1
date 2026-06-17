@@ -45,7 +45,9 @@ interface SavedEstimate {
   template_name?: string;
   created_by_name?: string;
   is_recovered_pdf?: boolean;
+  is_auto_draft?: boolean;
 }
+
 
 interface SavedEstimatesListProps {
   pipelineEntryId: string;
