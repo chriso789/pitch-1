@@ -54,6 +54,7 @@ const SECTIONS = [
 
 export function MaterialCatalogManager() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [catalogMode, setCatalogMode] = useState<'materials' | 'labor'>('materials');
   const [selectedSection, setSelectedSection] = useState<string>("all");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -75,7 +76,8 @@ export function MaterialCatalogManager() {
 
       return {
         categories: (catResult.data || []) as Category[],
-        materials: (matResult.data || []) as Material[]
+        // Hide soft-deleted rows so the catalog matches what the user sees as "deleted"
+        materials: ((matResult.data || []) as Material[]).filter(m => m.active !== false)
       };
     },
     staleTime: 2 * 60 * 1000, // 2 minutes cache
@@ -88,29 +90,46 @@ export function MaterialCatalogManager() {
     queryClient.invalidateQueries({ queryKey: ['material-catalog'] });
   };
 
+  // Reset section/category when toggling Materials <-> Labor
+  useEffect(() => {
+    setSelectedSection('all');
+    setSelectedCategory('all');
+  }, [catalogMode]);
+
   // Reset category filter when section changes
   useEffect(() => {
     setSelectedCategory('all');
   }, [selectedSection]);
 
-  // Filter categories by selected section
-  const filteredCategories = categories.filter(c => 
-    selectedSection === 'all' || (c as any).section === selectedSection
-  );
+  // Section choices depend on mode (Labor mode is labor-only)
+  const availableSections = catalogMode === 'labor'
+    ? [{ value: 'all', label: 'All Labor' }]
+    : SECTIONS.filter(s => s.value !== 'labor');
+
+  // Filter categories by mode + selected section
+  const filteredCategories = categories.filter(c => {
+    const sec = (c as any).section || 'roof';
+    if (catalogMode === 'labor') return sec === 'labor';
+    if (sec === 'labor') return false;
+    return selectedSection === 'all' || sec === selectedSection;
+  });
 
   const filteredMaterials = materials.filter(m => {
-    const matchesSearch = !searchQuery || 
+    const matchesSearch = !searchQuery ||
       m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       m.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (m.description?.toLowerCase().includes(searchQuery.toLowerCase()));
-    
-    // Find the category's section
+
     const cat = categories.find(c => c.id === m.category_id);
     const catSection = (cat as any)?.section || 'roof';
-    
+
+    // Mode gate: Materials hides labor; Labor shows only labor
+    if (catalogMode === 'labor' && catSection !== 'labor') return false;
+    if (catalogMode === 'materials' && catSection === 'labor') return false;
+
     const matchesSection = selectedSection === 'all' || catSection === selectedSection;
     const matchesCategory = selectedCategory === "all" || m.category_id === selectedCategory;
-    
+
     return matchesSearch && matchesSection && matchesCategory;
   });
 
