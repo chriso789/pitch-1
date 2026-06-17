@@ -140,7 +140,13 @@ Deno.serve(async (req: Request) => {
             // Try to use a stored signature anchor (captured at PDF generation time)
             // so the signature image lands precisely on the printed signature line —
             // regardless of how long the terms-and-conditions text is.
-            let anchor: { pageIndex: number; xPt: number; yPt: number; widthPt: number; pageHeightPt?: number; pageWidthPt?: number } | null = null;
+            type Box = { xPt: number; yPt: number; widthPt: number };
+            let anchor: {
+              pageIndex: number; xPt: number; yPt: number; widthPt: number;
+              pageHeightPt?: number; pageWidthPt?: number;
+              customerSig?: Box; customerDate?: Box;
+              companySig?: Box; companyDate?: Box;
+            } | null = null;
             try {
               if (envelope.estimate_id) {
                 const { data: est } = await supabase
@@ -158,9 +164,7 @@ Deno.serve(async (req: Request) => {
 
             // Sanity-check the anchor: if it's off-page (negative y, beyond page,
             // or pointing to a non-existent page), discard it and fall back to a
-            // safe placement near the bottom of the last page. This handles the
-            // case where the HTML→PDF capture overflowed a page break and
-            // recorded coordinates outside the visible PDF area.
+            // safe placement near the bottom of the last page.
             if (anchor) {
               const validPage = Number.isInteger(anchor.pageIndex) && anchor.pageIndex >= 0 && anchor.pageIndex < pageCount;
               const probePage = validPage ? pdfDoc.getPage(anchor.pageIndex) : null;
@@ -181,14 +185,17 @@ Deno.serve(async (req: Request) => {
             }
 
             const { height: effPageH } = lastPage.getSize();
-            let sigX = anchor ? anchor.xPt : 60;
-            // Default fallback: place ~18% from the bottom of the last page,
-            // which is where most estimate templates put the signature block.
-            const signatureLineY = anchor ? anchor.yPt : Math.max(80, effPageH * 0.18);
-            const maxSigWidth = anchor ? Math.min(anchor.widthPt, 200) : 160;
-            const maxSigHeight = 28;
-            const sigSpacing = 240;
-            console.log(`Signature placement: anchor=${!!anchor} page=${effectivePageIdx} x=${sigX} y=${signatureLineY} w=${maxSigWidth} pageH=${effPageH}`);
+            // Precise per-field anchors (preferred); fallback to legacy single anchor.
+            const customerSigBox: Box = anchor?.customerSig ?? (anchor
+              ? { xPt: anchor.xPt, yPt: anchor.yPt, widthPt: anchor.widthPt }
+              : { xPt: 60, yPt: Math.max(80, effPageH * 0.18), widthPt: 200 });
+            const customerDateBox: Box | null = anchor?.customerDate ?? null;
+
+            let sigX = customerSigBox.xPt;
+            const signatureLineY = customerSigBox.yPt;
+            const maxSigWidth = Math.min(customerSigBox.widthPt, 220);
+            const maxSigHeight = Math.min(28, (customerDateBox ? signatureLineY - customerDateBox.yPt - 4 : 28));
+            console.log(`Signature placement: anchor=${!!anchor} page=${effectivePageIdx} sig=(${sigX},${signatureLineY},${maxSigWidth}) date=${customerDateBox ? `(${customerDateBox.xPt},${customerDateBox.yPt},${customerDateBox.widthPt})` : 'none'}`);
 
             for (const sig of signatures) {
               const meta = (sig.signature_metadata || {}) as Record<string, unknown>;
