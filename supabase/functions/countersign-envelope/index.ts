@@ -59,19 +59,22 @@ Deno.serve(async (req: Request) => {
     if (envErr || !envelope) {
       return errorResponse('NOT_FOUND', 'Envelope not found', 404);
     }
-    if (envelope.status === 'completed') {
+    if (envelope.countersigned_at) {
       return successResponse({
-        message: 'Envelope already completed',
+        message: 'Envelope already countersigned',
         envelope_id: envelope.id,
         signed_pdf_path: envelope.signed_pdf_path,
       });
     }
-    if (envelope.status !== 'awaiting_countersignature') {
+    if (envelope.status !== 'awaiting_countersignature' && envelope.status !== 'completed') {
       return errorResponse(
         'INVALID_STATE',
-        `Envelope is not awaiting countersignature (status=${envelope.status})`,
+        `Envelope is not ready for countersignature (status=${envelope.status})`,
         400
       );
+    }
+    if (!envelope.signed_pdf_path) {
+      return errorResponse('INVALID_STATE', 'Envelope has no signed PDF to countersign', 400);
     }
 
     // Load rep profile + saved signature
