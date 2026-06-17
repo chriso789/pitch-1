@@ -2018,8 +2018,11 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
       });
 
       // Set editing state
+      isRestoringDraftRef.current = true;
       setEditingEstimateId(estimateId);
+      setDraftEstimateId(null);
       setHasUnsavedChanges(false);
+      setTimeout(() => { isRestoringDraftRef.current = false; }, 600);
 
       // Switch to builder tab
       setActiveTab('builder');
