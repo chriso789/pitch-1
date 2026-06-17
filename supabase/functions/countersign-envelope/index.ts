@@ -170,7 +170,7 @@ Deno.serve(async (req: Request) => {
       if (tenant?.name) tenantName = tenant.name;
     } catch { /* noop */ }
 
-    const repName = repProfile.full_name || repProfile.email || 'Representative';
+    const repName = [repProfile.first_name, repProfile.last_name].filter(Boolean).join(' ').trim() || repProfile.email || 'Representative';
     const today = new Date();
     const signedDateStr = today.toLocaleDateString();
 
