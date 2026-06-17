@@ -904,7 +904,9 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
               {folderDocuments.map((doc) => {
                 const Icon = getCategoryIcon(doc.document_type);
                 const category = getCategoryDetails(doc.document_type || 'other');
-                
+                const awaiting = doc.file_path ? awaitingCountersign[doc.file_path] : undefined;
+                const isApplying = awaiting && applyingSigFor === awaiting.envelopeId;
+
                 return (
                   <Card key={doc.id} className="hover:border-primary/50 transition-colors">
                     <CardContent className="flex items-center justify-between p-4">
@@ -924,26 +926,55 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
                           </div>
                         </div>
                         {/* Signature status badges */}
-                        {doc.signature_status === 'signed' && (
-                          <Badge variant="outline" className="text-green-600 border-green-600 gap-1">
-                            <CheckCircle className="h-3 w-3" />
-                            Signed
-                          </Badge>
-                        )}
-                        {doc.signature_status === 'sent' && (
-                          <Badge variant="outline" className="text-amber-600 border-amber-600 gap-1">
+                        {awaiting ? (
+                          <Badge variant="outline" className="text-blue-600 border-blue-600 gap-1">
                             <Clock className="h-3 w-3" />
-                            Awaiting
+                            Awaiting Rep Signature
                           </Badge>
-                        )}
-                        {doc.description?.includes('Signed on') && (
-                          <Badge variant="outline" className="text-green-600 border-green-600 gap-1">
-                            <CheckCircle className="h-3 w-3" />
-                            Signed
-                          </Badge>
+                        ) : (
+                          <>
+                            {doc.signature_status === 'signed' && (
+                              <Badge variant="outline" className="text-green-600 border-green-600 gap-1">
+                                <CheckCircle className="h-3 w-3" />
+                                Signed
+                              </Badge>
+                            )}
+                            {doc.signature_status === 'sent' && (
+                              <Badge variant="outline" className="text-amber-600 border-amber-600 gap-1">
+                                <Clock className="h-3 w-3" />
+                                Awaiting
+                              </Badge>
+                            )}
+                            {doc.description?.includes('Signed on') && (
+                              <Badge variant="outline" className="text-green-600 border-green-600 gap-1">
+                                <CheckCircle className="h-3 w-3" />
+                                Signed
+                              </Badge>
+                            )}
+                          </>
                         )}
                       </div>
                       <div className="flex items-center gap-1">
+                        {awaiting && (
+                          <Button
+                            size="sm"
+                            variant="default"
+                            className="mr-1 gap-1"
+                            disabled={!!isApplying}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleApplySignature(awaiting.envelopeId);
+                            }}
+                            title="Apply your saved signature and finalize"
+                          >
+                            {isApplying ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Pencil className="h-4 w-4" />
+                            )}
+                            {isApplying ? 'Applying…' : 'Apply Signature'}
+                          </Button>
+                        )}
                         <Button size="icon" variant="ghost" onClick={() => setRenameDoc({ id: doc.id, filename: doc.filename })} title="Rename">
                           <Pencil className="h-4 w-4" />
                         </Button>
