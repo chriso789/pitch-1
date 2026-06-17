@@ -54,6 +54,7 @@ const SECTIONS = [
 
 export function MaterialCatalogManager() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [catalogMode, setCatalogMode] = useState<'materials' | 'labor'>('materials');
   const [selectedSection, setSelectedSection] = useState<string>("all");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -75,7 +76,8 @@ export function MaterialCatalogManager() {
 
       return {
         categories: (catResult.data || []) as Category[],
-        materials: (matResult.data || []) as Material[]
+        // Hide soft-deleted rows so the catalog matches what the user sees as "deleted"
+        materials: ((matResult.data || []) as Material[]).filter(m => m.active !== false)
       };
     },
     staleTime: 2 * 60 * 1000, // 2 minutes cache
@@ -88,29 +90,46 @@ export function MaterialCatalogManager() {
     queryClient.invalidateQueries({ queryKey: ['material-catalog'] });
   };
 
+  // Reset section/category when toggling Materials <-> Labor
+  useEffect(() => {
+    setSelectedSection('all');
+    setSelectedCategory('all');
+  }, [catalogMode]);
+
   // Reset category filter when section changes
   useEffect(() => {
     setSelectedCategory('all');
   }, [selectedSection]);
 
-  // Filter categories by selected section
-  const filteredCategories = categories.filter(c => 
-    selectedSection === 'all' || (c as any).section === selectedSection
-  );
+  // Section choices depend on mode (Labor mode is labor-only)
+  const availableSections = catalogMode === 'labor'
+    ? [{ value: 'all', label: 'All Labor' }]
+    : SECTIONS.filter(s => s.value !== 'labor');
+
+  // Filter categories by mode + selected section
+  const filteredCategories = categories.filter(c => {
+    const sec = (c as any).section || 'roof';
+    if (catalogMode === 'labor') return sec === 'labor';
+    if (sec === 'labor') return false;
+    return selectedSection === 'all' || sec === selectedSection;
+  });
 
   const filteredMaterials = materials.filter(m => {
-    const matchesSearch = !searchQuery || 
+    const matchesSearch = !searchQuery ||
       m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       m.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (m.description?.toLowerCase().includes(searchQuery.toLowerCase()));
-    
-    // Find the category's section
+
     const cat = categories.find(c => c.id === m.category_id);
     const catSection = (cat as any)?.section || 'roof';
-    
+
+    // Mode gate: Materials hides labor; Labor shows only labor
+    if (catalogMode === 'labor' && catSection !== 'labor') return false;
+    if (catalogMode === 'materials' && catSection === 'labor') return false;
+
     const matchesSection = selectedSection === 'all' || catSection === selectedSection;
     const matchesCategory = selectedCategory === "all" || m.category_id === selectedCategory;
-    
+
     return matchesSearch && matchesSection && matchesCategory;
   });
 
@@ -284,32 +303,56 @@ export function MaterialCatalogManager() {
 
       <Tabs defaultValue="materials" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="materials">Materials ({materials.length})</TabsTrigger>
+          <TabsTrigger value="materials">Catalog ({filteredMaterials.length})</TabsTrigger>
           <TabsTrigger value="suppliers">Supplier Catalog</TabsTrigger>
         </TabsList>
 
         <TabsContent value="materials" className="space-y-4">
+          {/* Materials / Labor toggle */}
+          <div className="inline-flex rounded-md border bg-muted p-1">
+            <button
+              type="button"
+              onClick={() => setCatalogMode('materials')}
+              className={`px-4 py-1.5 text-sm font-medium rounded ${
+                catalogMode === 'materials' ? 'bg-background shadow-sm' : 'text-muted-foreground'
+              }`}
+            >
+              Materials
+            </button>
+            <button
+              type="button"
+              onClick={() => setCatalogMode('labor')}
+              className={`px-4 py-1.5 text-sm font-medium rounded ${
+                catalogMode === 'labor' ? 'bg-background shadow-sm' : 'text-muted-foreground'
+              }`}
+            >
+              Labor
+            </button>
+          </div>
+
           {/* Filters */}
           <div className="flex gap-4">
             <div className="relative flex-1 max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search materials..."
+                placeholder={`Search ${catalogMode}...`}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"
               />
             </div>
-            <Select value={selectedSection} onValueChange={setSelectedSection}>
-              <SelectTrigger className="w-[140px]">
-                <SelectValue placeholder="Section" />
-              </SelectTrigger>
-              <SelectContent>
-                {SECTIONS.map((s) => (
-                  <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {catalogMode === 'materials' && (
+              <Select value={selectedSection} onValueChange={setSelectedSection}>
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue placeholder="Section" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableSections.map((s) => (
+                    <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <Select value={selectedCategory} onValueChange={setSelectedCategory}>
               <SelectTrigger className="w-[200px]">
                 <SelectValue placeholder="All Categories" />
@@ -322,6 +365,7 @@ export function MaterialCatalogManager() {
               </SelectContent>
             </Select>
           </div>
+
 
           <div className="border rounded-lg">
             <Table>
