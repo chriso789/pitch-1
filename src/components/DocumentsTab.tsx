@@ -215,7 +215,7 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
 
   const fetchDocuments = async () => {
     try {
-      const [docsRes, invoicesRes] = await Promise.all([
+      const [docsRes, invoicesRes, envelopesRes] = await Promise.all([
         supabase
           .from('documents')
           .select(`
@@ -232,10 +232,23 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
           .select('id, invoice_type, vendor_name, crew_name, invoice_number, invoice_amount, document_url, document_name, notes, created_at, created_by')
           .eq('pipeline_entry_id', pipelineEntryId)
           .order('created_at', { ascending: false }),
+        supabase
+          .from('signature_envelopes')
+          .select('id, title, signed_pdf_path, status')
+          .eq('pipeline_entry_id', pipelineEntryId)
+          .eq('status', 'awaiting_countersignature'),
       ]);
 
       if (docsRes.error) throw docsRes.error;
       if (invoicesRes.error) throw invoicesRes.error;
+
+      const awaitingMap: Record<string, { envelopeId: string; title: string | null }> = {};
+      for (const env of (envelopesRes.data || [])) {
+        if (env.signed_pdf_path) {
+          awaitingMap[env.signed_pdf_path] = { envelopeId: env.id, title: env.title };
+        }
+      }
+      setAwaitingCountersign(awaitingMap);
 
       const docs = (docsRes.data || []) as any[];
       const linkedIds = new Set(docs.map(d => d.linked_invoice_id).filter(Boolean));
