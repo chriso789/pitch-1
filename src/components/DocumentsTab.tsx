@@ -1276,6 +1276,34 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      {(() => {
+                        const awaiting = doc.file_path ? awaitingCountersign[doc.file_path] : undefined;
+                        if (!awaiting) return null;
+                        const isApplying = applyingSigFor === awaiting.envelopeId;
+                        return (
+                          <>
+                            <Badge variant="outline" className="text-blue-600 border-blue-600 gap-1">
+                              <Clock className="h-3 w-3" />
+                              Awaiting Rep Signature
+                            </Badge>
+                            <Button
+                              size="sm"
+                              variant="default"
+                              className="gap-1"
+                              disabled={isApplying}
+                              onClick={() => handleApplySignature(awaiting.envelopeId)}
+                              title="Apply your saved signature and finalize"
+                            >
+                              {isApplying ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Pencil className="h-4 w-4" />
+                              )}
+                              {isApplying ? 'Applying…' : 'Apply Signature'}
+                            </Button>
+                          </>
+                        );
+                      })()}
                       <Button
                         size="icon"
                         variant="ghost"
