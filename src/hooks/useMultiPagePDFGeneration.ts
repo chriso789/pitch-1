@@ -14,13 +14,25 @@ interface PDFGenerationOptions {
   orientation?: 'portrait' | 'landscape';
 }
 
+interface AnchorBox {
+  xPt: number;
+  yPt: number; // baseline (bottom of the line)
+  widthPt: number;
+}
+
 interface SignatureAnchor {
   pageIndex: number;        // 0-based page index in final PDF
-  xPt: number;              // X in PDF points (origin: bottom-left)
-  yPt: number;              // Y in PDF points (origin: bottom-left) — baseline of signature line
-  widthPt: number;          // width of signature line in PDF points
-  pageWidthPt: number;      // page width in PDF points
-  pageHeightPt: number;     // page height in PDF points
+  // legacy fields (customer signature line) for backward compat
+  xPt: number;
+  yPt: number;
+  widthPt: number;
+  pageWidthPt: number;
+  pageHeightPt: number;
+  // precise per-field anchors
+  customerSig?: AnchorBox;
+  customerDate?: AnchorBox;
+  companySig?: AnchorBox;
+  companyDate?: AnchorBox;
 }
 
 interface PDFGenerationResult {
