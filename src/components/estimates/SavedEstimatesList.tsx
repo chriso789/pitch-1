@@ -684,19 +684,19 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
                       onClick={async (e) => {
                         e.stopPropagation();
                         const env = signatureEnvelopes[estimate.id];
-                        const t = toast.loading('Countersigning…');
+                        const t = sonnerToast.loading('Countersigning…');
                         try {
                           const { data, error } = await supabase.functions.invoke('countersign-envelope', {
                             body: { envelope_id: env.id },
                           });
                           if (error) throw error;
                           if ((data as any)?.error) throw new Error((data as any).error.message || 'Failed');
-                          toast.success('Document fully signed', { id: t });
+                          sonnerToast.success('Document fully signed', { id: t });
                           refetchEnvelopes();
                         } catch (err: any) {
                           const msg = err?.message || 'Could not countersign';
                           if (msg.toLowerCase().includes('signature')) {
-                            toast.error(
+                            sonnerToast.error(
                               <span>
                                 {msg}{' '}
                                 <a href="/settings/my-signature" className="underline">Set up signature</a>
@@ -704,7 +704,7 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
                               { id: t, duration: 8000 }
                             );
                           } else {
-                            toast.error(msg, { id: t });
+                            sonnerToast.error(msg, { id: t });
                           }
                         }
                       }}
