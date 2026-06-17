@@ -520,6 +520,206 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
     }
   }, [pipelineEntryId]);
 
+  // Restore previously auto-saved draft (if any) on mount
+  useEffect(() => {
+    if (!pipelineEntryId || autoDraftInitializedRef.current) return;
+    autoDraftInitializedRef.current = true;
+    (async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        const { data } = await supabase
+          .from('enhanced_estimates')
+          .select('*')
+          .eq('pipeline_entry_id', pipelineEntryId)
+          .eq('created_by', user.id)
+          .eq('status', 'draft')
+          .order('updated_at', { ascending: false })
+          .limit(20);
+        const draft = (data || []).find(
+          (r: any) => r?.property_details?.is_auto_draft === true
+        );
+        if (!draft) return;
+
+        isRestoringDraftRef.current = true;
+        setDraftEstimateId(draft.id);
+
+        const pd: any = (draft as any).property_details || {};
+        setPropertyDetails({
+          roof_area_sq_ft: (draft as any).roof_area_sq_ft || 0,
+          roof_type: pd.roof_type || 'asphalt_shingle',
+          complexity_level: (draft as any).complexity_level || 'moderate',
+          roof_pitch: (draft as any).roof_pitch || '4/12',
+          customer_name:
+            (draft as any).customer_name === 'Draft'
+              ? ''
+              : ((draft as any).customer_name || ''),
+          customer_address: (draft as any).customer_address || '',
+        });
+        if (Array.isArray((draft as any).line_items)) {
+          setLineItems((draft as any).line_items as unknown as LineItem[]);
+        }
+        if (pd.excel_config) setExcelConfig(pd.excel_config);
+        if ((draft as any).template_id) setTemplateId((draft as any).template_id);
+        if (pd.sales_rep_id) setSalesRepId(pd.sales_rep_id);
+        if (Array.isArray(pd.secondary_rep_ids)) setSecondaryRepIds(pd.secondary_rep_ids);
+
+        toast({
+          title: 'Draft Restored',
+          description: 'Your unsaved estimate draft was recovered.',
+        });
+        setTimeout(() => {
+          isRestoringDraftRef.current = false;
+        }, 600);
+      } catch (e) {
+        console.warn('Draft restore failed:', e);
+      }
+    })();
+  }, [pipelineEntryId, toast]);
+
+  // Silent auto-draft save (debounced by the effect below)
+  const performAutoDraftSave = useCallback(async () => {
+    if (!pipelineEntryId) return;
+    if (editingEstimateId) return; // editing an existing estimate – different flow
+    if (isRestoringDraftRef.current) return;
+
+    const hasContent =
+      lineItems.some((i) => (i.item_name || '').trim()) ||
+      (propertyDetails.customer_name || '').trim().length > 0 ||
+      (propertyDetails.customer_address || '').trim().length > 0 ||
+      (propertyDetails.roof_area_sq_ft || 0) > 0;
+    if (!hasContent) return;
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: prof } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('id', user.id)
+        .single();
+      if (!prof?.tenant_id) return;
+
+      const payload: any = {
+        pipeline_entry_id: pipelineEntryId,
+        tenant_id: prof.tenant_id,
+        customer_name: propertyDetails.customer_name || 'Draft',
+        customer_address: propertyDetails.customer_address || '',
+        roof_area_sq_ft:
+          calculationResults?.roof_area_sq_ft ||
+          propertyDetails.roof_area_sq_ft ||
+          0,
+        roof_pitch: propertyDetails.roof_pitch || '4/12',
+        complexity_level: propertyDetails.complexity_level || 'moderate',
+        line_items: (lineItems as any) || [],
+        selling_price: calculationResults?.selling_price || 0,
+        material_cost: calculationResults?.material_cost || 0,
+        material_total: calculationResults?.material_cost || 0,
+        material_markup_percent: 0,
+        labor_cost: calculationResults?.labor_cost || 0,
+        labor_total: calculationResults?.labor_cost || 0,
+        labor_hours: calculationResults?.labor_hours || 0,
+        labor_rate_per_hour: calculationResults?.labor_rate_per_hour || 50,
+        labor_markup_percent: 0,
+        overhead_percent: excelConfig.overhead_percent || 15,
+        overhead_amount: calculationResults?.overhead_amount || 0,
+        subtotal: calculationResults?.cost_pre_profit || 0,
+        target_profit_percent: excelConfig.target_margin_percent || 30,
+        target_profit_amount: calculationResults?.profit_amount || 0,
+        actual_profit_amount: calculationResults?.profit_amount || 0,
+        actual_profit_percent: calculationResults?.actual_margin_percent || 0,
+        price_per_sq_ft: 0,
+        permit_costs: 0,
+        waste_factor_percent: excelConfig.waste_factor_percent || 10,
+        contingency_percent: excelConfig.contingency_percent || 5,
+        status: 'draft',
+        template_id: templateId || null,
+        property_details: {
+          ...propertyDetails,
+          is_auto_draft: true,
+          excel_config: excelConfig,
+          sales_rep_id: salesRepId || null,
+          secondary_rep_ids: secondaryRepIds,
+        },
+      };
+
+      if (draftEstimateId) {
+        const { error } = await (supabase.from('enhanced_estimates') as any)
+          .update(payload)
+          .eq('id', draftEstimateId);
+        if (error) throw error;
+      } else {
+        const estimateNumber = `DRAFT-${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2, 6)
+          .toUpperCase()}`;
+        const { data, error } = await (supabase.from('enhanced_estimates') as any)
+          .insert({
+            ...payload,
+            estimate_number: estimateNumber,
+            created_by: user.id,
+          })
+          .select('id')
+          .single();
+        if (error) throw error;
+        if (data?.id) setDraftEstimateId(data.id);
+      }
+      // refresh the Saved Estimates list so the draft shows up
+      loadSavedEstimates();
+    } catch (e) {
+      console.warn('Auto-draft save failed:', e);
+    }
+  }, [
+    pipelineEntryId,
+    editingEstimateId,
+    draftEstimateId,
+    propertyDetails,
+    lineItems,
+    excelConfig,
+    templateId,
+    salesRepId,
+    secondaryRepIds,
+    calculationResults,
+  ]);
+
+  // Debounced auto-draft trigger on any meaningful form change
+  useEffect(() => {
+    if (!pipelineEntryId || editingEstimateId) return;
+    if (isRestoringDraftRef.current) return;
+    if (autoDraftTimerRef.current) clearTimeout(autoDraftTimerRef.current);
+    autoDraftTimerRef.current = setTimeout(() => {
+      performAutoDraftSave();
+    }, 1500);
+    return () => {
+      if (autoDraftTimerRef.current) clearTimeout(autoDraftTimerRef.current);
+    };
+  }, [
+    propertyDetails,
+    lineItems,
+    excelConfig,
+    templateId,
+    salesRepId,
+    secondaryRepIds,
+    calculationResults,
+    editingEstimateId,
+    pipelineEntryId,
+    performAutoDraftSave,
+  ]);
+
+  // Best-effort flush on tab close / navigation
+  useEffect(() => {
+    const flush = () => {
+      if (!pipelineEntryId || editingEstimateId) return;
+      performAutoDraftSave();
+    };
+    window.addEventListener('beforeunload', flush);
+    window.addEventListener('pagehide', flush);
+    return () => {
+      window.removeEventListener('beforeunload', flush);
+      window.removeEventListener('pagehide', flush);
+    };
+  }, [performAutoDraftSave, pipelineEntryId, editingEstimateId]);
+
   // Handle editEstimate URL parameter to load estimate for editing
   useEffect(() => {
     const editEstimateId = searchParams.get('editEstimate');
