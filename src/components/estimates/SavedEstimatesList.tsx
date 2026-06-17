@@ -45,7 +45,9 @@ interface SavedEstimate {
   template_name?: string;
   created_by_name?: string;
   is_recovered_pdf?: boolean;
+  is_auto_draft?: boolean;
 }
+
 
 interface SavedEstimatesListProps {
   pipelineEntryId: string;
@@ -208,6 +210,7 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
           pdf_url,
           created_at,
           template_id,
+          property_details,
           estimate_calculation_templates(name),
           profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
         `)
@@ -231,6 +234,7 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
             pdf_url,
             created_at,
             template_id,
+            property_details,
             estimate_calculation_templates(name)
           `)
           .eq('pipeline_entry_id', pipelineEntryId)
@@ -241,6 +245,7 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
           ...est,
           template_name: est.estimate_calculation_templates?.name || 'Custom',
           created_by_name: undefined,
+          is_auto_draft: !!(est.property_details as any)?.is_auto_draft,
         })) as SavedEstimate[];
       }
 
@@ -248,8 +253,10 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
         ...est,
         template_name: est.estimate_calculation_templates?.name || 'Custom',
         created_by_name: est.profiles ? `${est.profiles.first_name || ''} ${est.profiles.last_name || ''}`.trim() : undefined,
+        is_auto_draft: !!(est.property_details as any)?.is_auto_draft,
       })) as SavedEstimate[];
     },
+
     enabled: !!pipelineEntryId,
   });
 
@@ -646,8 +653,9 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
               <div className="flex items-center justify-between mt-1.5 pl-6">
                 <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
                   <Badge className={cn(getStatusBadge(estimate.status), "text-[10px] h-4 px-1")} variant="secondary">
-                    {estimate.status}
+                    {estimate.is_auto_draft ? 'Auto-saved Draft' : estimate.status}
                   </Badge>
+
                   {signatureEnvelopes?.[estimate.id] && (
                     <Badge 
                       variant="outline"
