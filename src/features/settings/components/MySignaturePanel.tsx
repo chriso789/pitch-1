@@ -5,7 +5,14 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Pen, RotateCcw, Upload, Loader2, Check } from 'lucide-react';
 
-export default function MySignaturePanel() {
+interface MySignaturePanelProps {
+  userId?: string;
+  hideHeader?: boolean;
+  title?: string;
+  description?: string;
+}
+
+export default function MySignaturePanel({ userId, hideHeader, title, description }: MySignaturePanelProps = {}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [drawing, setDrawing] = useState(false);
   const [hasInk, setHasInk] = useState(false);
@@ -13,23 +20,28 @@ export default function MySignaturePanel() {
   const [loading, setLoading] = useState(true);
   const [savedSig, setSavedSig] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [targetUserId, setTargetUserId] = useState<string | null>(userId ?? null);
 
   useEffect(() => {
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { setLoading(false); return; }
+      setLoading(true);
+      let uid = userId ?? null;
+      if (!uid) {
+        const { data: { user } } = await supabase.auth.getUser();
+        uid = user?.id ?? null;
+      }
+      if (!uid) { setLoading(false); return; }
+      setTargetUserId(uid);
       const { data } = await supabase
         .from('profiles')
         .select('signature_image_path, signature_updated_at')
-        .eq('id', user.id)
+        .eq('id', uid)
         .maybeSingle();
-      if (data?.signature_image_path) {
-        setSavedSig(data.signature_image_path);
-        setSavedAt(data.signature_updated_at);
-      }
+      setSavedSig(data?.signature_image_path ?? null);
+      setSavedAt(data?.signature_updated_at ?? null);
       setLoading(false);
     })();
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     const c = canvasRef.current;
