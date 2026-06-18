@@ -138,33 +138,24 @@ export const UserManagement = () => {
           }
         });
 
-        // Fallback: merge in session_activity_log for any users RPC didn't cover
-        const missing = userIds.filter((id) => !loginStatsMap.has(id));
-        if (missing.length > 0) {
-          const { data: loginData } = await supabase
-            .from('session_activity_log')
-            .select('user_id, created_at')
-            .in('user_id', missing)
-            .in('event_type', ['login_success', 'session_start', 'session_refresh'])
-            .order('created_at', { ascending: false });
+        // Also check session_activity_log for the freshest event (covers token refreshes
+        // when a user stays logged in via persisted session — auth.users.last_sign_in_at
+        // does NOT update on refresh, only on fresh sign-in).
+        const { data: loginData } = await supabase
+          .from('session_activity_log')
+          .select('user_id, created_at')
+          .in('user_id', userIds)
+          .in('event_type', ['login_success', 'session_start', 'session_refresh'])
+          .order('created_at', { ascending: false });
 
-          const userLogins = new Map<string, { latest: string; count: number }>();
-          loginData?.forEach((log) => {
-            const existing = userLogins.get(log.user_id);
-            if (!existing) {
-              userLogins.set(log.user_id, { latest: log.created_at, count: 1 });
-            } else {
-              existing.count++;
-            }
-          });
-
-          userLogins.forEach((value, key) => {
-            loginStatsMap.set(key, {
-              last_login: value.latest,
-              is_activated: value.count > 0,
-            });
-          });
-        }
+        loginData?.forEach((log) => {
+          const existing = loginStatsMap.get(log.user_id);
+          if (!existing) {
+            loginStatsMap.set(log.user_id, { last_login: log.created_at, is_activated: true });
+          } else if (new Date(log.created_at) > new Date(existing.last_login || 0)) {
+            loginStatsMap.set(log.user_id, { last_login: log.created_at, is_activated: true });
+          }
+        });
       }
 
       if (user) {
