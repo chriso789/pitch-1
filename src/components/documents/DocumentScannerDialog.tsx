@@ -259,12 +259,17 @@ export function DocumentScannerDialog({
       detectionIntervalRef.current = null;
     }
     if (streamRef.current) {
+      // Best-effort torch-off before stopping tracks.
+      setTorch(streamRef.current, false).catch(() => {});
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     }
     setCameraReady(false);
     setDetectedCorners(null);
     setStabilityResult(null);
+    setTorchOn(false);
+    setTorchSupported(false);
+    setQualityGate(null);
   };
 
   // Process captured frame with given corners
