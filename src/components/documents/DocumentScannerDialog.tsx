@@ -275,11 +275,11 @@ export function DocumentScannerDialog({
   // Process captured frame with given corners
   const processAndAddPage = useCallback(async (
     sourceCanvas: HTMLCanvasElement,
-    corners: DetectedCorners,
-    cropMode: 'auto' | 'manual'
+    corners: DetectedCornersExt,
+    cropMode: 'auto' | 'manual',
+    capturedQuality: QualityFlags | null,
   ) => {
     try {
-      // Validate quadrilateral
       const validation = validateQuadrilateral(corners, sourceCanvas.width, sourceCanvas.height);
       if (!validation.valid) {
         toast({
@@ -290,17 +290,33 @@ export function DocumentScannerDialog({
         return false;
       }
 
-      // Apply professional enhancement pipeline
-      const enhanced = enhanceDocumentPro(sourceCanvas, corners, {
+      // Page-size guess from the quad's aspect ratio, then map to spec.
+      // We compute here too (not just in the OpenCV detector) so manual crops
+      // and the JS fallback also produce a page-size guess.
+      const w1 = Math.hypot(corners.topRight.x - corners.topLeft.x, corners.topRight.y - corners.topLeft.y);
+      const w2 = Math.hypot(corners.bottomRight.x - corners.bottomLeft.x, corners.bottomRight.y - corners.bottomLeft.y);
+      const h1 = Math.hypot(corners.bottomLeft.x - corners.topLeft.x, corners.bottomLeft.y - corners.topLeft.y);
+      const h2 = Math.hypot(corners.bottomRight.x - corners.topRight.x, corners.bottomRight.y - corners.topRight.y);
+      const longSide = Math.max((w1 + w2) / 2, (h1 + h2) / 2);
+      const shortSide = Math.max(1, Math.min((w1 + w2) / 2, (h1 + h2) / 2));
+      const pageSize: DetectedPageSize = corners.pageSize ?? classifyAspectRatio(longSide, shortSide);
+      const spec = getPageSpec(pageSize);
+
+      // Enhance at the page-spec dimensions (not always letter).
+      let enhanced = enhanceDocumentPro(sourceCanvas, corners, {
         mode: processingMode,
         illuminationCorrection: true,
         whiteBackground: true,
         sharpen: processingMode === 'color',
-        outputWidth: 2550, // 8.5" at 300 DPI
-        outputHeight: 3300, // 11" at 300 DPI
+        outputWidth: spec.outputWidth,
+        outputHeight: spec.outputHeight,
       });
 
-      // Add page number overlay
+      // Post-warp deskew (±5°). Operates on the rectified canvas.
+      const { canvas: deskewed, angle: deskewAngle } = deskewCanvas(enhanced);
+      enhanced = deskewed;
+
+      // Page-number badge
       const pageNum = capturedPages.length + 1;
       const enhancedCtx = enhanced.getContext('2d');
       if (enhancedCtx) {
@@ -314,13 +330,15 @@ export function DocumentScannerDialog({
       const colorMode = processingMode;
       const confidence = corners.confidence ?? null;
 
-      // Convert to blob with high quality
       return new Promise<boolean>((resolve) => {
         enhanced.toBlob(
           (blob) => {
             if (blob) {
               const preview = URL.createObjectURL(blob);
-              setCapturedPages(prev => [...prev, { blob, preview, cropMode, colorMode, confidence }]);
+              setCapturedPages(prev => [...prev, {
+                blob, preview, cropMode, colorMode, confidence,
+                pageSize, deskewAngle, quality: capturedQuality,
+              }]);
               resolve(true);
             } else {
               resolve(false);
