@@ -311,7 +311,7 @@ export function DocumentScannerDialog({
       
       if (currentStability.stable && currentStability.averagedCorners) {
         // AUTO MODE: Use stable corners immediately
-        const success = await processAndAddPage(canvas, currentStability.averagedCorners);
+        const success = await processAndAddPage(canvas, currentStability.averagedCorners, 'auto');
         if (!success) {
           toast({
             title: 'Processing Failed',
@@ -363,7 +363,7 @@ export function DocumentScannerDialog({
     setShowManualCrop(false);
     
     try {
-      const success = await processAndAddPage(pendingCaptureCanvas, corners);
+      const success = await processAndAddPage(pendingCaptureCanvas, corners, 'manual');
       if (!success) {
         toast({
           title: 'Processing Failed',
