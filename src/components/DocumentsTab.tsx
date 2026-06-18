@@ -334,7 +334,14 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
       // Search filter
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
-        if (!doc.filename.toLowerCase().includes(query)) {
+        const haystack = [
+          doc.filename,
+          doc.document_type ?? '',
+          (doc as any).ocr_text ?? '',
+        ]
+          .join(' ')
+          .toLowerCase();
+        if (!haystack.includes(query)) {
           return false;
         }
       }
