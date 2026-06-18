@@ -847,6 +847,24 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
           </Card>
         </TabsContent>
 
+        <TabsContent value="signature">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Pen className="h-4 w-4" /> User Signature
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <MySignaturePanel
+                userId={userId}
+                hideHeader
+                title="User Signature"
+                description={`Signature stamped on documents finalized by ${user.first_name ?? ''} ${user.last_name ?? ''}.`}
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="activity">
           <UserActivityTab userId={userId} />
         </TabsContent>
