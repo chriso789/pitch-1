@@ -17,6 +17,7 @@ import { useAvailableCompanies } from "@/hooks/useAvailableCompanies";
 import { useQueryClient } from "@tanstack/react-query";
 import { UserCommissionSettings } from "./UserCommissionSettings";
 import { UserActivityTab } from "./UserActivityTab";
+import MySignaturePanel from "@/features/settings/components/MySignaturePanel";
 import { 
   User, 
   Phone, 
@@ -35,7 +36,8 @@ import {
   Shield,
   FileImage,
   Calendar,
-  Activity
+  Activity,
+  Pen
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -591,7 +593,7 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
       </div>
 
       <Tabs defaultValue="profile" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="profile" className="flex items-center gap-2">
             <User className="h-4 w-4" />
             Profile
@@ -599,6 +601,10 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
           <TabsTrigger value="commission" className="flex items-center gap-2">
             <DollarSign className="h-4 w-4" />
             Commission
+          </TabsTrigger>
+          <TabsTrigger value="signature" className="flex items-center gap-2">
+            <Pen className="h-4 w-4" />
+            Signature
           </TabsTrigger>
           <TabsTrigger value="activity" className="flex items-center gap-2">
             <Activity className="h-4 w-4" />
@@ -836,6 +842,24 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
                 userId={userId} 
                 user={user}
                 canEdit={canEditProfile()}
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="signature">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Pen className="h-4 w-4" /> User Signature
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <MySignaturePanel
+                userId={userId}
+                hideHeader
+                title="User Signature"
+                description={`Signature stamped on documents finalized by ${user.first_name ?? ''} ${user.last_name ?? ''}.`}
               />
             </CardContent>
           </Card>

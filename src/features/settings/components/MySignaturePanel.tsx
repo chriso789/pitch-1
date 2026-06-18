@@ -5,7 +5,14 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Pen, RotateCcw, Upload, Loader2, Check } from 'lucide-react';
 
-export default function MySignaturePanel() {
+interface MySignaturePanelProps {
+  userId?: string;
+  hideHeader?: boolean;
+  title?: string;
+  description?: string;
+}
+
+export default function MySignaturePanel({ userId, hideHeader, title, description }: MySignaturePanelProps = {}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [drawing, setDrawing] = useState(false);
   const [hasInk, setHasInk] = useState(false);
@@ -13,23 +20,28 @@ export default function MySignaturePanel() {
   const [loading, setLoading] = useState(true);
   const [savedSig, setSavedSig] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [targetUserId, setTargetUserId] = useState<string | null>(userId ?? null);
 
   useEffect(() => {
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { setLoading(false); return; }
+      setLoading(true);
+      let uid = userId ?? null;
+      if (!uid) {
+        const { data: { user } } = await supabase.auth.getUser();
+        uid = user?.id ?? null;
+      }
+      if (!uid) { setLoading(false); return; }
+      setTargetUserId(uid);
       const { data } = await supabase
         .from('profiles')
         .select('signature_image_path, signature_updated_at')
-        .eq('id', user.id)
+        .eq('id', uid)
         .maybeSingle();
-      if (data?.signature_image_path) {
-        setSavedSig(data.signature_image_path);
-        setSavedAt(data.signature_updated_at);
-      }
+      setSavedSig(data?.signature_image_path ?? null);
+      setSavedAt(data?.signature_updated_at ?? null);
       setLoading(false);
     })();
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     const c = canvasRef.current;
@@ -83,13 +95,17 @@ export default function MySignaturePanel() {
   const persistDataUrl = async (dataUrl: string) => {
     setSaving(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not signed in');
+      let uid = targetUserId;
+      if (!uid) {
+        const { data: { user } } = await supabase.auth.getUser();
+        uid = user?.id ?? null;
+      }
+      if (!uid) throw new Error('No user');
       const now = new Date().toISOString();
       const { error } = await supabase
         .from('profiles')
         .update({ signature_image_path: dataUrl, signature_updated_at: now })
-        .eq('id', user.id);
+        .eq('id', uid);
       if (error) throw error;
       setSavedSig(dataUrl);
       setSavedAt(now);
@@ -125,25 +141,30 @@ export default function MySignaturePanel() {
 
   const removeSig = async () => {
     setSaving(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setSaving(false); return; }
+    let uid = targetUserId;
+    if (!uid) {
+      const { data: { user } } = await supabase.auth.getUser();
+      uid = user?.id ?? null;
+    }
+    if (!uid) { setSaving(false); return; }
     await supabase
       .from('profiles')
       .update({ signature_image_path: null, signature_updated_at: null })
-      .eq('id', user.id);
+      .eq('id', uid);
     setSavedSig(null); setSavedAt(null); setSaving(false);
     toast.success('Signature removed');
   };
 
   return (
     <div className="max-w-3xl space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold">My Signature</h2>
-        <p className="text-muted-foreground text-sm">
-          This signature is automatically stamped on every document you finalize as the company
-          representative, after the client signs.
-        </p>
-      </div>
+      {!hideHeader && (
+        <div>
+          <h2 className="text-2xl font-bold">{title ?? 'My Signature'}</h2>
+          <p className="text-muted-foreground text-sm">
+            {description ?? 'This signature is automatically stamped on every document you finalize as the company representative, after the client signs.'}
+          </p>
+        </div>
+      )}
 
       {loading ? (
         <div className="flex items-center gap-2 text-muted-foreground">
