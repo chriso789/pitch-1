@@ -285,38 +285,48 @@ function scoreQuadrilateral(
     coverageScore = coverageRatio > 0.3 && coverageRatio < 0.7 ? 1.0 : 0.7;
   }
   
-  // Aspect ratio score (letter: 1.29, A4: 1.41)
+  // Aspect ratio: prefer the closest standard paper stock (letter/legal/A4).
   const sorted = sortCornersOpenCV(corners);
   const widthTop = distance(sorted[0], sorted[1]);
   const widthBottom = distance(sorted[3], sorted[2]);
   const heightLeft = distance(sorted[0], sorted[3]);
   const heightRight = distance(sorted[1], sorted[2]);
-  
+
   const avgWidth = (widthTop + widthBottom) / 2;
   const avgHeight = (heightLeft + heightRight) / 2;
-  const aspectRatio = avgHeight / avgWidth;
-  
-  // Ideal range: 1.2 - 1.5 (covers letter and A4)
-  const aspectScore = 1 - Math.min(1, Math.abs(aspectRatio - 1.35) / 0.5);
-  
+  const longSide = Math.max(avgWidth, avgHeight);
+  const shortSide = Math.max(1, Math.min(avgWidth, avgHeight));
+  const aspectRatio = longSide / shortSide;
+
+  const PAPER_RATIOS = [11 / 8.5, 14 / 8.5, 297 / 210];
+  const aspectDelta = Math.min(
+    ...PAPER_RATIOS.map((r) => Math.abs(aspectRatio - r) / r),
+  );
+  // 0% off = 1.0, 15%+ off = 0
+  const aspectScore = Math.max(0, 1 - aspectDelta / 0.15);
+
   // Parallelism score
   const widthDiff = Math.abs(widthTop - widthBottom) / Math.max(widthTop, widthBottom);
   const heightDiff = Math.abs(heightLeft - heightRight) / Math.max(heightLeft, heightRight);
   const parallelScore = 1 - (widthDiff + heightDiff) / 2;
-  
-  // Edge proximity penalty (corners too close to frame edge are suspicious)
-  const margin = 0.03; // 3% of frame
+
+  // Edge-touching penalty — heavier for corners glued to the frame edge
+  // (these usually mean the contour traced the camera viewport, not paper).
+  const margin = 0.015;
   let edgePenalty = 0;
   for (const corner of corners) {
-    if (corner.x < width * margin || corner.x > width * (1 - margin) ||
-        corner.y < height * margin || corner.y > height * (1 - margin)) {
-      edgePenalty += 0.1;
+    if (
+      corner.x < width * margin || corner.x > width * (1 - margin) ||
+      corner.y < height * margin || corner.y > height * (1 - margin)
+    ) {
+      edgePenalty += 0.2;
     }
   }
-  
-  const score = (coverageScore * 0.3 + aspectScore * 0.35 + parallelScore * 0.35) - edgePenalty;
+
+  const score = (coverageScore * 0.25 + aspectScore * 0.4 + parallelScore * 0.35) - edgePenalty;
   return Math.max(0, Math.min(1, score));
 }
+
 
 /**
  * Check if polygon is convex
