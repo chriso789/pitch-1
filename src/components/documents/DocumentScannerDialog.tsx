@@ -17,7 +17,13 @@ import { ManualCropOverlay } from './ManualCropOverlay';
 interface CapturedPage {
   blob: Blob;
   preview: string;
+  cropMode: 'auto' | 'manual';
+  colorMode: 'color' | 'bw';
+  confidence: number | null;
 }
+
+const SCANNER_VERSION = '2.0.0';
+const MAX_PDF_BYTES = 10 * 1024 * 1024; // 10MB
 
 interface DocumentScannerDialogProps {
   open: boolean;
@@ -220,7 +226,8 @@ export function DocumentScannerDialog({
   // Process captured frame with given corners
   const processAndAddPage = useCallback(async (
     sourceCanvas: HTMLCanvasElement,
-    corners: DetectedCorners
+    corners: DetectedCorners,
+    cropMode: 'auto' | 'manual'
   ) => {
     try {
       // Validate quadrilateral
@@ -255,13 +262,16 @@ export function DocumentScannerDialog({
         enhancedCtx.fillText(`Page ${pageNum}`, enhanced.width - 110, 45);
       }
 
+      const colorMode = processingMode;
+      const confidence = corners.confidence ?? null;
+
       // Convert to blob with high quality
       return new Promise<boolean>((resolve) => {
         enhanced.toBlob(
           (blob) => {
             if (blob) {
               const preview = URL.createObjectURL(blob);
-              setCapturedPages(prev => [...prev, { blob, preview }]);
+              setCapturedPages(prev => [...prev, { blob, preview, cropMode, colorMode, confidence }]);
               resolve(true);
             } else {
               resolve(false);
@@ -301,7 +311,7 @@ export function DocumentScannerDialog({
       
       if (currentStability.stable && currentStability.averagedCorners) {
         // AUTO MODE: Use stable corners immediately
-        const success = await processAndAddPage(canvas, currentStability.averagedCorners);
+        const success = await processAndAddPage(canvas, currentStability.averagedCorners, 'auto');
         if (!success) {
           toast({
             title: 'Processing Failed',
@@ -353,7 +363,7 @@ export function DocumentScannerDialog({
     setShowManualCrop(false);
     
     try {
-      const success = await processAndAddPage(pendingCaptureCanvas, corners);
+      const success = await processAndAddPage(pendingCaptureCanvas, corners, 'manual');
       if (!success) {
         toast({
           title: 'Processing Failed',
@@ -400,8 +410,44 @@ export function DocumentScannerDialog({
     });
   };
 
-  // Generate combined PDF from captured pages (high quality, print-ready)
-  const generateCombinedPDF = async (pages: CapturedPage[]): Promise<Blob> => {
+  // Re-encode a JPEG blob at a lower quality / optional downscale to shrink PDF size
+  const reencodePageBlob = async (
+    blob: Blob,
+    quality: number,
+    maxWidth?: number
+  ): Promise<Blob> => {
+    const bitmap = await createImageBitmap(blob);
+    let { width, height } = bitmap;
+    if (maxWidth && width > maxWidth) {
+      const ratio = maxWidth / width;
+      width = Math.round(width * ratio);
+      height = Math.round(height * ratio);
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      bitmap.close();
+      return blob;
+    }
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    bitmap.close();
+    return await new Promise<Blob>((resolve) =>
+      canvas.toBlob(
+        (b) => resolve(b ?? blob),
+        'image/jpeg',
+        quality
+      )
+    );
+  };
+
+  // Build PDF from pages at the given JPEG quality / DPI cap
+  const buildPdfAtQuality = async (
+    pages: CapturedPage[],
+    quality: number,
+    maxImageWidth: number
+  ): Promise<Blob> => {
     const pdf = new jsPDF({
       orientation: 'portrait',
       unit: 'in',
@@ -410,18 +456,56 @@ export function DocumentScannerDialog({
     });
 
     for (let i = 0; i < pages.length; i++) {
-      if (i > 0) {
-        pdf.addPage();
-      }
-
-      const dataUrl = await blobToDataURL(pages[i].blob);
-      
-      // Full page, edge-to-edge for scanned documents
-      // Images are already perspective-corrected to 8.5x11 ratio
-      pdf.addImage(dataUrl, 'JPEG', 0, 0, 8.5, 11, undefined, 'FAST');
+      if (i > 0) pdf.addPage();
+      // Pick BW-vs-color baseline quality
+      const baseQuality = pages[i].colorMode === 'bw'
+        ? Math.min(quality, 0.82)
+        : quality;
+      const reencoded = await reencodePageBlob(pages[i].blob, baseQuality, maxImageWidth);
+      const dataUrl = await blobToDataURL(reencoded);
+      // 'SLOW' = better JPEG compression / quality tradeoff than 'FAST'
+      pdf.addImage(dataUrl, 'JPEG', 0, 0, 8.5, 11, undefined, 'SLOW');
     }
 
     return pdf.output('blob');
+  };
+
+  // Compose PDF and recompress if it exceeds MAX_PDF_BYTES
+  const generateCombinedPDFWithCap = async (
+    pages: CapturedPage[]
+  ): Promise<{ blob: Blob; dpi: number; quality: number; compressed: boolean }> => {
+    // dpi here is the effective max width in px (8.5" * dpi)
+    const ladder: Array<{ quality: number; dpi: number }> = [
+      { quality: 0.85, dpi: 300 }, // ~2550 px
+      { quality: 0.75, dpi: 300 },
+      { quality: 0.75, dpi: 220 }, // ~1870 px
+      { quality: 0.65, dpi: 220 },
+      { quality: 0.65, dpi: 200 }, // ~1700 px
+    ];
+
+    let last: Blob | null = null;
+    let lastStep = ladder[0];
+    for (let i = 0; i < ladder.length; i++) {
+      const step = ladder[i];
+      const maxWidth = Math.round(8.5 * step.dpi);
+      const blob = await buildPdfAtQuality(pages, step.quality, maxWidth);
+      last = blob;
+      lastStep = step;
+      if (blob.size <= MAX_PDF_BYTES) {
+        return {
+          blob,
+          dpi: step.dpi,
+          quality: step.quality,
+          compressed: i > 0,
+        };
+      }
+    }
+    return {
+      blob: last as Blob,
+      dpi: lastStep.dpi,
+      quality: lastStep.quality,
+      compressed: true,
+    };
   };
 
   const handleBatchUpload = async () => {
@@ -452,15 +536,30 @@ export function DocumentScannerDialog({
 
       setUploadProgress(10);
 
-      // Generate combined PDF from captured pages
-      const pdfBlob = await generateCombinedPDF(capturedPages);
-      
+      // Generate combined PDF, recompressing if needed
+      const { blob: pdfBlob, dpi, quality, compressed } =
+        await generateCombinedPDFWithCap(capturedPages);
+
+      if (pdfBlob.size > MAX_PDF_BYTES) {
+        throw new Error(
+          `PDF is ${(pdfBlob.size / 1024 / 1024).toFixed(1)}MB after compression and exceeds the 10MB limit. ` +
+          `Try scanning fewer pages or using black & white mode.`
+        );
+      }
+
+      if (compressed) {
+        toast({
+          title: 'PDF Compressed',
+          description: `Reduced quality to keep the file under 10MB (${(pdfBlob.size / 1024 / 1024).toFixed(1)}MB).`,
+        });
+      }
+
       setUploadProgress(50);
 
-      // Upload single PDF file
+      // Tenant-first storage path (required by storage RLS)
       const timestamp = Date.now();
       const sanitizedLabel = documentLabel.replace(/\s+/g, '_');
-      const fileName = `${pipelineEntryId}/${timestamp}_${documentType}.pdf`;
+      const fileName = `${profile.tenant_id}/${pipelineEntryId}/${timestamp}_${documentType}.pdf`;
 
       const { error: uploadError } = await supabase.storage
         .from('documents')
@@ -472,7 +571,44 @@ export function DocumentScannerDialog({
 
       setUploadProgress(80);
 
-      // Create document record with PDF info
+      // Aggregate per-page scan quality
+      const confidences = capturedPages
+        .map((p) => p.confidence)
+        .filter((c): c is number => typeof c === 'number');
+      const avgConfidence = confidences.length
+        ? confidences.reduce((a, b) => a + b, 0) / confidences.length
+        : null;
+      const manualCropPages = capturedPages.filter((p) => p.cropMode === 'manual').length;
+      const autoDetectedPages = capturedPages.filter((p) => p.cropMode === 'auto').length;
+      const colorPages = capturedPages.filter((p) => p.colorMode === 'color').length;
+      const bwPages = capturedPages.filter((p) => p.colorMode === 'bw').length;
+
+      const capturedAt = new Date(timestamp).toISOString();
+
+      const scanMetadata = {
+        scanned: true,
+        document_type: documentType,
+        document_label: documentLabel,
+        processing_mode: processingMode,
+        page_count: capturedPages.length,
+        dpi,
+        jpeg_quality: quality,
+        output_format: 'pdf',
+        scanner_version: SCANNER_VERSION,
+        captured_at: capturedAt,
+        storage_path: fileName,
+        compressed,
+      };
+
+      const scanQuality = {
+        average_detection_confidence: avgConfidence,
+        manual_crop_pages: manualCropPages,
+        auto_detected_pages: autoDetectedPages,
+        color_mode_pages: colorPages,
+        bw_mode_pages: bwPages,
+      };
+
+      // Create document record with structured scan metadata
       const { error: dbError } = await supabase
         .from('documents')
         .insert({
@@ -484,9 +620,14 @@ export function DocumentScannerDialog({
           file_size: pdfBlob.size,
           mime_type: 'application/pdf',
           uploaded_by: user.id,
-          // Store scan metadata in description field (metadata column doesn't exist)
-          description: `Scanned document: ${capturedPages.length} page(s), ${processingMode} mode, ${new Date(timestamp).toLocaleString()}`,
-        });
+          // Short human-readable description only
+          description: `Scanned ${capturedPages.length}-page ${documentLabel}`,
+          page_count: capturedPages.length,
+          scan_source: 'camera',
+          metadata: scanMetadata,
+          scan_quality: scanQuality,
+          ocr_status: 'not_started',
+        } as any);
 
       if (dbError) throw dbError;
 
