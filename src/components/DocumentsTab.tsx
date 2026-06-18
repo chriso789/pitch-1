@@ -21,6 +21,7 @@ import { DocumentPreviewModal } from '@/components/documents/DocumentPreviewModa
 import { DocumentRenameDialog } from '@/features/documents/components/DocumentRenameDialog';
 import { DocumentSearchFilters } from '@/components/documents/DocumentSearchFilters';
 import { AddSmartDocToProjectDialog } from '@/components/documents/AddSmartDocToProjectDialog';
+import { OcrStatusBadge } from '@/components/documents/OcrStatusBadge';
 import {
   Dialog,
   DialogContent,
@@ -52,6 +53,10 @@ interface Document {
   signature_status?: 'pending' | 'sent' | 'signed' | 'voided' | null;
   estimate_display_name?: string | null;
   estimate_pricing_tier?: string | null;
+  ocr_status?: 'not_started' | 'processing' | 'completed' | 'failed' | null;
+  ocr_text?: string | null;
+  ocr_error?: string | null;
+  scan_source?: string | null;
 }
 
 interface DocumentsTabProps {
@@ -329,7 +334,14 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
       // Search filter
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
-        if (!doc.filename.toLowerCase().includes(query)) {
+        const haystack = [
+          doc.filename,
+          doc.document_type ?? '',
+          (doc as any).ocr_text ?? '',
+        ]
+          .join(' ')
+          .toLowerCase();
+        if (!haystack.includes(query)) {
           return false;
         }
       }
@@ -1269,6 +1281,14 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
                               <span>
                                 by {doc.uploader.first_name} {doc.uploader.last_name}
                               </span>
+                            )}
+                            {doc.scan_source === 'camera' && (
+                              <OcrStatusBadge
+                                documentId={doc.id}
+                                status={doc.ocr_status}
+                                error={doc.ocr_error}
+                                onRetried={fetchDocuments}
+                              />
                             )}
                           </div>
                           {doc.document_type === 'estimate' && doc.estimate_display_name && (

@@ -15244,7 +15244,11 @@ export type Database = {
           location_id: string | null
           metadata: Json
           mime_type: string | null
+          ocr_completed_at: string | null
+          ocr_error: string | null
+          ocr_search: unknown
           ocr_status: string
+          ocr_text: string | null
           page_count: number | null
           pipeline_entry_id: string | null
           project_id: string | null
@@ -15278,7 +15282,11 @@ export type Database = {
           location_id?: string | null
           metadata?: Json
           mime_type?: string | null
+          ocr_completed_at?: string | null
+          ocr_error?: string | null
+          ocr_search?: unknown
           ocr_status?: string
+          ocr_text?: string | null
           page_count?: number | null
           pipeline_entry_id?: string | null
           project_id?: string | null
@@ -15312,7 +15320,11 @@ export type Database = {
           location_id?: string | null
           metadata?: Json
           mime_type?: string | null
+          ocr_completed_at?: string | null
+          ocr_error?: string | null
+          ocr_search?: unknown
           ocr_status?: string
+          ocr_text?: string | null
           page_count?: number | null
           pipeline_entry_id?: string | null
           project_id?: string | null
