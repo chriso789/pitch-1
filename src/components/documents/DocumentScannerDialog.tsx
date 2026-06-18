@@ -941,30 +941,64 @@ export function DocumentScannerDialog({
                 </div>
               )}
               
-              {/* Detection status indicator */}
+              {/* Detection / quality status indicator */}
               {cameraReady && (
                 <div className={cn(
-                  "absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full text-sm font-medium shadow-lg transition-all duration-300",
-                  isStable
-                    ? "bg-success text-success-foreground"
-                    : detectedCorners
+                  "absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full text-sm font-medium shadow-lg transition-all duration-300 max-w-[90%] text-center",
+                  qualityLevel === 'block'
+                    ? "bg-destructive text-destructive-foreground"
+                    : qualityLevel === 'warn'
                       ? "bg-warning text-warning-foreground"
-                      : "bg-muted text-muted-foreground"
+                      : readyToCapture
+                        ? "bg-success text-success-foreground"
+                        : detectedCorners
+                          ? "bg-warning text-warning-foreground"
+                          : "bg-muted text-muted-foreground"
                 )}>
-                  {isStable 
-                    ? '✓ Ready to Capture' 
-                    : detectedCorners
-                      ? 'Hold steady...'
-                      : 'Position document in frame'}
+                  {qualityGate?.message
+                    ? qualityGate.message
+                    : readyToCapture
+                      ? '✓ Ready to Capture'
+                      : detectedCorners
+                        ? 'Hold steady…'
+                        : 'Position document in frame'}
                 </div>
               )}
-              
-              {/* OpenCV loading indicator */}
-              {opencvLoading && (
-                <div className="absolute top-14 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xs bg-primary/80 text-primary-foreground">
-                  Loading scanner...
+
+              {/* Scanner engine + page-size chip */}
+              {cameraReady && (
+                <div className="absolute top-14 left-1/2 -translate-x-1/2 flex gap-2">
+                  <span className={cn(
+                    "px-3 py-1 rounded-full text-xs",
+                    opencvReady ? "bg-success/80 text-success-foreground"
+                      : opencvFailed ? "bg-warning/80 text-warning-foreground"
+                      : "bg-primary/80 text-primary-foreground"
+                  )}>
+                    {scannerStatusLabel}
+                  </span>
+                  {detectedCorners?.pageSize && detectedCorners.pageSize !== 'unknown' && (
+                    <span className="px-3 py-1 rounded-full text-xs bg-black/60 text-white uppercase">
+                      {detectedCorners.pageSize}
+                    </span>
+                  )}
                 </div>
               )}
+
+              {/* Torch button (Chromium-only). Hidden where unsupported. */}
+              {cameraReady && torchSupported && (
+                <button
+                  type="button"
+                  onClick={handleToggleTorch}
+                  aria-label={torchOn ? 'Turn torch off' : 'Turn torch on'}
+                  className={cn(
+                    "absolute top-4 right-4 h-10 w-10 rounded-full flex items-center justify-center shadow-lg",
+                    torchOn ? "bg-warning text-warning-foreground" : "bg-black/60 text-white"
+                  )}
+                >
+                  {torchOn ? <Zap className="h-5 w-5" /> : <ZapOff className="h-5 w-5" />}
+                </button>
+              )}
+
               
               {/* Processing overlay */}
               {isProcessing && (
