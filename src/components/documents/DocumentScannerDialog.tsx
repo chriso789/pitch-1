@@ -802,10 +802,27 @@ export function DocumentScannerDialog({
     }, 'image/jpeg', 0.9);
   }, [cameraReady]);
 
+  const handleToggleTorch = useCallback(async () => {
+    if (!streamRef.current || !torchSupported) return;
+    const next = !torchOn;
+    const ok = await setTorch(streamRef.current, next);
+    if (ok) setTorchOn(next);
+  }, [torchOn, torchSupported]);
+
   const isMobile = isMobileDevice();
   const bottomPadding = hasHomeIndicator() ? 'pb-8' : 'pb-4';
   const isStable = stabilityResult?.stable ?? false;
   const detectionConfidence = detectedCorners?.confidence ?? 0;
+  const qualityBlocked = qualityGate?.block ?? false;
+  const qualityLevel = qualityGate?.level ?? 'ok';
+  const readyToCapture = isStable && !qualityBlocked;
+  const scannerStatusLabel = opencvReady
+    ? 'Scanner ready'
+    : opencvLoading
+      ? 'Loading scanner engine…'
+      : opencvFailed
+        ? 'Using fallback scanner'
+        : 'Initializing…';
 
   // Show manual crop overlay
   if (showManualCrop && manualCropImage) {
