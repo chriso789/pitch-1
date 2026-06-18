@@ -419,9 +419,9 @@ export const CLJSearchBar = () => {
                             </Badge>
                           )}
                           {result.clj_number && (
-                            <Badge variant="secondary" className="text-xs">
+                            <span className="text-[10px] font-medium text-muted-foreground tabular-nums px-1.5 py-0.5 rounded bg-muted/60">
                               {result.clj_number}
-                            </Badge>
+                            </span>
                           )}
                           <Badge variant="outline" className={cn("text-xs", config.badgeClass)}>
                             {config.label}
