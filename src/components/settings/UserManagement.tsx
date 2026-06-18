@@ -145,7 +145,7 @@ export const UserManagement = () => {
             .from('session_activity_log')
             .select('user_id, created_at')
             .in('user_id', missing)
-            .in('event_type', ['login_success', 'session_start'])
+            .in('event_type', ['login_success', 'session_start', 'session_refresh'])
             .order('created_at', { ascending: false });
 
           const userLogins = new Map<string, { latest: string; count: number }>();
