@@ -15242,9 +15242,14 @@ export type Database = {
           is_visible_to_homeowner: boolean | null
           linked_invoice_id: string | null
           location_id: string | null
+          metadata: Json
           mime_type: string | null
+          ocr_status: string
+          page_count: number | null
           pipeline_entry_id: string | null
           project_id: string | null
+          scan_quality: Json
+          scan_source: string | null
           service_address: string | null
           sha256_hash: string | null
           tenant_id: string | null
@@ -15271,9 +15276,14 @@ export type Database = {
           is_visible_to_homeowner?: boolean | null
           linked_invoice_id?: string | null
           location_id?: string | null
+          metadata?: Json
           mime_type?: string | null
+          ocr_status?: string
+          page_count?: number | null
           pipeline_entry_id?: string | null
           project_id?: string | null
+          scan_quality?: Json
+          scan_source?: string | null
           service_address?: string | null
           sha256_hash?: string | null
           tenant_id?: string | null
@@ -15300,9 +15310,14 @@ export type Database = {
           is_visible_to_homeowner?: boolean | null
           linked_invoice_id?: string | null
           location_id?: string | null
+          metadata?: Json
           mime_type?: string | null
+          ocr_status?: string
+          page_count?: number | null
           pipeline_entry_id?: string | null
           project_id?: string | null
+          scan_quality?: Json
+          scan_source?: string | null
           service_address?: string | null
           sha256_hash?: string | null
           tenant_id?: string | null
