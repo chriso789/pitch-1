@@ -229,8 +229,10 @@ export async function detectDocumentEdgesOpenCV(imageData: ImageData): Promise<D
       pageSize,
     };
     return result;
-
-    // Clean up Mats
+  } catch (e) {
+    console.warn('[OpenCV] Detection error:', e);
+    return null;
+  } finally {
     if (src) src.delete();
     if (gray) gray.delete();
     if (blurred) blurred.delete();
