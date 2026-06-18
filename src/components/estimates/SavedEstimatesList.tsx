@@ -699,7 +699,7 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
                             sonnerToast.error(
                               <span>
                                 {msg}{' '}
-                                <a href="/settings/my-signature" className="underline">Set up signature</a>
+                                <a href="/settings" className="underline">Set up signature</a>
                               </span>,
                               { id: t, duration: 8000 }
                             );
