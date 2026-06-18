@@ -593,7 +593,7 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
       </div>
 
       <Tabs defaultValue="profile" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="profile" className="flex items-center gap-2">
             <User className="h-4 w-4" />
             Profile
@@ -601,6 +601,10 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
           <TabsTrigger value="commission" className="flex items-center gap-2">
             <DollarSign className="h-4 w-4" />
             Commission
+          </TabsTrigger>
+          <TabsTrigger value="signature" className="flex items-center gap-2">
+            <Pen className="h-4 w-4" />
+            Signature
           </TabsTrigger>
           <TabsTrigger value="activity" className="flex items-center gap-2">
             <Activity className="h-4 w-4" />
