@@ -457,7 +457,7 @@ export function DocumentScannerDialog({
       setManualCropImage(null);
       setPendingCaptureCanvas(null);
     }
-  }, [pendingCaptureCanvas, processAndAddPage, manualCropImage]);
+  }, [pendingCaptureCanvas, processAndAddPage, manualCropImage, qualityGate]);
 
   // Handle manual crop cancel
   const handleManualCropCancel = useCallback(() => {
