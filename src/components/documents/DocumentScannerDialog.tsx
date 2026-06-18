@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { X, Camera, Trash2, RotateCcw, Loader2, FileText, Image, Edit2 } from 'lucide-react';
+import { X, Camera, Trash2, RotateCcw, Loader2, FileText, Image, Edit2, Zap, ZapOff } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -9,10 +9,14 @@ import { cn } from '@/lib/utils';
 import { isMobileDevice, hasHomeIndicator } from '@/utils/mobileDetection';
 import jsPDF from 'jspdf';
 import { detectDocumentEdges, DetectedCorners } from '@/utils/documentEdgeDetection';
-import { detectDocumentEdgesOpenCV, loadOpenCV, isOpenCVAvailable } from '@/utils/documentEdgeDetectionOpenCV';
+import { detectDocumentEdgesOpenCV, loadOpenCV, isOpenCVAvailable, DetectedCornersExt } from '@/utils/documentEdgeDetectionOpenCV';
 import { CornerStabilityBuffer, validateQuadrilateral, StabilityResult } from '@/utils/documentStability';
 import { enhanceDocumentPro } from '@/utils/documentEnhancementPro';
 import { ManualCropOverlay } from './ManualCropOverlay';
+import { analyzeFrameQuality, evaluateQualityGate, QualityFlags, QualityGateResult } from '@/utils/documentQuality';
+import { classifyAspectRatio, dominantPageSize, getPageSpec, DetectedPageSize } from '@/utils/documentPageSize';
+import { deskewCanvas } from '@/utils/documentDeskew';
+import { getTorchCapability, setTorch } from '@/utils/cameraTorch';
 
 interface CapturedPage {
   blob: Blob;
@@ -20,10 +24,14 @@ interface CapturedPage {
   cropMode: 'auto' | 'manual';
   colorMode: 'color' | 'bw';
   confidence: number | null;
+  pageSize: DetectedPageSize;
+  deskewAngle: number;
+  quality: QualityFlags | null;
 }
 
-const SCANNER_VERSION = '2.0.0';
+const SCANNER_VERSION = '2.1.0';
 const MAX_PDF_BYTES = 10 * 1024 * 1024; // 10MB
+
 
 interface DocumentScannerDialogProps {
   open: boolean;
