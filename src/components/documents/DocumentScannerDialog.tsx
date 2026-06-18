@@ -163,42 +163,48 @@ export function DocumentScannerDialog({
       const imageData = ctx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
       
       // Try OpenCV detection first, fall back to basic detector
-      let corners: DetectedCorners | null = null;
-      
+      let corners: DetectedCornersExt | null = null;
+
       if (isOpenCVAvailable()) {
-        corners = await detectDocumentEdgesOpenCV(imageData);
+        corners = (await detectDocumentEdgesOpenCV(imageData)) as DetectedCornersExt | null;
       }
-      
+
       if (!corners) {
-        corners = detectDocumentEdges(imageData);
+        const fb = detectDocumentEdges(imageData);
+        if (fb) corners = { ...fb } as DetectedCornersExt;
       }
-      
+
+      // Quality gate runs on the downsampled frame regardless of detection.
+      const flags = analyzeFrameQuality(imageData);
+      const gate = evaluateQualityGate(flags);
+      setQualityGate(gate);
+
       if (corners) {
         // Scale corners back to full resolution
-        const scaledCorners: DetectedCorners = {
+        const scaledCorners: DetectedCornersExt = {
           topLeft: { x: corners.topLeft.x * scale, y: corners.topLeft.y * scale },
           topRight: { x: corners.topRight.x * scale, y: corners.topRight.y * scale },
           bottomRight: { x: corners.bottomRight.x * scale, y: corners.bottomRight.y * scale },
           bottomLeft: { x: corners.bottomLeft.x * scale, y: corners.bottomLeft.y * scale },
           confidence: corners.confidence,
+          aspectRatio: corners.aspectRatio,
+          pageSize: corners.pageSize,
         };
-        
-        // Add to stability buffer
+
         const stability = stabilityBufferRef.current.addFrame(scaledCorners);
         setStabilityResult(stability);
-        
-        // Use averaged corners for display (smoother)
-        if (stability.averagedCorners) {
-          setDetectedCorners(stability.averagedCorners);
-        } else {
-          setDetectedCorners(scaledCorners);
-        }
+
+        const display: DetectedCornersExt = stability.averagedCorners
+          ? { ...stability.averagedCorners, aspectRatio: scaledCorners.aspectRatio, pageSize: scaledCorners.pageSize }
+          : scaledCorners;
+        setDetectedCorners(display);
       } else {
         stabilityBufferRef.current.addFrame(null);
         setDetectedCorners(null);
         setStabilityResult(null);
       }
     };
+
     
     // Run detection every 200ms
     detectionIntervalRef.current = setInterval(runDetection, 200);
