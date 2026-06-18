@@ -141,25 +141,30 @@ export default function MySignaturePanel({ userId, hideHeader, title, descriptio
 
   const removeSig = async () => {
     setSaving(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setSaving(false); return; }
+    let uid = targetUserId;
+    if (!uid) {
+      const { data: { user } } = await supabase.auth.getUser();
+      uid = user?.id ?? null;
+    }
+    if (!uid) { setSaving(false); return; }
     await supabase
       .from('profiles')
       .update({ signature_image_path: null, signature_updated_at: null })
-      .eq('id', user.id);
+      .eq('id', uid);
     setSavedSig(null); setSavedAt(null); setSaving(false);
     toast.success('Signature removed');
   };
 
   return (
     <div className="max-w-3xl space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold">My Signature</h2>
-        <p className="text-muted-foreground text-sm">
-          This signature is automatically stamped on every document you finalize as the company
-          representative, after the client signs.
-        </p>
-      </div>
+      {!hideHeader && (
+        <div>
+          <h2 className="text-2xl font-bold">{title ?? 'My Signature'}</h2>
+          <p className="text-muted-foreground text-sm">
+            {description ?? 'This signature is automatically stamped on every document you finalize as the company representative, after the client signs.'}
+          </p>
+        </div>
+      )}
 
       {loading ? (
         <div className="flex items-center gap-2 text-muted-foreground">
