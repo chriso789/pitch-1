@@ -6,6 +6,12 @@
  */
 
 import type { DetectedCorners, Point } from './documentEdgeDetection';
+import { classifyAspectRatio, type DetectedPageSize } from './documentPageSize';
+
+export interface DetectedCornersExt extends DetectedCorners {
+  aspectRatio?: number;
+  pageSize?: DetectedPageSize;
+}
 
 // OpenCV instance (lazy loaded)
 let cv: any = null;
