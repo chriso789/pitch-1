@@ -441,7 +441,7 @@ export function DocumentScannerDialog({
     setShowManualCrop(false);
     
     try {
-      const success = await processAndAddPage(pendingCaptureCanvas, corners, 'manual');
+      const success = await processAndAddPage(pendingCaptureCanvas, corners as DetectedCornersExt, 'manual', qualityGate?.flags ?? null);
       if (!success) {
         toast({
           title: 'Processing Failed',
