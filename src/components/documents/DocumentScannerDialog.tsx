@@ -520,33 +520,37 @@ export function DocumentScannerDialog({
     );
   };
 
-  // Build PDF from pages at the given JPEG quality / DPI cap
+  // Build PDF from pages at the given JPEG quality / DPI cap.
+  // Each page uses its detected page size (letter/legal/A4); page size
+  // for the PDF itself is the dominant detected size across all pages.
   const buildPdfAtQuality = async (
     pages: CapturedPage[],
     quality: number,
-    maxImageWidth: number
-  ): Promise<Blob> => {
+    maxImageDpi: number,
+  ): Promise<{ blob: Blob; pdfFormat: 'letter' | 'legal' | 'a4' }> => {
+    const dominant = dominantPageSize(pages.map((p) => p.pageSize));
+    const pdfFormat: 'letter' | 'legal' | 'a4' = dominant === 'unknown' ? 'letter' : dominant;
+
     const pdf = new jsPDF({
       orientation: 'portrait',
       unit: 'in',
-      format: 'letter',
+      format: pdfFormat,
       compress: true,
     });
 
     for (let i = 0; i < pages.length; i++) {
-      if (i > 0) pdf.addPage();
-      // Pick BW-vs-color baseline quality
-      const baseQuality = pages[i].colorMode === 'bw'
-        ? Math.min(quality, 0.82)
-        : quality;
-      const reencoded = await reencodePageBlob(pages[i].blob, baseQuality, maxImageWidth);
+      const pageSpec = getPageSpec(pages[i].pageSize === 'unknown' ? dominant : pages[i].pageSize);
+      if (i > 0) pdf.addPage([pageSpec.widthIn, pageSpec.heightIn], 'portrait');
+      const baseQuality = pages[i].colorMode === 'bw' ? Math.min(quality, 0.82) : quality;
+      const maxWidth = Math.round(pageSpec.widthIn * maxImageDpi);
+      const reencoded = await reencodePageBlob(pages[i].blob, baseQuality, maxWidth);
       const dataUrl = await blobToDataURL(reencoded);
-      // 'SLOW' = better JPEG compression / quality tradeoff than 'FAST'
-      pdf.addImage(dataUrl, 'JPEG', 0, 0, 8.5, 11, undefined, 'SLOW');
+      pdf.addImage(dataUrl, 'JPEG', 0, 0, pageSpec.widthIn, pageSpec.heightIn, undefined, 'SLOW');
     }
 
-    return pdf.output('blob');
+    return { blob: pdf.output('blob'), pdfFormat };
   };
+
 
   // Compose PDF and recompress if it exceeds MAX_PDF_BYTES
   const generateCombinedPDFWithCap = async (
