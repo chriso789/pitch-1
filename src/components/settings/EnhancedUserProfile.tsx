@@ -36,7 +36,8 @@ import {
   Shield,
   FileImage,
   Calendar,
-  Activity
+  Activity,
+  Pen
 } from "lucide-react";
 import { format } from "date-fns";
 
