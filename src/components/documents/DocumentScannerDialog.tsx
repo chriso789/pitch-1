@@ -373,12 +373,18 @@ export function DocumentScannerDialog({
       // Draw video frame to canvas
       ctx.drawImage(video, 0, 0);
 
-      // Check if we have stable detection
+      // Check if we have stable detection AND quality gate isn't blocking.
       const currentStability = stabilityBufferRef.current.getResult();
-      
-      if (currentStability.stable && currentStability.averagedCorners) {
-        // AUTO MODE: Use stable corners immediately
-        const success = await processAndAddPage(canvas, currentStability.averagedCorners, 'auto');
+      const blockedByQuality = qualityGate?.block ?? false;
+
+      if (currentStability.stable && currentStability.averagedCorners && !blockedByQuality) {
+        // AUTO MODE: stable corners, no glare/blur block.
+        const success = await processAndAddPage(
+          canvas,
+          currentStability.averagedCorners as DetectedCornersExt,
+          'auto',
+          qualityGate?.flags ?? null,
+        );
         if (!success) {
           toast({
             title: 'Processing Failed',
@@ -387,17 +393,22 @@ export function DocumentScannerDialog({
           });
         }
       } else {
-        // MANUAL MODE: Show crop overlay
-        // Create a copy of the canvas for manual cropping
+        // MANUAL MODE: show crop overlay (also used when quality blocks auto).
+        if (blockedByQuality && qualityGate?.message) {
+          toast({
+            title: 'Capture blocked',
+            description: qualityGate.message,
+            variant: 'destructive',
+          });
+        }
         const captureCanvas = document.createElement('canvas');
         captureCanvas.width = canvas.width;
         captureCanvas.height = canvas.height;
         const captureCtx = captureCanvas.getContext('2d');
         captureCtx?.drawImage(canvas, 0, 0);
-        
+
         setPendingCaptureCanvas(captureCanvas);
-        
-        // Create image URL for overlay
+
         canvas.toBlob((blob) => {
           if (blob) {
             const url = URL.createObjectURL(blob);
