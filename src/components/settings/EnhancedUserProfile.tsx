@@ -17,6 +17,7 @@ import { useAvailableCompanies } from "@/hooks/useAvailableCompanies";
 import { useQueryClient } from "@tanstack/react-query";
 import { UserCommissionSettings } from "./UserCommissionSettings";
 import { UserActivityTab } from "./UserActivityTab";
+import MySignaturePanel from "@/features/settings/components/MySignaturePanel";
 import { 
   User, 
   Phone, 
