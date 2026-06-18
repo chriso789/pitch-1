@@ -55,32 +55,58 @@ export function DocumentScannerDialog({
   const [uploadProgress, setUploadProgress] = useState(0);
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [detectedCorners, setDetectedCorners] = useState<DetectedCorners | null>(null);
+  const [detectedCorners, setDetectedCorners] = useState<DetectedCornersExt | null>(null);
   const [stabilityResult, setStabilityResult] = useState<StabilityResult | null>(null);
   const [processingMode, setProcessingMode] = useState<'color' | 'bw'>('bw');
   const [isProcessing, setIsProcessing] = useState(false);
   const [videoWidth, setVideoWidth] = useState(0);
   const [videoHeight, setVideoHeight] = useState(0);
   const [opencvLoading, setOpencvLoading] = useState(false);
-  
+  const [opencvReady, setOpencvReady] = useState(false);
+  const [opencvFailed, setOpencvFailed] = useState(false);
+  const [qualityGate, setQualityGate] = useState<QualityGateResult | null>(null);
+  const [torchSupported, setTorchSupported] = useState(false);
+  const [torchOn, setTorchOn] = useState(false);
+
   // Manual crop state
   const [showManualCrop, setShowManualCrop] = useState(false);
   const [manualCropImage, setManualCropImage] = useState<{ url: string; width: number; height: number } | null>(null);
   const [pendingCaptureCanvas, setPendingCaptureCanvas] = useState<HTMLCanvasElement | null>(null);
-  
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const detectionIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const stabilityBufferRef = useRef(new CornerStabilityBuffer());
 
-  // Load OpenCV when dialog opens
+  // Preload OpenCV during browser idle so the first scan doesn't pay the
+  // 8MB WASM hit. Triggered when the dialog mounts; safe to call repeatedly.
   useEffect(() => {
-    if (open && !isOpenCVAvailable()) {
-      setOpencvLoading(true);
-      loadOpenCV().finally(() => setOpencvLoading(false));
+    if (isOpenCVAvailable()) {
+      setOpencvReady(true);
+      return;
     }
-  }, [open]);
+    const kick = () => {
+      setOpencvLoading(true);
+      loadOpenCV()
+        .then((ok) => {
+          setOpencvReady(!!ok);
+          setOpencvFailed(!ok);
+        })
+        .finally(() => setOpencvLoading(false));
+    };
+    const ric = (window as any).requestIdleCallback as undefined | ((cb: () => void, opts?: any) => number);
+    if (ric) {
+      const id = ric(kick, { timeout: 1500 });
+      return () => {
+        const cic = (window as any).cancelIdleCallback as undefined | ((id: number) => void);
+        cic?.(id);
+      };
+    }
+    const t = setTimeout(kick, 200);
+    return () => clearTimeout(t);
+  }, []);
+
 
   // Start camera when dialog opens
   useEffect(() => {
