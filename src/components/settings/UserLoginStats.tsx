@@ -44,7 +44,7 @@ export const UserLoginStats: React.FC<UserLoginStatsProps> = ({ userId }) => {
         .from('session_activity_log')
         .select('created_at, event_type')
         .eq('user_id', userId)
-        .in('event_type', ['login_success', 'session_start', 'session_resumed'])
+        .in('event_type', ['login_success', 'session_start', 'session_resumed', 'session_refresh'])
         .order('created_at', { ascending: false });
 
       if (error) throw error;

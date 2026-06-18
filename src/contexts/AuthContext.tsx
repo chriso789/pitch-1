@@ -178,8 +178,31 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       console.log('[AuthContext] Auth state change:', event, session?.user?.email);
-      
+
+      // Log auth events to session_activity_log so admin dashboards reflect real activity.
+      // Dedupe per browser tab/session so token refreshes don't flood logs.
+      if (session?.user) {
+        const key = `pitch_auth_logged_${event}_${session.user.id}`;
+        const alreadyLogged = sessionStorage.getItem(key);
+
+        if (event === 'SIGNED_IN' && !alreadyLogged) {
+          sessionStorage.setItem(key, '1');
+          supabase.functions
+            .invoke('log-auth-activity', { body: { event_type: 'login_success' } })
+            .catch((err) => console.warn('[AuthContext] login_success log failed', err));
+        } else if (event === 'TOKEN_REFRESHED' && !alreadyLogged) {
+          sessionStorage.setItem(key, '1');
+          supabase.functions
+            .invoke('log-auth-activity', { body: { event_type: 'session_refresh' } })
+            .catch((err) => console.warn('[AuthContext] session_refresh log failed', err));
+        }
+      }
+
       if (event === 'SIGNED_OUT') {
+        // Clear per-session dedupe keys so the next sign-in re-logs.
+        Object.keys(sessionStorage)
+          .filter((k) => k.startsWith('pitch_auth_logged_'))
+          .forEach((k) => sessionStorage.removeItem(k));
         clearAllSessionData();
         setSession(null);
         setUser(null);
