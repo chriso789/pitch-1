@@ -43,7 +43,7 @@ import { TrustedDevices } from "@/components/settings/TrustedDevices";
 import { CacheManagement } from "@/components/settings/CacheManagement";
 import { CompanyManagement } from "@/features/settings/components/CompanyManagement";
 import { CompanyActivityLog } from "@/features/settings/components/CompanyActivityLog";
-import MySignaturePanel from "@/features/settings/components/MySignaturePanel";
+
 import { PriceManagementDashboard } from "@/components/pricing/PriceManagementDashboard";
 import { PlatformAdmin } from "@/components/settings/PlatformAdmin";
 import { BatchRegenerationPanel } from "@/components/measurements/BatchRegenerationPanel";
