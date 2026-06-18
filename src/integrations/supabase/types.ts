@@ -59855,6 +59855,13 @@ export type Database = {
             }[]
           }
         | { Args: { p_user_id: string }; Returns: string[] }
+      get_users_last_login: {
+        Args: { _user_ids: string[] }
+        Returns: {
+          last_sign_in_at: string
+          user_id: string
+        }[]
+      }
       get_workspace_bootstrap: { Args: never; Returns: Json }
       gettransactionid: { Args: never; Returns: unknown }
       has_high_level_role: { Args: { p_user_id: string }; Returns: boolean }

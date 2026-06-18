@@ -123,30 +123,48 @@ export const UserManagement = () => {
       let loginStatsMap = new Map<string, { last_login: string | null; is_activated: boolean }>();
       
       if (userIds.length > 0) {
-        const { data: loginData } = await supabase
-          .from('session_activity_log')
-          .select('user_id, created_at')
-          .in('user_id', userIds)
-          .in('event_type', ['login_success', 'session_start'])
-          .order('created_at', { ascending: false });
-        
-        // Group by user_id and get latest + count
-        const userLogins = new Map<string, { latest: string; count: number }>();
-        loginData?.forEach(log => {
-          const existing = userLogins.get(log.user_id);
-          if (!existing) {
-            userLogins.set(log.user_id, { latest: log.created_at, count: 1 });
-          } else {
-            existing.count++;
+        // Authoritative source: auth.users.last_sign_in_at via SECURITY DEFINER RPC.
+        // Bypasses session_activity_log RLS gaps that hid logins for cross-user views.
+        const { data: rpcData } = await (supabase as any).rpc('get_users_last_login', {
+          _user_ids: userIds,
+        });
+
+        (rpcData || []).forEach((row: any) => {
+          if (row.last_sign_in_at) {
+            loginStatsMap.set(row.user_id, {
+              last_login: row.last_sign_in_at,
+              is_activated: true,
+            });
           }
         });
-        
-        userLogins.forEach((value, key) => {
-          loginStatsMap.set(key, {
-            last_login: value.latest,
-            is_activated: value.count > 0
+
+        // Fallback: merge in session_activity_log for any users RPC didn't cover
+        const missing = userIds.filter((id) => !loginStatsMap.has(id));
+        if (missing.length > 0) {
+          const { data: loginData } = await supabase
+            .from('session_activity_log')
+            .select('user_id, created_at')
+            .in('user_id', missing)
+            .in('event_type', ['login_success', 'session_start'])
+            .order('created_at', { ascending: false });
+
+          const userLogins = new Map<string, { latest: string; count: number }>();
+          loginData?.forEach((log) => {
+            const existing = userLogins.get(log.user_id);
+            if (!existing) {
+              userLogins.set(log.user_id, { latest: log.created_at, count: 1 });
+            } else {
+              existing.count++;
+            }
           });
-        });
+
+          userLogins.forEach((value, key) => {
+            loginStatsMap.set(key, {
+              last_login: value.latest,
+              is_activated: value.count > 0,
+            });
+          });
+        }
       }
 
       if (user) {
