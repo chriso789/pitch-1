@@ -709,7 +709,7 @@ export function DocumentScannerDialog({
 
 
       // Create document record with structured scan metadata
-      const { error: dbError } = await supabase
+      const { data: insertedDoc, error: dbError } = await supabase
         .from('documents')
         .insert({
           tenant_id: profile.tenant_id,
@@ -726,10 +726,19 @@ export function DocumentScannerDialog({
           scan_source: 'camera',
           metadata: scanMetadata,
           scan_quality: scanQuality,
-          ocr_status: 'not_started',
-        } as any);
+          ocr_status: 'processing',
+        } as any)
+        .select('id')
+        .single();
 
       if (dbError) throw dbError;
+
+      // Fire-and-forget OCR — must never block upload UX
+      if (insertedDoc?.id) {
+        supabase.functions
+          .invoke('ocr-scanned-document', { body: { document_id: insertedDoc.id } })
+          .catch((e) => console.warn('[scanner] OCR invoke failed:', e));
+      }
 
       setUploadProgress(100);
 
