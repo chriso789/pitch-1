@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { X, Camera, Trash2, RotateCcw, Loader2, FileText, Image, Edit2 } from 'lucide-react';
+import { X, Camera, Trash2, RotateCcw, Loader2, FileText, Image, Edit2, Zap, ZapOff } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -9,10 +9,14 @@ import { cn } from '@/lib/utils';
 import { isMobileDevice, hasHomeIndicator } from '@/utils/mobileDetection';
 import jsPDF from 'jspdf';
 import { detectDocumentEdges, DetectedCorners } from '@/utils/documentEdgeDetection';
-import { detectDocumentEdgesOpenCV, loadOpenCV, isOpenCVAvailable } from '@/utils/documentEdgeDetectionOpenCV';
+import { detectDocumentEdgesOpenCV, loadOpenCV, isOpenCVAvailable, DetectedCornersExt } from '@/utils/documentEdgeDetectionOpenCV';
 import { CornerStabilityBuffer, validateQuadrilateral, StabilityResult } from '@/utils/documentStability';
 import { enhanceDocumentPro } from '@/utils/documentEnhancementPro';
 import { ManualCropOverlay } from './ManualCropOverlay';
+import { analyzeFrameQuality, evaluateQualityGate, QualityFlags, QualityGateResult } from '@/utils/documentQuality';
+import { classifyAspectRatio, dominantPageSize, getPageSpec, DetectedPageSize } from '@/utils/documentPageSize';
+import { deskewCanvas } from '@/utils/documentDeskew';
+import { getTorchCapability, setTorch } from '@/utils/cameraTorch';
 
 interface CapturedPage {
   blob: Blob;
@@ -20,10 +24,14 @@ interface CapturedPage {
   cropMode: 'auto' | 'manual';
   colorMode: 'color' | 'bw';
   confidence: number | null;
+  pageSize: DetectedPageSize;
+  deskewAngle: number;
+  quality: QualityFlags | null;
 }
 
-const SCANNER_VERSION = '2.0.0';
+const SCANNER_VERSION = '2.1.0';
 const MAX_PDF_BYTES = 10 * 1024 * 1024; // 10MB
+
 
 interface DocumentScannerDialogProps {
   open: boolean;
@@ -47,32 +55,58 @@ export function DocumentScannerDialog({
   const [uploadProgress, setUploadProgress] = useState(0);
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [detectedCorners, setDetectedCorners] = useState<DetectedCorners | null>(null);
+  const [detectedCorners, setDetectedCorners] = useState<DetectedCornersExt | null>(null);
   const [stabilityResult, setStabilityResult] = useState<StabilityResult | null>(null);
   const [processingMode, setProcessingMode] = useState<'color' | 'bw'>('bw');
   const [isProcessing, setIsProcessing] = useState(false);
   const [videoWidth, setVideoWidth] = useState(0);
   const [videoHeight, setVideoHeight] = useState(0);
   const [opencvLoading, setOpencvLoading] = useState(false);
-  
+  const [opencvReady, setOpencvReady] = useState(false);
+  const [opencvFailed, setOpencvFailed] = useState(false);
+  const [qualityGate, setQualityGate] = useState<QualityGateResult | null>(null);
+  const [torchSupported, setTorchSupported] = useState(false);
+  const [torchOn, setTorchOn] = useState(false);
+
   // Manual crop state
   const [showManualCrop, setShowManualCrop] = useState(false);
   const [manualCropImage, setManualCropImage] = useState<{ url: string; width: number; height: number } | null>(null);
   const [pendingCaptureCanvas, setPendingCaptureCanvas] = useState<HTMLCanvasElement | null>(null);
-  
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const detectionIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const stabilityBufferRef = useRef(new CornerStabilityBuffer());
 
-  // Load OpenCV when dialog opens
+  // Preload OpenCV during browser idle so the first scan doesn't pay the
+  // 8MB WASM hit. Triggered when the dialog mounts; safe to call repeatedly.
   useEffect(() => {
-    if (open && !isOpenCVAvailable()) {
-      setOpencvLoading(true);
-      loadOpenCV().finally(() => setOpencvLoading(false));
+    if (isOpenCVAvailable()) {
+      setOpencvReady(true);
+      return;
     }
-  }, [open]);
+    const kick = () => {
+      setOpencvLoading(true);
+      loadOpenCV()
+        .then((ok) => {
+          setOpencvReady(!!ok);
+          setOpencvFailed(!ok);
+        })
+        .finally(() => setOpencvLoading(false));
+    };
+    const ric = (window as any).requestIdleCallback as undefined | ((cb: () => void, opts?: any) => number);
+    if (ric) {
+      const id = ric(kick, { timeout: 1500 });
+      return () => {
+        const cic = (window as any).cancelIdleCallback as undefined | ((id: number) => void);
+        cic?.(id);
+      };
+    }
+    const t = setTimeout(kick, 200);
+    return () => clearTimeout(t);
+  }, []);
+
 
   // Start camera when dialog opens
   useEffect(() => {
@@ -129,42 +163,48 @@ export function DocumentScannerDialog({
       const imageData = ctx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
       
       // Try OpenCV detection first, fall back to basic detector
-      let corners: DetectedCorners | null = null;
-      
+      let corners: DetectedCornersExt | null = null;
+
       if (isOpenCVAvailable()) {
-        corners = await detectDocumentEdgesOpenCV(imageData);
+        corners = (await detectDocumentEdgesOpenCV(imageData)) as DetectedCornersExt | null;
       }
-      
+
       if (!corners) {
-        corners = detectDocumentEdges(imageData);
+        const fb = detectDocumentEdges(imageData);
+        if (fb) corners = { ...fb } as DetectedCornersExt;
       }
-      
+
+      // Quality gate runs on the downsampled frame regardless of detection.
+      const flags = analyzeFrameQuality(imageData);
+      const gate = evaluateQualityGate(flags);
+      setQualityGate(gate);
+
       if (corners) {
         // Scale corners back to full resolution
-        const scaledCorners: DetectedCorners = {
+        const scaledCorners: DetectedCornersExt = {
           topLeft: { x: corners.topLeft.x * scale, y: corners.topLeft.y * scale },
           topRight: { x: corners.topRight.x * scale, y: corners.topRight.y * scale },
           bottomRight: { x: corners.bottomRight.x * scale, y: corners.bottomRight.y * scale },
           bottomLeft: { x: corners.bottomLeft.x * scale, y: corners.bottomLeft.y * scale },
           confidence: corners.confidence,
+          aspectRatio: corners.aspectRatio,
+          pageSize: corners.pageSize,
         };
-        
-        // Add to stability buffer
+
         const stability = stabilityBufferRef.current.addFrame(scaledCorners);
         setStabilityResult(stability);
-        
-        // Use averaged corners for display (smoother)
-        if (stability.averagedCorners) {
-          setDetectedCorners(stability.averagedCorners);
-        } else {
-          setDetectedCorners(scaledCorners);
-        }
+
+        const display: DetectedCornersExt = stability.averagedCorners
+          ? { ...stability.averagedCorners, aspectRatio: scaledCorners.aspectRatio, pageSize: scaledCorners.pageSize }
+          : scaledCorners;
+        setDetectedCorners(display);
       } else {
         stabilityBufferRef.current.addFrame(null);
         setDetectedCorners(null);
         setStabilityResult(null);
       }
     };
+
     
     // Run detection every 200ms
     detectionIntervalRef.current = setInterval(runDetection, 200);
@@ -192,7 +232,11 @@ export function DocumentScannerDialog({
       });
       
       streamRef.current = mediaStream;
-      
+      // Probe torch capability (Chromium-only). Settles state for the UI.
+      const cap = getTorchCapability(mediaStream);
+      setTorchSupported(cap.supported);
+      setTorchOn(false);
+
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
         videoRef.current.onloadedmetadata = () => {
@@ -215,22 +259,27 @@ export function DocumentScannerDialog({
       detectionIntervalRef.current = null;
     }
     if (streamRef.current) {
+      // Best-effort torch-off before stopping tracks.
+      setTorch(streamRef.current, false).catch(() => {});
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     }
     setCameraReady(false);
     setDetectedCorners(null);
     setStabilityResult(null);
+    setTorchOn(false);
+    setTorchSupported(false);
+    setQualityGate(null);
   };
 
   // Process captured frame with given corners
   const processAndAddPage = useCallback(async (
     sourceCanvas: HTMLCanvasElement,
-    corners: DetectedCorners,
-    cropMode: 'auto' | 'manual'
+    corners: DetectedCornersExt,
+    cropMode: 'auto' | 'manual',
+    capturedQuality: QualityFlags | null,
   ) => {
     try {
-      // Validate quadrilateral
       const validation = validateQuadrilateral(corners, sourceCanvas.width, sourceCanvas.height);
       if (!validation.valid) {
         toast({
@@ -241,17 +290,33 @@ export function DocumentScannerDialog({
         return false;
       }
 
-      // Apply professional enhancement pipeline
-      const enhanced = enhanceDocumentPro(sourceCanvas, corners, {
+      // Page-size guess from the quad's aspect ratio, then map to spec.
+      // We compute here too (not just in the OpenCV detector) so manual crops
+      // and the JS fallback also produce a page-size guess.
+      const w1 = Math.hypot(corners.topRight.x - corners.topLeft.x, corners.topRight.y - corners.topLeft.y);
+      const w2 = Math.hypot(corners.bottomRight.x - corners.bottomLeft.x, corners.bottomRight.y - corners.bottomLeft.y);
+      const h1 = Math.hypot(corners.bottomLeft.x - corners.topLeft.x, corners.bottomLeft.y - corners.topLeft.y);
+      const h2 = Math.hypot(corners.bottomRight.x - corners.topRight.x, corners.bottomRight.y - corners.topRight.y);
+      const longSide = Math.max((w1 + w2) / 2, (h1 + h2) / 2);
+      const shortSide = Math.max(1, Math.min((w1 + w2) / 2, (h1 + h2) / 2));
+      const pageSize: DetectedPageSize = corners.pageSize ?? classifyAspectRatio(longSide, shortSide);
+      const spec = getPageSpec(pageSize);
+
+      // Enhance at the page-spec dimensions (not always letter).
+      let enhanced = enhanceDocumentPro(sourceCanvas, corners, {
         mode: processingMode,
         illuminationCorrection: true,
         whiteBackground: true,
         sharpen: processingMode === 'color',
-        outputWidth: 2550, // 8.5" at 300 DPI
-        outputHeight: 3300, // 11" at 300 DPI
+        outputWidth: spec.outputWidth,
+        outputHeight: spec.outputHeight,
       });
 
-      // Add page number overlay
+      // Post-warp deskew (±5°). Operates on the rectified canvas.
+      const { canvas: deskewed, angle: deskewAngle } = deskewCanvas(enhanced);
+      enhanced = deskewed;
+
+      // Page-number badge
       const pageNum = capturedPages.length + 1;
       const enhancedCtx = enhanced.getContext('2d');
       if (enhancedCtx) {
@@ -265,13 +330,15 @@ export function DocumentScannerDialog({
       const colorMode = processingMode;
       const confidence = corners.confidence ?? null;
 
-      // Convert to blob with high quality
       return new Promise<boolean>((resolve) => {
         enhanced.toBlob(
           (blob) => {
             if (blob) {
               const preview = URL.createObjectURL(blob);
-              setCapturedPages(prev => [...prev, { blob, preview, cropMode, colorMode, confidence }]);
+              setCapturedPages(prev => [...prev, {
+                blob, preview, cropMode, colorMode, confidence,
+                pageSize, deskewAngle, quality: capturedQuality,
+              }]);
               resolve(true);
             } else {
               resolve(false);
@@ -306,12 +373,18 @@ export function DocumentScannerDialog({
       // Draw video frame to canvas
       ctx.drawImage(video, 0, 0);
 
-      // Check if we have stable detection
+      // Check if we have stable detection AND quality gate isn't blocking.
       const currentStability = stabilityBufferRef.current.getResult();
-      
-      if (currentStability.stable && currentStability.averagedCorners) {
-        // AUTO MODE: Use stable corners immediately
-        const success = await processAndAddPage(canvas, currentStability.averagedCorners, 'auto');
+      const blockedByQuality = qualityGate?.block ?? false;
+
+      if (currentStability.stable && currentStability.averagedCorners && !blockedByQuality) {
+        // AUTO MODE: stable corners, no glare/blur block.
+        const success = await processAndAddPage(
+          canvas,
+          currentStability.averagedCorners as DetectedCornersExt,
+          'auto',
+          qualityGate?.flags ?? null,
+        );
         if (!success) {
           toast({
             title: 'Processing Failed',
@@ -320,17 +393,22 @@ export function DocumentScannerDialog({
           });
         }
       } else {
-        // MANUAL MODE: Show crop overlay
-        // Create a copy of the canvas for manual cropping
+        // MANUAL MODE: show crop overlay (also used when quality blocks auto).
+        if (blockedByQuality && qualityGate?.message) {
+          toast({
+            title: 'Capture blocked',
+            description: qualityGate.message,
+            variant: 'destructive',
+          });
+        }
         const captureCanvas = document.createElement('canvas');
         captureCanvas.width = canvas.width;
         captureCanvas.height = canvas.height;
         const captureCtx = captureCanvas.getContext('2d');
         captureCtx?.drawImage(canvas, 0, 0);
-        
+
         setPendingCaptureCanvas(captureCanvas);
-        
-        // Create image URL for overlay
+
         canvas.toBlob((blob) => {
           if (blob) {
             const url = URL.createObjectURL(blob);
@@ -353,7 +431,7 @@ export function DocumentScannerDialog({
     } finally {
       setIsProcessing(false);
     }
-  }, [cameraReady, processAndAddPage]);
+  }, [cameraReady, processAndAddPage, qualityGate]);
 
   // Handle manual crop confirmation
   const handleManualCropConfirm = useCallback(async (corners: DetectedCorners) => {
@@ -363,7 +441,7 @@ export function DocumentScannerDialog({
     setShowManualCrop(false);
     
     try {
-      const success = await processAndAddPage(pendingCaptureCanvas, corners, 'manual');
+      const success = await processAndAddPage(pendingCaptureCanvas, corners as DetectedCornersExt, 'manual', qualityGate?.flags ?? null);
       if (!success) {
         toast({
           title: 'Processing Failed',
@@ -379,7 +457,7 @@ export function DocumentScannerDialog({
       setManualCropImage(null);
       setPendingCaptureCanvas(null);
     }
-  }, [pendingCaptureCanvas, processAndAddPage, manualCropImage]);
+  }, [pendingCaptureCanvas, processAndAddPage, manualCropImage, qualityGate]);
 
   // Handle manual crop cancel
   const handleManualCropCancel = useCallback(() => {
@@ -442,71 +520,72 @@ export function DocumentScannerDialog({
     );
   };
 
-  // Build PDF from pages at the given JPEG quality / DPI cap
+  // Build PDF from pages at the given JPEG quality / DPI cap.
+  // Each page uses its detected page size (letter/legal/A4); page size
+  // for the PDF itself is the dominant detected size across all pages.
   const buildPdfAtQuality = async (
     pages: CapturedPage[],
     quality: number,
-    maxImageWidth: number
-  ): Promise<Blob> => {
+    maxImageDpi: number,
+  ): Promise<{ blob: Blob; pdfFormat: 'letter' | 'legal' | 'a4' }> => {
+    const dominant = dominantPageSize(pages.map((p) => p.pageSize));
+    const pdfFormat: 'letter' | 'legal' | 'a4' = dominant === 'unknown' ? 'letter' : dominant;
+
     const pdf = new jsPDF({
       orientation: 'portrait',
       unit: 'in',
-      format: 'letter',
+      format: pdfFormat,
       compress: true,
     });
 
     for (let i = 0; i < pages.length; i++) {
-      if (i > 0) pdf.addPage();
-      // Pick BW-vs-color baseline quality
-      const baseQuality = pages[i].colorMode === 'bw'
-        ? Math.min(quality, 0.82)
-        : quality;
-      const reencoded = await reencodePageBlob(pages[i].blob, baseQuality, maxImageWidth);
+      const pageSpec = getPageSpec(pages[i].pageSize === 'unknown' ? dominant : pages[i].pageSize);
+      if (i > 0) pdf.addPage([pageSpec.widthIn, pageSpec.heightIn], 'portrait');
+      const baseQuality = pages[i].colorMode === 'bw' ? Math.min(quality, 0.82) : quality;
+      const maxWidth = Math.round(pageSpec.widthIn * maxImageDpi);
+      const reencoded = await reencodePageBlob(pages[i].blob, baseQuality, maxWidth);
       const dataUrl = await blobToDataURL(reencoded);
-      // 'SLOW' = better JPEG compression / quality tradeoff than 'FAST'
-      pdf.addImage(dataUrl, 'JPEG', 0, 0, 8.5, 11, undefined, 'SLOW');
+      pdf.addImage(dataUrl, 'JPEG', 0, 0, pageSpec.widthIn, pageSpec.heightIn, undefined, 'SLOW');
     }
 
-    return pdf.output('blob');
+    return { blob: pdf.output('blob'), pdfFormat };
   };
+
 
   // Compose PDF and recompress if it exceeds MAX_PDF_BYTES
   const generateCombinedPDFWithCap = async (
     pages: CapturedPage[]
-  ): Promise<{ blob: Blob; dpi: number; quality: number; compressed: boolean }> => {
-    // dpi here is the effective max width in px (8.5" * dpi)
+  ): Promise<{ blob: Blob; dpi: number; quality: number; compressed: boolean; pdfFormat: 'letter' | 'legal' | 'a4' }> => {
     const ladder: Array<{ quality: number; dpi: number }> = [
-      { quality: 0.85, dpi: 300 }, // ~2550 px
+      { quality: 0.85, dpi: 300 },
       { quality: 0.75, dpi: 300 },
-      { quality: 0.75, dpi: 220 }, // ~1870 px
+      { quality: 0.75, dpi: 220 },
       { quality: 0.65, dpi: 220 },
-      { quality: 0.65, dpi: 200 }, // ~1700 px
+      { quality: 0.65, dpi: 200 },
     ];
 
-    let last: Blob | null = null;
+    let lastBlob: Blob | null = null;
+    let lastFormat: 'letter' | 'legal' | 'a4' = 'letter';
     let lastStep = ladder[0];
     for (let i = 0; i < ladder.length; i++) {
       const step = ladder[i];
-      const maxWidth = Math.round(8.5 * step.dpi);
-      const blob = await buildPdfAtQuality(pages, step.quality, maxWidth);
-      last = blob;
+      const { blob, pdfFormat } = await buildPdfAtQuality(pages, step.quality, step.dpi);
+      lastBlob = blob;
+      lastFormat = pdfFormat;
       lastStep = step;
       if (blob.size <= MAX_PDF_BYTES) {
-        return {
-          blob,
-          dpi: step.dpi,
-          quality: step.quality,
-          compressed: i > 0,
-        };
+        return { blob, dpi: step.dpi, quality: step.quality, compressed: i > 0, pdfFormat };
       }
     }
     return {
-      blob: last as Blob,
+      blob: lastBlob as Blob,
       dpi: lastStep.dpi,
       quality: lastStep.quality,
       compressed: true,
+      pdfFormat: lastFormat,
     };
   };
+
 
   const handleBatchUpload = async () => {
     if (capturedPages.length === 0) {
@@ -536,8 +615,7 @@ export function DocumentScannerDialog({
 
       setUploadProgress(10);
 
-      // Generate combined PDF, recompressing if needed
-      const { blob: pdfBlob, dpi, quality, compressed } =
+      const { blob: pdfBlob, dpi, quality, compressed, pdfFormat } =
         await generateCombinedPDFWithCap(capturedPages);
 
       if (pdfBlob.size > MAX_PDF_BYTES) {
@@ -556,22 +634,18 @@ export function DocumentScannerDialog({
 
       setUploadProgress(50);
 
-      // Tenant-first storage path (required by storage RLS)
       const timestamp = Date.now();
       const sanitizedLabel = documentLabel.replace(/\s+/g, '_');
       const fileName = `${profile.tenant_id}/${pipelineEntryId}/${timestamp}_${documentType}.pdf`;
 
       const { error: uploadError } = await supabase.storage
         .from('documents')
-        .upload(fileName, pdfBlob, {
-          contentType: 'application/pdf',
-        });
+        .upload(fileName, pdfBlob, { contentType: 'application/pdf' });
 
       if (uploadError) throw uploadError;
 
       setUploadProgress(80);
 
-      // Aggregate per-page scan quality
       const confidences = capturedPages
         .map((p) => p.confidence)
         .filter((c): c is number => typeof c === 'number');
@@ -582,6 +656,19 @@ export function DocumentScannerDialog({
       const autoDetectedPages = capturedPages.filter((p) => p.cropMode === 'auto').length;
       const colorPages = capturedPages.filter((p) => p.colorMode === 'color').length;
       const bwPages = capturedPages.filter((p) => p.colorMode === 'bw').length;
+      const deskewAngles = capturedPages.map((p) => p.deskewAngle ?? 0);
+      const avgDeskew = deskewAngles.length
+        ? deskewAngles.reduce((a, b) => a + Math.abs(b), 0) / deskewAngles.length
+        : 0;
+      const pageSizesArr = capturedPages.map((p) => p.pageSize);
+      const detected_page_size = dominantPageSize(pageSizesArr);
+      const glareFlagged = capturedPages.filter((p) => p.quality?.glare_detected).length;
+      const shadowFlagged = capturedPages.filter((p) => p.quality?.shadow_detected).length;
+      const lowLightFlagged = capturedPages.filter((p) => p.quality?.low_light_detected).length;
+      const avgBlur = (() => {
+        const xs = capturedPages.map((p) => p.quality?.blur_score).filter((x): x is number => typeof x === 'number');
+        return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
+      })();
 
       const capturedAt = new Date(timestamp).toISOString();
 
@@ -594,6 +681,11 @@ export function DocumentScannerDialog({
         dpi,
         jpeg_quality: quality,
         output_format: 'pdf',
+        pdf_format: pdfFormat,
+        detected_page_size,
+        page_sizes: pageSizesArr,
+        torch_used: torchOn,
+        torch_supported: torchSupported,
         scanner_version: SCANNER_VERSION,
         captured_at: capturedAt,
         storage_path: fileName,
@@ -606,7 +698,15 @@ export function DocumentScannerDialog({
         auto_detected_pages: autoDetectedPages,
         color_mode_pages: colorPages,
         bw_mode_pages: bwPages,
+        average_deskew_angle_deg: avgDeskew,
+        deskew_angles_deg: deskewAngles,
+        glare_flagged_pages: glareFlagged,
+        shadow_flagged_pages: shadowFlagged,
+        low_light_flagged_pages: lowLightFlagged,
+        average_blur_score: avgBlur,
+        per_page_flags: capturedPages.map((p) => p.quality),
       };
+
 
       // Create document record with structured scan metadata
       const { error: dbError } = await supabase
@@ -702,10 +802,27 @@ export function DocumentScannerDialog({
     }, 'image/jpeg', 0.9);
   }, [cameraReady]);
 
+  const handleToggleTorch = useCallback(async () => {
+    if (!streamRef.current || !torchSupported) return;
+    const next = !torchOn;
+    const ok = await setTorch(streamRef.current, next);
+    if (ok) setTorchOn(next);
+  }, [torchOn, torchSupported]);
+
   const isMobile = isMobileDevice();
   const bottomPadding = hasHomeIndicator() ? 'pb-8' : 'pb-4';
   const isStable = stabilityResult?.stable ?? false;
   const detectionConfidence = detectedCorners?.confidence ?? 0;
+  const qualityBlocked = qualityGate?.block ?? false;
+  const qualityLevel = qualityGate?.level ?? 'ok';
+  const readyToCapture = isStable && !qualityBlocked;
+  const scannerStatusLabel = opencvReady
+    ? 'Scanner ready'
+    : opencvLoading
+      ? 'Loading scanner engine…'
+      : opencvFailed
+        ? 'Using fallback scanner'
+        : 'Initializing…';
 
   // Show manual crop overlay
   if (showManualCrop && manualCropImage) {
@@ -824,30 +941,64 @@ export function DocumentScannerDialog({
                 </div>
               )}
               
-              {/* Detection status indicator */}
+              {/* Detection / quality status indicator */}
               {cameraReady && (
                 <div className={cn(
-                  "absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full text-sm font-medium shadow-lg transition-all duration-300",
-                  isStable
-                    ? "bg-success text-success-foreground"
-                    : detectedCorners
+                  "absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full text-sm font-medium shadow-lg transition-all duration-300 max-w-[90%] text-center",
+                  qualityLevel === 'block'
+                    ? "bg-destructive text-destructive-foreground"
+                    : qualityLevel === 'warn'
                       ? "bg-warning text-warning-foreground"
-                      : "bg-muted text-muted-foreground"
+                      : readyToCapture
+                        ? "bg-success text-success-foreground"
+                        : detectedCorners
+                          ? "bg-warning text-warning-foreground"
+                          : "bg-muted text-muted-foreground"
                 )}>
-                  {isStable 
-                    ? '✓ Ready to Capture' 
-                    : detectedCorners
-                      ? 'Hold steady...'
-                      : 'Position document in frame'}
+                  {qualityGate?.message
+                    ? qualityGate.message
+                    : readyToCapture
+                      ? '✓ Ready to Capture'
+                      : detectedCorners
+                        ? 'Hold steady…'
+                        : 'Position document in frame'}
                 </div>
               )}
-              
-              {/* OpenCV loading indicator */}
-              {opencvLoading && (
-                <div className="absolute top-14 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xs bg-primary/80 text-primary-foreground">
-                  Loading scanner...
+
+              {/* Scanner engine + page-size chip */}
+              {cameraReady && (
+                <div className="absolute top-14 left-1/2 -translate-x-1/2 flex gap-2">
+                  <span className={cn(
+                    "px-3 py-1 rounded-full text-xs",
+                    opencvReady ? "bg-success/80 text-success-foreground"
+                      : opencvFailed ? "bg-warning/80 text-warning-foreground"
+                      : "bg-primary/80 text-primary-foreground"
+                  )}>
+                    {scannerStatusLabel}
+                  </span>
+                  {detectedCorners?.pageSize && detectedCorners.pageSize !== 'unknown' && (
+                    <span className="px-3 py-1 rounded-full text-xs bg-black/60 text-white uppercase">
+                      {detectedCorners.pageSize}
+                    </span>
+                  )}
                 </div>
               )}
+
+              {/* Torch button (Chromium-only). Hidden where unsupported. */}
+              {cameraReady && torchSupported && (
+                <button
+                  type="button"
+                  onClick={handleToggleTorch}
+                  aria-label={torchOn ? 'Turn torch off' : 'Turn torch on'}
+                  className={cn(
+                    "absolute top-4 right-4 h-10 w-10 rounded-full flex items-center justify-center shadow-lg",
+                    torchOn ? "bg-warning text-warning-foreground" : "bg-black/60 text-white"
+                  )}
+                >
+                  {torchOn ? <Zap className="h-5 w-5" /> : <ZapOff className="h-5 w-5" />}
+                </button>
+              )}
+
               
               {/* Processing overlay */}
               {isProcessing && (
@@ -964,7 +1115,7 @@ export function DocumentScannerDialog({
               "transition-all duration-150",
               "disabled:opacity-50 disabled:cursor-not-allowed",
               "border-4 border-primary-foreground shadow-lg",
-              isStable && "ring-4 ring-success/50 animate-pulse"
+              readyToCapture && "ring-4 ring-success/50 animate-pulse"
             )}
             aria-label="Capture page"
           >
