@@ -95,13 +95,17 @@ export default function MySignaturePanel({ userId, hideHeader, title, descriptio
   const persistDataUrl = async (dataUrl: string) => {
     setSaving(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not signed in');
+      let uid = targetUserId;
+      if (!uid) {
+        const { data: { user } } = await supabase.auth.getUser();
+        uid = user?.id ?? null;
+      }
+      if (!uid) throw new Error('No user');
       const now = new Date().toISOString();
       const { error } = await supabase
         .from('profiles')
         .update({ signature_image_path: dataUrl, signature_updated_at: now })
-        .eq('id', user.id);
+        .eq('id', uid);
       if (error) throw error;
       setSavedSig(dataUrl);
       setSavedAt(now);
