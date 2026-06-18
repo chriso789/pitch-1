@@ -17,7 +17,13 @@ import { ManualCropOverlay } from './ManualCropOverlay';
 interface CapturedPage {
   blob: Blob;
   preview: string;
+  cropMode: 'auto' | 'manual';
+  colorMode: 'color' | 'bw';
+  confidence: number | null;
 }
+
+const SCANNER_VERSION = '2.0.0';
+const MAX_PDF_BYTES = 10 * 1024 * 1024; // 10MB
 
 interface DocumentScannerDialogProps {
   open: boolean;
