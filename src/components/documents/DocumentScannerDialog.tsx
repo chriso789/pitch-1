@@ -226,7 +226,8 @@ export function DocumentScannerDialog({
   // Process captured frame with given corners
   const processAndAddPage = useCallback(async (
     sourceCanvas: HTMLCanvasElement,
-    corners: DetectedCorners
+    corners: DetectedCorners,
+    cropMode: 'auto' | 'manual'
   ) => {
     try {
       // Validate quadrilateral
@@ -261,13 +262,16 @@ export function DocumentScannerDialog({
         enhancedCtx.fillText(`Page ${pageNum}`, enhanced.width - 110, 45);
       }
 
+      const colorMode = processingMode;
+      const confidence = corners.confidence ?? null;
+
       // Convert to blob with high quality
       return new Promise<boolean>((resolve) => {
         enhanced.toBlob(
           (blob) => {
             if (blob) {
               const preview = URL.createObjectURL(blob);
-              setCapturedPages(prev => [...prev, { blob, preview }]);
+              setCapturedPages(prev => [...prev, { blob, preview, cropMode, colorMode, confidence }]);
               resolve(true);
             } else {
               resolve(false);
