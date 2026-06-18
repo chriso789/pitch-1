@@ -431,7 +431,7 @@ export function DocumentScannerDialog({
     } finally {
       setIsProcessing(false);
     }
-  }, [cameraReady, processAndAddPage]);
+  }, [cameraReady, processAndAddPage, qualityGate]);
 
   // Handle manual crop confirmation
   const handleManualCropConfirm = useCallback(async (corners: DetectedCorners) => {
