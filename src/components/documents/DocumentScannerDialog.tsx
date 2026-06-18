@@ -555,40 +555,37 @@ export function DocumentScannerDialog({
   // Compose PDF and recompress if it exceeds MAX_PDF_BYTES
   const generateCombinedPDFWithCap = async (
     pages: CapturedPage[]
-  ): Promise<{ blob: Blob; dpi: number; quality: number; compressed: boolean }> => {
-    // dpi here is the effective max width in px (8.5" * dpi)
+  ): Promise<{ blob: Blob; dpi: number; quality: number; compressed: boolean; pdfFormat: 'letter' | 'legal' | 'a4' }> => {
     const ladder: Array<{ quality: number; dpi: number }> = [
-      { quality: 0.85, dpi: 300 }, // ~2550 px
+      { quality: 0.85, dpi: 300 },
       { quality: 0.75, dpi: 300 },
-      { quality: 0.75, dpi: 220 }, // ~1870 px
+      { quality: 0.75, dpi: 220 },
       { quality: 0.65, dpi: 220 },
-      { quality: 0.65, dpi: 200 }, // ~1700 px
+      { quality: 0.65, dpi: 200 },
     ];
 
-    let last: Blob | null = null;
+    let lastBlob: Blob | null = null;
+    let lastFormat: 'letter' | 'legal' | 'a4' = 'letter';
     let lastStep = ladder[0];
     for (let i = 0; i < ladder.length; i++) {
       const step = ladder[i];
-      const maxWidth = Math.round(8.5 * step.dpi);
-      const blob = await buildPdfAtQuality(pages, step.quality, maxWidth);
-      last = blob;
+      const { blob, pdfFormat } = await buildPdfAtQuality(pages, step.quality, step.dpi);
+      lastBlob = blob;
+      lastFormat = pdfFormat;
       lastStep = step;
       if (blob.size <= MAX_PDF_BYTES) {
-        return {
-          blob,
-          dpi: step.dpi,
-          quality: step.quality,
-          compressed: i > 0,
-        };
+        return { blob, dpi: step.dpi, quality: step.quality, compressed: i > 0, pdfFormat };
       }
     }
     return {
-      blob: last as Blob,
+      blob: lastBlob as Blob,
       dpi: lastStep.dpi,
       quality: lastStep.quality,
       compressed: true,
+      pdfFormat: lastFormat,
     };
   };
+
 
   const handleBatchUpload = async () => {
     if (capturedPages.length === 0) {
