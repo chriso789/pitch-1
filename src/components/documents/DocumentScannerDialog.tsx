@@ -615,8 +615,7 @@ export function DocumentScannerDialog({
 
       setUploadProgress(10);
 
-      // Generate combined PDF, recompressing if needed
-      const { blob: pdfBlob, dpi, quality, compressed } =
+      const { blob: pdfBlob, dpi, quality, compressed, pdfFormat } =
         await generateCombinedPDFWithCap(capturedPages);
 
       if (pdfBlob.size > MAX_PDF_BYTES) {
@@ -635,22 +634,18 @@ export function DocumentScannerDialog({
 
       setUploadProgress(50);
 
-      // Tenant-first storage path (required by storage RLS)
       const timestamp = Date.now();
       const sanitizedLabel = documentLabel.replace(/\s+/g, '_');
       const fileName = `${profile.tenant_id}/${pipelineEntryId}/${timestamp}_${documentType}.pdf`;
 
       const { error: uploadError } = await supabase.storage
         .from('documents')
-        .upload(fileName, pdfBlob, {
-          contentType: 'application/pdf',
-        });
+        .upload(fileName, pdfBlob, { contentType: 'application/pdf' });
 
       if (uploadError) throw uploadError;
 
       setUploadProgress(80);
 
-      // Aggregate per-page scan quality
       const confidences = capturedPages
         .map((p) => p.confidence)
         .filter((c): c is number => typeof c === 'number');
@@ -661,6 +656,19 @@ export function DocumentScannerDialog({
       const autoDetectedPages = capturedPages.filter((p) => p.cropMode === 'auto').length;
       const colorPages = capturedPages.filter((p) => p.colorMode === 'color').length;
       const bwPages = capturedPages.filter((p) => p.colorMode === 'bw').length;
+      const deskewAngles = capturedPages.map((p) => p.deskewAngle ?? 0);
+      const avgDeskew = deskewAngles.length
+        ? deskewAngles.reduce((a, b) => a + Math.abs(b), 0) / deskewAngles.length
+        : 0;
+      const pageSizesArr = capturedPages.map((p) => p.pageSize);
+      const detected_page_size = dominantPageSize(pageSizesArr);
+      const glareFlagged = capturedPages.filter((p) => p.quality?.glare_detected).length;
+      const shadowFlagged = capturedPages.filter((p) => p.quality?.shadow_detected).length;
+      const lowLightFlagged = capturedPages.filter((p) => p.quality?.low_light_detected).length;
+      const avgBlur = (() => {
+        const xs = capturedPages.map((p) => p.quality?.blur_score).filter((x): x is number => typeof x === 'number');
+        return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
+      })();
 
       const capturedAt = new Date(timestamp).toISOString();
 
@@ -673,6 +681,11 @@ export function DocumentScannerDialog({
         dpi,
         jpeg_quality: quality,
         output_format: 'pdf',
+        pdf_format: pdfFormat,
+        detected_page_size,
+        page_sizes: pageSizesArr,
+        torch_used: torchOn,
+        torch_supported: torchSupported,
         scanner_version: SCANNER_VERSION,
         captured_at: capturedAt,
         storage_path: fileName,
@@ -685,7 +698,15 @@ export function DocumentScannerDialog({
         auto_detected_pages: autoDetectedPages,
         color_mode_pages: colorPages,
         bw_mode_pages: bwPages,
+        average_deskew_angle_deg: avgDeskew,
+        deskew_angles_deg: deskewAngles,
+        glare_flagged_pages: glareFlagged,
+        shadow_flagged_pages: shadowFlagged,
+        low_light_flagged_pages: lowLightFlagged,
+        average_blur_score: avgBlur,
+        per_page_flags: capturedPages.map((p) => p.quality),
       };
+
 
       // Create document record with structured scan metadata
       const { error: dbError } = await supabase
