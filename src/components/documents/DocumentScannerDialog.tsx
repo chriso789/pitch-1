@@ -232,7 +232,11 @@ export function DocumentScannerDialog({
       });
       
       streamRef.current = mediaStream;
-      
+      // Probe torch capability (Chromium-only). Settles state for the UI.
+      const cap = getTorchCapability(mediaStream);
+      setTorchSupported(cap.supported);
+      setTorchOn(false);
+
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
         videoRef.current.onloadedmetadata = () => {
