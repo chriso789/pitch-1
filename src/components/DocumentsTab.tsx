@@ -1282,6 +1282,14 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
                                 by {doc.uploader.first_name} {doc.uploader.last_name}
                               </span>
                             )}
+                            {doc.scan_source === 'camera' && (
+                              <OcrStatusBadge
+                                documentId={doc.id}
+                                status={doc.ocr_status}
+                                error={doc.ocr_error}
+                                onRetried={fetchDocuments}
+                              />
+                            )}
                           </div>
                           {doc.document_type === 'estimate' && doc.estimate_display_name && (
                             <p className="text-xs text-muted-foreground mt-0.5">{doc.filename}</p>
