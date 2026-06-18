@@ -1115,7 +1115,7 @@ export function DocumentScannerDialog({
               "transition-all duration-150",
               "disabled:opacity-50 disabled:cursor-not-allowed",
               "border-4 border-primary-foreground shadow-lg",
-              isStable && "ring-4 ring-success/50 animate-pulse"
+              readyToCapture && "ring-4 ring-success/50 animate-pulse"
             )}
             aria-label="Capture page"
           >
