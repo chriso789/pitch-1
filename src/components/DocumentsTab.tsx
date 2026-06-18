@@ -21,6 +21,7 @@ import { DocumentPreviewModal } from '@/components/documents/DocumentPreviewModa
 import { DocumentRenameDialog } from '@/features/documents/components/DocumentRenameDialog';
 import { DocumentSearchFilters } from '@/components/documents/DocumentSearchFilters';
 import { AddSmartDocToProjectDialog } from '@/components/documents/AddSmartDocToProjectDialog';
+import { OcrStatusBadge } from '@/components/documents/OcrStatusBadge';
 import {
   Dialog,
   DialogContent,
