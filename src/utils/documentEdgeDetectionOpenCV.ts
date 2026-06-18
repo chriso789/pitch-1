@@ -201,24 +201,35 @@ export async function detectDocumentEdgesOpenCV(imageData: ImageData): Promise<D
         y: bestContour.data32S[i * 2 + 1],
       });
     }
-    
+
     bestContour.delete();
-    
+
     // Sort corners: TL, TR, BR, BL
     const sorted = sortCornersOpenCV(corners);
-    
-    return {
+
+    // Compute aspect ratio + page-size guess.
+    const w1 = distance(sorted[0], sorted[1]);
+    const w2 = distance(sorted[3], sorted[2]);
+    const h1 = distance(sorted[0], sorted[3]);
+    const h2 = distance(sorted[1], sorted[2]);
+    const avgW = (w1 + w2) / 2;
+    const avgH = (h1 + h2) / 2;
+    const longSide = Math.max(avgW, avgH);
+    const shortSide = Math.max(1, Math.min(avgW, avgH));
+    const aspectRatio = longSide / shortSide;
+    const pageSize = classifyAspectRatio(longSide, shortSide);
+
+    const result: DetectedCornersExt = {
       topLeft: sorted[0],
       topRight: sorted[1],
       bottomRight: sorted[2],
       bottomLeft: sorted[3],
       confidence: bestScore,
+      aspectRatio,
+      pageSize,
     };
-    
-  } catch (e) {
-    console.warn('[OpenCV] Detection error:', e);
-    return null;
-  } finally {
+    return result;
+
     // Clean up Mats
     if (src) src.delete();
     if (gray) gray.delete();
