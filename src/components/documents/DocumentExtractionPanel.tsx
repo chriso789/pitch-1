@@ -616,6 +616,136 @@ export const DocumentExtractionPanel: React.FC<Props> = ({ documentId }) => {
               </div>
             )}
 
+            {row.document_class === 'supplier_invoice' && (
+              <div className="space-y-2 border-t pt-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="text-sm font-medium">Supplier Invoice Workflow</div>
+                  <div className="flex gap-2 flex-wrap">
+                    <Button size="sm" variant="outline" disabled={!!busy} onClick={planSupplierBill}>
+                      {busy === 'plan-bill' ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Sparkles className="w-3 h-3 mr-1" />}
+                      Generate Bill Plan
+                    </Button>
+                    <Button size="sm" variant="outline" disabled={!!busy || !billPlan} onClick={() => createSupplierBill(false)}>
+                      {busy === 'create-bill-draft' ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+                      Create Draft Bill
+                    </Button>
+                    <Button
+                      size="sm"
+                      disabled={!!busy || !billPlan || (billPlan?.blocking_reasons?.length ?? 0) > 0}
+                      onClick={() => {
+                        if (!confirm('Create approved supplier bill with these financial totals?')) return;
+                        createSupplierBill(true);
+                      }}
+                    >
+                      {busy === 'create-bill-approve' ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <CheckCircle2 className="w-3 h-3 mr-1" />}
+                      Create Approved Bill
+                    </Button>
+                  </div>
+                </div>
+                {row.workflow_metadata?.supplier_bill_id && (
+                  <div className="text-xs text-muted-foreground">
+                    Existing bill: <span className="font-mono">{row.workflow_metadata.supplier_bill_id}</span>
+                  </div>
+                )}
+                {billPlan && (
+                  <>
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      <Badge variant={billPlan.readiness === 'ready' ? 'default' : billPlan.readiness === 'blocked' ? 'destructive' : 'outline'}>
+                        readiness: {billPlan.readiness}
+                      </Badge>
+                      {[
+                        ['supplier_detected', !!billPlan.suggested_bill?.supplier_name],
+                        ['invoice_number_detected', !!billPlan.suggested_bill?.invoice_number],
+                        ['total_detected', billPlan.suggested_bill?.total != null],
+                        ['job_linked', !!(billPlan.suggested_bill?.pipeline_entry_id || billPlan.suggested_bill?.job_id || billPlan.suggested_bill?.contact_id)],
+                        ['duplicate_check_passed', !(billPlan.duplicate_candidates ?? []).some((d: any) => d.reasons?.includes('same_invoice_number'))],
+                        ['line_items_detected', (billPlan.suggested_lines ?? []).length > 0],
+                      ].map(([k, v]) => (
+                        <Badge key={String(k)} variant={v ? 'default' : 'outline'} className="text-[10px]">
+                          {v ? '✓' : '○'} {String(k).replace(/_/g, ' ')}
+                        </Badge>
+                      ))}
+                    </div>
+                    {billPlan.blocking_reasons?.length > 0 && (
+                      <div className="text-xs text-destructive">Blocking: {billPlan.blocking_reasons.join(', ')}</div>
+                    )}
+                    {billPlan.validation_flags?.length > 0 && (
+                      <div className="text-xs space-y-0.5">
+                        {billPlan.validation_flags.map((f: any, i: number) => (
+                          <div key={i}>
+                            <Badge variant={f.severity === 'blocking' || f.severity === 'error' ? 'destructive' : 'outline'} className="mr-2">{f.severity}</Badge>
+                            <span className="font-mono">{f.code}</span>
+                            {f.message && <span className="text-muted-foreground"> — {f.message}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs bg-muted/30 rounded p-2">
+                      <div><div className="text-muted-foreground">Supplier</div><div>{billPlan.suggested_bill?.supplier_name ?? '—'}</div></div>
+                      <div><div className="text-muted-foreground">Invoice #</div><div>{billPlan.suggested_bill?.invoice_number ?? '—'}</div></div>
+                      <div><div className="text-muted-foreground">Invoice Date</div><div>{billPlan.suggested_bill?.invoice_date ?? '—'}</div></div>
+                      <div><div className="text-muted-foreground">Due Date</div><div>{billPlan.suggested_bill?.due_date ?? '—'}</div></div>
+                      <div><div className="text-muted-foreground">Subtotal</div><div>{billPlan.suggested_bill?.subtotal ?? '—'}</div></div>
+                      <div><div className="text-muted-foreground">Tax</div><div>{billPlan.suggested_bill?.tax ?? '—'}</div></div>
+                      <div><div className="text-muted-foreground">Total</div><div className="font-semibold">{billPlan.suggested_bill?.total ?? '—'}</div></div>
+                      <div><div className="text-muted-foreground">Balance Due</div><div>{billPlan.suggested_bill?.balance_due ?? '—'}</div></div>
+                      <div className="col-span-2"><div className="text-muted-foreground">Job Address</div><div>{billPlan.suggested_bill?.job_address ?? '—'}</div></div>
+                      <div className="col-span-2"><div className="text-muted-foreground">Linked</div><div className="font-mono text-[10px]">
+                        {[billPlan.suggested_bill?.pipeline_entry_id && `pipeline:${billPlan.suggested_bill.pipeline_entry_id}`,
+                          billPlan.suggested_bill?.job_id && `job:${billPlan.suggested_bill.job_id}`,
+                          billPlan.suggested_bill?.contact_id && `contact:${billPlan.suggested_bill.contact_id}`].filter(Boolean).join(' · ') || 'unlinked'}
+                      </div></div>
+                    </div>
+                    {(billPlan.duplicate_candidates ?? []).length > 0 && (
+                      <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
+                        Duplicate candidates: {billPlan.duplicate_candidates.map((d: any) => `${d.id} (${d.reasons.join(',')})`).join('; ')}
+                      </div>
+                    )}
+                    <div className="rounded border overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead className="bg-muted/40">
+                          <tr className="text-left">
+                            <th className="p-2 w-8"></th>
+                            <th className="p-2">SKU</th>
+                            <th className="p-2">Description</th>
+                            <th className="p-2">Qty</th>
+                            <th className="p-2">Unit</th>
+                            <th className="p-2">Unit Price</th>
+                            <th className="p-2">Total</th>
+                            <th className="p-2">Category</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(billPlan.suggested_lines ?? []).map((l: any, i: number) => (
+                            <tr key={i} className="border-t align-top">
+                              <td className="p-2">
+                                <Checkbox
+                                  checked={billLineSel[i] !== false}
+                                  onCheckedChange={(v) => setBillLineSel((s) => ({ ...s, [i]: !!v }))}
+                                />
+                              </td>
+                              <td className="p-2 font-mono">{l.sku ?? '—'}</td>
+                              <td className="p-2 max-w-[260px]">{l.description ?? '—'}</td>
+                              <td className="p-2">{l.quantity ?? '—'}</td>
+                              <td className="p-2">{l.unit ?? '—'}</td>
+                              <td className="p-2">{l.unit_price ?? '—'}</td>
+                              <td className="p-2">{l.total_price ?? '—'}</td>
+                              <td className="p-2"><Badge variant="outline" className="text-[10px]">{l.material_category}</Badge></td>
+                            </tr>
+                          ))}
+                          {(billPlan.suggested_lines ?? []).length === 0 && (
+                            <tr><td colSpan={8} className="p-2 text-muted-foreground italic">No line items extracted.</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+
+
             <div className="flex justify-end gap-2 pt-2">
               <Button size="sm" disabled={!!busy || !!row.approved_at} onClick={approve}>
                 <CheckCircle2 className="w-3 h-3 mr-1" />
