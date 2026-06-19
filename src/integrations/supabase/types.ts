@@ -60185,6 +60185,28 @@ export type Database = {
           project_type: string
         }[]
       }
+      search_documents_ocr: {
+        Args: { _limit?: number; _offset?: number; _q: string; _tenant: string }
+        Returns: {
+          created_at: string
+          description: string
+          document_type: string
+          file_path: string
+          file_size: number
+          filename: string
+          id: string
+          metadata: Json
+          mime_type: string
+          ocr_completed_at: string
+          ocr_error: string
+          ocr_status: string
+          page_count: number
+          rank: number
+          scan_quality: Json
+          scan_source: string
+          uploaded_by: string
+        }[]
+      }
       search_network_line_items: {
         Args: {
           p_carrier?: string

@@ -205,8 +205,21 @@ Deno.serve(async (req) => {
     const sizeBytes = bytes.byteLength;
     const pageCount = Number(doc.page_count ?? 0);
 
-    // Large PDF gate: defer to worker (no fake rasterization)
+    // Large PDF gate: hand off to worker router if available, else mark needs_worker.
     if (supportedPdf && (sizeBytes > MAX_DIRECT_BYTES || pageCount > MAX_DIRECT_PDF_PAGES)) {
+      const workerUrl = Deno.env.get("OCR_WORKER_URL") ?? "";
+      const internalSecret = Deno.env.get("INTERNAL_WORKER_SECRET") ?? "";
+      if (workerUrl && internalSecret) {
+        fetch(`${SUPABASE_URL}/functions/v1/ocr-scanned-document-worker`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-internal-worker-secret": internalSecret,
+          },
+          body: JSON.stringify({ document_id: documentId, tenant_id: doc.tenant_id }),
+        }).catch((e) => console.error("[ocr] worker dispatch failed", e));
+        return jsonResponse({ ok: true, status: "processing", dispatched: "worker" });
+      }
       await markFailure(
         "needs_worker",
         "PDF requires worker rasterization",
