@@ -187,7 +187,9 @@ const ProductionDetail = () => {
           });
       }
 
-      // Auto-advance: if all required items in current stage are complete, move to next stage
+      // Auto-advance: only require items VISIBLE to this project's location.
+      // Mirrors the same per-stage location fallback as the display query so we
+      // never wait on items the user can't actually see/check.
       if (completed) {
         const { data: wf } = await supabase
           .from('production_workflows')
@@ -196,12 +198,25 @@ const ProductionDetail = () => {
           .single();
         const stageKey = wf?.current_stage;
         if (stageKey) {
-          const { data: templates } = await supabase
+          let tplQuery = supabase
             .from('production_checklist_templates')
-            .select('id, is_required')
+            .select('id, is_required, location_id')
             .eq('stage_key', stageKey)
             .eq('tenant_id', effectiveTenantId);
-          const requiredIds = (templates || []).filter(t => t.is_required).map(t => t.id);
+          if (projectLocationId) {
+            tplQuery = tplQuery.or(`location_id.eq.${projectLocationId},location_id.is.null`);
+          } else {
+            tplQuery = tplQuery.is('location_id', null);
+          }
+          const { data: rawTemplates } = await tplQuery;
+          const all = rawTemplates || [];
+          const hasLocationItemsThisStage = projectLocationId
+            ? all.some((t: any) => t.location_id === projectLocationId)
+            : false;
+          const visibleTemplates = all.filter((t: any) =>
+            !hasLocationItemsThisStage || t.location_id === projectLocationId
+          );
+          const requiredIds = visibleTemplates.filter(t => t.is_required).map(t => t.id);
           if (requiredIds.length > 0) {
             const { data: comps } = await supabase
               .from('production_checklist_completions')
@@ -220,7 +235,6 @@ const ProductionDetail = () => {
                   stage_changed_at: new Date().toISOString(),
                   updated_at: new Date().toISOString(),
                 };
-                // Satisfy DB validation trigger when leaving submit_documents
                 if (stageKey === 'submit_documents') {
                   updatePayload.noc_uploaded = true;
                   updatePayload.permit_application_submitted = true;
