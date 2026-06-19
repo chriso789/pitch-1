@@ -13,8 +13,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { useToast } from '@/hooks/use-toast';
 import {
   Plus, Trash2, Save, FileText, Clock, Package, Wrench, CheckCircle, Trophy,
-  Search, Archive, ClipboardList, Pencil, GripVertical,
+  Search, Archive, ClipboardList, Pencil, GripVertical, RefreshCw,
 } from 'lucide-react';
+
 import { cn } from '@/lib/utils';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent,
