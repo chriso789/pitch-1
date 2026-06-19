@@ -473,8 +473,38 @@ export const ProductionChecklistSettings = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Sync confirmation dialog */}
+      <Dialog open={syncOpen} onOpenChange={setSyncOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Sync checklist to all locations?</DialogTitle></DialogHeader>
+          <div className="space-y-3 py-2 text-sm">
+            <p>
+              This will copy the <strong>
+                {selectedLocationId
+                  ? (locations.find(l => l.id === selectedLocationId)?.name || 'current location')
+                  : 'Company default'}
+              </strong> checklist ({stages.length} stages, {templates.length} items) to every other location.
+            </p>
+            <p className="text-destructive">
+              Any existing location-specific stages and items will be replaced.
+            </p>
+            <p className="text-muted-foreground">
+              Going forward, edit each location individually to keep them independent, or sync again whenever you want them to match.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSyncOpen(false)}>Cancel</Button>
+            <Button onClick={() => syncToAllLocations.mutate()} disabled={syncToAllLocations.isPending}>
+              <RefreshCw className={cn('h-4 w-4 mr-1', syncToAllLocations.isPending && 'animate-spin')} />
+              {syncToAllLocations.isPending ? 'Syncing…' : 'Sync now'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
+
 };
 
 function SortableStageCard({
