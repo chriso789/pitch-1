@@ -34,6 +34,7 @@ import { useMyCrew } from "@/hooks/useMyCrew";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useQuery } from "@tanstack/react-query";
 import { CrewPhotoUpload } from "./CrewPhotoUpload";
+import { LaborOrderCard } from "./LaborOrderCard";
 
 interface TimeEntry {
   id: string;
@@ -68,13 +69,13 @@ export function CrewPortal() {
   const isStaff = !!currentUser?.role && staffRoles.includes(currentUser.role);
   const tenantId = currentUser?.active_tenant_id || currentUser?.tenant_id;
 
-  // Labor orders — scoped by role
+  // Labor orders — scoped by role (join project + crew)
   const { data: laborOrders = [], refetch: refetchLaborOrders } = useQuery({
     queryKey: ['crew-labor-orders', isStaff ? `tenant:${tenantId}` : `crew:${myCrew?.id}`],
     queryFn: async () => {
       let query = supabase
         .from('production_order_assignments')
-        .select('id, title, description, status, scheduled_date, arrival_date, notes, project_id, created_at, crew_id, crews:crew_id(name)')
+        .select('id, tenant_id, title, description, status, scheduled_date, arrival_date, notes, project_id, created_at, crew_id, crews:crew_id(name), projects:project_id(name, job_number, clj_formatted_number, project_number)')
         .eq('order_type', 'labor')
         .order('scheduled_date', { ascending: true, nullsFirst: false });
 
@@ -91,6 +92,38 @@ export function CrewPortal() {
       return data || [];
     },
     enabled: isStaff ? !!tenantId : !!myCrew?.id,
+  });
+
+  // Statuses (tenant-configured)
+  const { data: laborStatuses = [] } = useQuery({
+    queryKey: ['labor-order-statuses', tenantId],
+    queryFn: async () => {
+      if (!tenantId) return [];
+      const { data, error } = await supabase
+        .from('labor_order_statuses')
+        .select('id, key, label, color, sort_order, is_terminal, requires_date')
+        .eq('tenant_id', tenantId)
+        .order('sort_order', { ascending: true });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!tenantId,
+  });
+
+  // Crews list (for staff assignment dropdown)
+  const { data: crewList = [] } = useQuery({
+    queryKey: ['crews-list', tenantId],
+    queryFn: async () => {
+      if (!tenantId) return [];
+      const { data, error } = await supabase
+        .from('crews')
+        .select('id, name')
+        .eq('tenant_id', tenantId)
+        .order('name', { ascending: true });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!tenantId && isStaff,
   });
 
   const handleClockIn = async () => {
@@ -684,46 +717,16 @@ export function CrewPortal() {
             ) : (
               <div className="space-y-3">
                 {laborOrders.map((order: any) => (
-                  <Card key={order.id}>
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between gap-3 mb-2">
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-medium text-sm">{order.title}</h3>
-                          {order.description && (
-                            <p className="text-xs text-muted-foreground mt-1">{order.description}</p>
-                          )}
-                        </div>
-                        <Badge variant="outline" className={getStatusColor(order.status)}>
-                          {String(order.status).replace('_', ' ')}
-                        </Badge>
-                      </div>
-                      <div className="flex flex-wrap gap-3 text-xs text-muted-foreground mt-2">
-                        {isStaff && (
-                          <span className="inline-flex items-center gap-1">
-                            <Wrench className="h-3 w-3" />
-                            Crew: {order.crews?.name || 'Unassigned'}
-                          </span>
-                        )}
-                        {order.scheduled_date && (
-                          <span className="inline-flex items-center gap-1">
-                            <Calendar className="h-3 w-3" />
-                            Scheduled: {format(new Date(order.scheduled_date), 'MMM d, yyyy')}
-                          </span>
-                        )}
-                        {order.arrival_date && (
-                          <span className="inline-flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            Arrival: {format(new Date(order.arrival_date), 'MMM d, yyyy')}
-                          </span>
-                        )}
-                      </div>
-                      {order.notes && (
-                        <pre className="text-xs text-muted-foreground mt-3 whitespace-pre-wrap font-sans bg-muted/40 rounded p-2">
-                          {order.notes}
-                        </pre>
-                      )}
-                    </CardContent>
-                  </Card>
+                  <LaborOrderCard
+                    key={order.id}
+                    order={order}
+                    statuses={laborStatuses}
+                    crews={crewList}
+                    isStaff={isStaff}
+                    myCrewId={myCrew?.id || null}
+                    onUploadPhoto={(id) => { setSelectedJobId(id); setShowPhotoUpload(true); }}
+                    onChanged={() => refetchLaborOrders()}
+                  />
                 ))}
               </div>
             )}
