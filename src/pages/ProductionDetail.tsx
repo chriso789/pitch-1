@@ -132,21 +132,6 @@ const ProductionDetail = () => {
     enabled: !!effectiveTenantId && !!projectData,
   });
 
-  // Fetch ALL checklist templates for this tenant (used by the Manage Checklist tab
-  // so admins can see and fix items that are scoped to other locations).
-  const { data: allChecklistTemplates = [] } = useQuery({
-    queryKey: ['checklist-templates-all', effectiveTenantId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('production_checklist_templates')
-        .select('*')
-        .eq('tenant_id', effectiveTenantId!)
-        .order('sort_order');
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!effectiveTenantId,
-  });
 
   // Fetch checklist completions for this workflow
   const { data: checklistCompletions = [] } = useQuery({
@@ -415,79 +400,6 @@ const ProductionDetail = () => {
     },
   });
 
-  // Add new checklist template
-  const addTemplateMutation = useMutation({
-    mutationFn: async () => {
-      if (!effectiveTenantId || !newItemLabel.trim()) return;
-      const { data: { user } } = await supabase.auth.getUser();
-      const maxSort = checklistTemplates
-        .filter(t => t.stage_key === newItemStage)
-        .reduce((max, t) => Math.max(max, t.sort_order || 0), 0);
-
-      await supabase.from('production_checklist_templates').insert({
-        tenant_id: effectiveTenantId,
-        location_id: newItemScope === 'location' ? projectLocationId : null,
-        stage_key: newItemStage,
-        item_label: newItemLabel.trim(),
-        is_required: newItemRequired,
-        sort_order: maxSort + 1,
-        created_by: user?.id,
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['checklist-templates'] });
-      queryClient.invalidateQueries({ queryKey: ['checklist-templates-all'] });
-      setNewItemLabel('');
-      setAddDialogOpen(false);
-      toast({ title: 'Checklist item added' });
-    },
-  });
-
-  // Delete checklist template
-  const deleteTemplateMutation = useMutation({
-    mutationFn: async (templateId: string) => {
-      await supabase.from('production_checklist_templates').delete().eq('id', templateId);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['checklist-templates'] });
-      queryClient.invalidateQueries({ queryKey: ['checklist-templates-all'] });
-      toast({ title: 'Checklist item removed' });
-    },
-  });
-
-  // Convert a location-specific checklist item to company-wide (location_id = null).
-  // Lets admins fix items that got pinned to one location by mistake.
-  const makeCompanyWideMutation = useMutation({
-    mutationFn: async (templateId: string) => {
-      await supabase
-        .from('production_checklist_templates')
-        .update({ location_id: null, updated_at: new Date().toISOString() })
-        .eq('id', templateId);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['checklist-templates'] });
-      queryClient.invalidateQueries({ queryKey: ['checklist-templates-all'] });
-      toast({ title: 'Item now applies to all locations' });
-    },
-  });
-
-  // Load locations so we can label scoped checklist items in the manage tab.
-  const { data: tenantLocations = [] } = useQuery({
-    queryKey: ['tenant-locations', effectiveTenantId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('locations')
-        .select('id, name')
-        .eq('tenant_id', effectiveTenantId!);
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!effectiveTenantId,
-  });
-  const locationNameById = React.useMemo(
-    () => Object.fromEntries(tenantLocations.map((l: any) => [l.id, l.name])),
-    [tenantLocations]
-  );
 
   // Move trade board stage
   const moveTradeStage = useMutation({
