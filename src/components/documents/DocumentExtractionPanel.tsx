@@ -499,12 +499,88 @@ export const DocumentExtractionPanel: React.FC<Props> = ({ documentId }) => {
               </div>
             </div>
 
+            {['signed_contract', 'roofing_contract'].includes(row.document_class) && (
+              <div className="space-y-2 border-t pt-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="text-sm font-medium">Signed Contract Workflow</div>
+                  <div className="flex gap-2 flex-wrap">
+                    <Button size="sm" variant="outline" disabled={!!busy} onClick={planContractWorkflow}>
+                      {busy === 'plan-workflow' ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Sparkles className="w-3 h-3 mr-1" />}
+                      Generate Contract Workflow
+                    </Button>
+                    <Button size="sm" disabled={!!busy || !workflow} onClick={executeContractWorkflow}>
+                      {busy === 'exec-workflow' ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <CheckCircle2 className="w-3 h-3 mr-1" />}
+                      Execute Selected Actions
+                    </Button>
+                  </div>
+                </div>
+                {workflow && (
+                  <>
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      <Badge variant={workflow.readiness === 'ready' ? 'default' : workflow.readiness === 'blocked' ? 'destructive' : 'outline'}>
+                        readiness: {workflow.readiness}
+                      </Badge>
+                      {Object.entries(workflow.checklist ?? {}).map(([k, v]) => (
+                        <Badge key={k} variant={v ? 'default' : 'outline'} className="text-[10px]">
+                          {v ? '✓' : '○'} {k.replace(/_/g, ' ')}
+                        </Badge>
+                      ))}
+                    </div>
+                    {workflow.blocking_reasons?.length > 0 && (
+                      <div className="text-xs text-destructive">Blocking: {workflow.blocking_reasons.join(', ')}</div>
+                    )}
+                    {workflow.duplicate_job_block && (
+                      <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
+                        Duplicate job detected — {workflow.duplicate_job_reason}
+                      </div>
+                    )}
+                    <div className="rounded border overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead className="bg-muted/40">
+                          <tr className="text-left">
+                            <th className="p-2 w-8"></th>
+                            <th className="p-2">Action</th>
+                            <th className="p-2">Target</th>
+                            <th className="p-2">Suggested</th>
+                            <th className="p-2">Risk</th>
+                            <th className="p-2">Reason</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {workflow.suggested_actions.map((a) => (
+                            <tr key={a.key} className="border-t align-top">
+                              <td className="p-2">
+                                <Checkbox
+                                  checked={!!actionSel[a.key]}
+                                  onCheckedChange={(v) => setActionSel((s) => ({ ...s, [a.key]: !!v }))}
+                                />
+                              </td>
+                              <td className="p-2">{a.title}</td>
+                              <td className="p-2 font-mono text-[10px]">{a.target_table ?? '—'}</td>
+                              <td className="p-2 break-all max-w-[200px]">{typeof a.suggested_value === 'object' ? JSON.stringify(a.suggested_value) : String(a.suggested_value)}</td>
+                              <td className="p-2">
+                                <Badge variant={a.risk === 'high' ? 'destructive' : a.risk === 'medium' ? 'outline' : 'secondary'}>
+                                  {a.risk}
+                                </Badge>
+                              </td>
+                              <td className="p-2 text-muted-foreground">{a.reason}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
             <div className="flex justify-end gap-2 pt-2">
               <Button size="sm" disabled={!!busy || !!row.approved_at} onClick={approve}>
                 <CheckCircle2 className="w-3 h-3 mr-1" />
                 {row.approved_at ? 'Approved' : 'Approve extraction'}
               </Button>
             </div>
+
           </>
         )}
       </CardContent>
