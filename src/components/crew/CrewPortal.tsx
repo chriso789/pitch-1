@@ -31,6 +31,7 @@ import { format } from "date-fns";
 import { useCrewDashboard, CrewJobAssignment } from "@/hooks/useCrewDashboard";
 import { useCrewAuth } from "@/hooks/useCrewAuth";
 import { useMyCrew } from "@/hooks/useMyCrew";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useQuery } from "@tanstack/react-query";
 import { CrewPhotoUpload } from "./CrewPhotoUpload";
 
@@ -59,22 +60,37 @@ export function CrewPortal() {
   const { jobs, counts, docsStatus, loading, error, refetch } = useCrewDashboard();
   const { user, crewUser, crewProfile, activeCompany, loading: authLoading } = useCrewAuth();
   const { crew: myCrew } = useMyCrew();
+  const { user: currentUser } = useCurrentUser();
 
-  // Labor orders assigned to this crew (RLS-gated to crew_id = current_user_crew_id)
+  // Staff (owner/manager/admin/master/corporate) see ALL labor orders for the tenant.
+  // Crew logins only see orders assigned to their crew_id.
+  const staffRoles = ['master', 'owner', 'corporate', 'office_admin', 'regional_manager', 'sales_manager', 'project_manager'];
+  const isStaff = !!currentUser?.role && staffRoles.includes(currentUser.role);
+  const tenantId = currentUser?.active_tenant_id || currentUser?.tenant_id;
+
+  // Labor orders — scoped by role
   const { data: laborOrders = [], refetch: refetchLaborOrders } = useQuery({
-    queryKey: ['crew-labor-orders', myCrew?.id],
+    queryKey: ['crew-labor-orders', isStaff ? `tenant:${tenantId}` : `crew:${myCrew?.id}`],
     queryFn: async () => {
-      if (!myCrew?.id) return [];
-      const { data, error } = await supabase
+      let query = supabase
         .from('production_order_assignments')
-        .select('id, title, description, status, scheduled_date, arrival_date, notes, project_id, created_at')
+        .select('id, title, description, status, scheduled_date, arrival_date, notes, project_id, created_at, crew_id, crews:crew_id(name)')
         .eq('order_type', 'labor')
-        .eq('crew_id', myCrew.id)
         .order('scheduled_date', { ascending: true, nullsFirst: false });
+
+      if (isStaff && tenantId) {
+        query = query.eq('tenant_id', tenantId);
+      } else if (myCrew?.id) {
+        query = query.eq('crew_id', myCrew.id);
+      } else {
+        return [];
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       return data || [];
     },
-    enabled: !!myCrew?.id,
+    enabled: isStaff ? !!tenantId : !!myCrew?.id,
   });
 
   const handleClockIn = async () => {
@@ -639,14 +655,16 @@ export function CrewPortal() {
 
           <TabsContent value="labor-orders" className="mt-0 space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">My Labor Orders</h2>
-              {myCrew && (
-                <Badge variant="outline" className="text-xs">
-                  Crew: {myCrew.name}
-                </Badge>
-              )}
+              <h2 className="text-lg font-semibold">
+                {isStaff ? 'All Labor Orders' : 'My Labor Orders'}
+              </h2>
+              {isStaff ? (
+                <Badge variant="outline" className="text-xs">Staff view</Badge>
+              ) : myCrew ? (
+                <Badge variant="outline" className="text-xs">Crew: {myCrew.name}</Badge>
+              ) : null}
             </div>
-            {!myCrew ? (
+            {!isStaff && !myCrew ? (
               <Card>
                 <CardContent className="py-8 text-center text-muted-foreground">
                   <AlertTriangle className="h-10 w-10 mx-auto mb-2 opacity-50" />
@@ -658,7 +676,9 @@ export function CrewPortal() {
               <Card>
                 <CardContent className="py-8 text-center text-muted-foreground">
                   <Wrench className="h-10 w-10 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">No labor orders assigned to your crew yet.</p>
+                  <p className="text-sm">
+                    {isStaff ? 'No labor orders yet.' : 'No labor orders assigned to your crew yet.'}
+                  </p>
                 </CardContent>
               </Card>
             ) : (
@@ -678,6 +698,12 @@ export function CrewPortal() {
                         </Badge>
                       </div>
                       <div className="flex flex-wrap gap-3 text-xs text-muted-foreground mt-2">
+                        {isStaff && (
+                          <span className="inline-flex items-center gap-1">
+                            <Wrench className="h-3 w-3" />
+                            Crew: {order.crews?.name || 'Unassigned'}
+                          </span>
+                        )}
                         {order.scheduled_date && (
                           <span className="inline-flex items-center gap-1">
                             <Calendar className="h-3 w-3" />
