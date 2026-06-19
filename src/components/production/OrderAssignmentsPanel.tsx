@@ -123,6 +123,31 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
     enabled: !!projectId && !!effectiveTenantId,
   });
 
+  const { data: projectEstimate } = useQuery({
+    queryKey: ['production-project-estimate-for-orders', projectId, effectiveTenantId],
+    queryFn: async () => {
+      const { data: project, error: projectError } = await supabase
+        .from('projects')
+        .select('pipeline_entry_id')
+        .eq('id', projectId)
+        .eq('tenant_id', effectiveTenantId!)
+        .single();
+      if (projectError) throw projectError;
+
+      const { data, error } = await supabase
+        .from('enhanced_estimates')
+        .select('id, tenant_id, project_id, pipeline_entry_id, estimate_number, display_name, line_items, created_at')
+        .eq('tenant_id', effectiveTenantId!)
+        .or(`project_id.eq.${projectId}${project?.pipeline_entry_id ? `,pipeline_entry_id.eq.${project.pipeline_entry_id}` : ''}`)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!projectId && !!effectiveTenantId,
+  });
+
   // Fetch vendors/suppliers
   const { data: vendors = [] } = useQuery({
     queryKey: ['vendors', effectiveTenantId],
@@ -180,6 +205,51 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
       toast({ title: 'Order assignment created' });
     },
   });
+
+  const syncEstimateMutation = useMutation({
+    mutationFn: async ({ silent = false }: { silent?: boolean } = {}) => {
+      if (!effectiveTenantId || !projectEstimate) return { created: 0, skipped: true, silent };
+      const { data: { user } } = await supabase.auth.getUser();
+      const rows = buildEstimateOrderRows({
+        estimate: projectEstimate,
+        projectId,
+        tenantId: effectiveTenantId,
+        assignedBy: user?.id,
+      });
+      const existingKeys = new Set(
+        assignments
+          .filter((assignment: any) => assignment.estimate_id === projectEstimate.id)
+          .map((assignment: any) => `${assignment.order_type}:${assignment.title}`)
+      );
+      const newRows = rows
+        .filter((row: any) => !existingKeys.has(`${row.order_type}:${row.title}`))
+        .map(({ source_line_id, ...row }) => row);
+      if (!newRows.length) return { created: 0, skipped: false, silent };
+      const { error } = await supabase.from('production_order_assignments').insert(newRows);
+      if (error) throw error;
+      return { created: newRows.length, skipped: false, silent };
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['order-assignments'] });
+      if (!result?.silent) {
+        toast({
+          title: result?.created ? 'Estimate orders synced' : 'No new estimate orders',
+          description: result?.created ? `Created ${result.created} order assignment(s).` : undefined,
+        });
+      }
+    },
+    onError: (error: any) => {
+      toast({ title: 'Estimate sync failed', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  React.useEffect(() => {
+    if (!projectEstimate?.id || !effectiveTenantId || assignments.length > 0 || isLoading) return;
+    const attemptKey = `${projectId}:${projectEstimate.id}`;
+    if (autoSyncAttemptedRef.current === attemptKey) return;
+    autoSyncAttemptedRef.current = attemptKey;
+    syncEstimateMutation.mutate({ silent: true });
+  }, [assignments.length, effectiveTenantId, isLoading, projectEstimate?.id, projectId]);
 
   // Update status
   const updateStatusMutation = useMutation({
@@ -305,6 +375,18 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
         <p className="text-sm text-muted-foreground">
           Assign materials to suppliers, labor and turnkey work to crews. Set scheduled dates to auto-alert reps.
         </p>
+        <div className="flex items-center gap-2">
+        {projectEstimate && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => syncEstimateMutation.mutate({ silent: false })}
+            disabled={syncEstimateMutation.isPending}
+          >
+            <Package className="h-4 w-4 mr-1" />
+            {syncEstimateMutation.isPending ? 'Syncing...' : 'Sync Estimate'}
+          </Button>
+        )}
         <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
           <DialogTrigger asChild>
             <Button size="sm">
@@ -425,6 +507,7 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {renderSection('Material Orders', Package, materialAssignments, 'material')}
