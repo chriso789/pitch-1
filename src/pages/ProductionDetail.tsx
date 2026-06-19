@@ -126,6 +126,22 @@ const ProductionDetail = () => {
     enabled: !!effectiveTenantId && !!projectData,
   });
 
+  // Fetch ALL checklist templates for this tenant (used by the Manage Checklist tab
+  // so admins can see and fix items that are scoped to other locations).
+  const { data: allChecklistTemplates = [] } = useQuery({
+    queryKey: ['checklist-templates-all', effectiveTenantId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('production_checklist_templates')
+        .select('*')
+        .eq('tenant_id', effectiveTenantId!)
+        .order('sort_order');
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!effectiveTenantId,
+  });
+
   // Fetch checklist completions for this workflow
   const { data: checklistCompletions = [] } = useQuery({
     queryKey: ['checklist-completions', projectData?.workflow?.id],
