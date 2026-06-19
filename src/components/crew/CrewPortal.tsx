@@ -34,6 +34,7 @@ import { useMyCrew } from "@/hooks/useMyCrew";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useQuery } from "@tanstack/react-query";
 import { CrewPhotoUpload } from "./CrewPhotoUpload";
+import { LaborOrderCard } from "./LaborOrderCard";
 
 interface TimeEntry {
   id: string;
