@@ -167,8 +167,15 @@ export function DocumentScannerDialog({
     if (isOpenCVAvailable()) { setOpencvReady(true); return; }
     const kick = () => {
       setOpencvLoading(true);
+      opencvStartTsRef.current = performance.now();
       loadOpenCV()
-        .then((ok) => { setOpencvReady(!!ok); setOpencvFailed(!ok); })
+        .then((ok) => {
+          setOpencvReady(!!ok);
+          setOpencvFailed(!ok);
+          if (ok && opencvStartTsRef.current) {
+            telemetryRef.current.mark('opencvLoadMs', performance.now() - opencvStartTsRef.current);
+          }
+        })
         .finally(() => setOpencvLoading(false));
     };
     const ric = (window as any).requestIdleCallback;
@@ -180,9 +187,27 @@ export function DocumentScannerDialog({
     return () => clearTimeout(t);
   }, []);
 
-  // Camera lifecycle + resume check
+  // Camera lifecycle + resume check + production hardening setup
   useEffect(() => {
     if (open) {
+      // Fresh telemetry + URL registry per session
+      telemetryRef.current = new ScannerTelemetry();
+      urlRegRef.current = new ObjectUrlRegistry();
+      autosaveEnabledRef.current = true;
+      autosaveDisabledReasonRef.current = null;
+      autosaveBytesRef.current = 0;
+      setAutosaveEnabled(true);
+      userPickedProfileRef.current = false;
+      // Re-detect device profile (orientation/PWA can change between opens)
+      deviceProfileRef.current = detectDeviceMemoryProfile();
+      // Low-memory: default PDF profile to Standard unless user already picked one
+      if (deviceProfileRef.current.isLowMemory && !userPickedProfileRef.current) {
+        setPdfProfile('standard');
+      }
+      // Purge expired sessions (24h TTL) on every open
+      purgeExpiredScanSessions(DEFAULT_SESSION_TTL_MS).catch(() => {});
+
+      cameraStartTsRef.current = performance.now();
       startCamera();
       stabilityBufferRef.current.reset();
       autoStableSinceRef.current = null;
@@ -197,7 +222,9 @@ export function DocumentScannerDialog({
       });
     } else {
       stopCamera();
-      capturedPages.forEach(p => URL.revokeObjectURL(p.preview));
+      // Revoke every URL we minted this session
+      urlRegRef.current.revokeAll();
+      capturedPages.forEach(p => { try { URL.revokeObjectURL(p.preview); } catch {} });
       setCapturedPages([]);
       setCameraError(null);
       setDetectedCorners(null);
@@ -212,8 +239,12 @@ export function DocumentScannerDialog({
       setShowQA(false);
       setResumePromptSession(null);
       setPendingResumePages(null);
+      setSettingsOpen(false);
     }
-    return () => { stopCamera(); };
+    return () => {
+      stopCamera();
+      urlRegRef.current.revokeAll();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
