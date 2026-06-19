@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   X, Camera, Trash2, RotateCcw, Loader2, FileText, Image as ImageIcon,
   Edit2, Zap, ZapOff, ArrowLeft, ArrowRight, RotateCw, Upload, FileUp,
-  Eye, Bug, ClipboardCheck,
+  Eye, Bug, ClipboardCheck, Settings as SettingsIcon,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
