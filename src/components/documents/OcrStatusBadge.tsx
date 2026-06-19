@@ -74,6 +74,20 @@ export const OcrStatusBadge: React.FC<OcrStatusBadgeProps> = ({
     );
   }
 
+  if (status === 'needs_worker') {
+    return (
+      <span className={cn('inline-flex items-center gap-1', className)}>
+        <Badge variant="outline" className="gap-1 text-amber-600 border-amber-300" title="Large PDF queued for worker-based OCR">
+          <ScanText className="h-3 w-3" /> OCR queued for worker
+        </Badge>
+        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs gap-1" onClick={retry} disabled={retrying}>
+          {retrying ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCw className="h-3 w-3" />}
+          Retry
+        </Button>
+      </span>
+    );
+  }
+
   // failed
   return (
     <span className={cn('inline-flex items-center gap-1', className)}>
