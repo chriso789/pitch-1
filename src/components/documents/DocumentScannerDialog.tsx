@@ -248,11 +248,12 @@ export function DocumentScannerDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Autosave: every time pages change, persist to IndexedDB
+  // Autosave: every time pages change, persist to IndexedDB (respects quota)
   useEffect(() => {
     if (!open || capturedPages.length === 0) return;
-    const t = setTimeout(() => {
-      saveScanSession({
+    if (!autosaveEnabledRef.current) return;
+    const t = setTimeout(async () => {
+      const res = await saveScanSession({
         id: `${pipelineEntryId}::${documentType}`,
         scannerSessionId: scannerSessionIdRef.current,
         pipelineEntryId,
@@ -285,6 +286,21 @@ export function DocumentScannerDialog({
           quality: p.quality,
         })),
       });
+      if (res.ok) {
+        autosaveBytesRef.current = res.bytesAfter;
+      } else if (res.reason === 'quota_exceeded') {
+        autosaveEnabledRef.current = false;
+        autosaveDisabledReasonRef.current = 'quota_exceeded';
+        setAutosaveEnabled(false);
+        toast({
+          title: 'Local scan recovery is full',
+          description: 'Your scan can continue, but recovery is disabled for new pages. Clear saved sessions in scanner settings to re-enable.',
+        });
+      } else {
+        autosaveEnabledRef.current = false;
+        autosaveDisabledReasonRef.current = 'error';
+        setAutosaveEnabled(false);
+      }
     }, 250);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
