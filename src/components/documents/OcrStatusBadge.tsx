@@ -6,7 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
-export type OcrStatus = 'not_started' | 'processing' | 'completed' | 'failed' | null | undefined;
+export type OcrStatus = 'not_started' | 'processing' | 'completed' | 'failed' | 'needs_worker' | null | undefined;
 
 interface OcrStatusBadgeProps {
   documentId: string;
