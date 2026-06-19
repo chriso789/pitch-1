@@ -20,6 +20,7 @@ import {
   Settings, Filter, AlertTriangle, ChevronRight, ExternalLink
 } from 'lucide-react';
 import { OrderAssignmentsPanel } from '@/components/production/OrderAssignmentsPanel';
+import { ChecklistItemUpload } from '@/components/production/ChecklistItemUpload';
 import { cn } from '@/lib/utils';
 
 const STAGE_CONFIG = [
