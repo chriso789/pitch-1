@@ -320,6 +320,53 @@ export const DocumentExtractionPanel: React.FC<Props> = ({ documentId }) => {
               {row.approved_at && <Badge className="bg-green-600 text-white"><CheckCircle2 className="w-3 h-3 mr-1" />Approved</Badge>}
             </div>
 
+            <div className="space-y-2 border rounded p-3 bg-muted/20">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="text-sm font-medium">Linked CRM Record</div>
+                <Button size="sm" variant="outline" disabled={!!busy} onClick={findMatches}>
+                  {busy === 'match' ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <RefreshCw className="w-3 h-3 mr-1" />}
+                  Find Matching CRM Record
+                </Button>
+              </div>
+              {(row.contact_id || row.pipeline_entry_id || row.job_id || row.lead_id) ? (
+                <div className="text-xs space-y-1">
+                  {row.contact_id && <div><Badge variant="secondary" className="mr-1">contact</Badge><span className="font-mono">{row.contact_id}</span></div>}
+                  {row.pipeline_entry_id && <div><Badge variant="secondary" className="mr-1">pipeline</Badge><span className="font-mono">{row.pipeline_entry_id}</span></div>}
+                  {row.job_id && <div><Badge variant="secondary" className="mr-1">job</Badge><span className="font-mono">{row.job_id}</span></div>}
+                  {row.match_metadata?.auto_linked && (
+                    <div className="text-muted-foreground">
+                      Auto-linked · score {(Number(row.match_metadata.score ?? 0) * 100).toFixed(0)}%
+                      {Array.isArray(row.match_metadata.matched_on) && row.match_metadata.matched_on.length > 0 && (
+                        <span> · {row.match_metadata.matched_on.join(', ')}</span>
+                      )}
+                    </div>
+                  )}
+                  {row.match_metadata?.manual_linked && <div className="text-muted-foreground">Manually linked</div>}
+                </div>
+              ) : (
+                <div className="text-xs text-muted-foreground">No CRM record linked yet.</div>
+              )}
+              {candidates.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  <div className="text-xs font-medium text-muted-foreground">Candidates</div>
+                  {candidates.map((c) => (
+                    <div key={`${c.target_type}-${c.target_id}`} className="flex items-center justify-between gap-2 text-xs border rounded p-2 bg-background">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1 flex-wrap">
+                          <Badge variant="outline">{c.target_type}</Badge>
+                          <Badge variant={c.score >= 0.85 ? 'default' : 'outline'}>{Math.round(c.score * 100)}%</Badge>
+                          {c.matched_on.map((m) => <Badge key={m} variant="secondary" className="text-[10px]">{m}</Badge>)}
+                        </div>
+                        <div className="truncate">{c.display_label}</div>
+                      </div>
+                      <Button size="sm" variant="outline" disabled={!!busy} onClick={() => linkTo(c)}>Link</Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+
             <div className="space-y-2">
               <label className="text-xs font-medium text-muted-foreground">Override document type</label>
               <div className="flex flex-wrap gap-1">
