@@ -555,9 +555,9 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
         </div>
       </div>
 
-      {renderSection('Material Orders', Package, materialAssignments, 'material')}
-      {renderSection('Labor Orders', Users, laborAssignments, 'labor')}
-      {renderSection('Turnkey Orders', Wrench, turnkeyAssignments, 'turnkey')}
+      {renderSection('Material Orders', Package, materialAssignments)}
+      {renderSection('Labor Orders', Users, laborAssignments)}
+      {renderSection('Turnkey Orders', Wrench, turnkeyAssignments)}
     </div>
   );
 };
