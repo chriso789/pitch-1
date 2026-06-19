@@ -2682,6 +2682,86 @@ export type Database = {
           },
         ]
       }
+      ai_document_extractions: {
+        Row: {
+          approved_at: string | null
+          confidence: number | null
+          contact_id: string | null
+          created_at: string
+          document_class: string
+          document_id: string
+          extracted_fields: Json
+          extraction_status: string
+          id: string
+          job_id: string | null
+          lead_id: string | null
+          model_name: string | null
+          model_version: string | null
+          normalized_fields: Json
+          pipeline_entry_id: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          source_text_hash: string | null
+          tenant_id: string
+          updated_at: string
+          validation_flags: Json
+        }
+        Insert: {
+          approved_at?: string | null
+          confidence?: number | null
+          contact_id?: string | null
+          created_at?: string
+          document_class?: string
+          document_id: string
+          extracted_fields?: Json
+          extraction_status?: string
+          id?: string
+          job_id?: string | null
+          lead_id?: string | null
+          model_name?: string | null
+          model_version?: string | null
+          normalized_fields?: Json
+          pipeline_entry_id?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          source_text_hash?: string | null
+          tenant_id: string
+          updated_at?: string
+          validation_flags?: Json
+        }
+        Update: {
+          approved_at?: string | null
+          confidence?: number | null
+          contact_id?: string | null
+          created_at?: string
+          document_class?: string
+          document_id?: string
+          extracted_fields?: Json
+          extraction_status?: string
+          id?: string
+          job_id?: string | null
+          lead_id?: string | null
+          model_name?: string | null
+          model_version?: string | null
+          normalized_fields?: Json
+          pipeline_entry_id?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          source_text_hash?: string | null
+          tenant_id?: string
+          updated_at?: string
+          validation_flags?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_document_extractions_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_feedback_sessions: {
         Row: {
           building_type: string | null
