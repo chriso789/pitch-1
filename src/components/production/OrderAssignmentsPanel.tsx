@@ -294,7 +294,7 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
     if (autoSyncAttemptedRef.current === attemptKey) return;
     autoSyncAttemptedRef.current = attemptKey;
     syncEstimateMutation.mutate({ silent: true });
-  }, [assignments.length, effectiveTenantId, isLoading, projectEstimate?.id, projectId]);
+  }, [assignments.length, effectiveTenantId, isLoading, projectEstimate?.id, projectId, syncEstimateMutation]);
 
   // Update status
   const updateStatusMutation = useMutation({
@@ -314,7 +314,7 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
   const laborAssignments = assignments.filter(a => a.order_type === 'labor');
   const turnkeyAssignments = assignments.filter(a => a.order_type === 'turnkey');
 
-  const renderAssignmentCard = (assignment: any) => {
+  const renderAssignmentCard = (assignment: ProductionAssignment) => {
     const typeConfig = ORDER_TYPE_CONFIG[assignment.order_type as keyof typeof ORDER_TYPE_CONFIG];
     const statusConfig = STATUS_CONFIG[assignment.status] || STATUS_CONFIG.pending;
     const Icon = typeConfig.icon;
@@ -384,7 +384,7 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
     );
   };
 
-  const renderSection = (title: string, icon: React.ElementType, items: any[], type: string) => {
+  const renderSection = (title: string, icon: React.ElementType, items: ProductionAssignment[]) => {
     const Icon = icon;
     return (
       <div className="space-y-3">
@@ -447,7 +447,7 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
                 <label className="text-sm font-medium">Order Type</label>
                 <Select
                   value={formData.order_type}
-                  onValueChange={(val: any) => setFormData(prev => ({ ...prev, order_type: val }))}
+                  onValueChange={(val: OrderType) => setFormData(prev => ({ ...prev, order_type: val }))}
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
