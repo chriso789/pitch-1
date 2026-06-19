@@ -157,12 +157,12 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
         .eq('tenant_id', effectiveTenantId!)
         .order('created_at', { ascending: false });
       if (error) throw error;
-      return data || [];
+      return (data || []) as ProductionAssignment[];
     },
     enabled: !!projectId && !!effectiveTenantId,
   });
 
-  const { data: projectEstimate } = useQuery({
+  const { data: projectEstimate } = useQuery<EstimateForOrders | null>({
     queryKey: ['production-project-estimate-for-orders', projectId, effectiveTenantId],
     queryFn: async () => {
       const { data: project, error: projectError } = await supabase
@@ -182,7 +182,14 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
         .limit(1)
         .maybeSingle();
       if (error) throw error;
-      return data;
+      if (!data) return null;
+      const rawLineItems = data.line_items;
+      return {
+        ...data,
+        line_items: rawLineItems && typeof rawLineItems === 'object' && !Array.isArray(rawLineItems)
+          ? rawLineItems as EstimateForOrders['line_items']
+          : {},
+      };
     },
     enabled: !!projectId && !!effectiveTenantId,
   });
@@ -257,12 +264,11 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
       });
       const existingKeys = new Set(
         assignments
-          .filter((assignment: any) => assignment.estimate_id === projectEstimate.id)
-          .map((assignment: any) => `${assignment.order_type}:${assignment.title}`)
+          .filter((assignment) => assignment.estimate_id === projectEstimate.id)
+          .map((assignment) => `${assignment.order_type}:${assignment.title}`)
       );
       const newRows = rows
-        .filter((row: any) => !existingKeys.has(`${row.order_type}:${row.title}`))
-        .map(({ source_line_id, ...row }) => row);
+        .filter((row) => !existingKeys.has(`${row.order_type}:${row.title}`));
       if (!newRows.length) return { created: 0, skipped: false, silent };
       const { error } = await supabase.from('production_order_assignments').insert(newRows);
       if (error) throw error;
@@ -277,7 +283,7 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
         });
       }
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast({ title: 'Estimate sync failed', description: error.message, variant: 'destructive' });
     },
   });
