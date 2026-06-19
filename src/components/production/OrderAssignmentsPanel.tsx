@@ -70,11 +70,14 @@ type ProductionAssignment = {
   description?: string | null;
   assigned_to_vendor_id?: string | null;
   assigned_to_crew?: string | null;
+  crew_id?: string | null;
   status: string;
   scheduled_date?: string | null;
   arrival_date?: string | null;
   notes?: string | null;
 };
+
+type CrewOption = { id: string; name: string };
 
 const formatMoney = (amount: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount || 0);
@@ -152,6 +155,7 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
     description: '',
     assigned_to_vendor_id: '',
     assigned_to_crew: '',
+    crew_id: '',
     scheduled_date: '',
     arrival_date: '',
     notes: '',
@@ -228,6 +232,22 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
     enabled: !!effectiveTenantId,
   });
 
+  // Fetch crews (for labor/turnkey assignment dropdown)
+  const { data: crews = [] } = useQuery<CrewOption[]>({
+    queryKey: ['crews-for-orders', effectiveTenantId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('crews')
+        .select('id, name')
+        .eq('tenant_id', effectiveTenantId!)
+        .eq('is_active', true)
+        .order('name');
+      if (error) throw error;
+      return (data || []) as CrewOption[];
+    },
+    enabled: !!effectiveTenantId,
+  });
+
   // Create assignment
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -235,7 +255,11 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
       const { data: { user } } = await supabase.auth.getUser();
 
       const status = (formData.scheduled_date ? 'scheduled' : 
-        (formData.assigned_to_vendor_id || formData.assigned_to_crew) ? 'assigned' : 'pending');
+        (formData.assigned_to_vendor_id || formData.crew_id || formData.assigned_to_crew) ? 'assigned' : 'pending');
+
+      const selectedCrewName = formData.crew_id
+        ? crews.find((c) => c.id === formData.crew_id)?.name || formData.assigned_to_crew
+        : formData.assigned_to_crew;
 
       await supabase.from('production_order_assignments').insert({
         tenant_id: effectiveTenantId,
@@ -244,7 +268,8 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
         title: formData.title.trim(),
         description: formData.description.trim() || null,
         assigned_to_vendor_id: formData.assigned_to_vendor_id || null,
-        assigned_to_crew: formData.assigned_to_crew.trim() || null,
+        crew_id: formData.crew_id || null,
+        assigned_to_crew: (selectedCrewName || '').trim() || null,
         assigned_by: user?.id,
         status,
         scheduled_date: formData.scheduled_date || null,
@@ -262,6 +287,7 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
         description: '',
         assigned_to_vendor_id: '',
         assigned_to_crew: '',
+        crew_id: '',
         scheduled_date: '',
         arrival_date: '',
         notes: '',
@@ -348,6 +374,28 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
     },
   });
 
+  // Assign / change crew on an existing order
+  const assignCrewMutation = useMutation({
+    mutationFn: async ({ id, crew_id }: { id: string; crew_id: string | null }) => {
+      const name = crew_id ? crews.find((c) => c.id === crew_id)?.name || null : null;
+      const { error } = await supabase
+        .from('production_order_assignments')
+        .update({
+          crew_id,
+          assigned_to_crew: name,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['order-assignments'] });
+      toast({ title: 'Crew assignment updated' });
+    },
+    onError: (e: Error) =>
+      toast({ title: 'Failed to assign crew', description: e.message, variant: 'destructive' }),
+  });
+
   const materialAssignments = assignments.filter(a => a.order_type === 'material');
   const laborAssignments = assignments.filter(a => a.order_type === 'labor');
   const turnkeyAssignments = assignments.filter(a => a.order_type === 'turnkey');
@@ -382,9 +430,32 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
                       <Truck className="h-3 w-3" /> {vendor.name}
                     </span>
                   )}
-                  {(assignment.order_type === 'labor' || assignment.order_type === 'turnkey') && assignment.assigned_to_crew && (
-                    <span className="flex items-center gap-1">
-                      <Users className="h-3 w-3" /> {assignment.assigned_to_crew}
+                  {(assignment.order_type === 'labor' || assignment.order_type === 'turnkey') && (
+                    <span className="flex items-center gap-1.5">
+                      <Users className="h-3 w-3" />
+                      <Select
+                        value={assignment.crew_id || ''}
+                        onValueChange={(val) =>
+                          assignCrewMutation.mutate({ id: assignment.id, crew_id: val || null })
+                        }
+                      >
+                        <SelectTrigger className="h-6 px-2 text-xs w-[160px]">
+                          <SelectValue placeholder={assignment.assigned_to_crew || 'Assign crew…'} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {crews.length === 0 ? (
+                            <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                              No crews — add one in Settings → Users → Crew Logins
+                            </div>
+                          ) : (
+                            crews.map((c) => (
+                              <SelectItem key={c.id} value={c.id} className="text-xs">
+                                {c.name}
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
                     </span>
                   )}
                   {assignment.scheduled_date && (
@@ -546,11 +617,23 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
               ) : (
                 <div>
                   <label className="text-sm font-medium">Assign to Crew</label>
-                  <Input
-                    value={formData.assigned_to_crew}
-                    onChange={(e) => setFormData(prev => ({ ...prev, assigned_to_crew: e.target.value }))}
-                    placeholder="e.g., Team Alpha, Juan's Crew"
-                  />
+                  <Select
+                    value={formData.crew_id}
+                    onValueChange={(val) => setFormData(prev => ({ ...prev, crew_id: val }))}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Select crew" /></SelectTrigger>
+                    <SelectContent>
+                      {crews.length === 0 ? (
+                        <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                          No crews yet. Add one in Settings → Users → Crew Logins.
+                        </div>
+                      ) : (
+                        crews.map((c) => (
+                          <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
                 </div>
               )}
 

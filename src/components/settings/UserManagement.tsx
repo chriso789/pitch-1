@@ -10,7 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Users, Plus, Edit2, Trash2, Settings, Eye, EyeOff, MapPin, Ban, CheckCircle, Building2, Phone, AlertCircle, Mail, RefreshCw, Activity, Clock } from "lucide-react";
+import { Users, Plus, Edit2, Trash2, Settings, Eye, EyeOff, MapPin, Ban, CheckCircle, Building2, Phone, AlertCircle, Mail, RefreshCw, Activity, Clock, HardHat } from "lucide-react";
+import { CrewLoginsManagement } from "./CrewLoginsManagement";
 import { UserLoginStatusBadge } from "./UserLoginStatusBadge";
 import { UserActivityDashboard } from "./UserActivityDashboard";
 import { ProfileStatusBadge } from "./ProfileStatusBadge";
@@ -703,6 +704,11 @@ export const UserManagement = () => {
             <span className="hidden sm:inline">Feature Permissions</span>
             <span className="sm:hidden">Perms</span>
           </TabsTrigger>
+          <TabsTrigger value="crew" className="flex items-center gap-2 text-xs md:text-sm">
+            <HardHat className="h-4 w-4" />
+            <span className="hidden sm:inline">Crew Logins</span>
+            <span className="sm:hidden">Crew</span>
+          </TabsTrigger>
           <TabsTrigger value="email" className="flex items-center gap-2 text-xs md:text-sm">
             <Mail className="h-4 w-4" />
             <span className="hidden sm:inline">Email Health</span>
@@ -1034,6 +1040,10 @@ export const UserManagement = () => {
 
       <TabsContent value="permissions">
         <FeaturePermissions />
+      </TabsContent>
+
+      <TabsContent value="crew">
+        <CrewLoginsManagement />
       </TabsContent>
 
       <TabsContent value="email">

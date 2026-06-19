@@ -30,6 +30,8 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { useCrewDashboard, CrewJobAssignment } from "@/hooks/useCrewDashboard";
 import { useCrewAuth } from "@/hooks/useCrewAuth";
+import { useMyCrew } from "@/hooks/useMyCrew";
+import { useQuery } from "@tanstack/react-query";
 import { CrewPhotoUpload } from "./CrewPhotoUpload";
 
 interface TimeEntry {
@@ -56,6 +58,24 @@ export function CrewPortal() {
   // Use the new crew hooks
   const { jobs, counts, docsStatus, loading, error, refetch } = useCrewDashboard();
   const { user, crewUser, crewProfile, activeCompany, loading: authLoading } = useCrewAuth();
+  const { crew: myCrew } = useMyCrew();
+
+  // Labor orders assigned to this crew (RLS-gated to crew_id = current_user_crew_id)
+  const { data: laborOrders = [], refetch: refetchLaborOrders } = useQuery({
+    queryKey: ['crew-labor-orders', myCrew?.id],
+    queryFn: async () => {
+      if (!myCrew?.id) return [];
+      const { data, error } = await supabase
+        .from('production_order_assignments')
+        .select('id, title, description, status, scheduled_date, arrival_date, notes, project_id, created_at')
+        .eq('order_type', 'labor')
+        .eq('crew_id', myCrew.id)
+        .order('scheduled_date', { ascending: true, nullsFirst: false });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!myCrew?.id,
+  });
 
   const handleClockIn = async () => {
     try {
@@ -479,6 +499,13 @@ export function CrewPortal() {
             <ClipboardList className="h-4 w-4" />
             Jobs
           </TabsTrigger>
+          <TabsTrigger value="labor-orders" className="flex items-center gap-2">
+            <Wrench className="h-4 w-4" />
+            Labor Orders
+            {laborOrders.length > 0 && (
+              <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">{laborOrders.length}</Badge>
+            )}
+          </TabsTrigger>
           <TabsTrigger value="navigation" className="flex items-center gap-2">
             <Navigation className="h-4 w-4" />
             Navigate
@@ -603,6 +630,72 @@ export function CrewPortal() {
                           Add Photo
                         </Button>
                       </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="labor-orders" className="mt-0 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold">My Labor Orders</h2>
+              {myCrew && (
+                <Badge variant="outline" className="text-xs">
+                  Crew: {myCrew.name}
+                </Badge>
+              )}
+            </div>
+            {!myCrew ? (
+              <Card>
+                <CardContent className="py-8 text-center text-muted-foreground">
+                  <AlertTriangle className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">Your account isn't linked to a crew yet.</p>
+                  <p className="text-xs mt-1">Ask an admin to add you under Settings → Users → Crew Logins using this email.</p>
+                </CardContent>
+              </Card>
+            ) : laborOrders.length === 0 ? (
+              <Card>
+                <CardContent className="py-8 text-center text-muted-foreground">
+                  <Wrench className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">No labor orders assigned to your crew yet.</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {laborOrders.map((order: any) => (
+                  <Card key={order.id}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between gap-3 mb-2">
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-medium text-sm">{order.title}</h3>
+                          {order.description && (
+                            <p className="text-xs text-muted-foreground mt-1">{order.description}</p>
+                          )}
+                        </div>
+                        <Badge variant="outline" className={getStatusColor(order.status)}>
+                          {String(order.status).replace('_', ' ')}
+                        </Badge>
+                      </div>
+                      <div className="flex flex-wrap gap-3 text-xs text-muted-foreground mt-2">
+                        {order.scheduled_date && (
+                          <span className="inline-flex items-center gap-1">
+                            <Calendar className="h-3 w-3" />
+                            Scheduled: {format(new Date(order.scheduled_date), 'MMM d, yyyy')}
+                          </span>
+                        )}
+                        {order.arrival_date && (
+                          <span className="inline-flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            Arrival: {format(new Date(order.arrival_date), 'MMM d, yyyy')}
+                          </span>
+                        )}
+                      </div>
+                      {order.notes && (
+                        <pre className="text-xs text-muted-foreground mt-3 whitespace-pre-wrap font-sans bg-muted/40 rounded p-2">
+                          {order.notes}
+                        </pre>
+                      )}
                     </CardContent>
                   </Card>
                 ))}
