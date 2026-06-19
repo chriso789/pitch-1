@@ -185,19 +185,26 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
         .single();
       if (projectError) throw projectError;
 
-      const { data, error } = await supabase
+      // Prefer the estimate that was selected/signed at lead conversion
+      const { data: rows, error } = await supabase
         .from('enhanced_estimates')
-        .select('id, tenant_id, project_id, pipeline_entry_id, estimate_number, display_name, line_items, created_at')
+        .select('id, tenant_id, project_id, pipeline_entry_id, estimate_number, display_name, line_items, pdf_url, signed_at, status, accepted_tier, selected_tier, created_at')
         .eq('tenant_id', effectiveTenantId!)
         .or(`project_id.eq.${projectId}${project?.pipeline_entry_id ? `,pipeline_entry_id.eq.${project.pipeline_entry_id}` : ''}`)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .order('created_at', { ascending: false });
       if (error) throw error;
-      if (!data) return null;
-      const rawLineItems = data.line_items;
+      if (!rows || rows.length === 0) return null;
+
+      const isSelected = (r: any) =>
+        !!r.signed_at ||
+        !!r.accepted_tier ||
+        !!r.selected_tier ||
+        ['accepted', 'signed', 'won', 'approved', 'converted'].includes(String(r.status || '').toLowerCase());
+      const chosen = rows.find(isSelected) || rows[0];
+
+      const rawLineItems = chosen.line_items;
       return {
-        ...data,
+        ...chosen,
         line_items: rawLineItems && typeof rawLineItems === 'object' && !Array.isArray(rawLineItems)
           ? rawLineItems as EstimateForOrders['line_items']
           : {},
