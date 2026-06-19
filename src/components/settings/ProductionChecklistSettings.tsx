@@ -13,8 +13,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { useToast } from '@/hooks/use-toast';
 import {
   Plus, Trash2, Save, FileText, Clock, Package, Wrench, CheckCircle, Trophy,
-  Search, Archive, ClipboardList, Pencil, GripVertical,
+  Search, Archive, ClipboardList, Pencil, GripVertical, RefreshCw,
 } from 'lucide-react';
+
 import { cn } from '@/lib/utils';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent,
@@ -240,7 +241,62 @@ export const ProductionChecklistSettings = () => {
     },
   });
 
-  // ---------- DnD ----------
+  // ---------- Sync current scope's checklist to all locations ----------
+  const [syncOpen, setSyncOpen] = useState(false);
+  const syncToAllLocations = useMutation({
+    mutationFn: async () => {
+      if (!effectiveTenantId) return;
+      const sourceLocationId = selectedLocationId || null;
+      const targetLocationIds = locations
+        .map(l => l.id)
+        .filter(id => id !== sourceLocationId);
+      if (targetLocationIds.length === 0) return;
+
+      // For each target location: wipe existing scoped stages + items, then copy source.
+      for (const targetId of targetLocationIds) {
+        await supabase.from('production_checklist_templates').delete()
+          .eq('tenant_id', effectiveTenantId).eq('location_id', targetId);
+        await supabase.from('production_checklist_stages' as any).delete()
+          .eq('tenant_id', effectiveTenantId).eq('location_id', targetId);
+
+        if (stages.length) {
+          await supabase.from('production_checklist_stages' as any).insert(
+            stages.map((s, i) => ({
+              tenant_id: effectiveTenantId,
+              location_id: targetId,
+              stage_key: s.stage_key,
+              name: s.name,
+              color: s.color,
+              icon: s.icon,
+              sort_order: i,
+            }))
+          );
+        }
+        if (templates.length) {
+          await supabase.from('production_checklist_templates').insert(
+            (templates as any[]).map(t => ({
+              tenant_id: effectiveTenantId,
+              location_id: targetId,
+              stage_key: t.stage_key,
+              item_label: t.item_label,
+              is_required: t.is_required,
+              sort_order: t.sort_order,
+            }))
+          );
+        }
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['checklist-stages'] });
+      queryClient.invalidateQueries({ queryKey: ['checklist-templates'] });
+      setSyncOpen(false);
+      toast({ title: 'Checklist synced', description: 'All locations now use this checklist.' });
+    },
+    onError: (e: any) => {
+      toast({ title: 'Sync failed', description: e?.message || 'Unknown error', variant: 'destructive' });
+    },
+  });
+
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const handleDragEnd = (e: DragEndEvent) => {
     const { active, over } = e;
@@ -284,7 +340,17 @@ export const ProductionChecklistSettings = () => {
               ))}
             </SelectContent>
           </Select>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setSyncOpen(true)}
+            disabled={locations.length < 2}
+            title="Copy this checklist to every location"
+          >
+            <RefreshCw className="h-4 w-4 mr-1" /> Sync to all locations
+          </Button>
         </div>
+
         <Button size="sm" onClick={() => {
           setStageDraft({ name: '', color: 'bg-slate-500', icon: 'ClipboardList' });
           setStageDialog({ mode: 'add' });
@@ -407,8 +473,38 @@ export const ProductionChecklistSettings = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Sync confirmation dialog */}
+      <Dialog open={syncOpen} onOpenChange={setSyncOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Sync checklist to all locations?</DialogTitle></DialogHeader>
+          <div className="space-y-3 py-2 text-sm">
+            <p>
+              This will copy the <strong>
+                {selectedLocationId
+                  ? (locations.find(l => l.id === selectedLocationId)?.name || 'current location')
+                  : 'Company default'}
+              </strong> checklist ({stages.length} stages, {templates.length} items) to every other location.
+            </p>
+            <p className="text-destructive">
+              Any existing location-specific stages and items will be replaced.
+            </p>
+            <p className="text-muted-foreground">
+              Going forward, edit each location individually to keep them independent, or sync again whenever you want them to match.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSyncOpen(false)}>Cancel</Button>
+            <Button onClick={() => syncToAllLocations.mutate()} disabled={syncToAllLocations.isPending}>
+              <RefreshCw className={cn('h-4 w-4 mr-1', syncToAllLocations.isPending && 'animate-spin')} />
+              {syncToAllLocations.isPending ? 'Syncing…' : 'Sync now'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
+
 };
 
 function SortableStageCard({
