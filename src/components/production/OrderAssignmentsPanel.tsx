@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Package, Users, Wrench, Calendar, Truck, CheckCircle, Clock, AlertTriangle } from 'lucide-react';
+import { Plus, Package, Users, Wrench, Calendar, Truck, CheckCircle, Clock, AlertTriangle, FileText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface OrderAssignmentsPanelProps {
