@@ -1080,8 +1080,12 @@ export function DocumentScannerDialog({
 
       setUploadProgress(10);
       const profileCfg = PDF_PROFILES[pdfProfile];
+      const pdfBuildStart = performance.now();
       const { blob: pdfBlob, dpi, quality, compressed, pdfFormat, ladderUsed } =
         await generateCombinedPDF(capturedPages);
+      telemetryRef.current.mark('pdfBuildMs', performance.now() - pdfBuildStart);
+      telemetryRef.current.setPages(capturedPages.length);
+      telemetryRef.current.setFinalBytes(pdfBlob.size);
 
       if (pdfBlob.size > profileCfg.maxBytes && !profileCfg.allowOverLimit) {
         throw new Error(
@@ -1107,9 +1111,11 @@ export function DocumentScannerDialog({
       const sanitizedLabel = documentLabel.replace(/\s+/g, '_');
       const fileName = `${profile.tenant_id}/${pipelineEntryId}/${timestamp}_${documentType}.pdf`;
 
+      const uploadStart = performance.now();
       const { error: uploadError } = await supabase.storage
         .from('documents').upload(fileName, pdfBlob, { contentType: 'application/pdf' });
       if (uploadError) throw uploadError;
+      telemetryRef.current.mark('uploadMs', performance.now() - uploadStart);
       setUploadProgress(80);
 
       // Aggregate metadata
