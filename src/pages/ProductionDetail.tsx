@@ -597,8 +597,13 @@ const ProductionDetail = () => {
                   {stageTemplates.map(template => {
                     const completion = getCompletionForTemplate(template.id);
                     const isCompleted = completion?.completed || false;
+                    const isUploadItem = /\bupload\b/i.test(template.item_label || '');
+                    const pipelineEntryId =
+                      (projectData?.project as any)?.pipeline_entries?.id ||
+                      (projectData?.project as any)?.pipeline_entry_id ||
+                      null;
                     return (
-                      <div key={template.id} className="flex items-center gap-3 py-1">
+                      <div key={template.id} className="flex flex-wrap items-center gap-3 py-1">
                         <Checkbox
                           checked={isCompleted}
                           onCheckedChange={(checked) => {
@@ -609,7 +614,7 @@ const ProductionDetail = () => {
                           }}
                         />
                         <span className={cn(
-                          'text-sm flex-1',
+                          'text-sm flex-1 min-w-[140px]',
                           isCompleted && 'line-through text-muted-foreground'
                         )}>
                           {template.item_label}
@@ -617,9 +622,23 @@ const ProductionDetail = () => {
                         {template.is_required && (
                           <Badge variant="destructive" className="text-[9px] px-1 py-0">Required</Badge>
                         )}
+                        {isUploadItem && effectiveTenantId && projectId && (
+                          <ChecklistItemUpload
+                            templateId={template.id}
+                            templateLabel={template.item_label}
+                            projectId={projectId}
+                            tenantId={effectiveTenantId}
+                            pipelineEntryId={pipelineEntryId}
+                            workflowId={workflow?.id || null}
+                            onUploaded={() => {
+                              queryClient.invalidateQueries({ queryKey: ['checklist-completions'] });
+                            }}
+                          />
+                        )}
                       </div>
                     );
                   })}
+
                 </CardContent>
               </Card>
             );
