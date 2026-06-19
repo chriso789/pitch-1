@@ -31,6 +31,7 @@ import { format } from "date-fns";
 import { useCrewDashboard, CrewJobAssignment } from "@/hooks/useCrewDashboard";
 import { useCrewAuth } from "@/hooks/useCrewAuth";
 import { useMyCrew } from "@/hooks/useMyCrew";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useQuery } from "@tanstack/react-query";
 import { CrewPhotoUpload } from "./CrewPhotoUpload";
 
