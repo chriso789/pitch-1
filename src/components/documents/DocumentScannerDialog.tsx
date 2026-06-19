@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   X, Camera, Trash2, RotateCcw, Loader2, FileText, Image as ImageIcon,
   Edit2, Zap, ZapOff, ArrowLeft, ArrowRight, RotateCw, Upload, FileUp,
-  Eye, Bug, ClipboardCheck,
+  Eye, Bug, ClipboardCheck, Settings as SettingsIcon,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -40,8 +40,12 @@ import { analyzeEdgeForInset } from '@/utils/scannerEdgeAnalysis';
 import {
   saveScanSession, loadScanSession, clearScanSession,
   makeScannerSessionId, PersistedScanPage,
+  purgeExpiredScanSessions, DEFAULT_SESSION_TTL_MS,
 } from '@/utils/scannerSessionStore';
-import { renderImportedPdf } from '@/utils/scannerPdfImport';
+import { renderImportedPdf, getPdfjsDiagnostics } from '@/utils/scannerPdfImport';
+import { ScannerTelemetry } from '@/utils/scannerTelemetry';
+import { ObjectUrlRegistry, detectDeviceMemoryProfile } from '@/utils/scannerMobileGuards';
+import ScannerSettingsPanel, { type ScannerSettings } from './ScannerSettingsPanel';
 
 interface CapturedPage {
   blob: Blob;
@@ -138,6 +142,20 @@ export function DocumentScannerDialog({
   const scannerSessionIdRef = useRef<string>(makeScannerSessionId());
   const isDev = typeof import.meta !== 'undefined' && (import.meta as any).env?.DEV;
 
+
+  // Production-hardening refs (telemetry, URL registry, autosave state, mobile profile, pdf.js diag)
+  const telemetryRef = useRef<ScannerTelemetry>(new ScannerTelemetry());
+  const urlRegRef = useRef<ObjectUrlRegistry>(new ObjectUrlRegistry());
+  const autosaveEnabledRef = useRef<boolean>(true);
+  const autosaveDisabledReasonRef = useRef<string | null>(null);
+  const autosaveBytesRef = useRef<number>(0);
+  const deviceProfileRef = useRef(detectDeviceMemoryProfile());
+  const cameraStartTsRef = useRef<number>(0);
+  const opencvStartTsRef = useRef<number>(0);
+  const userPickedProfileRef = useRef<boolean>(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [autosaveEnabled, setAutosaveEnabled] = useState(true);
+
   // Phase additions
   const [showQA, setShowQA] = useState(false);
   const [resumePromptSession, setResumePromptSession] = useState<{ pages: number; updatedAt: number } | null>(null);
@@ -149,8 +167,15 @@ export function DocumentScannerDialog({
     if (isOpenCVAvailable()) { setOpencvReady(true); return; }
     const kick = () => {
       setOpencvLoading(true);
+      opencvStartTsRef.current = performance.now();
       loadOpenCV()
-        .then((ok) => { setOpencvReady(!!ok); setOpencvFailed(!ok); })
+        .then((ok) => {
+          setOpencvReady(!!ok);
+          setOpencvFailed(!ok);
+          if (ok && opencvStartTsRef.current) {
+            telemetryRef.current.mark('opencvLoadMs', performance.now() - opencvStartTsRef.current);
+          }
+        })
         .finally(() => setOpencvLoading(false));
     };
     const ric = (window as any).requestIdleCallback;
@@ -162,9 +187,27 @@ export function DocumentScannerDialog({
     return () => clearTimeout(t);
   }, []);
 
-  // Camera lifecycle + resume check
+  // Camera lifecycle + resume check + production hardening setup
   useEffect(() => {
     if (open) {
+      // Fresh telemetry + URL registry per session
+      telemetryRef.current = new ScannerTelemetry();
+      urlRegRef.current = new ObjectUrlRegistry();
+      autosaveEnabledRef.current = true;
+      autosaveDisabledReasonRef.current = null;
+      autosaveBytesRef.current = 0;
+      setAutosaveEnabled(true);
+      userPickedProfileRef.current = false;
+      // Re-detect device profile (orientation/PWA can change between opens)
+      deviceProfileRef.current = detectDeviceMemoryProfile();
+      // Low-memory: default PDF profile to Standard unless user already picked one
+      if (deviceProfileRef.current.isLowMemory && !userPickedProfileRef.current) {
+        setPdfProfile('standard');
+      }
+      // Purge expired sessions (24h TTL) on every open
+      purgeExpiredScanSessions(DEFAULT_SESSION_TTL_MS).catch(() => {});
+
+      cameraStartTsRef.current = performance.now();
       startCamera();
       stabilityBufferRef.current.reset();
       autoStableSinceRef.current = null;
@@ -179,7 +222,9 @@ export function DocumentScannerDialog({
       });
     } else {
       stopCamera();
-      capturedPages.forEach(p => URL.revokeObjectURL(p.preview));
+      // Revoke every URL we minted this session
+      urlRegRef.current.revokeAll();
+      capturedPages.forEach(p => { try { URL.revokeObjectURL(p.preview); } catch {} });
       setCapturedPages([]);
       setCameraError(null);
       setDetectedCorners(null);
@@ -194,16 +239,21 @@ export function DocumentScannerDialog({
       setShowQA(false);
       setResumePromptSession(null);
       setPendingResumePages(null);
+      setSettingsOpen(false);
     }
-    return () => { stopCamera(); };
+    return () => {
+      stopCamera();
+      urlRegRef.current.revokeAll();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Autosave: every time pages change, persist to IndexedDB
+  // Autosave: every time pages change, persist to IndexedDB (respects quota)
   useEffect(() => {
     if (!open || capturedPages.length === 0) return;
-    const t = setTimeout(() => {
-      saveScanSession({
+    if (!autosaveEnabledRef.current) return;
+    const t = setTimeout(async () => {
+      const res = await saveScanSession({
         id: `${pipelineEntryId}::${documentType}`,
         scannerSessionId: scannerSessionIdRef.current,
         pipelineEntryId,
@@ -236,6 +286,21 @@ export function DocumentScannerDialog({
           quality: p.quality,
         })),
       });
+      if (res.ok) {
+        autosaveBytesRef.current = res.bytesAfter;
+      } else if (res.reason === 'quota_exceeded') {
+        autosaveEnabledRef.current = false;
+        autosaveDisabledReasonRef.current = 'quota_exceeded';
+        setAutosaveEnabled(false);
+        toast({
+          title: 'Local scan recovery is full',
+          description: 'Your scan can continue, but recovery is disabled for new pages. Clear saved sessions in scanner settings to re-enable.',
+        });
+      } else {
+        autosaveEnabledRef.current = false;
+        autosaveDisabledReasonRef.current = 'error';
+        setAutosaveEnabled(false);
+      }
     }, 250);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -357,7 +422,12 @@ export function DocumentScannerDialog({
 
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
-        videoRef.current.onloadedmetadata = () => setCameraReady(true);
+        videoRef.current.onloadedmetadata = () => {
+          setCameraReady(true);
+          if (cameraStartTsRef.current) {
+            telemetryRef.current.mark('cameraStartupMs', performance.now() - cameraStartTsRef.current);
+          }
+        };
       }
     } catch (error: any) {
       console.error('Failed to start camera:', error);
@@ -1010,8 +1080,12 @@ export function DocumentScannerDialog({
 
       setUploadProgress(10);
       const profileCfg = PDF_PROFILES[pdfProfile];
+      const pdfBuildStart = performance.now();
       const { blob: pdfBlob, dpi, quality, compressed, pdfFormat, ladderUsed } =
         await generateCombinedPDF(capturedPages);
+      telemetryRef.current.mark('pdfBuildMs', performance.now() - pdfBuildStart);
+      telemetryRef.current.setPages(capturedPages.length);
+      telemetryRef.current.setFinalBytes(pdfBlob.size);
 
       if (pdfBlob.size > profileCfg.maxBytes && !profileCfg.allowOverLimit) {
         throw new Error(
@@ -1037,9 +1111,11 @@ export function DocumentScannerDialog({
       const sanitizedLabel = documentLabel.replace(/\s+/g, '_');
       const fileName = `${profile.tenant_id}/${pipelineEntryId}/${timestamp}_${documentType}.pdf`;
 
+      const uploadStart = performance.now();
       const { error: uploadError } = await supabase.storage
         .from('documents').upload(fileName, pdfBlob, { contentType: 'application/pdf' });
       if (uploadError) throw uploadError;
+      telemetryRef.current.mark('uploadMs', performance.now() - uploadStart);
       setUploadProgress(80);
 
       // Aggregate metadata
@@ -1087,6 +1163,15 @@ export function DocumentScannerDialog({
         edge_cleanup_applied: capturedPages.map(p => !!p.edgeCleanupApplied),
         duplicate_warning_pages: capturedPages.filter(p => p.duplicateWarning).length,
         imported_pdf_mode: capturedPages.every(p => p.captureMethod === 'imported_pdf_rebuilt') ? 'cleaned_rebuilt' as const : undefined,
+        autosave_enabled: autosaveEnabledRef.current,
+        autosave_disabled_reason: autosaveDisabledReasonRef.current,
+        autosave_bytes_estimated: autosaveBytesRef.current || undefined,
+        device_memory_gb: deviceProfileRef.current.deviceMemoryGb,
+        is_low_memory_device: deviceProfileRef.current.isLowMemory,
+        telemetry: telemetryRef.current.snapshot(),
+        pdfjs: capturedPages.some(p => p.captureMethod === 'imported_pdf_rebuilt')
+          ? getPdfjsDiagnostics()
+          : undefined,
       };
 
       const scanQuality = {
@@ -1142,7 +1227,9 @@ export function DocumentScannerDialog({
       setUploadProgress(100);
       toast({ title: 'PDF Created', description: `${capturedPages.length}-page PDF uploaded.` });
 
-      capturedPages.forEach(p => URL.revokeObjectURL(p.preview));
+      telemetryRef.current.finish();
+      capturedPages.forEach(p => { try { urlRegRef.current.revoke(p.preview); } catch {} URL.revokeObjectURL(p.preview); });
+      urlRegRef.current.revokeAll();
       setCapturedPages([]);
       // Clear persisted scan session once the upload succeeds.
       clearScanSession(pipelineEntryId, documentType).catch(() => {});
@@ -1150,11 +1237,12 @@ export function DocumentScannerDialog({
       onUploadComplete?.();
     } catch (err: any) {
       console.error('PDF generation error:', err);
-      toast({ title: 'Upload Failed', description: err.message || 'Failed to create PDF.', variant: 'destructive' });
+      // Failure-recovery: keep pages + autosave so the user can retry from QA.
+      toast({ title: 'Upload Failed', description: (err?.message || 'Failed to create PDF.') + ' Pages preserved — try again.', variant: 'destructive' });
+      setShowQA(true);
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
-      setShowQA(false);
     }
   };
 
@@ -1221,6 +1309,14 @@ export function DocumentScannerDialog({
         edge_cleanup_applied: !!p.edgeCleanupApplied,
         // Intentionally omitting image data and OCR/customer text.
       })),
+      telemetry: telemetryRef.current.snapshot(),
+      pdfjs: getPdfjsDiagnostics(),
+      autosave: {
+        enabled: autosaveEnabledRef.current,
+        disabled_reason: autosaveDisabledReasonRef.current,
+        bytes_estimated: autosaveBytesRef.current,
+      },
+      device: deviceProfileRef.current,
     };
     try {
       await navigator.clipboard.writeText(JSON.stringify(diagnostics, null, 2));
@@ -1343,8 +1439,17 @@ export function DocumentScannerDialog({
             <Switch checked={burnPageNumbers} onCheckedChange={setBurnPageNumbers} className="scale-75" />
             Burn page #
           </label>
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            className="ml-auto flex items-center gap-1 px-2 py-0.5 rounded hover:bg-muted text-muted-foreground"
+            aria-label="Scanner settings"
+          >
+            <SettingsIcon className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Settings</span>
+          </button>
           {isDev && (
-            <label className="flex items-center gap-1.5 cursor-pointer ml-auto">
+            <label className="flex items-center gap-1.5 cursor-pointer">
               <Switch checked={showDiagnostics} onCheckedChange={setShowDiagnostics} className="scale-75" />
               <Bug className="h-3 w-3" /> Diag
             </label>
@@ -1724,6 +1829,52 @@ export function DocumentScannerDialog({
             />
           </div>
         )}
+
+        {/* Compact settings + diagnostics panel */}
+        <ScannerSettingsPanel
+          open={settingsOpen}
+          onOpenChange={setSettingsOpen}
+          settings={{
+            preset: scanPreset,
+            pdfProfile,
+            autoCapture,
+            burnPageNumbers,
+            autosaveEnabled,
+          }}
+          onChange={(next: ScannerSettings) => {
+            setScanPreset(next.preset);
+            if (next.pdfProfile !== pdfProfile) {
+              userPickedProfileRef.current = true;
+              if (next.pdfProfile === 'archive' && deviceProfileRef.current.isLowMemory) {
+                toast({
+                  title: 'Archive mode may be slow on this device',
+                  description: 'Lower-memory device detected — large scans may stall.',
+                });
+              }
+              setPdfProfile(next.pdfProfile);
+            }
+            setAutoCapture(next.autoCapture);
+            setBurnPageNumbers(next.burnPageNumbers);
+            if (next.autosaveEnabled !== autosaveEnabled) {
+              autosaveEnabledRef.current = next.autosaveEnabled;
+              autosaveDisabledReasonRef.current = next.autosaveEnabled ? null : 'user_disabled';
+              setAutosaveEnabled(next.autosaveEnabled);
+            }
+          }}
+          diagnosticsText={JSON.stringify({
+            scanner_version: SCANNER_VERSION,
+            scanner_session_id: scannerSessionIdRef.current,
+            telemetry: telemetryRef.current.snapshot(),
+            pdfjs: getPdfjsDiagnostics(),
+            device: deviceProfileRef.current,
+            autosave: {
+              enabled: autosaveEnabledRef.current,
+              disabled_reason: autosaveDisabledReasonRef.current,
+              bytes_estimated: autosaveBytesRef.current,
+            },
+            page_count: capturedPages.length,
+          }, null, 2)}
+        />
       </DialogContent>
     </Dialog>
   );
