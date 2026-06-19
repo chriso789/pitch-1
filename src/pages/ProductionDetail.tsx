@@ -12,12 +12,11 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
+
 import { useToast } from '@/hooks/use-toast';
 import {
-  ArrowLeft, CheckCircle, Circle, Plus, Trash2, Edit2, Save,
-  FileText, Clock, Package, Wrench, Trophy, Search, Archive,
-  Settings, Filter, AlertTriangle, ChevronRight, ExternalLink
+  ArrowLeft, CheckCircle, FileText, Clock, Package, Wrench, Trophy, Search, Archive,
+  Filter, ExternalLink
 } from 'lucide-react';
 import { OrderAssignmentsPanel } from '@/components/production/OrderAssignmentsPanel';
 import { ChecklistItemUpload } from '@/components/production/ChecklistItemUpload';
@@ -41,14 +40,6 @@ const ProductionDetail = () => {
   const queryClient = useQueryClient();
   const effectiveTenantId = useEffectiveTenantId();
   const [activeTradeFilter, setActiveTradeFilter] = React.useState<string>('all');
-  const [editingChecklist, setEditingChecklist] = React.useState(false);
-  const [newItemLabel, setNewItemLabel] = React.useState('');
-  const [newItemStage, setNewItemStage] = React.useState('submit_documents');
-  const [newItemRequired, setNewItemRequired] = React.useState(true);
-  // Default new checklist items to company-wide so they show on every project.
-  // User can opt-in to scoping an item to the current project's location.
-  const [newItemScope, setNewItemScope] = React.useState<'company' | 'location'>('company');
-  const [addDialogOpen, setAddDialogOpen] = React.useState(false);
 
   // Fetch project + workflow data
   const { data: projectData, isLoading: projectLoading } = useQuery({
