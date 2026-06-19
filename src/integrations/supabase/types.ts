@@ -4606,6 +4606,7 @@ export type Database = {
           outcome_type_id: string | null
           scheduled_end: string
           scheduled_start: string
+          source_assignment_id: string | null
           status: string | null
           tenant_id: string | null
           title: string
@@ -4633,6 +4634,7 @@ export type Database = {
           outcome_type_id?: string | null
           scheduled_end: string
           scheduled_start: string
+          source_assignment_id?: string | null
           status?: string | null
           tenant_id?: string | null
           title: string
@@ -4660,6 +4662,7 @@ export type Database = {
           outcome_type_id?: string | null
           scheduled_end?: string
           scheduled_start?: string
+          source_assignment_id?: string | null
           status?: string | null
           tenant_id?: string | null
           title?: string
@@ -4722,6 +4725,13 @@ export type Database = {
             columns: ["outcome_type_id"]
             isOneToOne: false
             referencedRelation: "appointment_outcome_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointments_source_assignment_id_fkey"
+            columns: ["source_assignment_id"]
+            isOneToOne: false
+            referencedRelation: "production_order_assignments"
             referencedColumns: ["id"]
           },
           {
