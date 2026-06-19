@@ -399,7 +399,17 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
                   )}
                 </div>
                 {assignment.notes && (
-                  <p className="text-xs text-muted-foreground mt-1 italic">{assignment.notes}</p>
+                  <pre className="text-xs text-muted-foreground mt-2 whitespace-pre-wrap font-sans">{assignment.notes}</pre>
+                )}
+                {projectEstimate?.pdf_url && assignment.estimate_id === projectEstimate.id && (
+                  <a
+                    href={projectEstimate.pdf_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-2"
+                  >
+                    <FileText className="h-3 w-3" /> View Order PDF
+                  </a>
                 )}
               </div>
             </div>
