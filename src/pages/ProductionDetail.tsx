@@ -44,6 +44,9 @@ const ProductionDetail = () => {
   const [newItemLabel, setNewItemLabel] = React.useState('');
   const [newItemStage, setNewItemStage] = React.useState('submit_documents');
   const [newItemRequired, setNewItemRequired] = React.useState(true);
+  // Default new checklist items to company-wide so they show on every project.
+  // User can opt-in to scoping an item to the current project's location.
+  const [newItemScope, setNewItemScope] = React.useState<'company' | 'location'>('company');
   const [addDialogOpen, setAddDialogOpen] = React.useState(false);
 
   // Fetch project + workflow data
