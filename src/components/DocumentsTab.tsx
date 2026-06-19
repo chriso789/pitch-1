@@ -53,7 +53,7 @@ interface Document {
   signature_status?: 'pending' | 'sent' | 'signed' | 'voided' | null;
   estimate_display_name?: string | null;
   estimate_pricing_tier?: string | null;
-  ocr_status?: 'not_started' | 'processing' | 'completed' | 'failed' | null;
+  ocr_status?: 'not_started' | 'processing' | 'completed' | 'failed' | 'needs_worker' | null;
   ocr_text?: string | null;
   ocr_error?: string | null;
   scan_source?: string | null;

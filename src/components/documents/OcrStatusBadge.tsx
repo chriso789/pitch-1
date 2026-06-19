@@ -6,7 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
-export type OcrStatus = 'not_started' | 'processing' | 'completed' | 'failed' | null | undefined;
+export type OcrStatus = 'not_started' | 'processing' | 'completed' | 'failed' | 'needs_worker' | null | undefined;
 
 interface OcrStatusBadgeProps {
   documentId: string;
@@ -71,6 +71,20 @@ export const OcrStatusBadge: React.FC<OcrStatusBadgeProps> = ({
       <Badge variant="outline" className={cn('gap-1 text-emerald-600 border-emerald-300', className)}>
         <CheckCircle2 className="h-3 w-3" /> Searchable
       </Badge>
+    );
+  }
+
+  if (status === 'needs_worker') {
+    return (
+      <span className={cn('inline-flex items-center gap-1', className)}>
+        <Badge variant="outline" className="gap-1 text-amber-600 border-amber-300" title="Large PDF queued for worker-based OCR">
+          <ScanText className="h-3 w-3" /> OCR queued for worker
+        </Badge>
+        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs gap-1" onClick={retry} disabled={retrying}>
+          {retrying ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCw className="h-3 w-3" />}
+          Retry
+        </Button>
+      </span>
     );
   }
 
