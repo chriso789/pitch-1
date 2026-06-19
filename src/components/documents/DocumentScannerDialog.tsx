@@ -142,6 +142,22 @@ export function DocumentScannerDialog({
   const scannerSessionIdRef = useRef<string>(makeScannerSessionId());
   const isDev = typeof import.meta !== 'undefined' && (import.meta as any).env?.DEV;
 
+  scannerSessionIdRef.current; // referenced below
+  const isDev = typeof import.meta !== 'undefined' && (import.meta as any).env?.DEV;
+
+  // Production-hardening refs (telemetry, URL registry, autosave state, mobile profile, pdf.js diag)
+  const telemetryRef = useRef<ScannerTelemetry>(new ScannerTelemetry());
+  const urlRegRef = useRef<ObjectUrlRegistry>(new ObjectUrlRegistry());
+  const autosaveEnabledRef = useRef<boolean>(true);
+  const autosaveDisabledReasonRef = useRef<string | null>(null);
+  const autosaveBytesRef = useRef<number>(0);
+  const deviceProfileRef = useRef(detectDeviceMemoryProfile());
+  const cameraStartTsRef = useRef<number>(0);
+  const opencvStartTsRef = useRef<number>(0);
+  const userPickedProfileRef = useRef<boolean>(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [autosaveEnabled, setAutosaveEnabled] = useState(true);
+
   // Phase additions
   const [showQA, setShowQA] = useState(false);
   const [resumePromptSession, setResumePromptSession] = useState<{ pages: number; updatedAt: number } | null>(null);
