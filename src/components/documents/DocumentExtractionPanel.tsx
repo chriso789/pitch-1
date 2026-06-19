@@ -203,6 +203,77 @@ export const DocumentExtractionPanel: React.FC<Props> = ({ documentId }) => {
     if (row) await loadEvents(row.id);
   };
 
+  const findMatches = async () => {
+    if (!row) return;
+    setBusy('match');
+    try {
+      const { data, error } = await supabase.functions.invoke('match-document-crm-records', {
+        body: { extraction_id: row.id },
+      });
+      if (error) throw error;
+      setCandidates((data?.candidates ?? []) as MatchCandidate[]);
+      if (data?.auto_linked) toast.success(`Auto-linked to ${data.auto_linked.display_label}`);
+      else toast.info(`Found ${data?.candidates?.length ?? 0} candidate(s)`);
+      await load();
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Match failed');
+    } finally { setBusy(null); }
+  };
+
+  const linkTo = async (cand: MatchCandidate) => {
+    if (!row) return;
+    setBusy('link');
+    try {
+      const { error } = await supabase.functions.invoke('link-document-extraction', {
+        body: { extraction_id: row.id, target_type: cand.target_type, target_id: cand.target_id },
+      });
+      if (error) throw error;
+      toast.success(`Linked to ${cand.display_label}`);
+      await load();
+      await generatePlan();
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Link failed');
+    } finally { setBusy(null); }
+  };
+
+  const planContractWorkflow = async () => {
+    if (!row) return;
+    setBusy('plan-workflow');
+    try {
+      const { data, error } = await supabase.functions.invoke('plan-signed-contract-workflow', {
+        body: { extraction_id: row.id },
+      });
+      if (error) throw error;
+      setWorkflow(data);
+      const pre: Record<string, boolean> = {};
+      for (const a of (data?.suggested_actions ?? []) as WorkflowAction[]) pre[a.key] = !!a.default_selected;
+      setActionSel(pre);
+      toast.success(`Workflow readiness: ${data?.readiness}`);
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Workflow plan failed');
+    } finally { setBusy(null); }
+  };
+
+  const executeContractWorkflow = async () => {
+    if (!row || !workflow) return;
+    const keys = Object.entries(actionSel).filter(([, v]) => v).map(([k]) => k);
+    if (!keys.length) { toast.info('Select at least one action'); return; }
+    setBusy('exec-workflow');
+    try {
+      const { data, error } = await supabase.functions.invoke('execute-signed-contract-workflow', {
+        body: { extraction_id: row.id, selected_actions: keys },
+      });
+      if (error) throw error;
+      const applied = (data?.results ?? []).filter((r: any) => r.status === 'applied').length;
+      toast.success(`Executed ${applied} action(s)`);
+      await load();
+      await planContractWorkflow();
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Workflow execution failed');
+    } finally { setBusy(null); }
+  };
+
+
   if (loading) {
     return <Card><CardContent className="p-6 flex items-center gap-2 text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" /> Loading extraction…</CardContent></Card>;
   }
