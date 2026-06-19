@@ -33,10 +33,106 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   cancelled: { label: 'Cancelled', color: 'bg-destructive/10 text-destructive' },
 };
 
+type OrderType = 'material' | 'labor' | 'turnkey';
+
+type EstimateLineItem = {
+  id?: string;
+  item_name?: string;
+  qty?: number | string;
+  quantity?: number | string;
+  unit?: string;
+  unit_cost?: number | string;
+  rate?: number | string;
+  line_total?: number | string;
+  trade_label?: string;
+  trade_type?: string;
+};
+
+type EstimateForOrders = {
+  id: string;
+  estimate_number?: string | null;
+  display_name?: string | null;
+  line_items?: {
+    materials?: EstimateLineItem[];
+    labor?: EstimateLineItem[];
+    turnkey?: EstimateLineItem[];
+  } | null;
+};
+
+type ProductionAssignment = {
+  id: string;
+  estimate_id?: string | null;
+  order_type: string;
+  title: string;
+  description?: string | null;
+  assigned_to_vendor_id?: string | null;
+  assigned_to_crew?: string | null;
+  status: string;
+  scheduled_date?: string | null;
+  arrival_date?: string | null;
+  notes?: string | null;
+};
+
+const formatMoney = (amount: number) =>
+  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount || 0);
+
+const buildEstimateOrderRows = ({
+  estimate,
+  projectId,
+  tenantId,
+  assignedBy,
+}: {
+  estimate: EstimateForOrders;
+  projectId: string;
+  tenantId: string;
+  assignedBy?: string | null;
+}) => {
+  const lineItems = estimate.line_items || {};
+  const groups: Array<{ key: OrderType; lines: EstimateLineItem[] }> = [
+    { key: 'material', lines: Array.isArray(lineItems.materials) ? lineItems.materials : [] },
+    { key: 'labor', lines: Array.isArray(lineItems.labor) ? lineItems.labor : [] },
+    { key: 'turnkey', lines: Array.isArray(lineItems.turnkey) ? lineItems.turnkey : [] },
+  ];
+
+  return groups.flatMap(({ key, lines }) =>
+    lines
+      .filter(line => line?.item_name)
+      .map((line, index) => {
+        const qty = Number(line.qty ?? line.quantity ?? 0);
+        const unit = line.unit || 'ea';
+        const unitCost = Number(line.unit_cost ?? line.rate ?? 0);
+        const lineTotal = Number(line.line_total ?? qty * unitCost);
+        const tradeLabel = line.trade_label || line.trade_type;
+        return {
+          tenant_id: tenantId,
+          project_id: projectId,
+          estimate_id: estimate.id,
+          order_type: key,
+          title: String(line.item_name).trim(),
+          description: [
+            `Qty: ${qty} ${unit}`,
+            `Unit: ${formatMoney(unitCost)}`,
+            `Total: ${formatMoney(lineTotal)}`,
+            tradeLabel ? `Trade: ${String(tradeLabel).replace(/_/g, ' ')}` : null,
+          ].filter(Boolean).join(' • '),
+          assigned_by: assignedBy || null,
+          status: 'pending',
+          scheduled_date: null,
+          arrival_date: null,
+          assigned_to_vendor_id: null,
+          assigned_to_crew: null,
+          notes: `Synced from estimate ${estimate.display_name || estimate.estimate_number || ''}`.trim(),
+          notify_rep: true,
+        };
+      })
+  );
+};
+
 export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ projectId }) => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const effectiveTenantId = useEffectiveTenantId();
+  const autoSyncAttemptedRef = React.useRef<string | null>(null);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [formData, setFormData] = useState({
     order_type: 'material' as 'material' | 'labor' | 'turnkey',
@@ -61,7 +157,39 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
         .eq('tenant_id', effectiveTenantId!)
         .order('created_at', { ascending: false });
       if (error) throw error;
-      return data || [];
+      return (data || []) as ProductionAssignment[];
+    },
+    enabled: !!projectId && !!effectiveTenantId,
+  });
+
+  const { data: projectEstimate } = useQuery<EstimateForOrders | null>({
+    queryKey: ['production-project-estimate-for-orders', projectId, effectiveTenantId],
+    queryFn: async () => {
+      const { data: project, error: projectError } = await supabase
+        .from('projects')
+        .select('pipeline_entry_id')
+        .eq('id', projectId)
+        .eq('tenant_id', effectiveTenantId!)
+        .single();
+      if (projectError) throw projectError;
+
+      const { data, error } = await supabase
+        .from('enhanced_estimates')
+        .select('id, tenant_id, project_id, pipeline_entry_id, estimate_number, display_name, line_items, created_at')
+        .eq('tenant_id', effectiveTenantId!)
+        .or(`project_id.eq.${projectId}${project?.pipeline_entry_id ? `,pipeline_entry_id.eq.${project.pipeline_entry_id}` : ''}`)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) return null;
+      const rawLineItems = data.line_items;
+      return {
+        ...data,
+        line_items: rawLineItems && typeof rawLineItems === 'object' && !Array.isArray(rawLineItems)
+          ? rawLineItems as EstimateForOrders['line_items']
+          : {},
+      };
     },
     enabled: !!projectId && !!effectiveTenantId,
   });
@@ -124,6 +252,50 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
     },
   });
 
+  const syncEstimateMutation = useMutation({
+    mutationFn: async ({ silent = false }: { silent?: boolean } = {}) => {
+      if (!effectiveTenantId || !projectEstimate) return { created: 0, skipped: true, silent };
+      const { data: { user } } = await supabase.auth.getUser();
+      const rows = buildEstimateOrderRows({
+        estimate: projectEstimate,
+        projectId,
+        tenantId: effectiveTenantId,
+        assignedBy: user?.id,
+      });
+      const existingKeys = new Set(
+        assignments
+          .filter((assignment) => assignment.estimate_id === projectEstimate.id)
+          .map((assignment) => `${assignment.order_type}:${assignment.title}`)
+      );
+      const newRows = rows
+        .filter((row) => !existingKeys.has(`${row.order_type}:${row.title}`));
+      if (!newRows.length) return { created: 0, skipped: false, silent };
+      const { error } = await supabase.from('production_order_assignments').insert(newRows);
+      if (error) throw error;
+      return { created: newRows.length, skipped: false, silent };
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['order-assignments'] });
+      if (!result?.silent) {
+        toast({
+          title: result?.created ? 'Estimate orders synced' : 'No new estimate orders',
+          description: result?.created ? `Created ${result.created} order assignment(s).` : undefined,
+        });
+      }
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Estimate sync failed', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  React.useEffect(() => {
+    if (!projectEstimate?.id || !effectiveTenantId || assignments.length > 0 || isLoading) return;
+    const attemptKey = `${projectId}:${projectEstimate.id}`;
+    if (autoSyncAttemptedRef.current === attemptKey) return;
+    autoSyncAttemptedRef.current = attemptKey;
+    syncEstimateMutation.mutate({ silent: true });
+  }, [assignments.length, effectiveTenantId, isLoading, projectEstimate?.id, projectId, syncEstimateMutation]);
+
   // Update status
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
@@ -142,7 +314,7 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
   const laborAssignments = assignments.filter(a => a.order_type === 'labor');
   const turnkeyAssignments = assignments.filter(a => a.order_type === 'turnkey');
 
-  const renderAssignmentCard = (assignment: any) => {
+  const renderAssignmentCard = (assignment: ProductionAssignment) => {
     const typeConfig = ORDER_TYPE_CONFIG[assignment.order_type as keyof typeof ORDER_TYPE_CONFIG];
     const statusConfig = STATUS_CONFIG[assignment.status] || STATUS_CONFIG.pending;
     const Icon = typeConfig.icon;
@@ -212,7 +384,7 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
     );
   };
 
-  const renderSection = (title: string, icon: React.ElementType, items: any[], type: string) => {
+  const renderSection = (title: string, icon: React.ElementType, items: ProductionAssignment[]) => {
     const Icon = icon;
     return (
       <div className="space-y-3">
@@ -248,6 +420,18 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
         <p className="text-sm text-muted-foreground">
           Assign materials to suppliers, labor and turnkey work to crews. Set scheduled dates to auto-alert reps.
         </p>
+        <div className="flex items-center gap-2">
+        {projectEstimate && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => syncEstimateMutation.mutate({ silent: false })}
+            disabled={syncEstimateMutation.isPending}
+          >
+            <Package className="h-4 w-4 mr-1" />
+            {syncEstimateMutation.isPending ? 'Syncing...' : 'Sync Estimate'}
+          </Button>
+        )}
         <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
           <DialogTrigger asChild>
             <Button size="sm">
@@ -263,7 +447,7 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
                 <label className="text-sm font-medium">Order Type</label>
                 <Select
                   value={formData.order_type}
-                  onValueChange={(val: any) => setFormData(prev => ({ ...prev, order_type: val }))}
+                  onValueChange={(val: OrderType) => setFormData(prev => ({ ...prev, order_type: val }))}
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -368,11 +552,12 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
-      {renderSection('Material Orders', Package, materialAssignments, 'material')}
-      {renderSection('Labor Orders', Users, laborAssignments, 'labor')}
-      {renderSection('Turnkey Orders', Wrench, turnkeyAssignments, 'turnkey')}
+      {renderSection('Material Orders', Package, materialAssignments)}
+      {renderSection('Labor Orders', Users, laborAssignments)}
+      {renderSection('Turnkey Orders', Wrench, turnkeyAssignments)}
     </div>
   );
 };
