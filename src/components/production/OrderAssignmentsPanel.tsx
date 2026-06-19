@@ -161,6 +161,7 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
     notes: '',
     notify_rep: true,
   });
+  const [pendingCrew, setPendingCrew] = useState<Record<string, string>>({});
 
   // Fetch order assignments for this project
   const { data: assignments = [], isLoading } = useQuery({
