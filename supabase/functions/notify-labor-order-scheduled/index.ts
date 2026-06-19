@@ -116,12 +116,13 @@ Deno.serve(async (req) => {
         if (proj.pipeline_entry_id) {
           const { data: pe } = await supabase
             .from("pipeline_entries")
-            .select("assigned_to, property_address, address")
+            .select("assigned_to, address_street, address_city, address_state, address_zip")
             .eq("id", proj.pipeline_entry_id)
             .maybeSingle();
           if (pe) {
             salesRepId = pe.assigned_to;
-            address = (pe as any).property_address || (pe as any).address || "";
+            const parts = [pe.address_street, pe.address_city, pe.address_state, pe.address_zip].filter(Boolean);
+            address = parts.join(", ");
           }
         }
       }
