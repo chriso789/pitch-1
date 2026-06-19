@@ -208,6 +208,46 @@ const ProductionDetail = () => {
     })();
   }, [projectData?.workflow, checklistTemplates, checklistCompletions, projectId, queryClient, toast]);
 
+  // Auto-advance trade board stages when all required checklist items at the
+  // current stage are completed.
+  const tradeAutoAdvanceRef = React.useRef<Set<string>>(new Set());
+  React.useEffect(() => {
+    if (!tradeBoards.length || !checklistTemplates.length) return;
+    tradeBoards.forEach((trade: any) => {
+      const stageKey = trade.current_stage;
+      if (!stageKey) return;
+      const attemptKey = `${trade.id}:${stageKey}`;
+      if (tradeAutoAdvanceRef.current.has(attemptKey)) return;
+
+      const stageTemplates = (checklistTemplates as any[]).filter(
+        t => t.stage_key === stageKey && (!t.trade_type || t.trade_type === trade.trade_type)
+      );
+      const requiredIds = stageTemplates.filter(t => t.is_required).map(t => t.id);
+      if (!requiredIds.length) return;
+      const allDone = requiredIds.every(id =>
+        (tradeChecklistCompletions as any[]).some(
+          c => c.trade_board_id === trade.id && c.checklist_template_id === id && c.completed
+        )
+      );
+      if (!allDone) return;
+      const idx = STAGE_CONFIG.findIndex(s => s.key === stageKey);
+      const next = STAGE_CONFIG[idx + 1];
+      if (!next) return;
+
+      tradeAutoAdvanceRef.current.add(attemptKey);
+      (async () => {
+        const { error } = await supabase
+          .from('production_trade_boards')
+          .update({ current_stage: next.key, updated_at: new Date().toISOString() })
+          .eq('id', trade.id);
+        if (!error) {
+          toast({ title: `${trade.trade_name} advanced`, description: `Moved to ${next.name}` });
+          queryClient.invalidateQueries({ queryKey: ['trade-boards'] });
+        }
+      })();
+    });
+  }, [tradeBoards, checklistTemplates, tradeChecklistCompletions, queryClient, toast]);
+
   // Auto-seed trade boards from estimates if none exist yet for this project.
   const autoSeedTradesAttemptedRef = React.useRef<string | null>(null);
   React.useEffect(() => {
