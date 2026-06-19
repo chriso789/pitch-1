@@ -1227,7 +1227,9 @@ export function DocumentScannerDialog({
       setUploadProgress(100);
       toast({ title: 'PDF Created', description: `${capturedPages.length}-page PDF uploaded.` });
 
-      capturedPages.forEach(p => URL.revokeObjectURL(p.preview));
+      telemetryRef.current.finish();
+      capturedPages.forEach(p => { try { urlRegRef.current.revoke(p.preview); } catch {} URL.revokeObjectURL(p.preview); });
+      urlRegRef.current.revokeAll();
       setCapturedPages([]);
       // Clear persisted scan session once the upload succeeds.
       clearScanSession(pipelineEntryId, documentType).catch(() => {});
@@ -1235,11 +1237,12 @@ export function DocumentScannerDialog({
       onUploadComplete?.();
     } catch (err: any) {
       console.error('PDF generation error:', err);
-      toast({ title: 'Upload Failed', description: err.message || 'Failed to create PDF.', variant: 'destructive' });
+      // Failure-recovery: keep pages + autosave so the user can retry from QA.
+      toast({ title: 'Upload Failed', description: (err?.message || 'Failed to create PDF.') + ' Pages preserved — try again.', variant: 'destructive' });
+      setShowQA(true);
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
-      setShowQA(false);
     }
   };
 
