@@ -431,6 +431,12 @@ const ProductionDetail = () => {
                   .from('production_workflows')
                   .update(updatePayload)
                   .eq('id', workflowId);
+                await supabase
+                  .from('production_trade_boards')
+                  .update({ current_stage: next.key, updated_at: new Date().toISOString() })
+                  .eq('project_id', projectId!)
+                  .eq('tenant_id', effectiveTenantId)
+                  .eq('current_stage', stageKey);
                 return { advancedTo: next.name };
               }
             }
@@ -443,6 +449,7 @@ const ProductionDetail = () => {
       queryClient.invalidateQueries({ queryKey: ['checklist-completions'] });
       queryClient.invalidateQueries({ queryKey: ['production-detail', projectId] });
       queryClient.invalidateQueries({ queryKey: ['production-workflows'] });
+      queryClient.invalidateQueries({ queryKey: ['trade-boards', projectId] });
       if (result?.advancedTo) {
         toast({ title: 'Stage advanced', description: `Moved to ${result.advancedTo}` });
       }
