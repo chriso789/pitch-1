@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Package, Users, Wrench, Calendar, Truck, CheckCircle, Clock, AlertTriangle } from 'lucide-react';
+import { Plus, Package, Users, Wrench, Calendar, Truck, CheckCircle, Clock, AlertTriangle, FileText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface OrderAssignmentsPanelProps {
@@ -52,6 +52,9 @@ type EstimateForOrders = {
   id: string;
   estimate_number?: string | null;
   display_name?: string | null;
+  pdf_url?: string | null;
+  signed_at?: string | null;
+  status?: string | null;
   line_items?: {
     materials?: EstimateLineItem[];
     labor?: EstimateLineItem[];
@@ -76,6 +79,12 @@ type ProductionAssignment = {
 const formatMoney = (amount: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount || 0);
 
+const ORDER_TYPE_TITLES: Record<OrderType, string> = {
+  material: 'Material Order',
+  labor: 'Labor Order',
+  turnkey: 'Turnkey Order',
+};
+
 const buildEstimateOrderRows = ({
   estimate,
   projectId,
@@ -94,38 +103,41 @@ const buildEstimateOrderRows = ({
     { key: 'turnkey', lines: Array.isArray(lineItems.turnkey) ? lineItems.turnkey : [] },
   ];
 
-  return groups.flatMap(({ key, lines }) =>
-    lines
-      .filter(line => line?.item_name)
-      .map((line, index) => {
+  const estimateLabel = estimate.display_name || estimate.estimate_number || 'Estimate';
+
+  return groups
+    .map(({ key, lines }) => {
+      const validLines = lines.filter((line) => line?.item_name);
+      if (!validLines.length) return null;
+
+      let total = 0;
+      const itemBullets = validLines.map((line) => {
         const qty = Number(line.qty ?? line.quantity ?? 0);
         const unit = line.unit || 'ea';
         const unitCost = Number(line.unit_cost ?? line.rate ?? 0);
         const lineTotal = Number(line.line_total ?? qty * unitCost);
-        const tradeLabel = line.trade_label || line.trade_type;
-        return {
-          tenant_id: tenantId,
-          project_id: projectId,
-          estimate_id: estimate.id,
-          order_type: key,
-          title: String(line.item_name).trim(),
-          description: [
-            `Qty: ${qty} ${unit}`,
-            `Unit: ${formatMoney(unitCost)}`,
-            `Total: ${formatMoney(lineTotal)}`,
-            tradeLabel ? `Trade: ${String(tradeLabel).replace(/_/g, ' ')}` : null,
-          ].filter(Boolean).join(' • '),
-          assigned_by: assignedBy || null,
-          status: 'pending',
-          scheduled_date: null,
-          arrival_date: null,
-          assigned_to_vendor_id: null,
-          assigned_to_crew: null,
-          notes: `Synced from estimate ${estimate.display_name || estimate.estimate_number || ''}`.trim(),
-          notify_rep: true,
-        };
-      })
-  );
+        total += lineTotal;
+        return `• ${String(line.item_name).trim()} — ${qty} ${unit} @ ${formatMoney(unitCost)} = ${formatMoney(lineTotal)}`;
+      });
+
+      return {
+        tenant_id: tenantId,
+        project_id: projectId,
+        estimate_id: estimate.id,
+        order_type: key,
+        title: `${ORDER_TYPE_TITLES[key]} – ${estimateLabel}`,
+        description: `${validLines.length} line item${validLines.length === 1 ? '' : 's'} • Total: ${formatMoney(total)}`,
+        assigned_by: assignedBy || null,
+        status: 'pending',
+        scheduled_date: null,
+        arrival_date: null,
+        assigned_to_vendor_id: null,
+        assigned_to_crew: null,
+        notes: itemBullets.join('\n'),
+        notify_rep: true,
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => row !== null);
 };
 
 export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ projectId }) => {
@@ -173,19 +185,26 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
         .single();
       if (projectError) throw projectError;
 
-      const { data, error } = await supabase
+      // Prefer the estimate that was selected/signed at lead conversion
+      const { data: rows, error } = await supabase
         .from('enhanced_estimates')
-        .select('id, tenant_id, project_id, pipeline_entry_id, estimate_number, display_name, line_items, created_at')
+        .select('id, tenant_id, project_id, pipeline_entry_id, estimate_number, display_name, line_items, pdf_url, signed_at, status, accepted_tier, selected_tier, created_at')
         .eq('tenant_id', effectiveTenantId!)
         .or(`project_id.eq.${projectId}${project?.pipeline_entry_id ? `,pipeline_entry_id.eq.${project.pipeline_entry_id}` : ''}`)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .order('created_at', { ascending: false });
       if (error) throw error;
-      if (!data) return null;
-      const rawLineItems = data.line_items;
+      if (!rows || rows.length === 0) return null;
+
+      const isSelected = (r: any) =>
+        !!r.signed_at ||
+        !!r.accepted_tier ||
+        !!r.selected_tier ||
+        ['accepted', 'signed', 'won', 'approved', 'converted'].includes(String(r.status || '').toLowerCase());
+      const chosen = rows.find(isSelected) || rows[0];
+
+      const rawLineItems = chosen.line_items;
       return {
-        ...data,
+        ...chosen,
         line_items: rawLineItems && typeof rawLineItems === 'object' && !Array.isArray(rawLineItems)
           ? rawLineItems as EstimateForOrders['line_items']
           : {},
@@ -262,23 +281,30 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
         tenantId: effectiveTenantId,
         assignedBy: user?.id,
       });
-      const existingKeys = new Set(
-        assignments
-          .filter((assignment) => assignment.estimate_id === projectEstimate.id)
-          .map((assignment) => `${assignment.order_type}:${assignment.title}`)
-      );
-      const newRows = rows
-        .filter((row) => !existingKeys.has(`${row.order_type}:${row.title}`));
-      if (!newRows.length) return { created: 0, skipped: false, silent };
-      const { error } = await supabase.from('production_order_assignments').insert(newRows);
+
+      // Remove any prior synced rows (from any estimate) that haven't been touched yet,
+      // so we collapse the old per-line-item rows into consolidated order rows.
+      const staleIds = assignments
+        .filter((a) => a.status === 'pending' && (a.estimate_id || (a.notes || '').includes('Synced from estimate')))
+        .map((a) => a.id);
+      if (staleIds.length) {
+        const { error: delError } = await supabase
+          .from('production_order_assignments')
+          .delete()
+          .in('id', staleIds);
+        if (delError) throw delError;
+      }
+
+      if (!rows.length) return { created: 0, skipped: false, silent };
+      const { error } = await supabase.from('production_order_assignments').insert(rows);
       if (error) throw error;
-      return { created: newRows.length, skipped: false, silent };
+      return { created: rows.length, skipped: false, silent };
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['order-assignments'] });
       if (!result?.silent) {
         toast({
-          title: result?.created ? 'Estimate orders synced' : 'No new estimate orders',
+          title: result?.created ? 'Estimate orders synced' : 'No estimate orders to sync',
           description: result?.created ? `Created ${result.created} order assignment(s).` : undefined,
         });
       }
@@ -289,12 +315,24 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
   });
 
   React.useEffect(() => {
-    if (!projectEstimate?.id || !effectiveTenantId || assignments.length > 0 || isLoading) return;
+    if (!projectEstimate?.id || !effectiveTenantId || isLoading) return;
     const attemptKey = `${projectId}:${projectEstimate.id}`;
     if (autoSyncAttemptedRef.current === attemptKey) return;
+
+    // Auto-sync when there are no orders yet, OR when stale per-line-item rows
+    // for this estimate exist (more than one per order_type).
+    const fromThisEstimate = assignments.filter((a) => a.estimate_id === projectEstimate.id);
+    const byType = fromThisEstimate.reduce<Record<string, number>>((acc, a) => {
+      acc[a.order_type] = (acc[a.order_type] || 0) + 1;
+      return acc;
+    }, {});
+    const hasStaleDuplicates = Object.values(byType).some((n) => n > 1);
+    if (assignments.length > 0 && !hasStaleDuplicates) return;
+
     autoSyncAttemptedRef.current = attemptKey;
     syncEstimateMutation.mutate({ silent: true });
-  }, [assignments.length, effectiveTenantId, isLoading, projectEstimate?.id, projectId, syncEstimateMutation]);
+  }, [assignments, effectiveTenantId, isLoading, projectEstimate?.id, projectId, syncEstimateMutation]);
+
 
   // Update status
   const updateStatusMutation = useMutation({
@@ -361,7 +399,17 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
                   )}
                 </div>
                 {assignment.notes && (
-                  <p className="text-xs text-muted-foreground mt-1 italic">{assignment.notes}</p>
+                  <pre className="text-xs text-muted-foreground mt-2 whitespace-pre-wrap font-sans">{assignment.notes}</pre>
+                )}
+                {projectEstimate?.pdf_url && assignment.estimate_id === projectEstimate.id && (
+                  <a
+                    href={projectEstimate.pdf_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-2"
+                  >
+                    <FileText className="h-3 w-3" /> View Order PDF
+                  </a>
                 )}
               </div>
             </div>
