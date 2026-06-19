@@ -275,6 +275,30 @@ Deno.serve(async (req) => {
       })
       .eq("id", documentId);
 
+    // Fire-and-forget classification + extraction. Never block OCR completion.
+    try {
+      const internalSecretEnv = Deno.env.get("INTERNAL_WORKER_SECRET") ?? "";
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (internalSecretEnv) headers["x-internal-worker-secret"] = internalSecretEnv;
+      else if (authHeader) headers["Authorization"] = authHeader;
+      fetch(`${SUPABASE_URL}/functions/v1/classify-document`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ document_id: documentId }),
+      })
+        .then(async (r) => {
+          const j = await r.json().catch(() => ({}));
+          if (j?.extraction_ready) {
+            await fetch(`${SUPABASE_URL}/functions/v1/extract-document-fields`, {
+              method: "POST",
+              headers,
+              body: JSON.stringify({ document_id: documentId }),
+            }).catch((e) => console.error("[ocr→extract] dispatch failed", e));
+          }
+        })
+        .catch((e) => console.error("[ocr→classify] dispatch failed", e));
+    } catch (e) { console.error("[ocr post-hook]", e); }
+
     return jsonResponse({ ok: true, chars: text.length, mode: supportedPdf ? "direct_pdf" : "image" });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
