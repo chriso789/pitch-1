@@ -33,10 +33,67 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   cancelled: { label: 'Cancelled', color: 'bg-destructive/10 text-destructive' },
 };
 
+const formatMoney = (amount: number) =>
+  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount || 0);
+
+const buildEstimateOrderRows = ({
+  estimate,
+  projectId,
+  tenantId,
+  assignedBy,
+}: {
+  estimate: any;
+  projectId: string;
+  tenantId: string;
+  assignedBy?: string | null;
+}) => {
+  const lineItems = (estimate?.line_items || {}) as any;
+  const groups: Array<{ key: 'material' | 'labor' | 'turnkey'; lines: any[] }> = [
+    { key: 'material', lines: Array.isArray(lineItems.materials) ? lineItems.materials : [] },
+    { key: 'labor', lines: Array.isArray(lineItems.labor) ? lineItems.labor : [] },
+    { key: 'turnkey', lines: Array.isArray(lineItems.turnkey) ? lineItems.turnkey : [] },
+  ];
+
+  return groups.flatMap(({ key, lines }) =>
+    lines
+      .filter(line => line?.item_name)
+      .map((line, index) => {
+        const qty = Number(line.qty ?? line.quantity ?? 0);
+        const unit = line.unit || 'ea';
+        const unitCost = Number(line.unit_cost ?? line.rate ?? 0);
+        const lineTotal = Number(line.line_total ?? qty * unitCost);
+        const tradeLabel = line.trade_label || line.trade_type;
+        return {
+          tenant_id: tenantId,
+          project_id: projectId,
+          estimate_id: estimate.id,
+          order_type: key,
+          title: String(line.item_name).trim(),
+          description: [
+            `Qty: ${qty} ${unit}`,
+            `Unit: ${formatMoney(unitCost)}`,
+            `Total: ${formatMoney(lineTotal)}`,
+            tradeLabel ? `Trade: ${String(tradeLabel).replace(/_/g, ' ')}` : null,
+          ].filter(Boolean).join(' • '),
+          assigned_by: assignedBy || null,
+          status: 'pending',
+          scheduled_date: null,
+          arrival_date: null,
+          assigned_to_vendor_id: null,
+          assigned_to_crew: null,
+          notes: `Synced from estimate ${estimate.display_name || estimate.estimate_number || ''}`.trim(),
+          notify_rep: true,
+          source_line_id: line.id || `${key}-${index}`,
+        };
+      })
+  );
+};
+
 export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ projectId }) => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const effectiveTenantId = useEffectiveTenantId();
+  const autoSyncAttemptedRef = React.useRef<string | null>(null);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [formData, setFormData] = useState({
     order_type: 'material' as 'material' | 'labor' | 'turnkey',
