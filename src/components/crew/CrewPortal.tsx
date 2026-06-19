@@ -655,14 +655,16 @@ export function CrewPortal() {
 
           <TabsContent value="labor-orders" className="mt-0 space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">My Labor Orders</h2>
-              {myCrew && (
-                <Badge variant="outline" className="text-xs">
-                  Crew: {myCrew.name}
-                </Badge>
-              )}
+              <h2 className="text-lg font-semibold">
+                {isStaff ? 'All Labor Orders' : 'My Labor Orders'}
+              </h2>
+              {isStaff ? (
+                <Badge variant="outline" className="text-xs">Staff view</Badge>
+              ) : myCrew ? (
+                <Badge variant="outline" className="text-xs">Crew: {myCrew.name}</Badge>
+              ) : null}
             </div>
-            {!myCrew ? (
+            {!isStaff && !myCrew ? (
               <Card>
                 <CardContent className="py-8 text-center text-muted-foreground">
                   <AlertTriangle className="h-10 w-10 mx-auto mb-2 opacity-50" />
@@ -674,7 +676,9 @@ export function CrewPortal() {
               <Card>
                 <CardContent className="py-8 text-center text-muted-foreground">
                   <Wrench className="h-10 w-10 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">No labor orders assigned to your crew yet.</p>
+                  <p className="text-sm">
+                    {isStaff ? 'No labor orders yet.' : 'No labor orders assigned to your crew yet.'}
+                  </p>
                 </CardContent>
               </Card>
             ) : (
@@ -694,6 +698,12 @@ export function CrewPortal() {
                         </Badge>
                       </div>
                       <div className="flex flex-wrap gap-3 text-xs text-muted-foreground mt-2">
+                        {isStaff && (
+                          <span className="inline-flex items-center gap-1">
+                            <Wrench className="h-3 w-3" />
+                            Crew: {order.crews?.name || 'Unassigned'}
+                          </span>
+                        )}
                         {order.scheduled_date && (
                           <span className="inline-flex items-center gap-1">
                             <Calendar className="h-3 w-3" />
