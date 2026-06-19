@@ -1439,8 +1439,17 @@ export function DocumentScannerDialog({
             <Switch checked={burnPageNumbers} onCheckedChange={setBurnPageNumbers} className="scale-75" />
             Burn page #
           </label>
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            className="ml-auto flex items-center gap-1 px-2 py-0.5 rounded hover:bg-muted text-muted-foreground"
+            aria-label="Scanner settings"
+          >
+            <SettingsIcon className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Settings</span>
+          </button>
           {isDev && (
-            <label className="flex items-center gap-1.5 cursor-pointer ml-auto">
+            <label className="flex items-center gap-1.5 cursor-pointer">
               <Switch checked={showDiagnostics} onCheckedChange={setShowDiagnostics} className="scale-75" />
               <Bug className="h-3 w-3" /> Diag
             </label>
