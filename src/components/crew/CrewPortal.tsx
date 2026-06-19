@@ -60,22 +60,37 @@ export function CrewPortal() {
   const { jobs, counts, docsStatus, loading, error, refetch } = useCrewDashboard();
   const { user, crewUser, crewProfile, activeCompany, loading: authLoading } = useCrewAuth();
   const { crew: myCrew } = useMyCrew();
+  const { user: currentUser } = useCurrentUser();
 
-  // Labor orders assigned to this crew (RLS-gated to crew_id = current_user_crew_id)
+  // Staff (owner/manager/admin/master/corporate) see ALL labor orders for the tenant.
+  // Crew logins only see orders assigned to their crew_id.
+  const staffRoles = ['master', 'owner', 'corporate', 'office_admin', 'regional_manager', 'sales_manager', 'project_manager'];
+  const isStaff = !!currentUser?.role && staffRoles.includes(currentUser.role);
+  const tenantId = currentUser?.active_tenant_id || currentUser?.tenant_id;
+
+  // Labor orders — scoped by role
   const { data: laborOrders = [], refetch: refetchLaborOrders } = useQuery({
-    queryKey: ['crew-labor-orders', myCrew?.id],
+    queryKey: ['crew-labor-orders', isStaff ? `tenant:${tenantId}` : `crew:${myCrew?.id}`],
     queryFn: async () => {
-      if (!myCrew?.id) return [];
-      const { data, error } = await supabase
+      let query = supabase
         .from('production_order_assignments')
-        .select('id, title, description, status, scheduled_date, arrival_date, notes, project_id, created_at')
+        .select('id, title, description, status, scheduled_date, arrival_date, notes, project_id, created_at, crew_id, crews:crew_id(name)')
         .eq('order_type', 'labor')
-        .eq('crew_id', myCrew.id)
         .order('scheduled_date', { ascending: true, nullsFirst: false });
+
+      if (isStaff && tenantId) {
+        query = query.eq('tenant_id', tenantId);
+      } else if (myCrew?.id) {
+        query = query.eq('crew_id', myCrew.id);
+      } else {
+        return [];
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       return data || [];
     },
-    enabled: !!myCrew?.id,
+    enabled: isStaff ? !!tenantId : !!myCrew?.id,
   });
 
   const handleClockIn = async () => {
