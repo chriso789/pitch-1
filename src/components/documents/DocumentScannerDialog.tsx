@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   X, Camera, Trash2, RotateCcw, Loader2, FileText, Image as ImageIcon,
   Edit2, Zap, ZapOff, ArrowLeft, ArrowRight, RotateCw, Upload, FileUp,
-  Eye, Bug,
+  Eye, Bug, ClipboardCheck,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -24,6 +24,7 @@ import {
 import { CornerStabilityBuffer, validateQuadrilateral, StabilityResult } from '@/utils/documentStability';
 import { enhanceDocumentPro } from '@/utils/documentEnhancementPro';
 import { ManualCropOverlay } from './ManualCropOverlay';
+import { ScannerQAReview } from './ScannerQAReview';
 import { analyzeFrameQuality, evaluateQualityGate, QualityFlags, QualityGateResult } from '@/utils/documentQuality';
 import { classifyAspectRatio, dominantPageSize, getPageSpec, DetectedPageSize } from '@/utils/documentPageSize';
 import { deskewCanvas } from '@/utils/documentDeskew';
@@ -34,6 +35,13 @@ import {
   captureHighResFrame, applyContinuousFocus, classifyShadowSeverity,
   inwardInsetCanvas, rotateBlob, CaptureMethod, ShadowSeverity,
 } from '@/utils/scannerExtras';
+import { computeImageHash, hammingDistance, DUPLICATE_HAMMING_THRESHOLD } from '@/utils/scannerImageHash';
+import { analyzeEdgeForInset } from '@/utils/scannerEdgeAnalysis';
+import {
+  saveScanSession, loadScanSession, clearScanSession,
+  makeScannerSessionId, PersistedScanPage,
+} from '@/utils/scannerSessionStore';
+import { renderImportedPdf } from '@/utils/scannerPdfImport';
 
 interface CapturedPage {
   blob: Blob;
@@ -43,6 +51,7 @@ interface CapturedPage {
   preset: ScanPreset;
   confidence: number | null;
   pageSize: DetectedPageSize;
+  pageSizeOverride?: DetectedPageSize | null;
   deskewAngle: number;
   quality: QualityFlags | null;
   captureMethod: CaptureMethod;
@@ -53,9 +62,12 @@ interface CapturedPage {
   shadowSeverity: ShadowSeverity;
   blurOverridden: boolean;
   rotationApplied: 0 | 90 | 180 | 270;
+  imageHash?: string;
+  edgeCleanupApplied?: boolean;
+  duplicateWarning?: boolean;
 }
 
-const SCANNER_VERSION = '2.2.0';
+const SCANNER_VERSION = '2.3.0';
 const HOLD_STILL_MS = 350;
 const AUTOCAPTURE_HOLD_MS = 1000;
 const AUTOCAPTURE_COOLDOWN_MS = 1500;
@@ -122,7 +134,15 @@ export function DocumentScannerDialog({
   const lastAutoCaptureAtRef = useRef<number>(0);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
+  const capturingRef = useRef<boolean>(false);
+  const scannerSessionIdRef = useRef<string>(makeScannerSessionId());
   const isDev = typeof import.meta !== 'undefined' && (import.meta as any).env?.DEV;
+
+  // Phase additions
+  const [showQA, setShowQA] = useState(false);
+  const [resumePromptSession, setResumePromptSession] = useState<{ pages: number; updatedAt: number } | null>(null);
+  const [pendingResumePages, setPendingResumePages] = useState<PersistedScanPage[] | null>(null);
+  const [importPdfChoice, setImportPdfChoice] = useState<File | null>(null);
 
   // Preload OpenCV
   useEffect(() => {
@@ -142,12 +162,21 @@ export function DocumentScannerDialog({
     return () => clearTimeout(t);
   }, []);
 
-  // Camera lifecycle
+  // Camera lifecycle + resume check
   useEffect(() => {
     if (open) {
       startCamera();
       stabilityBufferRef.current.reset();
       autoStableSinceRef.current = null;
+      scannerSessionIdRef.current = makeScannerSessionId();
+      // Check for unfinished session
+      loadScanSession(pipelineEntryId, documentType).then((existing) => {
+        if (existing && existing.pages.length > 0) {
+          setResumePromptSession({ pages: existing.pages.length, updatedAt: existing.updatedAt });
+          setPendingResumePages(existing.pages);
+          if (existing.scannerSessionId) scannerSessionIdRef.current = existing.scannerSessionId;
+        }
+      });
     } else {
       stopCamera();
       capturedPages.forEach(p => URL.revokeObjectURL(p.preview));
@@ -162,10 +191,55 @@ export function DocumentScannerDialog({
       setRetakeIndex(null);
       setPreviewIndex(null);
       setAutoCountdown(null);
+      setShowQA(false);
+      setResumePromptSession(null);
+      setPendingResumePages(null);
     }
     return () => { stopCamera(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  // Autosave: every time pages change, persist to IndexedDB
+  useEffect(() => {
+    if (!open || capturedPages.length === 0) return;
+    const t = setTimeout(() => {
+      saveScanSession({
+        id: `${pipelineEntryId}::${documentType}`,
+        scannerSessionId: scannerSessionIdRef.current,
+        pipelineEntryId,
+        documentType,
+        documentLabel,
+        scanPreset,
+        pdfProfile,
+        scannerVersion: SCANNER_VERSION,
+        updatedAt: Date.now(),
+        pages: capturedPages.map(p => ({
+          blob: p.blob,
+          cropMode: p.cropMode,
+          colorMode: p.colorMode,
+          preset: p.preset,
+          pageSize: p.pageSize,
+          deskewAngle: p.deskewAngle,
+          confidence: p.confidence,
+          outputWidth: p.outputWidth,
+          outputHeight: p.outputHeight,
+          sourceWidth: p.sourceWidth,
+          sourceHeight: p.sourceHeight,
+          rotationApplied: p.rotationApplied,
+          captureMethod: p.captureMethod,
+          shadowSeverity: p.shadowSeverity,
+          blurOverridden: p.blurOverridden,
+          imageHash: p.imageHash,
+          pageSizeOverride: p.pageSizeOverride ?? null,
+          edgeCleanupApplied: p.edgeCleanupApplied,
+          duplicateWarning: p.duplicateWarning,
+          quality: p.quality,
+        })),
+      });
+    }, 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, capturedPages, scanPreset, pdfProfile]);
 
   // Detection loop
   useEffect(() => {
@@ -381,8 +455,14 @@ export function DocumentScannerDialog({
       const { canvas: deskewed, angle: deskewAngle } = deskewCanvas(enhanced);
       enhanced = deskewed;
 
-      // Inward inset to remove residual edge bleed
-      enhanced = inwardInsetCanvas(enhanced, preset.inwardInsetPct);
+      // Content-aware edge cleanup: skip inset if dark ink (signatures/stamps)
+      // sits near the page edges.
+      const edgeAnalysis = analyzeEdgeForInset(enhanced);
+      let edgeCleanupApplied = false;
+      if (edgeAnalysis.applyInset && preset.inwardInsetPct > 0) {
+        enhanced = inwardInsetCanvas(enhanced, preset.inwardInsetPct);
+        edgeCleanupApplied = true;
+      }
 
       // Optional page-number badge (off by default)
       if (burnPageNumbers) {
@@ -404,6 +484,23 @@ export function DocumentScannerDialog({
       );
       if (!blob) return false;
       const preview = URL.createObjectURL(blob);
+
+      // Perceptual hash + duplicate check against previous page
+      const imageHash = await computeImageHash(blob);
+      let duplicateWarning = false;
+      const prev = capturedPages[capturedPages.length - 1];
+      if (prev?.imageHash && imageHash && retakeIndex === null) {
+        const dist = hammingDistance(prev.imageHash, imageHash);
+        if (dist <= DUPLICATE_HAMMING_THRESHOLD) {
+          duplicateWarning = true;
+          const proceed = confirm('This page looks like the previous scan. Add anyway?');
+          if (!proceed) {
+            URL.revokeObjectURL(preview);
+            return false;
+          }
+        }
+      }
+
       const newPage: CapturedPage = {
         blob,
         preview,
@@ -422,6 +519,9 @@ export function DocumentScannerDialog({
         shadowSeverity,
         blurOverridden,
         rotationApplied: 0,
+        imageHash,
+        edgeCleanupApplied,
+        duplicateWarning,
       };
       setCapturedPages(prev => {
         if (retakeIndex !== null && prev[retakeIndex]) {
@@ -438,7 +538,7 @@ export function DocumentScannerDialog({
       console.error('Processing error:', error);
       return false;
     }
-  }, [capturedPages.length, scanPreset, burnPageNumbers, retakeIndex]);
+  }, [capturedPages, scanPreset, burnPageNumbers, retakeIndex]);
 
   // ============================================================================
   // Capture
@@ -446,6 +546,12 @@ export function DocumentScannerDialog({
 
   const captureAndProcess = useCallback(async () => {
     if (!videoRef.current || !cameraReady) return;
+    // Hard duplicate-capture guard (state is too slow to prevent rapid double taps)
+    if (capturingRef.current) return;
+    capturingRef.current = true;
+    // Cancel any active auto-capture countdown — manual tap wins.
+    autoStableSinceRef.current = null;
+    setAutoCountdown(null);
 
     setIsProcessing(true);
     try {
@@ -483,6 +589,7 @@ export function DocumentScannerDialog({
         const proceed = confirm('Image looks blurry. Capture anyway?');
         if (!proceed) {
           setIsProcessing(false);
+          capturingRef.current = false;
           return;
         }
         blurOverridden = true;
@@ -541,6 +648,7 @@ export function DocumentScannerDialog({
       toast({ title: 'Capture Failed', description: 'Failed to capture. Try again.', variant: 'destructive' });
     } finally {
       setIsProcessing(false);
+      capturingRef.current = false;
     }
   }, [cameraReady, processAndAddPage, qualityGate, videoWidth, videoHeight]);
 
@@ -688,10 +796,13 @@ export function DocumentScannerDialog({
         document_type: documentType,
         document_label: documentLabel,
         scanner_version: SCANNER_VERSION,
+        scanner_session_id: scannerSessionIdRef.current,
         captured_at: new Date(timestamp).toISOString(),
         storage_path: fileName,
         original_filename: file.name,
         final_size_bytes: file.size,
+        imported_pdf_mode: 'original' as const,
+        original_file_size_bytes: file.size,
       };
 
       const { data: insertedDoc, error: dbError } = await supabase
@@ -726,6 +837,74 @@ export function DocumentScannerDialog({
       setUploadProgress(0);
     }
   };
+
+  // Lazy-render imported PDF pages through pdf.js and stage them as scans.
+  // On any failure, falls back to uploading the original PDF.
+  const handleImportPdfRebuild = async (file: File) => {
+    setIsProcessing(true);
+    try {
+      let rendered;
+      try {
+        rendered = await renderImportedPdf(file, { targetDpi: 220, maxPages: 50 });
+      } catch (e) {
+        console.warn('[scanner] pdf.js unavailable, falling back to original upload', e);
+        toast({
+          title: 'PDF cleanup unavailable',
+          description: 'Cleanup engine could not load. Uploading original PDF instead.',
+        });
+        await handleImportPdf(file);
+        return;
+      }
+      if (!rendered.length) {
+        toast({ title: 'Empty PDF', description: 'No pages could be rendered.', variant: 'destructive' });
+        return;
+      }
+      const newPages: CapturedPage[] = [];
+      for (const r of rendered) {
+        const blob: Blob | null = await new Promise((resolve) =>
+          r.canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.92),
+        );
+        if (!blob) continue;
+        const hash = await computeImageHash(blob);
+        const ratio = r.heightPx / r.widthPx;
+        const pageSize: DetectedPageSize =
+          Math.abs(ratio - 11 / 8.5) < 0.05 ? 'letter'
+            : Math.abs(ratio - 14 / 8.5) < 0.05 ? 'legal'
+              : Math.abs(ratio - 297 / 210) < 0.05 ? 'a4'
+                : 'unknown';
+        newPages.push({
+          blob,
+          preview: URL.createObjectURL(blob),
+          cropMode: 'auto',
+          colorMode: 'color',
+          preset: scanPreset,
+          confidence: 1,
+          pageSize,
+          deskewAngle: 0,
+          quality: null,
+          captureMethod: 'imported_pdf_rebuilt',
+          sourceWidth: r.widthPx,
+          sourceHeight: r.heightPx,
+          outputWidth: r.widthPx,
+          outputHeight: r.heightPx,
+          shadowSeverity: 'none',
+          blurOverridden: false,
+          rotationApplied: 0,
+          imageHash: hash,
+          edgeCleanupApplied: false,
+          duplicateWarning: false,
+        });
+      }
+      setCapturedPages(prev => [...prev, ...newPages]);
+      toast({
+        title: 'PDF rebuilt',
+        description: `${newPages.length} page${newPages.length === 1 ? '' : 's'} added — review and upload when ready.`,
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
 
   // ============================================================================
   // PDF build
@@ -815,7 +994,7 @@ export function DocumentScannerDialog({
   // Upload
   // ============================================================================
 
-  const handleBatchUpload = async () => {
+  const handleBatchUpload = async (qaAcknowledged: boolean = false) => {
     if (capturedPages.length === 0) {
       toast({ title: 'No Pages', description: 'Capture at least one page.', variant: 'destructive' });
       return;
@@ -900,6 +1079,14 @@ export function DocumentScannerDialog({
         captured_at: new Date(timestamp).toISOString(),
         storage_path: fileName,
         compressed,
+        scanner_session_id: scannerSessionIdRef.current,
+        qa_reviewed: true,
+        qa_warnings_acknowledged: qaAcknowledged,
+        actual_size_bytes: pdfBlob.size,
+        page_size_overrides: capturedPages.map(p => p.pageSizeOverride ?? null),
+        edge_cleanup_applied: capturedPages.map(p => !!p.edgeCleanupApplied),
+        duplicate_warning_pages: capturedPages.filter(p => p.duplicateWarning).length,
+        imported_pdf_mode: capturedPages.every(p => p.captureMethod === 'imported_pdf_rebuilt') ? 'cleaned_rebuilt' as const : undefined,
       };
 
       const scanQuality = {
@@ -941,7 +1128,7 @@ export function DocumentScannerDialog({
           uploaded_by: user.id,
           description: `Scanned ${capturedPages.length}-page ${documentLabel}`,
           page_count: capturedPages.length,
-          scan_source: 'camera',
+          scan_source: capturedPages.every(p => p.captureMethod === 'imported_pdf_rebuilt') ? 'imported_pdf' : 'camera',
           metadata: scanMetadata,
           scan_quality: scanQuality,
           ocr_status: 'processing',
@@ -957,6 +1144,8 @@ export function DocumentScannerDialog({
 
       capturedPages.forEach(p => URL.revokeObjectURL(p.preview));
       setCapturedPages([]);
+      // Clear persisted scan session once the upload succeeds.
+      clearScanSession(pipelineEntryId, documentType).catch(() => {});
       onOpenChange(false);
       onUploadComplete?.();
     } catch (err: any) {
@@ -965,15 +1154,82 @@ export function DocumentScannerDialog({
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
+      setShowQA(false);
     }
   };
 
   const handleClose = () => {
     if (capturedPages.length > 0 && !isUploading) {
-      if (!confirm(`Discard ${capturedPages.length} captured page${capturedPages.length > 1 ? 's' : ''}?`)) return;
+      const proceed = confirm(
+        `Keep ${capturedPages.length} captured page${capturedPages.length > 1 ? 's' : ''} for next time? ` +
+        `Click OK to keep, Cancel to discard.`
+      );
+      if (!proceed) {
+        clearScanSession(pipelineEntryId, documentType).catch(() => {});
+      }
     }
     onOpenChange(false);
   };
+
+  // QA-screen entry point bound to the Upload button.
+  const openQAReview = () => {
+    if (capturedPages.length === 0) {
+      toast({ title: 'No Pages', description: 'Capture at least one page.', variant: 'destructive' });
+      return;
+    }
+    setShowQA(true);
+  };
+
+  // Per-page override of page size (used from QA screen)
+  const setPageSizeOverride = (index: number, size: DetectedPageSize) => {
+    setCapturedPages(prev => {
+      const next = [...prev];
+      if (!next[index]) return prev;
+      next[index] = { ...next[index], pageSizeOverride: size === 'unknown' ? null : size, pageSize: size === 'unknown' ? next[index].pageSize : size };
+      return next;
+    });
+  };
+
+  const copyScannerDiagnostics = async () => {
+    const diagnostics = {
+      scanner_version: SCANNER_VERSION,
+      scanner_session_id: scannerSessionIdRef.current,
+      browser: navigator.userAgent,
+      opencv_ready: opencvReady,
+      opencv_failed: opencvFailed,
+      detector_engine: opencvReady ? 'opencv' : 'fallback',
+      scan_preset: scanPreset,
+      pdf_profile: pdfProfile,
+      auto_capture: autoCapture,
+      video_dimensions: { w: videoWidth, h: videoHeight },
+      torch_supported: torchSupported,
+      page_count: capturedPages.length,
+      per_page: capturedPages.map((p, i) => ({
+        index: i,
+        capture_method: p.captureMethod,
+        source: { w: p.sourceWidth, h: p.sourceHeight },
+        output: { w: p.outputWidth, h: p.outputHeight },
+        page_size: p.pageSize,
+        page_size_override: p.pageSizeOverride ?? null,
+        confidence: p.confidence,
+        deskew_angle: p.deskewAngle,
+        crop_mode: p.cropMode,
+        color_mode: p.colorMode,
+        shadow_severity: p.shadowSeverity,
+        blur_overridden: p.blurOverridden,
+        duplicate_warning: !!p.duplicateWarning,
+        edge_cleanup_applied: !!p.edgeCleanupApplied,
+        // Intentionally omitting image data and OCR/customer text.
+      })),
+    };
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(diagnostics, null, 2));
+      toast({ title: 'Diagnostics copied', description: 'Scanner JSON copied to clipboard.' });
+    } catch {
+      toast({ title: 'Copy failed', description: 'Clipboard unavailable.', variant: 'destructive' });
+    }
+  };
+
 
   const handleForceManualCrop = useCallback(async () => {
     if (!videoRef.current || !cameraReady) return;
@@ -1305,7 +1561,7 @@ export function DocumentScannerDialog({
           <input ref={photoInputRef} type="file" accept="image/*" className="hidden"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImportPhoto(f); e.currentTarget.value = ''; }} />
           <input ref={pdfInputRef} type="file" accept="application/pdf" className="hidden"
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImportPdf(f); e.currentTarget.value = ''; }} />
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) setImportPdfChoice(f); e.currentTarget.value = ''; }} />
           <Button variant="outline" size="sm" onClick={() => photoInputRef.current?.click()}
             disabled={isUploading || isProcessing} className="flex-1">
             <Upload className="h-4 w-4 mr-1" /> Import Photo
@@ -1353,15 +1609,121 @@ export function DocumentScannerDialog({
               : <Camera className="h-6 w-6 text-primary-foreground" />}
           </button>
           <Button
-            onClick={handleBatchUpload}
+            onClick={openQAReview}
             disabled={capturedPages.length === 0 || isUploading || isProcessing}
             className="flex-1 sm:flex-none gradient-primary"
           >
             {isUploading
               ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Uploading...</>
-              : `Upload (${capturedPages.length})`}
+              : <><ClipboardCheck className="h-4 w-4 mr-1" />Review ({capturedPages.length})</>}
           </Button>
         </div>
+
+        {/* Resume-prompt overlay */}
+        {resumePromptSession && (
+          <div className="absolute inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+            <div className="bg-background rounded-lg p-5 max-w-sm w-full space-y-3 shadow-2xl">
+              <div className="font-semibold">Resume unfinished scan?</div>
+              <p className="text-sm text-muted-foreground">
+                We saved {resumePromptSession.pages} page{resumePromptSession.pages === 1 ? '' : 's'} from
+                a previous session ({new Date(resumePromptSession.updatedAt).toLocaleString()}).
+              </p>
+              <div className="flex gap-2 justify-end">
+                <Button variant="ghost" size="sm" onClick={async () => {
+                  await clearScanSession(pipelineEntryId, documentType);
+                  setResumePromptSession(null);
+                  setPendingResumePages(null);
+                }}>Discard</Button>
+                <Button size="sm" onClick={async () => {
+                  if (pendingResumePages) {
+                    const restored: CapturedPage[] = pendingResumePages.map((p) => ({
+                      blob: p.blob,
+                      preview: URL.createObjectURL(p.blob),
+                      cropMode: p.cropMode,
+                      colorMode: p.colorMode,
+                      preset: p.preset as ScanPreset,
+                      confidence: p.confidence,
+                      pageSize: p.pageSize as DetectedPageSize,
+                      pageSizeOverride: (p.pageSizeOverride ?? null) as DetectedPageSize | null,
+                      deskewAngle: p.deskewAngle,
+                      quality: p.quality ?? null,
+                      captureMethod: p.captureMethod as CaptureMethod,
+                      sourceWidth: p.sourceWidth,
+                      sourceHeight: p.sourceHeight,
+                      outputWidth: p.outputWidth,
+                      outputHeight: p.outputHeight,
+                      shadowSeverity: p.shadowSeverity as ShadowSeverity,
+                      blurOverridden: p.blurOverridden,
+                      rotationApplied: p.rotationApplied,
+                      imageHash: p.imageHash,
+                      edgeCleanupApplied: p.edgeCleanupApplied,
+                      duplicateWarning: p.duplicateWarning,
+                    }));
+                    setCapturedPages(restored);
+                  }
+                  setResumePromptSession(null);
+                  setPendingResumePages(null);
+                }}>Resume</Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Imported PDF choice */}
+        {importPdfChoice && (
+          <div className="absolute inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+            <div className="bg-background rounded-lg p-5 max-w-sm w-full space-y-3 shadow-2xl">
+              <div className="font-semibold">Import PDF</div>
+              <p className="text-sm text-muted-foreground">
+                {importPdfChoice.name} ({(importPdfChoice.size / 1024 / 1024).toFixed(1)} MB).
+                Upload as-is, or rebuild it through the scanner pipeline for cleaner pages.
+              </p>
+              <div className="grid grid-cols-1 gap-2">
+                <Button variant="outline" size="sm" onClick={async () => {
+                  const f = importPdfChoice;
+                  setImportPdfChoice(null);
+                  await handleImportPdf(f);
+                }}>Upload Original</Button>
+                <Button variant="outline" size="sm" onClick={async () => {
+                  const f = importPdfChoice;
+                  setImportPdfChoice(null);
+                  await handleImportPdfRebuild(f);
+                }}>Clean / Rebuild PDF</Button>
+                <Button variant="ghost" size="sm" onClick={() => setImportPdfChoice(null)}>Cancel</Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Final QA review overlay */}
+        {showQA && (
+          <div className="absolute inset-0 z-40 bg-background flex flex-col">
+            <ScannerQAReview
+              pages={capturedPages.map(p => ({
+                preview: p.preview,
+                pageSize: p.pageSize,
+                pageSizeOverride: p.pageSizeOverride ?? null,
+                colorMode: p.colorMode,
+                cropMode: p.cropMode,
+                blurOverridden: p.blurOverridden,
+                shadowSeverity: p.shadowSeverity,
+                duplicateWarning: p.duplicateWarning,
+                quality: p.quality,
+                edgeCleanupApplied: p.edgeCleanupApplied,
+              }))}
+              pdfProfile={pdfProfile}
+              onBack={() => setShowQA(false)}
+              onUpload={(ack) => handleBatchUpload(ack)}
+              onPreview={(i) => { setShowQA(false); setPreviewIndex(i); }}
+              onRetake={(i) => { setShowQA(false); startRetake(i); }}
+              onDelete={(i) => removePage(i)}
+              onRotate={(i, deg) => rotatePage(i, deg)}
+              onMove={(i, d) => movePage(i, d)}
+              onChangePageSize={(i, sz) => setPageSizeOverride(i, sz)}
+              onCopyDiagnostics={copyScannerDiagnostics}
+            />
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );
