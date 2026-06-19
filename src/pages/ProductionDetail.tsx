@@ -341,6 +341,39 @@ const ProductionDetail = () => {
     },
   });
 
+  // Convert a location-specific checklist item to company-wide (location_id = null).
+  // Lets admins fix items that got pinned to one location by mistake.
+  const makeCompanyWideMutation = useMutation({
+    mutationFn: async (templateId: string) => {
+      await supabase
+        .from('production_checklist_templates')
+        .update({ location_id: null, updated_at: new Date().toISOString() })
+        .eq('id', templateId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['checklist-templates'] });
+      toast({ title: 'Item now applies to all locations' });
+    },
+  });
+
+  // Load locations so we can label scoped checklist items in the manage tab.
+  const { data: tenantLocations = [] } = useQuery({
+    queryKey: ['tenant-locations', effectiveTenantId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('locations')
+        .select('id, name')
+        .eq('tenant_id', effectiveTenantId!);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!effectiveTenantId,
+  });
+  const locationNameById = React.useMemo(
+    () => Object.fromEntries(tenantLocations.map((l: any) => [l.id, l.name])),
+    [tenantLocations]
+  );
+
   // Move trade board stage
   const moveTradeStage = useMutation({
     mutationFn: async ({ tradeBoardId, newStage }: { tradeBoardId: string; newStage: string }) => {
