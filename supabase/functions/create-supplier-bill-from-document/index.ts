@@ -127,24 +127,27 @@ Deno.serve(async (req) => {
     }
 
     // Audit events
-    const events = [
-      { event_type: "bill_created", payload: { bill_id: bill.id } },
-      { event_type: "bill_lines_created", payload: { bill_id: bill.id, count: lines.length } },
+    const events: Array<{ action_key: string; new_value: Record<string, unknown> }> = [
+      { action_key: "bill_created", new_value: { bill_id: bill.id } },
+      { action_key: "bill_lines_created", new_value: { bill_id: bill.id, count: lines.length } },
     ];
-    if (insertBill.duplicate_of) events.push({ event_type: "duplicate_detected", payload: { bill_id: bill.id, duplicate_of: insertBill.duplicate_of } });
+    if (insertBill.duplicate_of) events.push({ action_key: "duplicate_detected", new_value: { bill_id: bill.id, duplicate_of: insertBill.duplicate_of } });
     if (insertBill.pipeline_entry_id || insertBill.job_id) {
-      events.push({ event_type: "linked_to_job", payload: { bill_id: bill.id, pipeline_entry_id: insertBill.pipeline_entry_id, job_id: insertBill.job_id } });
+      events.push({ action_key: "linked_to_job", new_value: { bill_id: bill.id, pipeline_entry_id: insertBill.pipeline_entry_id, job_id: insertBill.job_id } });
     }
     for (const e of events) {
       await admin.from("ai_document_workflow_events").insert({
         tenant_id: ex.tenant_id,
         extraction_id: ex.id,
         document_id: ex.document_id,
-        workflow_kind: "supplier_invoice",
-        event_type: e.event_type,
-        outcome: "applied",
-        payload: e.payload,
-        triggered_by: u.user.id,
+        workflow_type: "supplier_invoice",
+        action_key: e.action_key,
+        target_table: "supplier_bills",
+        target_id: bill.id,
+        status: "applied",
+        new_value: e.new_value,
+        executed_by: u.user.id,
+        executed_at: new Date().toISOString(),
       });
     }
 
