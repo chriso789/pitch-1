@@ -232,6 +232,48 @@ const ProductionDetail = () => {
     })();
   }, [projectData?.workflow, checklistTemplates, checklistCompletions, projectId, queryClient, toast]);
 
+  // Auto-seed trade boards from estimates if none exist yet for this project.
+  const autoSeedTradesAttemptedRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    const workflow = projectData?.workflow;
+    const estimates = projectData?.enhancedEstimates || [];
+    if (!workflow?.id || !effectiveTenantId || !projectId) return;
+    if (tradeBoards.length > 0) return;
+    if (estimates.length === 0) return;
+    const attemptKey = `${projectId}:${workflow.id}`;
+    if (autoSeedTradesAttemptedRef.current === attemptKey) return;
+    autoSeedTradesAttemptedRef.current = attemptKey;
+
+    (async () => {
+      const tradeSet = new Set<string>();
+      for (const est of estimates as any[]) {
+        const name = String(est.display_name || est.estimate_number || '').toLowerCase();
+        if (name.includes('gutter')) tradeSet.add('gutters');
+        else if (name.includes('siding')) tradeSet.add('siding');
+        else if (name.includes('solar')) tradeSet.add('solar');
+        else if (name.includes('coating')) tradeSet.add('coating');
+        else if (name.includes('window')) tradeSet.add('windows');
+        else if (name.includes('paint')) tradeSet.add('painting');
+        else tradeSet.add('roofing');
+      }
+      if (!tradeSet.size) return;
+      const rows = Array.from(tradeSet).map((t) => ({
+        tenant_id: effectiveTenantId!,
+        project_id: projectId,
+        production_workflow_id: workflow.id,
+        trade_name: t.charAt(0).toUpperCase() + t.slice(1),
+        trade_type: t,
+        current_stage: workflow.current_stage || 'submit_documents',
+      }));
+      const { error } = await supabase.from('production_trade_boards').insert(rows);
+      if (!error) {
+        queryClient.invalidateQueries({ queryKey: ['trade-boards', projectId] });
+      }
+    })();
+  }, [projectData?.workflow, projectData?.enhancedEstimates, tradeBoards.length, effectiveTenantId, projectId, queryClient]);
+
+
+
 
 
   // Toggle checklist item completion
