@@ -123,6 +123,47 @@ export const DocumentExtractionPanel: React.FC<Props> = ({ documentId }) => {
     await invoke('extract-document-fields', { document_id: documentId, document_class: cls, force: true });
   };
 
+  const generatePlan = async () => {
+    if (!row) return;
+    setBusy('plan');
+    try {
+      const { data, error } = await supabase.functions.invoke('plan-document-apply', { body: { extraction_id: row.id } });
+      if (error) throw error;
+      toast.success(`Generated ${data?.suggestions?.length ?? 0} suggestion(s)`);
+      await loadEvents(row.id);
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Plan failed');
+    } finally { setBusy(null); }
+  };
+
+  const applySelected = async (approveConflicts = false) => {
+    if (!row) return;
+    const ids = Object.entries(selected).filter(([, v]) => v).map(([k]) => k);
+    if (!ids.length) { toast.info('Select at least one suggestion'); return; }
+    setBusy('apply');
+    try {
+      const { data, error } = await supabase.functions.invoke('apply-document-fields', {
+        body: { extraction_id: row.id, apply_event_ids: ids, approve_conflicts: approveConflicts },
+      });
+      if (error) throw error;
+      const applied = (data?.results ?? []).filter((r: any) => r.status === 'applied').length;
+      toast.success(`Applied ${applied} field(s)`);
+      await load();
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Apply failed');
+    } finally { setBusy(null); }
+  };
+
+  const rejectSelected = async () => {
+    const ids = Object.entries(selected).filter(([, v]) => v).map(([k]) => k);
+    if (!ids.length) return;
+    await supabase.from('ai_document_apply_events' as any)
+      .update({ apply_status: 'rejected', apply_reason: 'user rejected' })
+      .in('id', ids);
+    toast.success(`Rejected ${ids.length} suggestion(s)`);
+    if (row) await loadEvents(row.id);
+  };
+
   if (loading) {
     return <Card><CardContent className="p-6 flex items-center gap-2 text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" /> Loading extraction…</CardContent></Card>;
   }
@@ -213,6 +254,88 @@ export const DocumentExtractionPanel: React.FC<Props> = ({ documentId }) => {
                     ))}
                     {Object.keys(row.normalized_fields ?? {}).length === 0 && (
                       <tr><td className="text-muted-foreground italic py-2">No fields extracted yet.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="space-y-2 border-t pt-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="text-sm font-medium flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 text-amber-600" />
+                  CRM Apply Suggestions
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  <Button size="sm" variant="outline" disabled={!!busy} onClick={generatePlan}>
+                    {busy === 'plan' ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Sparkles className="w-3 h-3 mr-1" />}
+                    Generate Apply Plan
+                  </Button>
+                  <Button size="sm" disabled={!!busy || !events.length} onClick={() => applySelected(false)}>
+                    {busy === 'apply' ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <CheckCircle2 className="w-3 h-3 mr-1" />}
+                    Apply Selected Safe Fields
+                  </Button>
+                  <Button size="sm" variant="outline" disabled={!!busy || !events.length} onClick={() => applySelected(true)}>
+                    Mark Conflict Resolved
+                  </Button>
+                  <Button size="sm" variant="outline" disabled={!!busy || !events.length} onClick={rejectSelected}>
+                    Reject Selected
+                  </Button>
+                </div>
+              </div>
+              <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 flex items-start gap-2">
+                <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                AI-extracted values can be wrong. Review financial/legal fields before applying.
+              </div>
+              <div className="rounded border overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/40">
+                    <tr className="text-left">
+                      <th className="p-2 w-8"></th>
+                      <th className="p-2">Target</th>
+                      <th className="p-2">Field</th>
+                      <th className="p-2">Current</th>
+                      <th className="p-2">Suggested</th>
+                      <th className="p-2">Confidence</th>
+                      <th className="p-2">Status</th>
+                      <th className="p-2">Reason</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {events.map((e) => {
+                      const sensitive = SENSITIVE_FIELDS.has(e.field_name);
+                      const done = ['applied','rejected','skipped','failed'].includes(e.apply_status);
+                      return (
+                        <tr key={e.id} className="border-t align-top">
+                          <td className="p-2">
+                            <Checkbox
+                              checked={!!selected[e.id]}
+                              disabled={done}
+                              onCheckedChange={(v) => setSelected((s) => ({ ...s, [e.id]: !!v }))}
+                            />
+                          </td>
+                          <td className="p-2 font-mono">{e.target_table}</td>
+                          <td className="p-2 font-mono flex items-center gap-1">
+                            {sensitive && <Lock className="w-3 h-3 text-amber-600" />}
+                            {e.field_name}
+                          </td>
+                          <td className="p-2 break-all max-w-[160px]">{e.old_value == null ? <span className="text-muted-foreground italic">empty</span> : String(e.old_value)}</td>
+                          <td className="p-2 break-all max-w-[200px]">{e.new_value == null ? '' : typeof e.new_value === 'object' ? JSON.stringify(e.new_value) : String(e.new_value)}</td>
+                          <td className="p-2">{e.confidence != null ? `${Math.round(Number(e.confidence) * 100)}%` : '—'}</td>
+                          <td className="p-2">
+                            <Badge variant={
+                              e.apply_status === 'applied' ? 'default' :
+                              e.apply_status === 'conflict' ? 'destructive' :
+                              e.apply_status === 'failed' || e.apply_status === 'rejected' ? 'destructive' :
+                              'outline'
+                            }>{e.apply_status}</Badge>
+                          </td>
+                          <td className="p-2 text-muted-foreground">{e.apply_reason}</td>
+                        </tr>
+                      );
+                    })}
+                    {events.length === 0 && (
+                      <tr><td colSpan={8} className="p-3 text-muted-foreground italic text-center">No apply plan yet. Click “Generate Apply Plan”.</td></tr>
                     )}
                   </tbody>
                 </table>
