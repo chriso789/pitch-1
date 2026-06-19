@@ -52,6 +52,9 @@ type EstimateForOrders = {
   id: string;
   estimate_number?: string | null;
   display_name?: string | null;
+  pdf_url?: string | null;
+  signed_at?: string | null;
+  status?: string | null;
   line_items?: {
     materials?: EstimateLineItem[];
     labor?: EstimateLineItem[];
@@ -76,6 +79,12 @@ type ProductionAssignment = {
 const formatMoney = (amount: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount || 0);
 
+const ORDER_TYPE_TITLES: Record<OrderType, string> = {
+  material: 'Material Order',
+  labor: 'Labor Order',
+  turnkey: 'Turnkey Order',
+};
+
 const buildEstimateOrderRows = ({
   estimate,
   projectId,
@@ -94,38 +103,41 @@ const buildEstimateOrderRows = ({
     { key: 'turnkey', lines: Array.isArray(lineItems.turnkey) ? lineItems.turnkey : [] },
   ];
 
-  return groups.flatMap(({ key, lines }) =>
-    lines
-      .filter(line => line?.item_name)
-      .map((line, index) => {
+  const estimateLabel = estimate.display_name || estimate.estimate_number || 'Estimate';
+
+  return groups
+    .map(({ key, lines }) => {
+      const validLines = lines.filter((line) => line?.item_name);
+      if (!validLines.length) return null;
+
+      let total = 0;
+      const itemBullets = validLines.map((line) => {
         const qty = Number(line.qty ?? line.quantity ?? 0);
         const unit = line.unit || 'ea';
         const unitCost = Number(line.unit_cost ?? line.rate ?? 0);
         const lineTotal = Number(line.line_total ?? qty * unitCost);
-        const tradeLabel = line.trade_label || line.trade_type;
-        return {
-          tenant_id: tenantId,
-          project_id: projectId,
-          estimate_id: estimate.id,
-          order_type: key,
-          title: String(line.item_name).trim(),
-          description: [
-            `Qty: ${qty} ${unit}`,
-            `Unit: ${formatMoney(unitCost)}`,
-            `Total: ${formatMoney(lineTotal)}`,
-            tradeLabel ? `Trade: ${String(tradeLabel).replace(/_/g, ' ')}` : null,
-          ].filter(Boolean).join(' • '),
-          assigned_by: assignedBy || null,
-          status: 'pending',
-          scheduled_date: null,
-          arrival_date: null,
-          assigned_to_vendor_id: null,
-          assigned_to_crew: null,
-          notes: `Synced from estimate ${estimate.display_name || estimate.estimate_number || ''}`.trim(),
-          notify_rep: true,
-        };
-      })
-  );
+        total += lineTotal;
+        return `• ${String(line.item_name).trim()} — ${qty} ${unit} @ ${formatMoney(unitCost)} = ${formatMoney(lineTotal)}`;
+      });
+
+      return {
+        tenant_id: tenantId,
+        project_id: projectId,
+        estimate_id: estimate.id,
+        order_type: key,
+        title: `${ORDER_TYPE_TITLES[key]} – ${estimateLabel}`,
+        description: `${validLines.length} line item${validLines.length === 1 ? '' : 's'} • Total: ${formatMoney(total)}`,
+        assigned_by: assignedBy || null,
+        status: 'pending',
+        scheduled_date: null,
+        arrival_date: null,
+        assigned_to_vendor_id: null,
+        assigned_to_crew: null,
+        notes: itemBullets.join('\n'),
+        notify_rep: true,
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => row !== null);
 };
 
 export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ projectId }) => {
