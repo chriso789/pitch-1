@@ -171,6 +171,54 @@ const ProductionDetail = () => {
     enabled: tradeBoards.length > 0,
   });
 
+  // Auto-advance on load: if all required, visible items for current_stage are
+  // already completed (e.g. checked before advance logic shipped) but workflow
+  // is still parked there, advance it forward automatically.
+  const autoAdvanceAttemptedRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    const workflow = projectData?.workflow;
+    if (!workflow?.id || !workflow?.current_stage) return;
+    if (!checklistTemplates.length) return;
+    const stageKey = workflow.current_stage;
+    const attemptKey = `${workflow.id}:${stageKey}`;
+    if (autoAdvanceAttemptedRef.current === attemptKey) return;
+
+    const stageTemplates = (checklistTemplates as any[]).filter(t => t.stage_key === stageKey);
+    const requiredIds = stageTemplates.filter(t => t.is_required).map(t => t.id);
+    if (!requiredIds.length) return;
+    const allDone = requiredIds.every(id =>
+      (checklistCompletions as any[]).some(c => c.checklist_template_id === id && c.completed)
+    );
+    if (!allDone) return;
+    const idx = STAGE_CONFIG.findIndex(s => s.key === stageKey);
+    const next = STAGE_CONFIG[idx + 1];
+    if (!next) return;
+
+    autoAdvanceAttemptedRef.current = attemptKey;
+    (async () => {
+      const updatePayload: any = {
+        current_stage: next.key,
+        stage_changed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      if (stageKey === 'submit_documents') {
+        updatePayload.noc_uploaded = true;
+        updatePayload.permit_application_submitted = true;
+      }
+      const { error } = await supabase
+        .from('production_workflows')
+        .update(updatePayload)
+        .eq('id', workflow.id);
+      if (!error) {
+        toast({ title: 'Stage advanced', description: `Moved to ${next.name}` });
+        queryClient.invalidateQueries({ queryKey: ['production-detail', projectId] });
+        queryClient.invalidateQueries({ queryKey: ['production-workflows'] });
+      }
+    })();
+  }, [projectData?.workflow, checklistTemplates, checklistCompletions, projectId, queryClient, toast]);
+
+
+
   // Toggle checklist item completion
   const toggleChecklistMutation = useMutation({
     mutationFn: async ({ templateId, completed }: { templateId: string; completed: boolean }) => {
