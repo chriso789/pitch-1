@@ -2767,6 +2767,7 @@ export type Database = {
           id: string
           job_id: string | null
           lead_id: string | null
+          match_metadata: Json
           model_name: string | null
           model_version: string | null
           normalized_fields: Json
@@ -2777,6 +2778,7 @@ export type Database = {
           tenant_id: string
           updated_at: string
           validation_flags: Json
+          workflow_metadata: Json
         }
         Insert: {
           approved_at?: string | null
@@ -2790,6 +2792,7 @@ export type Database = {
           id?: string
           job_id?: string | null
           lead_id?: string | null
+          match_metadata?: Json
           model_name?: string | null
           model_version?: string | null
           normalized_fields?: Json
@@ -2800,6 +2803,7 @@ export type Database = {
           tenant_id: string
           updated_at?: string
           validation_flags?: Json
+          workflow_metadata?: Json
         }
         Update: {
           approved_at?: string | null
@@ -2813,6 +2817,7 @@ export type Database = {
           id?: string
           job_id?: string | null
           lead_id?: string | null
+          match_metadata?: Json
           model_name?: string | null
           model_version?: string | null
           normalized_fields?: Json
@@ -2823,6 +2828,7 @@ export type Database = {
           tenant_id?: string
           updated_at?: string
           validation_flags?: Json
+          workflow_metadata?: Json
         }
         Relationships: [
           {
@@ -2830,6 +2836,68 @@ export type Database = {
             columns: ["document_id"]
             isOneToOne: false
             referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_document_workflow_events: {
+        Row: {
+          action_key: string
+          created_at: string
+          document_id: string | null
+          executed_at: string | null
+          executed_by: string | null
+          extraction_id: string
+          id: string
+          new_value: Json | null
+          old_value: Json | null
+          reason: string | null
+          status: string
+          target_id: string | null
+          target_table: string | null
+          tenant_id: string
+          workflow_type: string
+        }
+        Insert: {
+          action_key: string
+          created_at?: string
+          document_id?: string | null
+          executed_at?: string | null
+          executed_by?: string | null
+          extraction_id: string
+          id?: string
+          new_value?: Json | null
+          old_value?: Json | null
+          reason?: string | null
+          status?: string
+          target_id?: string | null
+          target_table?: string | null
+          tenant_id: string
+          workflow_type: string
+        }
+        Update: {
+          action_key?: string
+          created_at?: string
+          document_id?: string | null
+          executed_at?: string | null
+          executed_by?: string | null
+          extraction_id?: string
+          id?: string
+          new_value?: Json | null
+          old_value?: Json | null
+          reason?: string | null
+          status?: string
+          target_id?: string | null
+          target_table?: string | null
+          tenant_id?: string
+          workflow_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_document_workflow_events_extraction_id_fkey"
+            columns: ["extraction_id"]
+            isOneToOne: false
+            referencedRelation: "ai_document_extractions"
             referencedColumns: ["id"]
           },
         ]
