@@ -4,6 +4,7 @@
 // extracted_fields / normalized_fields / validation_flags to
 // public.ai_document_extractions. Does NOT mutate CRM records directly.
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { scrubSensitiveDocumentData } from "../_shared/scrub-sensitive.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -101,9 +102,6 @@ function normalize(cls: Exclude<Cls, "unknown">, raw: Record<string, any>) {
     if (k in out) out[k] = num(out[k]);
   }
   if (cls === "w9") {
-    delete (out as any).tin;
-    delete (out as any).ssn;
-    delete (out as any).ein;
     out.tin_present = !!raw.tin_present;
   }
   return out;
@@ -245,8 +243,22 @@ Deno.serve(async (req) => {
     }
 
     const raw = await extract(cls as Exclude<Cls, "unknown">, doc.ocr_text, doc.filename ?? "");
-    const normalized = normalize(cls as Exclude<Cls, "unknown">, raw ?? {});
-    const flags = validate(cls as Exclude<Cls, "unknown">, normalized, confidence);
+
+    // Hard scrub of sensitive data (SSN/EIN/TIN) BEFORE normalization or storage.
+    const scrubRaw = scrubSensitiveDocumentData(raw ?? {});
+    const normalized = normalize(cls as Exclude<Cls, "unknown">, scrubRaw.scrubbed ?? {});
+    const scrubNorm = scrubSensitiveDocumentData(normalized);
+    const safeNormalized: Record<string, any> = { ...scrubNorm.scrubbed };
+    if (scrubRaw.tin_present || scrubNorm.tin_present) {
+      safeNormalized.tin_present = true;
+      const masked = scrubRaw.tin_masked ?? scrubNorm.tin_masked;
+      if (masked) safeNormalized.tin_masked = masked;
+    }
+
+    const flags = validate(cls as Exclude<Cls, "unknown">, safeNormalized, confidence);
+    if (scrubRaw.tin_present || scrubNorm.tin_present) {
+      flags.push({ code: "tin_detected_and_scrubbed", severity: "warn", message: "TIN/SSN/EIN was detected and scrubbed before storage" });
+    }
     const needsReview = flags.some((f) => f.severity === "error") || confidence < 0.85;
 
     const payload = {
@@ -256,8 +268,8 @@ Deno.serve(async (req) => {
       contact_id: doc.contact_id ?? null,
       document_class: cls,
       confidence,
-      extracted_fields: raw ?? {},
-      normalized_fields: normalized,
+      extracted_fields: scrubRaw.scrubbed ?? {},
+      normalized_fields: safeNormalized,
       validation_flags: flags,
       extraction_status: needsReview ? "needs_review" : "completed",
       model_name: MODEL,
