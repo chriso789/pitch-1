@@ -1,23 +1,35 @@
-// Lazy-loaded PDF import/cleanup using pdfjs-dist. If loading fails, callers
-// must fall back to uploading the original PDF.
+// Lazy-loaded PDF import/cleanup using pdfjs-dist with a BUNDLED worker
+// (no CDN dependency). If the worker fails to initialize, callers must fall
+// back to uploading the original PDF and surface a clear error to the user.
 
 let pdfjsPromise: Promise<any> | null = null;
+let lastLoadError: string | null = null;
+let workerSource: 'bundled' | 'unavailable' = 'unavailable';
 
 async function loadPdfJs() {
   if (!pdfjsPromise) {
     pdfjsPromise = (async () => {
       const pdfjs: any = await import('pdfjs-dist');
       try {
-        // Use a CDN worker to avoid bundler config issues.
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const version = pdfjs.version || '3.11.174';
-        pdfjs.GlobalWorkerOptions.workerSrc =
-          `https://cdn.jsdelivr.net/npm/pdfjs-dist@${version}/build/pdf.worker.min.js`;
-      } catch {
-        /* noop */
+        // Vite-friendly bundled worker. The `?url` query yields a hashed asset
+        // URL emitted into the build output, so it works fully offline and
+        // never depends on a third-party CDN.
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore - Vite-specific import query
+        const workerUrl = (await import('pdfjs-dist/build/pdf.worker.min.js?url')).default;
+        pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+        workerSource = 'bundled';
+      } catch (err: any) {
+        lastLoadError = err?.message || String(err);
+        workerSource = 'unavailable';
+        throw err;
       }
       return pdfjs;
-    })();
+    })().catch((err) => {
+      // Reset so a later attempt can retry, but remember the error.
+      pdfjsPromise = null;
+      throw err;
+    });
   }
   return pdfjsPromise;
 }
@@ -67,4 +79,18 @@ export async function isPdfRenderAvailable(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+export interface PdfjsDiagnostics {
+  pdfjs_source: 'bundled' | 'unavailable';
+  pdfjs_loaded: boolean;
+  pdfjs_error?: string;
+}
+
+export function getPdfjsDiagnostics(): PdfjsDiagnostics {
+  return {
+    pdfjs_source: workerSource,
+    pdfjs_loaded: workerSource === 'bundled' && !lastLoadError,
+    ...(lastLoadError ? { pdfjs_error: lastLoadError } : {}),
+  };
 }
