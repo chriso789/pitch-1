@@ -1309,6 +1309,14 @@ export function DocumentScannerDialog({
         edge_cleanup_applied: !!p.edgeCleanupApplied,
         // Intentionally omitting image data and OCR/customer text.
       })),
+      telemetry: telemetryRef.current.snapshot(),
+      pdfjs: getPdfjsDiagnostics(),
+      autosave: {
+        enabled: autosaveEnabledRef.current,
+        disabled_reason: autosaveDisabledReasonRef.current,
+        bytes_estimated: autosaveBytesRef.current,
+      },
+      device: deviceProfileRef.current,
     };
     try {
       await navigator.clipboard.writeText(JSON.stringify(diagnostics, null, 2));
