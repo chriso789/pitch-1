@@ -716,46 +716,16 @@ export function CrewPortal() {
             ) : (
               <div className="space-y-3">
                 {laborOrders.map((order: any) => (
-                  <Card key={order.id}>
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between gap-3 mb-2">
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-medium text-sm">{order.title}</h3>
-                          {order.description && (
-                            <p className="text-xs text-muted-foreground mt-1">{order.description}</p>
-                          )}
-                        </div>
-                        <Badge variant="outline" className={getStatusColor(order.status)}>
-                          {String(order.status).replace('_', ' ')}
-                        </Badge>
-                      </div>
-                      <div className="flex flex-wrap gap-3 text-xs text-muted-foreground mt-2">
-                        {isStaff && (
-                          <span className="inline-flex items-center gap-1">
-                            <Wrench className="h-3 w-3" />
-                            Crew: {order.crews?.name || 'Unassigned'}
-                          </span>
-                        )}
-                        {order.scheduled_date && (
-                          <span className="inline-flex items-center gap-1">
-                            <Calendar className="h-3 w-3" />
-                            Scheduled: {format(new Date(order.scheduled_date), 'MMM d, yyyy')}
-                          </span>
-                        )}
-                        {order.arrival_date && (
-                          <span className="inline-flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            Arrival: {format(new Date(order.arrival_date), 'MMM d, yyyy')}
-                          </span>
-                        )}
-                      </div>
-                      {order.notes && (
-                        <pre className="text-xs text-muted-foreground mt-3 whitespace-pre-wrap font-sans bg-muted/40 rounded p-2">
-                          {order.notes}
-                        </pre>
-                      )}
-                    </CardContent>
-                  </Card>
+                  <LaborOrderCard
+                    key={order.id}
+                    order={order}
+                    statuses={laborStatuses}
+                    crews={crewList}
+                    isStaff={isStaff}
+                    myCrewId={myCrew?.id || null}
+                    onUploadPhoto={(id) => { setSelectedJobId(id); setShowPhotoUpload(true); }}
+                    onChanged={() => refetchLaborOrders()}
+                  />
                 ))}
               </div>
             )}
