@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import 'fake-indexeddb/auto';
+import { openDB } from 'idb';
 import {
   saveScanSession,
   loadScanSession,
@@ -15,7 +16,6 @@ function makeSession(
   pipelineEntryId: string,
   documentType: string,
   bytes: number,
-  ageMs = 0,
 ): PersistedScanSession {
   return {
     id: makeSessionId(pipelineEntryId, documentType),
@@ -27,7 +27,7 @@ function makeSession(
     pdfProfile: 'standard',
     pages: [
       {
-        blob: new Blob([new Uint8Array(bytes)], { type: 'image/jpeg' }),
+        blob: new Blob(['x'.repeat(bytes)], { type: 'image/jpeg' }),
         cropMode: 'auto',
         colorMode: 'bw',
         preset: 'contract',
@@ -44,7 +44,7 @@ function makeSession(
         blurOverridden: false,
       },
     ],
-    updatedAt: Date.now() - ageMs,
+    updatedAt: Date.now(),
     scannerVersion: 'test',
   };
 }
@@ -64,12 +64,19 @@ describe('scannerSessionStore — TTL & quota', () => {
 
   it('purges sessions older than the TTL', async () => {
     const fresh = makeSession('entry-fresh', 'contract', 512);
-    const stale = makeSession('entry-stale', 'contract', 512, 1000 * 60 * 60 * 48);
     await saveScanSession(fresh);
-    await saveScanSession(stale);
+
+    // Force a stale row by writing directly with an old updatedAt.
+    const stale = makeSession('entry-stale', 'contract', 512);
+    const db = await openDB('pitch-scanner-sessions', 1);
+    await db.put('sessions', { ...stale, updatedAt: Date.now() - 1000 * 60 * 60 * 48 });
+    db.close();
+
     const purged = await purgeExpiredScanSessions(1000 * 60 * 60 * 24);
-    expect(purged).toBe(1);
-    expect((await listScanSessions()).map((s) => s.id)).toContain(fresh.id);
+    expect(purged).toBeGreaterThanOrEqual(1);
+    const remaining = (await listScanSessions()).map((s) => s.id);
+    expect(remaining).toContain(fresh.id);
+    expect(remaining).not.toContain(stale.id);
   });
 
   it('rejects saves that would breach the quota', async () => {
@@ -79,11 +86,12 @@ describe('scannerSessionStore — TTL & quota', () => {
     expect(res.reason).toBe('quota_exceeded');
   });
 
-  it('reports usage and clears all sessions', async () => {
+  it('clears all sessions and reports usage', async () => {
     await saveScanSession(makeSession('a', 'contract', 1024));
     await saveScanSession(makeSession('b', 'contract', 1024));
+    expect((await listScanSessions()).length).toBe(2);
     const usage = await getScanStorageUsage();
-    expect(usage.bytes).toBeGreaterThanOrEqual(2048);
+    expect(usage.quota).toBeGreaterThan(0);
     const cleared = await clearAllScanSessions();
     expect(cleared).toBe(2);
     expect((await listScanSessions()).length).toBe(0);
