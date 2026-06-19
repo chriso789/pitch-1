@@ -72,10 +72,24 @@ const ProductionDetail = () => {
         .eq('project_id', projectId!)
         .single();
 
-      return { project, workflow };
+      // Enhanced estimates live in a separate table and link via pipeline_entry_id.
+      // Pull them so the production board reflects the actual saved estimates.
+      let enhancedEstimates: any[] = [];
+      const pipelineEntryId = (project as any)?.pipeline_entry_id;
+      if (pipelineEntryId) {
+        const { data: ee } = await supabase
+          .from('enhanced_estimates')
+          .select('*')
+          .eq('pipeline_entry_id', pipelineEntryId)
+          .order('created_at', { ascending: false });
+        enhancedEstimates = ee || [];
+      }
+
+      return { project, workflow, enhancedEstimates };
     },
     enabled: !!projectId,
   });
+
 
   // Fetch trade boards for this project
   const { data: tradeBoards = [] } = useQuery({
