@@ -340,6 +340,7 @@ const ProductionDetail = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['checklist-templates'] });
+      queryClient.invalidateQueries({ queryKey: ['checklist-templates-all'] });
       setNewItemLabel('');
       setAddDialogOpen(false);
       toast({ title: 'Checklist item added' });
@@ -353,6 +354,7 @@ const ProductionDetail = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['checklist-templates'] });
+      queryClient.invalidateQueries({ queryKey: ['checklist-templates-all'] });
       toast({ title: 'Checklist item removed' });
     },
   });
@@ -368,6 +370,7 @@ const ProductionDetail = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['checklist-templates'] });
+      queryClient.invalidateQueries({ queryKey: ['checklist-templates-all'] });
       toast({ title: 'Item now applies to all locations' });
     },
   });
