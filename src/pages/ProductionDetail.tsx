@@ -775,7 +775,7 @@ const ProductionDetail = () => {
           </div>
 
           {STAGE_CONFIG.map(stage => {
-            const stageTemplates = checklistTemplates.filter(t => t.stage_key === stage.key);
+            const stageTemplates = allChecklistTemplates.filter((t: any) => t.stage_key === stage.key);
             if (stageTemplates.length === 0) return null;
 
             return (
@@ -788,35 +788,62 @@ const ProductionDetail = () => {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-1">
-                  {stageTemplates.map(template => (
-                    <div key={template.id} className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-muted/50">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm">{template.item_label}</span>
-                        {template.is_required && (
-                          <Badge variant="destructive" className="text-[9px] px-1 py-0">Required</Badge>
-                        )}
-                        {template.trade_type && (
-                          <Badge variant="outline" className="text-[9px] px-1 py-0 capitalize">
-                            {template.trade_type}
-                          </Badge>
-                        )}
+                  {stageTemplates.map((template: any) => {
+                    const scopedLocationName = template.location_id
+                      ? (locationNameById[template.location_id] || 'Unknown location')
+                      : null;
+                    return (
+                      <div key={template.id} className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-muted/50">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm">{template.item_label}</span>
+                          {template.is_required && (
+                            <Badge variant="destructive" className="text-[9px] px-1 py-0">Required</Badge>
+                          )}
+                          {template.trade_type && (
+                            <Badge variant="outline" className="text-[9px] px-1 py-0 capitalize">
+                              {template.trade_type}
+                            </Badge>
+                          )}
+                          {scopedLocationName ? (
+                            <Badge variant="outline" className="text-[9px] px-1 py-0 border-orange-400 text-orange-700">
+                              {scopedLocationName} only
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-[9px] px-1 py-0 border-emerald-400 text-emerald-700">
+                              All locations
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {template.location_id && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 px-2 text-xs"
+                              onClick={() => makeCompanyWideMutation.mutate(template.id)}
+                              title="Make this item apply to all locations"
+                            >
+                              Make company-wide
+                            </Button>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-destructive hover:text-destructive"
+                            onClick={() => deleteTemplateMutation.mutate(template.id)}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 text-destructive hover:text-destructive"
-                        onClick={() => deleteTemplateMutation.mutate(template.id)}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </CardContent>
               </Card>
             );
           })}
 
-          {checklistTemplates.length === 0 && (
+          {allChecklistTemplates.length === 0 && (
             <Card className="border-dashed">
               <CardContent className="py-8 text-center text-muted-foreground">
                 <p>No checklist items configured. Click "Add Item" to get started.</p>
