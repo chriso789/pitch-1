@@ -340,7 +340,17 @@ export const ProductionChecklistSettings = () => {
               ))}
             </SelectContent>
           </Select>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setSyncOpen(true)}
+            disabled={locations.length < 2}
+            title="Copy this checklist to every location"
+          >
+            <RefreshCw className="h-4 w-4 mr-1" /> Sync to all locations
+          </Button>
         </div>
+
         <Button size="sm" onClick={() => {
           setStageDraft({ name: '', color: 'bg-slate-500', icon: 'ClipboardList' });
           setStageDialog({ mode: 'add' });
