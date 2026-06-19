@@ -1829,6 +1829,52 @@ export function DocumentScannerDialog({
             />
           </div>
         )}
+
+        {/* Compact settings + diagnostics panel */}
+        <ScannerSettingsPanel
+          open={settingsOpen}
+          onOpenChange={setSettingsOpen}
+          settings={{
+            preset: scanPreset,
+            pdfProfile,
+            autoCapture,
+            burnPageNumbers,
+            autosaveEnabled,
+          }}
+          onChange={(next: ScannerSettings) => {
+            setScanPreset(next.preset);
+            if (next.pdfProfile !== pdfProfile) {
+              userPickedProfileRef.current = true;
+              if (next.pdfProfile === 'archive' && deviceProfileRef.current.isLowMemory) {
+                toast({
+                  title: 'Archive mode may be slow on this device',
+                  description: 'Lower-memory device detected — large scans may stall.',
+                });
+              }
+              setPdfProfile(next.pdfProfile);
+            }
+            setAutoCapture(next.autoCapture);
+            setBurnPageNumbers(next.burnPageNumbers);
+            if (next.autosaveEnabled !== autosaveEnabled) {
+              autosaveEnabledRef.current = next.autosaveEnabled;
+              autosaveDisabledReasonRef.current = next.autosaveEnabled ? null : 'user_disabled';
+              setAutosaveEnabled(next.autosaveEnabled);
+            }
+          }}
+          diagnosticsText={JSON.stringify({
+            scanner_version: SCANNER_VERSION,
+            scanner_session_id: scannerSessionIdRef.current,
+            telemetry: telemetryRef.current.snapshot(),
+            pdfjs: getPdfjsDiagnostics(),
+            device: deviceProfileRef.current,
+            autosave: {
+              enabled: autosaveEnabledRef.current,
+              disabled_reason: autosaveDisabledReasonRef.current,
+              bytes_estimated: autosaveBytesRef.current,
+            },
+            page_count: capturedPages.length,
+          }, null, 2)}
+        />
       </DialogContent>
     </Dialog>
   );
