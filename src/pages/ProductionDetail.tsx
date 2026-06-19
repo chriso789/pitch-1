@@ -12,12 +12,11 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
+
 import { useToast } from '@/hooks/use-toast';
 import {
-  ArrowLeft, CheckCircle, Circle, Plus, Trash2, Edit2, Save,
-  FileText, Clock, Package, Wrench, Trophy, Search, Archive,
-  Settings, Filter, AlertTriangle, ChevronRight, ExternalLink
+  ArrowLeft, CheckCircle, FileText, Clock, Package, Wrench, Trophy, Search, Archive,
+  Filter, ExternalLink
 } from 'lucide-react';
 import { OrderAssignmentsPanel } from '@/components/production/OrderAssignmentsPanel';
 import { ChecklistItemUpload } from '@/components/production/ChecklistItemUpload';
@@ -41,14 +40,6 @@ const ProductionDetail = () => {
   const queryClient = useQueryClient();
   const effectiveTenantId = useEffectiveTenantId();
   const [activeTradeFilter, setActiveTradeFilter] = React.useState<string>('all');
-  const [editingChecklist, setEditingChecklist] = React.useState(false);
-  const [newItemLabel, setNewItemLabel] = React.useState('');
-  const [newItemStage, setNewItemStage] = React.useState('submit_documents');
-  const [newItemRequired, setNewItemRequired] = React.useState(true);
-  // Default new checklist items to company-wide so they show on every project.
-  // User can opt-in to scoping an item to the current project's location.
-  const [newItemScope, setNewItemScope] = React.useState<'company' | 'location'>('company');
-  const [addDialogOpen, setAddDialogOpen] = React.useState(false);
 
   // Fetch project + workflow data
   const { data: projectData, isLoading: projectLoading } = useQuery({
@@ -141,21 +132,6 @@ const ProductionDetail = () => {
     enabled: !!effectiveTenantId && !!projectData,
   });
 
-  // Fetch ALL checklist templates for this tenant (used by the Manage Checklist tab
-  // so admins can see and fix items that are scoped to other locations).
-  const { data: allChecklistTemplates = [] } = useQuery({
-    queryKey: ['checklist-templates-all', effectiveTenantId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('production_checklist_templates')
-        .select('*')
-        .eq('tenant_id', effectiveTenantId!)
-        .order('sort_order');
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!effectiveTenantId,
-  });
 
   // Fetch checklist completions for this workflow
   const { data: checklistCompletions = [] } = useQuery({
@@ -424,79 +400,6 @@ const ProductionDetail = () => {
     },
   });
 
-  // Add new checklist template
-  const addTemplateMutation = useMutation({
-    mutationFn: async () => {
-      if (!effectiveTenantId || !newItemLabel.trim()) return;
-      const { data: { user } } = await supabase.auth.getUser();
-      const maxSort = checklistTemplates
-        .filter(t => t.stage_key === newItemStage)
-        .reduce((max, t) => Math.max(max, t.sort_order || 0), 0);
-
-      await supabase.from('production_checklist_templates').insert({
-        tenant_id: effectiveTenantId,
-        location_id: newItemScope === 'location' ? projectLocationId : null,
-        stage_key: newItemStage,
-        item_label: newItemLabel.trim(),
-        is_required: newItemRequired,
-        sort_order: maxSort + 1,
-        created_by: user?.id,
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['checklist-templates'] });
-      queryClient.invalidateQueries({ queryKey: ['checklist-templates-all'] });
-      setNewItemLabel('');
-      setAddDialogOpen(false);
-      toast({ title: 'Checklist item added' });
-    },
-  });
-
-  // Delete checklist template
-  const deleteTemplateMutation = useMutation({
-    mutationFn: async (templateId: string) => {
-      await supabase.from('production_checklist_templates').delete().eq('id', templateId);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['checklist-templates'] });
-      queryClient.invalidateQueries({ queryKey: ['checklist-templates-all'] });
-      toast({ title: 'Checklist item removed' });
-    },
-  });
-
-  // Convert a location-specific checklist item to company-wide (location_id = null).
-  // Lets admins fix items that got pinned to one location by mistake.
-  const makeCompanyWideMutation = useMutation({
-    mutationFn: async (templateId: string) => {
-      await supabase
-        .from('production_checklist_templates')
-        .update({ location_id: null, updated_at: new Date().toISOString() })
-        .eq('id', templateId);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['checklist-templates'] });
-      queryClient.invalidateQueries({ queryKey: ['checklist-templates-all'] });
-      toast({ title: 'Item now applies to all locations' });
-    },
-  });
-
-  // Load locations so we can label scoped checklist items in the manage tab.
-  const { data: tenantLocations = [] } = useQuery({
-    queryKey: ['tenant-locations', effectiveTenantId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('locations')
-        .select('id, name')
-        .eq('tenant_id', effectiveTenantId!);
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!effectiveTenantId,
-  });
-  const locationNameById = React.useMemo(
-    () => Object.fromEntries(tenantLocations.map((l: any) => [l.id, l.name])),
-    [tenantLocations]
-  );
 
   // Move trade board stage
   const moveTradeStage = useMutation({
@@ -616,10 +519,6 @@ const ProductionDetail = () => {
           <TabsTrigger value="checklist">Production Checklist</TabsTrigger>
           <TabsTrigger value="orders">Orders & Assignments</TabsTrigger>
           <TabsTrigger value="trades">Trade Boards ({tradeBoards.length})</TabsTrigger>
-          <TabsTrigger value="settings">
-            <Settings className="h-4 w-4 mr-1" />
-            Manage Checklist
-          </TabsTrigger>
         </TabsList>
 
         {/* PRODUCTION CHECKLIST TAB */}
@@ -820,165 +719,6 @@ const ProductionDetail = () => {
           )}
         </TabsContent>
 
-        {/* MANAGE CHECKLIST TAB (Backend Editor) */}
-        <TabsContent value="settings" className="space-y-4">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">
-              Configure required checklist items for each production stage. These apply to all projects.
-            </p>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => navigate('/settings?tab=production-checklist')}>
-                <ExternalLink className="h-3 w-3 mr-1" /> Open in Settings
-              </Button>
-            </div>
-            <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-              <DialogTrigger asChild>
-                <Button size="sm">
-                  <Plus className="h-4 w-4 mr-1" /> Add Item
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Add Checklist Item</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <div>
-                    <label className="text-sm font-medium">Stage</label>
-                    <Select value={newItemStage} onValueChange={setNewItemStage}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {STAGE_CONFIG.map(s => (
-                          <SelectItem key={s.key} value={s.key}>{s.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium">Item Label</label>
-                    <Input
-                      value={newItemLabel}
-                      onChange={(e) => setNewItemLabel(e.target.value)}
-                      placeholder="e.g., Upload NOC document"
-                    />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      checked={newItemRequired}
-                      onCheckedChange={(c) => setNewItemRequired(!!c)}
-                    />
-                    <label className="text-sm">Required to advance</label>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium">Applies to</label>
-                    <Select value={newItemScope} onValueChange={(v) => setNewItemScope(v as 'company' | 'location')}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="company">All locations (company-wide)</SelectItem>
-                        {projectLocationId && (
-                          <SelectItem value="location">
-                            Only this location{locationNameById[projectLocationId] ? ` (${locationNameById[projectLocationId]})` : ''}
-                          </SelectItem>
-                        )}
-                      </SelectContent>
-                    </Select>
-                    <p className="text-[11px] text-muted-foreground mt-1">
-                      Company-wide items show on every project. Location-scoped items only show on jobs at that location.
-                    </p>
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button
-                    onClick={() => addTemplateMutation.mutate()}
-                    disabled={!newItemLabel.trim()}
-                  >
-                    <Save className="h-4 w-4 mr-1" /> Save
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          </div>
-
-          {STAGE_CONFIG.map(stage => {
-            const stageTemplates = allChecklistTemplates.filter((t: any) => t.stage_key === stage.key);
-            if (stageTemplates.length === 0) return null;
-
-            return (
-              <Card key={stage.key}>
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-sm">
-                    <div className={cn('w-4 h-4 rounded-full', stage.color)} />
-                    {stage.name}
-                    <Badge variant="secondary" className="text-[10px]">{stageTemplates.length} items</Badge>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-1">
-                  {stageTemplates.map((template: any) => {
-                    const scopedLocationName = template.location_id
-                      ? (locationNameById[template.location_id] || 'Unknown location')
-                      : null;
-                    return (
-                      <div key={template.id} className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-muted/50">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm">{template.item_label}</span>
-                          {template.is_required && (
-                            <Badge variant="destructive" className="text-[9px] px-1 py-0">Required</Badge>
-                          )}
-                          {template.trade_type && (
-                            <Badge variant="outline" className="text-[9px] px-1 py-0 capitalize">
-                              {template.trade_type}
-                            </Badge>
-                          )}
-                          {scopedLocationName ? (
-                            <Badge variant="outline" className="text-[9px] px-1 py-0 border-orange-400 text-orange-700">
-                              {scopedLocationName} only
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="text-[9px] px-1 py-0 border-emerald-400 text-emerald-700">
-                              All locations
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1">
-                          {template.location_id && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 px-2 text-xs"
-                              onClick={() => makeCompanyWideMutation.mutate(template.id)}
-                              title="Make this item apply to all locations"
-                            >
-                              Make company-wide
-                            </Button>
-                          )}
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 text-destructive hover:text-destructive"
-                            onClick={() => deleteTemplateMutation.mutate(template.id)}
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </CardContent>
-              </Card>
-            );
-          })}
-
-          {allChecklistTemplates.length === 0 && (
-            <Card className="border-dashed">
-              <CardContent className="py-8 text-center text-muted-foreground">
-                <p>No checklist items configured. Click "Add Item" to get started.</p>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
       </Tabs>
     </div>
   );
