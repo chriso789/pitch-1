@@ -68,13 +68,13 @@ export function CrewPortal() {
   const isStaff = !!currentUser?.role && staffRoles.includes(currentUser.role);
   const tenantId = currentUser?.active_tenant_id || currentUser?.tenant_id;
 
-  // Labor orders — scoped by role
+  // Labor orders — scoped by role (join project + crew)
   const { data: laborOrders = [], refetch: refetchLaborOrders } = useQuery({
     queryKey: ['crew-labor-orders', isStaff ? `tenant:${tenantId}` : `crew:${myCrew?.id}`],
     queryFn: async () => {
       let query = supabase
         .from('production_order_assignments')
-        .select('id, title, description, status, scheduled_date, arrival_date, notes, project_id, created_at, crew_id, crews:crew_id(name)')
+        .select('id, tenant_id, title, description, status, scheduled_date, arrival_date, notes, project_id, created_at, crew_id, crews:crew_id(name), projects:project_id(name, job_number, clj_formatted_number, project_number)')
         .eq('order_type', 'labor')
         .order('scheduled_date', { ascending: true, nullsFirst: false });
 
@@ -91,6 +91,38 @@ export function CrewPortal() {
       return data || [];
     },
     enabled: isStaff ? !!tenantId : !!myCrew?.id,
+  });
+
+  // Statuses (tenant-configured)
+  const { data: laborStatuses = [] } = useQuery({
+    queryKey: ['labor-order-statuses', tenantId],
+    queryFn: async () => {
+      if (!tenantId) return [];
+      const { data, error } = await supabase
+        .from('labor_order_statuses')
+        .select('id, key, label, color, sort_order, is_terminal, requires_date')
+        .eq('tenant_id', tenantId)
+        .order('sort_order', { ascending: true });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!tenantId,
+  });
+
+  // Crews list (for staff assignment dropdown)
+  const { data: crewList = [] } = useQuery({
+    queryKey: ['crews-list', tenantId],
+    queryFn: async () => {
+      if (!tenantId) return [];
+      const { data, error } = await supabase
+        .from('crews')
+        .select('id, name')
+        .eq('tenant_id', tenantId)
+        .order('name', { ascending: true });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!tenantId && isStaff,
   });
 
   const handleClockIn = async () => {
