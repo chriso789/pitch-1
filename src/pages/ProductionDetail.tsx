@@ -481,7 +481,11 @@ const ProductionDetail = () => {
   const project = projectData?.project;
   const workflow = projectData?.workflow;
   const contact = project?.pipeline_entries?.contacts;
-  const estimates = project?.estimates || [];
+  // Prefer enhanced_estimates (current estimate engine); fall back to legacy estimates table.
+  const enhancedEstimates = projectData?.enhancedEstimates || [];
+  const legacyEstimates = project?.estimates || [];
+  const estimates = enhancedEstimates.length > 0 ? enhancedEstimates : legacyEstimates;
+
   const currentStage = STAGE_CONFIG.find(s => s.key === workflow?.current_stage);
 
   const getCompletionForTemplate = (templateId: string) => {
