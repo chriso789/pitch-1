@@ -40,8 +40,12 @@ import { analyzeEdgeForInset } from '@/utils/scannerEdgeAnalysis';
 import {
   saveScanSession, loadScanSession, clearScanSession,
   makeScannerSessionId, PersistedScanPage,
+  purgeExpiredScanSessions, DEFAULT_SESSION_TTL_MS,
 } from '@/utils/scannerSessionStore';
-import { renderImportedPdf } from '@/utils/scannerPdfImport';
+import { renderImportedPdf, getPdfjsDiagnostics } from '@/utils/scannerPdfImport';
+import { ScannerTelemetry } from '@/utils/scannerTelemetry';
+import { ObjectUrlRegistry, detectDeviceMemoryProfile } from '@/utils/scannerMobileGuards';
+import ScannerSettingsPanel, { type ScannerSettings } from './ScannerSettingsPanel';
 
 interface CapturedPage {
   blob: Blob;
