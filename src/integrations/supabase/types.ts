@@ -24303,6 +24303,100 @@ export type Database = {
           },
         ]
       }
+      labor_order_checklist_completions: {
+        Row: {
+          assignment_id: string
+          completed_at: string
+          completed_by: string | null
+          id: string
+          item_id: string
+          tenant_id: string
+        }
+        Insert: {
+          assignment_id: string
+          completed_at?: string
+          completed_by?: string | null
+          id?: string
+          item_id: string
+          tenant_id: string
+        }
+        Update: {
+          assignment_id?: string
+          completed_at?: string
+          completed_by?: string | null
+          id?: string
+          item_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "labor_order_checklist_completions_assignment_id_fkey"
+            columns: ["assignment_id"]
+            isOneToOne: false
+            referencedRelation: "production_order_assignments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "labor_order_checklist_completions_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "labor_order_checklist_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "labor_order_checklist_completions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      labor_order_checklist_items: {
+        Row: {
+          created_at: string
+          id: string
+          is_required: boolean
+          label: string
+          sort_order: number
+          status_id: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_required?: boolean
+          label: string
+          sort_order?: number
+          status_id: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_required?: boolean
+          label?: string
+          sort_order?: number
+          status_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "labor_order_checklist_items_status_id_fkey"
+            columns: ["status_id"]
+            isOneToOne: false
+            referencedRelation: "labor_order_statuses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "labor_order_checklist_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       labor_order_emails: {
         Row: {
           created_at: string
@@ -24353,6 +24447,56 @@ export type Database = {
           tenant_id?: string | null
         }
         Relationships: []
+      }
+      labor_order_statuses: {
+        Row: {
+          color: string
+          created_at: string
+          id: string
+          is_terminal: boolean
+          key: string
+          label: string
+          requires_date: boolean
+          sort_order: number
+          tenant_id: string
+          triggers_notification: boolean
+          updated_at: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          id?: string
+          is_terminal?: boolean
+          key: string
+          label: string
+          requires_date?: boolean
+          sort_order?: number
+          tenant_id: string
+          triggers_notification?: boolean
+          updated_at?: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          id?: string
+          is_terminal?: boolean
+          key?: string
+          label?: string
+          requires_date?: boolean
+          sort_order?: number
+          tenant_id?: string
+          triggers_notification?: boolean
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "labor_order_statuses_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       labor_rates: {
         Row: {
@@ -60665,6 +60809,10 @@ export type Database = {
         }[]
       }
       seed_dynamic_tags: { Args: { p_tenant_id: string }; Returns: undefined }
+      seed_labor_order_statuses: {
+        Args: { p_tenant: string }
+        Returns: undefined
+      }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
       soft_delete_contact: {
