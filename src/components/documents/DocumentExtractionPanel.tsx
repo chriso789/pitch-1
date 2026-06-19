@@ -3,7 +3,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, RefreshCw, Sparkles, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Loader2, RefreshCw, Sparkles, AlertTriangle, CheckCircle2, Lock, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Props {
@@ -31,10 +32,33 @@ const CLASSES = [
   'certificate_of_insurance','subcontractor_agreement','unknown',
 ];
 
+interface ApplyEvent {
+  id: string;
+  target_table: string;
+  target_id: string;
+  field_name: string;
+  old_value: any;
+  new_value: any;
+  confidence: number | null;
+  action: 'apply' | 'skip' | 'review' | null;
+  apply_status: 'pending' | 'applied' | 'skipped' | 'rejected' | 'conflict' | 'failed';
+  apply_reason: string | null;
+}
+
+const SENSITIVE_FIELDS = new Set([
+  'contract_amount','deposit_amount','balance_due','total','subtotal',
+  'estimate_total','replacement_cost_value','actual_cash_value','deductible',
+  'depreciation','amount_released','amount_claimed','policy_limits',
+  'expiration_date','expiration_dates','legal_name','license_number',
+  'tin','ssn','ein','tax_classification',
+]);
+
 export const DocumentExtractionPanel: React.FC<Props> = ({ documentId }) => {
   const [row, setRow] = useState<ExtractionRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [events, setEvents] = useState<ApplyEvent[]>([]);
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
 
   const load = async () => {
     setLoading(true);
@@ -44,7 +68,21 @@ export const DocumentExtractionPanel: React.FC<Props> = ({ documentId }) => {
       .eq('document_id', documentId)
       .maybeSingle();
     setRow((data as any) ?? null);
+    if (data?.id) await loadEvents(data.id);
     setLoading(false);
+  };
+
+  const loadEvents = async (extractionId: string) => {
+    const { data } = await supabase
+      .from('ai_document_apply_events' as any)
+      .select('*')
+      .eq('extraction_id', extractionId)
+      .order('created_at', { ascending: true });
+    const list = ((data as any[]) ?? []) as ApplyEvent[];
+    setEvents(list);
+    const pre: Record<string, boolean> = {};
+    for (const e of list) pre[e.id] = e.action === 'apply' && e.apply_status === 'pending';
+    setSelected(pre);
   };
 
   useEffect(() => { load(); }, [documentId]);
