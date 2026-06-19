@@ -142,8 +142,6 @@ export function DocumentScannerDialog({
   const scannerSessionIdRef = useRef<string>(makeScannerSessionId());
   const isDev = typeof import.meta !== 'undefined' && (import.meta as any).env?.DEV;
 
-  scannerSessionIdRef.current; // referenced below
-  const isDev = typeof import.meta !== 'undefined' && (import.meta as any).env?.DEV;
 
   // Production-hardening refs (telemetry, URL registry, autosave state, mobile profile, pdf.js diag)
   const telemetryRef = useRef<ScannerTelemetry>(new ScannerTelemetry());
