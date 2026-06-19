@@ -12334,39 +12334,48 @@ export type Database = {
           color: string | null
           created_at: string
           created_by: string | null
+          email: string | null
           hourly_rate: number | null
           id: string
           is_active: boolean
           name: string
+          phone: string | null
           skills: Json
           tenant_id: string
           updated_at: string
+          user_id: string | null
         }
         Insert: {
           capacity_slots?: number
           color?: string | null
           created_at?: string
           created_by?: string | null
+          email?: string | null
           hourly_rate?: number | null
           id?: string
           is_active?: boolean
           name: string
+          phone?: string | null
           skills?: Json
           tenant_id: string
           updated_at?: string
+          user_id?: string | null
         }
         Update: {
           capacity_slots?: number
           color?: string | null
           created_at?: string
           created_by?: string | null
+          email?: string | null
           hourly_rate?: number | null
           id?: string
           is_active?: boolean
           name?: string
+          phone?: string | null
           skills?: Json
           tenant_id?: string
           updated_at?: string
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -36589,6 +36598,7 @@ export type Database = {
           assigned_to_crew: string | null
           assigned_to_vendor_id: string | null
           created_at: string
+          crew_id: string | null
           description: string | null
           estimate_id: string | null
           id: string
@@ -36608,6 +36618,7 @@ export type Database = {
           assigned_to_crew?: string | null
           assigned_to_vendor_id?: string | null
           created_at?: string
+          crew_id?: string | null
           description?: string | null
           estimate_id?: string | null
           id?: string
@@ -36627,6 +36638,7 @@ export type Database = {
           assigned_to_crew?: string | null
           assigned_to_vendor_id?: string | null
           created_at?: string
+          crew_id?: string | null
           description?: string | null
           estimate_id?: string | null
           id?: string
@@ -36641,6 +36653,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "production_order_assignments_crew_id_fkey"
+            columns: ["crew_id"]
+            isOneToOne: false
+            referencedRelation: "crews"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "production_order_assignments_project_id_fkey"
             columns: ["project_id"]
@@ -59703,6 +59722,7 @@ export type Database = {
         Args: { _slot: string; _token: string }
         Returns: string
       }
+      current_user_crew_id: { Args: never; Returns: string }
       determine_approval_requirements: {
         Args: { p_order_amount: number; p_tenant_id: string }
         Returns: {
