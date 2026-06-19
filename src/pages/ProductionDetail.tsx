@@ -742,6 +742,25 @@ const ProductionDetail = () => {
                     />
                     <label className="text-sm">Required to advance</label>
                   </div>
+                  <div>
+                    <label className="text-sm font-medium">Applies to</label>
+                    <Select value={newItemScope} onValueChange={(v) => setNewItemScope(v as 'company' | 'location')}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="company">All locations (company-wide)</SelectItem>
+                        {projectLocationId && (
+                          <SelectItem value="location">
+                            Only this location{locationNameById[projectLocationId] ? ` (${locationNameById[projectLocationId]})` : ''}
+                          </SelectItem>
+                        )}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      Company-wide items show on every project. Location-scoped items only show on jobs at that location.
+                    </p>
+                  </div>
                 </div>
                 <DialogFooter>
                   <Button
