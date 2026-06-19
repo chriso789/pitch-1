@@ -422,7 +422,12 @@ export function DocumentScannerDialog({
 
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
-        videoRef.current.onloadedmetadata = () => setCameraReady(true);
+        videoRef.current.onloadedmetadata = () => {
+          setCameraReady(true);
+          if (cameraStartTsRef.current) {
+            telemetryRef.current.mark('cameraStartupMs', performance.now() - cameraStartTsRef.current);
+          }
+        };
       }
     } catch (error: any) {
       console.error('Failed to start camera:', error);
