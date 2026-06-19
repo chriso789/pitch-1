@@ -33,6 +33,46 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   cancelled: { label: 'Cancelled', color: 'bg-destructive/10 text-destructive' },
 };
 
+type OrderType = 'material' | 'labor' | 'turnkey';
+
+type EstimateLineItem = {
+  id?: string;
+  item_name?: string;
+  qty?: number | string;
+  quantity?: number | string;
+  unit?: string;
+  unit_cost?: number | string;
+  rate?: number | string;
+  line_total?: number | string;
+  trade_label?: string;
+  trade_type?: string;
+};
+
+type EstimateForOrders = {
+  id: string;
+  estimate_number?: string | null;
+  display_name?: string | null;
+  line_items?: {
+    materials?: EstimateLineItem[];
+    labor?: EstimateLineItem[];
+    turnkey?: EstimateLineItem[];
+  } | null;
+};
+
+type ProductionAssignment = {
+  id: string;
+  estimate_id?: string | null;
+  order_type: string;
+  title: string;
+  description?: string | null;
+  assigned_to_vendor_id?: string | null;
+  assigned_to_crew?: string | null;
+  status: string;
+  scheduled_date?: string | null;
+  arrival_date?: string | null;
+  notes?: string | null;
+};
+
 const formatMoney = (amount: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount || 0);
 
@@ -42,13 +82,13 @@ const buildEstimateOrderRows = ({
   tenantId,
   assignedBy,
 }: {
-  estimate: any;
+  estimate: EstimateForOrders;
   projectId: string;
   tenantId: string;
   assignedBy?: string | null;
 }) => {
-  const lineItems = (estimate?.line_items || {}) as any;
-  const groups: Array<{ key: 'material' | 'labor' | 'turnkey'; lines: any[] }> = [
+  const lineItems = estimate.line_items || {};
+  const groups: Array<{ key: OrderType; lines: EstimateLineItem[] }> = [
     { key: 'material', lines: Array.isArray(lineItems.materials) ? lineItems.materials : [] },
     { key: 'labor', lines: Array.isArray(lineItems.labor) ? lineItems.labor : [] },
     { key: 'turnkey', lines: Array.isArray(lineItems.turnkey) ? lineItems.turnkey : [] },
@@ -83,7 +123,6 @@ const buildEstimateOrderRows = ({
           assigned_to_crew: null,
           notes: `Synced from estimate ${estimate.display_name || estimate.estimate_number || ''}`.trim(),
           notify_rep: true,
-          source_line_id: line.id || `${key}-${index}`,
         };
       })
   );
