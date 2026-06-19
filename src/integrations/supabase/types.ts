@@ -2682,6 +2682,78 @@ export type Database = {
           },
         ]
       }
+      ai_document_apply_events: {
+        Row: {
+          action: string | null
+          applied_at: string | null
+          applied_by: string | null
+          apply_reason: string | null
+          apply_status: string
+          confidence: number | null
+          created_at: string
+          document_id: string
+          extraction_id: string
+          field_name: string
+          id: string
+          new_value: Json | null
+          old_value: Json | null
+          target_id: string
+          target_table: string
+          tenant_id: string
+        }
+        Insert: {
+          action?: string | null
+          applied_at?: string | null
+          applied_by?: string | null
+          apply_reason?: string | null
+          apply_status?: string
+          confidence?: number | null
+          created_at?: string
+          document_id: string
+          extraction_id: string
+          field_name: string
+          id?: string
+          new_value?: Json | null
+          old_value?: Json | null
+          target_id: string
+          target_table: string
+          tenant_id: string
+        }
+        Update: {
+          action?: string | null
+          applied_at?: string | null
+          applied_by?: string | null
+          apply_reason?: string | null
+          apply_status?: string
+          confidence?: number | null
+          created_at?: string
+          document_id?: string
+          extraction_id?: string
+          field_name?: string
+          id?: string
+          new_value?: Json | null
+          old_value?: Json | null
+          target_id?: string
+          target_table?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_document_apply_events_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_document_apply_events_extraction_id_fkey"
+            columns: ["extraction_id"]
+            isOneToOne: false
+            referencedRelation: "ai_document_extractions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_document_extractions: {
         Row: {
           approved_at: string | null
