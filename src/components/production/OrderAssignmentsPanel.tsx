@@ -281,23 +281,30 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
         tenantId: effectiveTenantId,
         assignedBy: user?.id,
       });
-      const existingKeys = new Set(
-        assignments
-          .filter((assignment) => assignment.estimate_id === projectEstimate.id)
-          .map((assignment) => `${assignment.order_type}:${assignment.title}`)
-      );
-      const newRows = rows
-        .filter((row) => !existingKeys.has(`${row.order_type}:${row.title}`));
-      if (!newRows.length) return { created: 0, skipped: false, silent };
-      const { error } = await supabase.from('production_order_assignments').insert(newRows);
+
+      // Remove any prior synced rows (from any estimate) that haven't been touched yet,
+      // so we collapse the old per-line-item rows into consolidated order rows.
+      const staleIds = assignments
+        .filter((a) => a.status === 'pending' && (a.estimate_id || (a.notes || '').includes('Synced from estimate')))
+        .map((a) => a.id);
+      if (staleIds.length) {
+        const { error: delError } = await supabase
+          .from('production_order_assignments')
+          .delete()
+          .in('id', staleIds);
+        if (delError) throw delError;
+      }
+
+      if (!rows.length) return { created: 0, skipped: false, silent };
+      const { error } = await supabase.from('production_order_assignments').insert(rows);
       if (error) throw error;
-      return { created: newRows.length, skipped: false, silent };
+      return { created: rows.length, skipped: false, silent };
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['order-assignments'] });
       if (!result?.silent) {
         toast({
-          title: result?.created ? 'Estimate orders synced' : 'No new estimate orders',
+          title: result?.created ? 'Estimate orders synced' : 'No estimate orders to sync',
           description: result?.created ? `Created ${result.created} order assignment(s).` : undefined,
         });
       }
@@ -308,12 +315,24 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
   });
 
   React.useEffect(() => {
-    if (!projectEstimate?.id || !effectiveTenantId || assignments.length > 0 || isLoading) return;
+    if (!projectEstimate?.id || !effectiveTenantId || isLoading) return;
     const attemptKey = `${projectId}:${projectEstimate.id}`;
     if (autoSyncAttemptedRef.current === attemptKey) return;
+
+    // Auto-sync when there are no orders yet, OR when stale per-line-item rows
+    // for this estimate exist (more than one per order_type).
+    const fromThisEstimate = assignments.filter((a) => a.estimate_id === projectEstimate.id);
+    const byType = fromThisEstimate.reduce<Record<string, number>>((acc, a) => {
+      acc[a.order_type] = (acc[a.order_type] || 0) + 1;
+      return acc;
+    }, {});
+    const hasStaleDuplicates = Object.values(byType).some((n) => n > 1);
+    if (assignments.length > 0 && !hasStaleDuplicates) return;
+
     autoSyncAttemptedRef.current = attemptKey;
     syncEstimateMutation.mutate({ silent: true });
-  }, [assignments.length, effectiveTenantId, isLoading, projectEstimate?.id, projectId, syncEstimateMutation]);
+  }, [assignments, effectiveTenantId, isLoading, projectEstimate?.id, projectId, syncEstimateMutation]);
+
 
   // Update status
   const updateStatusMutation = useMutation({
