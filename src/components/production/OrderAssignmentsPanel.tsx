@@ -161,6 +161,7 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
     notes: '',
     notify_rep: true,
   });
+  const [pendingCrew, setPendingCrew] = useState<Record<string, string>>({});
 
   // Fetch order assignments for this project
   const { data: assignments = [], isLoading } = useQuery({
@@ -434,9 +435,9 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
                     <span className="flex items-center gap-1.5">
                       <Users className="h-3 w-3" />
                       <Select
-                        value={assignment.crew_id || ''}
+                        value={pendingCrew[assignment.id] ?? assignment.crew_id ?? ''}
                         onValueChange={(val) =>
-                          assignCrewMutation.mutate({ id: assignment.id, crew_id: val || null })
+                          setPendingCrew((prev) => ({ ...prev, [assignment.id]: val }))
                         }
                       >
                         <SelectTrigger className="h-6 px-2 text-xs w-[160px]">
@@ -456,6 +457,31 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
                           )}
                         </SelectContent>
                       </Select>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 text-xs px-2"
+                        disabled={
+                          !pendingCrew[assignment.id] ||
+                          pendingCrew[assignment.id] === assignment.crew_id
+                        }
+                        onClick={() => {
+                          const crewId = pendingCrew[assignment.id] || null;
+                          assignCrewMutation.mutate(
+                            { id: assignment.id, crew_id: crewId },
+                            {
+                              onSettled: () =>
+                                setPendingCrew((prev) => {
+                                  const next = { ...prev };
+                                  delete next[assignment.id];
+                                  return next;
+                                }),
+                            }
+                          );
+                        }}
+                      >
+                        Assign
+                      </Button>
                     </span>
                   )}
                   {assignment.scheduled_date && (
