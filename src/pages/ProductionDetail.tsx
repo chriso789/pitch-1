@@ -33,6 +33,15 @@ const STAGE_CONFIG = [
   { key: 'closed', name: 'Closed', color: 'bg-gray-500', icon: Archive },
 ];
 
+const getStageIndex = (stageKey?: string | null) =>
+  STAGE_CONFIG.findIndex(stage => stage.key === stageKey);
+
+const isStageBehind = (stageKey: string | null | undefined, targetStageKey: string | null | undefined) => {
+  const currentIndex = getStageIndex(stageKey);
+  const targetIndex = getStageIndex(targetStageKey);
+  return currentIndex >= 0 && targetIndex >= 0 && currentIndex < targetIndex;
+};
+
 const ProductionDetail = () => {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
@@ -169,6 +178,7 @@ const ProductionDetail = () => {
   React.useEffect(() => {
     const workflow = projectData?.workflow;
     if (!workflow?.id || !workflow?.current_stage) return;
+    if (!projectId || !effectiveTenantId) return;
     if (!checklistTemplates.length) return;
     const stageKey = workflow.current_stage;
     const attemptKey = `${workflow.id}:${stageKey}`;
@@ -201,12 +211,50 @@ const ProductionDetail = () => {
         .update(updatePayload)
         .eq('id', workflow.id);
       if (!error) {
+        await supabase
+          .from('production_trade_boards')
+          .update({ current_stage: next.key, updated_at: new Date().toISOString() })
+          .eq('project_id', projectId)
+          .eq('tenant_id', effectiveTenantId)
+          .eq('current_stage', stageKey);
         toast({ title: 'Stage advanced', description: `Moved to ${next.name}` });
         queryClient.invalidateQueries({ queryKey: ['production-detail', projectId] });
         queryClient.invalidateQueries({ queryKey: ['production-workflows'] });
+        queryClient.invalidateQueries({ queryKey: ['trade-boards', projectId] });
       }
     })();
-  }, [projectData?.workflow, checklistTemplates, checklistCompletions, projectId, queryClient, toast]);
+  }, [projectData?.workflow, checklistTemplates, checklistCompletions, effectiveTenantId, projectId, queryClient, toast]);
+
+  // Keep trade boards caught up with the main production workflow. A trade may
+  // move ahead independently, but it should never remain behind once the project
+  // stage is completed from the Production Checklist tab.
+  const tradeStageSyncAttemptedRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    const workflow = projectData?.workflow;
+    if (!workflow?.id || !workflow?.current_stage || !projectId || !effectiveTenantId) return;
+    if (!tradeBoards.length) return;
+
+    const boardsBehindWorkflow = (tradeBoards as any[]).filter(trade =>
+      isStageBehind(trade.current_stage, workflow.current_stage)
+    );
+    if (!boardsBehindWorkflow.length) return;
+
+    const syncKey = `${workflow.id}:${workflow.current_stage}:${boardsBehindWorkflow.map(t => t.id).sort().join(',')}`;
+    if (tradeStageSyncAttemptedRef.current === syncKey) return;
+    tradeStageSyncAttemptedRef.current = syncKey;
+
+    (async () => {
+      const { error } = await supabase
+        .from('production_trade_boards')
+        .update({ current_stage: workflow.current_stage, updated_at: new Date().toISOString() })
+        .eq('project_id', projectId)
+        .eq('tenant_id', effectiveTenantId)
+        .in('id', boardsBehindWorkflow.map(t => t.id));
+      if (!error) {
+        queryClient.invalidateQueries({ queryKey: ['trade-boards', projectId] });
+      }
+    })();
+  }, [projectData?.workflow, tradeBoards, effectiveTenantId, projectId, queryClient]);
 
   // Auto-advance trade board stages when all required checklist items at the
   // current stage are completed.
@@ -383,6 +431,12 @@ const ProductionDetail = () => {
                   .from('production_workflows')
                   .update(updatePayload)
                   .eq('id', workflowId);
+                await supabase
+                  .from('production_trade_boards')
+                  .update({ current_stage: next.key, updated_at: new Date().toISOString() })
+                  .eq('project_id', projectId!)
+                  .eq('tenant_id', effectiveTenantId)
+                  .eq('current_stage', stageKey);
                 return { advancedTo: next.name };
               }
             }
@@ -395,6 +449,7 @@ const ProductionDetail = () => {
       queryClient.invalidateQueries({ queryKey: ['checklist-completions'] });
       queryClient.invalidateQueries({ queryKey: ['production-detail', projectId] });
       queryClient.invalidateQueries({ queryKey: ['production-workflows'] });
+      queryClient.invalidateQueries({ queryKey: ['trade-boards', projectId] });
       if (result?.advancedTo) {
         toast({ title: 'Stage advanced', description: `Moved to ${result.advancedTo}` });
       }
