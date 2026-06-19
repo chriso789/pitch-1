@@ -86,6 +86,14 @@ export const DocumentExtractionPanel: React.FC<Props> = ({ documentId }) => {
   const [busy, setBusy] = useState<string | null>(null);
   const [events, setEvents] = useState<ApplyEvent[]>([]);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [candidates, setCandidates] = useState<MatchCandidate[]>([]);
+  const [workflow, setWorkflow] = useState<{
+    readiness: string; blocking_reasons: string[];
+    checklist: Record<string, boolean>;
+    suggested_actions: WorkflowAction[];
+    duplicate_job_block?: boolean; duplicate_job_reason?: string | null;
+  } | null>(null);
+  const [actionSel, setActionSel] = useState<Record<string, boolean>>({});
 
   const load = async () => {
     setLoading(true);
@@ -94,8 +102,12 @@ export const DocumentExtractionPanel: React.FC<Props> = ({ documentId }) => {
       .select('*')
       .eq('document_id', documentId)
       .maybeSingle();
-    setRow((data as any) ?? null);
-    if (data?.id) await loadEvents(data.id);
+    const r = (data as any) ?? null;
+    setRow(r);
+    if (r?.id) {
+      await loadEvents(r.id);
+      setCandidates((r.match_metadata?.candidates ?? []) as MatchCandidate[]);
+    }
     setLoading(false);
   };
 
