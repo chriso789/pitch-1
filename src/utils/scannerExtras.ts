@@ -121,7 +121,8 @@ export type CaptureMethod =
   | 'image_capture_take_photo'
   | 'video_frame_canvas'
   | 'imported_photo'
-  | 'imported_pdf';
+  | 'imported_pdf'
+  | 'imported_pdf_rebuilt';
 
 export interface HighResCaptureResult {
   canvas: HTMLCanvasElement;
