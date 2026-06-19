@@ -275,6 +275,46 @@ export const DocumentExtractionPanel: React.FC<Props> = ({ documentId }) => {
     } finally { setBusy(null); }
   };
 
+  const planSupplierBill = async () => {
+    if (!row) return;
+    setBusy('plan-bill');
+    try {
+      const { data, error } = await supabase.functions.invoke('plan-supplier-bill-from-document', {
+        body: { extraction_id: row.id },
+      });
+      if (error) throw error;
+      setBillPlan(data);
+      const sel: Record<number, boolean> = {};
+      (data?.suggested_lines ?? []).forEach((_l: any, i: number) => { sel[i] = true; });
+      setBillLineSel(sel);
+      toast.success(`Bill plan: ${data?.readiness}`);
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Plan failed');
+    } finally { setBusy(null); }
+  };
+
+  const createSupplierBill = async (approve: boolean, approveDuplicate = false) => {
+    if (!row) return;
+    setBusy(approve ? 'create-bill-approve' : 'create-bill-draft');
+    try {
+      const selected_line_indexes = Object.entries(billLineSel)
+        .filter(([, v]) => v).map(([k]) => Number(k));
+      const { data, error } = await supabase.functions.invoke('create-supplier-bill-from-document', {
+        body: { extraction_id: row.id, approve, approve_duplicate_override: approveDuplicate, selected_line_indexes },
+      });
+      if (error) throw error;
+      if (data?.ok === false) {
+        toast.error(`Blocked: ${(data.blocking_reasons ?? []).join(', ')}`);
+      } else {
+        toast.success(`Bill created (${data?.line_count ?? 0} lines)`);
+      }
+      await load();
+      await planSupplierBill();
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Create bill failed');
+    } finally { setBusy(null); }
+  };
+
 
   if (loading) {
     return <Card><CardContent className="p-6 flex items-center gap-2 text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" /> Loading extraction…</CardContent></Card>;
