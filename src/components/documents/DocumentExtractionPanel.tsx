@@ -94,6 +94,8 @@ export const DocumentExtractionPanel: React.FC<Props> = ({ documentId }) => {
     duplicate_job_block?: boolean; duplicate_job_reason?: string | null;
   } | null>(null);
   const [actionSel, setActionSel] = useState<Record<string, boolean>>({});
+  const [billPlan, setBillPlan] = useState<any | null>(null);
+  const [billLineSel, setBillLineSel] = useState<Record<number, boolean>>({});
 
   const load = async () => {
     setLoading(true);
