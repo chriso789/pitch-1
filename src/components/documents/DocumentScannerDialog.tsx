@@ -1163,6 +1163,15 @@ export function DocumentScannerDialog({
         edge_cleanup_applied: capturedPages.map(p => !!p.edgeCleanupApplied),
         duplicate_warning_pages: capturedPages.filter(p => p.duplicateWarning).length,
         imported_pdf_mode: capturedPages.every(p => p.captureMethod === 'imported_pdf_rebuilt') ? 'cleaned_rebuilt' as const : undefined,
+        autosave_enabled: autosaveEnabledRef.current,
+        autosave_disabled_reason: autosaveDisabledReasonRef.current,
+        autosave_bytes_estimated: autosaveBytesRef.current || undefined,
+        device_memory_gb: deviceProfileRef.current.deviceMemoryGb,
+        is_low_memory_device: deviceProfileRef.current.isLowMemory,
+        telemetry: telemetryRef.current.snapshot(),
+        pdfjs: capturedPages.some(p => p.captureMethod === 'imported_pdf_rebuilt')
+          ? getPdfjsDiagnostics()
+          : undefined,
       };
 
       const scanQuality = {
