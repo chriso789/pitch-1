@@ -241,7 +241,62 @@ export const ProductionChecklistSettings = () => {
     },
   });
 
-  // ---------- DnD ----------
+  // ---------- Sync current scope's checklist to all locations ----------
+  const [syncOpen, setSyncOpen] = useState(false);
+  const syncToAllLocations = useMutation({
+    mutationFn: async () => {
+      if (!effectiveTenantId) return;
+      const sourceLocationId = selectedLocationId || null;
+      const targetLocationIds = locations
+        .map(l => l.id)
+        .filter(id => id !== sourceLocationId);
+      if (targetLocationIds.length === 0) return;
+
+      // For each target location: wipe existing scoped stages + items, then copy source.
+      for (const targetId of targetLocationIds) {
+        await supabase.from('production_checklist_templates').delete()
+          .eq('tenant_id', effectiveTenantId).eq('location_id', targetId);
+        await supabase.from('production_checklist_stages' as any).delete()
+          .eq('tenant_id', effectiveTenantId).eq('location_id', targetId);
+
+        if (stages.length) {
+          await supabase.from('production_checklist_stages' as any).insert(
+            stages.map((s, i) => ({
+              tenant_id: effectiveTenantId,
+              location_id: targetId,
+              stage_key: s.stage_key,
+              name: s.name,
+              color: s.color,
+              icon: s.icon,
+              sort_order: i,
+            }))
+          );
+        }
+        if (templates.length) {
+          await supabase.from('production_checklist_templates').insert(
+            (templates as any[]).map(t => ({
+              tenant_id: effectiveTenantId,
+              location_id: targetId,
+              stage_key: t.stage_key,
+              item_label: t.item_label,
+              is_required: t.is_required,
+              sort_order: t.sort_order,
+            }))
+          );
+        }
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['checklist-stages'] });
+      queryClient.invalidateQueries({ queryKey: ['checklist-templates'] });
+      setSyncOpen(false);
+      toast({ title: 'Checklist synced', description: 'All locations now use this checklist.' });
+    },
+    onError: (e: any) => {
+      toast({ title: 'Sync failed', description: e?.message || 'Unknown error', variant: 'destructive' });
+    },
+  });
+
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const handleDragEnd = (e: DragEndEvent) => {
     const { active, over } = e;
