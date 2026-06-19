@@ -24,6 +24,33 @@ interface ExtractionRow {
   reviewed_at: string | null;
   approved_at: string | null;
   updated_at: string;
+  contact_id: string | null;
+  lead_id: string | null;
+  pipeline_entry_id: string | null;
+  job_id: string | null;
+  match_metadata: any;
+  workflow_metadata: any;
+}
+
+interface MatchCandidate {
+  target_type: 'contact' | 'lead' | 'pipeline_entry' | 'job';
+  target_id: string;
+  score: number;
+  matched_on: string[];
+  display_label: string;
+  current_values: Record<string, unknown>;
+}
+
+interface WorkflowAction {
+  key: string;
+  title: string;
+  target_table: string | null;
+  target_id: string | null;
+  current_value: unknown;
+  suggested_value: unknown;
+  risk: 'low' | 'medium' | 'high';
+  default_selected: boolean;
+  reason: string;
 }
 
 const CLASSES = [
