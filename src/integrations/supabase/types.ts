@@ -52130,6 +52130,195 @@ export type Database = {
         }
         Relationships: []
       }
+      supplier_bill_lines: {
+        Row: {
+          confidence: number | null
+          cost_code: string | null
+          created_at: string
+          description: string | null
+          id: string
+          line_number: number | null
+          mapped_catalog_item_id: string | null
+          material_category: string | null
+          quantity: number | null
+          sku: string | null
+          supplier_bill_id: string
+          tenant_id: string
+          total_price: number | null
+          unit: string | null
+          unit_price: number | null
+        }
+        Insert: {
+          confidence?: number | null
+          cost_code?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          line_number?: number | null
+          mapped_catalog_item_id?: string | null
+          material_category?: string | null
+          quantity?: number | null
+          sku?: string | null
+          supplier_bill_id: string
+          tenant_id: string
+          total_price?: number | null
+          unit?: string | null
+          unit_price?: number | null
+        }
+        Update: {
+          confidence?: number | null
+          cost_code?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          line_number?: number | null
+          mapped_catalog_item_id?: string | null
+          material_category?: string | null
+          quantity?: number | null
+          sku?: string | null
+          supplier_bill_id?: string
+          tenant_id?: string
+          total_price?: number | null
+          unit?: string | null
+          unit_price?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_bill_lines_supplier_bill_id_fkey"
+            columns: ["supplier_bill_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_bills"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      supplier_bills: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          balance_due: number | null
+          contact_id: string | null
+          created_at: string
+          created_by: string | null
+          document_id: string | null
+          due_date: string | null
+          duplicate_of: string | null
+          export_error: string | null
+          export_status: string
+          external_id: string | null
+          external_provider: string | null
+          extraction_id: string | null
+          id: string
+          invoice_date: string | null
+          invoice_number: string | null
+          job_address: string | null
+          job_id: string | null
+          job_name: string | null
+          metadata: Json
+          pipeline_entry_id: string | null
+          review_status: string
+          source: string
+          status: string
+          subtotal: number | null
+          supplier_account_number: string | null
+          supplier_name: string | null
+          tax: number | null
+          tenant_id: string
+          total: number | null
+          updated_at: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          balance_due?: number | null
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          document_id?: string | null
+          due_date?: string | null
+          duplicate_of?: string | null
+          export_error?: string | null
+          export_status?: string
+          external_id?: string | null
+          external_provider?: string | null
+          extraction_id?: string | null
+          id?: string
+          invoice_date?: string | null
+          invoice_number?: string | null
+          job_address?: string | null
+          job_id?: string | null
+          job_name?: string | null
+          metadata?: Json
+          pipeline_entry_id?: string | null
+          review_status?: string
+          source?: string
+          status?: string
+          subtotal?: number | null
+          supplier_account_number?: string | null
+          supplier_name?: string | null
+          tax?: number | null
+          tenant_id: string
+          total?: number | null
+          updated_at?: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          balance_due?: number | null
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          document_id?: string | null
+          due_date?: string | null
+          duplicate_of?: string | null
+          export_error?: string | null
+          export_status?: string
+          external_id?: string | null
+          external_provider?: string | null
+          extraction_id?: string | null
+          id?: string
+          invoice_date?: string | null
+          invoice_number?: string | null
+          job_address?: string | null
+          job_id?: string | null
+          job_name?: string | null
+          metadata?: Json
+          pipeline_entry_id?: string | null
+          review_status?: string
+          source?: string
+          status?: string
+          subtotal?: number | null
+          supplier_account_number?: string | null
+          supplier_name?: string | null
+          tax?: number | null
+          tenant_id?: string
+          total?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_bills_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_bills_duplicate_of_fkey"
+            columns: ["duplicate_of"]
+            isOneToOne: false
+            referencedRelation: "supplier_bills"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_bills_extraction_id_fkey"
+            columns: ["extraction_id"]
+            isOneToOne: false
+            referencedRelation: "ai_document_extractions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       supplier_catalog_items: {
         Row: {
           active: boolean | null
