@@ -39,47 +39,59 @@ const MobileJobPhotos = () => {
   });
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !jobId || !user?.id || !activeTenantId) return;
+    const rawFile = e.target.files?.[0];
+    if (!rawFile || !jobId || !user?.id || !activeTenantId) return;
 
     setUploading(true);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('jobId', jobId);
+      // Compress client-side (handles HEIC + large phone photos so we never hit
+      // the edge function body/CPU limits that were causing "edge function error").
+      const { compressImage } = await import('@/lib/imageCompression');
+      const file = await compressImage(rawFile);
 
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mobile-upload`,
-        {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${session?.access_token}` },
-          body: formData,
-        }
-      );
+      // Upload straight to storage — bucket policy allows {tenant_id}/... for the
+      // authenticated user, same pattern usePhotos already uses on desktop.
+      const timestamp = Date.now();
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const storagePath = `${activeTenantId}/jobs/${jobId}/images/${timestamp}_${safeName}`;
 
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error || 'Upload failed');
+      const { error: uploadError } = await supabase.storage
+        .from('documents')
+        .upload(storagePath, file, {
+          contentType: file.type || 'image/jpeg',
+          cacheControl: '3600',
+          upsert: false,
+        });
+      if (uploadError) throw new Error(uploadError.message);
 
-      // Insert job_media record
-      await supabase.from('job_media').insert({
+      const { data: { publicUrl } } = supabase.storage
+        .from('documents')
+        .getPublicUrl(storagePath);
+
+      const { error: insertError } = await supabase.from('job_media').insert({
         job_id: jobId,
         company_id: activeTenantId,
         uploaded_by: user.id,
-        file_url: result.url,
+        file_url: publicUrl,
         category: 'roof_photo',
         label: 'other',
         metadata_json: {
           capturedAt: new Date().toISOString(),
           capturedBy: user.id,
           source: 'mobile_camera',
+          storage_path: storagePath,
         },
       });
+      if (insertError) {
+        await supabase.storage.from('documents').remove([storagePath]);
+        throw new Error(insertError.message);
+      }
 
       logMobileActivity({ activity_type: 'photo_uploaded', entity_type: 'job', entity_id: jobId });
       queryClient.invalidateQueries({ queryKey: ['job-media', jobId] });
       toast({ title: 'Photo uploaded' });
     } catch (err: any) {
+      console.error('[MobileJobPhotos] Upload failed', err);
       toast({ title: 'Upload failed', description: err.message, variant: 'destructive' });
     } finally {
       setUploading(false);
