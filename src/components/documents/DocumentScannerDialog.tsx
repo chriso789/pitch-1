@@ -719,7 +719,7 @@ export function DocumentScannerDialog({
         hi.canvas.toBlob((blob) => {
           if (blob) {
             setManualCropImage({
-              url: URL.createObjectURL(blob),
+              url: urlRegRef.current.create(blob),
               width: hi.canvas.width,
               height: hi.canvas.height,
             });
