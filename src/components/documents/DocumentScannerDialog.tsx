@@ -1757,7 +1757,7 @@ export function DocumentScannerDialog({
                   if (pendingResumePages) {
                     const restored: CapturedPage[] = pendingResumePages.map((p) => ({
                       blob: p.blob,
-                      preview: URL.createObjectURL(p.blob),
+                      preview: urlRegRef.current.create(p.blob),
                       cropMode: p.cropMode,
                       colorMode: p.colorMode,
                       preset: p.preset as ScanPreset,
