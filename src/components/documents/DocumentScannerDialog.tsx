@@ -1183,6 +1183,16 @@ export function DocumentScannerDialog({
         edge_cleanup_applied: capturedPages.map(p => !!p.edgeCleanupApplied),
         duplicate_warning_pages: capturedPages.filter(p => p.duplicateWarning).length,
         imported_pdf_mode: capturedPages.every(p => p.captureMethod === 'imported_pdf_rebuilt') ? 'cleaned_rebuilt' as const : undefined,
+        // When every page came from a rebuilt import, carry the source PDF's
+        // identity forward so the rebuilt artifact can be traced back.
+        imported_pdf_source: capturedPages.every(p => p.captureMethod === 'imported_pdf_rebuilt') && importedPdfSourceRef.current
+          ? {
+              original_filename: importedPdfSourceRef.current.name,
+              original_file_size_bytes: importedPdfSourceRef.current.size,
+              imported_page_count: importedPdfSourceRef.current.pageCount,
+              rebuilt_file_size_bytes: pdfBlob.size,
+            }
+          : undefined,
         autosave_enabled: autosaveEnabledRef.current,
         autosave_disabled_reason: autosaveDisabledReasonRef.current,
         autosave_bytes_estimated: autosaveBytesRef.current || undefined,
