@@ -241,6 +241,7 @@ export function DocumentScannerDialog({
       setResumePromptSession(null);
       setPendingResumePages(null);
       setSettingsOpen(false);
+      importedPdfSourceRef.current = null;
     }
     return () => {
       stopCamera();
