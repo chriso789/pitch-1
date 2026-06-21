@@ -15,7 +15,7 @@ const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const maybe = url && serviceKey ? describe : describe.skip;
 
 maybe('Pipeline Hardening — DB structural gates', () => {
-  const admin = createClient(url!, serviceKey!);
+  const admin = createClient(url || 'http://localhost', serviceKey || 'placeholder');
 
   it('exposes has_active_lead_approval()', async () => {
     const { error } = await admin.rpc('has_active_lead_approval', {
