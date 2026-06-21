@@ -555,7 +555,19 @@ export function DocumentScannerDialog({
         enhanced.toBlob((b) => resolve(b), 'image/jpeg', 0.95)
       );
       if (!blob) return false;
-      const preview = URL.createObjectURL(blob);
+      // Low-memory devices: generate a downscaled preview blob so the thumbnail
+      // grid never pins multiple full-res JPEGs in memory. The original `blob`
+      // (full-res) is still what we store and use to build the final PDF.
+      let previewBlob: Blob = blob;
+      if (deviceProfileRef.current.isLowMemory) {
+        try {
+          const preCanvas = downscaleCanvasInPlace(enhanced, deviceProfileRef.current.previewMaxEdgePx);
+          previewBlob = await new Promise<Blob>((resolve) =>
+            preCanvas.toBlob((b) => resolve(b ?? blob), 'image/jpeg', 0.8),
+          );
+        } catch { /* fall back to full-res preview */ }
+      }
+      const preview = urlRegRef.current.create(previewBlob);
 
       // Perceptual hash + duplicate check against previous page
       const imageHash = await computeImageHash(blob);
@@ -567,7 +579,7 @@ export function DocumentScannerDialog({
           duplicateWarning = true;
           const proceed = confirm('This page looks like the previous scan. Add anyway?');
           if (!proceed) {
-            URL.revokeObjectURL(preview);
+            urlRegRef.current.revoke(preview);
             return false;
           }
         }
