@@ -44,7 +44,7 @@ import {
 } from '@/utils/scannerSessionStore';
 import { renderImportedPdf, getPdfjsDiagnostics } from '@/utils/scannerPdfImport';
 import { ScannerTelemetry } from '@/utils/scannerTelemetry';
-import { ObjectUrlRegistry, detectDeviceMemoryProfile } from '@/utils/scannerMobileGuards';
+import { ObjectUrlRegistry, detectDeviceMemoryProfile, downscaleCanvasInPlace } from '@/utils/scannerMobileGuards';
 import ScannerSettingsPanel, { type ScannerSettings } from './ScannerSettingsPanel';
 
 interface CapturedPage {
