@@ -1,84 +1,79 @@
-# Crew Portal Labor Orders — Full Workflow
+# Pipeline Hardening PR — Manager Approval Gate + C-L-J Numbering
 
-## Why only one order shows now
-The current screenshot shows a single card because the query is filtered to `order_type='labor'` on `production_order_assignments`, and only one project has rows there. We'll widen the view, add the job number, and surface every labor order in the tenant for staff (managers/owners) — crew logins remain scoped to their `crew_id`.
+## What already exists (do not rebuild)
 
-## What we'll build
+- `clj_sequences` (tenant-scoped counters), `contacts.clj_number` / `clj_formatted_number`, `projects.clj_formatted_number` + `contact_number`/`lead_number`/`job_number`.
+- `manager_approval_queue` (status, approved_by, approved_at, estimated_value, business_justification, priority).
+- `manager_approval_history` (audit table — previous_status, new_status, performed_by, action, notes).
+- `pipeline_entries.approval_gate_status`, `manager_approval_status`, `requires_manager_approval`.
+- Edge function `api-approve-job-from-lead` enforces approval queue check for >$25k.
+- React hook `useApprovalGate` with tiered thresholds; `ManagerApprovalQueue` + `ManagerApprovalDialog` UIs.
 
-### 1. Labor Order card improvements (crew portal)
-- Show **Job # / Project #** (pulled from `projects.project_number` or `jobs.job_number` via `project_id`)
-- Show **Project address / customer name** as subtitle
-- Inline **Crew dropdown**: shows assigned crew name if set; otherwise "Assign crew…" — staff and crew leads can change it
-- Inline **Status dropdown** (see #2)
-- If status = `scheduled`: inline **date picker** (writes `scheduled_date`)
-- Per-status **Checklist** drawer (see #3)
-- **Upload photos** button (already wired) stays on the card
+## Confirmed gaps (this PR closes them)
 
-### 2. Company-configurable statuses
-New table `labor_order_statuses` (per tenant):
-- `key` (slug, e.g. `assigned`, `scheduled`, `in_progress`, `completed`)
-- `label`, `color`, `sort_order`, `is_terminal`, `requires_date`
-- Seeded defaults: Assigned → Scheduled → In Progress → Completed
-- Settings UI: **Settings → Production → Labor Order Statuses** (add/edit/reorder)
-- Status dropdown on the card pulls from this table
+1. **Direct DB bypass.** `src/pages/LeadDetails.tsx:570` updates `pipeline_entries.status='project'` directly, skipping the edge function and approval gate entirely.
+2. **No DB-level enforcement.** RLS lets any rep with write access set `status='project'` from the client. The edge function is the only check.
+3. **Threshold-only gating.** Today only >$25k is gated. Spec requires *every* Lead→Project conversion to require an approval event (the threshold determines *which manager role* can approve, not whether approval is needed).
+4. **C-L-J columns are not immutable.** Nothing blocks rewriting `clj_number` / `clj_formatted_number` after assignment.
+5. **C-L-J uniqueness not enforced per-tenant** on `contacts`, `pipeline_entries`, `projects`.
+6. **No idempotent backfill** for existing rows missing C-L-J identifiers.
+7. **Rejected/revoked approvals are not consistently logged** in `manager_approval_history`.
+8. **No tests** covering bypass attempts, concurrent ID assignment, or backfill idempotency.
 
-### 3. Per-status checklists
-New tables:
-- `labor_order_status_checklists` — checklist template attached to a status (per tenant)
-- `labor_order_checklist_items` — items on the template
-- `labor_order_checklist_completions` — checked items per assignment
-- When the crew opens the card and a status is active, the checklist for that status appears. Status can only advance to a terminal status after required items are checked.
+## PR scope (one focused commit set)
 
-### 4. Scheduling → Calendar integration
-- Selecting **Scheduled** + date writes `scheduled_date` and creates events:
-  - On the **assigned sales rep's calendar** (via `appointments` table — `assigned_to = project.sales_rep_id`, `appointment_type = 'labor_order'`)
-  - On the **crew's calendar** (new `crew_calendar_events` view aggregating assignments where `crew_id = my crew`; the existing crew portal "Navigate" tab will also list scheduled orders)
-- Rescheduling updates both events; clearing date removes them.
+### Migration 1 — C-L-J integrity
 
-### 5. Automations on schedule
-Edge function `notify-labor-order-scheduled` (authenticated tenant route):
-- Triggered by DB trigger on `production_order_assignments` when `status` transitions to `scheduled` OR `scheduled_date` changes while status is scheduled
-- Sends:
-  - **Email** to crew (`crews.email`) and sales rep (`profiles.email`) via `send-transactional-email` with new template `labor-order-scheduled`
-  - **SMS** to crew (`crews.phone`) and sales rep (`profiles.phone`) via existing Telnyx send function
-- Includes: job #, address, scheduled date, crew name, rep name, link to project
-- Idempotency key: `labor-order-scheduled-{assignment_id}-{scheduled_date}` so re-saves don't double-send
+- `UNIQUE (tenant_id, clj_number)` on `contacts`, `pipeline_entries`, `projects` (partial index `WHERE clj_number IS NOT NULL`).
+- Immutability trigger on each: `BEFORE UPDATE` → if `OLD.clj_number IS NOT NULL AND NEW.clj_number IS DISTINCT FROM OLD.clj_number` → `RAISE EXCEPTION`. Same for `clj_formatted_number`.
+- Idempotent backfill function `public.backfill_clj_numbers(p_tenant_id uuid)` that assigns C-L-J to any row missing one, using `clj_sequences` advisory locks. Safe to re-run.
 
-## Files to change / add
+### Migration 2 — Approval gate enforcement at DB layer
 
-**Database (migration):**
-- `labor_order_statuses` table + seed defaults per tenant
-- `labor_order_status_checklists`, `labor_order_checklist_items`, `labor_order_checklist_completions`
-- Add `sales_rep_id` reference resolved from `projects`/`jobs` for trigger lookup (read-only join)
-- Trigger `trg_labor_order_schedule_notify` → invokes edge function via `pg_net`
+- New function `public.has_active_approval(p_pipeline_entry_id uuid) RETURNS boolean` — security definer, checks `manager_approval_queue.status='approved'`.
+- New trigger `enforce_lead_to_project_approval` on `pipeline_entries` `BEFORE UPDATE`:
+  - When `OLD.status != 'project' AND NEW.status = 'project'`:
+    - Allow if caller has role `master` or `owner` (via `has_role`) — they remain override-capable, logged.
+    - Otherwise require `has_active_approval(NEW.id)` = true; else `RAISE EXCEPTION 'lead_to_project_requires_approval'`.
+  - Always insert a row into `manager_approval_history` recording the transition attempt (success or block).
+- Add trigger to also block `INSERT` into `projects` with `pipeline_entry_id` set unless approval exists or caller is master/owner.
 
-**Frontend:**
-- `src/components/crew/LaborOrderCard.tsx` (extract from CrewPortal)
-- `src/components/crew/LaborOrderStatusSelect.tsx`
-- `src/components/crew/LaborOrderChecklist.tsx`
-- `src/components/settings/LaborOrderStatusManagement.tsx` (new settings tab)
-- Update `src/components/crew/CrewPortal.tsx` Labor Orders tab to use card + join `projects(project_number, address, sales_rep_id, contacts(...))`
-- Update "Navigate" tab to also list scheduled labor orders for the crew
+### Migration 3 — Audit completeness
 
-**Edge function:**
-- `supabase/functions/notify-labor-order-scheduled/index.ts` (authenticated/internal route, tenant-resolved from assignment row, audit-logged)
+- Trigger on `manager_approval_queue` `AFTER UPDATE OF status` → write `manager_approval_history` row for every status change (pending → approved / rejected / revoked / expired). Today only manual writes happen.
 
-**Email template:**
-- `supabase/functions/_shared/transactional-email-templates/labor-order-scheduled.tsx`
+### Edge function updates
 
-## Security (tenant enforcement)
-- All new tables: RLS scoped by `tenant_id` via `profiles` / `current_user_crew_id()`
-- Edge function resolves `tenant_id` server-side from the assignment row, never trusts the body
-- Crews can only change status / check items on assignments where `crew_id = current_user_crew_id()`
-- Staff (master/owner/corporate/office_admin/manager) can change any assignment in their tenant
+- `api-approve-job-from-lead`: keep the existing tiered-role check; remove the `>$25k` short-circuit so *every* conversion verifies an approval row exists (master/owner still bypass). Conversion already routes through this function for the canonical path.
 
-## Out of scope (ask before adding)
-- Two-way calendar sync to Google/Outlook (we only write to internal `appointments`)
-- Custom checklist editor UI (initial release: seed defaults; editor is a follow-up)
-- SMS replies / two-way confirmation flow
+### Frontend updates
 
-## Open questions
-1. **Default statuses** — confirm: Assigned, Scheduled, In Progress, Completed. Add "On Hold" / "Cancelled"?
-2. **Who can change status** — crew + staff, or staff only?
-3. **Checklist editor UI now or later?** I recommend later (seed sensible defaults this round so the gate works end-to-end).
-4. **Rep phone source** — `profiles.phone`? Some reps have no phone — should we skip SMS silently or fall back to email-only?
+- `src/pages/LeadDetails.tsx`: replace the direct `pipeline_entries.update({status:'project'})` at line 570 with `supabase.functions.invoke('api-approve-job-from-lead', { body: { pipelineEntryId } })`. Show the existing approval-required dialog if it returns `requires_approval: true`.
+- `src/hooks/useApprovalGate.ts`: change default thresholds so `requiresApproval` is true for all non-manager conversions (threshold table now governs *which* role can approve, not *whether*).
+- Pipeline Kanban (`KanbanCard.tsx`): disable the "Mark as Project" / drag-to-project action for non-managers when no approval row exists; show pending state badge.
+
+### Tests
+
+`tests/integration/approval-gate.test.ts`:
+1. Rep without approval → conversion blocked (edge function 403 AND direct DB update raises).
+2. Manager creates approval → rep conversion succeeds.
+3. Master/owner can override without approval row (and override is audited).
+4. Direct `supabase.from('pipeline_entries').update({status:'project'})` from a rep token is rejected by the trigger.
+5. Concurrent `backfill_clj_numbers` calls produce unique IDs (10 parallel).
+6. Re-running backfill is a no-op for already-numbered rows.
+7. Updating `clj_number` on an existing row raises immutability error.
+
+## Out of scope (next PRs)
+
+- Referral attribution wiring + Stripe subscription webhook (PR #2, as you outlined).
+- Address validation, weather pause, unified comms timeline.
+- Measurement-system changes.
+
+## Definition of done
+
+- ✅ No `pipeline_entries.status` can flip to `'project'` without either a master/owner caller or a matching `manager_approval_queue` row in `approved` status — enforced by trigger, not just by edge function.
+- ✅ No `projects` row with `pipeline_entry_id` can be inserted by a non-master/owner without an approval row.
+- ✅ Every contact, lead, and project has a unique, immutable C-L-J identifier per tenant; backfill is idempotent.
+- ✅ Every status transition on `manager_approval_queue` writes to `manager_approval_history`.
+- ✅ All 7 tests above pass in `npm run test`.
+- ✅ Build + typecheck clean.
