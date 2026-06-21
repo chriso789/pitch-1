@@ -161,6 +161,8 @@ export function DocumentScannerDialog({
   const [resumePromptSession, setResumePromptSession] = useState<{ pages: number; updatedAt: number } | null>(null);
   const [pendingResumePages, setPendingResumePages] = useState<PersistedScanPage[] | null>(null);
   const [importPdfChoice, setImportPdfChoice] = useState<File | null>(null);
+  // Source-file metadata for imported PDFs that get rebuilt through the scanner.
+  const importedPdfSourceRef = useRef<{ name: string; size: number; pageCount: number } | null>(null);
 
   // Preload OpenCV
   useEffect(() => {
