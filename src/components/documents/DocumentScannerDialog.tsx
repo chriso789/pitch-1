@@ -750,7 +750,7 @@ export function DocumentScannerDialog({
       }
     } finally {
       setIsProcessing(false);
-      if (manualCropImage) URL.revokeObjectURL(manualCropImage.url);
+      if (manualCropImage) urlRegRef.current.revoke(manualCropImage.url);
       setManualCropImage(null);
       setPendingCaptureCanvas(null);
       setPendingCaptureMeta(null);
