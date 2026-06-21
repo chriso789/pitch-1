@@ -78,12 +78,12 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Approval Gate Enforcement: Check if high-value project requires approval
-    // master and owner can always override conversion requirements
+    // Approval Gate Enforcement: EVERY lead -> project conversion requires
+    // an approved manager_approval_queue row. Only master/owner roles may
+    // override (overrides are recorded by the DB audit trigger).
     const estimatedValue = pipelineEntry.estimated_value || 0;
 
-    if (estimatedValue > 25000 && !canOverrideConversion) {
-      // Check if there's an approved request for this pipeline entry
+    if (!canOverrideConversion) {
       const { data: approvalCheck } = await supabase
         .from('manager_approval_queue')
         .select('*')
@@ -95,16 +95,13 @@ Deno.serve(async (req) => {
 
       if (!approvalCheck) {
         return new Response(
-          JSON.stringify({ 
-            error: 'Manager approval required for projects over $25,000',
+          JSON.stringify({
+            error: 'Manager approval required to convert this lead into a project',
             requires_approval: true,
             estimated_value: estimatedValue,
-            clj_number: pipelineEntry.clj_formatted_number
+            clj_number: pipelineEntry.clj_formatted_number,
           }),
-          { 
-            status: 403,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-          }
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
     }

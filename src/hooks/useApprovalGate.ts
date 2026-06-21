@@ -24,9 +24,11 @@ interface ApprovalCheckResult {
 
 const MANAGER_ROLES = ['master', 'owner', 'corporate', 'office_admin', 'regional_manager', 'sales_manager'];
 
+// Every non-manager conversion requires approval. Tiers below govern which
+// role tier can grant the approval, not whether approval is needed.
 const DEFAULT_THRESHOLDS: ApprovalThreshold[] = [
-  { minValue: 0, maxValue: 10000, requiredRoles: [], approvalType: 'any' },
-  { minValue: 10000, maxValue: 25000, requiredRoles: ['office_admin', 'regional_manager', 'sales_manager'], approvalType: 'any' },
+  { minValue: 0, maxValue: 10000, requiredRoles: ['office_admin', 'regional_manager', 'sales_manager', 'corporate', 'master', 'owner'], approvalType: 'any' },
+  { minValue: 10000, maxValue: 25000, requiredRoles: ['office_admin', 'regional_manager', 'sales_manager', 'corporate', 'master', 'owner'], approvalType: 'any' },
   { minValue: 25000, maxValue: null, requiredRoles: ['corporate', 'master', 'owner'], approvalType: 'any' },
 ];
 
