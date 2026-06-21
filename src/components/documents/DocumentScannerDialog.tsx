@@ -773,7 +773,7 @@ export function DocumentScannerDialog({
   const removePage = (index: number) => {
     setCapturedPages(prev => {
       const next = [...prev];
-      URL.revokeObjectURL(next[index].preview);
+      urlRegRef.current.revoke(next[index].preview);
       next.splice(index, 1);
       return next;
     });
