@@ -224,9 +224,8 @@ export function DocumentScannerDialog({
       });
     } else {
       stopCamera();
-      // Revoke every URL we minted this session
+      // Revoke every URL we minted this session (registry owns all preview URLs).
       urlRegRef.current.revokeAll();
-      capturedPages.forEach(p => { try { URL.revokeObjectURL(p.preview); } catch {} });
       setCapturedPages([]);
       setCameraError(null);
       setDetectedCorners(null);
