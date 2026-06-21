@@ -565,12 +565,25 @@ const LeadDetails = () => {
     }
 
     try {
-      const { error } = await supabase
-        .from('pipeline_entries')
-        .update({ status: 'project' })
-        .eq('id', id);
+      // Route through the approval-gated edge function. A DB trigger also blocks
+      // direct status='project' updates by non master/owner users.
+      const { data: result, error } = await supabase.functions.invoke(
+        'api-approve-job-from-lead',
+        { body: { pipelineEntryId: id } }
+      );
 
-      if (error) throw error;
+      const payload = (result as any) || {};
+      if (error || payload.error) {
+        if (payload.requires_approval) {
+          toast({
+            title: 'Manager Approval Required',
+            description: payload.error || 'This lead requires manager approval before it can become a project.',
+            variant: 'destructive',
+          });
+          return;
+        }
+        throw error || new Error(payload.error || 'Conversion failed');
+      }
 
       // Auto-populate budget from selected estimate
       try {
