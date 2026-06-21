@@ -958,7 +958,7 @@ export function DocumentScannerDialog({
                 : 'unknown';
         newPages.push({
           blob,
-          preview: URL.createObjectURL(blob),
+          preview: urlRegRef.current.create(blob),
           cropMode: 'auto',
           colorMode: 'color',
           preset: scanPreset,
