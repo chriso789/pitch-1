@@ -942,6 +942,13 @@ export function DocumentScannerDialog({
         toast({ title: 'Empty PDF', description: 'No pages could be rendered.', variant: 'destructive' });
         return;
       }
+      // Persist the source PDF's identity so the final upload metadata can
+      // reference both the original and rebuilt artifacts.
+      importedPdfSourceRef.current = {
+        name: file.name,
+        size: file.size,
+        pageCount: rendered.length,
+      };
       const newPages: CapturedPage[] = [];
       for (const r of rendered) {
         const blob: Blob | null = await new Promise((resolve) =>
