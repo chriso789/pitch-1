@@ -44,7 +44,7 @@ import {
 } from '@/utils/scannerSessionStore';
 import { renderImportedPdf, getPdfjsDiagnostics } from '@/utils/scannerPdfImport';
 import { ScannerTelemetry } from '@/utils/scannerTelemetry';
-import { ObjectUrlRegistry, detectDeviceMemoryProfile } from '@/utils/scannerMobileGuards';
+import { ObjectUrlRegistry, detectDeviceMemoryProfile, downscaleCanvasInPlace } from '@/utils/scannerMobileGuards';
 import ScannerSettingsPanel, { type ScannerSettings } from './ScannerSettingsPanel';
 
 interface CapturedPage {
@@ -161,6 +161,8 @@ export function DocumentScannerDialog({
   const [resumePromptSession, setResumePromptSession] = useState<{ pages: number; updatedAt: number } | null>(null);
   const [pendingResumePages, setPendingResumePages] = useState<PersistedScanPage[] | null>(null);
   const [importPdfChoice, setImportPdfChoice] = useState<File | null>(null);
+  // Source-file metadata for imported PDFs that get rebuilt through the scanner.
+  const importedPdfSourceRef = useRef<{ name: string; size: number; pageCount: number } | null>(null);
 
   // Preload OpenCV
   useEffect(() => {
@@ -222,9 +224,8 @@ export function DocumentScannerDialog({
       });
     } else {
       stopCamera();
-      // Revoke every URL we minted this session
+      // Revoke every URL we minted this session (registry owns all preview URLs).
       urlRegRef.current.revokeAll();
-      capturedPages.forEach(p => { try { URL.revokeObjectURL(p.preview); } catch {} });
       setCapturedPages([]);
       setCameraError(null);
       setDetectedCorners(null);
@@ -240,6 +241,7 @@ export function DocumentScannerDialog({
       setResumePromptSession(null);
       setPendingResumePages(null);
       setSettingsOpen(false);
+      importedPdfSourceRef.current = null;
     }
     return () => {
       stopCamera();
@@ -553,7 +555,19 @@ export function DocumentScannerDialog({
         enhanced.toBlob((b) => resolve(b), 'image/jpeg', 0.95)
       );
       if (!blob) return false;
-      const preview = URL.createObjectURL(blob);
+      // Low-memory devices: generate a downscaled preview blob so the thumbnail
+      // grid never pins multiple full-res JPEGs in memory. The original `blob`
+      // (full-res) is still what we store and use to build the final PDF.
+      let previewBlob: Blob = blob;
+      if (deviceProfileRef.current.isLowMemory) {
+        try {
+          const preCanvas = downscaleCanvasInPlace(enhanced, deviceProfileRef.current.previewMaxEdgePx);
+          previewBlob = await new Promise<Blob>((resolve) =>
+            preCanvas.toBlob((b) => resolve(b ?? blob), 'image/jpeg', 0.8),
+          );
+        } catch { /* fall back to full-res preview */ }
+      }
+      const preview = urlRegRef.current.create(previewBlob);
 
       // Perceptual hash + duplicate check against previous page
       const imageHash = await computeImageHash(blob);
@@ -565,7 +579,7 @@ export function DocumentScannerDialog({
           duplicateWarning = true;
           const proceed = confirm('This page looks like the previous scan. Add anyway?');
           if (!proceed) {
-            URL.revokeObjectURL(preview);
+            urlRegRef.current.revoke(preview);
             return false;
           }
         }
@@ -595,7 +609,7 @@ export function DocumentScannerDialog({
       };
       setCapturedPages(prev => {
         if (retakeIndex !== null && prev[retakeIndex]) {
-          URL.revokeObjectURL(prev[retakeIndex].preview);
+          urlRegRef.current.revoke(prev[retakeIndex].preview);
           const next = [...prev];
           next[retakeIndex] = newPage;
           return next;
@@ -705,7 +719,7 @@ export function DocumentScannerDialog({
         hi.canvas.toBlob((blob) => {
           if (blob) {
             setManualCropImage({
-              url: URL.createObjectURL(blob),
+              url: urlRegRef.current.create(blob),
               width: hi.canvas.width,
               height: hi.canvas.height,
             });
@@ -736,7 +750,7 @@ export function DocumentScannerDialog({
       }
     } finally {
       setIsProcessing(false);
-      if (manualCropImage) URL.revokeObjectURL(manualCropImage.url);
+      if (manualCropImage) urlRegRef.current.revoke(manualCropImage.url);
       setManualCropImage(null);
       setPendingCaptureCanvas(null);
       setPendingCaptureMeta(null);
@@ -745,7 +759,7 @@ export function DocumentScannerDialog({
 
   const handleManualCropCancel = useCallback(() => {
     setShowManualCrop(false);
-    if (manualCropImage) URL.revokeObjectURL(manualCropImage.url);
+    if (manualCropImage) urlRegRef.current.revoke(manualCropImage.url);
     setManualCropImage(null);
     setPendingCaptureCanvas(null);
     setPendingCaptureMeta(null);
@@ -759,7 +773,7 @@ export function DocumentScannerDialog({
   const removePage = (index: number) => {
     setCapturedPages(prev => {
       const next = [...prev];
-      URL.revokeObjectURL(next[index].preview);
+      urlRegRef.current.revoke(next[index].preview);
       next.splice(index, 1);
       return next;
     });
@@ -781,8 +795,8 @@ export function DocumentScannerDialog({
     setIsProcessing(true);
     try {
       const rotated = await rotateBlob(page.blob, degrees);
-      const preview = URL.createObjectURL(rotated);
-      URL.revokeObjectURL(page.preview);
+      const preview = urlRegRef.current.create(rotated);
+      urlRegRef.current.revoke(page.preview);
       const norm = ((page.rotationApplied + (degrees === -90 ? 270 : degrees)) % 360) as 0 | 90 | 180 | 270;
       const newOutputWidth = degrees === 180 ? page.outputWidth : page.outputHeight;
       const newOutputHeight = degrees === 180 ? page.outputHeight : page.outputWidth;
@@ -828,7 +842,7 @@ export function DocumentScannerDialog({
       setPendingCaptureMeta({
         method: 'imported_photo', sourceWidth: c.width, sourceHeight: c.height,
       });
-      const url = URL.createObjectURL(file);
+      const url = urlRegRef.current.create(file);
       setManualCropImage({ url, width: c.width, height: c.height });
       setShowManualCrop(true);
     } catch (e) {
@@ -929,6 +943,13 @@ export function DocumentScannerDialog({
         toast({ title: 'Empty PDF', description: 'No pages could be rendered.', variant: 'destructive' });
         return;
       }
+      // Persist the source PDF's identity so the final upload metadata can
+      // reference both the original and rebuilt artifacts.
+      importedPdfSourceRef.current = {
+        name: file.name,
+        size: file.size,
+        pageCount: rendered.length,
+      };
       const newPages: CapturedPage[] = [];
       for (const r of rendered) {
         const blob: Blob | null = await new Promise((resolve) =>
@@ -944,7 +965,7 @@ export function DocumentScannerDialog({
                 : 'unknown';
         newPages.push({
           blob,
-          preview: URL.createObjectURL(blob),
+          preview: urlRegRef.current.create(blob),
           cropMode: 'auto',
           colorMode: 'color',
           preset: scanPreset,
@@ -1163,6 +1184,16 @@ export function DocumentScannerDialog({
         edge_cleanup_applied: capturedPages.map(p => !!p.edgeCleanupApplied),
         duplicate_warning_pages: capturedPages.filter(p => p.duplicateWarning).length,
         imported_pdf_mode: capturedPages.every(p => p.captureMethod === 'imported_pdf_rebuilt') ? 'cleaned_rebuilt' as const : undefined,
+        // When every page came from a rebuilt import, carry the source PDF's
+        // identity forward so the rebuilt artifact can be traced back.
+        imported_pdf_source: capturedPages.every(p => p.captureMethod === 'imported_pdf_rebuilt') && importedPdfSourceRef.current
+          ? {
+              original_filename: importedPdfSourceRef.current.name,
+              original_file_size_bytes: importedPdfSourceRef.current.size,
+              imported_page_count: importedPdfSourceRef.current.pageCount,
+              rebuilt_file_size_bytes: pdfBlob.size,
+            }
+          : undefined,
         autosave_enabled: autosaveEnabledRef.current,
         autosave_disabled_reason: autosaveDisabledReasonRef.current,
         autosave_bytes_estimated: autosaveBytesRef.current || undefined,
@@ -1228,7 +1259,7 @@ export function DocumentScannerDialog({
       toast({ title: 'PDF Created', description: `${capturedPages.length}-page PDF uploaded.` });
 
       telemetryRef.current.finish();
-      capturedPages.forEach(p => { try { urlRegRef.current.revoke(p.preview); } catch {} URL.revokeObjectURL(p.preview); });
+      capturedPages.forEach(p => { try { urlRegRef.current.revoke(p.preview); } catch {} });
       urlRegRef.current.revokeAll();
       setCapturedPages([]);
       // Clear persisted scan session once the upload succeeds.
@@ -1334,7 +1365,7 @@ export function DocumentScannerDialog({
     setPendingCaptureMeta({ method: hi.method, sourceWidth: hi.sourceWidth, sourceHeight: hi.sourceHeight });
     hi.canvas.toBlob((blob) => {
       if (blob) {
-        setManualCropImage({ url: URL.createObjectURL(blob), width: hi.canvas.width, height: hi.canvas.height });
+        setManualCropImage({ url: urlRegRef.current.create(blob), width: hi.canvas.width, height: hi.canvas.height });
         setShowManualCrop(true);
       }
     }, 'image/jpeg', 0.9);
@@ -1743,7 +1774,7 @@ export function DocumentScannerDialog({
                   if (pendingResumePages) {
                     const restored: CapturedPage[] = pendingResumePages.map((p) => ({
                       blob: p.blob,
-                      preview: URL.createObjectURL(p.blob),
+                      preview: urlRegRef.current.create(p.blob),
                       cropMode: p.cropMode,
                       colorMode: p.colorMode,
                       preset: p.preset as ScanPreset,
