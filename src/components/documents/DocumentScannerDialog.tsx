@@ -1242,7 +1242,7 @@ export function DocumentScannerDialog({
       toast({ title: 'PDF Created', description: `${capturedPages.length}-page PDF uploaded.` });
 
       telemetryRef.current.finish();
-      capturedPages.forEach(p => { try { urlRegRef.current.revoke(p.preview); } catch {} URL.revokeObjectURL(p.preview); });
+      capturedPages.forEach(p => { try { urlRegRef.current.revoke(p.preview); } catch {} });
       urlRegRef.current.revokeAll();
       setCapturedPages([]);
       // Clear persisted scan session once the upload succeeds.
