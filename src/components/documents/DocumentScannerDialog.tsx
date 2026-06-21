@@ -842,7 +842,7 @@ export function DocumentScannerDialog({
       setPendingCaptureMeta({
         method: 'imported_photo', sourceWidth: c.width, sourceHeight: c.height,
       });
-      const url = URL.createObjectURL(file);
+      const url = urlRegRef.current.create(file);
       setManualCropImage({ url, width: c.width, height: c.height });
       setShowManualCrop(true);
     } catch (e) {
