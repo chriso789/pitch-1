@@ -609,7 +609,7 @@ export function DocumentScannerDialog({
       };
       setCapturedPages(prev => {
         if (retakeIndex !== null && prev[retakeIndex]) {
-          URL.revokeObjectURL(prev[retakeIndex].preview);
+          urlRegRef.current.revoke(prev[retakeIndex].preview);
           const next = [...prev];
           next[retakeIndex] = newPage;
           return next;
