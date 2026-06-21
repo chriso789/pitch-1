@@ -1348,7 +1348,7 @@ export function DocumentScannerDialog({
     setPendingCaptureMeta({ method: hi.method, sourceWidth: hi.sourceWidth, sourceHeight: hi.sourceHeight });
     hi.canvas.toBlob((blob) => {
       if (blob) {
-        setManualCropImage({ url: URL.createObjectURL(blob), width: hi.canvas.width, height: hi.canvas.height });
+        setManualCropImage({ url: urlRegRef.current.create(blob), width: hi.canvas.width, height: hi.canvas.height });
         setShowManualCrop(true);
       }
     }, 'image/jpeg', 0.9);
