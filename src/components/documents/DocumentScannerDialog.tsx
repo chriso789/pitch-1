@@ -795,8 +795,8 @@ export function DocumentScannerDialog({
     setIsProcessing(true);
     try {
       const rotated = await rotateBlob(page.blob, degrees);
-      const preview = URL.createObjectURL(rotated);
-      URL.revokeObjectURL(page.preview);
+      const preview = urlRegRef.current.create(rotated);
+      urlRegRef.current.revoke(page.preview);
       const norm = ((page.rotationApplied + (degrees === -90 ? 270 : degrees)) % 360) as 0 | 90 | 180 | 270;
       const newOutputWidth = degrees === 180 ? page.outputWidth : page.outputHeight;
       const newOutputHeight = degrees === 180 ? page.outputHeight : page.outputWidth;
