@@ -59747,6 +59747,14 @@ export type Database = {
           is_public: boolean
         }[]
       }
+      backfill_clj_numbers: {
+        Args: { p_tenant_id: string }
+        Returns: {
+          contacts_updated: number
+          pipeline_updated: number
+          projects_updated: number
+        }[]
+      }
       calculate_enhanced_estimate: {
         Args: { estimate_id_param: string }
         Returns: Json
@@ -60474,6 +60482,10 @@ export type Database = {
       }
       get_workspace_bootstrap: { Args: never; Returns: Json }
       gettransactionid: { Args: never; Returns: unknown }
+      has_active_lead_approval: {
+        Args: { p_pipeline_entry_id: string }
+        Returns: boolean
+      }
       has_high_level_role: { Args: { p_user_id: string }; Returns: boolean }
       has_manager_role: { Args: { p_user_id: string }; Returns: boolean }
       has_role: {
@@ -60572,6 +60584,10 @@ export type Database = {
         Returns: boolean
       }
       is_order_fully_approved: { Args: { p_po_id: string }; Returns: boolean }
+      is_pipeline_override_role: {
+        Args: { _user_id: string }
+        Returns: boolean
+      }
       is_platform_admin: { Args: { _user_id: string }; Returns: boolean }
       is_profile_visible: {
         Args: { profile_row: Database["public"]["Tables"]["profiles"]["Row"] }
