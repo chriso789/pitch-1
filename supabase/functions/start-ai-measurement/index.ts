@@ -12243,10 +12243,12 @@ async function processJob(input: any) {
     };
 
     try {
-      const { data: benchmarks } = await supabase
-        .from("roof_measurement_benchmarks")
-        .select("*")
-        .limit(50);
+      // PR A-2: vendor benchmark runtime read REMOVED from canonical route.
+      // `roof_measurement_benchmarks` is OFFLINE-AUDIT only; never gates a
+      // live run, never blocks customer_report_ready. Replaced with an
+      // empty result so all downstream "no match" branches behave as if no
+      // benchmark exists for this address.
+      const benchmarks: any[] = [];
       if (benchmarks && benchmarks.length > 0) {
         const normalizeAddr = (a: string) =>
           (a || "").toLowerCase().replace(/[^a-z0-9]/g, "");
