@@ -3307,6 +3307,7 @@ export type Database = {
           address_validated_at_order: string | null
           address_validation_status_at_order: string | null
           ai_measurement_engine_version: string | null
+          candidate_coordinate_space: string | null
           canonical_measurement_route: boolean
           company_id: string | null
           completed_at: string | null
@@ -3316,6 +3317,8 @@ export type Database = {
           created_at: string
           created_by_component: string | null
           created_by_function: string | null
+          dsm_candidate_check_skipped: boolean | null
+          dsm_registration_status: string | null
           engine_version: string | null
           entrypoint: string
           evidence_acquisition_log: Json | null
@@ -3347,6 +3350,7 @@ export type Database = {
           project_id: string | null
           property_address: string
           property_address_id: string | null
+          raster_candidate_check_passed: boolean | null
           raster_scale: number | null
           report_blocked: boolean
           report_pdf_path: string | null
@@ -3385,6 +3389,7 @@ export type Database = {
           address_validated_at_order?: string | null
           address_validation_status_at_order?: string | null
           ai_measurement_engine_version?: string | null
+          candidate_coordinate_space?: string | null
           canonical_measurement_route?: boolean
           company_id?: string | null
           completed_at?: string | null
@@ -3394,6 +3399,8 @@ export type Database = {
           created_at?: string
           created_by_component?: string | null
           created_by_function?: string | null
+          dsm_candidate_check_skipped?: boolean | null
+          dsm_registration_status?: string | null
           engine_version?: string | null
           entrypoint?: string
           evidence_acquisition_log?: Json | null
@@ -3425,6 +3432,7 @@ export type Database = {
           project_id?: string | null
           property_address: string
           property_address_id?: string | null
+          raster_candidate_check_passed?: boolean | null
           raster_scale?: number | null
           report_blocked?: boolean
           report_pdf_path?: string | null
@@ -3463,6 +3471,7 @@ export type Database = {
           address_validated_at_order?: string | null
           address_validation_status_at_order?: string | null
           ai_measurement_engine_version?: string | null
+          candidate_coordinate_space?: string | null
           canonical_measurement_route?: boolean
           company_id?: string | null
           completed_at?: string | null
@@ -3472,6 +3481,8 @@ export type Database = {
           created_at?: string
           created_by_component?: string | null
           created_by_function?: string | null
+          dsm_candidate_check_skipped?: boolean | null
+          dsm_registration_status?: string | null
           engine_version?: string | null
           entrypoint?: string
           evidence_acquisition_log?: Json | null
@@ -3503,6 +3514,7 @@ export type Database = {
           project_id?: string | null
           property_address?: string
           property_address_id?: string | null
+          raster_candidate_check_passed?: boolean | null
           raster_scale?: number | null
           report_blocked?: boolean
           report_pdf_path?: string | null
@@ -28286,11 +28298,14 @@ export type Database = {
           address_validation_status_at_order: string | null
           ai_measurement_engine_version: string | null
           ai_measurement_job_id: string | null
+          candidate_coordinate_space: string | null
           canonical_measurement_route: boolean
           completed_at: string | null
           created_at: string
           created_by_component: string | null
           created_by_function: string | null
+          dsm_candidate_check_skipped: boolean | null
+          dsm_registration_status: string | null
           engine_version: string | null
           error: string | null
           evidence_acquisition_log: Json | null
@@ -28312,6 +28327,7 @@ export type Database = {
           progress_message: string | null
           project_id: string | null
           property_address_id: string | null
+          raster_candidate_check_passed: boolean | null
           report_renderer_version: string | null
           result_state: string | null
           route_audit_version: string | null
@@ -28334,11 +28350,14 @@ export type Database = {
           address_validation_status_at_order?: string | null
           ai_measurement_engine_version?: string | null
           ai_measurement_job_id?: string | null
+          candidate_coordinate_space?: string | null
           canonical_measurement_route?: boolean
           completed_at?: string | null
           created_at?: string
           created_by_component?: string | null
           created_by_function?: string | null
+          dsm_candidate_check_skipped?: boolean | null
+          dsm_registration_status?: string | null
           engine_version?: string | null
           error?: string | null
           evidence_acquisition_log?: Json | null
@@ -28360,6 +28379,7 @@ export type Database = {
           progress_message?: string | null
           project_id?: string | null
           property_address_id?: string | null
+          raster_candidate_check_passed?: boolean | null
           report_renderer_version?: string | null
           result_state?: string | null
           route_audit_version?: string | null
@@ -28382,11 +28402,14 @@ export type Database = {
           address_validation_status_at_order?: string | null
           ai_measurement_engine_version?: string | null
           ai_measurement_job_id?: string | null
+          candidate_coordinate_space?: string | null
           canonical_measurement_route?: boolean
           completed_at?: string | null
           created_at?: string
           created_by_component?: string | null
           created_by_function?: string | null
+          dsm_candidate_check_skipped?: boolean | null
+          dsm_registration_status?: string | null
           engine_version?: string | null
           error?: string | null
           evidence_acquisition_log?: Json | null
@@ -28408,6 +28431,7 @@ export type Database = {
           progress_message?: string | null
           project_id?: string | null
           property_address_id?: string | null
+          raster_candidate_check_passed?: boolean | null
           report_renderer_version?: string | null
           result_state?: string | null
           route_audit_version?: string | null
@@ -44380,6 +44404,7 @@ export type Database = {
           archetype_debug: Json | null
           block_customer_report_reason: string | null
           bounding_box: Json | null
+          candidate_coordinate_space: string | null
           canonical_measurement_route: boolean
           centroid_offset_px: number | null
           complexity_rating: string | null
@@ -44395,7 +44420,9 @@ export type Database = {
           diagram_manifest: Json | null
           diagram_render_intent: string | null
           dsm_available: boolean | null
+          dsm_candidate_check_skipped: boolean | null
           dsm_contract_debug: Json | null
+          dsm_registration_status: string | null
           eave_edges: Json | null
           eave_lf: number | null
           eave_rake_classification_debug: Json | null
@@ -44515,6 +44542,7 @@ export type Database = {
           quality_score: number | null
           rake_edges: Json | null
           rake_lf: number | null
+          raster_candidate_check_passed: boolean | null
           recalculated_from_overrides: boolean
           report_blocked: boolean
           report_generated_at: string | null
@@ -44596,6 +44624,7 @@ export type Database = {
           archetype_debug?: Json | null
           block_customer_report_reason?: string | null
           bounding_box?: Json | null
+          candidate_coordinate_space?: string | null
           canonical_measurement_route?: boolean
           centroid_offset_px?: number | null
           complexity_rating?: string | null
@@ -44611,7 +44640,9 @@ export type Database = {
           diagram_manifest?: Json | null
           diagram_render_intent?: string | null
           dsm_available?: boolean | null
+          dsm_candidate_check_skipped?: boolean | null
           dsm_contract_debug?: Json | null
+          dsm_registration_status?: string | null
           eave_edges?: Json | null
           eave_lf?: number | null
           eave_rake_classification_debug?: Json | null
@@ -44731,6 +44762,7 @@ export type Database = {
           quality_score?: number | null
           rake_edges?: Json | null
           rake_lf?: number | null
+          raster_candidate_check_passed?: boolean | null
           recalculated_from_overrides?: boolean
           report_blocked?: boolean
           report_generated_at?: string | null
@@ -44812,6 +44844,7 @@ export type Database = {
           archetype_debug?: Json | null
           block_customer_report_reason?: string | null
           bounding_box?: Json | null
+          candidate_coordinate_space?: string | null
           canonical_measurement_route?: boolean
           centroid_offset_px?: number | null
           complexity_rating?: string | null
@@ -44827,7 +44860,9 @@ export type Database = {
           diagram_manifest?: Json | null
           diagram_render_intent?: string | null
           dsm_available?: boolean | null
+          dsm_candidate_check_skipped?: boolean | null
           dsm_contract_debug?: Json | null
+          dsm_registration_status?: string | null
           eave_edges?: Json | null
           eave_lf?: number | null
           eave_rake_classification_debug?: Json | null
@@ -44947,6 +44982,7 @@ export type Database = {
           quality_score?: number | null
           rake_edges?: Json | null
           rake_lf?: number | null
+          raster_candidate_check_passed?: boolean | null
           recalculated_from_overrides?: boolean
           report_blocked?: boolean
           report_generated_at?: string | null
