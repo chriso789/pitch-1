@@ -22,6 +22,14 @@ export interface RegistrationBlock {
   confirmed_center_inside_candidate?: boolean | null;
   coordinate_registration_gate_passed?: boolean | null;
   raster_bounds_contain_confirmed_center?: boolean | null;
+  /** PR A: raster/aerial candidate gate result (independent of DSM). */
+  raster_candidate_check_passed?: boolean | null;
+  /** PR A: which coordinate frame the selected candidate polygon lives in. */
+  candidate_coordinate_space?: string | null;
+  /** PR A: true when DSM candidate check was skipped due to missing DSM transform. */
+  dsm_candidate_check_skipped?: boolean | null;
+  /** PR A: derived/unavailable state of DSM registration. */
+  dsm_registration_status?: string | null;
   /** "ok" when raster overlay frame matches; any other value indicates aerial/raster mismatch. */
   frame_mismatch?: string | null;
   original_geocode_lat_lng?: { lat: number; lng: number } | null;
