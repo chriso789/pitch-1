@@ -264,10 +264,35 @@ export function ProjectAddressPanel({
               )
               .maybeSingle();
             if (insErr) {
-              console.warn('[ProjectAddressPanel] contact auto-hydrate failed', insErr);
+              console.warn('[ProjectAddressPanel] contact auto-hydrate insert failed, falling back to in-memory row', insErr);
+              if (hasGoogleEvidence) {
+                // Surface the validated contact address in the UI even if the
+                // canonical insert was blocked (e.g. RLS / tenant scope). The
+                // address is already Google-validated on the contact, so the
+                // user shouldn't be asked to re-validate it.
+                active = {
+                  id: `virtual-${pipelineEntryId}`,
+                  source_entity_type: 'pipeline_entry',
+                  source_entity_id: pipelineEntryId,
+                  validation_status: 'valid',
+                  formatted_address: payload.formatted_address,
+                  address_line_1: payload.address_line_1,
+                  address_line_2: payload.address_line_2,
+                  locality: payload.locality,
+                  administrative_area: payload.administrative_area,
+                  postal_code: payload.postal_code,
+                  country_code: payload.country_code,
+                  override_reason: null,
+                  override_by: null,
+                  override_at: null,
+                  missing_component_types: null,
+                  updated_at: new Date().toISOString(),
+                } as unknown as ProjectAddressRow;
+              }
             } else if (inserted) {
               active = inserted as unknown as ProjectAddressRow;
             }
+
           }
         }
       }
