@@ -1571,6 +1571,25 @@ export function UnifiedMeasurementPanel({
           </div>
         );
       })()}
+
+      {/* PR #4 Evidence Hardening — per-layer source provenance */}
+      {(() => {
+        const latestAi = aiMeasurements?.[0] as any;
+        if (!latestAi) return null;
+        const tier = latestAi.footprint_source_tier;
+        const used = latestAi.evidence_sources_used;
+        const log = latestAi.evidence_acquisition_log;
+        if (!tier && !used && !log) return null;
+        return (
+          <div className="mt-3">
+            <EvidenceSourcesPanel
+              footprintSourceTier={tier}
+              evidenceSourcesUsed={used}
+              evidenceAcquisitionLog={log}
+            />
+          </div>
+        );
+      })()}
     </>
   );
 }
