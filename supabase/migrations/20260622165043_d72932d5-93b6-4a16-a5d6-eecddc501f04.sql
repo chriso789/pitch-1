@@ -1,0 +1,1 @@
+UPDATE public.settings_tabs SET required_role = ARRAY['master','owner','corporate','office_admin','regional_manager','sales_manager','project_manager'] WHERE tab_key = 'email';
