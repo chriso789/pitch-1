@@ -40,21 +40,15 @@ Deno.serve(async (req: Request) => {
       return errorResponse('VALIDATION_ERROR', 'Missing envelope_id', 400);
     }
 
-    // Authenticated caller. Temporary repair bypass is scoped to the Carlos
-    // Boone envelope only, and is removed after the one-time artifact rebuild.
+    // Authenticated caller
     const authHeader = req.headers.get('Authorization') || '';
     const jwt = authHeader.replace(/^Bearer\s+/i, '');
-    const repairWithoutJwt = !jwt && body.force_rebuild && body.envelope_id === 'e928715b-6e6a-412a-9c07-489e0059e841';
-    let callerId = '';
-    if (jwt) {
-      const { data: userData, error: userErr } = await supabase.auth.getUser(jwt);
-      if (userErr || !userData?.user) {
-        return errorResponse('UNAUTHORIZED', 'Invalid auth token', 401);
-      }
-      callerId = userData.user.id;
-    } else if (!repairWithoutJwt) {
-      return errorResponse('UNAUTHORIZED', 'Missing auth token', 401);
+    if (!jwt) return errorResponse('UNAUTHORIZED', 'Missing auth token', 401);
+    const { data: userData, error: userErr } = await supabase.auth.getUser(jwt);
+    if (userErr || !userData?.user) {
+      return errorResponse('UNAUTHORIZED', 'Invalid auth token', 401);
     }
+    const callerId = userData.user.id;
 
     // Load envelope
     const { data: envelope, error: envErr } = await supabase
@@ -82,19 +76,6 @@ Deno.serve(async (req: Request) => {
     }
     if (!envelope.signed_pdf_path) {
       return errorResponse('INVALID_STATE', 'Envelope has no signed PDF to countersign', 400);
-    }
-
-    if (repairWithoutJwt) {
-      const { data: previousCountersign } = await supabase
-        .from('documents')
-        .select('uploaded_by')
-        .eq('tenant_id', envelope.tenant_id)
-        .ilike('file_path', `%/${envelope.id}/countersigned_%`)
-        .not('uploaded_by', 'is', null)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      callerId = previousCountersign?.uploaded_by || envelope.created_by;
     }
 
     // Load rep profile + saved signature
