@@ -322,8 +322,9 @@ Deno.serve(async (req) => {
         is_new_user: isNewUser,
         invite_link: inviteLink,
         email_sent: emailSent,
-        message: isNewUser 
-          ? `Created new owner account for ${ownerEmail}` 
+        referral_attribution: referralAttribution,
+        message: isNewUser
+          ? `Created new owner account for ${ownerEmail}`
           : `Updated existing owner account for ${ownerEmail}`,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
