@@ -96,6 +96,15 @@ export function RecordPaymentDialog({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
+      const estimateTag = selectedEstimateId
+        ? (() => {
+            const est = (combinedEstimates || []).find((e: any) => e.id === selectedEstimateId);
+            const label = est?.estimate_number || est?.display_name || selectedEstimateId;
+            return `[Applied to estimate: ${label}]`;
+          })()
+        : '';
+      const finalNotes = [estimateTag, paymentNotes].filter(Boolean).join(' ').trim() || null;
+
       const { error } = await supabase.from('project_payments').insert({
         tenant_id: tenantId,
         pipeline_entry_id: pipelineEntryId,
@@ -104,7 +113,7 @@ export function RecordPaymentDialog({
         payment_method: paymentMethod,
         reference_number: paymentRef || null,
         payment_date: paymentDate,
-        notes: paymentNotes || null,
+        notes: finalNotes,
         created_by: user.id,
       } as any);
       if (error) throw new Error(error.message || 'Failed to record payment');
