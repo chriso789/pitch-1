@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   Dialog,
   DialogContent,
@@ -13,10 +14,21 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Loader2, Send, Mail, CheckCircle, FileSignature, ChevronDown } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Loader2, Send, Mail, CheckCircle, FileSignature, ChevronDown, FileText } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import {
+  ESTIMATE_TEMPLATE_TYPE,
+  renderEstimateTemplate,
+} from '@/components/settings/EstimateEmailTemplates';
 
 interface ShareEstimateDialogProps {
   open: boolean;
