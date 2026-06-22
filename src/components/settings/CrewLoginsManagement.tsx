@@ -214,17 +214,30 @@ export const CrewLoginsManagement = () => {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => toggleMutation.mutate({ id: c.id, is_active: !c.is_active })}
-                      >
-                        {c.is_active ? (
-                          <><Ban className="h-4 w-4 mr-1" /> Deactivate</>
-                        ) : (
-                          <><CheckCircle className="h-4 w-4 mr-1" /> Activate</>
+                      <div className="inline-flex items-center gap-1 justify-end">
+                        {c.email && !c.user_id && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={sendLinkMutation.isPending}
+                            onClick={() => sendLinkMutation.mutate(c.email!)}
+                          >
+                            <Send className="h-4 w-4 mr-1" />
+                            {sendLinkMutation.isPending ? 'Sending…' : 'Send Link'}
+                          </Button>
                         )}
-                      </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => toggleMutation.mutate({ id: c.id, is_active: !c.is_active })}
+                        >
+                          {c.is_active ? (
+                            <><Ban className="h-4 w-4 mr-1" /> Deactivate</>
+                          ) : (
+                            <><CheckCircle className="h-4 w-4 mr-1" /> Activate</>
+                          )}
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
