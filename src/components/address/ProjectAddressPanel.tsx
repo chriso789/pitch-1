@@ -261,6 +261,7 @@ export function ProjectAddressPanel({
           tenant_id: tenantId,
           source_entity_type: 'project' as const,
           source_entity_id: projectId,
+          raw_input: row.formatted_address ?? [row.address_line_1, row.locality, row.administrative_area, row.postal_code].filter(Boolean).join(', '),
           address_line_1: row.address_line_1,
           address_line_2: row.address_line_2,
           locality: row.locality,
