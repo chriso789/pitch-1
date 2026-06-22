@@ -74,7 +74,7 @@ import { useQuery as useTanstackQuery, useQueryClient } from '@tanstack/react-qu
 import { format } from 'date-fns';
 import { SendReferralLinkButton } from '@/components/referrals/SendReferralLinkButton';
 import { AddressValidationResolutionModal } from '@/components/address/AddressValidationResolutionModal';
-import { ProjectAddressPanel } from '@/components/address/ProjectAddressPanel';
+// ProjectAddressPanel removed — address validated at lead/contact creation
 
 // Hook to get selected estimate id from pipeline metadata
 const useSelectedEstimateId = (pipelineEntryId: string) => {
