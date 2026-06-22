@@ -11,7 +11,7 @@
 //   - Every required layer is toggleable; missing data surfaces an inline note.
 //   - Manual edits never flip customer_report_ready=true. Save only persists
 //     the edited polygon + arms the visual-review bypass; the downstream
-//     topology / pitch / vendor gates still decide.
+//     DSM / topology / pitch self-consistency gates still decide.
 //   - Rerun uses the canonical start-ai-measurement entrypoint via the
 //     useMeasurementJob hook (no legacy route).
 // ============================================================================
@@ -775,7 +775,7 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
           </CardTitle>
           <p className="text-xs text-muted-foreground">
             Manual approval saves the polygon but does <strong>not</strong> mark the report customer-ready.
-            Downstream topology / pitch / vendor gates still apply on rerun.
+            Downstream DSM / topology / pitch self-consistency gates still apply on rerun.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -1219,13 +1219,15 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
                   Cannot approve perimeter: target roof registration failed.
                 </p>
               )}
+              {approvalAllowed && registration?.dsm_registration_status === 'unavailable_but_aerial_perimeter_editable' && (
+                <p className="text-[11px] text-amber-700 dark:text-amber-400 leading-snug">
+                  DSM registration unavailable — manual approval saves the aerial perimeter and unlocks a rerun.
+                  DSM / topology / pitch self-consistency must still pass before a customer report can be generated.
+                </p>
+              )}
               <p className="text-[10px] text-muted-foreground leading-snug">
                 Manual approval only unlocks topology diagnostics on rerun. <code>customer_report_ready</code> stays
-                <code> false</code> until perimeter + topology + pitch + benchmark gates all pass.
-              </p>
-              <p className="text-[10px] text-muted-foreground leading-snug">
-                Manual approval only unlocks topology diagnostics on rerun. <code>customer_report_ready</code> stays
-                <code> false</code> until perimeter + topology + pitch + benchmark gates all pass.
+                <code> false</code> until perimeter + topology + pitch self-consistency gates all pass.
               </p>
             </div>
           </div>
