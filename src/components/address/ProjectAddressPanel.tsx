@@ -178,7 +178,7 @@ export function ProjectAddressPanel({
         const { data } = await supabase
           .from('property_addresses')
           .select(
-            'id, source_entity_type, source_entity_id, validation_status, formatted_address, address_line_1, address_line_2, locality, administrative_area, postal_code, country_code, override_reason, override_by, override_at, missing_component_types, decision_reason, updated_at',
+            'id, source_entity_type, source_entity_id, validation_status, formatted_address, address_line_1, address_line_2, locality, administrative_area, postal_code, country_code, override_reason, override_by, override_at, missing_component_types, updated_at',
           )
           .eq('tenant_id', tenantId)
           .eq('source_entity_type', 'project')
@@ -194,7 +194,7 @@ export function ProjectAddressPanel({
         const { data } = await supabase
           .from('property_addresses')
           .select(
-            'id, source_entity_type, source_entity_id, validation_status, formatted_address, address_line_1, address_line_2, locality, administrative_area, postal_code, country_code, override_reason, override_by, override_at, missing_component_types, decision_reason, updated_at',
+            'id, source_entity_type, source_entity_id, validation_status, formatted_address, address_line_1, address_line_2, locality, administrative_area, postal_code, country_code, override_reason, override_by, override_at, missing_component_types, updated_at',
           )
           .eq('tenant_id', tenantId)
           .eq('source_entity_type', 'pipeline_entry')
@@ -270,7 +270,7 @@ export function ProjectAddressPanel({
           formatted_address: row.formatted_address,
           validation_status: row.validation_status ?? 'unvalidated',
         };
-        const { error } = await supabase.from('property_addresses').insert(payload);
+        const { error } = await supabase.from('property_addresses').insert([payload]);
         if (error) {
           console.warn('[ProjectAddressPanel] hydrate failed', error);
         }
@@ -304,7 +304,7 @@ export function ProjectAddressPanel({
     try {
       const { data, error } = await supabase
         .from('property_address_validation_history')
-        .select('id, previous_status, next_status, reason, changed_by, source, created_at')
+        .select('id, previous_status, next_status, formatted_address, provider, actor_user_id, created_at')
         .eq('property_address_id', row.id)
         .order('created_at', { ascending: false })
         .limit(50);
