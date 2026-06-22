@@ -5393,33 +5393,14 @@ async function processJob(input: any) {
     let perimeterTopologySnapshot: any = null;
     let perimeterGateSnapshot: any = null;
 
+    // PR A-2: vendor benchmark runtime read REMOVED from canonical route.
+    // `roof_measurement_benchmarks` is offline-audit only — never gates a
+    // live run. Helper retained as a stub so call sites continue to compile
+    // but always return null (no DB read, no network IO).
     const lookupBenchmarkAreaSqftForPerimeter = async (): Promise<
-      { area_sqft: number | null; source: string | null }
+      { area_sqft: null; source: null }
     > => {
-      try {
-        const { data: benchmarks } = await supabase
-          .from("roof_measurement_benchmarks")
-          .select("address, area_sqft")
-          .limit(50);
-        const normalizeAddr = (a: string) =>
-          (a || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-        const inputAddr = normalizeAddr(
-          input.property_address || resolved_address || "",
-        );
-        const match = (benchmarks || []).find((b: any) =>
-          inputAddr.includes(normalizeAddr(b.address || ""))
-        );
-        const area = Number((match as any)?.area_sqft || 0);
-        return Number.isFinite(area) && area > 0
-          ? { area_sqft: area, source: `benchmark:${(match as any).address}` }
-          : { area_sqft: null, source: null };
-      } catch (benchErr) {
-        console.warn(
-          "[PERIMETER_BENCHMARK_SANITY] lookup failed:",
-          (benchErr as Error).message,
-        );
-        return { area_sqft: null, source: null };
-      }
+      return { area_sqft: null, source: null };
     };
 
     const isolateTargetRoofMask = (params: {
