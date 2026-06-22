@@ -343,3 +343,173 @@ export const _testing = {
   latLngToDsmPx,
   dsmPxToRasterPx,
 };
+
+// ============================================================================
+// PR A — Outline Unlock: DSM-from-raster fallback
+// ----------------------------------------------------------------------------
+// When Google Solar returns DSM raster dimensions but no `dsm_tile_bounds_lat_lng`,
+// the canonical route currently bails with `dsm_tile_bounds_missing_from_google_solar_metadata`
+// and downstream code cannot register DSM ⇄ raster. That blocks topology,
+// pitch, manual approval and customer-ready promotion — but it should NOT
+// block manual approval of an already-valid aerial perimeter.
+//
+// This helper produces either:
+//   - a derived registration package (DSM bounds copied from the registered
+//     raster bounds) when ALL guard conditions pass, OR
+//   - an explicit `unavailable_but_aerial_perimeter_editable` status with a
+//     machine-readable reason. It NEVER fabricates DSM bounds otherwise.
+//
+// Caller is responsible for stamping these results onto the registration block
+// and routing them through the existing persistence layer. See
+// `start-ai-measurement/index.ts` for wiring.
+// ============================================================================
+
+export type DsmRegistrationStatus =
+  | "derived_from_registered_raster"
+  | "unavailable_but_aerial_perimeter_editable";
+
+export interface DeriveDsmRegistrationInput {
+  dsm_size_px: SizePx | null;
+  raster_bounds_lat_lng: Bounds | null;
+  raster_size_px: SizePx | null;
+  geo_to_raster_transform: RasterTransform | null;
+  selected_candidate_polygon_px: Array<[number, number]> | null;
+  candidate_coordinate_space: string | null;
+  target_mask_overlap_with_perimeter: number | null;
+  confirmed_roof_center_px: Px | null;
+}
+
+export interface DeriveDsmRegistrationSuccess {
+  status: "derived_from_registered_raster";
+  dsm_bounds_source: "derived_from_registered_raster";
+  dsm_bounds_derived: true;
+  dsm_bounds_confidence: number; // 0.70..0.85
+  dsm_registration_source: "derived_registered_raster_fallback";
+  geo_to_dsm_transform_source: "derived_from_raster_bounds";
+  dsm_to_raster_transform_source: "derived_from_raster_bounds";
+  dsm_bounds_lat_lng: Bounds;
+  dsm_size_px: SizePx;
+}
+
+export interface DeriveDsmRegistrationUnavailable {
+  status: "unavailable_but_aerial_perimeter_editable";
+  reason: string;
+}
+
+export type DeriveDsmRegistrationResult =
+  | DeriveDsmRegistrationSuccess
+  | DeriveDsmRegistrationUnavailable;
+
+const _polygonContainsPoint = (
+  poly: Array<[number, number]>,
+  pt: [number, number],
+): boolean => {
+  // Even-odd ray cast.
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i];
+    const [xj, yj] = poly[j];
+    const intersects = (yi > pt[1]) !== (yj > pt[1]) &&
+      pt[0] < ((xj - xi) * (pt[1] - yi)) / (yj - yi + 1e-12) + xi;
+    if (intersects) inside = !inside;
+  }
+  return inside;
+};
+
+const _polygonBbox = (poly: Array<[number, number]>) => {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [x, y] of poly) {
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+  }
+  return { minX, minY, maxX, maxY };
+};
+
+const _pointNearPolygon = (
+  poly: Array<[number, number]>,
+  pt: [number, number],
+  tolPx: number,
+): boolean => {
+  const bb = _polygonBbox(poly);
+  return (
+    pt[0] >= bb.minX - tolPx &&
+    pt[0] <= bb.maxX + tolPx &&
+    pt[1] >= bb.minY - tolPx &&
+    pt[1] <= bb.maxY + tolPx
+  );
+};
+
+/**
+ * Try to derive a DSM registration package from registered raster bounds.
+ *
+ * Guards (ALL required to derive):
+ *   1. DSM raster size present (w, h > 0).
+ *   2. Raster bounds present and valid (sw < ne).
+ *   3. `geo_to_raster_transform` present.
+ *   4. Selected candidate polygon present AND in raster_px frame.
+ *   5. `target_mask_overlap_with_perimeter >= 0.95`.
+ *   6. Confirmed roof center px present AND inside or within 24 px of the
+ *      selected raster polygon's bbox.
+ *
+ * On success, the DSM bounds are copied from the registered raster bounds
+ * (the safest possible derivation — both rasters cover the same geographic
+ * footprint when the static map and Solar tile are co-registered). Confidence
+ * is scaled linearly from 0.70 (overlap=0.95) to 0.85 (overlap=1.00) so
+ * downstream gates can decide whether to trust DSM-backed topology.
+ */
+export function tryDeriveDsmRegistrationFromRaster(
+  input: DeriveDsmRegistrationInput,
+): DeriveDsmRegistrationResult {
+  const dsm = input.dsm_size_px;
+  if (!dsm || !isNum(dsm.width) || !isNum(dsm.height) || dsm.width <= 0 || dsm.height <= 0) {
+    return { status: "unavailable_but_aerial_perimeter_editable", reason: "dsm_size_px_missing" };
+  }
+  const b = input.raster_bounds_lat_lng;
+  if (
+    !b || !b.sw || !b.ne ||
+    !isNum(b.sw.lat) || !isNum(b.sw.lng) || !isNum(b.ne.lat) || !isNum(b.ne.lng) ||
+    b.ne.lng <= b.sw.lng || b.ne.lat <= b.sw.lat
+  ) {
+    return { status: "unavailable_but_aerial_perimeter_editable", reason: "raster_bounds_invalid" };
+  }
+  if (!input.geo_to_raster_transform) {
+    return { status: "unavailable_but_aerial_perimeter_editable", reason: "geo_to_raster_transform_missing" };
+  }
+  const poly = input.selected_candidate_polygon_px;
+  if (!Array.isArray(poly) || poly.length < 3) {
+    return { status: "unavailable_but_aerial_perimeter_editable", reason: "selected_candidate_polygon_missing" };
+  }
+  if ((input.candidate_coordinate_space ?? "raster_px") !== "raster_px") {
+    return { status: "unavailable_but_aerial_perimeter_editable", reason: "candidate_not_in_raster_px" };
+  }
+  const overlap = input.target_mask_overlap_with_perimeter;
+  if (!isNum(overlap) || (overlap as number) < 0.95) {
+    return { status: "unavailable_but_aerial_perimeter_editable", reason: "target_mask_overlap_below_0_95" };
+  }
+  const center = input.confirmed_roof_center_px;
+  if (!center || !isNum(center[0]) || !isNum(center[1])) {
+    return { status: "unavailable_but_aerial_perimeter_editable", reason: "confirmed_roof_center_px_missing" };
+  }
+  const centerInside = _polygonContainsPoint(poly as Array<[number, number]>, [center[0], center[1]])
+    || _pointNearPolygon(poly as Array<[number, number]>, [center[0], center[1]], 24);
+  if (!centerInside) {
+    return { status: "unavailable_but_aerial_perimeter_editable", reason: "confirmed_center_outside_candidate_raster" };
+  }
+
+  // All guards passed. Confidence: lerp 0.70 (overlap=0.95) → 0.85 (overlap=1.00).
+  const conf = Math.max(0.70, Math.min(0.85, 0.70 + (((overlap as number) - 0.95) / 0.05) * 0.15));
+
+  return {
+    status: "derived_from_registered_raster",
+    dsm_bounds_source: "derived_from_registered_raster",
+    dsm_bounds_derived: true,
+    dsm_bounds_confidence: Number(conf.toFixed(3)),
+    dsm_registration_source: "derived_registered_raster_fallback",
+    geo_to_dsm_transform_source: "derived_from_raster_bounds",
+    dsm_to_raster_transform_source: "derived_from_raster_bounds",
+    dsm_bounds_lat_lng: b,
+    dsm_size_px: dsm,
+  };
+}
