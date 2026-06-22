@@ -631,15 +631,17 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                   ) : (
                     <div className="flex items-center gap-2">
                       <span className="font-semibold text-lg">{formatCurrency(sellingPrice)}</span>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7"
-                        onClick={handleStartEditPrice}
-                        title="Adjust final price"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
+                      {!isCombined && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7"
+                          onClick={handleStartEditPrice}
+                          title="Adjust final price"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                     </div>
                   )}
                 </div>
