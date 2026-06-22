@@ -760,6 +760,39 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
       {renderSection('Material Orders', Package, materialAssignments)}
       {renderSection('Labor Orders', Users, laborAssignments)}
       {renderSection('Turnkey Orders', Wrench, turnkeyAssignments)}
+
+      <Dialog open={pdfViewerOpen} onOpenChange={setPdfViewerOpen}>
+        <DialogContent className="max-w-5xl w-[95vw] h-[90vh] flex flex-col p-0 gap-0">
+          <DialogHeader className="p-4 border-b flex-row items-center justify-between space-y-0">
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-4 w-4" /> Order PDF
+            </DialogTitle>
+            {projectEstimate?.pdf_url && (
+              <a
+                href={projectEstimate.pdf_url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-primary hover:underline mr-8"
+              >
+                <ExternalLink className="h-3 w-3" /> Open in new tab
+              </a>
+            )}
+          </DialogHeader>
+          <div className="flex-1 overflow-hidden bg-muted">
+            {projectEstimate?.pdf_url ? (
+              <iframe
+                src={projectEstimate.pdf_url}
+                title="Order PDF"
+                className="w-full h-full border-0"
+              />
+            ) : (
+              <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+                No PDF available
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
