@@ -311,6 +311,13 @@ export function PullMeasurementsButton({
         userConfirmedRoofTarget: true,
       });
 
+      // PR #3C — Address gate intercepted the call. The hook stored
+      // `addressGate` and the modal renders below. Do not proceed.
+      if (jobId === null) {
+        setLoading(false);
+        return;
+      }
+
       setTrackedJobId(jobId);
       setShouldNotifyJobStatus(true);
       setPrevJobStatus(null);
