@@ -385,9 +385,22 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
       const { data, error } = await supabase.functions.invoke('countersign-envelope', {
         body: { envelope_id: envelopeId },
       });
-      if (error) throw error;
-      const payload = (data as any) || {};
-      if (payload.error?.code === 'NO_SIGNATURE') {
+
+      // supabase-js throws FunctionsHttpError on non-2xx and `data` is null.
+      // Pull the real JSON body off the response so we can surface NO_SIGNATURE etc.
+      let payload: any = data || {};
+      if (error && (error as any).context?.response) {
+        try {
+          payload = await (error as any).context.response.clone().json();
+        } catch {
+          /* non-JSON body */
+        }
+      }
+
+      const errCode = payload?.error?.code;
+      const errMsg = payload?.error?.message;
+
+      if (errCode === 'NO_SIGNATURE') {
         toast({
           title: 'No saved signature',
           description: 'Set up your signature in Settings → My Signature first.',
@@ -395,7 +408,18 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
         });
         return;
       }
-      if (payload.error) throw new Error(payload.error.message || 'Failed to apply signature');
+      if (errCode === 'FORBIDDEN') {
+        toast({
+          title: 'Not allowed',
+          description: errMsg || 'You do not have permission to countersign this document.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      if (error || payload?.error) {
+        throw new Error(errMsg || error?.message || 'Failed to apply signature');
+      }
+
       toast({ title: 'Signature applied', description: 'Document is now fully signed.' });
       await fetchDocuments();
     } catch (err: any) {
@@ -405,6 +429,7 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
         description: err?.message || 'Please try again.',
         variant: 'destructive',
       });
+
     } finally {
       setApplyingSigFor(null);
     }
