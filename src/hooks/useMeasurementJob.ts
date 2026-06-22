@@ -31,7 +31,9 @@ export interface MeasurementJob {
 export function useMeasurementJob(pipelineEntryId: string) {
   const queryClient = useQueryClient();
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
-  const refreshMeasurementData = useCallback(() => {
+  const [addressGate, setAddressGate] = useState<MeasurementAddressGate | null>(null);
+  const lastStartParamsRef = useRef<Parameters<typeof startJobImpl>[0] | null>(null);
+
     queryClient.invalidateQueries({ queryKey: ['ai-measurements', pipelineEntryId] });
     queryClient.invalidateQueries({ queryKey: ['measurement-approvals', pipelineEntryId] });
     queryClient.invalidateQueries({ queryKey: ['measurement-context', pipelineEntryId] });
