@@ -376,13 +376,15 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
     if (autoSyncAttemptedRef.current === attemptKey) return;
 
     // Auto-sync when there are no orders yet, OR when stale per-line-item rows
-    // for this estimate exist (more than one per order_type).
+    // for this estimate exist (more than the expected count per order_type).
+    // Labor now has two consolidated rows (Tear-Off and Install), so allow up to 2.
     const fromThisEstimate = assignments.filter((a) => a.estimate_id === projectEstimate.id);
     const byType = fromThisEstimate.reduce<Record<string, number>>((acc, a) => {
       acc[a.order_type] = (acc[a.order_type] || 0) + 1;
       return acc;
     }, {});
-    const hasStaleDuplicates = Object.values(byType).some((n) => n > 1);
+    const maxPerType: Record<string, number> = { material: 1, labor: 2, turnkey: 1 };
+    const hasStaleDuplicates = Object.entries(byType).some(([t, n]) => n > (maxPerType[t] ?? 1));
     if (assignments.length > 0 && !hasStaleDuplicates) return;
 
     autoSyncAttemptedRef.current = attemptKey;
