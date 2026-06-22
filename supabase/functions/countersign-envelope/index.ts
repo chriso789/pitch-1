@@ -429,25 +429,28 @@ Deno.serve(async (req: Request) => {
       console.error('estimate update err', e);
     }
 
-    // Notify sender
-    await createNotification(supabase, {
-      tenant_id: envelope.tenant_id,
-      user_id: envelope.created_by,
-      type: 'envelope_completed',
-      title: 'Envelope Completed',
-      message: `"${envelope.title}" has been fully signed.`,
-      metadata: {
-        envelope_id: envelope.id,
-        completed_at: completedAt,
-        signed_pdf_path: finalPath,
-        document_id: documentId,
-        action_url: `/signature-envelopes/${envelope.id}`,
-      },
-    });
+    // Notify sender on normal countersigns. Force rebuilds are silent repairs
+    // of an existing artifact and should not re-notify or re-email customers.
+    if (!body.force_rebuild) {
+      await createNotification(supabase, {
+        tenant_id: envelope.tenant_id,
+        user_id: envelope.created_by,
+        type: 'envelope_completed',
+        title: 'Envelope Completed',
+        message: `"${envelope.title}" has been fully signed.`,
+        metadata: {
+          envelope_id: envelope.id,
+          completed_at: completedAt,
+          signed_pdf_path: finalPath,
+          document_id: documentId,
+          action_url: `/signature-envelopes/${envelope.id}`,
+        },
+      });
+    }
 
     // Email all parties (recipients + sender + countersigner)
     const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
-    if (RESEND_API_KEY && downloadUrl) {
+    if (RESEND_API_KEY && downloadUrl && !body.force_rebuild) {
       try {
         const { data: recipients } = await supabase
           .from('signature_recipients')
