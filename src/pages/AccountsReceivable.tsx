@@ -454,29 +454,8 @@ export default function AccountsReceivable() {
           <Send className="h-4 w-4 mr-2" /> Send Zelle Info
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={async () => {
-          try {
-            const amount = parseFloat(prompt(`Record payment for ${item.name}\nBalance: ${fmt(item.balance)}\n\nEnter amount:`) || '');
-            if (!amount || isNaN(amount) || amount <= 0) return;
-            const { error } = await (supabase.from('project_payments') as any).insert({
-              tenant_id: activeTenantId!,
-              pipeline_entry_id: item.id,
-              amount,
-              payment_method: 'manual',
-              payment_date: new Date().toISOString(),
-              notes: 'Manually recorded from AR dashboard',
-            });
-            if (error) throw error;
-            queryClient.invalidateQueries({ queryKey: ['ar-payments', activeTenantId] });
-            queryClient.invalidateQueries({ queryKey: ['ar-invoices', activeTenantId] });
-            queryClient.invalidateQueries({ queryKey: ['ar-projects', activeTenantId] });
-            window.dispatchEvent(new CustomEvent('project-payment-recorded', { detail: { pipelineEntryId: item.id, amount } }));
-            toast.success(`Payment of ${fmt(amount)} recorded`);
-          } catch (e: any) {
-            toast.error(e.message || 'Failed to record payment');
-          }
-        }}>
-          <CheckSquare className="h-4 w-4 mr-2" /> Mark Paid
+        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setRecordPaymentFor(item); }}>
+          <CheckSquare className="h-4 w-4 mr-2" /> Record Payment
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
