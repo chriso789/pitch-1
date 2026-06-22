@@ -130,6 +130,11 @@ import {
   type TopologyFidelityResult,
 } from "../_shared/autonomous-graph-solver.ts";
 import {
+  DSM_STOP_GUARD_VERSION,
+  evaluateDsmRegistrationStopGuard,
+  evaluateRasterCandidateCheck,
+} from "../_shared/dsm-registration-stop-guard.ts";
+import {
   buildPerimeterTopology,
   evaluatePerimeterGate,
 } from "../_shared/perimeter-topology.ts";
@@ -5388,33 +5393,14 @@ async function processJob(input: any) {
     let perimeterTopologySnapshot: any = null;
     let perimeterGateSnapshot: any = null;
 
+    // PR A-2: vendor benchmark runtime read REMOVED from canonical route.
+    // `roof_measurement_benchmarks` is offline-audit only — never gates a
+    // live run. Helper retained as a stub so call sites continue to compile
+    // but always return null (no DB read, no network IO).
     const lookupBenchmarkAreaSqftForPerimeter = async (): Promise<
-      { area_sqft: number | null; source: string | null }
+      { area_sqft: null; source: null }
     > => {
-      try {
-        const { data: benchmarks } = await supabase
-          .from("roof_measurement_benchmarks")
-          .select("address, area_sqft")
-          .limit(50);
-        const normalizeAddr = (a: string) =>
-          (a || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-        const inputAddr = normalizeAddr(
-          input.property_address || resolved_address || "",
-        );
-        const match = (benchmarks || []).find((b: any) =>
-          inputAddr.includes(normalizeAddr(b.address || ""))
-        );
-        const area = Number((match as any)?.area_sqft || 0);
-        return Number.isFinite(area) && area > 0
-          ? { area_sqft: area, source: `benchmark:${(match as any).address}` }
-          : { area_sqft: null, source: null };
-      } catch (benchErr) {
-        console.warn(
-          "[PERIMETER_BENCHMARK_SANITY] lookup failed:",
-          (benchErr as Error).message,
-        );
-        return { area_sqft: null, source: null };
-      }
+      return { area_sqft: null, source: null };
     };
 
     const isolateTargetRoofMask = (params: {
@@ -7946,6 +7932,141 @@ async function processJob(input: any) {
         "running",
         "Running perimeter topology validation",
       );
+
+      // ──────────────────────────────────────────────────────────────────
+      // PR A-2 EARLY-STOP GUARD: dsm-registration-stop-guard-v1
+      // ------------------------------------------------------------------
+      // Before entering the autonomous topology solver, check whether the
+      // DSM↔raster transform chain is actually usable. If DSM was loaded
+      // but bounds/transforms are missing AND the raster perimeter is
+      // editable, persist `perimeter_only` with hard_fail_reason=
+      // `dsm_registration_unavailable` and SHORT-CIRCUIT — never enter the
+      // solver, never burn the CPU budget on a guaranteed-to-fail run.
+      //
+      // This prevents the canonical Fonsica `ai_measurement_cpu_timeout`
+      // path (108.3s / 75s) when DSM is decoded but Google Solar metadata
+      // bounds are missing.
+      // ──────────────────────────────────────────────────────────────────
+      try {
+        const _hp = (hoistedTransformPackage as any) ?? {};
+        const _rasterCand = evaluateRasterCandidateCheck({
+          selected_candidate_polygon_px: (footprint && footprint.length >= 3
+            ? footprint.map((p) => [p.x, p.y] as [number, number])
+            : null),
+          candidate_coordinate_space: "raster_px",
+          confirmed_roof_center_px: (hoistedConfirmedRoofCenterPx ??
+            _hp.confirmed_roof_center_px ?? null) as any,
+        });
+        const _stop = evaluateDsmRegistrationStopGuard({
+          dsm_loaded: !!(dsmGrid || maskedDSM),
+          dsm_tile_bounds_lat_lng: _hp.dsm_tile_bounds_lat_lng ?? null,
+          geo_to_dsm_transform: _hp.geo_to_dsm_transform ?? null,
+          dsm_to_raster_transform: _hp.dsm_to_raster_transform ?? null,
+          dsm_pixel_transform_valid: _hp.dsm_pixel_transform_valid ?? null,
+          raster_candidate_check_passed:
+            _rasterCand.raster_candidate_check_passed,
+          candidate_in_raster_px: _rasterCand.candidate_in_raster_px,
+          aerial_perimeter_editable:
+            !!(hoistedGeoToRasterTransform && hoistedRasterBoundsLatLng &&
+              footprint && footprint.length >= 3),
+        });
+        if (_stop.stop_before_autonomous_solver) {
+          console.warn(
+            "[DSM_STOP_GUARD] short-circuiting before solveAutonomousGraph",
+            JSON.stringify({
+              reason: _stop.reason,
+              result_state: _stop.result_state,
+              diagnostics: _stop.diagnostics,
+            }),
+          );
+          const debugPayload: any = {
+            topology_source: REQUIRED_TOPOLOGY_SOURCE,
+            footprint_source: footprintSource,
+            footprint_valid: true,
+            footprint_point_count: footprint.length,
+            footprint_area_sqft: Math.round(footprintAreaSqftVal),
+            footprint_px: footprint.map((p) => [p.x, p.y]),
+            dsm_loaded: true,
+            mask_loaded: !!roofMask,
+            dsm_coordinate_match: dsmCoordinateMatchDebug,
+            result_state: _stop.result_state,
+            hard_fail_reason: _stop.hard_fail_reason,
+            block_customer_report_reason: _stop.block_customer_report_reason,
+            customer_report_ready: false,
+            diagram_render_intent: _stop.diagram_render_intent,
+            failure_stage: "dsm_registration",
+            dsm_registration_status: _stop.dsm_registration_status,
+            raster_candidate_check_passed:
+              _rasterCand.raster_candidate_check_passed,
+            dsm_candidate_check_skipped: _rasterCand.dsm_candidate_check_skipped,
+            candidate_coordinate_space: "raster_px",
+            center_used_for_candidate_check:
+              _rasterCand.center_used_for_candidate_check,
+            confirmed_center_inside_candidate_raster:
+              _rasterCand.confirmed_center_inside_candidate_raster,
+            confirmed_center_inside_candidate_dsm: null,
+            dsm_stop_guard: {
+              version: DSM_STOP_GUARD_VERSION,
+              ..._stop,
+              raster_candidate_check: _rasterCand,
+            },
+            raster_url: imageUrl,
+            raster_size: { width: raster.width, height: raster.height },
+            perimeter_phase0: perimeterPhase0Snapshot,
+            perimeter_topology: perimeterTopologySnapshot,
+          };
+          const failedId = await insertFailedPreliminaryMeasurement(
+            input,
+            coords,
+            _stop.result_state ?? "perimeter_only",
+            debugPayload,
+            imageUrl,
+            actualMpp,
+          );
+          await setMeasurementJobStatus(
+            input.measurement_job_id,
+            _stop.result_state === "perimeter_only" ? "needs_review" : "failed",
+            "DSM registration unavailable — aerial perimeter preserved for manual approval",
+            failedId,
+          );
+          await setAiJobStatus(
+            input.ai_measurement_job_id,
+            _stop.result_state === "perimeter_only" ? "needs_review" : "failed",
+            "DSM registration unavailable",
+          );
+          await supabase.from("ai_measurement_jobs").update({
+            needs_review: true,
+            report_blocked: true,
+            result_state: normalizeResultStateForWrite(
+              _stop.result_state ?? "perimeter_only",
+              debugPayload,
+            ),
+            hard_fail_reason: _stop.hard_fail_reason,
+            dsm_registration_status: _stop.dsm_registration_status,
+            raster_candidate_check_passed:
+              _rasterCand.raster_candidate_check_passed,
+            candidate_coordinate_space: "raster_px",
+            dsm_candidate_check_skipped:
+              _rasterCand.dsm_candidate_check_skipped,
+            source_context: {
+              gate_reason: "dsm_registration_unavailable",
+              hard_fail_reason: _stop.hard_fail_reason,
+              dsm_stop_guard: { version: DSM_STOP_GUARD_VERSION, ..._stop },
+              raster_candidate_check: _rasterCand,
+              debug: debugPayload,
+            },
+          }).eq("id", input.ai_measurement_job_id);
+          return;
+        }
+      } catch (guardErr) {
+        // Never let the guard itself crash the run; fall through to CPU
+        // budget check + solver as before. Errors here are diagnostic-only.
+        console.warn(
+          "[DSM_STOP_GUARD] guard evaluation threw; continuing to solver:",
+          (guardErr as Error)?.message,
+        );
+      }
+
       const graphWorkUnits =
         Number((dsmGrid as any)?.width || (maskedDSM as any)?.width || 0) *
           Number((dsmGrid as any)?.height || (maskedDSM as any)?.height || 0) +
@@ -12122,10 +12243,12 @@ async function processJob(input: any) {
     };
 
     try {
-      const { data: benchmarks } = await supabase
-        .from("roof_measurement_benchmarks")
-        .select("*")
-        .limit(50);
+      // PR A-2: vendor benchmark runtime read REMOVED from canonical route.
+      // `roof_measurement_benchmarks` is OFFLINE-AUDIT only; never gates a
+      // live run, never blocks customer_report_ready. Replaced with an
+      // empty result so all downstream "no match" branches behave as if no
+      // benchmark exists for this address.
+      const benchmarks: any[] = [];
       if (benchmarks && benchmarks.length > 0) {
         const normalizeAddr = (a: string) =>
           (a || "").toLowerCase().replace(/[^a-z0-9]/g, "");
