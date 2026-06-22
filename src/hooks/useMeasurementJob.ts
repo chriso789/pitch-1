@@ -278,5 +278,8 @@ export function useMeasurementJob(pipelineEntryId: string) {
     isActive,
     startJob,
     refetchJob,
+    addressGate,
+    retryAfterAddressResolved,
+    dismissAddressGate,
   };
 }
