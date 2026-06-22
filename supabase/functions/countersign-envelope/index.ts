@@ -160,14 +160,25 @@ Deno.serve(async (req: Request) => {
 
     const fallbackBlockBottomY = anchorValid ? anchor!.yPt : Math.max(80, pageH * 0.18);
     const fallbackBlockLeftX = anchorValid ? anchor!.xPt : 60;
-    const fallbackBlockWidth = anchorValid ? anchor!.widthPt : pageW - 120;
-    const fallbackHalfWidth = fallbackBlockWidth / 2;
-    const fallbackGutter = 24;
+    // NOTE: anchor.widthPt is the CUSTOMER signature column width (~half of
+    // the signature block), NOT the full block width. The old fallback
+    // treated it as the full block and divided again, which placed the rep
+    // signature roughly under the page center — directly on top of the
+    // "Your Investment / $XX,XXX" total. Mirror the customer column to the
+    // right side of the page so the rep signature lands in the right-hand
+    // "Company Representative" column.
+    const customerColWidth = anchorValid ? anchor!.widthPt : (pageW - 120) / 2;
+    const mirroredRightX = anchorValid
+      ? Math.max(
+          fallbackBlockLeftX + customerColWidth + 24,
+          pageW - fallbackBlockLeftX - customerColWidth,
+        )
+      : fallbackBlockLeftX + customerColWidth + 24;
 
     const companySigBox: Box = anchor?.companySig ?? {
-      xPt: fallbackBlockLeftX + fallbackHalfWidth + fallbackGutter,
+      xPt: mirroredRightX,
       yPt: fallbackBlockBottomY,
-      widthPt: Math.max(80, fallbackHalfWidth - fallbackGutter),
+      widthPt: customerColWidth,
     };
     const companyDateBox: Box | null = anchor?.companyDate ?? null;
 
