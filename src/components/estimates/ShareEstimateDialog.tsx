@@ -65,10 +65,80 @@ export function ShareEstimateDialog({
   const [requestSignature, setRequestSignature] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isSent, setIsSent] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const { toast } = useToast();
   const effectiveTenantId = useEffectiveTenantId();
 
-  // Reset form when dialog opens
+  // Load tenant's estimate email templates
+  const { data: templates = [] } = useQuery({
+    queryKey: ['estimate-email-templates', effectiveTenantId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('email_templates')
+        .select('id, name, subject, html_body, is_default')
+        .eq('template_type', ESTIMATE_TEMPLATE_TYPE)
+        .eq('tenant_id', effectiveTenantId)
+        .eq('is_active', true)
+        .order('is_default', { ascending: false })
+        .order('name');
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!effectiveTenantId && open,
+  });
+
+  // Build variable map for autofill
+  const templateVars = useMemo(() => {
+    const fullName = (recipientName || customerName || '').trim();
+    const firstName = fullName.split(/\s+/)[0] || '';
+    return {
+      customer_name: fullName,
+      customer_first_name: firstName,
+      estimate_number: estimateNumber || '',
+      estimate_name: estimateDisplayName || estimateNumber || 'your estimate',
+      sender_name: '',
+      company_name: '',
+    } as Record<string, string>;
+  }, [recipientName, customerName, estimateNumber, estimateDisplayName]);
+
+  // Fill sender_name & company_name async from profile/tenant
+  const { data: senderInfo } = useQuery({
+    queryKey: ['estimate-template-sender', effectiveTenantId],
+    queryFn: async () => {
+      const { data: auth } = await supabase.auth.getUser();
+      const userId = auth.user?.id;
+      const [profileRes, tenantRes] = await Promise.all([
+        userId
+          ? supabase.from('profiles').select('full_name, first_name, last_name').eq('id', userId).maybeSingle()
+          : Promise.resolve({ data: null } as any),
+        effectiveTenantId
+          ? supabase.from('tenants').select('name').eq('id', effectiveTenantId).maybeSingle()
+          : Promise.resolve({ data: null } as any),
+      ]);
+      const p: any = profileRes.data || {};
+      const senderName =
+        p.full_name ||
+        [p.first_name, p.last_name].filter(Boolean).join(' ').trim() ||
+        auth.user?.email ||
+        '';
+      return {
+        sender_name: senderName,
+        company_name: (tenantRes.data as any)?.name || '',
+      };
+    },
+    enabled: !!effectiveTenantId && open,
+  });
+
+  const applyTemplate = (id: string) => {
+    setSelectedTemplateId(id);
+    const tpl = templates.find((t: any) => t.id === id);
+    if (!tpl) return;
+    const vars = { ...templateVars, ...(senderInfo || {}) };
+    setSubject(renderEstimateTemplate(tpl.subject || '', vars));
+    setMessage(renderEstimateTemplate(tpl.html_body || '', vars));
+  };
+
+  // Reset form when dialog opens; auto-apply default template if available
   React.useEffect(() => {
     if (open) {
       setRecipientEmail(customerEmail);
@@ -80,8 +150,18 @@ export function ShareEstimateDialog({
       setShowCcBcc(false);
       setRequestSignature(false);
       setIsSent(false);
+      setSelectedTemplateId('');
     }
   }, [open, customerEmail, customerName]);
+
+  // Auto-select default template once data loads
+  useEffect(() => {
+    if (!open || selectedTemplateId || subject || message) return;
+    const def = (templates as any[]).find((t) => t.is_default) || (templates as any[])[0];
+    if (def && senderInfo) applyTemplate(def.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, templates, senderInfo]);
+
 
   const handleSend = async () => {
     if (!recipientEmail.trim()) {
