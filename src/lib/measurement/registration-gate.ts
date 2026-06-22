@@ -94,19 +94,39 @@ export function isRegistrationFailure(measurement: any): boolean {
   return false;
 }
 
+/**
+ * Manual perimeter approval gate.
+ *
+ * PR A — Outline Unlock: manual approval requires only that the **aerial /
+ * raster registration** is valid. DSM georegistration is NOT required to save
+ * an edited perimeter or to rerun with `user_verified_perimeter=true`. The
+ * downstream DSM / topology / pitch self-consistency gates still decide
+ * `customer_report_ready`.
+ *
+ * Approval is allowed when:
+ *   - target roof was confirmed by the operator, AND
+ *   - the overlay frame evidence is OK (`frame_mismatch === 'ok'`)
+ *     OR the raster candidate gate passed explicitly
+ *     (`raster_candidate_check_passed === true`).
+ *
+ * Approval is blocked when the frame is explicitly mismatched or the operator
+ * never confirmed the roof — those are real "wrong house" situations and a
+ * manual save would persist garbage geometry.
+ */
 export function canApproveManualPerimeter(reg: RegistrationBlock | null | undefined): boolean {
   if (!reg) return false;
-  return (
-    !!reg.user_confirmed_roof_target &&
-    !!reg.geo_to_dsm_px_success &&
-    !!reg.dsm_pixel_transform_valid &&
-    !!reg.confirmed_center_inside_candidate &&
-    !!reg.coordinate_registration_gate_passed
-  );
+  if (reg.user_confirmed_roof_target === false) return false;
+  const frameOk = typeof reg.frame_mismatch === "string"
+    && reg.frame_mismatch.toLowerCase() === "ok";
+  const rasterGatePassed = (reg as any).raster_candidate_check_passed === true;
+  const explicitFrameFailure = reg.confirmed_center_inside_candidate === false && !frameOk;
+  if (explicitFrameFailure) return false;
+  return frameOk || rasterGatePassed
+    || reg.coordinate_registration_gate_passed === true;
 }
 
 export interface RegistrationBanner {
-  variant: "destructive" | "warning";
+  variant: "destructive" | "warning" | "info";
   title: string;
   description: string;
   failedFlags: string[];
@@ -122,13 +142,6 @@ export function registrationBanner(reg: RegistrationBlock | null | undefined): R
   if (reg.coordinate_registration_gate_passed === false) failed.push("coordinate_registration_gate_passed");
   if (failed.length === 0) return null;
 
-  // Classify into the actual failure bucket so the banner copy matches reality.
-  // The raster overlay's actual frame check (`frame_mismatch`) is authoritative:
-  //   - "ok" → the aerial perimeter IS aligned to the satellite image, so we
-  //     must NEVER show "coordinate frame mismatch" copy, even if DSM sub-flags
-  //     are false or the aggregate gate is false.
-  //   - anything else (or `confirmed_center_inside_candidate === false`) → real
-  //     frame mismatch.
   const targetFailed = reg.user_confirmed_roof_target === false;
   const frameOkExplicit = typeof reg.frame_mismatch === "string"
     && reg.frame_mismatch.toLowerCase() === "ok";
@@ -136,6 +149,7 @@ export function registrationBanner(reg: RegistrationBlock | null | undefined): R
   const dsmFailed =
     reg.geo_to_dsm_px_success === false ||
     reg.dsm_pixel_transform_valid === false;
+  const rasterGatePassed = (reg as any).raster_candidate_check_passed === true;
 
   if (targetFailed) {
     return {
@@ -147,7 +161,6 @@ export function registrationBanner(reg: RegistrationBlock | null | undefined): R
     };
   }
 
-  // True coordinate mismatch only — frame evidence explicitly bad.
   if (frameFailed) {
     return {
       variant: "destructive",
@@ -159,12 +172,23 @@ export function registrationBanner(reg: RegistrationBlock | null | undefined): R
   }
 
   // Frame is OK (or unknown but not explicitly failed) and DSM is incomplete.
-  // Show DSM-specific copy and do NOT suggest re-placing the PIN.
+  // The aerial perimeter is still editable and approvable — DSM / topology /
+  // pitch self-consistency gates run on the next measurement.
+  if (dsmFailed || (frameOkExplicit || rasterGatePassed)) {
+    return {
+      variant: "info",
+      title: "DSM registration unavailable — aerial perimeter is editable",
+      description:
+        "The aerial perimeter is aligned to the satellite image. Manual approval saves the aerial perimeter and unlocks a rerun. DSM / topology / pitch self-consistency gates must still pass before a customer report can be generated.",
+      failedFlags: failed,
+    };
+  }
+
   return {
     variant: "warning",
-    title: "DSM registration incomplete — manual approval locked",
+    title: "Registration incomplete",
     description:
-      "The aerial perimeter is aligned to the satellite image, but DSM georegistration is missing. Manual approval is locked because the system cannot safely validate pitch/topology until geo→DSM and DSM→raster transforms are available.",
+      "Some registration sub-flags failed. Review diagnostics before approving.",
     failedFlags: failed,
   };
 }
