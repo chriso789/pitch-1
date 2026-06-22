@@ -319,6 +319,29 @@ export function ShareEstimateDialog({
           </div>
         ) : (
           <div className="space-y-3 py-2">
+            {templates.length > 0 && (
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  Email Template
+                </Label>
+                <Select value={selectedTemplateId} onValueChange={applyTemplate}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose a saved template…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {templates.map((t: any) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.name}{t.is_default ? ' (default)' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Manage templates in Settings → Email.
+                </p>
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="recipient-name">Recipient Name</Label>
               <Input
