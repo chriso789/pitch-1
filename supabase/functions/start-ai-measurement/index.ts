@@ -2541,6 +2541,7 @@ Deno.serve(async (req) => {
         git_commit_sha: GIT_COMMIT_SHA,
         runtime_deployed_at: DEPLOYED_AT,
         ...getCanonicalRouteDbColumns(),
+        ...addressSnapshot,
       })
       .select("id")
       .single();
