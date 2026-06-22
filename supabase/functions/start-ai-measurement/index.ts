@@ -2607,6 +2607,25 @@ Deno.serve(async (req) => {
       .update({ ai_measurement_job_id: aiJob.id })
       .eq("id", measurementJob.id);
 
+    // PR #4 Evidence Hardening — record per-layer source provenance on the job.
+    // Non-blocking: any failure here must never abort the measurement run.
+    try {
+      const lat = Number(confirmed_roof_center_lat ?? latitude ?? original_geocode_lat);
+      const lng = Number(confirmed_roof_center_lng ?? longitude ?? original_geocode_lng);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        const evidence = await acquireEvidence({ lat, lng, tenantId: tenant_id });
+        const evidencePatch = {
+          evidence_sources_used: evidence.evidence_sources_used,
+          footprint_source_tier: evidence.footprint_source_tier,
+          evidence_acquisition_log: evidence.evidence_acquisition_log,
+        };
+        await supabase.from("ai_measurement_jobs").update(evidencePatch).eq("id", aiJob.id);
+        await supabase.from("measurement_jobs").update(evidencePatch).eq("id", measurementJob.id);
+      }
+    } catch (evidenceErr) {
+      console.error("[evidence-acquisition] non-fatal failure:", evidenceErr);
+    }
+
     if (targetConfirmation.ok === false) {
       const failReason = "target_roof_not_confirmed";
       const fallbackCoords = {
