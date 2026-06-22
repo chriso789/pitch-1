@@ -1219,13 +1219,15 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
                   Cannot approve perimeter: target roof registration failed.
                 </p>
               )}
+              {approvalAllowed && registration?.dsm_registration_status === 'unavailable_but_aerial_perimeter_editable' && (
+                <p className="text-[11px] text-amber-700 dark:text-amber-400 leading-snug">
+                  DSM registration unavailable — manual approval saves the aerial perimeter and unlocks a rerun.
+                  DSM / topology / pitch self-consistency must still pass before a customer report can be generated.
+                </p>
+              )}
               <p className="text-[10px] text-muted-foreground leading-snug">
                 Manual approval only unlocks topology diagnostics on rerun. <code>customer_report_ready</code> stays
-                <code> false</code> until perimeter + topology + pitch + benchmark gates all pass.
-              </p>
-              <p className="text-[10px] text-muted-foreground leading-snug">
-                Manual approval only unlocks topology diagnostics on rerun. <code>customer_report_ready</code> stays
-                <code> false</code> until perimeter + topology + pitch + benchmark gates all pass.
+                <code> false</code> until perimeter + topology + pitch self-consistency gates all pass.
               </p>
             </div>
           </div>
