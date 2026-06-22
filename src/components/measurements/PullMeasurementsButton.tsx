@@ -887,6 +887,24 @@ export function PullMeasurementsButton({
           onSuccess?.({}, {});
         }}
       />
+
+      {/* PR #3C — Measurement Order Address Gate. Reuses the PR #3A modal. */}
+      <MeasurementOrderAddressGate
+        gate={addressGate}
+        onResolved={async () => {
+          const jobId = await retryAfterAddressResolved();
+          if (jobId) {
+            setTrackedJobId(jobId);
+            setShouldNotifyJobStatus(true);
+            setPrevJobStatus(null);
+            toast({
+              title: '🚀 Measurement Started',
+              description: 'AI analysis is running in the background.',
+            });
+          }
+        }}
+        onCancel={dismissAddressGate}
+      />
     </>
   );
 }
