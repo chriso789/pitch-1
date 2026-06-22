@@ -95,6 +95,7 @@ export default function AccountsReceivable() {
   const [sortField, setSortField] = useState<SortField>('age');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const { stages, isLoading: stagesLoading } = usePipelineStages();
+  const [recordPaymentFor, setRecordPaymentFor] = useState<WipProject | null>(null);
 
   // Live-refresh AR whenever a payment or invoice is recorded anywhere in the app
   useEffect(() => {
