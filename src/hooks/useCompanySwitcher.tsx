@@ -23,7 +23,10 @@ export const useCompanySwitcher = () => {
   const { profile } = useUserProfile();
 
   const { data: companiesData, isLoading: loading, refetch } = useQuery({
-    queryKey: ['accessible-companies'],
+    // Scope to the current user so a previous session's cache (e.g. a non-master
+    // user with fewer accessible tenants) can't leak into a master login.
+    queryKey: ['accessible-companies', profile?.id || 'anon'],
+    enabled: !!profile?.id,
     queryFn: async () => {
       // Parallel fetch: accessible tenants + active tenant ID via RPC
       const [tenantsResult, activeTenantResult] = await Promise.all([
@@ -31,33 +34,51 @@ export const useCompanySwitcher = () => {
         // @ts-ignore - RPC function not yet in generated types
         supabase.rpc('get_user_active_tenant_id')
       ]);
-      
+
       if (tenantsResult.error) throw tenantsResult.error;
-      
-      const baseCompanies = (tenantsResult.data as AccessibleCompany[]) || [];
-      
+
+      let baseCompanies = (tenantsResult.data as AccessibleCompany[]) || [];
+
+      // Master role fallback: if the RPC returned nothing (e.g. missing
+      // user_company_access rows), fall back to every active tenant so the
+      // master can still switch companies from the header dropdown.
+      if (baseCompanies.length === 0 && profile?.role === 'master') {
+        const { data: allTenants } = await supabase
+          .from('tenants')
+          .select('id, name, subdomain, is_active')
+          .order('name');
+        baseCompanies = (allTenants || []).map((t: any) => ({
+          tenant_id: t.id,
+          tenant_name: t.name,
+          tenant_subdomain: t.subdomain,
+          is_primary: t.id === profile.tenant_id,
+          is_active: t.is_active !== false,
+          access_level: 'master',
+          location_count: 0,
+        }));
+      }
+
       // Fetch logo_url for each company from tenants table
       const companyIds = baseCompanies.map(c => c.tenant_id);
-      const { data: tenantsData } = await supabase
-        .from('tenants')
-        .select('id, logo_url')
-        .in('id', companyIds);
-      
+      const { data: tenantsData } = companyIds.length
+        ? await supabase.from('tenants').select('id, logo_url').in('id', companyIds)
+        : { data: [] as any[] };
+
       // Merge logo_url into companies
       const companies = baseCompanies.map(c => ({
         ...c,
-        logo_url: tenantsData?.find(t => t.id === c.tenant_id)?.logo_url || null
+        logo_url: tenantsData?.find((t: any) => t.id === c.tenant_id)?.logo_url || null
       }));
-      
+
       // Get active tenant from RPC (faster, no RLS overhead)
       let activeTenantId: string | null = activeTenantResult.data as string | null;
-      
+
       // Fallback: if no active tenant, use primary or first company
       if (!activeTenantId && companies.length > 0) {
         const primary = companies.find(c => c.is_primary);
         activeTenantId = primary?.tenant_id || companies[0]?.tenant_id || null;
       }
-      
+
       return { companies, activeTenantId };
     },
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
