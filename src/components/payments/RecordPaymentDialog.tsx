@@ -210,6 +210,30 @@ export function RecordPaymentDialog({
               placeholder="Check #, confirmation, etc." />
           </div>
 
+          {hasCombinedEstimates && (
+            <div className="rounded-md border border-primary/30 bg-primary/5 p-3">
+              <Label className="text-xs font-semibold">Apply to Estimate</Label>
+              <p className="text-[11px] text-muted-foreground mb-2">
+                This project has {combinedEstimates!.length} combined estimates. Select which one this payment applies to.
+              </p>
+              <Select
+                value={selectedEstimateId || 'none'}
+                onValueChange={v => setSelectedEstimateId(v === 'none' ? null : v)}
+              >
+                <SelectTrigger><SelectValue placeholder="Choose an estimate" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Split / general (no specific estimate)</SelectItem>
+                  {(combinedEstimates || []).map((est: any) => (
+                    <SelectItem key={est.id} value={est.id}>
+                      {est.estimate_number || est.display_name || 'Estimate'}
+                      {est.selling_price ? ` — ${formatCurrency(Number(est.selling_price))}` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           {openInvoices.length > 0 && (
             <div>
               <Label>Apply to Invoice</Label>
