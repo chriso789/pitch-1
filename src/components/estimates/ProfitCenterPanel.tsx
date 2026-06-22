@@ -761,6 +761,78 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                   </span>
                 </div>
 
+                {/* Per-Trade Breakdown (only when combining multiple estimates) */}
+                {isCombined && tradeBreakdown.length > 0 && (
+                  <div className="space-y-2 pt-2">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-semibold flex items-center gap-2">
+                        <BarChart3 className="h-4 w-4 text-primary" />
+                        Profit by Trade
+                      </h4>
+                      <Badge variant="secondary" className="text-xs">
+                        {tradeBreakdown.length} estimates combined
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Each combined estimate's planned profit is shown separately so you can track margin per trade.
+                    </p>
+                    <div className="space-y-2">
+                      {tradeBreakdown.map((t) => (
+                        <div key={t.id} className="border rounded-lg p-3 bg-muted/30">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="font-medium text-sm truncate">{t.label}</span>
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "font-mono text-xs",
+                                t.margin >= 25 ? "bg-green-500/10 text-green-600 border-green-500/30" :
+                                t.margin >= 15 ? "bg-yellow-500/10 text-yellow-600 border-yellow-500/30" :
+                                "bg-red-500/10 text-red-600 border-red-500/30"
+                              )}
+                            >
+                              {formatPercent(t.margin)} Margin
+                            </Badge>
+                          </div>
+                          <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Selling Price</span>
+                              <span className="font-medium">{formatCurrency(t.selling)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground flex items-center gap-1">
+                                <Package className="h-3 w-3 text-blue-500" />Materials
+                              </span>
+                              <span>{formatCurrency(t.materials)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground flex items-center gap-1">
+                                <Wrench className="h-3 w-3 text-orange-500" />Labor
+                              </span>
+                              <span>{formatCurrency(t.labor)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground flex items-center gap-1">
+                                <Calculator className="h-3 w-3 text-purple-500" />Overhead
+                              </span>
+                              <span>{formatCurrency(t.overhead)}</span>
+                            </div>
+                            <div className="flex justify-between col-span-2 pt-1 border-t border-border/60">
+                              <span className="font-medium">Gross Profit</span>
+                              <span className={cn(
+                                "font-semibold",
+                                t.grossProfit >= 0 ? "text-green-600" : "text-red-600"
+                              )}>
+                                {formatCurrency(t.grossProfit)}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+
                 {/* Invoice Status */}
                 {(materialInvoiceCount > 0 || laborInvoiceCount > 0 || overheadInvoiceCount > 0) && (
                   <div className="bg-muted/50 rounded-lg p-3">
