@@ -62,6 +62,32 @@ Deno.test("measurement-gates: collapsed pitch blocks", () => {
   assertEquals(r.failures.some((f) => f.startsWith("collapsed_plane_pitch")), true);
 });
 
+Deno.test("measurement-gates: low facet pitch agreement blocks", () => {
+  const r = assertCustomerReportReady({
+    user_confirmed_roof_target: true,
+    layer1_present: true, layer1_source_allowed: true,
+    roof_lines_count: 5, reportable_totals_have_typed_backing: true,
+    per_plane_pitch_sources: ["dsm_plane_fit", "dsm_plane_fit"],
+    facet_pitch_agreement_states: ["high", "low"],
+    ai_gates_passed: true,
+  });
+  assertEquals(r.ready, false);
+  assertEquals(r.failures.includes("pitch_disagreement:1"), true);
+});
+
+Deno.test("measurement-gates: insufficient facet pitch evidence blocks", () => {
+  const r = assertCustomerReportReady({
+    user_confirmed_roof_target: true,
+    layer1_present: true, layer1_source_allowed: true,
+    roof_lines_count: 5, reportable_totals_have_typed_backing: true,
+    per_plane_pitch_sources: ["dsm_plane_fit", "dsm_plane_fit"],
+    facet_pitch_agreement_states: ["high", "insufficient_evidence"],
+    ai_gates_passed: true,
+  });
+  assertEquals(r.ready, false);
+  assertEquals(r.failures.includes("pitch_insufficient_evidence:1"), true);
+});
+
 Deno.test("measurement-gates: validated overrides bypass ai_failed", () => {
   const r = assertCustomerReportReady({
     user_confirmed_roof_target: true,
