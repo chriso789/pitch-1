@@ -11,7 +11,7 @@
 //   - Every required layer is toggleable; missing data surfaces an inline note.
 //   - Manual edits never flip customer_report_ready=true. Save only persists
 //     the edited polygon + arms the visual-review bypass; the downstream
-//     topology / pitch / vendor gates still decide.
+//     DSM / topology / pitch self-consistency gates still decide.
 //   - Rerun uses the canonical start-ai-measurement entrypoint via the
 //     useMeasurementJob hook (no legacy route).
 // ============================================================================
