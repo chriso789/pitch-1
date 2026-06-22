@@ -995,6 +995,10 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
       queryClient.invalidateQueries({ queryKey: ['project-ar-invoices', pipelineEntryId] });
       queryClient.invalidateQueries({ queryKey: ['project-ar-payments', pipelineEntryId] });
       queryClient.invalidateQueries({ queryKey: ['zelle-payment-links', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['ar-payments'] });
+      queryClient.invalidateQueries({ queryKey: ['ar-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['ar-projects'] });
+      window.dispatchEvent(new CustomEvent('project-payment-recorded', { detail: { pipelineEntryId } }));
       toast.success('Zelle payment confirmed!');
     } catch (error: any) {
       toast.error(error.message || 'Failed to confirm payment');
