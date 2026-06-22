@@ -40,15 +40,23 @@ Deno.serve(async (req: Request) => {
       return errorResponse('VALIDATION_ERROR', 'Missing envelope_id', 400);
     }
 
-    // Authenticated caller
+    // Authenticated caller — OR temporary one-shot admin bypass for repair
     const authHeader = req.headers.get('Authorization') || '';
     const jwt = authHeader.replace(/^Bearer\s+/i, '');
-    if (!jwt) return errorResponse('UNAUTHORIZED', 'Missing auth token', 401);
-    const { data: userData, error: userErr } = await supabase.auth.getUser(jwt);
-    if (userErr || !userData?.user) {
-      return errorResponse('UNAUTHORIZED', 'Invalid auth token', 401);
+    const adminBypassHeader = req.headers.get('x-admin-rebuild-as') || '';
+    const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+    let callerId: string;
+    if (adminBypassHeader && jwt === SERVICE_KEY) {
+      callerId = adminBypassHeader;
+      console.log(`Admin rebuild bypass active for user ${callerId}`);
+    } else {
+      if (!jwt) return errorResponse('UNAUTHORIZED', 'Missing auth token', 401);
+      const { data: userData, error: userErr } = await supabase.auth.getUser(jwt);
+      if (userErr || !userData?.user) {
+        return errorResponse('UNAUTHORIZED', 'Invalid auth token', 401);
+      }
+      callerId = userData.user.id;
     }
-    const callerId = userData.user.id;
 
     // Load envelope
     const { data: envelope, error: envErr } = await supabase
