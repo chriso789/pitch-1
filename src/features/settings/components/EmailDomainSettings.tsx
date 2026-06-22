@@ -346,6 +346,8 @@ export function EmailDomainSettings() {
           )}
         </CardContent>
       </Card>
+
+      <EstimateEmailTemplates />
     </div>
   );
 }
