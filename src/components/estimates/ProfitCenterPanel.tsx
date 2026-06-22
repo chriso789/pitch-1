@@ -311,7 +311,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
   const materialVariance = actualMaterialCost - originalMaterialCost;
   const laborVariance = actualLaborCost - originalLaborCost;
 
-  const salesTaxAmount = (estimateData as any)?.sales_tax_amount || 0;
+  const salesTaxAmount = combinedSums ? combinedSums.salesTax : ((estimateData as any)?.sales_tax_amount || 0);
   const preTaxSellingPrice = sellingPrice - salesTaxAmount;
   const overheadAmount = preTaxSellingPrice * (overheadRate / 100);
   // Total cost = materials + labor + percentage overhead + other charges (permits, dumps, etc.)
