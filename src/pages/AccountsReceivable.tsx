@@ -769,6 +769,17 @@ export default function AccountsReceivable() {
           </TabsContent>
         </Tabs>
       </div>
+      {recordPaymentFor && activeTenantId && (
+        <RecordPaymentDialog
+          open={!!recordPaymentFor}
+          onOpenChange={(v) => { if (!v) setRecordPaymentFor(null); }}
+          pipelineEntryId={recordPaymentFor.id}
+          tenantId={activeTenantId}
+          projectName={recordPaymentFor.name}
+          sellingPrice={recordPaymentFor.contractValue}
+          totalPaid={recordPaymentFor.totalPaid}
+        />
+      )}
     </GlobalLayout>
   );
 }
