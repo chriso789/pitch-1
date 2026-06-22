@@ -88,6 +88,9 @@ const ORDER_TYPE_TITLES: Record<OrderType, string> = {
   turnkey: 'Turnkey Order',
 };
 
+const TEAR_OFF_PATTERNS = /\b(remove|removal|tear[\s-]?off|demo|demolition|strip)\b/i;
+const isTearOff = (line: EstimateLineItem) => TEAR_OFF_PATTERNS.test(String(line.item_name || ''));
+
 const buildEstimateOrderRows = ({
   estimate,
   projectId,
@@ -100,16 +103,22 @@ const buildEstimateOrderRows = ({
   assignedBy?: string | null;
 }) => {
   const lineItems = estimate.line_items || {};
-  const groups: Array<{ key: OrderType; lines: EstimateLineItem[] }> = [
+  const rawLabor = Array.isArray(lineItems.labor) ? lineItems.labor : [];
+  const tearOffLines = rawLabor.filter(isTearOff);
+  const installLines = rawLabor.filter((l) => !isTearOff(l));
+
+  type Group = { key: OrderType; lines: EstimateLineItem[]; titleOverride?: string; hidePricing?: boolean };
+  const groups: Group[] = [
     { key: 'material', lines: Array.isArray(lineItems.materials) ? lineItems.materials : [] },
-    { key: 'labor', lines: Array.isArray(lineItems.labor) ? lineItems.labor : [] },
+    { key: 'labor', lines: tearOffLines, titleOverride: 'Labor Order – Tear-Off', hidePricing: true },
+    { key: 'labor', lines: installLines, titleOverride: 'Labor Order – Install', hidePricing: true },
     { key: 'turnkey', lines: Array.isArray(lineItems.turnkey) ? lineItems.turnkey : [] },
   ];
 
   const estimateLabel = estimate.display_name || estimate.estimate_number || 'Estimate';
 
   return groups
-    .map(({ key, lines }) => {
+    .map(({ key, lines, titleOverride, hidePricing }) => {
       const validLines = lines.filter((line) => line?.item_name);
       if (!validLines.length) return null;
 
@@ -120,16 +129,26 @@ const buildEstimateOrderRows = ({
         const unitCost = Number(line.unit_cost ?? line.rate ?? 0);
         const lineTotal = Number(line.line_total ?? qty * unitCost);
         total += lineTotal;
+        if (hidePricing) {
+          return `• ${String(line.item_name).trim()} — ${qty} ${unit}`;
+        }
         return `• ${String(line.item_name).trim()} — ${qty} ${unit} @ ${formatMoney(unitCost)} = ${formatMoney(lineTotal)}`;
       });
+
+      const title = titleOverride
+        ? `${titleOverride} – ${estimateLabel}`
+        : `${ORDER_TYPE_TITLES[key]} – ${estimateLabel}`;
+      const description = hidePricing
+        ? `${validLines.length} line item${validLines.length === 1 ? '' : 's'}`
+        : `${validLines.length} line item${validLines.length === 1 ? '' : 's'} • Total: ${formatMoney(total)}`;
 
       return {
         tenant_id: tenantId,
         project_id: projectId,
         estimate_id: estimate.id,
         order_type: key,
-        title: `${ORDER_TYPE_TITLES[key]} – ${estimateLabel}`,
-        description: `${validLines.length} line item${validLines.length === 1 ? '' : 's'} • Total: ${formatMoney(total)}`,
+        title,
+        description,
         assigned_by: assignedBy || null,
         status: 'pending',
         scheduled_date: null,
@@ -141,6 +160,16 @@ const buildEstimateOrderRows = ({
       };
     })
     .filter((row): row is NonNullable<typeof row> => row !== null);
+};
+
+// Strip currency tokens from existing labor-order notes/descriptions at render time.
+const stripPricing = (text: string | null | undefined): string => {
+  if (!text) return '';
+  return text
+    .replace(/\s*@\s*\$[\d,]+(?:\.\d+)?/g, '')
+    .replace(/\s*=\s*\$[\d,]+(?:\.\d+)?/g, '')
+    .replace(/\s*•\s*Total:\s*\$[\d,]+(?:\.\d+)?/gi, '')
+    .replace(/\s*Total:\s*\$[\d,]+(?:\.\d+)?/gi, '');
 };
 
 export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ projectId }) => {
