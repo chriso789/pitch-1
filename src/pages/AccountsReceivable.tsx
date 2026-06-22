@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils';
 import { format, differenceInDays, subDays, startOfMonth, startOfQuarter, startOfYear } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { RecordPaymentDialog } from '@/components/payments/RecordPaymentDialog';
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
