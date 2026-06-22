@@ -20,6 +20,7 @@ import {
 
 interface CountersignRequest {
   envelope_id: string;
+  force_rebuild?: boolean;
 }
 
 Deno.serve(async (req: Request) => {
@@ -59,7 +60,7 @@ Deno.serve(async (req: Request) => {
     if (envErr || !envelope) {
       return errorResponse('NOT_FOUND', 'Envelope not found', 404);
     }
-    if (envelope.countersigned_at) {
+    if (envelope.countersigned_at && envelope.status === 'completed' && !body.force_rebuild) {
       return successResponse({
         message: 'Envelope already countersigned',
         envelope_id: envelope.id,
@@ -140,9 +141,9 @@ Deno.serve(async (req: Request) => {
 
     const pageCount = pdfDoc.getPageCount();
     const targetPageIdx =
-      anchor && anchor.pageIndex != null && anchor.pageIndex < pageCount
+      !body.force_rebuild && anchor && anchor.pageIndex != null && anchor.pageIndex < pageCount
         ? anchor.pageIndex
-        : envelope.signature_page_index != null && envelope.signature_page_index < pageCount
+        : !body.force_rebuild && envelope.signature_page_index != null && envelope.signature_page_index < pageCount
         ? envelope.signature_page_index
         : pageCount - 1;
     const page = pdfDoc.getPage(targetPageIdx);
@@ -175,16 +176,33 @@ Deno.serve(async (req: Request) => {
         )
       : fallbackBlockLeftX + customerColWidth + 24;
 
-    const companySigBox: Box = anchor?.companySig ?? {
+    const rawCompanySigBox: Box = anchor?.companySig ?? {
       xPt: mirroredRightX,
       yPt: fallbackBlockBottomY,
       widthPt: customerColWidth,
     };
-    const companyDateBox: Box | null = anchor?.companyDate ?? null;
+    // Some already-generated estimates stored a company anchor too close to
+    // the centered total. Force the rep stamp into the far-right sales-rep
+    // column so it cannot sit over "Your Investment".
+    const repColumnWidth = Math.min(rawCompanySigBox.widthPt, 170);
+    const rightColumnX = Math.max(pageW * 0.62, pageW - fallbackBlockLeftX - repColumnWidth);
+    const companySigBox: Box = {
+      ...rawCompanySigBox,
+      xPt: Math.max(rawCompanySigBox.xPt, rightColumnX),
+      widthPt: repColumnWidth,
+    };
+    const rawCompanyDateBox: Box | null = anchor?.companyDate ?? null;
+    const companyDateBox: Box | null = rawCompanyDateBox
+      ? {
+          ...rawCompanyDateBox,
+          xPt: Math.max(rawCompanyDateBox.xPt, companySigBox.xPt + 24),
+          widthPt: Math.min(rawCompanyDateBox.widthPt, Math.max(40, pageW - companySigBox.xPt - 84)),
+        }
+      : null;
 
     const repSigX = companySigBox.xPt;
     const repSigY = companySigBox.yPt;
-    const repMaxSigWidth = Math.min(companySigBox.widthPt, 220);
+    const repMaxSigWidth = Math.min(companySigBox.widthPt, 170);
     const repMaxSigHeight = Math.min(28, (companyDateBox ? repSigY - companyDateBox.yPt - 4 : 28));
 
     // Tenant name for label
@@ -245,25 +263,32 @@ Deno.serve(async (req: Request) => {
     // Mask only the company signature column above its line
     page.drawRectangle({
       x: repSigX,
-      y: repSigY,
+      y: repSigY + 1,
       width: repMaxSigWidth,
       height: drawH + 2,
       color: rgb(1, 1, 1),
     });
 
-    // Image bottom sits exactly on the signature line
+    // Image bottom sits just above the signature line; redraw the line after
+    // stamping because the white mask can hide the original HTML underline.
     page.drawImage(embeddedImg, {
       x: repSigX,
-      y: repSigY,
+      y: repSigY + 1,
       width: drawW,
       height: drawH,
+    });
+    page.drawLine({
+      start: { x: repSigX, y: repSigY },
+      end: { x: repSigX + repMaxSigWidth, y: repSigY },
+      thickness: 0.6,
+      color: rgb(0.55, 0.55, 0.55),
     });
 
     // Stamp date on the date line
     if (companyDateBox) {
       page.drawRectangle({
         x: companyDateBox.xPt,
-        y: companyDateBox.yPt - 2,
+        y: companyDateBox.yPt + 1,
         width: companyDateBox.widthPt,
         height: 14,
         color: rgb(1, 1, 1),
@@ -274,6 +299,12 @@ Deno.serve(async (req: Request) => {
         size: 10,
         font: helveticaFont,
         color: rgb(0, 0, 0),
+      });
+      page.drawLine({
+        start: { x: companyDateBox.xPt, y: companyDateBox.yPt },
+        end: { x: companyDateBox.xPt + companyDateBox.widthPt, y: companyDateBox.yPt },
+        thickness: 0.5,
+        color: rgb(0.55, 0.55, 0.55),
       });
     }
 

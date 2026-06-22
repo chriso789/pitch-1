@@ -1261,10 +1261,10 @@ const TermsSection: React.FC<{
               <span className="text-sm font-bold text-blue-600">{formatCurrency(breakdown.sellingPrice)}</span>
             </div>
           )}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-8">
             <div>
               <p className="text-xs text-gray-500 mb-6">Customer Signature</p>
-              <div className="border-b border-gray-400" data-signature-line="customer"></div>
+              <div className="h-5 border-b border-gray-400" data-signature-line="customer"></div>
               <p className="text-xs text-gray-500 mt-1 flex items-end gap-1">
                 <span>Date:</span>
                 <span className="inline-block border-b border-gray-400 flex-1 h-4" data-date-line="customer"></span>
@@ -1272,7 +1272,7 @@ const TermsSection: React.FC<{
             </div>
             <div>
               <p className="text-xs text-gray-500 mb-6">Company Representative</p>
-              <div className="border-b border-gray-400" data-signature-line="company"></div>
+              <div className="h-5 border-b border-gray-400" data-signature-line="company"></div>
               <p className="text-xs text-gray-500 mt-1 flex items-end gap-1">
                 <span>Date:</span>
                 <span className="inline-block border-b border-gray-400 flex-1 h-4" data-date-line="company"></span>
