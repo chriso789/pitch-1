@@ -74,7 +74,7 @@ import { useQuery as useTanstackQuery, useQueryClient } from '@tanstack/react-qu
 import { format } from 'date-fns';
 import { SendReferralLinkButton } from '@/components/referrals/SendReferralLinkButton';
 import { AddressValidationResolutionModal } from '@/components/address/AddressValidationResolutionModal';
-import { ProjectAddressPanel } from '@/components/address/ProjectAddressPanel';
+// ProjectAddressPanel removed — address validated at lead/contact creation
 
 // Hook to get selected estimate id from pipeline metadata
 const useSelectedEstimateId = (pipelineEntryId: string) => {
@@ -1163,20 +1163,7 @@ const LeadDetails = () => {
           <InspectionHistory leadId={id!} propertyAddress={[lead?.contact?.address_street, lead?.contact?.address_city, lead?.contact?.address_state, lead?.contact?.address_zip].filter(Boolean).join(', ')} />
         </div>
 
-        {/* PR #3B: Project Address Panel — canonical address + readiness badge */}
-        {lead?.tenant_id && id && (
-          <ProjectAddressPanel
-            tenantId={lead.tenant_id}
-            pipelineEntryId={id}
-            fallbackAddress={{
-              address_line_1: lead.contact?.address_street ?? null,
-              locality: lead.contact?.address_city ?? null,
-              administrative_area: lead.contact?.address_state ?? null,
-              postal_code: lead.contact?.address_zip ?? null,
-            }}
-            className="mt-2"
-          />
-        )}
+        {/* Property Address panel removed — address is validated during lead/contact creation */}
 
 
         {/* Contact Link - compact inline */}
