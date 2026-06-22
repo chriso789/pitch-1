@@ -1,6 +1,18 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { FunctionsHttpError } from '@supabase/supabase-js';
+
+export interface MeasurementAddressGate {
+  property_address_id: string | null;
+  validation_status: string;
+  source_entity_type: 'project' | 'pipeline_entry' | 'contact' | 'lead';
+  source_entity_id: string;
+  required_for_action: 'measurement_order';
+  can_override: boolean;
+  allowed_override_roles: string[];
+  message: string;
+}
 
 export interface MeasurementJob {
   id: string;
