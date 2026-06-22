@@ -1,5 +1,46 @@
 -- PR #5 — Self-Consistent Pitch Verification
 -- Runtime confidence is derived from raw evidence agreement only.
+-- Vendor reports and roof_measurement_benchmarks are offline-audit only.
+
+ALTER TABLE IF EXISTS public.roof_measurement_facets
+  ADD COLUMN IF NOT EXISTS pitch_dsm_deg DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS pitch_solar_deg DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS pitch_streetview_deg DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS pitch_dsm_rise_over_12 DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS pitch_solar_rise_over_12 DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS pitch_streetview_rise_over_12 DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS pitch_consensus_rise_over_12 DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS pitch_agreement_state TEXT,
+  ADD COLUMN IF NOT EXISTS pitch_source_final TEXT,
+  ADD COLUMN IF NOT EXISTS pitch_confidence TEXT,
+  ADD COLUMN IF NOT EXISTS pitch_verification_json JSONB DEFAULT '{}'::jsonb;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'roof_measurement_facets_pitch_agreement_state_check'
+  ) THEN
+    ALTER TABLE public.roof_measurement_facets
+      ADD CONSTRAINT roof_measurement_facets_pitch_agreement_state_check
+      CHECK (pitch_agreement_state IS NULL OR pitch_agreement_state IN ('high','medium','low','insufficient_evidence')) NOT VALID;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'roof_measurement_facets_pitch_source_final_check'
+  ) THEN
+    ALTER TABLE public.roof_measurement_facets
+      ADD CONSTRAINT roof_measurement_facets_pitch_source_final_check
+      CHECK (pitch_source_final IS NULL OR pitch_source_final IN ('dsm','solar','streetview','consensus','unavailable')) NOT VALID;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'roof_measurement_facets_pitch_confidence_check'
+  ) THEN
+    ALTER TABLE public.roof_measurement_facets
+      ADD CONSTRAINT roof_measurement_facets_pitch_confidence_check
+      CHECK (pitch_confidence IS NULL OR pitch_confidence IN ('high','medium','low')) NOT VALID;
+  END IF;
+END $$;
 
 ALTER TABLE IF EXISTS public.roof_measurements
   ADD COLUMN IF NOT EXISTS pitch_verification_json JSONB DEFAULT '{}'::jsonb,
@@ -31,6 +72,7 @@ CREATE TABLE IF NOT EXISTS public.pitch_visual_cross_checks (
   mskill_job_id UUID,
   measurement_job_id UUID,
   roof_measurement_id UUID,
+  roof_measurement_facet_id UUID,
   request_hash TEXT,
   facet_id TEXT,
   imagery_provider TEXT,
@@ -40,6 +82,7 @@ CREATE TABLE IF NOT EXISTS public.pitch_visual_cross_checks (
   heading_deg DOUBLE PRECISION,
   camera_pitch_deg DOUBLE PRECISION,
   edge_angle_deg DOUBLE PRECISION,
+  estimated_pitch_deg DOUBLE PRECISION,
   estimated_pitch_rise_over_12 DOUBLE PRECISION,
   reference_pitch_rise_over_12 DOUBLE PRECISION,
   delta_rise_over_12 DOUBLE PRECISION,
@@ -56,6 +99,8 @@ CREATE INDEX IF NOT EXISTS idx_pitch_visual_cross_checks_mskill_job
   ON public.pitch_visual_cross_checks(mskill_job_id);
 CREATE INDEX IF NOT EXISTS idx_pitch_visual_cross_checks_roof_measurement
   ON public.pitch_visual_cross_checks(roof_measurement_id);
+CREATE INDEX IF NOT EXISTS idx_pitch_visual_cross_checks_facet
+  ON public.pitch_visual_cross_checks(roof_measurement_facet_id);
 
 GRANT SELECT, INSERT, UPDATE ON public.pitch_visual_cross_checks TO authenticated;
 GRANT ALL ON public.pitch_visual_cross_checks TO service_role;
