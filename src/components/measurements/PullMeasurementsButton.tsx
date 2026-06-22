@@ -13,6 +13,7 @@ import { useMeasurementCoordinates } from '@/hooks/useMeasurementCoordinates';
 import { RoofrStyleReportPreview } from './RoofrStyleReportPreview';
 import { triggerAutomation, AUTOMATION_EVENTS } from '@/lib/automations/triggerAutomation';
 import { useMeasurementJob } from '@/hooks/useMeasurementJob';
+import { MeasurementOrderAddressGate } from '@/components/address/MeasurementOrderAddressGate';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { EdgeConfirmationWizard } from './EdgeConfirmationWizard';
 import type { PlanEdge, EdgeType, AerialBackground } from './DimensionedPlanDrawing';
@@ -262,7 +263,14 @@ export function PullMeasurementsButton({
   }, [loadCoordinates]);
 
   // Use measurement job hook for async processing
-  const { job, isActive: jobIsActive, startJob } = useMeasurementJob(propertyId);
+  const {
+    job,
+    isActive: jobIsActive,
+    startJob,
+    addressGate,
+    retryAfterAddressResolved,
+    dismissAddressGate,
+  } = useMeasurementJob(propertyId);
   const [trackedJobId, setTrackedJobId] = useState<string | null>(null);
   const [shouldNotifyJobStatus, setShouldNotifyJobStatus] = useState(false);
 
@@ -302,6 +310,13 @@ export function PullMeasurementsButton({
         originalGeocodeLng: lng ?? null,
         userConfirmedRoofTarget: true,
       });
+
+      // PR #3C — Address gate intercepted the call. The hook stored
+      // `addressGate` and the modal renders below. Do not proceed.
+      if (jobId === null) {
+        setLoading(false);
+        return;
+      }
 
       setTrackedJobId(jobId);
       setShouldNotifyJobStatus(true);
@@ -871,6 +886,24 @@ export function PullMeasurementsButton({
           queryClient.invalidateQueries({ queryKey: ['ai-measurements', propertyId] });
           onSuccess?.({}, {});
         }}
+      />
+
+      {/* PR #3C — Measurement Order Address Gate. Reuses the PR #3A modal. */}
+      <MeasurementOrderAddressGate
+        gate={addressGate}
+        onResolved={async () => {
+          const jobId = await retryAfterAddressResolved();
+          if (jobId) {
+            setTrackedJobId(jobId);
+            setShouldNotifyJobStatus(true);
+            setPrevJobStatus(null);
+            toast({
+              title: '🚀 Measurement Started',
+              description: 'AI analysis is running in the background.',
+            });
+          }
+        }}
+        onCancel={dismissAddressGate}
       />
     </>
   );
