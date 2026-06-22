@@ -38,6 +38,63 @@ export const GeneralSettings = () => {
   const [connectingGoogleCalendar, setConnectingGoogleCalendar] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const activeTenantId = useEffectiveTenantId();
+
+  // Completion certificate (workmanship warranty) verbiage
+  const [completionVerbiage, setCompletionVerbiage] = useState<string>('');
+  const [savingVerbiage, setSavingVerbiage] = useState(false);
+
+  useEffect(() => {
+    if (!activeTenantId) return;
+    (async () => {
+      const { data } = await supabase
+        .from('tenants')
+        .select('warranty_terms')
+        .eq('id', activeTenantId)
+        .maybeSingle();
+      const raw = (data as any)?.warranty_terms;
+      let text = '';
+      if (raw) {
+        try {
+          const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+          if (parsed?.workmanship) text = String(parsed.workmanship);
+          else if (typeof raw === 'string') text = raw;
+        } catch {
+          if (typeof raw === 'string') text = raw;
+        }
+      }
+      setCompletionVerbiage(text || DEFAULT_WORKMANSHIP_WARRANTY);
+    })();
+  }, [activeTenantId]);
+
+  const saveCompletionVerbiage = async () => {
+    if (!activeTenantId) return;
+    setSavingVerbiage(true);
+    try {
+      const { data: existing } = await supabase
+        .from('tenants')
+        .select('warranty_terms')
+        .eq('id', activeTenantId)
+        .maybeSingle();
+      let merged: any = {};
+      const raw = (existing as any)?.warranty_terms;
+      if (raw) {
+        try { merged = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { merged = {}; }
+        if (!merged || typeof merged !== 'object') merged = {};
+      }
+      merged.workmanship = completionVerbiage.trim();
+      const { error } = await supabase
+        .from('tenants')
+        .update({ warranty_terms: merged } as any)
+        .eq('id', activeTenantId);
+      if (error) throw error;
+      toast({ title: 'Saved', description: 'Completion certificate verbiage updated.' });
+    } catch (e: any) {
+      toast({ title: 'Could not save', description: e.message || 'Update failed', variant: 'destructive' });
+    } finally {
+      setSavingVerbiage(false);
+    }
+  };
 
   // Handle hydration - only show theme state after mount
   useEffect(() => {
