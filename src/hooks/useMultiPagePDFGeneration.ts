@@ -185,6 +185,18 @@ export function useMultiPagePDFGeneration() {
         // Balance crisp typography with email-friendly file size (<10MB target)
         const captureScale = isImageHeavy ? 1.35 : 1.85;
 
+        // Anchor measurement MUST happen against the cloned element after
+        // applyPDFStyles runs — that's the DOM that actually produced the
+        // captured bitmap. Measuring the live DOM gives the wrong y because
+        // font-family / letter-spacing changes shift element positions.
+        let clonedAnchorRects: {
+          page: DOMRect;
+          customerSig: DOMRect;
+          customerDate?: DOMRect;
+          companySig?: DOMRect;
+          companyDate?: DOMRect;
+        } | null = null;
+
         // Capture page to canvas with adaptive settings
         const canvas = await html2canvas(pageElement, {
           scale: captureScale,
@@ -205,6 +217,23 @@ export function useMultiPagePDFGeneration() {
                   img.style.imageRendering = 'auto';
                 }
               });
+            }
+
+            // Measure signature anchors against the post-styled clone.
+            if (!signatureAnchor) {
+              const sigLine = clonedElement.querySelector('[data-signature-line="customer"]') as HTMLElement | null;
+              if (sigLine) {
+                const customerDateEl = clonedElement.querySelector('[data-date-line="customer"]') as HTMLElement | null;
+                const companySigEl = clonedElement.querySelector('[data-signature-line="company"]') as HTMLElement | null;
+                const companyDateEl = clonedElement.querySelector('[data-date-line="company"]') as HTMLElement | null;
+                clonedAnchorRects = {
+                  page: clonedElement.getBoundingClientRect(),
+                  customerSig: sigLine.getBoundingClientRect(),
+                  customerDate: customerDateEl?.getBoundingClientRect(),
+                  companySig: companySigEl?.getBoundingClientRect(),
+                  companyDate: companyDateEl?.getBoundingClientRect(),
+                };
+              }
             }
           },
         });
@@ -236,52 +265,40 @@ export function useMultiPagePDFGeneration() {
           Math.min(imgHeight, pageHeight - 20)
         );
 
+        // ====== Convert captured CSS rects → PDF point coordinates ======
+        if (!signatureAnchor && clonedAnchorRects) {
+          const pageRect = clonedAnchorRects.page;
+          const mmPerCssPx = imgWidth / pageRect.width;
 
-
-        // ====== Capture signature line anchor (customer signature) ======
-        // The page element is captured 1:1 then placed inside [10mm, 10mm, imgWidth, imgHeight]
-        // on the PDF page. Convert the signature line's CSS bbox (relative to pageElement)
-        // into PDF points so finalize-envelope can place the signature image precisely on it.
-        if (!signatureAnchor) {
-          const sigLine = pageElement.querySelector('[data-signature-line="customer"]') as HTMLElement | null;
-          if (sigLine) {
-            const pageRect = pageElement.getBoundingClientRect();
-            const mmPerCssPx = imgWidth / pageRect.width;
-
-            const toAnchor = (el: HTMLElement): AnchorBox => {
-              const r = el.getBoundingClientRect();
-              const relX = r.left - pageRect.left;
-              const relY = r.bottom - pageRect.top;
-              const xMm = xOffset + relX * mmPerCssPx;
-              const yMmFromTop = yOffset + relY * mmPerCssPx;
-              const widthMm = r.width * mmPerCssPx;
-              return {
-                xPt: xMm * MM_TO_PT,
-                yPt: (pageHeight - yMmFromTop) * MM_TO_PT,
-                widthPt: widthMm * MM_TO_PT,
-              };
+          const toAnchor = (r: DOMRect): AnchorBox => {
+            const relX = r.left - pageRect.left;
+            const relY = r.bottom - pageRect.top;
+            const xMm = xOffset + relX * mmPerCssPx;
+            const yMmFromTop = yOffset + relY * mmPerCssPx;
+            const widthMm = r.width * mmPerCssPx;
+            return {
+              xPt: xMm * MM_TO_PT,
+              yPt: (pageHeight - yMmFromTop) * MM_TO_PT,
+              widthPt: widthMm * MM_TO_PT,
             };
+          };
 
-            const customerSig = toAnchor(sigLine);
-            const customerDateEl = pageElement.querySelector('[data-date-line="customer"]') as HTMLElement | null;
-            const companySigEl = pageElement.querySelector('[data-signature-line="company"]') as HTMLElement | null;
-            const companyDateEl = pageElement.querySelector('[data-date-line="company"]') as HTMLElement | null;
-
-            signatureAnchor = {
-              pageIndex: i,
-              xPt: customerSig.xPt,
-              yPt: customerSig.yPt,
-              widthPt: customerSig.widthPt,
-              pageWidthPt: pageWidth * MM_TO_PT,
-              pageHeightPt: pageHeight * MM_TO_PT,
-              customerSig,
-              customerDate: customerDateEl ? toAnchor(customerDateEl) : undefined,
-              companySig: companySigEl ? toAnchor(companySigEl) : undefined,
-              companyDate: companyDateEl ? toAnchor(companyDateEl) : undefined,
-            };
-            console.log(`📐 Captured signature anchors on page ${i}:`, signatureAnchor);
-          }
+          const customerSig = toAnchor(clonedAnchorRects.customerSig);
+          signatureAnchor = {
+            pageIndex: i,
+            xPt: customerSig.xPt,
+            yPt: customerSig.yPt,
+            widthPt: customerSig.widthPt,
+            pageWidthPt: pageWidth * MM_TO_PT,
+            pageHeightPt: pageHeight * MM_TO_PT,
+            customerSig,
+            customerDate: clonedAnchorRects.customerDate ? toAnchor(clonedAnchorRects.customerDate) : undefined,
+            companySig: clonedAnchorRects.companySig ? toAnchor(clonedAnchorRects.companySig) : undefined,
+            companyDate: clonedAnchorRects.companyDate ? toAnchor(clonedAnchorRects.companyDate) : undefined,
+          };
+          console.log(`📐 Captured signature anchors on page ${i} (post-clone):`, signatureAnchor);
         }
+
 
         setProgress(((i + 1) / pageElements.length) * 90 + 5);
         console.log(`📄 Page ${i + 1}/${pageElements.length} captured (${isImageHeavy ? 'JPEG' : 'PNG'}, scale:${captureScale})`);
