@@ -263,7 +263,14 @@ export function PullMeasurementsButton({
   }, [loadCoordinates]);
 
   // Use measurement job hook for async processing
-  const { job, isActive: jobIsActive, startJob } = useMeasurementJob(propertyId);
+  const {
+    job,
+    isActive: jobIsActive,
+    startJob,
+    addressGate,
+    retryAfterAddressResolved,
+    dismissAddressGate,
+  } = useMeasurementJob(propertyId);
   const [trackedJobId, setTrackedJobId] = useState<string | null>(null);
   const [shouldNotifyJobStatus, setShouldNotifyJobStatus] = useState(false);
 
