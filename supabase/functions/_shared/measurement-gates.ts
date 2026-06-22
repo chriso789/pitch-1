@@ -14,6 +14,8 @@ export interface CustomerReadyInput {
   reportable_totals_have_typed_backing: boolean;
 
   per_plane_pitch_sources: string[]; // any 'collapsed_plane_fit' or '' fails
+  /** PR #5: every persisted/customer-reportable facet must be high/medium. */
+  facet_pitch_agreement_states?: Array<'high' | 'medium' | 'low' | 'insufficient_evidence' | string | null | undefined>;
   ai_gates_passed: boolean;
   override_validation_status?: 'pending' | 'passed' | 'failed' | null;
 }
@@ -25,6 +27,7 @@ export interface CustomerReadyResult {
 }
 
 const COLLAPSED_PITCH_SOURCES = new Set(['collapsed_plane_fit', '', 'unavailable']);
+const REPORTABLE_PITCH_AGREEMENT_STATES = new Set(['high', 'medium']);
 
 export function assertCustomerReportReady(input: CustomerReadyInput): CustomerReadyResult {
   const failures: string[] = [];
@@ -49,6 +52,21 @@ export function assertCustomerReportReady(input: CustomerReadyInput): CustomerRe
     COLLAPSED_PITCH_SOURCES.has(s)
   );
   if (badPitch.length > 0) failures.push(`collapsed_plane_pitch:${badPitch.length}`);
+
+  // PR #5: pitch values must agree across raw-evidence streams before publish.
+  if (input.facet_pitch_agreement_states) {
+    const badAgreement = input.facet_pitch_agreement_states.filter((state) =>
+      !REPORTABLE_PITCH_AGREEMENT_STATES.has(String(state ?? ''))
+    );
+    if (badAgreement.length > 0) {
+      const low = badAgreement.filter((state) => state === 'low').length;
+      const insufficient = badAgreement.filter((state) => state === 'insufficient_evidence').length;
+      if (low > 0) failures.push(`pitch_disagreement:${low}`);
+      if (insufficient > 0) failures.push(`pitch_insufficient_evidence:${insufficient}`);
+      const other = badAgreement.length - low - insufficient;
+      if (other > 0) failures.push(`pitch_agreement_invalid:${other}`);
+    }
+  }
 
   // Rule 5: AI passed OR overrides validated
   const aiOk = input.ai_gates_passed;
