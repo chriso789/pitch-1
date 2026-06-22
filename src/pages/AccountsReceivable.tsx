@@ -223,6 +223,8 @@ export default function AccountsReceivable() {
   const wipProjects = useMemo<WipProject[]>(() => {
     if (!projects) return [];
 
+    // If a project has combined estimates, sum them all so AR reflects the full contract.
+    // Otherwise pick the single selected estimate (or highest selling price as fallback).
     const estimateMap = new Map<string, any>();
     const groupedEstimates = new Map<string, any[]>();
     (estimates || []).forEach((e: any) => {
@@ -232,7 +234,25 @@ export default function AccountsReceivable() {
     });
     groupedEstimates.forEach((list, entryId) => {
       const project = (projects || []).find((p: any) => p.id === entryId);
-      const selectedId = project?.metadata?.selected_estimate_id ?? project?.metadata?.enhanced_estimate_id;
+      const meta = (project?.metadata as any) || {};
+      const combineOn = !!meta.combine_estimates;
+      const selectedIds: string[] = Array.isArray(meta.selected_estimate_ids) ? meta.selected_estimate_ids : [];
+
+      if (combineOn && selectedIds.length > 1) {
+        const chosen = list.filter((e: any) => selectedIds.includes(e.id));
+        if (chosen.length > 0) {
+          const sum = chosen.reduce((acc: any, e: any) => ({
+            selling_price: acc.selling_price + Number(e.selling_price || 0),
+            material_cost: acc.material_cost + Number(e.material_cost || 0),
+            labor_cost: acc.labor_cost + Number(e.labor_cost || 0),
+            overhead_amount: acc.overhead_amount + Number(e.overhead_amount || 0),
+          }), { selling_price: 0, material_cost: 0, labor_cost: 0, overhead_amount: 0 });
+          estimateMap.set(entryId, { ...sum, _combinedCount: chosen.length, _combinedIds: chosen.map((e: any) => e.id) });
+          return;
+        }
+      }
+
+      const selectedId = meta.selected_estimate_id ?? meta.enhanced_estimate_id;
       const picked = list.find((e: any) => e.id === selectedId)
         || list.sort((a: any, b: any) => Number(b.selling_price) - Number(a.selling_price))[0];
       if (picked) estimateMap.set(entryId, picked);
