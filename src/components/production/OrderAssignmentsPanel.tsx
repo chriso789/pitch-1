@@ -530,20 +530,29 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
                   )}
                 </div>
                 {assignment.notes && (
-                  <pre className="text-xs text-muted-foreground mt-2 whitespace-pre-wrap font-sans">{assignment.notes}</pre>
+                  <pre className="text-xs text-muted-foreground mt-2 whitespace-pre-wrap font-sans">
+                    {assignment.order_type === 'labor' ? stripPricing(assignment.notes) : assignment.notes}
+                  </pre>
                 )}
                 {projectEstimate?.pdf_url && assignment.estimate_id === projectEstimate.id && (
-                  <a
-                    href={projectEstimate.pdf_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-2"
-                  >
-                    <FileText className="h-3 w-3" /> View Order PDF
-                  </a>
+                  <div className="flex items-center gap-3 mt-2">
+                    <button
+                      type="button"
+                      onClick={() => setPdfViewerOpen(true)}
+                      className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                    >
+                      <Eye className="h-3 w-3" /> View Order PDF
+                    </button>
+                    <a
+                      href={projectEstimate.pdf_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:underline"
+                    >
+                      <ExternalLink className="h-3 w-3" /> Open in new tab
+                    </a>
+                  </div>
                 )}
-              </div>
-            </div>
             <Select
               value={assignment.status}
               onValueChange={(val) => updateStatusMutation.mutate({ id: assignment.id, status: val })}
