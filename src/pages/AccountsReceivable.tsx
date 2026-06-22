@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { GlobalLayout } from '@/shared/components/layout/GlobalLayout';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { usePipelineStages } from '@/hooks/usePipelineStages';
@@ -88,11 +88,46 @@ type SortDir = 'asc' | 'desc';
 export default function AccountsReceivable() {
   const activeTenantId = useEffectiveTenantId();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
   const [expandedWip, setExpandedWip] = useState<Set<string>>(new Set());
   const [sortField, setSortField] = useState<SortField>('age');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const { stages, isLoading: stagesLoading } = usePipelineStages();
+
+  // Live-refresh AR whenever a payment or invoice is recorded anywhere in the app
+  useEffect(() => {
+    if (!activeTenantId) return;
+
+    const invalidate = () => {
+      queryClient.invalidateQueries({ queryKey: ['ar-payments', activeTenantId] });
+      queryClient.invalidateQueries({ queryKey: ['ar-invoices', activeTenantId] });
+      queryClient.invalidateQueries({ queryKey: ['ar-projects', activeTenantId] });
+    };
+
+    const channel = supabase
+      .channel(`ar-live-${activeTenantId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'project_payments', filter: `tenant_id=eq.${activeTenantId}` },
+        invalidate
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'project_invoices', filter: `tenant_id=eq.${activeTenantId}` },
+        invalidate
+      )
+      .subscribe();
+
+    const onPaymentEvent = () => invalidate();
+    window.addEventListener('project-payment-recorded', onPaymentEvent);
+
+    return () => {
+      supabase.removeChannel(channel);
+      window.removeEventListener('project-payment-recorded', onPaymentEvent);
+    };
+  }, [activeTenantId, queryClient]);
+
 
   const arStatuses = useMemo(() => {
     const contractedStage = stages.find(s =>
@@ -430,6 +465,10 @@ export default function AccountsReceivable() {
               notes: 'Manually recorded from AR dashboard',
             });
             if (error) throw error;
+            queryClient.invalidateQueries({ queryKey: ['ar-payments', activeTenantId] });
+            queryClient.invalidateQueries({ queryKey: ['ar-invoices', activeTenantId] });
+            queryClient.invalidateQueries({ queryKey: ['ar-projects', activeTenantId] });
+            window.dispatchEvent(new CustomEvent('project-payment-recorded', { detail: { pipelineEntryId: item.id, amount } }));
             toast.success(`Payment of ${fmt(amount)} recorded`);
           } catch (e: any) {
             toast.error(e.message || 'Failed to record payment');
