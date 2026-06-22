@@ -3318,7 +3318,10 @@ export type Database = {
           created_by_function: string | null
           engine_version: string | null
           entrypoint: string
+          evidence_acquisition_log: Json | null
+          evidence_sources_used: Json | null
           failure_reason: string | null
+          footprint_source_tier: string | null
           geocode_location_type: string | null
           geometry_quality_score: number | null
           git_commit_sha: string | null
@@ -3392,7 +3395,10 @@ export type Database = {
           created_by_function?: string | null
           engine_version?: string | null
           entrypoint?: string
+          evidence_acquisition_log?: Json | null
+          evidence_sources_used?: Json | null
           failure_reason?: string | null
+          footprint_source_tier?: string | null
           geocode_location_type?: string | null
           geometry_quality_score?: number | null
           git_commit_sha?: string | null
@@ -3466,7 +3472,10 @@ export type Database = {
           created_by_function?: string | null
           engine_version?: string | null
           entrypoint?: string
+          evidence_acquisition_log?: Json | null
+          evidence_sources_used?: Json | null
           failure_reason?: string | null
+          footprint_source_tier?: string | null
           geocode_location_type?: string | null
           geometry_quality_score?: number | null
           git_commit_sha?: string | null
@@ -28281,6 +28290,9 @@ export type Database = {
           created_by_function: string | null
           engine_version: string | null
           error: string | null
+          evidence_acquisition_log: Json | null
+          evidence_sources_used: Json | null
+          footprint_source_tier: string | null
           geocode_location_type: string | null
           git_commit_sha: string | null
           hard_fail_reason: string | null
@@ -28325,6 +28337,9 @@ export type Database = {
           created_by_function?: string | null
           engine_version?: string | null
           error?: string | null
+          evidence_acquisition_log?: Json | null
+          evidence_sources_used?: Json | null
+          footprint_source_tier?: string | null
           geocode_location_type?: string | null
           git_commit_sha?: string | null
           hard_fail_reason?: string | null
@@ -28369,6 +28384,9 @@ export type Database = {
           created_by_function?: string | null
           engine_version?: string | null
           error?: string | null
+          evidence_acquisition_log?: Json | null
+          evidence_sources_used?: Json | null
+          footprint_source_tier?: string | null
           geocode_location_type?: string | null
           git_commit_sha?: string | null
           hard_fail_reason?: string | null
@@ -54696,6 +54714,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      tenant_imagery_providers: {
+        Row: {
+          api_key_secret_name: string
+          created_at: string
+          enabled: boolean
+          id: string
+          min_resolution_m_per_px: number | null
+          notes: string | null
+          provider: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          api_key_secret_name: string
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          min_resolution_m_per_px?: number | null
+          notes?: string | null
+          provider: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          api_key_secret_name?: string
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          min_resolution_m_per_px?: number | null
+          notes?: string | null
+          provider?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       tenant_imported_price_sheets: {
         Row: {
