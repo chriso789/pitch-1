@@ -205,6 +205,73 @@ export function ProjectAddressPanel({
         active = (data as ProjectAddressRow | null) ?? null;
       }
 
+      // Auto-hydrate from contact's already-validated address. Lead creation
+      // resolves addresses via Google Places into contacts.verified_address;
+      // promote that into the canonical property_addresses table so the panel
+      // doesn't ask the user to re-validate an already-validated address.
+      if (!active) {
+        const { data: peRow } = await supabase
+          .from('pipeline_entries')
+          .select('contact_id')
+          .eq('id', pipelineEntryId)
+          .maybeSingle();
+        const contactId = (peRow?.contact_id as string | undefined) ?? null;
+        if (contactId) {
+          const { data: contact } = await supabase
+            .from('contacts')
+            .select(
+              'address_street, address_city, address_state, address_zip, latitude, longitude, verified_address, google_place_id',
+            )
+            .eq('id', contactId)
+            .maybeSingle();
+          const va: any = contact?.verified_address ?? null;
+          const hasGoogleEvidence = !!(va?.formatted_address || va?.place_id || contact?.google_place_id);
+          const hasUsableAddress = !!(contact?.address_street && contact?.address_city);
+          if (hasGoogleEvidence || hasUsableAddress) {
+            const components: any[] = Array.isArray(va?.address_components) ? va.address_components : [];
+            const findComp = (type: string) =>
+              components.find((c: any) => Array.isArray(c?.types) && c.types.includes(type));
+            const countryCode = findComp('country')?.short_name ?? 'US';
+            const payload = {
+              tenant_id: tenantId,
+              source_entity_type: 'pipeline_entry' as const,
+              source_entity_id: pipelineEntryId,
+              raw_input:
+                va?.formatted_address ??
+                [contact?.address_street, contact?.address_city, contact?.address_state, contact?.address_zip]
+                  .filter(Boolean)
+                  .join(', '),
+              formatted_address: va?.formatted_address ?? null,
+              address_line_1: contact?.address_street ?? null,
+              address_line_2: null,
+              locality: contact?.address_city ?? null,
+              administrative_area: contact?.address_state ?? null,
+              postal_code: contact?.address_zip ?? null,
+              country_code: countryCode,
+              latitude: va?.geometry?.location?.lat ?? contact?.latitude ?? null,
+              longitude: va?.geometry?.location?.lng ?? contact?.longitude ?? null,
+              place_id: va?.place_id ?? contact?.google_place_id ?? null,
+              validation_provider: hasGoogleEvidence ? 'google_places' : null,
+              validation_status: hasGoogleEvidence ? 'valid' : 'unvalidated',
+              validated_at: hasGoogleEvidence ? new Date().toISOString() : null,
+              validation_payload: va ?? null,
+            };
+            const { data: inserted, error: insErr } = await supabase
+              .from('property_addresses')
+              .insert([payload])
+              .select(
+                'id, source_entity_type, source_entity_id, validation_status, formatted_address, address_line_1, address_line_2, locality, administrative_area, postal_code, country_code, override_reason, override_by, override_at, missing_component_types, updated_at',
+              )
+              .maybeSingle();
+            if (insErr) {
+              console.warn('[ProjectAddressPanel] contact auto-hydrate failed', insErr);
+            } else if (inserted) {
+              active = inserted as unknown as ProjectAddressRow;
+            }
+          }
+        }
+      }
+
       setRow(active);
     } finally {
       setLoading(false);
