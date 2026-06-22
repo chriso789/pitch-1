@@ -312,10 +312,12 @@ Deno.serve(async (req: Request) => {
 
     // Small audit line (name + tenant) below the date line / signature line
     const auditY = (companyDateBox ? companyDateBox.yPt : repSigY) - 12;
-    page.drawText(`${repName} — ${tenantName}  •  IP: ${ip || 'N/A'}`, {
+    const auditText = `${repName} — ${tenantName}  •  IP: ${ip || 'N/A'}`;
+    const auditSize = auditText.length > 56 ? 5 : 6;
+    page.drawText(auditText, {
       x: repSigX,
       y: auditY,
-      size: 6,
+      size: auditSize,
       font: helveticaFont,
       color: rgb(0.55, 0.55, 0.55),
     });
