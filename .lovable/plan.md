@@ -110,3 +110,27 @@ No UI changes for this PR. The existing "Mark Active Paid" admin action stays as
 - `crm_referral_subscription_history` shows each transition with the causing `stripe_event_id`.
 - Duplicate Stripe deliveries are no-ops.
 - Manual "Mark Active Paid" still functions, tagged `source='manual'`.
+
+## PR #3: Address Validation (shipped)
+
+### Database
+- `property_addresses` — canonical, tenant-scoped, one active row per (tenant, entity_type, entity_id). Status enum: `unvalidated | valid | needs_review | invalid | override_accepted`. Override fields are gated by trigger to manager/owner/master roles + required reason.
+- `property_address_validation_history` — full audit trail of every validation/override transition with provider, raw input, payloads, actor.
+
+### Edge functions
+- `validate-property-address` — server-side Google Address Validation call, classifier-driven status mapping, idempotent (skips re-validation when raw_input + status unchanged unless `force_revalidate`), non-destructive on Google errors (keeps row at `unvalidated`, logs history).
+- `backfill-property-addresses` — master/owner/corporate only; creates `unvalidated` rows from existing `contacts`, `pipeline_entries`, `projects`. No Google calls; idempotent.
+
+### Hard gates
+- `api-approve-job-from-lead` now returns HTTP 412 `requires_address_validation` unless the pipeline_entry or its contact has a `valid` or `override_accepted` canonical address (master/owner bypass).
+
+### Frontend
+- `useAddressValidation()` hook: `validate(...)` invokes the edge function; `requireProductionReady(...)` checks the canonical status before triggering production-impacting actions.
+
+### Classifier policy
+Anchored on `verdict.validationGranularity`, `addressComplete`, `missingComponentTypes`, `unresolvedTokens`, and the change-flags (inferred/replaced/spell-corrected/unconfirmed). USPS DPV is captured but advisory.
+
+### Follow-ups (not in this PR)
+- Frontend modal UX for needs_review / invalid / manager-override flow on Lead/Project/Order/Permit forms.
+- Hard-gate hooks into measurement order submission, permit/NOC generation, material orders, production scheduling.
+- Soft-warn banners on lead intake forms.
