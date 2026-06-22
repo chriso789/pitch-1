@@ -775,7 +775,7 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
           </CardTitle>
           <p className="text-xs text-muted-foreground">
             Manual approval saves the polygon but does <strong>not</strong> mark the report customer-ready.
-            Downstream topology / pitch / vendor gates still apply on rerun.
+            Downstream DSM / topology / pitch self-consistency gates still apply on rerun.
           </p>
         </div>
         <div className="flex items-center gap-2">
