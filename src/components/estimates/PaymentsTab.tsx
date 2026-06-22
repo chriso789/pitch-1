@@ -760,6 +760,11 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project-ar-invoices', pipelineEntryId] });
       queryClient.invalidateQueries({ queryKey: ['project-ar-payments', pipelineEntryId] });
+      // Notify the AR dashboard (and any other live listeners) to refresh immediately
+      queryClient.invalidateQueries({ queryKey: ['ar-payments'] });
+      queryClient.invalidateQueries({ queryKey: ['ar-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['ar-projects'] });
+      window.dispatchEvent(new CustomEvent('project-payment-recorded', { detail: { pipelineEntryId } }));
       setShowPaymentDialog(false);
       setPaymentAmount('');
       setPaymentRef('');
