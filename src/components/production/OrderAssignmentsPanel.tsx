@@ -455,7 +455,9 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
                   </Badge>
                 </div>
                 {assignment.description && (
-                  <p className="text-xs text-muted-foreground mt-1">{assignment.description}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {assignment.order_type === 'labor' ? stripPricing(assignment.description) : assignment.description}
+                  </p>
                 )}
                 <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground flex-wrap">
                   {assignment.order_type === 'material' && vendor && (
