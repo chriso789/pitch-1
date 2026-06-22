@@ -3303,6 +3303,9 @@ export type Database = {
         Row: {
           actual_image_height: number | null
           actual_image_width: number | null
+          address_override_reason_at_order: string | null
+          address_validated_at_order: string | null
+          address_validation_status_at_order: string | null
           ai_measurement_engine_version: string | null
           canonical_measurement_route: boolean
           company_id: string | null
@@ -3339,6 +3342,7 @@ export type Database = {
           phase0_control_flow_version: string | null
           project_id: string | null
           property_address: string
+          property_address_id: string | null
           raster_scale: number | null
           report_blocked: boolean
           report_pdf_path: string | null
@@ -3367,11 +3371,15 @@ export type Database = {
           user_verified_perimeter: boolean
           user_verified_perimeter_at: string | null
           user_verified_perimeter_by: string | null
+          validated_address_snapshot: Json | null
           waste_factor_percent: number | null
         }
         Insert: {
           actual_image_height?: number | null
           actual_image_width?: number | null
+          address_override_reason_at_order?: string | null
+          address_validated_at_order?: string | null
+          address_validation_status_at_order?: string | null
           ai_measurement_engine_version?: string | null
           canonical_measurement_route?: boolean
           company_id?: string | null
@@ -3408,6 +3416,7 @@ export type Database = {
           phase0_control_flow_version?: string | null
           project_id?: string | null
           property_address: string
+          property_address_id?: string | null
           raster_scale?: number | null
           report_blocked?: boolean
           report_pdf_path?: string | null
@@ -3436,11 +3445,15 @@ export type Database = {
           user_verified_perimeter?: boolean
           user_verified_perimeter_at?: string | null
           user_verified_perimeter_by?: string | null
+          validated_address_snapshot?: Json | null
           waste_factor_percent?: number | null
         }
         Update: {
           actual_image_height?: number | null
           actual_image_width?: number | null
+          address_override_reason_at_order?: string | null
+          address_validated_at_order?: string | null
+          address_validation_status_at_order?: string | null
           ai_measurement_engine_version?: string | null
           canonical_measurement_route?: boolean
           company_id?: string | null
@@ -3477,6 +3490,7 @@ export type Database = {
           phase0_control_flow_version?: string | null
           project_id?: string | null
           property_address?: string
+          property_address_id?: string | null
           raster_scale?: number | null
           report_blocked?: boolean
           report_pdf_path?: string | null
@@ -3505,6 +3519,7 @@ export type Database = {
           user_verified_perimeter?: boolean
           user_verified_perimeter_at?: string | null
           user_verified_perimeter_by?: string | null
+          validated_address_snapshot?: Json | null
           waste_factor_percent?: number | null
         }
         Relationships: []
@@ -28254,6 +28269,9 @@ export type Database = {
       measurement_jobs: {
         Row: {
           address: string | null
+          address_override_reason_at_order: string | null
+          address_validated_at_order: string | null
+          address_validation_status_at_order: string | null
           ai_measurement_engine_version: string | null
           ai_measurement_job_id: string | null
           canonical_measurement_route: boolean
@@ -28277,6 +28295,7 @@ export type Database = {
           pitch_override: string | null
           progress_message: string | null
           project_id: string | null
+          property_address_id: string | null
           report_renderer_version: string | null
           result_state: string | null
           route_audit_version: string | null
@@ -28290,9 +28309,13 @@ export type Database = {
           tenant_id: string
           updated_at: string
           user_id: string | null
+          validated_address_snapshot: Json | null
         }
         Insert: {
           address?: string | null
+          address_override_reason_at_order?: string | null
+          address_validated_at_order?: string | null
+          address_validation_status_at_order?: string | null
           ai_measurement_engine_version?: string | null
           ai_measurement_job_id?: string | null
           canonical_measurement_route?: boolean
@@ -28316,6 +28339,7 @@ export type Database = {
           pitch_override?: string | null
           progress_message?: string | null
           project_id?: string | null
+          property_address_id?: string | null
           report_renderer_version?: string | null
           result_state?: string | null
           route_audit_version?: string | null
@@ -28329,9 +28353,13 @@ export type Database = {
           tenant_id: string
           updated_at?: string
           user_id?: string | null
+          validated_address_snapshot?: Json | null
         }
         Update: {
           address?: string | null
+          address_override_reason_at_order?: string | null
+          address_validated_at_order?: string | null
+          address_validation_status_at_order?: string | null
           ai_measurement_engine_version?: string | null
           ai_measurement_job_id?: string | null
           canonical_measurement_route?: boolean
@@ -28355,6 +28383,7 @@ export type Database = {
           pitch_override?: string | null
           progress_message?: string | null
           project_id?: string | null
+          property_address_id?: string | null
           report_renderer_version?: string | null
           result_state?: string | null
           route_audit_version?: string | null
@@ -28368,6 +28397,7 @@ export type Database = {
           tenant_id?: string
           updated_at?: string
           user_id?: string | null
+          validated_address_snapshot?: Json | null
         }
         Relationships: []
       }
