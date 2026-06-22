@@ -130,6 +130,11 @@ import {
   type TopologyFidelityResult,
 } from "../_shared/autonomous-graph-solver.ts";
 import {
+  DSM_STOP_GUARD_VERSION,
+  evaluateDsmRegistrationStopGuard,
+  evaluateRasterCandidateCheck,
+} from "../_shared/dsm-registration-stop-guard.ts";
+import {
   buildPerimeterTopology,
   evaluatePerimeterGate,
 } from "../_shared/perimeter-topology.ts";
