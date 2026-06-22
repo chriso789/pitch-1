@@ -353,6 +353,14 @@ const LeadDetails = () => {
   // Project details edit dialog state
   const [showEditProjectDialog, setShowEditProjectDialog] = useState(false);
   const [showInspection, setShowInspection] = useState(false);
+
+  // PR #3A: Address validation gate remediation modal state
+  const [addressGate, setAddressGate] = useState<{
+    open: boolean;
+    gateReason: string | null;
+    canOverride: boolean;
+  }>({ open: false, gateReason: null, canOverride: false });
+
   
   // Auth context
   const { user } = useAuth();
