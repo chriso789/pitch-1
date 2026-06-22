@@ -60,7 +60,7 @@ Deno.serve(async (req: Request) => {
     if (envErr || !envelope) {
       return errorResponse('NOT_FOUND', 'Envelope not found', 404);
     }
-    if (envelope.countersigned_at && !body.force_rebuild) {
+    if (envelope.countersigned_at && envelope.status === 'completed' && !body.force_rebuild) {
       return successResponse({
         message: 'Envelope already countersigned',
         envelope_id: envelope.id,
