@@ -218,7 +218,21 @@ export function InteractiveMapCanvas({
       });
     }
 
+    // Tabs/dialogs frequently mount the map container at 0×0 before the
+    // animated parent settles its size. Without this, Mapbox keeps drawing
+    // into a zero-dimension viewport and the aerial appears blank. Observe
+    // the container and force a resize whenever its size changes.
+    const ro = new ResizeObserver(() => {
+      const el = mapContainerRef.current;
+      if (!el || !mapRef.current) return;
+      if (el.clientWidth === 0 || el.clientHeight === 0) return;
+      mapRef.current.resize();
+      setCanvasSize({ width: el.clientWidth, height: el.clientHeight });
+    });
+    if (mapContainerRef.current) ro.observe(mapContainerRef.current);
+
     return () => {
+      ro.disconnect();
       map.remove();
       mapRef.current = null;
     };
