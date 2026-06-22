@@ -36,6 +36,7 @@ export function RecordPaymentDialog({
   const [paymentRef, setPaymentRef] = useState('');
   const [paymentNotes, setPaymentNotes] = useState('');
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
+  const [selectedEstimateId, setSelectedEstimateId] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -45,8 +46,33 @@ export function RecordPaymentDialog({
       setPaymentRef('');
       setPaymentNotes('');
       setSelectedInvoiceId(null);
+      setSelectedEstimateId(null);
     }
   }, [open]);
+
+  // Detect combined estimates on this project so the user can apply payment to the correct one
+  const { data: combinedEstimates } = useQuery({
+    queryKey: ['rpd-combined-estimates', pipelineEntryId],
+    enabled: open && !!pipelineEntryId,
+    queryFn: async () => {
+      const { data: pe } = await supabase
+        .from('pipeline_entries')
+        .select('metadata')
+        .eq('id', pipelineEntryId)
+        .maybeSingle();
+      const meta = (pe?.metadata as any) || {};
+      if (!meta.combine_estimates) return [] as any[];
+      const ids: string[] = Array.isArray(meta.selected_estimate_ids) ? meta.selected_estimate_ids : [];
+      if (ids.length < 2) return [] as any[];
+      const { data } = await supabase
+        .from('enhanced_estimates')
+        .select('id, estimate_number, display_name, selling_price')
+        .in('id', ids);
+      return data || [];
+    },
+  });
+
+  const hasCombinedEstimates = (combinedEstimates?.length || 0) > 1;
 
   const { data: invoices } = useQuery({
     queryKey: ['rpd-invoices', pipelineEntryId],
