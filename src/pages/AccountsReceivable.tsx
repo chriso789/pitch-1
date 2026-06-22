@@ -465,6 +465,10 @@ export default function AccountsReceivable() {
               notes: 'Manually recorded from AR dashboard',
             });
             if (error) throw error;
+            queryClient.invalidateQueries({ queryKey: ['ar-payments', activeTenantId] });
+            queryClient.invalidateQueries({ queryKey: ['ar-invoices', activeTenantId] });
+            queryClient.invalidateQueries({ queryKey: ['ar-projects', activeTenantId] });
+            window.dispatchEvent(new CustomEvent('project-payment-recorded', { detail: { pipelineEntryId: item.id, amount } }));
             toast.success(`Payment of ${fmt(amount)} recorded`);
           } catch (e: any) {
             toast.error(e.message || 'Failed to record payment');
