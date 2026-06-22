@@ -3343,6 +3343,7 @@ export type Database = {
           perimeter_source_locked: string | null
           perimeter_visual_review_required: boolean
           phase0_control_flow_version: string | null
+          pitch_verification_json: Json | null
           project_id: string | null
           property_address: string
           property_address_id: string | null
@@ -3420,6 +3421,7 @@ export type Database = {
           perimeter_source_locked?: string | null
           perimeter_visual_review_required?: boolean
           phase0_control_flow_version?: string | null
+          pitch_verification_json?: Json | null
           project_id?: string | null
           property_address: string
           property_address_id?: string | null
@@ -3497,6 +3499,7 @@ export type Database = {
           perimeter_source_locked?: string | null
           perimeter_visual_review_required?: boolean
           phase0_control_flow_version?: string | null
+          pitch_verification_json?: Json | null
           project_id?: string | null
           property_address?: string
           property_address_id?: string | null
@@ -28305,6 +28308,7 @@ export type Database = {
           phase0_control_flow_version: string | null
           pipeline_entry_id: string
           pitch_override: string | null
+          pitch_verification_json: Json | null
           progress_message: string | null
           project_id: string | null
           property_address_id: string | null
@@ -28352,6 +28356,7 @@ export type Database = {
           phase0_control_flow_version?: string | null
           pipeline_entry_id: string
           pitch_override?: string | null
+          pitch_verification_json?: Json | null
           progress_message?: string | null
           project_id?: string | null
           property_address_id?: string | null
@@ -28399,6 +28404,7 @@ export type Database = {
           phase0_control_flow_version?: string | null
           pipeline_entry_id?: string
           pitch_override?: string | null
+          pitch_verification_json?: Json | null
           progress_message?: string | null
           project_id?: string | null
           property_address_id?: string | null
@@ -44098,7 +44104,14 @@ export type Database = {
           measurement_id: string
           penetration_count: number | null
           pitch: string
+          pitch_agreement_state: string | null
+          pitch_consensus_deg: number | null
+          pitch_dsm_deg: number | null
           pitch_multiplier: number
+          pitch_solar_deg: number | null
+          pitch_source_final: string | null
+          pitch_streetview_deg: number | null
+          pitch_verification_json: Json | null
           polygon_points: Json
           primary_direction: string | null
           rake_length: number | null
@@ -44131,7 +44144,14 @@ export type Database = {
           measurement_id: string
           penetration_count?: number | null
           pitch: string
+          pitch_agreement_state?: string | null
+          pitch_consensus_deg?: number | null
+          pitch_dsm_deg?: number | null
           pitch_multiplier: number
+          pitch_solar_deg?: number | null
+          pitch_source_final?: string | null
+          pitch_streetview_deg?: number | null
+          pitch_verification_json?: Json | null
           polygon_points: Json
           primary_direction?: string | null
           rake_length?: number | null
@@ -44164,7 +44184,14 @@ export type Database = {
           measurement_id?: string
           penetration_count?: number | null
           pitch?: string
+          pitch_agreement_state?: string | null
+          pitch_consensus_deg?: number | null
+          pitch_dsm_deg?: number | null
           pitch_multiplier?: number
+          pitch_solar_deg?: number | null
+          pitch_source_final?: string | null
+          pitch_streetview_deg?: number | null
+          pitch_verification_json?: Json | null
           polygon_points?: Json
           primary_direction?: string | null
           rake_length?: number | null
