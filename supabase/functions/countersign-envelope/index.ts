@@ -35,6 +35,11 @@ Deno.serve(async (req: Request) => {
     const supabase = createServiceClient();
     const { ip, userAgent } = getClientInfo(req);
 
+    const body: CountersignRequest = await req.json();
+    if (!body.envelope_id) {
+      return errorResponse('VALIDATION_ERROR', 'Missing envelope_id', 400);
+    }
+
     // Authenticated caller
     const authHeader = req.headers.get('Authorization') || '';
     const jwt = authHeader.replace(/^Bearer\s+/i, '');
@@ -44,11 +49,6 @@ Deno.serve(async (req: Request) => {
       return errorResponse('UNAUTHORIZED', 'Invalid auth token', 401);
     }
     const callerId = userData.user.id;
-
-    const body: CountersignRequest = await req.json();
-    if (!body.envelope_id) {
-      return errorResponse('VALIDATION_ERROR', 'Missing envelope_id', 400);
-    }
 
     // Load envelope
     const { data: envelope, error: envErr } = await supabase
@@ -99,8 +99,29 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // The signed PDF the client signed
-    const signedPath = envelope.signed_pdf_path;
+    // The signed PDF the client signed. For force rebuilds on already completed
+    // envelopes, prefer the clean client-signed artifact over the previous
+    // countersigned PDF so we don't leave the old misplaced rep stamp behind.
+    let signedPath = envelope.signed_pdf_path;
+    if (body.force_rebuild && envelope.id) {
+      try {
+        const { data: clientSignedDoc } = await supabase
+          .from('documents')
+          .select('file_path')
+          .eq('tenant_id', envelope.tenant_id)
+          .ilike('file_path', `%/${envelope.id}/signed_%`)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (clientSignedDoc?.file_path) {
+          signedPath = clientSignedDoc.file_path;
+          console.log(`Force rebuild using clean client-signed PDF: ${signedPath}`);
+        }
+      } catch (e) {
+        console.warn('Could not locate clean client-signed PDF for rebuild:', e);
+      }
+    }
     if (!signedPath) {
       return errorResponse('INVALID_STATE', 'Envelope has no signed PDF yet', 400);
     }
@@ -181,11 +202,13 @@ Deno.serve(async (req: Request) => {
       yPt: fallbackBlockBottomY,
       widthPt: customerColWidth,
     };
-    // Some already-generated estimates stored a company anchor too close to
-    // the centered total. Force the rep stamp into the far-right sales-rep
-    // column so it cannot sit over "Your Investment".
-    const repColumnWidth = Math.min(rawCompanySigBox.widthPt, 170);
-    const rightColumnX = Math.max(pageW * 0.62, pageW - fallbackBlockLeftX - repColumnWidth);
+    // Some already-generated estimates stored a missing or centered company
+    // anchor, which placed the rep signature over the "Your Investment" total.
+    // Force the rep stamp into the far-right side of the page and keep the
+    // stamped image compact so the audit text and line remain inside the page.
+    const farRightInset = 34;
+    const repColumnWidth = Math.min(rawCompanySigBox.widthPt, 140);
+    const rightColumnX = Math.max(pageW * 0.70, pageW - farRightInset - repColumnWidth);
     const companySigBox: Box = {
       ...rawCompanySigBox,
       xPt: Math.max(rawCompanySigBox.xPt, rightColumnX),
@@ -196,13 +219,13 @@ Deno.serve(async (req: Request) => {
       ? {
           ...rawCompanyDateBox,
           xPt: Math.max(rawCompanyDateBox.xPt, companySigBox.xPt + 24),
-          widthPt: Math.min(rawCompanyDateBox.widthPt, Math.max(40, pageW - companySigBox.xPt - 84)),
+          widthPt: Math.min(rawCompanyDateBox.widthPt, Math.max(40, pageW - companySigBox.xPt - farRightInset)),
         }
       : null;
 
     const repSigX = companySigBox.xPt;
     const repSigY = companySigBox.yPt;
-    const repMaxSigWidth = Math.min(companySigBox.widthPt, 170);
+    const repMaxSigWidth = Math.min(companySigBox.widthPt, 140);
     const repMaxSigHeight = Math.min(28, (companyDateBox ? repSigY - companyDateBox.yPt - 4 : 28));
 
     // Tenant name for label
@@ -310,10 +333,12 @@ Deno.serve(async (req: Request) => {
 
     // Small audit line (name + tenant) below the date line / signature line
     const auditY = (companyDateBox ? companyDateBox.yPt : repSigY) - 12;
-    page.drawText(`${repName} — ${tenantName}  •  IP: ${ip || 'N/A'}`, {
+    const auditText = `${repName} — ${tenantName}  •  IP: ${ip || 'N/A'}`;
+    const auditSize = auditText.length > 56 ? 5 : 6;
+    page.drawText(auditText, {
       x: repSigX,
       y: auditY,
-      size: 6,
+      size: auditSize,
       font: helveticaFont,
       color: rgb(0.55, 0.55, 0.55),
     });
@@ -404,25 +429,28 @@ Deno.serve(async (req: Request) => {
       console.error('estimate update err', e);
     }
 
-    // Notify sender
-    await createNotification(supabase, {
-      tenant_id: envelope.tenant_id,
-      user_id: envelope.created_by,
-      type: 'envelope_completed',
-      title: 'Envelope Completed',
-      message: `"${envelope.title}" has been fully signed.`,
-      metadata: {
-        envelope_id: envelope.id,
-        completed_at: completedAt,
-        signed_pdf_path: finalPath,
-        document_id: documentId,
-        action_url: `/signature-envelopes/${envelope.id}`,
-      },
-    });
+    // Notify sender on normal countersigns. Force rebuilds are silent repairs
+    // of an existing artifact and should not re-notify or re-email customers.
+    if (!body.force_rebuild) {
+      await createNotification(supabase, {
+        tenant_id: envelope.tenant_id,
+        user_id: envelope.created_by,
+        type: 'envelope_completed',
+        title: 'Envelope Completed',
+        message: `"${envelope.title}" has been fully signed.`,
+        metadata: {
+          envelope_id: envelope.id,
+          completed_at: completedAt,
+          signed_pdf_path: finalPath,
+          document_id: documentId,
+          action_url: `/signature-envelopes/${envelope.id}`,
+        },
+      });
+    }
 
     // Email all parties (recipients + sender + countersigner)
     const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
-    if (RESEND_API_KEY && downloadUrl) {
+    if (RESEND_API_KEY && downloadUrl && !body.force_rebuild) {
       try {
         const { data: recipients } = await supabase
           .from('signature_recipients')
