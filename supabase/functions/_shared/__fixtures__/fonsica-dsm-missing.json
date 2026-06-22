@@ -1,0 +1,35 @@
+{
+  "_description": "PR A — Fonsica diagnostic snapshot: DSM grid loaded 998x998, no dsm_tile_bounds_lat_lng from Google Solar, raster bounds present, selected perimeter in raster_px around confirmed center [640,640], target mask overlap 0.976.",
+  "address": "4063 Fonsica Ave, North Port, FL",
+  "dsm_size_px": { "width": 998, "height": 998 },
+  "dsm_tile_bounds_lat_lng": null,
+  "raster_bounds_lat_lng": {
+    "sw": { "lat": 27.041000, "lng": -82.241500 },
+    "ne": { "lat": 27.042500, "lng": -82.239800 }
+  },
+  "raster_size_px": { "width": 1280, "height": 1280 },
+  "geo_to_raster_transform": {
+    "size_px": { "width": 1280, "height": 1280 },
+    "bounds": {
+      "sw": { "lat": 27.041000, "lng": -82.241500 },
+      "ne": { "lat": 27.042500, "lng": -82.239800 }
+    },
+    "meters_per_pixel": 0.119
+  },
+  "confirmed_roof_center_px": [640, 640],
+  "confirmed_roof_center_lat_lng": { "lat": 27.041750, "lng": -82.240650 },
+  "selected_candidate_polygon_px": [
+    [596.6375, 550.8625],
+    [708.0702, 581.3238],
+    [709.6000, 701.8626],
+    [581.8115, 698.3006],
+    [582.1796, 592.7807],
+    [580.1617, 568.2950],
+    [596.6375, 550.8625]
+  ],
+  "candidate_coordinate_space": "raster_px",
+  "target_mask_overlap_with_perimeter": 0.976,
+  "perimeter_iou_vs_mask": 0.845,
+  "perimeter_area_sqft": 3254.7,
+  "target_mask_area_sqft": 2829.0
+}
