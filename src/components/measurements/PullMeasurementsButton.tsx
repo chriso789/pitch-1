@@ -13,6 +13,7 @@ import { useMeasurementCoordinates } from '@/hooks/useMeasurementCoordinates';
 import { RoofrStyleReportPreview } from './RoofrStyleReportPreview';
 import { triggerAutomation, AUTOMATION_EVENTS } from '@/lib/automations/triggerAutomation';
 import { useMeasurementJob } from '@/hooks/useMeasurementJob';
+import { MeasurementOrderAddressGate } from '@/components/address/MeasurementOrderAddressGate';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { EdgeConfirmationWizard } from './EdgeConfirmationWizard';
 import type { PlanEdge, EdgeType, AerialBackground } from './DimensionedPlanDrawing';
