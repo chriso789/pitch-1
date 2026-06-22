@@ -73,6 +73,7 @@ import { InspectionHistory } from '@/components/inspection/InspectionHistory';
 import { useQuery as useTanstackQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { SendReferralLinkButton } from '@/components/referrals/SendReferralLinkButton';
+import { AddressValidationResolutionModal } from '@/components/address/AddressValidationResolutionModal';
 
 // Hook to get selected estimate id from pipeline metadata
 const useSelectedEstimateId = (pipelineEntryId: string) => {
@@ -353,6 +354,14 @@ const LeadDetails = () => {
   // Project details edit dialog state
   const [showEditProjectDialog, setShowEditProjectDialog] = useState(false);
   const [showInspection, setShowInspection] = useState(false);
+
+  // PR #3A: Address validation gate remediation modal state
+  const [addressGate, setAddressGate] = useState<{
+    open: boolean;
+    gateReason: string | null;
+    canOverride: boolean;
+  }>({ open: false, gateReason: null, canOverride: false });
+
   
   // Auth context
   const { user } = useAuth();
@@ -572,18 +581,36 @@ const LeadDetails = () => {
         { body: { pipelineEntryId: id } }
       );
 
-      const payload = (result as any) || {};
-      if (error || payload.error) {
-        if (payload.requires_approval) {
-          toast({
-            title: 'Manager Approval Required',
-            description: payload.error || 'This lead requires manager approval before it can become a project.',
-            variant: 'destructive',
-          });
-          return;
-        }
+      // supabase-js v2 surfaces non-2xx as FunctionsHttpError; the JSON body is
+      // accessible via error.context.json(). Fall back to result for 2xx-ish.
+      let payload: any = (result as any) || {};
+      if (error && (error as any).context?.json) {
+        try { payload = await (error as any).context.json(); } catch { /* ignore */ }
+      } else if (error && !payload?.error) {
+        payload = { error: error.message };
+      }
+
+      if (payload.code === 'address_validation_required' || payload.requires_address_validation) {
+        setAddressGate({
+          open: true,
+          gateReason: payload.message ?? payload.error ?? null,
+          canOverride: !!payload.can_override,
+        });
+        return;
+      }
+
+      if (payload?.requires_approval) {
+        toast({
+          title: 'Manager Approval Required',
+          description: payload.error || 'This lead requires manager approval before it can become a project.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      if (error || payload?.error) {
         throw error || new Error(payload.error || 'Conversion failed');
       }
+
 
       // Auto-populate budget from selected estimate
       try {
@@ -1235,6 +1262,32 @@ const LeadDetails = () => {
           tenantId={lead.tenant_id}
         />
       )}
+
+      {/* PR #3A: Address validation remediation modal */}
+      {lead?.tenant_id && addressGate.open && (
+        <AddressValidationResolutionModal
+          open={addressGate.open}
+          tenantId={lead.tenant_id}
+          sourceEntityType="pipeline_entry"
+          sourceEntityId={id!}
+          initialAddress={{
+            address_line_1: lead.contact?.address_street ?? null,
+            locality: lead.contact?.address_city ?? null,
+            administrative_area: lead.contact?.address_state ?? null,
+            postal_code: lead.contact?.address_zip ?? null,
+          }}
+          gateReason={addressGate.gateReason ?? undefined}
+          requiredForAction="lead_to_project"
+          canOverride={addressGate.canOverride}
+          onCancel={() => setAddressGate({ open: false, gateReason: null, canOverride: false })}
+          onResolved={() => {
+            setAddressGate({ open: false, gateReason: null, canOverride: false });
+            // Retry conversion now that address is resolved.
+            handleApproveToProject();
+          }}
+        />
+      )}
+
 
       {/* Approval Requirements Progress - hidden once lead reaches project/terminal status */}
       {lead && !['project', 'completed', 'closed', 'lost', 'canceled', 'duplicate'].includes(lead.status) && (

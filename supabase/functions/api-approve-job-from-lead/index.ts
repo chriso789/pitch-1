@@ -109,6 +109,10 @@ Deno.serve(async (req) => {
     // PR #3 Address Gate: Lead -> Project conversion requires a canonical
     // property_address with status 'valid' or 'override_accepted' on either
     // the pipeline_entry or its underlying contact. Master/owner bypass.
+    // Managers are NOT bypassed automatically — they use the override flow
+    // exposed via AddressValidationResolutionModal (PR #3A).
+    const OVERRIDE_ROLES = ['master', 'owner', 'corporate', 'office_admin', 'regional_manager', 'sales_manager'];
+    const canOverrideAddress = OVERRIDE_ROLES.includes(profile.role);
     if (!canOverrideConversion) {
       const candidateIds: Array<{ type: string; id: string }> = [
         { type: 'pipeline_entry', id: pipelineEntryId },
@@ -118,24 +122,32 @@ Deno.serve(async (req) => {
       }
       const { data: addrRows } = await supabase
         .from('property_addresses')
-        .select('source_entity_type, source_entity_id, validation_status')
+        .select('id, source_entity_type, source_entity_id, validation_status')
         .eq('tenant_id', profile.tenant_id)
         .is('archived_at', null)
-        .in(
-          'source_entity_id',
-          candidateIds.map((c) => c.id),
-        );
-      const ready = (addrRows ?? []).some(
-        (r) =>
-          candidateIds.some((c) => c.type === r.source_entity_type && c.id === r.source_entity_id) &&
-          (r.validation_status === 'valid' || r.validation_status === 'override_accepted'),
+        .in('source_entity_id', candidateIds.map((c) => c.id));
+      const scoped = (addrRows ?? []).filter((r) =>
+        candidateIds.some((c) => c.type === r.source_entity_type && c.id === r.source_entity_id),
       );
-      if (!ready) {
+      const readyRow = scoped.find(
+        (r) => r.validation_status === 'valid' || r.validation_status === 'override_accepted',
+      );
+      if (!readyRow) {
+        const currentRow = scoped[0] ?? null;
         return new Response(
           JSON.stringify({
-            error:
-              'Address validation required: project conversion is blocked until the property address is validated or has a manager override.',
-            requires_address_validation: true,
+            error: 'address_validation_required',
+            code: 'address_validation_required',
+            message:
+              'A valid or manager-overridden project address is required before converting this lead to a project.',
+            source_entity_type: 'pipeline_entry',
+            source_entity_id: pipelineEntryId,
+            contact_id: pipelineEntry.contact_id ?? null,
+            property_address_id: currentRow?.id ?? null,
+            validation_status: currentRow?.validation_status ?? 'unvalidated',
+            required_for_action: 'lead_to_project',
+            can_override: canOverrideAddress,
+            allowed_override_roles: ['sales_manager', 'regional_manager', 'office_admin', 'corporate', 'owner', 'master'],
             clj_number: pipelineEntry.clj_formatted_number,
           }),
           { status: 412, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
