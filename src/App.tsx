@@ -112,6 +112,7 @@ const AppContent = () => {
   const navigate = useNavigate();
 
   useGlobalActivityTracking();
+  useLiveDataSync();
 
   useEffect(() => {
     if (import.meta.env.PROD) {
