@@ -508,6 +508,43 @@ export const GeneralSettings = () => {
         </CardContent>
       </Card>
 
+      {/* Completion Certificate Verbiage */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5 text-primary" />
+            Completion Certificate Verbiage
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            This is the workmanship warranty text printed on the Completion Certificate
+            generated at project closeout. Edit it to match your company's terms.
+          </p>
+          <Textarea
+            value={completionVerbiage}
+            onChange={(e) => setCompletionVerbiage(e.target.value)}
+            rows={14}
+            className="font-mono text-xs leading-relaxed"
+            placeholder="Workmanship warranty verbiage..."
+          />
+          <div className="flex items-center justify-between">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setCompletionVerbiage(DEFAULT_WORKMANSHIP_WARRANTY)}
+              disabled={savingVerbiage}
+            >
+              <RotateCcw className="h-4 w-4 mr-1" /> Reset to default
+            </Button>
+            <Button onClick={saveCompletionVerbiage} disabled={savingVerbiage || !activeTenantId}>
+              {savingVerbiage ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-1" />}
+              Save Verbiage
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* System Actions */}
       <Card>
         <CardHeader>
