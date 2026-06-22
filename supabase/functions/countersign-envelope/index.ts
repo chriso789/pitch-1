@@ -99,8 +99,29 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // The signed PDF the client signed
-    const signedPath = envelope.signed_pdf_path;
+    // The signed PDF the client signed. For force rebuilds on already completed
+    // envelopes, prefer the clean client-signed artifact over the previous
+    // countersigned PDF so we don't leave the old misplaced rep stamp behind.
+    let signedPath = envelope.signed_pdf_path;
+    if (body.force_rebuild && envelope.id) {
+      try {
+        const { data: clientSignedDoc } = await supabase
+          .from('documents')
+          .select('file_path')
+          .eq('tenant_id', envelope.tenant_id)
+          .ilike('file_path', `%/${envelope.id}/signed_%`)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (clientSignedDoc?.file_path) {
+          signedPath = clientSignedDoc.file_path;
+          console.log(`Force rebuild using clean client-signed PDF: ${signedPath}`);
+        }
+      } catch (e) {
+        console.warn('Could not locate clean client-signed PDF for rebuild:', e);
+      }
+    }
     if (!signedPath) {
       return errorResponse('INVALID_STATE', 'Envelope has no signed PDF yet', 400);
     }
