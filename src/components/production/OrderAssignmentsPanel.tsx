@@ -553,6 +553,8 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
                     </a>
                   </div>
                 )}
+              </div>
+            </div>
             <Select
               value={assignment.status}
               onValueChange={(val) => updateStatusMutation.mutate({ id: assignment.id, status: val })}
