@@ -16,6 +16,7 @@ import {
 
 interface FinalizeEnvelopeRequest {
   envelope_id: string;
+  force_rebuild?: boolean;
 }
 
 Deno.serve(async (req: Request) => {
@@ -51,7 +52,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // Check if already finalized or completed
-    if (envelope.status === 'completed' || envelope.status === 'awaiting_countersignature') {
+    if (!body.force_rebuild && (envelope.status === 'completed' || envelope.status === 'awaiting_countersignature')) {
       return successResponse({
         message: `Envelope already ${envelope.status}`,
         envelope_id: envelope.id,
@@ -125,8 +126,11 @@ Deno.serve(async (req: Request) => {
           // ============================================================
           const pageCount = pdfDoc.getPageCount();
           if (pageCount > 0 && signatures && signatures.length > 0) {
-            // Use signature_page_index if set, otherwise fallback to last page
-            const targetPageIdx = (envelope.signature_page_index != null && envelope.signature_page_index < pageCount)
+            // Use signature_page_index if set, otherwise fallback to last page.
+            // Rebuild requests intentionally target the current PDF's last page:
+            // legacy estimates often stored a stale signature_page_index pointing
+            // to an earlier page after the PDF was regenerated.
+            const targetPageIdx = (!body.force_rebuild && envelope.signature_page_index != null && envelope.signature_page_index < pageCount)
               ? envelope.signature_page_index
               : pageCount - 1;
             console.log(`Targeting page ${targetPageIdx} for signature (signature_page_index=${envelope.signature_page_index}, pageCount=${pageCount})`);
@@ -221,18 +225,26 @@ Deno.serve(async (req: Request) => {
                 // image doesn't collide with any pre-printed text in that column.
                 lastPage.drawRectangle({
                   x: sigX,
-                  y: signatureLineY,
+                  y: signatureLineY + 1,
                   width: maxSigWidth,
                   height: drawH + 2,
                   color: rgb(1, 1, 1),
                 });
 
-                // Place image so its bottom sits exactly on the signature line.
+                // Place image just above the signature line and redraw the line;
+                // otherwise the white mask can make the customer signature line
+                // disappear in the final signed estimate.
                 lastPage.drawImage(embeddedImg, {
                   x: sigX,
-                  y: signatureLineY,
+                  y: signatureLineY + 1,
                   width: drawW,
                   height: drawH,
+                });
+                lastPage.drawLine({
+                  start: { x: sigX, y: signatureLineY },
+                  end: { x: sigX + maxSigWidth, y: signatureLineY },
+                  thickness: 0.6,
+                  color: rgb(0.55, 0.55, 0.55),
                 });
 
                 console.log(`Embedded signature image for ${recipientName} at (${sigX},${signatureLineY})`);
@@ -244,7 +256,7 @@ Deno.serve(async (req: Request) => {
                 // Mask the date line area (clear underline + any placeholder)
                 lastPage.drawRectangle({
                   x: customerDateBox.xPt,
-                  y: customerDateBox.yPt - 2,
+                  y: customerDateBox.yPt + 1,
                   width: customerDateBox.widthPt,
                   height: 14,
                   color: rgb(1, 1, 1),
@@ -255,6 +267,12 @@ Deno.serve(async (req: Request) => {
                   size: 10,
                   font: helveticaFont,
                   color: rgb(0, 0, 0),
+                });
+                lastPage.drawLine({
+                  start: { x: customerDateBox.xPt, y: customerDateBox.yPt },
+                  end: { x: customerDateBox.xPt + customerDateBox.widthPt, y: customerDateBox.yPt },
+                  thickness: 0.5,
+                  color: rgb(0.55, 0.55, 0.55),
                 });
               };
 
