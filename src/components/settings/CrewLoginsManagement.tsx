@@ -81,6 +81,20 @@ export const CrewLoginsManagement = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['crew-logins'] }),
   });
 
+  const sendLinkMutation = useMutation({
+    mutationFn: async (email: string) => {
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: portalUrl, shouldCreateUser: true },
+      });
+      if (error) throw error;
+    },
+    onSuccess: (_data, email) =>
+      toast({ title: 'Activation link sent', description: `Magic sign-in link emailed to ${email}.` }),
+    onError: (e: Error) =>
+      toast({ title: 'Failed to send link', description: e.message, variant: 'destructive' }),
+  });
+
   const copyPortalLink = () => {
     navigator.clipboard.writeText(portalUrl);
     toast({ title: 'Portal link copied', description: portalUrl });
