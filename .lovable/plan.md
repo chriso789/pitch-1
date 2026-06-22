@@ -1,85 +1,92 @@
-## PR #4 — Evidence Hardening (Vendor-Free)
+## PR #5 — Self-Consistent Pitch Verification
 
-Goal: make footprint + imagery acquisition reliable enough that the AI measurement pipeline never needs a vendor report as input or fallback. Every run records exactly which evidence source it used and how confident that source was, so downstream gates (perimeter, topology, pitch) can reason about evidence quality instead of silently degrading.
-
-This is the foundation for PR #5 (self-consistent pitch) and PR #6 (self-distilled UNet) — both depend on knowing the evidence source per job.
+Goal: every reported pitch must agree across three independent evidence streams (DSM plane-fit, Solar API, Street View edge-angle) or it is downgraded / blocked from the customer report. This is the prerequisite for PR #6 (self-distilled UNet) and PR #7 (self-consistency gate).
 
 ---
 
 ### Scope
 
 **In scope**
-1. Fix Google Solar API 403 (infra remediation + in-code guardrails)
-2. Add Microsoft Building Footprints as Tier-1 footprint source
-3. Add county parcel data as Tier-2 footprint source
-4. Persist `evidence_source_used` (per layer) + per-source confidence on every measurement job
-5. Surface evidence-source diagnostics in the measurement debug panel
-6. Optional Nearmap/Vexcel orthophoto hook (per-tenant) when Solar resolution < 0.15 m/px — wired but not enabled by default
+1. Per-facet DSM plane-fit pitch (RANSAC on DSM points inside facet polygon).
+2. Per-facet Solar `roofSegmentStats.pitchDegrees` lookup (already fetched in PR #4 evidence acquisition).
+3. Per-facet Street View edge-angle pitch (pano fetch → rake/eave edge detection → projected pitch).
+4. Three-way agreement scorer → `pitch_agreement_state` per facet.
+5. Customer-report gate: any facet with `pitch_agreement_state='low'` blocks `customer_report_ready`.
+6. Regression fixtures: Fonsica (must pass `high` at ~6/12); synthetic disagreement fixture (must hard-fail).
 
 **Out of scope (later PRs)**
-- Per-facet DSM plane-fit pitch (PR #5)
-- Oblique imagery verification (PR #5)
 - UNet training (PR #6)
-- Self-consistency score gate (PR #7)
+- Self-consistency score across whole roof (PR #7)
 - Sellable PDF report layout (PR #8)
 
 ---
 
 ### Technical changes
 
-**Database**
-- Migration adds to `ai_measurement_jobs` and `measurement_jobs`:
-  - `evidence_sources_used jsonb` — `{ footprint: {source, confidence, fetched_at}, dsm: {...}, mask: {...}, orthophoto: {...}, solar_segments: {...} }`
-  - `footprint_source_tier text` — `tier1_osm | tier1_ms_footprints | tier2_parcel | tier3_solar_mask | tier4_unet | none`
-  - `evidence_acquisition_log jsonb` — ordered list of each source attempted with status/latency/error
-- New table `tenant_imagery_providers` for optional Nearmap/Vexcel per-tenant credentials (RLS: tenant-scoped, master-managed)
+**Database (one migration)**
 
-**Shared helpers (`supabase/functions/_shared/`)**
-- `evidence-acquisition.ts` — orchestrator that runs the cascade and returns `{ footprint, dsm, mask, orthophoto, solar_segments, evidence_sources_used, acquisition_log }`
-- `fetch-ms-footprints.ts` — Microsoft Building Footprints fetcher (quadkey tile → polygon nearest to target)
-- `fetch-parcel.ts` — county parcel fetcher (Regrid/ArcGIS REST fallback)
-- `solar-api-client.ts` — hardened Solar client: detects 403 vs 404 vs quota, surfaces `solar_api_unavailable` reason, never silently falls through
+`roof_measurement_facets` additions (all `IF NOT EXISTS`):
+- `pitch_dsm_deg numeric`
+- `pitch_solar_deg numeric`
+- `pitch_streetview_deg numeric`
+- `pitch_agreement_state text` — `high | medium | low | insufficient_evidence`
+- `pitch_source_final text` — `dsm | solar | streetview | consensus | none`
+- `pitch_consensus_deg numeric`
 
-**Edge function changes**
-- `start-ai-measurement`: replace inline footprint cascade with `acquireEvidence()` call; persist `evidence_sources_used` + `footprint_source_tier` + `evidence_acquisition_log` on the job row; remove any legacy "vendor report as input" code paths
-- Remove `roof_measurement_benchmarks` runtime read (offline-audit only going forward)
+`ai_measurement_jobs` / `measurement_jobs`:
+- `pitch_verification jsonb` — per-facet rollup `{ facet_id, dsm, solar, streetview, agreement, final_deg, final_source }[]`
+- Extend `result_state` normalizer mapping (NOT the CHECK constraint) to map `pitch_disagreement` → `ai_failed_pitch`.
+
+Trailing `NOTIFY pgrst, 'reload schema';`.
+
+**Shared helpers (`supabase/functions/_shared/pitch/`)**
+- `dsm-plane-fit.ts` — RANSAC plane through DSM points inside a facet polygon → slope deg → rise/12.
+- `solar-pitch-lookup.ts` — nearest-segment match from cached Solar response.
+- `streetview-edge-angle.ts` — Street View Static API pano fetch + Hough rake-edge detection + horizon-relative angle → pitch deg.
+- `consensus.ts` — three-way agreement scorer (±1/12 tolerance) returning `{ state, final_deg, final_source }`.
+
+**Edge-function changes**
+- `start-ai-measurement`: after geometry passes the six contracts, run `verifyPitchPerFacet()` → persist `pitch_*_deg`, `pitch_agreement_state`, `pitch_source_final` on each facet; persist `pitch_verification` rollup on the job.
+- `assertCustomerReportReady()`: add gate — any facet `agreement_state='low'` → `block_customer_report_reason='pitch_disagreement'`, `result_state=ai_failed_pitch`.
+- Strip-and-retry wrapper covers the new diagnostic columns (PR #4 contract).
 
 **Frontend**
-- `DSMDebugOverlay`: new "Evidence Sources" panel listing each layer, source, confidence, and acquisition latency
-- `UnifiedMeasurementPanel`: badge next to status showing footprint source tier (e.g. "MS Footprints · 0.94")
+- `MeasurementReportDialog`: per-facet pitch row showing DSM / Solar / Street View values + agreement badge (green/amber/red).
+- Blocked runs render red-highlighted disagreement facets with the three values side-by-side.
+- `DSMDebugOverlay`: add "Pitch Verification" section.
 
 **Secrets**
-- `MS_BUILDINGS_BASE_URL` (public dataset, no key — but URL configurable)
-- `REGRID_API_KEY` (optional, for parcel Tier-2)
-- Solar key already exists — needs Cloud Console fix outside this PR; code handles missing/403 gracefully
+- `GOOGLE_STREETVIEW_API_KEY` (needed for pano fetch; if absent, Street View stream returns `insufficient_evidence` and the gate degrades to two-source consensus instead of hard-failing).
 
-**Memory updates**
-- Remove `Vendor Benchmark Gate` and `Backbone-First v18 + Vendor Benchmark` runtime-gate rules from core memory
-- Add core rule: "Evidence-free runs are hard fails. Every job persists `evidence_sources_used` + `footprint_source_tier`. Vendor reports are never inputs."
+**Regression (per skill: ai-measurement-regression-harness)**
+- `supabase/functions/start-ai-measurement/__tests__/fonsica-pitch-consensus.test.ts` — expects `agreement_state='high'`, `final_deg≈26.57` (6/12), `final_source='dsm'`.
+- `supabase/functions/_shared/pitch/__tests__/consensus.test.ts` — unit table covering the agreement matrix.
+- Synthetic disagreement fixture (`_shared/__fixtures__/pitch-disagreement.json`) — must produce `result_state='ai_failed_pitch'`, `customer_report_ready=false`.
 
 ---
 
 ### Acceptance criteria
 
-- Every new `ai_measurement_jobs` / `measurement_jobs` row has non-null `evidence_sources_used` and `footprint_source_tier`
-- Solar 403 produces `solar_api_unavailable` in `acquisition_log`, never a silent OSM-only fallback masquerading as full-evidence
-- MS Building Footprints is attempted before `google_solar_mask_contour` in the cascade
-- Parcel fetch runs only when Tier-1 yields no candidate within 30 m of target
-- Debug panel shows the per-layer source for the most recent job
-- No code path reads from `roof_measurement_benchmarks` at runtime
-- Existing customer-report-ready gates (six contracts + four hard gates) remain unchanged
+- Every facet on a passing job has all three of `pitch_dsm_deg`, `pitch_solar_deg`, `pitch_streetview_deg` populated OR `pitch_agreement_state='insufficient_evidence'` with a documented reason.
+- Fonsica regression test passes (`high` agreement, 6/12, source=`dsm`).
+- Synthetic disagreement fixture hard-fails with `result_state='ai_failed_pitch'`.
+- No new value added to the `result_state` CHECK constraint — only the normalizer mapping is extended.
+- `pitch_verification` JSON is never null on jobs that reach `customer_report_ready=true`.
+- Existing six-contract + four-hard-gate behavior unchanged.
 
 ---
 
 ### Build order
 
-1. Migration (schema + `tenant_imagery_providers`)
-2. `evidence-acquisition.ts` + per-source fetchers (unit-testable in isolation)
-3. Wire `start-ai-measurement` to the new orchestrator
-4. Frontend debug surface
-5. Memory cleanup (remove vendor-benchmark runtime rules)
+1. Migration (facet columns + job JSON + `NOTIFY pgrst`).
+2. `consensus.ts` + unit tests (pure function, fastest signal).
+3. `dsm-plane-fit.ts` + `solar-pitch-lookup.ts` + `streetview-edge-angle.ts`.
+4. Wire `verifyPitchPerFacet()` into `start-ai-measurement` after contract gates.
+5. Extend `assertCustomerReportReady()` + `normalizeResultStateForWrite()` mapping.
+6. Frontend per-facet pitch panel.
+7. Fonsica + synthetic regression tests.
 
-After PR #4 lands, next is PR #5 — Self-Consistent Pitch Verification (per-facet DSM plane-fit + Street View edge-angle cross-check).
+After PR #5 lands, next is PR #6 — Self-Distilled UNet (use high-confidence consensus facets as training labels).
 
 ---
 
