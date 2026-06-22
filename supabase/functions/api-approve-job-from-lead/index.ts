@@ -106,6 +106,44 @@ Deno.serve(async (req) => {
       }
     }
 
+    // PR #3 Address Gate: Lead -> Project conversion requires a canonical
+    // property_address with status 'valid' or 'override_accepted' on either
+    // the pipeline_entry or its underlying contact. Master/owner bypass.
+    if (!canOverrideConversion) {
+      const candidateIds: Array<{ type: string; id: string }> = [
+        { type: 'pipeline_entry', id: pipelineEntryId },
+      ];
+      if (pipelineEntry.contact_id) {
+        candidateIds.push({ type: 'contact', id: pipelineEntry.contact_id });
+      }
+      const { data: addrRows } = await supabase
+        .from('property_addresses')
+        .select('source_entity_type, source_entity_id, validation_status')
+        .eq('tenant_id', profile.tenant_id)
+        .is('archived_at', null)
+        .in(
+          'source_entity_id',
+          candidateIds.map((c) => c.id),
+        );
+      const ready = (addrRows ?? []).some(
+        (r) =>
+          candidateIds.some((c) => c.type === r.source_entity_type && c.id === r.source_entity_id) &&
+          (r.validation_status === 'valid' || r.validation_status === 'override_accepted'),
+      );
+      if (!ready) {
+        return new Response(
+          JSON.stringify({
+            error:
+              'Address validation required: project conversion is blocked until the property address is validated or has a manager override.',
+            requires_address_validation: true,
+            clj_number: pipelineEntry.clj_formatted_number,
+          }),
+          { status: 412, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+    }
+
+
     // Reuse existing project for this pipeline entry if one already exists
     // (DB trigger create_production_workflow may have created it, or a prior
     // approval attempt partially completed).
