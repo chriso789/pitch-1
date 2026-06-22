@@ -2442,6 +2442,81 @@ Deno.serve(async (req) => {
       );
     }
 
+    // PR #3C — Measurement Order Address Gate.
+    // Refuse to create any measurement request/order against a project that
+    // does not have a canonical property_addresses row in
+    // ('valid','override_accepted'). master/owner roles bypass with an
+    // audit_log entry. This must run BEFORE any external cost or vendor call.
+    let addressGateActorRole: string | null = null;
+    let addressGateActorId: string | null = user_id;
+    try {
+      const authHeader = req.headers.get("authorization") ?? "";
+      const jwt = authHeader.startsWith("Bearer ")
+        ? authHeader.slice("Bearer ".length).trim()
+        : "";
+      if (jwt && jwt !== SERVICE_ROLE) {
+        const { data: jwtUser } = await supabase.auth.getUser(jwt);
+        if (jwtUser?.user?.id) {
+          addressGateActorId = jwtUser.user.id;
+          const { data: prof } = await supabase
+            .from("profiles")
+            .select("role")
+            .eq("id", jwtUser.user.id)
+            .maybeSingle();
+          addressGateActorRole = prof?.role ?? null;
+        }
+      }
+    } catch (_authErr) {
+      // Best effort — non-bypass path will be used if we cannot resolve role.
+    }
+
+    const addressGateCandidates: Array<{
+      sourceEntityType: "project" | "pipeline_entry" | "contact";
+      sourceEntityId: string;
+    }> = [];
+    if (project_id) {
+      addressGateCandidates.push({
+        sourceEntityType: "project",
+        sourceEntityId: project_id,
+      });
+    }
+    if (lead_id) {
+      addressGateCandidates.push({
+        sourceEntityType: "pipeline_entry",
+        sourceEntityId: lead_id,
+      });
+    }
+    if (sourceRecord?.contact_id) {
+      addressGateCandidates.push({
+        sourceEntityType: "contact",
+        sourceEntityId: sourceRecord.contact_id,
+      });
+    }
+
+    const primaryCandidate = addressGateCandidates[0];
+    const fallbackCandidates = addressGateCandidates.slice(1);
+    const addressGateResult = primaryCandidate
+      ? await requireProductionReadyAddress({
+        client: supabase,
+        tenantId: tenant_id,
+        sourceEntityType: primaryCandidate.sourceEntityType,
+        sourceEntityId: primaryCandidate.sourceEntityId,
+        fallbackEntities: fallbackCandidates,
+        requiredForAction: "measurement_order",
+        actorUserId: addressGateActorId,
+        actorRole: addressGateActorRole,
+      })
+      : null;
+
+    if (addressGateResult && addressGateResult.ok === false) {
+      return addressGateResult.response;
+    }
+
+    const addressSnapshot = addressGateResult && addressGateResult.ok
+      ? buildAddressSnapshot(addressGateResult.addressRow)
+      : buildAddressSnapshot(null);
+
+
     const { data: measurementJob, error: measurementJobError } = await supabase
       .from("measurement_jobs")
       .insert({
