@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { HardHat, Plus, Copy, Ban, CheckCircle, Mail } from 'lucide-react';
+import { HardHat, Plus, Copy, Ban, CheckCircle, Mail, Send } from 'lucide-react';
 
 type CrewRow = {
   id: string;
@@ -79,6 +79,20 @@ export const CrewLoginsManagement = () => {
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['crew-logins'] }),
+  });
+
+  const sendLinkMutation = useMutation({
+    mutationFn: async (email: string) => {
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: portalUrl, shouldCreateUser: true },
+      });
+      if (error) throw error;
+    },
+    onSuccess: (_data, email) =>
+      toast({ title: 'Activation link sent', description: `Magic sign-in link emailed to ${email}.` }),
+    onError: (e: Error) =>
+      toast({ title: 'Failed to send link', description: e.message, variant: 'destructive' }),
   });
 
   const copyPortalLink = () => {
@@ -200,17 +214,30 @@ export const CrewLoginsManagement = () => {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => toggleMutation.mutate({ id: c.id, is_active: !c.is_active })}
-                      >
-                        {c.is_active ? (
-                          <><Ban className="h-4 w-4 mr-1" /> Deactivate</>
-                        ) : (
-                          <><CheckCircle className="h-4 w-4 mr-1" /> Activate</>
+                      <div className="inline-flex items-center gap-1 justify-end">
+                        {c.email && !c.user_id && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={sendLinkMutation.isPending}
+                            onClick={() => sendLinkMutation.mutate(c.email!)}
+                          >
+                            <Send className="h-4 w-4 mr-1" />
+                            {sendLinkMutation.isPending ? 'Sending…' : 'Send Link'}
+                          </Button>
                         )}
-                      </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => toggleMutation.mutate({ id: c.id, is_active: !c.is_active })}
+                        >
+                          {c.is_active ? (
+                            <><Ban className="h-4 w-4 mr-1" /> Deactivate</>
+                          ) : (
+                            <><CheckCircle className="h-4 w-4 mr-1" /> Activate</>
+                          )}
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

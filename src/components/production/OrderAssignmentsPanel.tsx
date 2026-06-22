@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Package, Users, Wrench, Calendar, Truck, CheckCircle, Clock, AlertTriangle, FileText } from 'lucide-react';
+import { Plus, Package, Users, Wrench, Calendar, Truck, CheckCircle, Clock, AlertTriangle, FileText, ExternalLink, Eye } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface OrderAssignmentsPanelProps {
@@ -88,6 +88,9 @@ const ORDER_TYPE_TITLES: Record<OrderType, string> = {
   turnkey: 'Turnkey Order',
 };
 
+const TEAR_OFF_PATTERNS = /\b(remove|removal|tear[\s-]?off|demo|demolition|strip)\b/i;
+const isTearOff = (line: EstimateLineItem) => TEAR_OFF_PATTERNS.test(String(line.item_name || ''));
+
 const buildEstimateOrderRows = ({
   estimate,
   projectId,
@@ -100,16 +103,22 @@ const buildEstimateOrderRows = ({
   assignedBy?: string | null;
 }) => {
   const lineItems = estimate.line_items || {};
-  const groups: Array<{ key: OrderType; lines: EstimateLineItem[] }> = [
+  const rawLabor = Array.isArray(lineItems.labor) ? lineItems.labor : [];
+  const tearOffLines = rawLabor.filter(isTearOff);
+  const installLines = rawLabor.filter((l) => !isTearOff(l));
+
+  type Group = { key: OrderType; lines: EstimateLineItem[]; titleOverride?: string; hidePricing?: boolean };
+  const groups: Group[] = [
     { key: 'material', lines: Array.isArray(lineItems.materials) ? lineItems.materials : [] },
-    { key: 'labor', lines: Array.isArray(lineItems.labor) ? lineItems.labor : [] },
+    { key: 'labor', lines: tearOffLines, titleOverride: 'Labor Order – Tear-Off', hidePricing: true },
+    { key: 'labor', lines: installLines, titleOverride: 'Labor Order – Install', hidePricing: true },
     { key: 'turnkey', lines: Array.isArray(lineItems.turnkey) ? lineItems.turnkey : [] },
   ];
 
   const estimateLabel = estimate.display_name || estimate.estimate_number || 'Estimate';
 
   return groups
-    .map(({ key, lines }) => {
+    .map(({ key, lines, titleOverride, hidePricing }) => {
       const validLines = lines.filter((line) => line?.item_name);
       if (!validLines.length) return null;
 
@@ -120,16 +129,26 @@ const buildEstimateOrderRows = ({
         const unitCost = Number(line.unit_cost ?? line.rate ?? 0);
         const lineTotal = Number(line.line_total ?? qty * unitCost);
         total += lineTotal;
+        if (hidePricing) {
+          return `• ${String(line.item_name).trim()} — ${qty} ${unit}`;
+        }
         return `• ${String(line.item_name).trim()} — ${qty} ${unit} @ ${formatMoney(unitCost)} = ${formatMoney(lineTotal)}`;
       });
+
+      const title = titleOverride
+        ? `${titleOverride} – ${estimateLabel}`
+        : `${ORDER_TYPE_TITLES[key]} – ${estimateLabel}`;
+      const description = hidePricing
+        ? `${validLines.length} line item${validLines.length === 1 ? '' : 's'}`
+        : `${validLines.length} line item${validLines.length === 1 ? '' : 's'} • Total: ${formatMoney(total)}`;
 
       return {
         tenant_id: tenantId,
         project_id: projectId,
         estimate_id: estimate.id,
         order_type: key,
-        title: `${ORDER_TYPE_TITLES[key]} – ${estimateLabel}`,
-        description: `${validLines.length} line item${validLines.length === 1 ? '' : 's'} • Total: ${formatMoney(total)}`,
+        title,
+        description,
         assigned_by: assignedBy || null,
         status: 'pending',
         scheduled_date: null,
@@ -141,6 +160,16 @@ const buildEstimateOrderRows = ({
       };
     })
     .filter((row): row is NonNullable<typeof row> => row !== null);
+};
+
+// Strip currency tokens from existing labor-order notes/descriptions at render time.
+const stripPricing = (text: string | null | undefined): string => {
+  if (!text) return '';
+  return text
+    .replace(/\s*@\s*\$[\d,]+(?:\.\d+)?/g, '')
+    .replace(/\s*=\s*\$[\d,]+(?:\.\d+)?/g, '')
+    .replace(/\s*•\s*Total:\s*\$[\d,]+(?:\.\d+)?/gi, '')
+    .replace(/\s*Total:\s*\$[\d,]+(?:\.\d+)?/gi, '');
 };
 
 export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ projectId }) => {
@@ -162,6 +191,7 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
     notify_rep: true,
   });
   const [pendingCrew, setPendingCrew] = useState<Record<string, string>>({});
+  const [pdfViewerOpen, setPdfViewerOpen] = useState(false);
 
   // Fetch order assignments for this project
   const { data: assignments = [], isLoading } = useQuery({
@@ -347,13 +377,15 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
     if (autoSyncAttemptedRef.current === attemptKey) return;
 
     // Auto-sync when there are no orders yet, OR when stale per-line-item rows
-    // for this estimate exist (more than one per order_type).
+    // for this estimate exist (more than the expected count per order_type).
+    // Labor now has two consolidated rows (Tear-Off and Install), so allow up to 2.
     const fromThisEstimate = assignments.filter((a) => a.estimate_id === projectEstimate.id);
     const byType = fromThisEstimate.reduce<Record<string, number>>((acc, a) => {
       acc[a.order_type] = (acc[a.order_type] || 0) + 1;
       return acc;
     }, {});
-    const hasStaleDuplicates = Object.values(byType).some((n) => n > 1);
+    const maxPerType: Record<string, number> = { material: 1, labor: 2, turnkey: 1 };
+    const hasStaleDuplicates = Object.entries(byType).some(([t, n]) => n > (maxPerType[t] ?? 1));
     if (assignments.length > 0 && !hasStaleDuplicates) return;
 
     autoSyncAttemptedRef.current = attemptKey;
@@ -423,7 +455,9 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
                   </Badge>
                 </div>
                 {assignment.description && (
-                  <p className="text-xs text-muted-foreground mt-1">{assignment.description}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {assignment.order_type === 'labor' ? stripPricing(assignment.description) : assignment.description}
+                  </p>
                 )}
                 <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground flex-wrap">
                   {assignment.order_type === 'material' && vendor && (
@@ -496,17 +530,28 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
                   )}
                 </div>
                 {assignment.notes && (
-                  <pre className="text-xs text-muted-foreground mt-2 whitespace-pre-wrap font-sans">{assignment.notes}</pre>
+                  <pre className="text-xs text-muted-foreground mt-2 whitespace-pre-wrap font-sans">
+                    {assignment.order_type === 'labor' ? stripPricing(assignment.notes) : assignment.notes}
+                  </pre>
                 )}
                 {projectEstimate?.pdf_url && assignment.estimate_id === projectEstimate.id && (
-                  <a
-                    href={projectEstimate.pdf_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-2"
-                  >
-                    <FileText className="h-3 w-3" /> View Order PDF
-                  </a>
+                  <div className="flex items-center gap-3 mt-2">
+                    <button
+                      type="button"
+                      onClick={() => setPdfViewerOpen(true)}
+                      className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                    >
+                      <Eye className="h-3 w-3" /> View Order PDF
+                    </button>
+                    <a
+                      href={projectEstimate.pdf_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:underline"
+                    >
+                      <ExternalLink className="h-3 w-3" /> Open in new tab
+                    </a>
+                  </div>
                 )}
               </div>
             </div>
@@ -715,6 +760,39 @@ export const OrderAssignmentsPanel: React.FC<OrderAssignmentsPanelProps> = ({ pr
       {renderSection('Material Orders', Package, materialAssignments)}
       {renderSection('Labor Orders', Users, laborAssignments)}
       {renderSection('Turnkey Orders', Wrench, turnkeyAssignments)}
+
+      <Dialog open={pdfViewerOpen} onOpenChange={setPdfViewerOpen}>
+        <DialogContent className="max-w-5xl w-[95vw] h-[90vh] flex flex-col p-0 gap-0">
+          <DialogHeader className="p-4 border-b flex-row items-center justify-between space-y-0">
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-4 w-4" /> Order PDF
+            </DialogTitle>
+            {projectEstimate?.pdf_url && (
+              <a
+                href={projectEstimate.pdf_url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-primary hover:underline mr-8"
+              >
+                <ExternalLink className="h-3 w-3" /> Open in new tab
+              </a>
+            )}
+          </DialogHeader>
+          <div className="flex-1 overflow-hidden bg-muted">
+            {projectEstimate?.pdf_url ? (
+              <iframe
+                src={projectEstimate.pdf_url}
+                title="Order PDF"
+                className="w-full h-full border-0"
+              />
+            ) : (
+              <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+                No PDF available
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
