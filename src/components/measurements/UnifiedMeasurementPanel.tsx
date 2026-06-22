@@ -33,6 +33,7 @@ import { SchematicRoofDiagram } from '@/components/measurements/SchematicRoofDia
 import MeasurementReportDialog from '@/components/measurements/MeasurementReportDialog';
 import { MeasurementFailureAlert } from '@/components/measurements/MeasurementFailureAlert';
 import { DSMDebugOverlay } from '@/components/measurements/DSMDebugOverlay';
+import { EvidenceSourcesPanel } from '@/components/measurements/EvidenceSourcesPanel';
 
 import { useDeviceLayout } from '@/hooks/useDeviceLayout';
 import {
