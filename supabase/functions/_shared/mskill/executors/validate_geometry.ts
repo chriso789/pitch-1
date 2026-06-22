@@ -2,6 +2,7 @@
 // upstream geometry skill. Never invents a confidence score.
 
 import type { ExecutorContext, ExecutorResult } from "../runner.ts";
+import { assertPitchResultsArtifactSelfConsistency } from "../../pitch-self-consistency.ts";
 
 const REQUIRED_GEOMETRY_SKILLS = [
   "fit_roof_planes","detect_ridges","detect_hips","detect_valleys",
@@ -29,7 +30,7 @@ export async function runValidateGeometry(ctx: ExecutorContext): Promise<Executo
 
   const { data: arts } = await ctx.svc
     .from("mskill_artifacts")
-    .select("artifact_type, mskill_run_id")
+    .select("artifact_type, mskill_run_id, metadata")
     .in("mskill_run_id", runIds);
 
   const presentTypes = new Set((arts ?? []).map((a) => a.artifact_type));
@@ -45,11 +46,31 @@ export async function runValidateGeometry(ctx: ExecutorContext): Promise<Executo
     );
   }
 
+  const pitchArtifact = (arts ?? []).find((a) => a.artifact_type === "pitch_results");
+  const pitchGate = assertPitchResultsArtifactSelfConsistency(pitchArtifact?.metadata);
+  if (!pitchGate.ok) {
+    throw new Error(
+      `validate_geometry: pitch self-consistency failed (${pitchGate.reason ?? "unknown"}). ` +
+      `Runtime validation is vendor-free and requires self-consistent pitch evidence.`,
+    );
+  }
+
   return {
-    output: { validation_status: "passed", confidence_source: "artifact_presence_only" },
+    output: {
+      validation_status: "passed",
+      confidence_source: "artifact_presence_plus_pitch_self_consistency",
+      pitch_self_consistency_score: pitchGate.score,
+      pitch_self_consistency_status: pitchGate.status,
+    },
     geometry_status_patch: {
-      has_planes: true, has_segments: true, has_pitch: true, has_area: true,
-      validation_status: "passed", ready_for_bridge: true,
+      has_planes: true,
+      has_segments: true,
+      has_pitch: true,
+      has_area: true,
+      pitch_self_consistency_score: pitchGate.score,
+      pitch_self_consistency_status: pitchGate.status,
+      validation_status: "passed",
+      ready_for_bridge: true,
     },
   };
 }
