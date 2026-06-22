@@ -12,6 +12,7 @@ import { UserProfileProvider } from "@/contexts/UserProfileContext";
 import { ImageCacheProvider } from "@/contexts/ImageCacheContext";
 import { LocationProvider } from "@/contexts/LocationContext";
 import { useGlobalActivityTracking } from "@/hooks/useGlobalActivityTracking";
+import { useLiveDataSync } from "@/hooks/useLiveDataSync";
 import { SessionExpiryHandler } from "@/components/auth/SessionExpiryHandler";
 import { GlobalLoadingHandler } from "@/components/layout/GlobalLoadingHandler";
 import { GlobalLocationHandler } from "@/components/layout/GlobalLocationHandler";
@@ -111,6 +112,7 @@ const AppContent = () => {
   const navigate = useNavigate();
 
   useGlobalActivityTracking();
+  useLiveDataSync();
 
   useEffect(() => {
     if (import.meta.env.PROD) {
