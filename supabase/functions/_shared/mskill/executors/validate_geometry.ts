@@ -2,7 +2,7 @@
 // upstream geometry skill. Never invents a confidence score.
 
 import type { ExecutorContext, ExecutorResult } from "../runner.ts";
-import { assertPitchResultsArtifactSelfConsistency } from "../../pitch-self-consistency.ts";
+import { assertPitchResultsArtifactGate } from "../../pitch/artifact-gate.ts";
 
 const REQUIRED_GEOMETRY_SKILLS = [
   "fit_roof_planes","detect_ridges","detect_hips","detect_valleys",
@@ -47,7 +47,7 @@ export async function runValidateGeometry(ctx: ExecutorContext): Promise<Executo
   }
 
   const pitchArtifact = (arts ?? []).find((a) => a.artifact_type === "pitch_results");
-  const pitchGate = assertPitchResultsArtifactSelfConsistency(pitchArtifact?.metadata);
+  const pitchGate = assertPitchResultsArtifactGate(pitchArtifact?.metadata);
   if (!pitchGate.ok) {
     throw new Error(
       `validate_geometry: pitch self-consistency failed (${pitchGate.reason ?? "unknown"}). ` +
