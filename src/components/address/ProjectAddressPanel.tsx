@@ -58,7 +58,6 @@ interface ProjectAddressRow {
   override_by: string | null;
   override_at: string | null;
   missing_component_types: string[] | null;
-  decision_reason: string | null;
   updated_at: string | null;
 }
 
@@ -66,9 +65,9 @@ interface HistoryRow {
   id: string;
   previous_status: string | null;
   next_status: string | null;
-  reason: string | null;
-  changed_by: string | null;
-  source: string | null;
+  formatted_address: string | null;
+  provider: string | null;
+  actor_user_id: string | null;
   created_at: string;
 }
 
