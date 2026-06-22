@@ -311,17 +311,23 @@ Deno.serve(async (req: Request) => {
                   // Typed text signature — render on the signature line.
                   lastPage.drawRectangle({
                     x: sigX,
-                    y: signatureLineY,
+                    y: signatureLineY + 1,
                     width: maxSigWidth,
                     height: 20,
                     color: rgb(1, 1, 1),
                   });
                   lastPage.drawText(sig.signature_data, {
                     x: sigX + 2,
-                    y: signatureLineY + 3,
+                    y: signatureLineY + 4,
                     size: 16,
                     font: helveticaBoldFont,
                     color: rgb(0, 0, 0.4),
+                  });
+                  lastPage.drawLine({
+                    start: { x: sigX, y: signatureLineY },
+                    end: { x: sigX + maxSigWidth, y: signatureLineY },
+                    thickness: 0.6,
+                    color: rgb(0.55, 0.55, 0.55),
                   });
                   stampDate();
                   stampAudit();
