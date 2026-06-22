@@ -36,6 +36,7 @@ export function RecordPaymentDialog({
   const [paymentRef, setPaymentRef] = useState('');
   const [paymentNotes, setPaymentNotes] = useState('');
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
+  const [selectedEstimateId, setSelectedEstimateId] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -45,8 +46,33 @@ export function RecordPaymentDialog({
       setPaymentRef('');
       setPaymentNotes('');
       setSelectedInvoiceId(null);
+      setSelectedEstimateId(null);
     }
   }, [open]);
+
+  // Detect combined estimates on this project so the user can apply payment to the correct one
+  const { data: combinedEstimates } = useQuery({
+    queryKey: ['rpd-combined-estimates', pipelineEntryId],
+    enabled: open && !!pipelineEntryId,
+    queryFn: async () => {
+      const { data: pe } = await supabase
+        .from('pipeline_entries')
+        .select('metadata')
+        .eq('id', pipelineEntryId)
+        .maybeSingle();
+      const meta = (pe?.metadata as any) || {};
+      if (!meta.combine_estimates) return [] as any[];
+      const ids: string[] = Array.isArray(meta.selected_estimate_ids) ? meta.selected_estimate_ids : [];
+      if (ids.length < 2) return [] as any[];
+      const { data } = await supabase
+        .from('enhanced_estimates')
+        .select('id, estimate_number, display_name, selling_price')
+        .in('id', ids);
+      return data || [];
+    },
+  });
+
+  const hasCombinedEstimates = (combinedEstimates?.length || 0) > 1;
 
   const { data: invoices } = useQuery({
     queryKey: ['rpd-invoices', pipelineEntryId],
@@ -70,6 +96,15 @@ export function RecordPaymentDialog({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
+      const estimateTag = selectedEstimateId
+        ? (() => {
+            const est = (combinedEstimates || []).find((e: any) => e.id === selectedEstimateId);
+            const label = est?.estimate_number || est?.display_name || selectedEstimateId;
+            return `[Applied to estimate: ${label}]`;
+          })()
+        : '';
+      const finalNotes = [estimateTag, paymentNotes].filter(Boolean).join(' ').trim() || null;
+
       const { error } = await supabase.from('project_payments').insert({
         tenant_id: tenantId,
         pipeline_entry_id: pipelineEntryId,
@@ -78,7 +113,7 @@ export function RecordPaymentDialog({
         payment_method: paymentMethod,
         reference_number: paymentRef || null,
         payment_date: paymentDate,
-        notes: paymentNotes || null,
+        notes: finalNotes,
         created_by: user.id,
       } as any);
       if (error) throw new Error(error.message || 'Failed to record payment');
@@ -174,6 +209,30 @@ export function RecordPaymentDialog({
             <Input value={paymentRef} onChange={e => setPaymentRef(e.target.value)}
               placeholder="Check #, confirmation, etc." />
           </div>
+
+          {hasCombinedEstimates && (
+            <div className="rounded-md border border-primary/30 bg-primary/5 p-3">
+              <Label className="text-xs font-semibold">Apply to Estimate</Label>
+              <p className="text-[11px] text-muted-foreground mb-2">
+                This project has {combinedEstimates!.length} combined estimates. Select which one this payment applies to.
+              </p>
+              <Select
+                value={selectedEstimateId || 'none'}
+                onValueChange={v => setSelectedEstimateId(v === 'none' ? null : v)}
+              >
+                <SelectTrigger><SelectValue placeholder="Choose an estimate" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Split / general (no specific estimate)</SelectItem>
+                  {(combinedEstimates || []).map((est: any) => (
+                    <SelectItem key={est.id} value={est.id}>
+                      {est.estimate_number || est.display_name || 'Estimate'}
+                      {est.selling_price ? ` — ${formatCurrency(Number(est.selling_price))}` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {openInvoices.length > 0 && (
             <div>
