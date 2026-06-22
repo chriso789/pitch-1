@@ -65,12 +65,15 @@ Deno.serve(async (req) => {
     });
     if (tokenErr) throw tokenErr;
 
-    const portalUrl = `${APP_URL}/customer/${token}`;
+    // Setup link → /portal/setup verifies identity then sets password.
+    // Fallback /customer/{token} link kept for backwards compatibility with the same token.
+    const setupUrl = `${APP_URL}/portal/setup?contact=${contact_id}&token=${token}`;
+    const portalUrl = setupUrl;
     const tenantName = tenant?.name || "Your Project Team";
     const isReminder = mode === "resend";
     const subject = isReminder
-      ? `Reminder: Your ${tenantName} project portal`
-      : `Welcome to your ${tenantName} project portal`;
+      ? `Reminder: Set up your ${tenantName} portal access`
+      : `Set up your ${tenantName} portal access`;
 
     if (mode === "link_only") {
       return new Response(JSON.stringify({ success: true, portal_url: portalUrl, token }), {
@@ -85,16 +88,16 @@ Deno.serve(async (req) => {
         ${tenant?.logo_url ? `<img src="${tenant.logo_url}" alt="${tenantName}" style="max-height:48px;margin-bottom:16px"/>` : ""}
         <h1 style="font-size:22px;margin:0 0 12px">Hi ${contact.first_name || ""},</h1>
         <p style="font-size:15px;line-height:1.55;color:#334155">
-          ${isReminder ? "Here's another link" : `${tenantName} has set up`} your homeowner project portal.
-          You can view photos, documents, signatures, payments, and message us anytime.
+          ${isReminder ? "Here's another link to finish setting up" : `${tenantName} has invited you to`} your homeowner project portal.
+          Click below to create your password — then you can sign in anytime to view photos, documents, signatures, payments, and message us.
         </p>
         <p style="margin:24px 0">
           <a href="${portalUrl}" style="background:#2563eb;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600">
-            Open My Portal
+            Set Up My Password
           </a>
         </p>
         <p style="font-size:13px;color:#64748b">Or paste this link in your browser:<br/><a href="${portalUrl}">${portalUrl}</a></p>
-        <p style="font-size:13px;color:#94a3b8;margin-top:32px">This link is valid for 30 days.</p>
+        <p style="font-size:13px;color:#94a3b8;margin-top:32px">After setup, sign in anytime at <a href="${APP_URL}/portal/login">${APP_URL}/portal/login</a>. This setup link is valid for 30 days.</p>
       </div>
     `;
 
