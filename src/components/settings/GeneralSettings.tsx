@@ -5,12 +5,15 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Settings, Moon, Sun, Bell, Calendar, Palette, CheckCircle2 } from "lucide-react";
+import { Settings, Moon, Sun, Bell, Calendar, Palette, CheckCircle2, FileText, Loader2, RotateCcw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTheme } from "next-themes";
+import { Textarea } from "@/components/ui/textarea";
+import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
+import { DEFAULT_WORKMANSHIP_WARRANTY } from "@/lib/closeout/closeoutPdfGenerator";
 
 interface GoogleCalendarConnection {
   calendar_name: string;
