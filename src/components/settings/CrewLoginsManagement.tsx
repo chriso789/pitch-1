@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { HardHat, Plus, Copy, Ban, CheckCircle, Mail } from 'lucide-react';
+import { HardHat, Plus, Copy, Ban, CheckCircle, Mail, Send } from 'lucide-react';
 
 type CrewRow = {
   id: string;
