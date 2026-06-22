@@ -179,6 +179,51 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
     enabled: !!projectId,
   });
 
+  // Fetch combine-estimates state from pipeline_entries metadata
+  const { data: combineState } = useQuery({
+    queryKey: ['pipeline-entry-combine', pipelineEntryId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('pipeline_entries')
+        .select('metadata')
+        .eq('id', pipelineEntryId)
+        .maybeSingle();
+      if (error) throw error;
+      const meta = (data?.metadata as any) || {};
+      return {
+        combine: !!meta.combine_estimates,
+        ids: Array.isArray(meta.selected_estimate_ids) ? (meta.selected_estimate_ids as string[]) : [],
+      };
+    },
+    enabled: !!pipelineEntryId,
+  });
+
+  // When combine mode is on, fetch each selected estimate so we can break down per-trade profit
+  const { data: combinedEstimates } = useQuery({
+    queryKey: ['profit-center-combined-estimates', pipelineEntryId, combineState?.ids?.join(',')],
+    queryFn: async () => {
+      const ids = combineState?.ids || [];
+      if (ids.length === 0) return [];
+      const { data, error } = await supabase
+        .from('enhanced_estimates')
+        .select('id, estimate_number, display_name, material_cost, labor_cost, selling_price, sales_tax_amount')
+        .in('id', ids);
+      if (error) throw error;
+      return (data || []) as Array<{
+        id: string;
+        estimate_number: string | null;
+        display_name: string | null;
+        material_cost: number | null;
+        labor_cost: number | null;
+        selling_price: number | null;
+        sales_tax_amount: number | null;
+      }>;
+    },
+    enabled: !!pipelineEntryId && !!combineState?.combine && (combineState?.ids?.length || 0) > 0,
+  });
+
+  const isCombined = !!combineState?.combine && (combinedEstimates?.length || 0) > 1;
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -205,10 +250,40 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
     ? `${salesRepData.first_name || ''} ${salesRepData.last_name || ''}`.trim() 
     : 'Sales Rep';
 
-  // Original costs (from estimate/locked)
-  const originalMaterialCost = estimateData?.materials || 0;
-  const originalLaborCost = estimateData?.labor || 0;
-  const sellingPrice = estimateData?.sale_price || 0;
+  // Combined sums when multiple estimates are merged into a single contract
+  const combinedSums = isCombined && combinedEstimates ? {
+    materials: combinedEstimates.reduce((s, e) => s + Number(e.material_cost || 0), 0),
+    labor: combinedEstimates.reduce((s, e) => s + Number(e.labor_cost || 0), 0),
+    selling: combinedEstimates.reduce((s, e) => s + Number(e.selling_price || 0), 0),
+    salesTax: combinedEstimates.reduce((s, e) => s + Number(e.sales_tax_amount || 0), 0),
+  } : null;
+
+  // Per-trade breakdown rows (one per combined estimate) — planned/original numbers
+  const tradeBreakdown = (isCombined && combinedEstimates) ? combinedEstimates.map((e) => {
+    const selling = Number(e.selling_price || 0);
+    const tax = Number(e.sales_tax_amount || 0);
+    const mat = Number(e.material_cost || 0);
+    const lab = Number(e.labor_cost || 0);
+    const preTax = selling - tax;
+    const oh = preTax * (overheadRate / 100);
+    const gp = preTax - mat - lab - oh;
+    const margin = preTax > 0 ? (gp / preTax) * 100 : 0;
+    return {
+      id: e.id,
+      label: e.display_name?.trim() || e.estimate_number || 'Estimate',
+      selling,
+      materials: mat,
+      labor: lab,
+      overhead: oh,
+      grossProfit: gp,
+      margin,
+    };
+  }) : [];
+
+  // Original costs (from estimate/locked) — use combined sums if combine mode is on
+  const originalMaterialCost = combinedSums ? combinedSums.materials : (estimateData?.materials || 0);
+  const originalLaborCost = combinedSums ? combinedSums.labor : (estimateData?.labor || 0);
+  const sellingPrice = combinedSums ? combinedSums.selling : (estimateData?.sale_price || 0);
 
   // Actual costs (from invoices)
   const actualMaterialCost = (invoices || [])
