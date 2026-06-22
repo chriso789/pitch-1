@@ -161,13 +161,19 @@ Deno.serve(async (req: Request) => {
     const helveticaBoldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
     const pageCount = pdfDoc.getPageCount();
+    // ALWAYS target the same page the customer signed on so the rep signature
+    // lands in the right-hand "Company Representative" column next to it.
+    // Previously, force_rebuild bypassed both anchor and signature_page_index
+    // and fell through to `pageCount - 1`, which dropped the rep stamp onto
+    // the last (terms continuation) page instead of the customer's page.
     const targetPageIdx =
-      !body.force_rebuild && anchor && anchor.pageIndex != null && anchor.pageIndex < pageCount
+      anchor && anchor.pageIndex != null && anchor.pageIndex < pageCount
         ? anchor.pageIndex
-        : !body.force_rebuild && envelope.signature_page_index != null && envelope.signature_page_index < pageCount
+        : envelope.signature_page_index != null && envelope.signature_page_index < pageCount
         ? envelope.signature_page_index
         : pageCount - 1;
     const page = pdfDoc.getPage(targetPageIdx);
+    console.log(`Countersign targeting page ${targetPageIdx} (signature_page_index=${envelope.signature_page_index}, pageCount=${pageCount}, anchorPage=${anchor?.pageIndex ?? 'null'}, force_rebuild=${!!body.force_rebuild})`);
     const { height: pageH, width: pageW } = page.getSize();
 
     // Prefer the precise company-side anchors. If not present (legacy
