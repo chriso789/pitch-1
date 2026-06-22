@@ -152,6 +152,10 @@ import {
   type ResultState as _SharedResultState,
 } from "../_shared/result-state.ts";
 import {
+  buildAddressSnapshot,
+  requireProductionReadyAddress,
+} from "../_shared/address-gate.ts";
+import {
   isDiagramRenderIntentConstraintError,
   normalizeDiagramRenderIntentForWrite,
   withDiagramRenderIntentConstraintRetryPayload,
