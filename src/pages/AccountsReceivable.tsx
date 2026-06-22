@@ -88,11 +88,46 @@ type SortDir = 'asc' | 'desc';
 export default function AccountsReceivable() {
   const activeTenantId = useEffectiveTenantId();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
   const [expandedWip, setExpandedWip] = useState<Set<string>>(new Set());
   const [sortField, setSortField] = useState<SortField>('age');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const { stages, isLoading: stagesLoading } = usePipelineStages();
+
+  // Live-refresh AR whenever a payment or invoice is recorded anywhere in the app
+  useEffect(() => {
+    if (!activeTenantId) return;
+
+    const invalidate = () => {
+      queryClient.invalidateQueries({ queryKey: ['ar-payments', activeTenantId] });
+      queryClient.invalidateQueries({ queryKey: ['ar-invoices', activeTenantId] });
+      queryClient.invalidateQueries({ queryKey: ['ar-projects', activeTenantId] });
+    };
+
+    const channel = supabase
+      .channel(`ar-live-${activeTenantId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'project_payments', filter: `tenant_id=eq.${activeTenantId}` },
+        invalidate
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'project_invoices', filter: `tenant_id=eq.${activeTenantId}` },
+        invalidate
+      )
+      .subscribe();
+
+    const onPaymentEvent = () => invalidate();
+    window.addEventListener('project-payment-recorded', onPaymentEvent);
+
+    return () => {
+      supabase.removeChannel(channel);
+      window.removeEventListener('project-payment-recorded', onPaymentEvent);
+    };
+  }, [activeTenantId, queryClient]);
+
 
   const arStatuses = useMemo(() => {
     const contractedStage = stages.find(s =>
