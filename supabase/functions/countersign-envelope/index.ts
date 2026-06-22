@@ -40,22 +40,15 @@ Deno.serve(async (req: Request) => {
       return errorResponse('VALIDATION_ERROR', 'Missing envelope_id', 400);
     }
 
-    // Authenticated caller — OR temporary one-shot admin bypass for repair
+    // Authenticated caller
     const authHeader = req.headers.get('Authorization') || '';
     const jwt = authHeader.replace(/^Bearer\s+/i, '');
-    const oneShotMarker = req.headers.get('x-one-shot-rebuild') || '';
-    let callerId: string;
-    if (oneShotMarker === 'carlos-boone-page4-fix-2026') {
-      callerId = '248aad6c-e652-4645-97c3-675d8feb8730';
-      console.log(`One-shot rebuild bypass active for user ${callerId}`);
-    } else {
-      if (!jwt) return errorResponse('UNAUTHORIZED', 'Missing auth token', 401);
-      const { data: userData, error: userErr } = await supabase.auth.getUser(jwt);
-      if (userErr || !userData?.user) {
-        return errorResponse('UNAUTHORIZED', 'Invalid auth token', 401);
-      }
-      callerId = userData.user.id;
+    if (!jwt) return errorResponse('UNAUTHORIZED', 'Missing auth token', 401);
+    const { data: userData, error: userErr } = await supabase.auth.getUser(jwt);
+    if (userErr || !userData?.user) {
+      return errorResponse('UNAUTHORIZED', 'Invalid auth token', 401);
     }
+    const callerId = userData.user.id;
 
     // Load envelope
     const { data: envelope, error: envErr } = await supabase
