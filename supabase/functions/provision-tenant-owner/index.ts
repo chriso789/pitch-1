@@ -202,6 +202,44 @@ Deno.serve(async (req) => {
       console.log("[provision-tenant-owner] Company access granted for user:", userId);
     }
 
+    // Step 5a: Attempt referral attribution (non-fatal). Owner provisioning
+    // never blocks on referral failures — if there's no match, we log and move on.
+    let referralAttribution: { attributed: boolean; signup_id?: string; reason?: string } = { attributed: false };
+    try {
+      const internalSecret = Deno.env.get("INTERNAL_WORKER_SECRET") ?? "";
+      const attachResp = await fetch(`${supabaseUrl}/functions/v1/attach-crm-referral-to-new-company`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-internal-secret": internalSecret,
+          "Authorization": `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify({
+          company_id: tenant_id,
+          owner_user_id: userId,
+          owner_email: ownerEmail,
+        }),
+      });
+      const attachJson = await attachResp.json().catch(() => ({}));
+      referralAttribution = {
+        attributed: !!attachJson?.attributed,
+        signup_id: attachJson?.signup_id,
+        reason: attachJson?.reason,
+      };
+      console.log("[provision-tenant-owner] Referral attribution result:", referralAttribution);
+      await supabase.from("company_activity_log").insert({
+        tenant_id,
+        action_type: referralAttribution.attributed ? "referral_attached" : "referral_skipped",
+        severity: "info",
+        description: referralAttribution.attributed
+          ? `Referral signup ${referralAttribution.signup_id} attached to new owner`
+          : `Referral attribution skipped: ${referralAttribution.reason ?? "no_match"}`,
+        metadata: { user_id: userId, ...referralAttribution },
+      });
+    } catch (refErr) {
+      console.error("[provision-tenant-owner] Referral attribution failed (non-fatal):", refErr);
+    }
+
     // Step 5: Generate custom setup token (24-hour validity)
     let inviteLink: string | null = null;
     try {
@@ -284,8 +322,9 @@ Deno.serve(async (req) => {
         is_new_user: isNewUser,
         invite_link: inviteLink,
         email_sent: emailSent,
-        message: isNewUser 
-          ? `Created new owner account for ${ownerEmail}` 
+        referral_attribution: referralAttribution,
+        message: isNewUser
+          ? `Created new owner account for ${ownerEmail}`
           : `Updated existing owner account for ${ownerEmail}`,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
