@@ -134,3 +134,22 @@ Anchored on `verdict.validationGranularity`, `addressComplete`, `missingComponen
 - Frontend modal UX for needs_review / invalid / manager-override flow on Lead/Project/Order/Permit forms.
 - Hard-gate hooks into measurement order submission, permit/NOC generation, material orders, production scheduling.
 - Soft-warn banners on lead intake forms.
+
+## PR #3C — Measurement Order Address Gate (live)
+
+### Server
+- `supabase/functions/_shared/address-gate.ts` — shared `requireProductionReadyAddress({ tenantId, sourceEntityType, sourceEntityId, fallbackEntities, requiredForAction, actorUserId, actorRole })` helper. Returns a `{ ok: true, addressRow, bypass }` pass or `{ ok: false, response: Response }` 412 fail. Master/owner roles bypass with an `audit_log` row (`action='measurement_address_gate_bypassed'`).
+- `buildAddressSnapshot(row)` — canonical snapshot payload (`property_address_id`, `validated_address_snapshot`, `address_validation_status_at_order`, `address_validated_at_order`, `address_override_reason_at_order`).
+- `start-ai-measurement`: enforces the gate AFTER tenant resolution and BEFORE inserting `measurement_jobs` / `ai_measurement_jobs`. Snapshot fields are persisted on both job rows so the request preserves the exact address basis used at order time.
+
+### Schema
+- Snapshot columns added to `ai_measurement_jobs` and `measurement_jobs`. Indexes on `property_address_id`. No new tables. `NOTIFY pgrst, 'reload schema';`.
+
+### Frontend
+- `useMeasurementJob` now parses 412 `address_validation_required` responses, exposes `addressGate`, `retryAfterAddressResolved()`, `dismissAddressGate()`.
+- `MeasurementOrderAddressGate` — drop-in wrapper around `AddressValidationResolutionModal` keyed to the hook's gate state, so any "Order Measurement" surface gets the same guided remediation flow as PR #3A/#3B.
+- Wired into `PullMeasurementsButton` (primary AI Measurement entry point). Successful validate/override automatically retries the original measurement order with the same params.
+
+### Follow-ups
+- Wire the gate UX into other measurement entry points (`AIRoofAnalyzer`, vendor report order, internal AI request) — same hook/modal pattern.
+- Bulk report importer: flag `address_mismatch_needs_review` when imported report address ≠ validated project address; do not auto-map to estimate. (Spec calls for warning-only in this PR.)
