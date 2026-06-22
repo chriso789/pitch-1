@@ -179,6 +179,51 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
     enabled: !!projectId,
   });
 
+  // Fetch combine-estimates state from pipeline_entries metadata
+  const { data: combineState } = useQuery({
+    queryKey: ['pipeline-entry-combine', pipelineEntryId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('pipeline_entries')
+        .select('metadata')
+        .eq('id', pipelineEntryId)
+        .maybeSingle();
+      if (error) throw error;
+      const meta = (data?.metadata as any) || {};
+      return {
+        combine: !!meta.combine_estimates,
+        ids: Array.isArray(meta.selected_estimate_ids) ? (meta.selected_estimate_ids as string[]) : [],
+      };
+    },
+    enabled: !!pipelineEntryId,
+  });
+
+  // When combine mode is on, fetch each selected estimate so we can break down per-trade profit
+  const { data: combinedEstimates } = useQuery({
+    queryKey: ['profit-center-combined-estimates', pipelineEntryId, combineState?.ids?.join(',')],
+    queryFn: async () => {
+      const ids = combineState?.ids || [];
+      if (ids.length === 0) return [];
+      const { data, error } = await supabase
+        .from('enhanced_estimates')
+        .select('id, estimate_number, display_name, material_cost, labor_cost, selling_price, sales_tax_amount')
+        .in('id', ids);
+      if (error) throw error;
+      return (data || []) as Array<{
+        id: string;
+        estimate_number: string | null;
+        display_name: string | null;
+        material_cost: number | null;
+        labor_cost: number | null;
+        selling_price: number | null;
+        sales_tax_amount: number | null;
+      }>;
+    },
+    enabled: !!pipelineEntryId && !!combineState?.combine && (combineState?.ids?.length || 0) > 0,
+  });
+
+  const isCombined = !!combineState?.combine && (combinedEstimates?.length || 0) > 1;
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -205,10 +250,40 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
     ? `${salesRepData.first_name || ''} ${salesRepData.last_name || ''}`.trim() 
     : 'Sales Rep';
 
-  // Original costs (from estimate/locked)
-  const originalMaterialCost = estimateData?.materials || 0;
-  const originalLaborCost = estimateData?.labor || 0;
-  const sellingPrice = estimateData?.sale_price || 0;
+  // Combined sums when multiple estimates are merged into a single contract
+  const combinedSums = isCombined && combinedEstimates ? {
+    materials: combinedEstimates.reduce((s, e) => s + Number(e.material_cost || 0), 0),
+    labor: combinedEstimates.reduce((s, e) => s + Number(e.labor_cost || 0), 0),
+    selling: combinedEstimates.reduce((s, e) => s + Number(e.selling_price || 0), 0),
+    salesTax: combinedEstimates.reduce((s, e) => s + Number(e.sales_tax_amount || 0), 0),
+  } : null;
+
+  // Per-trade breakdown rows (one per combined estimate) — planned/original numbers
+  const tradeBreakdown = (isCombined && combinedEstimates) ? combinedEstimates.map((e) => {
+    const selling = Number(e.selling_price || 0);
+    const tax = Number(e.sales_tax_amount || 0);
+    const mat = Number(e.material_cost || 0);
+    const lab = Number(e.labor_cost || 0);
+    const preTax = selling - tax;
+    const oh = preTax * (overheadRate / 100);
+    const gp = preTax - mat - lab - oh;
+    const margin = preTax > 0 ? (gp / preTax) * 100 : 0;
+    return {
+      id: e.id,
+      label: e.display_name?.trim() || e.estimate_number || 'Estimate',
+      selling,
+      materials: mat,
+      labor: lab,
+      overhead: oh,
+      grossProfit: gp,
+      margin,
+    };
+  }) : [];
+
+  // Original costs (from estimate/locked) — use combined sums if combine mode is on
+  const originalMaterialCost = combinedSums ? combinedSums.materials : (estimateData?.materials || 0);
+  const originalLaborCost = combinedSums ? combinedSums.labor : (estimateData?.labor || 0);
+  const sellingPrice = combinedSums ? combinedSums.selling : (estimateData?.sale_price || 0);
 
   // Actual costs (from invoices)
   const actualMaterialCost = (invoices || [])
@@ -236,7 +311,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
   const materialVariance = actualMaterialCost - originalMaterialCost;
   const laborVariance = actualLaborCost - originalLaborCost;
 
-  const salesTaxAmount = (estimateData as any)?.sales_tax_amount || 0;
+  const salesTaxAmount = combinedSums ? combinedSums.salesTax : ((estimateData as any)?.sales_tax_amount || 0);
   const preTaxSellingPrice = sellingPrice - salesTaxAmount;
   const overheadAmount = preTaxSellingPrice * (overheadRate / 100);
   // Total cost = materials + labor + percentage overhead + other charges (permits, dumps, etc.)
@@ -556,15 +631,17 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                   ) : (
                     <div className="flex items-center gap-2">
                       <span className="font-semibold text-lg">{formatCurrency(sellingPrice)}</span>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7"
-                        onClick={handleStartEditPrice}
-                        title="Adjust final price"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
+                      {!isCombined && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7"
+                          onClick={handleStartEditPrice}
+                          title="Adjust final price"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -685,6 +762,78 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                     {formatCurrency(repCommission)}
                   </span>
                 </div>
+
+                {/* Per-Trade Breakdown (only when combining multiple estimates) */}
+                {isCombined && tradeBreakdown.length > 0 && (
+                  <div className="space-y-2 pt-2">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-semibold flex items-center gap-2">
+                        <BarChart3 className="h-4 w-4 text-primary" />
+                        Profit by Trade
+                      </h4>
+                      <Badge variant="secondary" className="text-xs">
+                        {tradeBreakdown.length} estimates combined
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Each combined estimate's planned profit is shown separately so you can track margin per trade.
+                    </p>
+                    <div className="space-y-2">
+                      {tradeBreakdown.map((t) => (
+                        <div key={t.id} className="border rounded-lg p-3 bg-muted/30">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="font-medium text-sm truncate">{t.label}</span>
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "font-mono text-xs",
+                                t.margin >= 25 ? "bg-green-500/10 text-green-600 border-green-500/30" :
+                                t.margin >= 15 ? "bg-yellow-500/10 text-yellow-600 border-yellow-500/30" :
+                                "bg-red-500/10 text-red-600 border-red-500/30"
+                              )}
+                            >
+                              {formatPercent(t.margin)} Margin
+                            </Badge>
+                          </div>
+                          <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Selling Price</span>
+                              <span className="font-medium">{formatCurrency(t.selling)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground flex items-center gap-1">
+                                <Package className="h-3 w-3 text-blue-500" />Materials
+                              </span>
+                              <span>{formatCurrency(t.materials)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground flex items-center gap-1">
+                                <Wrench className="h-3 w-3 text-orange-500" />Labor
+                              </span>
+                              <span>{formatCurrency(t.labor)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground flex items-center gap-1">
+                                <Calculator className="h-3 w-3 text-purple-500" />Overhead
+                              </span>
+                              <span>{formatCurrency(t.overhead)}</span>
+                            </div>
+                            <div className="flex justify-between col-span-2 pt-1 border-t border-border/60">
+                              <span className="font-medium">Gross Profit</span>
+                              <span className={cn(
+                                "font-semibold",
+                                t.grossProfit >= 0 ? "text-green-600" : "text-red-600"
+                              )}>
+                                {formatCurrency(t.grossProfit)}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
 
                 {/* Invoice Status */}
                 {(materialInvoiceCount > 0 || laborInvoiceCount > 0 || overheadInvoiceCount > 0) && (
