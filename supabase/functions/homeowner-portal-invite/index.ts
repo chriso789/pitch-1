@@ -65,12 +65,15 @@ Deno.serve(async (req) => {
     });
     if (tokenErr) throw tokenErr;
 
-    const portalUrl = `${APP_URL}/customer/${token}`;
+    // Setup link → /portal/setup verifies identity then sets password.
+    // Fallback /customer/{token} link kept for backwards compatibility with the same token.
+    const setupUrl = `${APP_URL}/portal/setup?contact=${contact_id}&token=${token}`;
+    const portalUrl = setupUrl;
     const tenantName = tenant?.name || "Your Project Team";
     const isReminder = mode === "resend";
     const subject = isReminder
-      ? `Reminder: Your ${tenantName} project portal`
-      : `Welcome to your ${tenantName} project portal`;
+      ? `Reminder: Set up your ${tenantName} portal access`
+      : `Set up your ${tenantName} portal access`;
 
     if (mode === "link_only") {
       return new Response(JSON.stringify({ success: true, portal_url: portalUrl, token }), {
