@@ -572,18 +572,36 @@ const LeadDetails = () => {
         { body: { pipelineEntryId: id } }
       );
 
-      const payload = (result as any) || {};
-      if (error || payload.error) {
-        if (payload.requires_approval) {
-          toast({
-            title: 'Manager Approval Required',
-            description: payload.error || 'This lead requires manager approval before it can become a project.',
-            variant: 'destructive',
-          });
-          return;
-        }
+      // supabase-js v2 surfaces non-2xx as FunctionsHttpError; the JSON body is
+      // accessible via error.context.json(). Fall back to result for 2xx-ish.
+      let payload: any = (result as any) || {};
+      if (error && (error as any).context?.json) {
+        try { payload = await (error as any).context.json(); } catch { /* ignore */ }
+      } else if (error && !payload?.error) {
+        payload = { error: error.message };
+      }
+
+      if (payload.code === 'address_validation_required' || payload.requires_address_validation) {
+        setAddressGate({
+          open: true,
+          gateReason: payload.message ?? payload.error ?? null,
+          canOverride: !!payload.can_override,
+        });
+        return;
+      }
+
+      if (payload?.requires_approval) {
+        toast({
+          title: 'Manager Approval Required',
+          description: payload.error || 'This lead requires manager approval before it can become a project.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      if (error || payload?.error) {
         throw error || new Error(payload.error || 'Conversion failed');
       }
+
 
       // Auto-populate budget from selected estimate
       try {
