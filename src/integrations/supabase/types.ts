@@ -38656,6 +38656,191 @@ export type Database = {
           },
         ]
       }
+      property_address_validation_history: {
+        Row: {
+          actor_user_id: string | null
+          created_at: string
+          decision_payload: Json | null
+          formatted_address: string | null
+          id: string
+          next_status: string | null
+          previous_status: string | null
+          property_address_id: string
+          provider: string
+          raw_input: string | null
+          source_entity_id: string
+          source_entity_type: string
+          tenant_id: string
+          validation_payload: Json | null
+        }
+        Insert: {
+          actor_user_id?: string | null
+          created_at?: string
+          decision_payload?: Json | null
+          formatted_address?: string | null
+          id?: string
+          next_status?: string | null
+          previous_status?: string | null
+          property_address_id: string
+          provider: string
+          raw_input?: string | null
+          source_entity_id: string
+          source_entity_type: string
+          tenant_id: string
+          validation_payload?: Json | null
+        }
+        Update: {
+          actor_user_id?: string | null
+          created_at?: string
+          decision_payload?: Json | null
+          formatted_address?: string | null
+          id?: string
+          next_status?: string | null
+          previous_status?: string | null
+          property_address_id?: string
+          provider?: string
+          raw_input?: string | null
+          source_entity_id?: string
+          source_entity_type?: string
+          tenant_id?: string
+          validation_payload?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_address_validation_history_property_address_id_fkey"
+            columns: ["property_address_id"]
+            isOneToOne: false
+            referencedRelation: "property_addresses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      property_addresses: {
+        Row: {
+          address_complete: boolean | null
+          address_line_1: string | null
+          address_line_2: string | null
+          administrative_area: string | null
+          archived_at: string | null
+          country_code: string | null
+          created_at: string
+          formatted_address: string | null
+          geocode_granularity: string | null
+          has_inferred_components: boolean | null
+          has_replaced_components: boolean | null
+          has_spell_corrected_components: boolean | null
+          has_unconfirmed_components: boolean | null
+          id: string
+          is_po_box: boolean | null
+          is_residential: boolean | null
+          latitude: number | null
+          locality: string | null
+          longitude: number | null
+          missing_component_types: string[] | null
+          override_at: string | null
+          override_by: string | null
+          override_reason: string | null
+          place_id: string | null
+          postal_code: string | null
+          raw_input: string
+          source_entity_id: string
+          source_entity_type: string
+          tenant_id: string
+          unresolved_tokens: string[] | null
+          updated_at: string
+          usps_dpv_confirmation: string | null
+          validated_at: string | null
+          validated_by: string | null
+          validation_granularity: string | null
+          validation_payload: Json | null
+          validation_provider: string | null
+          validation_response_id: string | null
+          validation_status: string
+        }
+        Insert: {
+          address_complete?: boolean | null
+          address_line_1?: string | null
+          address_line_2?: string | null
+          administrative_area?: string | null
+          archived_at?: string | null
+          country_code?: string | null
+          created_at?: string
+          formatted_address?: string | null
+          geocode_granularity?: string | null
+          has_inferred_components?: boolean | null
+          has_replaced_components?: boolean | null
+          has_spell_corrected_components?: boolean | null
+          has_unconfirmed_components?: boolean | null
+          id?: string
+          is_po_box?: boolean | null
+          is_residential?: boolean | null
+          latitude?: number | null
+          locality?: string | null
+          longitude?: number | null
+          missing_component_types?: string[] | null
+          override_at?: string | null
+          override_by?: string | null
+          override_reason?: string | null
+          place_id?: string | null
+          postal_code?: string | null
+          raw_input: string
+          source_entity_id: string
+          source_entity_type: string
+          tenant_id: string
+          unresolved_tokens?: string[] | null
+          updated_at?: string
+          usps_dpv_confirmation?: string | null
+          validated_at?: string | null
+          validated_by?: string | null
+          validation_granularity?: string | null
+          validation_payload?: Json | null
+          validation_provider?: string | null
+          validation_response_id?: string | null
+          validation_status?: string
+        }
+        Update: {
+          address_complete?: boolean | null
+          address_line_1?: string | null
+          address_line_2?: string | null
+          administrative_area?: string | null
+          archived_at?: string | null
+          country_code?: string | null
+          created_at?: string
+          formatted_address?: string | null
+          geocode_granularity?: string | null
+          has_inferred_components?: boolean | null
+          has_replaced_components?: boolean | null
+          has_spell_corrected_components?: boolean | null
+          has_unconfirmed_components?: boolean | null
+          id?: string
+          is_po_box?: boolean | null
+          is_residential?: boolean | null
+          latitude?: number | null
+          locality?: string | null
+          longitude?: number | null
+          missing_component_types?: string[] | null
+          override_at?: string | null
+          override_by?: string | null
+          override_reason?: string | null
+          place_id?: string | null
+          postal_code?: string | null
+          raw_input?: string
+          source_entity_id?: string
+          source_entity_type?: string
+          tenant_id?: string
+          unresolved_tokens?: string[] | null
+          updated_at?: string
+          usps_dpv_confirmation?: string | null
+          validated_at?: string | null
+          validated_by?: string | null
+          validation_granularity?: string | null
+          validation_payload?: Json | null
+          validation_provider?: string | null
+          validation_response_id?: string | null
+          validation_status?: string
+        }
+        Relationships: []
+      }
       property_parcel_cache: {
         Row: {
           assessed_value: number | null
