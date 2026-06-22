@@ -174,42 +174,69 @@ export function useMeasurementJob(pipelineEntryId: string) {
     // Canonical AI Measurement entrypoint: async job flow that writes to
     // measurement_jobs (polled below) and publishes to roof_measurements +
     // measurement_approvals so the lead/project page picks it up automatically.
+    lastStartParamsRef.current = params;
+    const invokeBody = {
+      // Canonical (geometry_first_v2) payload
+      lead_id: pipelineEntryId,
+      source_button: 'AI Measurement',
+      source_record_type: 'lead',
+      source_record_id: pipelineEntryId,
+      // Backwards-compat
+      pipelineEntryId,
+      lat: params.lat,
+      lng: params.lng,
+      address: params.address,
+      zoom: 21,
+      pitchOverride: params.pitchOverride,
+      tenantId: params.tenantId,
+      userId: params.userId,
+      // Patent Rule 1
+      original_geocode_lat: params.originalGeocodeLat ?? null,
+      original_geocode_lng: params.originalGeocodeLng ?? null,
+      confirmed_roof_center_lat: params.lat,
+      confirmed_roof_center_lng: params.lng,
+      confirmed_roof_center_px: params.confirmedRoofCenterPx ?? null,
+      confirmed_roof_center_raster_size: params.confirmedRoofCenterRasterSize ?? null,
+      marker_offset_ft: params.markerOffsetFt ?? null,
+      user_confirmed_roof_target: explicitlyConfirmed,
+      roof_target_admin_override: adminOverride,
+      // Visual QA bypass
+      user_verified_perimeter: params.userVerifiedPerimeter ?? false,
+      prior_ai_measurement_job_id: params.priorAiMeasurementJobId ?? null,
+    };
+
     const { data, error } = await supabase.functions.invoke('start-ai-measurement', {
-      body: {
-        // Canonical (geometry_first_v2) payload
-        lead_id: pipelineEntryId,
-        source_button: 'AI Measurement',
-        source_record_type: 'lead',
-        source_record_id: pipelineEntryId,
-        // Backwards-compat
-        pipelineEntryId,
-        lat: params.lat,
-        lng: params.lng,
-        address: params.address,
-        zoom: 21,
-        pitchOverride: params.pitchOverride,
-        tenantId: params.tenantId,
-        userId: params.userId,
-        // Patent Rule 1
-        original_geocode_lat: params.originalGeocodeLat ?? null,
-        original_geocode_lng: params.originalGeocodeLng ?? null,
-        confirmed_roof_center_lat: params.lat,
-        confirmed_roof_center_lng: params.lng,
-        confirmed_roof_center_px: params.confirmedRoofCenterPx ?? null,
-        confirmed_roof_center_raster_size: params.confirmedRoofCenterRasterSize ?? null,
-        marker_offset_ft: params.markerOffsetFt ?? null,
-        user_confirmed_roof_target: explicitlyConfirmed,
-        roof_target_admin_override: adminOverride,
-        // Visual QA bypass
-        user_verified_perimeter: params.userVerifiedPerimeter ?? false,
-        prior_ai_measurement_job_id: params.priorAiMeasurementJobId ?? null,
-      }
+      body: invokeBody,
     });
 
-    if (error) throw error;
+    if (error) {
+      // PR #3C — Surface address-gate (412) without dead-ending the user.
+      if (error instanceof FunctionsHttpError) {
+        try {
+          const errBody = await error.context.json();
+          if (errBody?.code === 'address_validation_required') {
+            setAddressGate({
+              property_address_id: errBody.property_address_id ?? null,
+              validation_status: errBody.validation_status ?? 'unvalidated',
+              source_entity_type: errBody.source_entity_type ?? 'pipeline_entry',
+              source_entity_id: errBody.source_entity_id ?? pipelineEntryId,
+              required_for_action: 'measurement_order',
+              can_override: !!errBody.can_override,
+              allowed_override_roles: errBody.allowed_override_roles ?? [],
+              message: errBody.message ?? 'A valid address is required.',
+            });
+            return null;
+          }
+        } catch {
+          // fall through to throw
+        }
+      }
+      throw error;
+    }
     const jobId = data?.jobId || data?.job_id;
     if (!jobId) throw new Error(data?.error || 'Failed to start measurement job');
 
+    setAddressGate(null);
     setActiveJobId(jobId);
     // Immediately replace any stale failed job in the UI while the new query refetches.
     queryClient.setQueryData(['measurement-job', pipelineEntryId], {
@@ -230,6 +257,19 @@ export function useMeasurementJob(pipelineEntryId: string) {
     await refetchJob();
     return jobId as string;
   }, [pipelineEntryId, queryClient, refetchJob]);
+
+  const retryAfterAddressResolved = useCallback(async () => {
+    setAddressGate(null);
+    if (lastStartParamsRef.current) {
+      return startJob(lastStartParamsRef.current);
+    }
+    return null;
+  }, [startJob]);
+
+  const dismissAddressGate = useCallback(() => {
+    setAddressGate(null);
+  }, []);
+
 
   const isActive = latestJob?.status === 'queued' || latestJob?.status === 'processing';
 
