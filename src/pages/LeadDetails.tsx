@@ -73,6 +73,7 @@ import { InspectionHistory } from '@/components/inspection/InspectionHistory';
 import { useQuery as useTanstackQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { SendReferralLinkButton } from '@/components/referrals/SendReferralLinkButton';
+import { AddressValidationResolutionModal } from '@/components/address/AddressValidationResolutionModal';
 
 // Hook to get selected estimate id from pipeline metadata
 const useSelectedEstimateId = (pipelineEntryId: string) => {
@@ -1261,6 +1262,32 @@ const LeadDetails = () => {
           tenantId={lead.tenant_id}
         />
       )}
+
+      {/* PR #3A: Address validation remediation modal */}
+      {lead?.tenant_id && addressGate.open && (
+        <AddressValidationResolutionModal
+          open={addressGate.open}
+          tenantId={lead.tenant_id}
+          sourceEntityType="pipeline_entry"
+          sourceEntityId={id!}
+          initialAddress={{
+            address_line_1: lead.contact?.address_street ?? null,
+            locality: lead.contact?.address_city ?? null,
+            administrative_area: lead.contact?.address_state ?? null,
+            postal_code: lead.contact?.address_zip ?? null,
+          }}
+          gateReason={addressGate.gateReason ?? undefined}
+          requiredForAction="lead_to_project"
+          canOverride={addressGate.canOverride}
+          onCancel={() => setAddressGate({ open: false, gateReason: null, canOverride: false })}
+          onResolved={() => {
+            setAddressGate({ open: false, gateReason: null, canOverride: false });
+            // Retry conversion now that address is resolved.
+            handleApproveToProject();
+          }}
+        />
+      )}
+
 
       {/* Approval Requirements Progress - hidden once lead reaches project/terminal status */}
       {lead && !['project', 'completed', 'closed', 'lost', 'canceled', 'duplicate'].includes(lead.status) && (
