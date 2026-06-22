@@ -13149,6 +13149,59 @@ export type Database = {
           },
         ]
       }
+      crm_referral_subscription_history: {
+        Row: {
+          company_id: string | null
+          created_at: string
+          id: string
+          next_status: string | null
+          notes: string | null
+          paid_amount: number | null
+          previous_status: string | null
+          signup_id: string | null
+          source: string
+          stripe_event_id: string | null
+          stripe_event_type: string | null
+          tenant_id: string | null
+        }
+        Insert: {
+          company_id?: string | null
+          created_at?: string
+          id?: string
+          next_status?: string | null
+          notes?: string | null
+          paid_amount?: number | null
+          previous_status?: string | null
+          signup_id?: string | null
+          source?: string
+          stripe_event_id?: string | null
+          stripe_event_type?: string | null
+          tenant_id?: string | null
+        }
+        Update: {
+          company_id?: string | null
+          created_at?: string
+          id?: string
+          next_status?: string | null
+          notes?: string | null
+          paid_amount?: number | null
+          previous_status?: string | null
+          signup_id?: string | null
+          source?: string
+          stripe_event_id?: string | null
+          stripe_event_type?: string | null
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_referral_subscription_history_signup_id_fkey"
+            columns: ["signup_id"]
+            isOneToOne: false
+            referencedRelation: "crm_referral_company_signups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       custom_dashboards: {
         Row: {
           created_at: string | null
@@ -50510,6 +50563,9 @@ export type Database = {
           processed_at: string | null
           processing_error: string | null
           received_at: string
+          related_company_id: string | null
+          related_signup_id: string | null
+          related_subscription_id: string | null
           signature_valid: boolean
           tenant_id: string | null
         }
@@ -50522,6 +50578,9 @@ export type Database = {
           processed_at?: string | null
           processing_error?: string | null
           received_at?: string
+          related_company_id?: string | null
+          related_signup_id?: string | null
+          related_subscription_id?: string | null
           signature_valid?: boolean
           tenant_id?: string | null
         }
@@ -50534,6 +50593,9 @@ export type Database = {
           processed_at?: string | null
           processing_error?: string | null
           received_at?: string
+          related_company_id?: string | null
+          related_signup_id?: string | null
+          related_subscription_id?: string | null
           signature_valid?: boolean
           tenant_id?: string | null
         }
