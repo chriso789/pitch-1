@@ -5,12 +5,15 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Settings, Moon, Sun, Bell, Calendar, Palette, CheckCircle2 } from "lucide-react";
+import { Settings, Moon, Sun, Bell, Calendar, Palette, CheckCircle2, FileText, Loader2, RotateCcw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTheme } from "next-themes";
+import { Textarea } from "@/components/ui/textarea";
+import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
+import { DEFAULT_WORKMANSHIP_WARRANTY } from "@/lib/closeout/closeoutPdfGenerator";
 
 interface GoogleCalendarConnection {
   calendar_name: string;
@@ -35,6 +38,63 @@ export const GeneralSettings = () => {
   const [connectingGoogleCalendar, setConnectingGoogleCalendar] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const activeTenantId = useEffectiveTenantId();
+
+  // Completion certificate (workmanship warranty) verbiage
+  const [completionVerbiage, setCompletionVerbiage] = useState<string>('');
+  const [savingVerbiage, setSavingVerbiage] = useState(false);
+
+  useEffect(() => {
+    if (!activeTenantId) return;
+    (async () => {
+      const { data } = await supabase
+        .from('tenants')
+        .select('warranty_terms')
+        .eq('id', activeTenantId)
+        .maybeSingle();
+      const raw = (data as any)?.warranty_terms;
+      let text = '';
+      if (raw) {
+        try {
+          const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+          if (parsed?.workmanship) text = String(parsed.workmanship);
+          else if (typeof raw === 'string') text = raw;
+        } catch {
+          if (typeof raw === 'string') text = raw;
+        }
+      }
+      setCompletionVerbiage(text || DEFAULT_WORKMANSHIP_WARRANTY);
+    })();
+  }, [activeTenantId]);
+
+  const saveCompletionVerbiage = async () => {
+    if (!activeTenantId) return;
+    setSavingVerbiage(true);
+    try {
+      const { data: existing } = await supabase
+        .from('tenants')
+        .select('warranty_terms')
+        .eq('id', activeTenantId)
+        .maybeSingle();
+      let merged: any = {};
+      const raw = (existing as any)?.warranty_terms;
+      if (raw) {
+        try { merged = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { merged = {}; }
+        if (!merged || typeof merged !== 'object') merged = {};
+      }
+      merged.workmanship = completionVerbiage.trim();
+      const { error } = await supabase
+        .from('tenants')
+        .update({ warranty_terms: merged } as any)
+        .eq('id', activeTenantId);
+      if (error) throw error;
+      toast({ title: 'Saved', description: 'Completion certificate verbiage updated.' });
+    } catch (e: any) {
+      toast({ title: 'Could not save', description: e.message || 'Update failed', variant: 'destructive' });
+    } finally {
+      setSavingVerbiage(false);
+    }
+  };
 
   // Handle hydration - only show theme state after mount
   useEffect(() => {
@@ -444,6 +504,43 @@ export const GeneralSettings = () => {
                 <SelectItem value="fr">French</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Completion Certificate Verbiage */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5 text-primary" />
+            Completion Certificate Verbiage
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            This is the workmanship warranty text printed on the Completion Certificate
+            generated at project closeout. Edit it to match your company's terms.
+          </p>
+          <Textarea
+            value={completionVerbiage}
+            onChange={(e) => setCompletionVerbiage(e.target.value)}
+            rows={14}
+            className="font-mono text-xs leading-relaxed"
+            placeholder="Workmanship warranty verbiage..."
+          />
+          <div className="flex items-center justify-between">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setCompletionVerbiage(DEFAULT_WORKMANSHIP_WARRANTY)}
+              disabled={savingVerbiage}
+            >
+              <RotateCcw className="h-4 w-4 mr-1" /> Reset to default
+            </Button>
+            <Button onClick={saveCompletionVerbiage} disabled={savingVerbiage || !activeTenantId}>
+              {savingVerbiage ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-1" />}
+              Save Verbiage
+            </Button>
           </div>
         </CardContent>
       </Card>
