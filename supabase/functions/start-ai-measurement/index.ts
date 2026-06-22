@@ -2594,6 +2594,7 @@ Deno.serve(async (req) => {
         roof_target_confirmed_at: user_confirmed_roof_target
           ? new Date().toISOString()
           : null,
+        ...addressSnapshot,
       })
       .select("id")
       .single();
