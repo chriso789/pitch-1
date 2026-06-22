@@ -33,6 +33,7 @@ import { SchematicRoofDiagram } from '@/components/measurements/SchematicRoofDia
 import MeasurementReportDialog from '@/components/measurements/MeasurementReportDialog';
 import { MeasurementFailureAlert } from '@/components/measurements/MeasurementFailureAlert';
 import { DSMDebugOverlay } from '@/components/measurements/DSMDebugOverlay';
+import { EvidenceSourcesPanel } from '@/components/measurements/EvidenceSourcesPanel';
 
 import { useDeviceLayout } from '@/hooks/useDeviceLayout';
 import {
@@ -1567,6 +1568,25 @@ export function UnifiedMeasurementPanel({
             <DSMDebugOverlay
               overlayDebug={grj.overlay_debug}
               debugGeometry={grj.debug_geometry}
+            />
+          </div>
+        );
+      })()}
+
+      {/* PR #4 Evidence Hardening — per-layer source provenance */}
+      {(() => {
+        const latestAi = aiMeasurements?.[0] as any;
+        if (!latestAi) return null;
+        const tier = latestAi.footprint_source_tier;
+        const used = latestAi.evidence_sources_used;
+        const log = latestAi.evidence_acquisition_log;
+        if (!tier && !used && !log) return null;
+        return (
+          <div className="mt-3">
+            <EvidenceSourcesPanel
+              footprintSourceTier={tier}
+              evidenceSourcesUsed={used}
+              evidenceAcquisitionLog={log}
             />
           </div>
         );
