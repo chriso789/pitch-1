@@ -510,9 +510,9 @@ export function ProjectAddressPanel({
                       {new Date(h.created_at).toLocaleString()}
                     </span>
                   </div>
-                  {h.reason && <div className="mt-1">{h.reason}</div>}
+                  {h.formatted_address && <div className="mt-1 break-words">{h.formatted_address}</div>}
                   <div className="mt-1 text-muted-foreground">
-                    Source: {h.source ?? 'n/a'}
+                    Source: {h.provider ?? 'n/a'}
                   </div>
                 </li>
               ))}
