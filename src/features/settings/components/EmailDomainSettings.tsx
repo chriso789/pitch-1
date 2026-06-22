@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Mail, CheckCircle, Clock, AlertCircle, Copy, RefreshCw, Globe, Send } from "lucide-react";
+import { EstimateEmailTemplates } from "@/components/settings/EstimateEmailTemplates";
 
 interface EmailDomain {
   id: string;
