@@ -858,6 +858,9 @@ const LeadDetails = () => {
     return <LeadDetailsSkeleton />;
   }
 
+  const isProject = lead && ['project', 'completed'].includes((lead as any).status);
+  const entityLabel = isProject ? 'Project' : 'Lead';
+
   if (!lead) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen space-y-4">
