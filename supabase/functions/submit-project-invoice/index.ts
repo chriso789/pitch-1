@@ -87,6 +87,21 @@ Deno.serve(async (req) => {
       effectivePipelineEntryId = project?.pipeline_entry_id;
     }
 
+    // Reverse lookup: if caller only supplied pipeline_entry_id, resolve the
+    // matching project_id so invoices uploaded from the Lead page are also
+    // visible everywhere that filters by project_id (CostReconciliationPanel,
+    // Production view, etc.).
+    let effectiveProjectId = project_id;
+    if (!effectiveProjectId && effectivePipelineEntryId) {
+      const { data: matchedProject } = await supabase
+        .from('projects')
+        .select('id')
+        .eq('pipeline_entry_id', effectivePipelineEntryId)
+        .maybeSingle();
+      effectiveProjectId = matchedProject?.id ?? null;
+    }
+
+
     // Resolve service address — caller may supply, otherwise derive from
     // the linked pipeline_entry → contact so every invoice carries the
     // property address it was filed against.
