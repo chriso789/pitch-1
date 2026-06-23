@@ -271,6 +271,39 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
     }
     patchRow(row.id, { status: 'saved' });
     onSuccess?.(data?.invoice);
+    // Broadcast so Profit Center / Documents / Budget refresh instantly,
+    // matching the behavior of file-based uploads.
+    try {
+      window.dispatchEvent(new CustomEvent('invoice-updated', {
+        detail: {
+          pipelineEntryId: pipelineEntryId || null,
+          projectId: projectId || null,
+          invoiceType: 'material',
+          invoice: data?.invoice ?? null,
+        },
+      }));
+    } catch (_e) {
+      // no-op
+    }
+  };
+
+  const addManualRow = () => {
+    const id = `manual-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const row: InvoiceRow = {
+      id,
+      fileName: 'Manual entry',
+      status: 'parsed',
+      vendor_name: '',
+      invoice_number: '',
+      invoice_date: new Date().toISOString().slice(0, 10),
+      invoice_amount: '',
+      subtotal: '',
+      tax_amount: '',
+      notes: '',
+      line_items: [],
+      expanded: true,
+    };
+    setRows(prev => [...prev, row]);
   };
 
   const submitAll = async () => {
