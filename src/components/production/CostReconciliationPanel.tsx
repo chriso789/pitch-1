@@ -12,13 +12,15 @@ import {
   TrendingDown,
   Loader2,
   ExternalLink,
-  PlayCircle
+  PlayCircle,
+  ShieldCheck
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { openInvoiceDocument } from '@/lib/invoices/openInvoiceDocument';
 import { InvoicePreviewDialog } from '@/components/invoices/InvoicePreviewDialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface CostReconciliationPanelProps {
   projectId: string;
