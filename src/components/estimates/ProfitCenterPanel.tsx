@@ -12,19 +12,19 @@ import {
   CreditCard, FileEdit, Pencil, X, Check, Trash2, Eye
 } from 'lucide-react';
 import { useActiveTenantId } from '@/hooks/useActiveTenantId';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { InvoiceUploadCard } from '@/components/production/InvoiceUploadCard';
 import { BudgetTracker } from '@/features/projects/components/BudgetTracker';
-import { CostReconciliationPanel } from '@/components/production/CostReconciliationPanel';
 import { PaymentsTab } from '@/components/estimates/PaymentsTab';
 import { ChangeOrdersTab } from '@/components/estimates/ChangeOrdersTab';
 import { CustomerPortalButton } from '@/components/lead-details/CustomerPortalButton';
 import { format } from 'date-fns';
-import { openInvoiceDocument } from '@/lib/invoices/openInvoiceDocument';
 import { InvoicePreviewDialog } from '@/components/invoices/InvoicePreviewDialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface ProfitCenterPanelProps {
   pipelineEntryId: string;
@@ -43,7 +43,7 @@ interface SalesRepData {
 
 interface InvoiceData {
   id: string | null;
-  invoice_type: 'material' | 'labor' | 'overhead';
+  invoice_type: 'material' | 'labor' | 'overhead' | 'other';
   vendor_name: string | null;
   crew_name: string | null;
   notes?: string | null;
@@ -67,6 +67,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
 }) => {
   const queryClient = useQueryClient();
   const { profile } = useActiveTenantId();
+  const effectiveTenantId = useEffectiveTenantId();
   const userRole = (profile as any)?.role as string | undefined;
   const canDeleteInvoices = ['master', 'owner', 'corporate', 'admin', 'office_staff'].includes(userRole || '');
   const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
@@ -107,7 +108,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
     // Realtime: any insert/update/delete on project_cost_invoices for this
     // pipeline entry should refresh the Actual / Other Charges columns
     // immediately — no manual refresh required.
-    if (!pipelineEntryId) {
+    if (!pipelineEntryId || !effectiveTenantId) {
       return () => {
         window.removeEventListener('invoice-updated', handleInvoiceUpdate as EventListener);
         window.removeEventListener('invoice-deleted', handleInvoiceUpdate as EventListener);
@@ -115,16 +116,27 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
     }
 
     const channel = supabase
-      .channel(`profit-center-invoices-${pipelineEntryId}`)
+      .channel(`profit-center-invoices-${effectiveTenantId}-${pipelineEntryId}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'project_cost_invoices',
-          filter: `pipeline_entry_id=eq.${pipelineEntryId}`,
+          filter: `tenant_id=eq.${effectiveTenantId}`,
         },
-        () => refresh(),
+        (payload: any) => {
+          const newRow = payload?.new || {};
+          const oldRow = payload?.old || {};
+          if (
+            newRow.pipeline_entry_id === pipelineEntryId ||
+            oldRow.pipeline_entry_id === pipelineEntryId ||
+            (projectId && newRow.project_id === projectId) ||
+            (projectId && oldRow.project_id === projectId)
+          ) {
+            refresh();
+          }
+        },
       )
       .subscribe();
 
@@ -133,7 +145,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
       window.removeEventListener('invoice-deleted', handleInvoiceUpdate as EventListener);
       supabase.removeChannel(channel);
     };
-  }, [pipelineEntryId, projectId, queryClient]);
+  }, [pipelineEntryId, projectId, effectiveTenantId, queryClient]);
 
   // Fetch sales rep's commission settings
   const { data: salesRepData, isLoading: isLoadingRep } = useQuery({
@@ -175,19 +187,68 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
 
   // Fetch invoices for this pipeline entry
   const { data: invoices, isLoading: isLoadingInvoices } = useQuery({
-    queryKey: ['pipeline-invoices', pipelineEntryId],
+    queryKey: ['pipeline-invoices', pipelineEntryId, projectId || null, effectiveTenantId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('project_cost_invoices')
         .select('*')
-        .eq('pipeline_entry_id', pipelineEntryId)
+        .eq('tenant_id', effectiveTenantId!)
         .in('status', ['pending', 'approved', 'verified'])
         .order('created_at', { ascending: false });
+
+      query = projectId
+        ? query.or(`pipeline_entry_id.eq.${pipelineEntryId},project_id.eq.${projectId}`)
+        : query.eq('pipeline_entry_id', pipelineEntryId);
+
+      const { data, error } = await query;
       
       if (error) throw error;
       return data as InvoiceData[];
     },
-    enabled: !!pipelineEntryId,
+    enabled: !!pipelineEntryId && !!effectiveTenantId,
+  });
+
+  const updateInvoiceTypeMutation = useMutation({
+    mutationFn: async ({ invoiceId, invoiceType }: { invoiceId: string; invoiceType: InvoiceData['invoice_type'] }) => {
+      if (!effectiveTenantId) throw new Error('Tenant not resolved');
+      const { error } = await supabase
+        .from('project_cost_invoices')
+        .update({ invoice_type: invoiceType })
+        .eq('id', invoiceId)
+        .eq('tenant_id', effectiveTenantId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('Invoice category updated');
+      queryClient.invalidateQueries({ queryKey: ['pipeline-invoices', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-invoices-totals', pipelineEntryId] });
+      if (projectId) queryClient.invalidateQueries({ queryKey: ['project-budget-items', projectId] });
+    },
+    onError: (err: any) => toast.error(err?.message || 'Failed to update invoice category'),
+  });
+
+  const verifyInvoiceMutation = useMutation({
+    mutationFn: async (invoiceId: string) => {
+      if (!effectiveTenantId) throw new Error('Tenant not resolved');
+      const { data: userData } = await supabase.auth.getUser();
+      const { error } = await supabase
+        .from('project_cost_invoices')
+        .update({
+          status: 'verified',
+          approved_by: userData.user?.id || null,
+          approved_at: new Date().toISOString(),
+        })
+        .eq('id', invoiceId)
+        .eq('tenant_id', effectiveTenantId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('Invoice verified');
+      queryClient.invalidateQueries({ queryKey: ['pipeline-invoices', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-invoices-totals', pipelineEntryId] });
+      if (projectId) queryClient.invalidateQueries({ queryKey: ['project-budget-items', projectId] });
+    },
+    onError: (err: any) => toast.error(err?.message || 'Failed to verify invoice'),
   });
 
   // Fetch pipeline entry job/CLJ number for invoice labeling
@@ -337,10 +398,10 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
   
   // Other charges = overhead invoices (permits, dumps, etc.) — additive on top of percentage overhead
   const otherChargesTotal = (invoices || [])
-    .filter(inv => inv.invoice_type === 'overhead')
+    .filter(inv => inv.invoice_type === 'overhead' || inv.invoice_type === 'other')
     .reduce((sum, inv) => sum + inv.invoice_amount, 0);
 
-  const otherChargesInvoices = (invoices || []).filter(inv => inv.invoice_type === 'overhead');
+  const otherChargesInvoices = (invoices || []).filter(inv => inv.invoice_type === 'overhead' || inv.invoice_type === 'other');
   const hasOtherCharges = otherChargesTotal > 0;
 
   const hasActualMaterial = actualMaterialCost > 0;
@@ -364,7 +425,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
 
   const materialInvoiceCount = (invoices || []).filter(inv => inv.invoice_type === 'material').length;
   const laborInvoiceCount = (invoices || []).filter(inv => inv.invoice_type === 'labor').length;
-  const overheadInvoiceCount = otherChargesInvoices.length;
+  const otherChargesInvoiceCount = otherChargesInvoices.length;
 
   const hasValidData = sellingPrice > 0 && (originalMaterialCost > 0 || originalLaborCost > 0);
 
@@ -375,6 +436,10 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
 
   const handleDeleteInvoice = async (invoiceId: string, invoiceType: InvoiceData['invoice_type']) => {
     if (!canDeleteInvoices) return;
+    if (!effectiveTenantId) {
+      toast.error('Tenant not resolved');
+      return;
+    }
     if (!isValidUuid(invoiceId)) {
       toast.error('Invoice is still loading. Please refresh and try again.');
       return;
@@ -385,7 +450,8 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
       const { error } = await supabase
         .from('project_cost_invoices')
         .delete()
-        .eq('id', invoiceId);
+        .eq('id', invoiceId)
+        .eq('tenant_id', effectiveTenantId);
       if (error) throw error;
       toast.success('Invoice deleted');
       queryClient.invalidateQueries({ queryKey: ['pipeline-invoices', pipelineEntryId] });
@@ -420,10 +486,12 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
     }
     setIsSavingRename(true);
     try {
+      if (!effectiveTenantId) throw new Error('Tenant not resolved');
       const { error } = await supabase
         .from('project_cost_invoices')
         .update({ document_name: trimmed })
-        .eq('id', renamingInvoiceId);
+        .eq('id', renamingInvoiceId)
+        .eq('tenant_id', effectiveTenantId);
       if (error) throw error;
       toast.success('Invoice renamed');
       queryClient.invalidateQueries({ queryKey: ['pipeline-invoices', pipelineEntryId] });
@@ -877,12 +945,12 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
 
 
                 {/* Invoice Status */}
-                {(materialInvoiceCount > 0 || laborInvoiceCount > 0 || overheadInvoiceCount > 0) && (
+                {(materialInvoiceCount > 0 || laborInvoiceCount > 0 || otherChargesInvoiceCount > 0) && (
                   <div className="bg-muted/50 rounded-lg p-3">
                     <div className="flex items-center gap-2 text-sm">
                       <FileText className="h-4 w-4 text-muted-foreground" />
                       <span className="text-muted-foreground">
-                        {materialInvoiceCount} material, {laborInvoiceCount} labor, {overheadInvoiceCount} overhead invoice(s) uploaded
+                        {materialInvoiceCount} material, {laborInvoiceCount} labor, {otherChargesInvoiceCount} other charge invoice(s) uploaded
                       </span>
                     </div>
                   </div>
@@ -894,16 +962,19 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
           <TabsContent value="invoices" className="space-y-4 mt-0">
             <div className="grid gap-4">
               <InvoiceUploadCard
+                projectId={projectId}
                 pipelineEntryId={pipelineEntryId}
                 invoiceType="material"
                 onSuccess={handleInvoiceSuccess}
               />
               <InvoiceUploadCard
+                projectId={projectId}
                 pipelineEntryId={pipelineEntryId}
                 invoiceType="labor"
                 onSuccess={handleInvoiceSuccess}
               />
               <InvoiceUploadCard
+                projectId={projectId}
                 pipelineEntryId={pipelineEntryId}
                 invoiceType="overhead"
                 onSuccess={handleInvoiceSuccess}
@@ -921,9 +992,11 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                     const invoiceDateLabel = invoice.invoice_date
                       ? new Date(invoice.invoice_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
                       : null;
-                    const typeLabel = invoice.invoice_type === 'material' ? 'Material' : invoice.invoice_type === 'labor' ? 'Labor' : 'Overhead';
+                    const typeLabel = invoice.invoice_type === 'material' ? 'Material' : invoice.invoice_type === 'labor' ? 'Labor' : invoice.invoice_type === 'overhead' ? 'Overhead' : 'Other';
                     const canDeleteInvoice = canDeleteInvoices && isValidUuid(invoice.id);
                     const canRenameInvoice = isValidUuid(invoice.id);
+                    const canEditInvoice = isValidUuid(invoice.id);
+                    const isVerified = invoice.status === 'verified' || invoice.status === 'approved';
                     const isRenaming = renamingInvoiceId === invoice.id;
                     return (
                       <div key={invoice.id || `${invoice.invoice_type}-${invoice.created_at}-${invoice.invoice_amount}`} className="flex items-center justify-between p-2.5 bg-muted/50 rounded-md text-sm">
@@ -975,6 +1048,26 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                         {!isRenaming && (
                           <div className="flex items-center gap-2 flex-shrink-0">
                             <span className="font-medium">{formatCurrency(invoice.invoice_amount)}</span>
+                            {canEditInvoice && (
+                              <Select
+                                value={invoice.invoice_type}
+                                onValueChange={(value) => updateInvoiceTypeMutation.mutate({
+                                  invoiceId: invoice.id!,
+                                  invoiceType: value as InvoiceData['invoice_type'],
+                                })}
+                                disabled={updateInvoiceTypeMutation.isPending}
+                              >
+                                <SelectTrigger className="h-7 w-[116px] text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="material">Material</SelectItem>
+                                  <SelectItem value="labor">Labor</SelectItem>
+                                  <SelectItem value="overhead">Overhead</SelectItem>
+                                  <SelectItem value="other">Other</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            )}
                             <Badge
                               variant="outline"
                               className={cn(
@@ -985,6 +1078,23 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                             >
                               {invoice.status}
                             </Badge>
+                            {!isVerified && canEditInvoice && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => verifyInvoiceMutation.mutate(invoice.id!)}
+                                disabled={verifyInvoiceMutation.isPending}
+                                title="Verify invoice"
+                              >
+                                {verifyInvoiceMutation.isPending ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <CheckCircle className="h-3.5 w-3.5 mr-1" />
+                                )}
+                                Verify
+                              </Button>
+                            )}
                             {invoice.document_url && (
                               <Button
                                 variant="ghost"
