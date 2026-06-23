@@ -12,13 +12,15 @@ import {
   TrendingDown,
   Loader2,
   ExternalLink,
-  PlayCircle
+  PlayCircle,
+  ShieldCheck
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { openInvoiceDocument } from '@/lib/invoices/openInvoiceDocument';
 import { InvoicePreviewDialog } from '@/components/invoices/InvoicePreviewDialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface CostReconciliationPanelProps {
   projectId: string;
@@ -125,6 +127,45 @@ export const CostReconciliationPanel: React.FC<CostReconciliationPanelProps> = (
         variant: 'destructive'
       });
     }
+  });
+
+  // Update invoice type (assign category)
+  const updateTypeMutation = useMutation({
+    mutationFn: async ({ id, invoice_type }: { id: string; invoice_type: string }) => {
+      const { error } = await supabase
+        .from('project_cost_invoices')
+        .update({ invoice_type })
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast({ title: 'Category updated' });
+      queryClient.invalidateQueries({ queryKey: ['project-invoices', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['cost-reconciliation', projectId] });
+    },
+    onError: (e: any) => toast({ title: 'Update failed', description: e.message, variant: 'destructive' })
+  });
+
+  // Verify invoice
+  const verifyMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { data: userData } = await supabase.auth.getUser();
+      const { error } = await supabase
+        .from('project_cost_invoices')
+        .update({
+          status: 'verified',
+          approved_by: userData.user?.id,
+          approved_at: new Date().toISOString()
+        })
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast({ title: 'Invoice verified' });
+      queryClient.invalidateQueries({ queryKey: ['project-invoices', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['cost-reconciliation', projectId] });
+    },
+    onError: (e: any) => toast({ title: 'Verify failed', description: e.message, variant: 'destructive' })
   });
 
   const formatCurrency = (amount: number | null) => {
@@ -370,28 +411,54 @@ export const CostReconciliationPanel: React.FC<CostReconciliationPanelProps> = (
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {invoices.map((invoice: any) => (
-                <div 
-                  key={invoice.id} 
-                  className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
+              {invoices.map((invoice: any) => {
+                const typeColor =
+                  invoice.invoice_type === 'material' ? 'text-blue-500'
+                  : invoice.invoice_type === 'labor' ? 'text-orange-500'
+                  : invoice.invoice_type === 'overhead' ? 'text-purple-500'
+                  : 'text-gray-500';
+                const typeLabel =
+                  invoice.invoice_type === 'material' ? 'Material'
+                  : invoice.invoice_type === 'labor' ? 'Labor'
+                  : invoice.invoice_type === 'overhead' ? 'Overhead'
+                  : 'Other';
+                const isVerified = invoice.status === 'verified' || invoice.status === 'approved';
+                return (
+                <div
+                  key={invoice.id}
+                  className="flex items-center justify-between p-3 bg-muted/50 rounded-lg gap-3"
                 >
-                  <div className="flex items-center gap-3">
-                    <FileText className={`h-5 w-5 ${invoice.invoice_type === 'material' ? 'text-blue-500' : 'text-orange-500'}`} />
-                    <div>
-                      <p className="font-medium text-sm">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <FileText className={`h-5 w-5 shrink-0 ${typeColor}`} />
+                    <div className="min-w-0">
+                      <p className="font-medium text-sm truncate">
                         {invoice.vendor_name || invoice.crew_name || 'Unnamed'}
                         {invoice.invoice_number && ` - ${invoice.invoice_number}`}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {invoice.invoice_type === 'material' ? 'Material' : 'Labor'} •{' '}
-                        {invoice.invoice_date || 'No date'}
+                        {typeLabel} • {invoice.invoice_date || 'No date'}
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 shrink-0">
                     <span className="font-semibold">
                       {formatCurrency(invoice.invoice_amount)}
                     </span>
+                    <Select
+                      value={invoice.invoice_type}
+                      onValueChange={(v) => updateTypeMutation.mutate({ id: invoice.id, invoice_type: v })}
+                      disabled={isCompleted}
+                    >
+                      <SelectTrigger className="h-8 w-[110px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="material">Material</SelectItem>
+                        <SelectItem value="labor">Labor</SelectItem>
+                        <SelectItem value="overhead">Overhead</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
                     {invoice.document_url && (
                       <Button
                         variant="ghost"
@@ -402,12 +469,26 @@ export const CostReconciliationPanel: React.FC<CostReconciliationPanelProps> = (
                         <ExternalLink className="h-4 w-4" />
                       </Button>
                     )}
-                    <Badge variant={invoice.status === 'approved' ? 'default' : 'secondary'}>
-                      {invoice.status}
-                    </Badge>
+                    {!isVerified ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => verifyMutation.mutate(invoice.id)}
+                        disabled={verifyMutation.isPending || isCompleted}
+                      >
+                        <ShieldCheck className="h-4 w-4 mr-1" />
+                        Verify
+                      </Button>
+                    ) : (
+                      <Badge variant="default" className="bg-success">
+                        <CheckCircle className="h-3 w-3 mr-1" />
+                        {invoice.status}
+                      </Badge>
+                    )}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </CardContent>
         </Card>
