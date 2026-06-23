@@ -202,33 +202,133 @@ export const CostReconciliationPanel: React.FC<CostReconciliationPanelProps> = (
 
   if (!reconciliation) {
     return (
-      <Card>
-        <CardContent className="p-8 text-center">
-          <AlertTriangle className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
-          <p className="text-muted-foreground">
-            Cost verification not yet initiated for this project
-          </p>
-          <p className="text-sm text-muted-foreground mt-1 mb-4">
-            Click below to start cost verification and upload actual invoices
-          </p>
-          <Button 
-            onClick={() => initiateMutation.mutate()}
-            disabled={initiateMutation.isPending}
-          >
-            {initiateMutation.isPending ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Initiating...
-              </>
-            ) : (
-              <>
-                <PlayCircle className="h-4 w-4 mr-2" />
-                Initiate Cost Verification
-              </>
-            )}
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="space-y-4">
+        <Card>
+          <CardContent className="p-8 text-center">
+            <AlertTriangle className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
+            <p className="text-muted-foreground">
+              Cost verification not yet initiated for this project
+            </p>
+            <p className="text-sm text-muted-foreground mt-1 mb-4">
+              Click below to start cost verification and upload actual invoices
+            </p>
+            <Button
+              onClick={() => initiateMutation.mutate()}
+              disabled={initiateMutation.isPending}
+            >
+              {initiateMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Initiating...
+                </>
+              ) : (
+                <>
+                  <PlayCircle className="h-4 w-4 mr-2" />
+                  Initiate Cost Verification
+                </>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+
+        {invoices.length > 0 && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">
+                Uploaded Invoices ({invoices.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {invoices.map((invoice: any) => {
+                  const typeColor =
+                    invoice.invoice_type === 'material' ? 'text-blue-500'
+                    : invoice.invoice_type === 'labor' ? 'text-orange-500'
+                    : invoice.invoice_type === 'overhead' ? 'text-purple-500'
+                    : 'text-gray-500';
+                  const typeLabel =
+                    invoice.invoice_type === 'material' ? 'Material'
+                    : invoice.invoice_type === 'labor' ? 'Labor'
+                    : invoice.invoice_type === 'overhead' ? 'Overhead'
+                    : 'Other';
+                  const isVerified = invoice.status === 'verified' || invoice.status === 'approved';
+                  return (
+                    <div
+                      key={invoice.id}
+                      className="flex items-center justify-between p-3 bg-muted/50 rounded-lg gap-3"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <FileText className={`h-5 w-5 shrink-0 ${typeColor}`} />
+                        <div className="min-w-0">
+                          <p className="font-medium text-sm truncate">
+                            {invoice.vendor_name || invoice.crew_name || 'Unnamed'}
+                            {invoice.invoice_number && ` - ${invoice.invoice_number}`}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {typeLabel} • {invoice.invoice_date || 'No date'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="font-semibold">
+                          {formatCurrency(invoice.invoice_amount)}
+                        </span>
+                        <Select
+                          value={invoice.invoice_type}
+                          onValueChange={(v) => updateTypeMutation.mutate({ id: invoice.id, invoice_type: v })}
+                        >
+                          <SelectTrigger className="h-8 w-[110px]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="material">Material</SelectItem>
+                            <SelectItem value="labor">Labor</SelectItem>
+                            <SelectItem value="overhead">Overhead</SelectItem>
+                            <SelectItem value="other">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {invoice.document_url && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => setPreviewInvoice({ url: invoice.document_url, name: invoice.document_name || invoice.vendor_name || 'Invoice' })}
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {!isVerified ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => verifyMutation.mutate(invoice.id)}
+                            disabled={verifyMutation.isPending}
+                          >
+                            <ShieldCheck className="h-4 w-4 mr-1" />
+                            Verify
+                          </Button>
+                        ) : (
+                          <Badge variant="default" className="bg-success">
+                            <CheckCircle className="h-3 w-3 mr-1" />
+                            {invoice.status}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        <InvoicePreviewDialog
+          open={!!previewInvoice}
+          onOpenChange={(o) => !o && setPreviewInvoice(null)}
+          urlOrPath={previewInvoice?.url}
+          title={previewInvoice?.name}
+        />
+      </div>
     );
   }
 
