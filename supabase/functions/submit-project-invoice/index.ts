@@ -273,7 +273,7 @@ Deno.serve(async (req) => {
       const rows = line_items.map((li: any, idx: number) => ({
         tenant_id: profile.tenant_id,
         invoice_id: invoice.id,
-        project_id: project_id || null,
+        project_id: effectiveProjectId || null,
         pipeline_entry_id: effectivePipelineEntryId || null,
         vendor_name: vendor_name || null,
         line_number: idx + 1,
@@ -384,7 +384,7 @@ Deno.serve(async (req) => {
         .insert({
           tenant_id: profile.tenant_id,
           pipeline_entry_id: effectivePipelineEntryId || null,
-          project_id: project_id || null,
+          project_id: effectiveProjectId || null,
           document_type: docType,
           filename: document_name || 'Invoice Document',
           file_path: document_url,
@@ -413,8 +413,8 @@ Deno.serve(async (req) => {
       .select('invoice_type, invoice_amount')
       .in('status', ['pending', 'approved']);
     
-    if (project_id) {
-      invoiceQuery = invoiceQuery.eq('project_id', project_id);
+    if (effectiveProjectId) {
+      invoiceQuery = invoiceQuery.eq('project_id', effectiveProjectId);
     } else if (effectivePipelineEntryId) {
       invoiceQuery = invoiceQuery.eq('pipeline_entry_id', effectivePipelineEntryId);
     }
@@ -431,7 +431,7 @@ Deno.serve(async (req) => {
 
     // Update reconciliation with new actual costs (only if project_id exists)
     let reconciliation = null;
-    if (project_id) {
+    if (effectiveProjectId) {
       const { data: reconData, error: reconError } = await supabase
         .from('project_cost_reconciliation')
         .update({
@@ -440,7 +440,7 @@ Deno.serve(async (req) => {
           status: 'in_progress',
           updated_at: new Date().toISOString()
         })
-        .eq('project_id', project_id)
+        .eq('project_id', effectiveProjectId)
         .select()
         .single();
 
@@ -457,7 +457,7 @@ Deno.serve(async (req) => {
         .update({
           cost_verification_status: 'in_progress'
         })
-        .eq('project_id', project_id);
+        .eq('project_id', effectiveProjectId);
     }
 
     console.log(`[submit-project-invoice] Updated reconciliation - Materials: $${materialTotal}, Labor: $${laborTotal}`);
