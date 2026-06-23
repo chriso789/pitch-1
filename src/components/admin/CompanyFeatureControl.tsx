@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { 
   Search, 
@@ -58,6 +59,7 @@ export const CompanyFeatureControl: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [updatingCompany, setUpdatingCompany] = useState<string | null>(null);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     loadCompanies();
@@ -106,6 +108,7 @@ export const CompanyFeatureControl: React.FC = () => {
       setCompanies(prev => prev.map(c => 
         c.id === companyId ? { ...c, features_enabled: newFeatures } : c
       ));
+      queryClient.invalidateQueries({ queryKey: ['tenant-features', companyId] });
 
       toast({
         title: enabled ? "Feature enabled" : "Feature disabled",
@@ -137,6 +140,7 @@ export const CompanyFeatureControl: React.FC = () => {
       setCompanies(prev => prev.map(c => 
         c.id === companyId ? { ...c, features_enabled: preset.features } : c
       ));
+      queryClient.invalidateQueries({ queryKey: ['tenant-features', companyId] });
 
       toast({
         title: "Preset applied",
