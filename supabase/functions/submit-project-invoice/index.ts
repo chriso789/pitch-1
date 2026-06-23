@@ -246,7 +246,7 @@ Deno.serve(async (req) => {
         vendor_name: vendor_name || null,
         crew_name: crew_name || null,
         invoice_number: invoice_number || null,
-        invoice_date: invoice_date || null,
+        invoice_date: (invoice_date && invoice_date !== 'null' && String(invoice_date).trim() !== '') ? invoice_date : null,
         invoice_amount: amt,
         subtotal: subtotal ? parseFloat(subtotal) : null,
         tax_amount: tax_amount ? parseFloat(tax_amount) : null,
