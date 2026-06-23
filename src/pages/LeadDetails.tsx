@@ -836,7 +836,7 @@ const LeadDetails = () => {
         return (
           <Card>
             <CardHeader>
-              <CardTitle>Lead Overview</CardTitle>
+              <CardTitle>{['project','completed'].includes((lead as any)?.status) ? 'Project' : 'Lead'} Overview</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-center py-8">
@@ -858,10 +858,13 @@ const LeadDetails = () => {
     return <LeadDetailsSkeleton />;
   }
 
+  const isProject = lead && ['project', 'completed'].includes((lead as any).status);
+  const entityLabel = isProject ? 'Project' : 'Lead';
+
   if (!lead) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen space-y-4">
-        <h2 className="text-2xl font-bold">Lead not found</h2>
+        <h2 className="text-2xl font-bold">{entityLabel} not found</h2>
         <Button onClick={() => navigate('/pipeline', { replace: true })}>
           <ArrowLeft className="h-4 w-4 mr-2" />
           Go back
@@ -881,7 +884,7 @@ const LeadDetails = () => {
         />
         <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-0">
           <h1 className="text-lg md:text-3xl font-bold truncate">
-            {(lead as any).lead_name || (lead.contact ? `${lead.contact.first_name} ${lead.contact.last_name}` : 'Lead')}
+            {(lead as any).lead_name || (lead.contact ? `${lead.contact.first_name} ${lead.contact.last_name}` : entityLabel)}
           </h1>
           <Button 
             variant="outline" 
