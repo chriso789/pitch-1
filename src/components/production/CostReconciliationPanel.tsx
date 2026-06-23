@@ -129,7 +129,46 @@ export const CostReconciliationPanel: React.FC<CostReconciliationPanelProps> = (
     }
   });
 
-  const formatCurrency = (amount: number | null) => {
+  // Update invoice type (assign category)
+  const updateTypeMutation = useMutation({
+    mutationFn: async ({ id, invoice_type }: { id: string; invoice_type: string }) => {
+      const { error } = await supabase
+        .from('project_cost_invoices')
+        .update({ invoice_type })
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast({ title: 'Category updated' });
+      queryClient.invalidateQueries({ queryKey: ['project-invoices', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['cost-reconciliation', projectId] });
+    },
+    onError: (e: any) => toast({ title: 'Update failed', description: e.message, variant: 'destructive' })
+  });
+
+  // Verify invoice
+  const verifyMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { data: userData } = await supabase.auth.getUser();
+      const { error } = await supabase
+        .from('project_cost_invoices')
+        .update({
+          status: 'verified',
+          approved_by: userData.user?.id,
+          approved_at: new Date().toISOString()
+        })
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast({ title: 'Invoice verified' });
+      queryClient.invalidateQueries({ queryKey: ['project-invoices', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['cost-reconciliation', projectId] });
+    },
+    onError: (e: any) => toast({ title: 'Verify failed', description: e.message, variant: 'destructive' })
+  });
+
+
     if (amount === null || amount === undefined) return '$0.00';
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
