@@ -28,11 +28,14 @@ export const FeatureProtectedRoute: React.FC<FeatureProtectedRouteProps> = ({
 };
 
 const FeatureGuard: React.FC<FeatureProtectedRouteProps> = ({ feature, children }) => {
-  const { hasFeature, isLoading } = useFeatureAccess();
+  const { hasFeature, isLoading, isPlatformDisabled, platformReason } = useFeatureAccess();
   const navigate = useNavigate();
 
   if (isLoading) return <>{children}</>;
   if (hasFeature(feature)) return <>{children}</>;
+
+  const platformOffline = isPlatformDisabled(feature);
+  const reason = platformReason(feature);
 
   return (
     <div className="min-h-[60vh] flex items-center justify-center p-6">
@@ -42,10 +45,14 @@ const FeatureGuard: React.FC<FeatureProtectedRouteProps> = ({ feature, children 
             <Lock className="h-6 w-6 text-muted-foreground" />
           </div>
           <div>
-            <h3 className="text-lg font-semibold mb-1">Feature not enabled</h3>
+            <h3 className="text-lg font-semibold mb-1">
+              {platformOffline ? 'Temporarily offline' : 'Feature not enabled'}
+            </h3>
             <p className="text-muted-foreground text-sm">
-              This feature is not enabled for your account. Contact your
-              administrator to request access.
+              {platformOffline
+                ? reason ??
+                  'This feature is temporarily disabled for maintenance. Please check back soon.'
+                : 'This feature is not enabled for your account. Contact your administrator to request access.'}
             </p>
           </div>
           <Button variant="outline" onClick={() => navigate('/dashboard')}>

@@ -44,6 +44,7 @@ import { activityTracker } from '@/services/activityTracker';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { DemoRequestsPanel } from '@/components/settings/DemoRequestsPanel';
 import { CompanyFeatureControl } from '@/components/admin/CompanyFeatureControl';
+import { PlatformFeatureKillSwitch } from '@/components/admin/PlatformFeatureKillSwitch';
 
 interface Company {
   id: string;
@@ -601,7 +602,7 @@ const CompanyAdminPage = () => {
 
         {/* Main Tabs */}
         <Tabs defaultValue="companies" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3 max-w-md">
+          <TabsList className="grid w-full grid-cols-4 max-w-2xl">
             <TabsTrigger value="companies" className="flex items-center gap-2">
               <Building2 className="h-4 w-4" />
               Companies
@@ -617,7 +618,11 @@ const CompanyAdminPage = () => {
             </TabsTrigger>
             <TabsTrigger value="features" className="flex items-center gap-2">
               <ToggleRight className="h-4 w-4" />
-              Feature Control
+              Per-Tenant
+            </TabsTrigger>
+            <TabsTrigger value="kill-switch" className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4" />
+              Kill Switch
             </TabsTrigger>
           </TabsList>
 
@@ -742,6 +747,10 @@ const CompanyAdminPage = () => {
           {/* Feature Control Tab */}
           <TabsContent value="features">
             <CompanyFeatureControl />
+          </TabsContent>
+
+          <TabsContent value="kill-switch">
+            <PlatformFeatureKillSwitch />
           </TabsContent>
         </Tabs>
 
