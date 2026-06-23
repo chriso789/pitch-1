@@ -7236,10 +7236,39 @@ async function processJob(input: any) {
       // ──────────────────────────────────────────────────────────────────
       try {
         const _hpEarly = (hoistedTransformPackage as any) ?? {};
+        // Source the candidate polygon from whichever editable aerial perimeter
+        // is already available at this callsite. `footprint` is not yet built
+        // (it's constructed inside Phase 3A.5), so fall back to the perimeter
+        // topology snapshot or the target mask contour — the same precedence
+        // used by `_selectedPerimeterPresentEarly` above. Without this, the
+        // guard sees aerial_perimeter_editable=false on Fonsica-class rows and
+        // hands control to Phase 3A.5, which then CPU-times out at ~108s.
+        const _ringPtsEarly: Array<[number, number]> | null = (() => {
+          const ring = (perimeterTopologySnapshot as any)?.perimeter_ring_px;
+          if (Array.isArray(ring) && ring.length >= 3) {
+            return ring
+              .map((p: any) => (Array.isArray(p) ? [p[0], p[1]] : [p?.x, p?.y]))
+              .filter((p: any) => Number.isFinite(p[0]) && Number.isFinite(p[1])) as Array<[number, number]>;
+          }
+          const contour = (targetMaskIsolation as any)?.target_mask_contour;
+          if (Array.isArray(contour) && contour.length >= 3) {
+            return contour
+              .map((p: any) => (Array.isArray(p) ? [p[0], p[1]] : [p?.x, p?.y]))
+              .filter((p: any) => Number.isFinite(p[0]) && Number.isFinite(p[1])) as Array<[number, number]>;
+          }
+          if (Array.isArray(footprint) && footprint.length >= 3) {
+            return footprint.map((p) => [p.x, p.y] as [number, number]);
+          }
+          return null;
+        })();
+        const _aerialEditableEarly = !!(
+          hoistedGeoToRasterTransform &&
+          hoistedRasterBoundsLatLng &&
+          _ringPtsEarly &&
+          _ringPtsEarly.length >= 3
+        );
         const _rasterCandEarly = evaluateRasterCandidateCheck({
-          selected_candidate_polygon_px: (footprint && footprint.length >= 3
-            ? footprint.map((p) => [p.x, p.y] as [number, number])
-            : null),
+          selected_candidate_polygon_px: _ringPtsEarly,
           candidate_coordinate_space: "raster_px",
           confirmed_roof_center_px: (hoistedConfirmedRoofCenterPx ??
             _hpEarly.confirmed_roof_center_px ?? null) as any,
@@ -7253,10 +7282,9 @@ async function processJob(input: any) {
           raster_candidate_check_passed:
             _rasterCandEarly.raster_candidate_check_passed,
           candidate_in_raster_px: _rasterCandEarly.candidate_in_raster_px,
-          aerial_perimeter_editable:
-            !!(hoistedGeoToRasterTransform && hoistedRasterBoundsLatLng &&
-              footprint && footprint.length >= 3),
+          aerial_perimeter_editable: _aerialEditableEarly,
         });
+
         if (_stopEarly.stop_before_autonomous_solver) {
           console.warn(
             "[DSM_STOP_GUARD_EARLY] short-circuiting before Phase 3A.5",
