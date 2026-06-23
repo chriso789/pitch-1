@@ -358,22 +358,34 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
         )}
       </CardHeader>
       <CardContent className="space-y-3">
-        <label className="flex items-center justify-center gap-2 p-4 border-2 border-dashed border-border rounded-md cursor-pointer hover:border-primary/50 transition-colors">
-          <Upload className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm text-muted-foreground">
-            Upload one or many invoices (PDF/Image) — fields auto-fill
-          </span>
-          <input
-            type="file"
-            className="hidden"
-            accept=".pdf,.png,.jpg,.jpeg"
-            multiple
-            onChange={e => {
-              handleFiles(e.target.files);
-              e.target.value = '';
-            }}
-          />
-        </label>
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2">
+          <label className="flex items-center justify-center gap-2 p-4 border-2 border-dashed border-border rounded-md cursor-pointer hover:border-primary/50 transition-colors">
+            <Upload className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">
+              Upload one or many invoices (PDF/Image) — fields auto-fill
+            </span>
+            <input
+              type="file"
+              className="hidden"
+              accept=".pdf,.png,.jpg,.jpeg"
+              multiple
+              onChange={e => {
+                handleFiles(e.target.files);
+                e.target.value = '';
+              }}
+            />
+          </label>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={addManualRow}
+            className="h-auto sm:self-stretch flex items-center gap-2"
+            title="Enter a material order manually — no file required"
+          >
+            <PencilLine className="h-4 w-4" />
+            Enter manually
+          </Button>
+        </div>
 
         {rows.length > 0 && (
           <div className="space-y-2">
