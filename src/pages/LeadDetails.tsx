@@ -836,7 +836,7 @@ const LeadDetails = () => {
         return (
           <Card>
             <CardHeader>
-              <CardTitle>Lead Overview</CardTitle>
+              <CardTitle>{['project','completed'].includes((lead as any)?.status) ? 'Project' : 'Lead'} Overview</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-center py-8">
