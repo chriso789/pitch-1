@@ -500,14 +500,28 @@ const RowCard: React.FC<{
       )}
 
       {editable && row.expanded && (
-        <div className="p-3 space-y-2 border-t border-border">
+        <div className="p-3 space-y-3 border-t border-border">
+          <div>
+            <Field label="Vendor / Supplier" placeholder="ABC Supply Co." value={row.vendor_name} onChange={v => onPatch({ vendor_name: v })} />
+          </div>
           <div className="grid grid-cols-2 gap-2">
-            <Field label="Vendor" value={row.vendor_name} onChange={v => onPatch({ vendor_name: v })} />
-            <Field label="Invoice #" value={row.invoice_number} onChange={v => onPatch({ invoice_number: v })} />
+            <Field label="Invoice #" placeholder="INV-2025-001" value={row.invoice_number} onChange={v => onPatch({ invoice_number: v })} />
             <Field label="Invoice Date" type="date" value={row.invoice_date} onChange={v => onPatch({ invoice_date: v })} />
-            <Field label="Total Amount *" type="number" value={row.invoice_amount} onChange={v => onPatch({ invoice_amount: v })} />
-            <Field label="Subtotal" type="number" value={row.subtotal} onChange={v => onPatch({ subtotal: v })} />
-            <Field label="Tax" type="number" value={row.tax_amount} onChange={v => onPatch({ tax_amount: v })} />
+            <Field label="Subtotal" type="number" placeholder="0.00" value={row.subtotal} onChange={v => onPatch({ subtotal: v })} />
+            <Field label="Tax" type="number" placeholder="0.00" value={row.tax_amount} onChange={v => onPatch({ tax_amount: v })} />
+          </div>
+          <div>
+            <Field label="Total Amount *" type="number" placeholder="0.00" value={row.invoice_amount} onChange={v => onPatch({ invoice_amount: v })} />
+          </div>
+          <div>
+            <label className="text-[11px] font-medium text-muted-foreground">Notes (Optional)</label>
+            <textarea
+              value={row.notes}
+              onChange={e => onPatch({ notes: e.target.value })}
+              placeholder="Any additional notes..."
+              rows={2}
+              className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-xs ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            />
           </div>
 
           {row.line_items.length > 0 && (
@@ -556,13 +570,15 @@ const Field: React.FC<{
   label: string;
   value: string;
   type?: string;
+  placeholder?: string;
   onChange: (v: string) => void;
-}> = ({ label, value, type = 'text', onChange }) => (
+}> = ({ label, value, type = 'text', placeholder, onChange }) => (
   <div>
     <label className="text-[11px] font-medium text-muted-foreground">{label}</label>
     <Input
       type={type}
       step={type === 'number' ? '0.01' : undefined}
+      placeholder={placeholder}
       value={value}
       onChange={e => onChange(e.target.value)}
       className="h-8 text-xs"
