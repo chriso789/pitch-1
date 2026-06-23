@@ -1,6 +1,6 @@
 // TEMPORARY SHIM — delete after references are migrated and logs are quiet for 14 days.
 // qxo-orders → qxo-api routes (action-based mapping).
-// Never loads QXO credentials directly. Ignores body.tenant_id (qxo-api resolves tenant from JWT).
+// Never loads QXO credentials directly. Ignores <request body tenant field> (qxo-api resolves tenant from JWT).
 import { corsHeaders } from "../_shared/router.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
