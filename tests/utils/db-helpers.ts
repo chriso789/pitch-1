@@ -5,7 +5,10 @@
 
 import { supabase } from '@/integrations/supabase/client';
 
-export const TEST_TENANT_ID = 'test-tenant-00000000-0000-0000-0000-000000000001';
+// Fixed UUID v4 reserved for integration test data. The previous value
+// (`test-tenant-00000000-...`) was not a valid UUID and caused Postgres to
+// reject every insert with `invalid input syntax for type uuid`.
+export const TEST_TENANT_ID = '00000000-0000-4000-8000-000000000001';
 
 /**
  * Create test contact
