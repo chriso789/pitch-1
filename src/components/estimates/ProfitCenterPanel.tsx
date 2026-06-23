@@ -964,16 +964,19 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
           <TabsContent value="invoices" className="space-y-4 mt-0">
             <div className="grid gap-4">
               <InvoiceUploadCard
+                projectId={projectId}
                 pipelineEntryId={pipelineEntryId}
                 invoiceType="material"
                 onSuccess={handleInvoiceSuccess}
               />
               <InvoiceUploadCard
+                projectId={projectId}
                 pipelineEntryId={pipelineEntryId}
                 invoiceType="labor"
                 onSuccess={handleInvoiceSuccess}
               />
               <InvoiceUploadCard
+                projectId={projectId}
                 pipelineEntryId={pipelineEntryId}
                 invoiceType="overhead"
                 onSuccess={handleInvoiceSuccess}
