@@ -127,9 +127,14 @@ export function canApproveManualPerimeter(reg: RegistrationBlock | null | undefi
   const frameOk = typeof reg.frame_mismatch === "string"
     && reg.frame_mismatch.toLowerCase() === "ok";
   const rasterGatePassed = (reg as any).raster_candidate_check_passed === true;
-  const explicitFrameFailure = reg.confirmed_center_inside_candidate === false && !frameOk;
+  const dsmSkipped = (reg as any).dsm_candidate_check_skipped === true;
+  // PR A-2b: when the raster gate passed or the DSM candidate check was
+  // intentionally skipped (DSM transform unavailable), do NOT block manual
+  // approval on a stale `confirmed_center_inside_candidate === false`.
+  const explicitFrameFailure = reg.confirmed_center_inside_candidate === false
+    && !frameOk && !rasterGatePassed && !dsmSkipped;
   if (explicitFrameFailure) return false;
-  return frameOk || rasterGatePassed
+  return frameOk || rasterGatePassed || dsmSkipped
     || reg.coordinate_registration_gate_passed === true;
 }
 
