@@ -884,7 +884,7 @@ const LeadDetails = () => {
         />
         <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-0">
           <h1 className="text-lg md:text-3xl font-bold truncate">
-            {(lead as any).lead_name || (lead.contact ? `${lead.contact.first_name} ${lead.contact.last_name}` : 'Lead')}
+            {(lead as any).lead_name || (lead.contact ? `${lead.contact.first_name} ${lead.contact.last_name}` : entityLabel)}
           </h1>
           <Button 
             variant="outline" 
