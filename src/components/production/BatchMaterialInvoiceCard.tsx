@@ -570,13 +570,15 @@ const Field: React.FC<{
   label: string;
   value: string;
   type?: string;
+  placeholder?: string;
   onChange: (v: string) => void;
-}> = ({ label, value, type = 'text', onChange }) => (
+}> = ({ label, value, type = 'text', placeholder, onChange }) => (
   <div>
     <label className="text-[11px] font-medium text-muted-foreground">{label}</label>
     <Input
       type={type}
       step={type === 'number' ? '0.01' : undefined}
+      placeholder={placeholder}
       value={value}
       onChange={e => onChange(e.target.value)}
       className="h-8 text-xs"
