@@ -502,27 +502,92 @@ const RowCard: React.FC<{
       )}
 
       {editable && row.expanded && (
-        <div className="p-3 space-y-3 border-t border-border">
+        <div className="p-4 space-y-4 border-t border-border">
           <div>
-            <Field label="Vendor / Supplier" placeholder="ABC Supply Co." value={row.vendor_name} onChange={v => onPatch({ vendor_name: v })} />
+            <Label htmlFor={`vendor-${row.id}`}>Vendor / Supplier</Label>
+            <Input
+              id={`vendor-${row.id}`}
+              placeholder="ABC Supply Co."
+              value={row.vendor_name}
+              onChange={e => onPatch({ vendor_name: e.target.value })}
+            />
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <Field label="Invoice #" placeholder="INV-2025-001" value={row.invoice_number} onChange={v => onPatch({ invoice_number: v })} />
-            <Field label="Invoice Date" type="date" value={row.invoice_date} onChange={v => onPatch({ invoice_date: v })} />
-            <Field label="Subtotal" type="number" placeholder="0.00" value={row.subtotal} onChange={v => onPatch({ subtotal: v })} />
-            <Field label="Tax" type="number" placeholder="0.00" value={row.tax_amount} onChange={v => onPatch({ tax_amount: v })} />
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label htmlFor={`inv-${row.id}`}>Invoice #</Label>
+              <Input
+                id={`inv-${row.id}`}
+                placeholder="INV-2025-001"
+                value={row.invoice_number}
+                onChange={e => onPatch({ invoice_number: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label htmlFor={`date-${row.id}`}>Invoice Date</Label>
+              <Input
+                id={`date-${row.id}`}
+                type="date"
+                value={row.invoice_date}
+                onChange={e => onPatch({ invoice_date: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label htmlFor={`sub-${row.id}`}>Subtotal</Label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                <Input
+                  id={`sub-${row.id}`}
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  className="pl-7"
+                  value={row.subtotal}
+                  onChange={e => onPatch({ subtotal: e.target.value })}
+                />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor={`tax-${row.id}`}>Tax</Label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                <Input
+                  id={`tax-${row.id}`}
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  className="pl-7"
+                  value={row.tax_amount}
+                  onChange={e => onPatch({ tax_amount: e.target.value })}
+                />
+              </div>
+            </div>
           </div>
+
           <div>
-            <Field label="Total Amount *" type="number" placeholder="0.00" value={row.invoice_amount} onChange={v => onPatch({ invoice_amount: v })} />
+            <Label htmlFor={`total-${row.id}`}>Total Amount *</Label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+              <Input
+                id={`total-${row.id}`}
+                type="number"
+                step="0.01"
+                placeholder="0.00"
+                className="pl-7"
+                value={row.invoice_amount}
+                onChange={e => onPatch({ invoice_amount: e.target.value })}
+              />
+            </div>
           </div>
+
           <div>
-            <label className="text-[11px] font-medium text-muted-foreground">Notes (Optional)</label>
-            <textarea
-              value={row.notes}
-              onChange={e => onPatch({ notes: e.target.value })}
+            <Label htmlFor={`notes-${row.id}`}>Notes (Optional)</Label>
+            <Textarea
+              id={`notes-${row.id}`}
               placeholder="Any additional notes..."
               rows={2}
-              className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-xs ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              value={row.notes}
+              onChange={e => onPatch({ notes: e.target.value })}
             />
           </div>
 
