@@ -35468,6 +35468,36 @@ export type Database = {
           },
         ]
       }
+      platform_feature_flags: {
+        Row: {
+          created_at: string
+          disabled: boolean
+          disabled_at: string | null
+          disabled_by: string | null
+          feature_key: string
+          reason: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          disabled?: boolean
+          disabled_at?: string | null
+          disabled_by?: string | null
+          feature_key: string
+          reason?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          disabled?: boolean
+          disabled_at?: string | null
+          disabled_by?: string | null
+          feature_key?: string
+          reason?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       platform_operators: {
         Row: {
           created_at: string | null

@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useActiveTenantId } from '@/hooks/useActiveTenantId';
+import { usePlatformFeatureFlags } from '@/hooks/usePlatformFeatureFlags';
 
 /**
  * Feature key → sidebar/route mapping.
@@ -65,6 +66,8 @@ export const GATED_FEATURE_KEYS: ReadonlySet<string> = new Set([
 export const useFeatureAccess = () => {
   const { activeTenantId, profile } = useActiveTenantId();
   const userRole = profile?.role;
+  const { isPlatformDisabled, getReason, isLoading: platformLoading } =
+    usePlatformFeatureFlags();
 
   const { data, isLoading } = useQuery({
     queryKey: ['tenant-features', activeTenantId],
@@ -89,8 +92,12 @@ export const useFeatureAccess = () => {
   const featuresEnabled = data?.features ?? null;
   const isBypassRole =
     userRole === 'master' || userRole === 'owner' || userRole === 'corporate';
+  // Only the platform owner (master) bypasses a platform-wide kill switch,
+  // so they can still reach the feature to fix it.
+  const isKillSwitchBypass = userRole === 'master';
 
   const hasFeature = (featureKey: string): boolean => {
+    if (!isKillSwitchBypass && isPlatformDisabled(featureKey)) return false;
     if (isBypassRole) return true;
     if (!GATED_FEATURE_KEYS.has(featureKey)) return true;
     if (isLoading) return true; // optimistic while loading
@@ -98,10 +105,15 @@ export const useFeatureAccess = () => {
     return featuresEnabled.includes(featureKey);
   };
 
+  const platformReason = (featureKey: string): string | null =>
+    isPlatformDisabled(featureKey) ? getReason(featureKey) : null;
+
   return {
     hasFeature,
     featuresEnabled: featuresEnabled ?? [],
-    isLoading,
+    isLoading: isLoading || platformLoading,
     isBypassRole,
+    isPlatformDisabled,
+    platformReason,
   };
 };
