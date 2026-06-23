@@ -31,19 +31,45 @@ export const FEATURE_KEYS = {
 export type FeatureKey = (typeof FEATURE_KEYS)[keyof typeof FEATURE_KEYS];
 
 /**
+ * Keys that are admin-toggleable from the Company Feature Control panel.
+ * Only these keys are strictly enforced. Keys NOT in this set always pass
+ * (so we don't accidentally hide ungated parts of the app).
+ *
+ * Keep this in sync with FEATURES in
+ * src/components/admin/CompanyFeatureControl.tsx.
+ */
+export const GATED_FEATURE_KEYS: ReadonlySet<string> = new Set([
+  'pipeline',
+  'estimates',
+  'dialer',
+  'smart_docs',
+  'measurements',
+  'projects',
+  'storm_canvass',
+  'territory',
+  'photos',
+  'payments',
+]);
+
+/**
  * Hook that fetches the current tenant's features_enabled array
  * and exposes a hasFeature(key) check.
- * 
- * Master/owner roles bypass feature gates — they always have access.
+ *
+ * Rules:
+ *  - Master/owner/corporate roles bypass all gates.
+ *  - Ungated keys (not in GATED_FEATURE_KEYS) always return true.
+ *  - For gated keys: must be present in tenants.features_enabled.
+ *  - `null` features_enabled is treated as legacy (all gated keys enabled);
+ *    an explicit empty array `[]` means everything off.
  */
 export const useFeatureAccess = () => {
   const { activeTenantId, profile } = useActiveTenantId();
   const userRole = profile?.role;
 
-  const { data: featuresEnabled, isLoading } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['tenant-features', activeTenantId],
     queryFn: async () => {
-      if (!activeTenantId) return [];
+      if (!activeTenantId) return { features: null as string[] | null };
       const { data, error } = await supabase
         .from('tenants')
         .select('features_enabled')
@@ -51,28 +77,30 @@ export const useFeatureAccess = () => {
         .single();
       if (error) {
         console.error('[useFeatureAccess] Error fetching features:', error);
-        return [];
+        return { features: null as string[] | null };
       }
-      return (data?.features_enabled as string[]) || [];
+      return { features: (data?.features_enabled as string[] | null) ?? null };
     },
     enabled: !!activeTenantId,
-    staleTime: 5 * 60 * 1000,
-    gcTime: 30 * 60 * 1000,
+    staleTime: 30 * 1000,
+    gcTime: 5 * 60 * 1000,
   });
 
-  // Master and owner roles bypass all feature gates
-  const isBypassRole = userRole === 'master' || userRole === 'owner' || userRole === 'corporate';
+  const featuresEnabled = data?.features ?? null;
+  const isBypassRole =
+    userRole === 'master' || userRole === 'owner' || userRole === 'corporate';
 
   const hasFeature = (featureKey: string): boolean => {
     if (isBypassRole) return true;
-    if (isLoading) return true; // Don't hide items while loading
-    if (!featuresEnabled || featuresEnabled.length === 0) return true; // No restrictions if empty
+    if (!GATED_FEATURE_KEYS.has(featureKey)) return true;
+    if (isLoading) return true; // optimistic while loading
+    if (featuresEnabled === null) return true; // legacy tenant, never configured
     return featuresEnabled.includes(featureKey);
   };
 
   return {
     hasFeature,
-    featuresEnabled: featuresEnabled || [],
+    featuresEnabled: featuresEnabled ?? [],
     isLoading,
     isBypassRole,
   };
