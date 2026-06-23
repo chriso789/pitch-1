@@ -14538,6 +14538,198 @@ async function persistCpuBudgetTerminalFailure(args: {
     args.earlyDerivedRegistration ?? null,
   );
 
+  // ══════════════════════════════════════════════════════════════════════
+  // PR A-2b: Reroute DSM-missing / raster-valid CPU preempts to
+  // perimeter_only instead of ai_measurement_cpu_timeout.
+  // ----------------------------------------------------------------------
+  // When the preempt fires because Phase 3A.5 would exceed the CPU budget
+  // BUT the underlying root cause is missing DSM↔raster registration AND
+  // we have a valid raster perimeter with high mask overlap, this is NOT
+  // a runtime timeout. Stamp it as a clean perimeter_only stop so the
+  // aerial outline survives for manual approval and the UI does not
+  // mislead with "ai_measurement_cpu_timeout".
+  // ══════════════════════════════════════════════════════════════════════
+  try {
+    const _bag: any = debugBag ?? {};
+    const _reg: any = _bag.registration ?? {};
+    const _tp: any = _reg.transform_package ?? _bag.transform_package ?? {};
+    const _split: any = _bag.dsm_split_status ?? {};
+    const _xform: any = _split.georegistration_transform ?? {};
+    const _footprintPx: any = Array.isArray(_bag.footprint_px)
+      ? _bag.footprint_px
+      : (Array.isArray(_tp.selected_candidate_polygon_px)
+        ? _tp.selected_candidate_polygon_px
+        : null);
+    const _centerRaw: any = _reg.confirmed_roof_center_px ??
+      _tp.confirmed_roof_center_px ??
+      _bag.confirmed_roof_center_px ?? null;
+    const _centerPx: [number, number] | null =
+      Array.isArray(_centerRaw) && _centerRaw.length >= 2
+        ? [Number(_centerRaw[0]), Number(_centerRaw[1])]
+        : (_centerRaw && typeof _centerRaw === "object" &&
+            "x" in _centerRaw && "y" in _centerRaw
+            ? [Number((_centerRaw as any).x), Number((_centerRaw as any).y)]
+            : null);
+    const _overlap: number | null = (() => {
+      const v = _bag.target_mask_isolation?.target_mask_overlap_with_perimeter ??
+        _bag.target_mask_overlap_with_perimeter ?? null;
+      return typeof v === "number" && Number.isFinite(v) ? v : null;
+    })();
+    const _geoToDsm = _tp.geo_to_dsm_transform ??
+      _reg.geo_to_dsm_transform ?? null;
+    const _dsmToRaster = _tp.dsm_to_raster_transform ??
+      _reg.dsm_to_raster_transform ?? null;
+    const _dsmTileBounds = _tp.dsm_tile_bounds_lat_lng ??
+      _reg.dsm_tile_bounds_lat_lng ?? null;
+    const _dsmValid = (_tp.dsm_pixel_transform_valid ??
+      _xform.dsm_pixel_transform_valid) ?? null;
+    const _dsmLoaded = _bag.dsm_loaded === true ||
+      _split.dsm_loaded === true || _split.masked_dsm_loaded === true;
+    const _geoToRaster = _reg.geo_to_raster_transform ??
+      _tp.geo_to_raster_transform ?? null;
+    const _rasterBounds = _reg.raster_bounds_lat_lng ??
+      _tp.raster_bounds_lat_lng ?? null;
+
+    const _rasterCand = evaluateRasterCandidateCheck({
+      selected_candidate_polygon_px:
+        Array.isArray(_footprintPx) && _footprintPx.length >= 3
+          ? (_footprintPx as Array<[number, number]>)
+          : null,
+      candidate_coordinate_space: "raster_px",
+      confirmed_roof_center_px: _centerPx,
+    });
+    const _stop = evaluateDsmRegistrationStopGuard({
+      dsm_loaded: _dsmLoaded,
+      dsm_tile_bounds_lat_lng: _dsmTileBounds,
+      geo_to_dsm_transform: _geoToDsm,
+      dsm_to_raster_transform: _dsmToRaster,
+      dsm_pixel_transform_valid: _dsmValid,
+      raster_candidate_check_passed: _rasterCand.raster_candidate_check_passed,
+      candidate_in_raster_px: _rasterCand.candidate_in_raster_px,
+      aerial_perimeter_editable: !!(_geoToRaster && _rasterBounds &&
+        Array.isArray(_footprintPx) && _footprintPx.length >= 3),
+    });
+    const _overlapOK = typeof _overlap === "number" && _overlap >= 0.95;
+
+    if (
+      _stop.stop_before_autonomous_solver &&
+      _stop.result_state === "perimeter_only" &&
+      _overlapOK
+    ) {
+      console.warn(
+        "[DSM_STOP_GUARD_REROUTE] converting CPU preempt to perimeter_only",
+        JSON.stringify({
+          stage: args.stage,
+          preempt_reason: budget.reason,
+          dsm_registration_status: _stop.dsm_registration_status,
+          target_mask_overlap_with_perimeter: _overlap,
+        }),
+      );
+      const rerouteDebug: any = {
+        ...debugBag,
+        topology_source: "not_run_dsm_registration_unavailable",
+        result_state: "perimeter_only",
+        hard_fail_reason: "dsm_registration_unavailable",
+        block_customer_report_reason: "dsm_registration_unavailable",
+        customer_report_ready: false,
+        diagram_render_intent: "perimeter_only",
+        failure_stage: "dsm_registration_stop_guard_before_topology",
+        final_state_source: "dsm_registration_stop_guard",
+        dsm_registration_status: _stop.dsm_registration_status,
+        raster_candidate_check_passed: _rasterCand.raster_candidate_check_passed,
+        dsm_candidate_check_skipped: _rasterCand.dsm_candidate_check_skipped,
+        candidate_coordinate_space: "raster_px",
+        center_used_for_candidate_check:
+          _rasterCand.center_used_for_candidate_check,
+        confirmed_center_inside_candidate_raster:
+          _rasterCand.confirmed_center_inside_candidate_raster,
+        confirmed_center_inside_candidate_dsm: null,
+        mixed_space_detected: false,
+        mixed_space_failure_reason: null,
+        phase3_5: {
+          version: "v1",
+          executed: false,
+          skipped_reason: "dsm_registration_unavailable_before_refinement",
+          perimeter_refinement_reason: "dsm_registration_stop_guard",
+          selected_perimeter_px: _footprintPx,
+          refined_perimeter_px: null,
+          coordinate_space: "raster_px",
+          aerial_perimeter_editable: true,
+        },
+        dsm_stop_guard: {
+          version: DSM_STOP_GUARD_VERSION,
+          callsite: `persistCpuBudgetTerminalFailure_reroute:${args.stage}`,
+          ..._stop,
+          raster_candidate_check: _rasterCand,
+        },
+        cpu_preempt_was_overridden: true,
+        cpu_preempt_override_reason: "dsm_registration_unavailable_raster_valid",
+        cpu_preempt_original_reason: budget.reason ?? null,
+        cpu_preempt_original_stage: args.stage,
+      };
+      const failedId = await insertFailedPreliminaryMeasurement(
+        args.input,
+        args.coords,
+        "dsm_registration_unavailable",
+        rerouteDebug,
+        args.imageUrl,
+        args.mpp,
+      );
+      await setMeasurementJobStatus(
+        args.input.measurement_job_id,
+        "needs_review",
+        "DSM registration unavailable — aerial perimeter preserved for manual approval",
+        failedId,
+      );
+      await setAiJobStatus(
+        args.input.ai_measurement_job_id,
+        "needs_review",
+        "DSM registration unavailable",
+      );
+      await supabase.from("ai_measurement_jobs").update({
+        status: "needs_review",
+        status_message:
+          "DSM registration unavailable — aerial perimeter preserved for manual approval",
+        result_state: normalizeResultStateForWrite("perimeter_only", rerouteDebug),
+        hard_fail_reason: "dsm_registration_unavailable",
+        failure_reason: "dsm_registration_unavailable",
+        needs_review: true,
+        report_blocked: true,
+        completed_at: new Date().toISOString(),
+        source_context: {
+          gate_reason: "dsm_registration_unavailable",
+          hard_fail_reason: "dsm_registration_unavailable",
+          block_customer_report_reason: "dsm_registration_unavailable",
+          failure_stage: "dsm_registration_stop_guard_before_topology",
+          final_state_source: "dsm_registration_stop_guard",
+          dsm_registration_status: _stop.dsm_registration_status,
+          raster_candidate_check_passed:
+            _rasterCand.raster_candidate_check_passed,
+          candidate_coordinate_space: "raster_px",
+          dsm_candidate_check_skipped: _rasterCand.dsm_candidate_check_skipped,
+          dsm_stop_guard: {
+            version: DSM_STOP_GUARD_VERSION,
+            callsite: `persistCpuBudgetTerminalFailure_reroute:${args.stage}`,
+            ..._stop,
+          },
+          raster_candidate_check: _rasterCand,
+          cpu_preempt_was_overridden: true,
+          cpu_preempt_original_reason: budget.reason ?? null,
+          cpu_preempt_original_stage: args.stage,
+          debug: rerouteDebug,
+        },
+      }).eq("id", args.input.ai_measurement_job_id);
+      return failedId;
+    }
+  } catch (e) {
+    console.warn(
+      "[DSM_STOP_GUARD_REROUTE] threw — falling through to CPU timeout persistence",
+      (e as Error)?.message,
+    );
+  }
+
+
+
   const priorTerminalPayload =
     (debugBag as any)?.terminal_debug_payload ??
       (debugBag as any)?.source_context?.terminal_debug_payload ?? null;
