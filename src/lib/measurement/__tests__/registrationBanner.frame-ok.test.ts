@@ -71,7 +71,7 @@ describe("registrationBanner — frame_mismatch source resolution", () => {
     const banner = registrationBanner(reg);
     expect(banner).not.toBeNull();
     expect(banner!.title).toBe(
-      "DSM registration incomplete — manual approval locked",
+      "DSM registration unavailable — aerial perimeter is editable",
     );
   });
 });
