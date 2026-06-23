@@ -300,23 +300,147 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
     }
   };
 
-  const addManualRow = () => {
-    const id = `manual-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    const row: InvoiceRow = {
-      id,
-      fileName: 'Manual entry',
-      status: 'parsed',
-      vendor_name: '',
-      invoice_number: '',
-      invoice_date: new Date().toISOString().slice(0, 10),
-      invoice_amount: '',
-      subtotal: '',
-      tax_amount: '',
-      notes: '',
-      line_items: [],
-      expanded: true,
-    };
-    setRows(prev => [...prev, row]);
+  const updateManualLineItem = (idx: number, patch: Partial<LineItem>) => {
+    setManualLineItems(prev => {
+      const next = prev.map((item, itemIdx) => {
+        if (itemIdx !== idx) return item;
+        const merged = { ...item, ...patch };
+        const qty = Number(merged.quantity || 0);
+        const unitPrice = Number(merged.unit_price || 0);
+        return {
+          ...merged,
+          line_total: qty > 0 && unitPrice > 0 ? Number((qty * unitPrice).toFixed(2)) : merged.line_total,
+        };
+      });
+
+      const editedSubtotal = next.reduce((sum, item) => sum + Number(item.line_total || 0), 0);
+      if (editedSubtotal > 0) {
+        const tax = Number(manualForm.tax_amount || 0);
+        const total = Number((editedSubtotal + tax).toFixed(2));
+        setManualForm(prevForm => ({
+          ...prevForm,
+          subtotal: editedSubtotal.toFixed(2),
+          invoice_amount: total.toFixed(2),
+        }));
+      }
+
+      return next;
+    });
+  };
+
+  const addManualLineItem = () => {
+    setManualLineItems(prev => [
+      ...prev,
+      { description: '', quantity: undefined, unit_price: undefined, line_total: undefined, unit_of_measure: '' },
+    ]);
+    setManualLineItemsOpen(true);
+  };
+
+  const removeManualLineItem = (idx: number) => {
+    setManualLineItems(prev => {
+      const next = prev.filter((_, i) => i !== idx);
+      const editedSubtotal = next.reduce((sum, item) => sum + Number(item.line_total || 0), 0);
+      const tax = Number(manualForm.tax_amount || 0);
+      const total = Number((editedSubtotal + tax).toFixed(2));
+      setManualForm(prevForm => ({
+        ...prevForm,
+        subtotal: editedSubtotal.toFixed(2),
+        invoice_amount: total.toFixed(2),
+      }));
+      return next;
+    });
+  };
+
+  const submitManualForm = async () => {
+    if (!manualForm.invoice_amount) {
+      toast({
+        title: 'Validation Error',
+        description: 'Total amount is required',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setSubmittingManual(true);
+    try {
+      const doSubmit = async (allowDuplicate: boolean) => {
+        return supabase.functions.invoke('submit-project-invoice', {
+          body: {
+            project_id: projectId || null,
+            pipeline_entry_id: pipelineEntryId || null,
+            change_order_id: changeOrderId || null,
+            invoice_type: 'material',
+            vendor_name: manualForm.vendor_name || null,
+            invoice_number: manualForm.invoice_number || null,
+            invoice_date: manualForm.invoice_date || null,
+            invoice_amount: parseFloat(manualForm.invoice_amount),
+            subtotal: manualForm.subtotal ? parseFloat(manualForm.subtotal) : null,
+            tax_amount: manualForm.tax_amount ? parseFloat(manualForm.tax_amount) : null,
+            document_url: null,
+            document_name: 'Manual entry',
+            notes: manualForm.notes || null,
+            line_items: manualLineItems,
+            service_address: serviceAddress || null,
+            allow_duplicate: allowDuplicate,
+          },
+        });
+      };
+
+      let { data, error } = await doSubmit(false);
+      if (error) throw error;
+
+      if (data?.duplicate) {
+        const dup = data.duplicate_invoice;
+        const reason = data.duplicate_reason ? `\nReason: ${data.duplicate_reason}` : '';
+        const proceed = window.confirm(
+          `Duplicate invoice detected from ${manualForm.vendor_name || 'this vendor'}` +
+          (manualForm.invoice_number ? ` (#${manualForm.invoice_number})` : '') +
+          `.${reason}\n\nExisting amount: $${dup?.invoice_amount ?? '?'} on ${dup?.invoice_date ?? 'unknown date'}.\n\nSave this one anyway?`
+        );
+        if (!proceed) {
+          toast({ title: 'Duplicate skipped', description: 'Invoice was not saved.' });
+          return;
+        }
+        ({ data, error } = await doSubmit(true));
+        if (error) throw error;
+      }
+
+      toast({
+        title: 'Invoice Submitted',
+        description: `Material invoice recorded successfully${data?.invoice?.duplicate_of ? ' (flagged as duplicate)' : ''}`,
+      });
+
+      setManualForm({
+        vendor_name: '',
+        invoice_number: '',
+        invoice_date: new Date().toISOString().slice(0, 10),
+        subtotal: '',
+        tax_amount: '',
+        invoice_amount: '',
+        notes: '',
+      });
+      setManualLineItems([]);
+      setManualLineItemsOpen(false);
+
+      window.dispatchEvent(new CustomEvent('invoice-updated', {
+        detail: {
+          pipelineEntryId: pipelineEntryId || null,
+          projectId: projectId || null,
+          invoiceType: 'material',
+          invoice: data?.invoice ?? null,
+        },
+      }));
+
+      onSuccess?.(data.invoice);
+    } catch (error: any) {
+      toast({
+        title: 'Submission Failed',
+        description: error.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setSubmittingManual(false);
+    }
   };
 
   const submitAll = async () => {
