@@ -239,7 +239,7 @@ Deno.serve(async (req) => {
       .from('project_cost_invoices')
       .insert({
         tenant_id: profile.tenant_id,
-        project_id: project_id || null,
+        project_id: effectiveProjectId || null,
         pipeline_entry_id: effectivePipelineEntryId || null,
         change_order_id: change_order_id || null,
         invoice_type,
