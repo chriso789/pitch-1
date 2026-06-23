@@ -360,6 +360,21 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
 
       resetImportFields();
 
+      // Broadcast across the app so every panel (Profit Center, Documents,
+      // Budget, Commission report) refreshes immediately on upload.
+      try {
+        window.dispatchEvent(new CustomEvent('invoice-updated', {
+          detail: {
+            pipelineEntryId: pipelineEntryId || null,
+            projectId: projectId || null,
+            invoiceType,
+            invoice: data?.invoice ?? null,
+          },
+        }));
+      } catch (_e) {
+        // no-op — event dispatch is best-effort
+      }
+
       onSuccess?.(data.invoice);
     } catch (error: any) {
       toast({
