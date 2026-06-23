@@ -79,20 +79,61 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
   const [isSavingPrice, setIsSavingPrice] = useState(false);
   const [previewInvoice, setPreviewInvoice] = useState<{ url: string; name: string } | null>(null);
 
-  // Listen for invoice updates from DocumentsTab
+  // Listen for invoice updates from DocumentsTab / InvoiceUploadCard / etc.
   useEffect(() => {
+    const refresh = () => {
+      queryClient.invalidateQueries({ queryKey: ['pipeline-invoices', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-invoices-totals', pipelineEntryId] });
+      if (projectId) {
+        queryClient.invalidateQueries({ queryKey: ['project-budget-items', projectId] });
+      }
+    };
+
     const handleInvoiceUpdate = (event: CustomEvent) => {
-      if (event.detail?.pipelineEntryId === pipelineEntryId) {
-        queryClient.invalidateQueries({ queryKey: ['pipeline-invoices', pipelineEntryId] });
-        queryClient.invalidateQueries({ queryKey: ['pipeline-invoices-totals', pipelineEntryId] });
+      // Match by pipelineEntryId OR projectId — uploads from BudgetTracker or
+      // production tools may only know the projectId.
+      const detail = event.detail || {};
+      if (
+        detail.pipelineEntryId === pipelineEntryId ||
+        (projectId && detail.projectId === projectId)
+      ) {
+        refresh();
       }
     };
 
     window.addEventListener('invoice-updated', handleInvoiceUpdate as EventListener);
+    window.addEventListener('invoice-deleted', handleInvoiceUpdate as EventListener);
+
+    // Realtime: any insert/update/delete on project_cost_invoices for this
+    // pipeline entry should refresh the Actual / Other Charges columns
+    // immediately — no manual refresh required.
+    if (!pipelineEntryId) {
+      return () => {
+        window.removeEventListener('invoice-updated', handleInvoiceUpdate as EventListener);
+        window.removeEventListener('invoice-deleted', handleInvoiceUpdate as EventListener);
+      };
+    }
+
+    const channel = supabase
+      .channel(`profit-center-invoices-${pipelineEntryId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'project_cost_invoices',
+          filter: `pipeline_entry_id=eq.${pipelineEntryId}`,
+        },
+        () => refresh(),
+      )
+      .subscribe();
+
     return () => {
       window.removeEventListener('invoice-updated', handleInvoiceUpdate as EventListener);
+      window.removeEventListener('invoice-deleted', handleInvoiceUpdate as EventListener);
+      supabase.removeChannel(channel);
     };
-  }, [pipelineEntryId, queryClient]);
+  }, [pipelineEntryId, projectId, queryClient]);
 
   // Fetch sales rep's commission settings
   const { data: salesRepData, isLoading: isLoadingRep } = useQuery({
