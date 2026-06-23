@@ -21,6 +21,7 @@ import { useToast } from '@/hooks/use-toast';
 import { openInvoiceDocument } from '@/lib/invoices/openInvoiceDocument';
 import { InvoicePreviewDialog } from '@/components/invoices/InvoicePreviewDialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 
 interface CostReconciliationPanelProps {
   projectId: string;
@@ -31,6 +32,7 @@ export const CostReconciliationPanel: React.FC<CostReconciliationPanelProps> = (
 }) => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const effectiveTenantId = useEffectiveTenantId();
   const [previewInvoice, setPreviewInvoice] = useState<{ url: string; name: string } | null>(null);
 
   // Fetch reconciliation data
@@ -41,23 +43,26 @@ export const CostReconciliationPanel: React.FC<CostReconciliationPanelProps> = (
         .from('project_cost_reconciliation')
         .select('*')
         .eq('project_id', projectId)
+        .eq('tenant_id', effectiveTenantId!)
         .maybeSingle();
 
       if (error) throw error;
       return data;
-    }
+    },
+    enabled: !!projectId && !!effectiveTenantId,
   });
 
   // Fetch invoices — match on project_id OR the project's pipeline_entry_id,
   // because invoices uploaded from the Lead page only carry pipeline_entry_id
   // (project_id is null) and would otherwise be invisible here.
   const { data: invoices = [] } = useQuery({
-    queryKey: ['project-invoices', projectId],
+    queryKey: ['project-invoices', projectId, effectiveTenantId],
     queryFn: async () => {
       const { data: project } = await supabase
         .from('projects')
         .select('pipeline_entry_id')
         .eq('id', projectId)
+        .eq('tenant_id', effectiveTenantId!)
         .maybeSingle();
 
       const peId = project?.pipeline_entry_id || null;
@@ -69,12 +74,14 @@ export const CostReconciliationPanel: React.FC<CostReconciliationPanelProps> = (
       const { data, error } = await supabase
         .from('project_cost_invoices')
         .select('*, profiles:created_by(first_name, last_name)')
+        .eq('tenant_id', effectiveTenantId!)
         .or(filter)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
       return data || [];
-    }
+    },
+    enabled: !!projectId && !!effectiveTenantId,
   });
 
 
@@ -135,7 +142,8 @@ export const CostReconciliationPanel: React.FC<CostReconciliationPanelProps> = (
       const { error } = await supabase
         .from('project_cost_invoices')
         .update({ invoice_type })
-        .eq('id', id);
+        .eq('id', id)
+        .eq('tenant_id', effectiveTenantId!);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -157,7 +165,8 @@ export const CostReconciliationPanel: React.FC<CostReconciliationPanelProps> = (
           approved_by: userData.user?.id,
           approved_at: new Date().toISOString()
         })
-        .eq('id', id);
+        .eq('id', id)
+        .eq('tenant_id', effectiveTenantId!);
       if (error) throw error;
     },
     onSuccess: () => {
