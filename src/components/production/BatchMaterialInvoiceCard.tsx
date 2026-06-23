@@ -496,32 +496,211 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
         )}
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2">
-          <label className="flex items-center justify-center gap-2 p-4 border-2 border-dashed border-border rounded-md cursor-pointer hover:border-primary/50 transition-colors">
-            <Upload className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">
-              Upload one or many invoices (PDF/Image) — fields auto-fill
-            </span>
-            <input
-              type="file"
-              className="hidden"
-              accept=".pdf,.png,.jpg,.jpeg"
-              multiple
-              onChange={e => {
-                handleFiles(e.target.files);
-                e.target.value = '';
-              }}
-            />
-          </label>
+        <label className="flex items-center justify-center gap-2 p-4 border-2 border-dashed border-border rounded-md cursor-pointer hover:border-primary/50 transition-colors">
+          <Upload className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm text-muted-foreground">
+            Upload one or many invoices (PDF/Image) — fields auto-fill
+          </span>
+          <input
+            type="file"
+            className="hidden"
+            accept=".pdf,.png,.jpg,.jpeg"
+            multiple
+            onChange={e => {
+              handleFiles(e.target.files);
+              e.target.value = '';
+            }}
+          />
+        </label>
+
+        {/* Manual entry form — mirrors the Labor Invoice layout */}
+        <div className="border border-border rounded-md p-4 space-y-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+            <FileText className="h-4 w-4" />
+            Enter invoice details manually
+          </div>
+
+          {manualLineItems.length > 0 && (
+            <Collapsible open={manualLineItemsOpen} onOpenChange={setManualLineItemsOpen}>
+              <CollapsibleTrigger asChild>
+                <Button variant="outline" size="sm" className="w-full flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-1.5">
+                    <FileText className="h-3.5 w-3.5" />
+                    {manualLineItems.length} line item{manualLineItems.length !== 1 ? 's' : ''}
+                  </span>
+                  {manualLineItemsOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-2">
+                <div className="rounded-md border border-border overflow-hidden text-xs">
+                  <div className="grid grid-cols-[minmax(0,1fr)_4.25rem_5.5rem_5.5rem_2rem] gap-1 bg-muted/50 px-2 py-1.5 font-medium text-muted-foreground">
+                    <span>Description</span>
+                    <span className="text-right">Qty</span>
+                    <span className="text-right">Unit $</span>
+                    <span className="text-right">Total</span>
+                    <span />
+                  </div>
+                  <div className="divide-y divide-border">
+                    {manualLineItems.map((item, idx) => (
+                      <div key={idx} className="grid grid-cols-[minmax(0,1fr)_4.25rem_5.5rem_5.5rem_2rem] gap-1 px-2 py-1.5 items-start">
+                        <div className="min-w-0">
+                          <Input
+                            value={item.description}
+                            onChange={(e) => updateManualLineItem(idx, { description: e.target.value })}
+                            className="h-7 min-w-0 text-xs px-2"
+                            placeholder="Item description"
+                          />
+                        </div>
+                        <Input
+                          type="number"
+                          value={item.quantity ?? ''}
+                          onChange={(e) => updateManualLineItem(idx, { quantity: parseFloat(e.target.value) || 0 })}
+                          className="h-7 text-xs text-right px-1.5"
+                        />
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={item.unit_price ?? ''}
+                          onChange={(e) => updateManualLineItem(idx, { unit_price: parseFloat(e.target.value) || 0 })}
+                          className="h-7 text-xs text-right px-1.5"
+                        />
+                        <div className="h-7 flex items-center justify-end font-mono font-medium whitespace-nowrap">
+                          {item.line_total != null ? `$${item.line_total.toFixed(2)}` : '—'}
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => removeManualLineItem(idx)}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          )}
+
           <Button
             type="button"
             variant="outline"
-            onClick={addManualRow}
-            className="h-auto sm:self-stretch flex items-center gap-2"
-            title="Enter a material order manually — no file required"
+            size="sm"
+            className="w-full text-xs"
+            onClick={addManualLineItem}
           >
-            <PencilLine className="h-4 w-4" />
-            Enter manually
+            <Plus className="h-3.5 w-3.5 mr-1.5" />
+            Add line item
+          </Button>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <Label htmlFor="manual_vendor_name">Vendor / Supplier</Label>
+              <Input
+                id="manual_vendor_name"
+                placeholder="ABC Supply Co."
+                value={manualForm.vendor_name}
+                onChange={(e) => setManualForm(prev => ({ ...prev, vendor_name: e.target.value }))}
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="manual_invoice_number">Invoice #</Label>
+              <Input
+                id="manual_invoice_number"
+                placeholder="INV-2025-001"
+                value={manualForm.invoice_number}
+                onChange={(e) => setManualForm(prev => ({ ...prev, invoice_number: e.target.value }))}
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="manual_invoice_date">Invoice Date</Label>
+              <Input
+                id="manual_invoice_date"
+                type="date"
+                value={manualForm.invoice_date}
+                onChange={(e) => setManualForm(prev => ({ ...prev, invoice_date: e.target.value }))}
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="manual_subtotal">Subtotal</Label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                <Input
+                  id="manual_subtotal"
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  className="pl-7"
+                  value={manualForm.subtotal}
+                  onChange={(e) => setManualForm(prev => ({ ...prev, subtotal: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            <div>
+              <Label htmlFor="manual_tax_amount">Tax</Label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                <Input
+                  id="manual_tax_amount"
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  className="pl-7"
+                  value={manualForm.tax_amount}
+                  onChange={(e) => setManualForm(prev => ({ ...prev, tax_amount: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            <div className="col-span-2">
+              <Label htmlFor="manual_invoice_amount">Total Amount *</Label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                <Input
+                  id="manual_invoice_amount"
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  className="pl-7"
+                  value={manualForm.invoice_amount}
+                  onChange={(e) => setManualForm(prev => ({ ...prev, invoice_amount: e.target.value }))}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <Label htmlFor="manual_notes">Notes (Optional)</Label>
+            <Textarea
+              id="manual_notes"
+              placeholder="Any additional notes..."
+              rows={2}
+              value={manualForm.notes}
+              onChange={(e) => setManualForm(prev => ({ ...prev, notes: e.target.value }))}
+            />
+          </div>
+
+          <Button
+            onClick={submitManualForm}
+            disabled={submittingManual || !manualForm.invoice_amount}
+            className="w-full"
+          >
+            {submittingManual ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Submitting...
+              </>
+            ) : (
+              <>
+                <CheckCircle className="h-4 w-4 mr-2" />
+                Submit Invoice
+              </>
+            )}
           </Button>
         </div>
 
