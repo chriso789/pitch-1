@@ -1,6 +1,7 @@
 import React, { Suspense } from "react";
 import { Route, Routes } from "react-router-dom";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { FeatureProtectedRoute } from "@/components/auth/FeatureProtectedRoute";
 
 const Dashboard = React.lazy(() => import("@/pages/Dashboard"));
 const AbcValidateDebug = React.lazy(() => import("@/pages/AbcValidateDebug"));
@@ -123,25 +124,25 @@ export default function ProtectedRoutes() {
         <Route path="/debug/abc-validate" element={<ProtectedRoute><AbcValidateDebug /></ProtectedRoute>} />
         <Route path="/abc-validate-debug" element={<ProtectedRoute><AbcValidateDebug /></ProtectedRoute>} />
         <Route path="/debug/srs-pricing-history" element={<ProtectedRoute><SrsPricingHistoryDebug /></ProtectedRoute>} />
-        <Route path="/pipeline" element={<ProtectedRoute><Pipeline /></ProtectedRoute>} />
+        <Route path="/pipeline" element={<FeatureProtectedRoute feature="pipeline"><Pipeline /></FeatureProtectedRoute>} />
         <Route path="/production" element={<ProtectedRoute><Production /></ProtectedRoute>} />
         <Route path="/production/:projectId" element={<ProtectedRoute><ProductionDetail /></ProtectedRoute>} />
         <Route path="/client-list" element={<ProtectedRoute><ClientList /></ProtectedRoute>} />
         <Route path="/calendar" element={<ProtectedRoute><Calendar /></ProtectedRoute>} />
-        <Route path="/storm-canvass" element={<ProtectedRoute><StormCanvass /></ProtectedRoute>} />
-        <Route path="/storm-canvass/live" element={<ProtectedRoute><LiveCanvassingPage /></ProtectedRoute>} />
-        <Route path="/storm-canvass/map" element={<ProtectedRoute><TerritoryMapPage /></ProtectedRoute>} />
-        <Route path="/storm-canvass/dashboard" element={<ProtectedRoute><CanvasserDashboard /></ProtectedRoute>} />
-        <Route path="/storm-canvass/leaderboard" element={<ProtectedRoute><LeaderboardPage /></ProtectedRoute>} />
-        <Route path="/storm-canvass/import" element={<ProtectedRoute><ImportContacts /></ProtectedRoute>} />
-        <Route path="/storm-canvass/property/:propertyId" element={<ProtectedRoute><PropertyInteractionPage /></ProtectedRoute>} />
+        <Route path="/storm-canvass" element={<FeatureProtectedRoute feature="storm_canvass"><StormCanvass /></FeatureProtectedRoute>} />
+        <Route path="/storm-canvass/live" element={<FeatureProtectedRoute feature="storm_canvass"><LiveCanvassingPage /></FeatureProtectedRoute>} />
+        <Route path="/storm-canvass/map" element={<FeatureProtectedRoute feature="storm_canvass"><TerritoryMapPage /></FeatureProtectedRoute>} />
+        <Route path="/storm-canvass/dashboard" element={<FeatureProtectedRoute feature="storm_canvass"><CanvasserDashboard /></FeatureProtectedRoute>} />
+        <Route path="/storm-canvass/leaderboard" element={<FeatureProtectedRoute feature="storm_canvass"><LeaderboardPage /></FeatureProtectedRoute>} />
+        <Route path="/storm-canvass/import" element={<FeatureProtectedRoute feature="storm_canvass"><ImportContacts /></FeatureProtectedRoute>} />
+        <Route path="/storm-canvass/property/:propertyId" element={<FeatureProtectedRoute feature="storm_canvass"><PropertyInteractionPage /></FeatureProtectedRoute>} />
         <Route path="/communications" element={<ProtectedRoute><CommunicationsHub /></ProtectedRoute>} />
         <Route path="/communications/unmatched" element={<ProtectedRoute><UnmatchedInboxPage /></ProtectedRoute>} />
         <Route path="/communications/ai-queue" element={<ProtectedRoute><AIFollowupQueuePage /></ProtectedRoute>} />
         <Route path="/communications/calls" element={<ProtectedRoute><CallCenterPage /></ProtectedRoute>} />
-        <Route path="/dialer" element={<ProtectedRoute><CommunicationsHub /></ProtectedRoute>} />
+        <Route path="/dialer" element={<FeatureProtectedRoute feature="dialer"><CommunicationsHub /></FeatureProtectedRoute>} />
         <Route path="/campaigns" element={<ProtectedRoute><Campaigns /></ProtectedRoute>} />
-       <Route path="/smartdocs" element={<ProtectedRoute><SmartDocs /></ProtectedRoute>} />
+       <Route path="/smartdocs" element={<FeatureProtectedRoute feature="smart_docs"><SmartDocs /></FeatureProtectedRoute>} />
        <Route path="/blueprints" element={<ProtectedRoute><BlueprintsPage /></ProtectedRoute>} />
        <Route path="/blueprints/:id" element={<ProtectedRoute><BlueprintDocumentDetail /></ProtectedRoute>} />
        <Route path="/blueprints/page/:id" element={<ProtectedRoute><BlueprintPageReview /></ProtectedRoute>} />
@@ -150,7 +151,7 @@ export default function ProtectedRoutes() {
        <Route path="/blueprint-importer-v2/:sessionId" element={<ProtectedRoute><BlueprintImporterV2 /></ProtectedRoute>} />
        <Route path="/blueprints/:id/legacy" element={<ProtectedRoute><BlueprintReviewPage /></ProtectedRoute>} />
         <Route path="/jobs" element={<ProtectedRoute><Jobs /></ProtectedRoute>} />
-        <Route path="/estimates" element={<ProtectedRoute><Estimates /></ProtectedRoute>} />
+        <Route path="/estimates" element={<FeatureProtectedRoute feature="estimates"><Estimates /></FeatureProtectedRoute>} />
         <Route path="/automation" element={<ProtectedRoute><AutomationDashboard /></ProtectedRoute>} />
         <Route path="/tasks" element={<ProtectedRoute><TasksPage /></ProtectedRoute>} />
         <Route path="/lead-scoring" element={<ProtectedRoute><LeadScoringPage /></ProtectedRoute>} />
@@ -165,7 +166,7 @@ export default function ProtectedRoutes() {
         <Route path="/help" element={<ProtectedRoute><Help /></ProtectedRoute>} />
         <Route path="/integration" element={<ProtectedRoute><IntegrationDashboard /></ProtectedRoute>} />
         <Route path="/ai-agents" element={<ProtectedRoute><AIAgentsCommandCenter /></ProtectedRoute>} />
-        <Route path="/power-dialer-agent" element={<ProtectedRoute><PowerDialerAgent /></ProtectedRoute>} />
+        <Route path="/power-dialer-agent" element={<FeatureProtectedRoute feature="dialer"><PowerDialerAgent /></FeatureProtectedRoute>} />
         <Route path="/contract-reports" element={<ProtectedRoute><ContractReports /></ProtectedRoute>} />
         <Route path="/material-calculations/:id" element={<ProtectedRoute><MaterialCalculations /></ProtectedRoute>} />
         <Route path="/material-orders/:id" element={<ProtectedRoute><MaterialOrderDetail /></ProtectedRoute>} />
@@ -182,16 +183,16 @@ export default function ProtectedRoutes() {
         <Route path="/job/:id" element={<ProtectedRoute><JobDetails /></ProtectedRoute>} />
         <Route path="/job-analytics" element={<ProtectedRoute><JobAnalytics /></ProtectedRoute>} />
         <Route path="/job-analytics/drilldown" element={<ProtectedRoute><JobAnalyticsDrilldown /></ProtectedRoute>} />
-        <Route path="/pipeline-entry/:id/review" element={<ProtectedRoute><PipelineEntryReview /></ProtectedRoute>} />
+        <Route path="/pipeline-entry/:id/review" element={<FeatureProtectedRoute feature="pipeline"><PipelineEntryReview /></FeatureProtectedRoute>} />
         <Route path="/project/:id" element={<ProtectedRoute><ProjectDetails /></ProtectedRoute>} />
-        <Route path="/enhanced-measurement/:id" element={<ProtectedRoute><EnhancedMeasurement /></ProtectedRoute>} />
-        <Route path="/professional-measurement/:id" element={<ProtectedRoute><ProfessionalMeasurement /></ProtectedRoute>} />
-        <Route path="/measurement-workflow" element={<ProtectedRoute><MeasurementWorkflowDemo /></ProtectedRoute>} />
-        <Route path="/roof-measure/:id" element={<ProtectedRoute><RoofMeasure /></ProtectedRoute>} />
-        <Route path="/roof-measure" element={<ProtectedRoute><RoofMeasure /></ProtectedRoute>} />
-        <Route path="/measurements/:id/corrections" element={<ProtectedRoute><MeasurementCorrectionPage /></ProtectedRoute>} />
-        <Route path="/measurement-analytics" element={<ProtectedRoute><MeasurementAnalyticsPage /></ProtectedRoute>} />
-        <Route path="/test-roof-measurement" element={<ProtectedRoute><TestRoofMeasurement /></ProtectedRoute>} />
+        <Route path="/enhanced-measurement/:id" element={<FeatureProtectedRoute feature="measurements"><EnhancedMeasurement /></FeatureProtectedRoute>} />
+        <Route path="/professional-measurement/:id" element={<FeatureProtectedRoute feature="measurements"><ProfessionalMeasurement /></FeatureProtectedRoute>} />
+        <Route path="/measurement-workflow" element={<FeatureProtectedRoute feature="measurements"><MeasurementWorkflowDemo /></FeatureProtectedRoute>} />
+        <Route path="/roof-measure/:id" element={<FeatureProtectedRoute feature="measurements"><RoofMeasure /></FeatureProtectedRoute>} />
+        <Route path="/roof-measure" element={<FeatureProtectedRoute feature="measurements"><RoofMeasure /></FeatureProtectedRoute>} />
+        <Route path="/measurements/:id/corrections" element={<FeatureProtectedRoute feature="measurements"><MeasurementCorrectionPage /></FeatureProtectedRoute>} />
+        <Route path="/measurement-analytics" element={<FeatureProtectedRoute feature="measurements"><MeasurementAnalyticsPage /></FeatureProtectedRoute>} />
+        <Route path="/test-roof-measurement" element={<FeatureProtectedRoute feature="measurements"><TestRoofMeasurement /></FeatureProtectedRoute>} />
         <Route path="/canvasser-leaderboard" element={<ProtectedRoute><CanvasserLeaderboardPage /></ProtectedRoute>} />
         <Route path="/templates/smart-editor" element={<ProtectedRoute><SmartTemplateEditorPage /></ProtectedRoute>} />
         <Route path="/templates/smart-editor/:templateId" element={<ProtectedRoute><SmartTemplateEditorPage /></ProtectedRoute>} />
