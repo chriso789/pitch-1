@@ -5,7 +5,7 @@ import {
 } from "../registration-gate";
 
 describe("registrationBanner — frame_mismatch source resolution", () => {
-  it("returns DSM-incomplete warning when overlay_transform.frame_mismatch === 'ok' and DSM flags are false", () => {
+  it("returns DSM-unavailable info banner when overlay_transform.frame_mismatch === 'ok' and DSM flags are false", () => {
     const measurement = {
       geometry_report_json: {
         overlay_transform: { frame_mismatch: "ok" },
@@ -21,9 +21,9 @@ describe("registrationBanner — frame_mismatch source resolution", () => {
     const reg = readRegistrationBlock(measurement);
     const banner = registrationBanner(reg);
     expect(banner).not.toBeNull();
-    expect(banner!.variant).toBe("warning");
+    expect(banner!.variant).toBe("info");
     expect(banner!.title).toBe(
-      "DSM registration incomplete — manual approval locked",
+      "DSM registration unavailable — aerial perimeter is editable",
     );
     expect(banner!.title.toLowerCase()).not.toContain("coordinate frame mismatch");
   });
@@ -71,7 +71,7 @@ describe("registrationBanner — frame_mismatch source resolution", () => {
     const banner = registrationBanner(reg);
     expect(banner).not.toBeNull();
     expect(banner!.title).toBe(
-      "DSM registration incomplete — manual approval locked",
+      "DSM registration unavailable — aerial perimeter is editable",
     );
   });
 });

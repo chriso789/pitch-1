@@ -127,9 +127,14 @@ export function canApproveManualPerimeter(reg: RegistrationBlock | null | undefi
   const frameOk = typeof reg.frame_mismatch === "string"
     && reg.frame_mismatch.toLowerCase() === "ok";
   const rasterGatePassed = (reg as any).raster_candidate_check_passed === true;
-  const explicitFrameFailure = reg.confirmed_center_inside_candidate === false && !frameOk;
+  const dsmSkipped = (reg as any).dsm_candidate_check_skipped === true;
+  // PR A-2b: when the raster gate passed or the DSM candidate check was
+  // intentionally skipped (DSM transform unavailable), do NOT block manual
+  // approval on a stale `confirmed_center_inside_candidate === false`.
+  const explicitFrameFailure = reg.confirmed_center_inside_candidate === false
+    && !frameOk && !rasterGatePassed && !dsmSkipped;
   if (explicitFrameFailure) return false;
-  return frameOk || rasterGatePassed
+  return frameOk || rasterGatePassed || dsmSkipped
     || reg.coordinate_registration_gate_passed === true;
 }
 
@@ -142,22 +147,31 @@ export interface RegistrationBanner {
 
 export function registrationBanner(reg: RegistrationBlock | null | undefined): RegistrationBanner | null {
   if (!reg) return null;
+  const rasterGatePassed = (reg as any).raster_candidate_check_passed === true;
+  const dsmSkipped = (reg as any).dsm_candidate_check_skipped === true;
   const failed: string[] = [];
   if (reg.user_confirmed_roof_target === false) failed.push("user_confirmed_roof_target");
   if (reg.geo_to_dsm_px_success === false) failed.push("geo_to_dsm_px_success");
   if (reg.dsm_pixel_transform_valid === false) failed.push("dsm_pixel_transform_valid");
-  if (reg.confirmed_center_inside_candidate === false) failed.push("confirmed_center_inside_candidate");
-  if (reg.coordinate_registration_gate_passed === false) failed.push("coordinate_registration_gate_passed");
+  // PR A-2b: do NOT list confirmed_center_inside_candidate as failed when
+  // the DSM candidate check was intentionally skipped (raster_px candidate).
+  if (
+    reg.confirmed_center_inside_candidate === false &&
+    !dsmSkipped && !rasterGatePassed
+  ) failed.push("confirmed_center_inside_candidate");
+  if (reg.coordinate_registration_gate_passed === false && !rasterGatePassed) {
+    failed.push("coordinate_registration_gate_passed");
+  }
   if (failed.length === 0) return null;
 
   const targetFailed = reg.user_confirmed_roof_target === false;
   const frameOkExplicit = typeof reg.frame_mismatch === "string"
     && reg.frame_mismatch.toLowerCase() === "ok";
-  const frameFailed = !frameOkExplicit && reg.confirmed_center_inside_candidate === false;
+  const frameFailed = !frameOkExplicit && !rasterGatePassed && !dsmSkipped
+    && reg.confirmed_center_inside_candidate === false;
   const dsmFailed =
     reg.geo_to_dsm_px_success === false ||
     reg.dsm_pixel_transform_valid === false;
-  const rasterGatePassed = (reg as any).raster_candidate_check_passed === true;
 
   if (targetFailed) {
     return {
@@ -182,7 +196,7 @@ export function registrationBanner(reg: RegistrationBlock | null | undefined): R
   // Frame is OK (or unknown but not explicitly failed) and DSM is incomplete.
   // The aerial perimeter is still editable and approvable — DSM / topology /
   // pitch self-consistency gates run on the next measurement.
-  if (dsmFailed || (frameOkExplicit || rasterGatePassed)) {
+  if (dsmFailed || frameOkExplicit || rasterGatePassed || dsmSkipped) {
     return {
       variant: "info",
       title: "DSM registration unavailable — aerial perimeter is editable",

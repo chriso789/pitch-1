@@ -1185,7 +1185,7 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
                 className="w-full"
                 disabled={!aiMeasurementJobId || saving || rerunning || !approvalAllowed}
                 onClick={() => approveAndRerun()}
-                title={!approvalAllowed ? 'Coordinate registration gate failed — manual approval disabled.' : undefined}
+                title={!approvalAllowed ? 'Roof target not confirmed — re-place PIN to continue.' : undefined}
               >
                 <RefreshCcw className={`h-4 w-4 mr-1 ${rerunning ? 'animate-spin' : ''}`} />
                 Approve & rerun (user_verified=true)
@@ -1198,7 +1198,7 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
                   className="flex-1"
                   disabled={!aiMeasurementJobId || saving || !approvalAllowed}
                   onClick={() => callVerify(true, false)}
-                  title={!approvalAllowed ? 'Coordinate registration gate failed — manual approval disabled.' : undefined}
+                  title={!approvalAllowed ? 'Roof target not confirmed — re-place PIN to continue.' : undefined}
                 >
                   <Check className="h-4 w-4 mr-1" /> Approve only
                 </Button>
@@ -1209,14 +1209,14 @@ const MeasurementVisualQAOverlay: React.FC<MeasurementVisualQAOverlayProps> = ({
                   className="flex-1"
                   disabled={!aiMeasurementJobId || saving || !approvalAllowed}
                   onClick={() => callVerify(false, false)}
-                  title={!approvalAllowed ? 'Coordinate registration gate failed — manual approval disabled.' : undefined}
+                  title={!approvalAllowed ? 'Roof target not confirmed — re-place PIN to continue.' : undefined}
                 >
                   <XCircle className="h-4 w-4 mr-1" /> Reject
                 </Button>
               </div>
               {!approvalAllowed && (
                 <p className="text-[11px] text-destructive font-semibold leading-snug">
-                  Cannot approve perimeter: target roof registration failed.
+                  Cannot approve perimeter: roof target not confirmed. Re-place the PIN on the actual roof to continue.
                 </p>
               )}
               {approvalAllowed && registration?.dsm_registration_status === 'unavailable_but_aerial_perimeter_editable' && (

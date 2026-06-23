@@ -84,7 +84,7 @@ describe("MeasurementVisualQAOverlay — Fonsica wiring integration", () => {
       banner_title: banner?.title ?? null,
     }).toMatchInlineSnapshot(`
       {
-        "banner_title": "DSM registration incomplete — manual approval locked",
+        "banner_title": "DSM registration unavailable — aerial perimeter is editable",
         "dsm_registration_displacement": "missing",
         "effective_frame_mismatch": "ok",
         "manual_approval_lock_reason": "dsm_registration_missing",

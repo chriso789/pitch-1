@@ -101,7 +101,7 @@ describe("Fonsica overlay-transform wiring", () => {
 
     expect(banner).toBeTruthy();
     expect(banner!.title).toBe(
-      "DSM registration incomplete — manual approval locked",
+      "DSM registration unavailable — aerial perimeter is editable",
     );
     expect(banner!.title).not.toBe(
       "Coordinate frame mismatch — overlay not eligible for manual approval",
