@@ -7294,13 +7294,18 @@ async function processJob(input: any) {
               diagnostics: _stopEarly.diagnostics,
             }),
           );
+          const _footprintLenEarly = Array.isArray(footprint) ? footprint.length : 0;
+          const _footprintPxEarly = Array.isArray(footprint) && footprint.length >= 3
+            ? footprint.map((p) => [p.x, p.y])
+            : _ringPtsEarly ?? [];
           const debugPayload: any = {
             topology_source: REQUIRED_TOPOLOGY_SOURCE,
             footprint_source: footprintSource,
-            footprint_valid: true,
-            footprint_point_count: footprint.length,
-            footprint_area_sqft: Math.round(footprintAreaSqftVal),
-            footprint_px: footprint.map((p) => [p.x, p.y]),
+            footprint_valid: (_footprintPxEarly as any[]).length >= 3,
+            footprint_point_count: _footprintLenEarly || (_ringPtsEarly?.length ?? 0),
+            footprint_area_sqft: Math.round(footprintAreaSqftVal || 0),
+            footprint_px: _footprintPxEarly,
+
             dsm_loaded: true,
             mask_loaded: !!roofMask,
             dsm_coordinate_match: dsmCoordinateMatchDebug,
