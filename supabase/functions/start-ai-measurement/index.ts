@@ -7225,6 +7225,146 @@ async function processJob(input: any) {
         );
       }
 
+      // ──────────────────────────────────────────────────────────────────
+      // PR A-2 HOISTED EARLY-STOP GUARD (pre-Phase-3A.5)
+      // ------------------------------------------------------------------
+      // The downstream guard at the pre-solver call site never fires on
+      // Fonsica-class rows because Phase 3A.5 burns the CPU budget first
+      // (ai_measurement_cpu_timeout @ 108.3s / 75s). Run the same guard
+      // BEFORE Phase 3A.5 so DSM-unavailable runs short-circuit cleanly
+      // to result_state=perimeter_only with the aerial outline preserved.
+      // ──────────────────────────────────────────────────────────────────
+      try {
+        const _hpEarly = (hoistedTransformPackage as any) ?? {};
+        const _rasterCandEarly = evaluateRasterCandidateCheck({
+          selected_candidate_polygon_px: (footprint && footprint.length >= 3
+            ? footprint.map((p) => [p.x, p.y] as [number, number])
+            : null),
+          candidate_coordinate_space: "raster_px",
+          confirmed_roof_center_px: (hoistedConfirmedRoofCenterPx ??
+            _hpEarly.confirmed_roof_center_px ?? null) as any,
+        });
+        const _stopEarly = evaluateDsmRegistrationStopGuard({
+          dsm_loaded: !!(dsmGrid || maskedDSM),
+          dsm_tile_bounds_lat_lng: _hpEarly.dsm_tile_bounds_lat_lng ?? null,
+          geo_to_dsm_transform: _hpEarly.geo_to_dsm_transform ?? null,
+          dsm_to_raster_transform: _hpEarly.dsm_to_raster_transform ?? null,
+          dsm_pixel_transform_valid: _hpEarly.dsm_pixel_transform_valid ?? null,
+          raster_candidate_check_passed:
+            _rasterCandEarly.raster_candidate_check_passed,
+          candidate_in_raster_px: _rasterCandEarly.candidate_in_raster_px,
+          aerial_perimeter_editable:
+            !!(hoistedGeoToRasterTransform && hoistedRasterBoundsLatLng &&
+              footprint && footprint.length >= 3),
+        });
+        if (_stopEarly.stop_before_autonomous_solver) {
+          console.warn(
+            "[DSM_STOP_GUARD_EARLY] short-circuiting before Phase 3A.5",
+            JSON.stringify({
+              reason: _stopEarly.reason,
+              result_state: _stopEarly.result_state,
+              diagnostics: _stopEarly.diagnostics,
+            }),
+          );
+          const debugPayload: any = {
+            topology_source: REQUIRED_TOPOLOGY_SOURCE,
+            footprint_source: footprintSource,
+            footprint_valid: true,
+            footprint_point_count: footprint.length,
+            footprint_area_sqft: Math.round(footprintAreaSqftVal),
+            footprint_px: footprint.map((p) => [p.x, p.y]),
+            dsm_loaded: true,
+            mask_loaded: !!roofMask,
+            dsm_coordinate_match: dsmCoordinateMatchDebug,
+            result_state: _stopEarly.result_state,
+            hard_fail_reason: _stopEarly.hard_fail_reason,
+            block_customer_report_reason:
+              _stopEarly.block_customer_report_reason,
+            customer_report_ready: false,
+            diagram_render_intent: _stopEarly.diagram_render_intent,
+            failure_stage: "dsm_registration",
+            dsm_registration_status: _stopEarly.dsm_registration_status,
+            raster_candidate_check_passed:
+              _rasterCandEarly.raster_candidate_check_passed,
+            dsm_candidate_check_skipped:
+              _rasterCandEarly.dsm_candidate_check_skipped,
+            candidate_coordinate_space: "raster_px",
+            center_used_for_candidate_check:
+              _rasterCandEarly.center_used_for_candidate_check,
+            confirmed_center_inside_candidate_raster:
+              _rasterCandEarly.confirmed_center_inside_candidate_raster,
+            confirmed_center_inside_candidate_dsm: null,
+            dsm_stop_guard: {
+              version: DSM_STOP_GUARD_VERSION,
+              callsite: "pre_phase3a5_early_stop_guard",
+              ..._stopEarly,
+              raster_candidate_check: _rasterCandEarly,
+            },
+            raster_url: imageUrl,
+            raster_size: { width: raster.width, height: raster.height },
+            perimeter_phase0: perimeterPhase0Snapshot,
+            perimeter_topology: perimeterTopologySnapshot,
+          };
+          const failedId = await insertFailedPreliminaryMeasurement(
+            input,
+            coords,
+            _stopEarly.result_state ?? "perimeter_only",
+            debugPayload,
+            imageUrl,
+            actualMpp,
+          );
+          await setMeasurementJobStatus(
+            input.measurement_job_id,
+            _stopEarly.result_state === "perimeter_only"
+              ? "needs_review"
+              : "failed",
+            "DSM registration unavailable — aerial perimeter preserved for manual approval",
+            failedId,
+          );
+          await setAiJobStatus(
+            input.ai_measurement_job_id,
+            _stopEarly.result_state === "perimeter_only"
+              ? "needs_review"
+              : "failed",
+            "DSM registration unavailable",
+          );
+          await supabase.from("ai_measurement_jobs").update({
+            needs_review: true,
+            report_blocked: true,
+            result_state: normalizeResultStateForWrite(
+              _stopEarly.result_state ?? "perimeter_only",
+              debugPayload,
+            ),
+            hard_fail_reason: _stopEarly.hard_fail_reason,
+            dsm_registration_status: _stopEarly.dsm_registration_status,
+            raster_candidate_check_passed:
+              _rasterCandEarly.raster_candidate_check_passed,
+            candidate_coordinate_space: "raster_px",
+            dsm_candidate_check_skipped:
+              _rasterCandEarly.dsm_candidate_check_skipped,
+            source_context: {
+              gate_reason: "dsm_registration_unavailable",
+              hard_fail_reason: _stopEarly.hard_fail_reason,
+              dsm_stop_guard: {
+                version: DSM_STOP_GUARD_VERSION,
+                callsite: "pre_phase3a5_early_stop_guard",
+                ..._stopEarly,
+              },
+              raster_candidate_check: _rasterCandEarly,
+              debug: debugPayload,
+            },
+          }).eq("id", input.ai_measurement_job_id);
+          return;
+        }
+      } catch (e) {
+        console.warn(
+          "[DSM_STOP_GUARD_EARLY] threw — continuing into Phase 3A.5",
+          (e as Error)?.message,
+        );
+      }
+
+
+
       // ══════════ PHASE 3A.5 — TRUE OUTER ROOF PERIMETER REFINEMENT (HARD GATE) ══════════
       // Refines the Layer-1 perimeter against DSM + target mask, rejecting tree
       // canopy / patio / shadow bulges. If refinement fails, we STOP here as
