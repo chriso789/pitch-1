@@ -20,7 +20,16 @@ import {
   getCallCount,
 } from '../utils/rate-limit-helpers';
 
-describe('Power Dialer Rate Limiting Integration', () => {
+// Real integration suite: needs an authenticated Supabase user. CI's
+// `test:unit` job has no logged-in session, so skip cleanly there instead of
+// failing every assertion with "No authenticated user for testing". Run via
+// `RUN_AUTH_INTEGRATION=true npx vitest run tests/integration/power-dialer-*`
+// in environments that provision a real session.
+const HAS_AUTH_INTEGRATION =
+  typeof process !== 'undefined' &&
+  process.env?.RUN_AUTH_INTEGRATION === 'true';
+
+describe.skipIf(!HAS_AUTH_INTEGRATION)('Power Dialer Rate Limiting Integration', () => {
   let testUserId: string;
 
   beforeEach(async () => {
@@ -33,6 +42,7 @@ describe('Power Dialer Rate Limiting Integration', () => {
     await clearRateLimitLogs(testUserId);
     await clearCallLogs();
   });
+
 
   afterEach(async () => {
     await cleanupPowerDialerData();
