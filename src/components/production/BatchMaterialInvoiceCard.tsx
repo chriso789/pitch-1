@@ -98,6 +98,18 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
   const [rows, setRows] = useState<InvoiceRow[]>([]);
   const [submittingAll, setSubmittingAll] = useState(false);
   const [serviceAddress, setServiceAddress] = useState<string>('');
+  const [manualForm, setManualForm] = useState({
+    vendor_name: '',
+    invoice_number: '',
+    invoice_date: new Date().toISOString().slice(0, 10),
+    subtotal: '',
+    tax_amount: '',
+    invoice_amount: '',
+    notes: '',
+  });
+  const [manualLineItems, setManualLineItems] = useState<LineItem[]>([]);
+  const [manualLineItemsOpen, setManualLineItemsOpen] = useState(false);
+  const [submittingManual, setSubmittingManual] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
