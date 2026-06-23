@@ -15,6 +15,7 @@ import {
   ChevronDown,
   ChevronUp,
   MapPin,
+  PencilLine,
 } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { supabase } from '@/integrations/supabase/client';
