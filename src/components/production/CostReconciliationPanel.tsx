@@ -46,20 +46,35 @@ export const CostReconciliationPanel: React.FC<CostReconciliationPanelProps> = (
     }
   });
 
-  // Fetch invoices
+  // Fetch invoices — match on project_id OR the project's pipeline_entry_id,
+  // because invoices uploaded from the Lead page only carry pipeline_entry_id
+  // (project_id is null) and would otherwise be invisible here.
   const { data: invoices = [] } = useQuery({
     queryKey: ['project-invoices', projectId],
     queryFn: async () => {
+      const { data: project } = await supabase
+        .from('projects')
+        .select('pipeline_entry_id')
+        .eq('id', projectId)
+        .maybeSingle();
+
+      const peId = project?.pipeline_entry_id || null;
+
+      const filter = peId
+        ? `project_id.eq.${projectId},pipeline_entry_id.eq.${peId}`
+        : `project_id.eq.${projectId}`;
+
       const { data, error } = await supabase
         .from('project_cost_invoices')
         .select('*, profiles:created_by(first_name, last_name)')
-        .eq('project_id', projectId)
+        .or(filter)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
       return data || [];
     }
   });
+
 
   // Initiate verification mutation
   const initiateMutation = useMutation({
