@@ -947,12 +947,12 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
 
 
                 {/* Invoice Status */}
-                {(materialInvoiceCount > 0 || laborInvoiceCount > 0 || overheadInvoiceCount > 0) && (
+                {(materialInvoiceCount > 0 || laborInvoiceCount > 0 || otherChargesInvoiceCount > 0) && (
                   <div className="bg-muted/50 rounded-lg p-3">
                     <div className="flex items-center gap-2 text-sm">
                       <FileText className="h-4 w-4 text-muted-foreground" />
                       <span className="text-muted-foreground">
-                        {materialInvoiceCount} material, {laborInvoiceCount} labor, {overheadInvoiceCount} overhead invoice(s) uploaded
+                        {materialInvoiceCount} material, {laborInvoiceCount} labor, {otherChargesInvoiceCount} other charge invoice(s) uploaded
                       </span>
                     </div>
                   </div>
@@ -991,9 +991,11 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                     const invoiceDateLabel = invoice.invoice_date
                       ? new Date(invoice.invoice_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
                       : null;
-                    const typeLabel = invoice.invoice_type === 'material' ? 'Material' : invoice.invoice_type === 'labor' ? 'Labor' : 'Overhead';
+                    const typeLabel = invoice.invoice_type === 'material' ? 'Material' : invoice.invoice_type === 'labor' ? 'Labor' : invoice.invoice_type === 'overhead' ? 'Overhead' : 'Other';
                     const canDeleteInvoice = canDeleteInvoices && isValidUuid(invoice.id);
                     const canRenameInvoice = isValidUuid(invoice.id);
+                    const canEditInvoice = isValidUuid(invoice.id);
+                    const isVerified = invoice.status === 'verified' || invoice.status === 'approved';
                     const isRenaming = renamingInvoiceId === invoice.id;
                     return (
                       <div key={invoice.id || `${invoice.invoice_type}-${invoice.created_at}-${invoice.invoice_amount}`} className="flex items-center justify-between p-2.5 bg-muted/50 rounded-md text-sm">
@@ -1045,6 +1047,26 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                         {!isRenaming && (
                           <div className="flex items-center gap-2 flex-shrink-0">
                             <span className="font-medium">{formatCurrency(invoice.invoice_amount)}</span>
+                            {canEditInvoice && (
+                              <Select
+                                value={invoice.invoice_type}
+                                onValueChange={(value) => updateInvoiceTypeMutation.mutate({
+                                  invoiceId: invoice.id!,
+                                  invoiceType: value as InvoiceData['invoice_type'],
+                                })}
+                                disabled={updateInvoiceTypeMutation.isPending}
+                              >
+                                <SelectTrigger className="h-7 w-[116px] text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="material">Material</SelectItem>
+                                  <SelectItem value="labor">Labor</SelectItem>
+                                  <SelectItem value="overhead">Overhead</SelectItem>
+                                  <SelectItem value="other">Other</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            )}
                             <Badge
                               variant="outline"
                               className={cn(
@@ -1055,6 +1077,23 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                             >
                               {invoice.status}
                             </Badge>
+                            {!isVerified && canEditInvoice && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => verifyInvoiceMutation.mutate(invoice.id!)}
+                                disabled={verifyInvoiceMutation.isPending}
+                                title="Verify invoice"
+                              >
+                                {verifyInvoiceMutation.isPending ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <CheckCircle className="h-3.5 w-3.5 mr-1" />
+                                )}
+                                Verify
+                              </Button>
+                            )}
                             {invoice.document_url && (
                               <Button
                                 variant="ghost"
