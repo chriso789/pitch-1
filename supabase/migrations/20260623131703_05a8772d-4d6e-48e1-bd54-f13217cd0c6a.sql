@@ -1,0 +1,2 @@
+ALTER TABLE public.project_cost_invoices DROP CONSTRAINT IF EXISTS project_cost_invoices_invoice_type_check;
+ALTER TABLE public.project_cost_invoices ADD CONSTRAINT project_cost_invoices_invoice_type_check CHECK (invoice_type = ANY (ARRAY['material'::text, 'labor'::text, 'overhead'::text, 'other'::text]));
