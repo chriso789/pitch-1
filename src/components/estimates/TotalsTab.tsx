@@ -122,16 +122,62 @@ export const TotalsTab: React.FC<TotalsTabProps> = ({ pipelineEntryId }) => {
     enabled: !!pipelineEntryId && !!activeTenantId,
   });
 
+  // Combine-estimates state from pipeline_entries metadata
+  const { data: combineState } = useQuery({
+    queryKey: ['pipeline-entry-combine', pipelineEntryId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('pipeline_entries')
+        .select('metadata')
+        .eq('id', pipelineEntryId)
+        .maybeSingle();
+      if (error) throw error;
+      const meta = (data?.metadata as any) || {};
+      return {
+        combine: !!meta.combine_estimates,
+        ids: Array.isArray(meta.selected_estimate_ids) ? (meta.selected_estimate_ids as string[]) : [],
+      };
+    },
+    enabled: !!pipelineEntryId,
+  });
+
+  const { data: combinedTotals } = useQuery({
+    queryKey: ['totals-combined-estimates', pipelineEntryId, combineState?.ids?.join(',')],
+    queryFn: async () => {
+      const ids = combineState?.ids || [];
+      if (ids.length === 0) return null;
+      const { data, error } = await supabase
+        .from('enhanced_estimates')
+        .select('id, material_cost, labor_cost, selling_price, sales_tax_amount')
+        .in('id', ids);
+      if (error) throw error;
+      const sum = (k: string) => (data || []).reduce((s, r: any) => s + (Number(r[k]) || 0), 0);
+      return {
+        count: data?.length || 0,
+        materials: sum('material_cost'),
+        labor: sum('labor_cost'),
+        selling_price: sum('selling_price'),
+      };
+    },
+    enabled: !!pipelineEntryId && !!combineState?.combine && (combineState?.ids?.length || 0) > 0,
+  });
+
+  const isCombined = !!combineState?.combine && !!combinedTotals && combinedTotals.count > 1;
+
   const approvedCOs = (changeOrders || []).filter(
     (co: any) => APPROVED_STATUSES.has(String(co.status || '').toLowerCase()) || co.customer_approved === true
   );
   const approvedCoLocalTotal = approvedCOs.reduce((s: number, co: any) => s + computeCoBudget(co), 0);
 
-  const contractValue = barData?.sale_price ?? 0;
-  const baseSellingPrice = barData?.base_sale_price ?? (contractValue - (barData?.change_orders_total ?? 0));
-  const coBudgetTotal = barData?.change_orders_total ?? approvedCoLocalTotal;
-  const materialCost = barData?.materials ?? 0;
-  const laborCost = barData?.labor ?? 0;
+  const coBudgetTotal = isCombined
+    ? approvedCoLocalTotal
+    : (barData?.change_orders_total ?? approvedCoLocalTotal);
+  const baseSellingPrice = isCombined
+    ? combinedTotals!.selling_price
+    : (barData?.base_sale_price ?? ((barData?.sale_price ?? 0) - (barData?.change_orders_total ?? 0)));
+  const contractValue = baseSellingPrice + coBudgetTotal;
+  const materialCost = isCombined ? combinedTotals!.materials : (barData?.materials ?? 0);
+  const laborCost = isCombined ? combinedTotals!.labor : (barData?.labor ?? 0);
   const totalPaid = (payments || []).reduce((s, p) => s + Number(p.amount), 0);
   const balance = contractValue - totalPaid;
 
