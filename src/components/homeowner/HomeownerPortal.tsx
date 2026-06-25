@@ -99,7 +99,10 @@ export function HomeownerPortal() {
   const [isLoading, setIsLoading] = useState(true);
   const [newMessage, setNewMessage] = useState("");
   const [contactInfo, setContactInfo] = useState<any>(null);
+  const [company, setCompany] = useState<any>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const { toast } = useToast();
+
 
   useEffect(() => {
     loadPortalData();
@@ -133,6 +136,8 @@ export function HomeownerPortal() {
       }
 
       setContactInfo(data.contact || null);
+      setCompany(data.company || null);
+
       setProject(data.project || null);
       setPhotos(data.photos || []);
       setChangeOrders(data.changeOrders || []);
@@ -204,7 +209,46 @@ export function HomeownerPortal() {
     }
   };
 
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !project) return;
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ title: "File too large", description: "Photos must be under 10MB", variant: "destructive" });
+      return;
+    }
+    try {
+      setIsUploading(true);
+      const sessionData = localStorage.getItem("homeowner_session");
+      const session = sessionData ? JSON.parse(sessionData) : null;
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const { data, error } = await supabase.functions.invoke("homeowner-password", {
+        body: {
+          action: "upload-photo",
+          token: session?.token,
+          project_id: project.id,
+          file_base64: base64,
+          file_name: file.name,
+          mime_type: file.type,
+        },
+      });
+      if (error || !data?.success) throw new Error(data?.error || "Upload failed");
+      toast({ title: "Photo uploaded", description: "Your photo has been shared with the team." });
+      loadPortalData();
+    } catch (err: any) {
+      toast({ title: "Upload failed", description: err.message, variant: "destructive" });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const getStatusColor = (status: string) => {
+
     switch (status?.toLowerCase()) {
       case "in_progress": return "bg-blue-500/10 text-blue-500";
       case "completed": return "bg-green-500/10 text-green-500";
@@ -242,20 +286,43 @@ export function HomeownerPortal() {
       {/* Header */}
       <header className="bg-card border-b border-border">
         <div className="max-w-6xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 bg-primary/10 rounded-lg flex items-center justify-center">
-                <Home className="h-5 w-5 text-primary" />
-              </div>
+              {company?.logo_url ? (
+                <img src={company.logo_url} alt={company.name || "Company"} className="h-12 w-12 rounded-lg object-contain bg-white border" />
+              ) : (
+                <div className="h-12 w-12 bg-primary/10 rounded-lg flex items-center justify-center">
+                  <Building className="h-6 w-6 text-primary" />
+                </div>
+              )}
               <div>
-                <h1 className="font-semibold text-foreground">Project Portal</h1>
-                <p className="text-sm text-muted-foreground">Welcome back, {contactInfo?.first_name}</p>
+                <h1 className="font-semibold text-foreground text-lg leading-tight">
+                  {company?.name || "Project Portal"}
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  Welcome back, {contactInfo?.first_name}
+                </p>
               </div>
             </div>
-            <Badge variant="outline" className={getStatusColor(project.status)}>
-              {project.status?.replace("_", " ") || "Active"}
-            </Badge>
+            <div className="flex items-center gap-3">
+              {company?.phone && (
+                <a href={`tel:${company.phone}`} className="hidden sm:flex items-center gap-1 text-sm text-muted-foreground hover:text-primary">
+                  <Phone className="h-3.5 w-3.5" />
+                  {company.phone}
+                </a>
+              )}
+              {company?.email && (
+                <a href={`mailto:${company.email}`} className="hidden sm:flex items-center gap-1 text-sm text-muted-foreground hover:text-primary">
+                  <Mail className="h-3.5 w-3.5" />
+                  {company.email}
+                </a>
+              )}
+              <Badge variant="outline" className={getStatusColor(project.status)}>
+                {project.status?.replace("_", " ") || "Active"}
+              </Badge>
+            </div>
           </div>
+
         </div>
       </header>
 
@@ -437,13 +504,34 @@ export function HomeownerPortal() {
 
           <TabsContent value="photos" className="space-y-6">
             <Card>
-              <CardHeader>
-                <CardTitle>Project Photos</CardTitle>
-                <CardDescription>
-                  Photos from your project, organized by category
-                </CardDescription>
+              <CardHeader className="flex flex-row items-start justify-between gap-3">
+                <div>
+                  <CardTitle>Project Photos</CardTitle>
+                  <CardDescription>
+                    Photos from your project — share your own with the team too
+                  </CardDescription>
+                </div>
+                <div>
+                  <input
+                    id="homeowner-photo-upload"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handlePhotoUpload}
+                    disabled={isUploading}
+                  />
+                  <Button
+                    size="sm"
+                    onClick={() => document.getElementById("homeowner-photo-upload")?.click()}
+                    disabled={isUploading}
+                  >
+                    <ImageIcon className="h-4 w-4 mr-1" />
+                    {isUploading ? "Uploading…" : "Upload Photo"}
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
+
                 {photos.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
                     <ImageIcon className="h-12 w-12 mx-auto mb-3 opacity-50" />

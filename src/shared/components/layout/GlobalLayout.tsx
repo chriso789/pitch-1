@@ -4,6 +4,8 @@ import Sidebar from "./Sidebar";
 import { CLJSearchBar } from "@/components/CLJSearchBar";
 import { CompanySwitcher } from "@/components/layout/CompanySwitcher";
 import { NotificationCenter } from "@/components/notifications/NotificationCenter";
+import { PortalMessageNotifier } from "@/components/portal/PortalMessageNotifier";
+
 import { QuickLocationSwitcher } from "@/components/layout/QuickLocationSwitcher";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
@@ -37,6 +39,8 @@ export const GlobalLayout = ({ children }: GlobalLayoutProps) => {
 
   return (
     <div className="flex h-screen w-full overflow-hidden">
+      <PortalMessageNotifier />
+
       <CollapsibleSidebar mobileOpen={mobileOpen} onMobileOpenChange={setMobileOpen}>
         <Sidebar />
       </CollapsibleSidebar>
