@@ -136,6 +136,8 @@ export function HomeownerPortal() {
       }
 
       setContactInfo(data.contact || null);
+      setCompany(data.company || null);
+
       setProject(data.project || null);
       setPhotos(data.photos || []);
       setChangeOrders(data.changeOrders || []);
