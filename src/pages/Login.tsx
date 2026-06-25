@@ -616,12 +616,36 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
         </div>
 
         <Card className="border-[hsl(0_0%_100%/0.2)] bg-[hsl(0_0%_100%/0.82)] backdrop-blur-xl shadow-[0_4px_8px_hsl(214_100%_25%/0.08),0_8px_24px_hsl(214_100%_25%/0.12),0_24px_48px_hsl(214_100%_25%/0.08)]">
-          <CardHeader className="space-y-1 text-center">
+          <CardHeader className="space-y-3 text-center">
+            <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted/60 p-1 text-xs font-medium">
+              <button
+                type="button"
+                className="rounded-md bg-background py-2 shadow-sm text-foreground"
+                aria-current="page"
+              >
+                Staff
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate('/portal/login')}
+                className="rounded-md py-2 text-muted-foreground hover:bg-background/60 hover:text-foreground transition-colors"
+              >
+                Homeowner
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate('/crew')}
+                className="rounded-md py-2 text-muted-foreground hover:bg-background/60 hover:text-foreground transition-colors"
+              >
+                Crew
+              </button>
+            </div>
             <CardTitle className="text-2xl font-semibold">Welcome Back</CardTitle>
             <CardDescription className="text-base">
               Sign in to access your roofing CRM dashboard
             </CardDescription>
           </CardHeader>
+
           <CardContent>
             {/* Top CTA: Request a Demo - prominent for prospects */}
             <div className="mb-5 rounded-xl border-2 border-primary/20 bg-gradient-to-br from-primary/5 via-primary/10 to-primary/5 p-4">
