@@ -286,20 +286,43 @@ export function HomeownerPortal() {
       {/* Header */}
       <header className="bg-card border-b border-border">
         <div className="max-w-6xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 bg-primary/10 rounded-lg flex items-center justify-center">
-                <Home className="h-5 w-5 text-primary" />
-              </div>
+              {company?.logo_url ? (
+                <img src={company.logo_url} alt={company.name || "Company"} className="h-12 w-12 rounded-lg object-contain bg-white border" />
+              ) : (
+                <div className="h-12 w-12 bg-primary/10 rounded-lg flex items-center justify-center">
+                  <Building className="h-6 w-6 text-primary" />
+                </div>
+              )}
               <div>
-                <h1 className="font-semibold text-foreground">Project Portal</h1>
-                <p className="text-sm text-muted-foreground">Welcome back, {contactInfo?.first_name}</p>
+                <h1 className="font-semibold text-foreground text-lg leading-tight">
+                  {company?.name || "Project Portal"}
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  Welcome back, {contactInfo?.first_name}
+                </p>
               </div>
             </div>
-            <Badge variant="outline" className={getStatusColor(project.status)}>
-              {project.status?.replace("_", " ") || "Active"}
-            </Badge>
+            <div className="flex items-center gap-3">
+              {company?.phone && (
+                <a href={`tel:${company.phone}`} className="hidden sm:flex items-center gap-1 text-sm text-muted-foreground hover:text-primary">
+                  <Phone className="h-3.5 w-3.5" />
+                  {company.phone}
+                </a>
+              )}
+              {company?.email && (
+                <a href={`mailto:${company.email}`} className="hidden sm:flex items-center gap-1 text-sm text-muted-foreground hover:text-primary">
+                  <Mail className="h-3.5 w-3.5" />
+                  {company.email}
+                </a>
+              )}
+              <Badge variant="outline" className={getStatusColor(project.status)}>
+                {project.status?.replace("_", " ") || "Active"}
+              </Badge>
+            </div>
           </div>
+
         </div>
       </header>
 
