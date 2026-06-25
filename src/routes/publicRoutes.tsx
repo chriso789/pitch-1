@@ -52,7 +52,7 @@ export default function PublicRoutes() {
         <Route path="/reports/:token" element={<PublicReportViewer />} />
         <Route path="/r/:token" element={<PublicReportViewer />} />
         <Route path="/onboarding/:token" element={<OnboardingWalkthrough />} />
-        <Route path="/customer/:token" element={<CustomerPortalPublic />} />
+        <Route path="/customer/:token" element={<HomeownerSetupAccount />} />
         <Route path="/sign/:token" element={<PublicSignatureCapture />} />
         <Route path="/portal/login" element={<PortalLoginPage />} />
         <Route path="/portal/setup" element={<HomeownerSetupAccount />} />

@@ -49,7 +49,7 @@ Deno.serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
-    // Generate a customer portal token (re-uses existing /customer/:token route)
+    // Generate a customer portal token for the homeowner setup/login flow.
     const tokenBytes = new Uint8Array(32);
     crypto.getRandomValues(tokenBytes);
     const token = Array.from(tokenBytes, b => b.toString(16).padStart(2, '0')).join('');
@@ -66,7 +66,6 @@ Deno.serve(async (req) => {
     if (tokenErr) throw tokenErr;
 
     // Setup link → /portal/setup verifies identity then sets password.
-    // Fallback /customer/{token} link kept for backwards compatibility with the same token.
     const setupUrl = `${APP_URL}/portal/setup?contact=${contact_id}&token=${token}`;
     const portalUrl = setupUrl;
     const tenantName = tenant?.name || "Your Project Team";
@@ -97,7 +96,7 @@ Deno.serve(async (req) => {
           </a>
         </p>
         <p style="font-size:13px;color:#64748b">Or paste this link in your browser:<br/><a href="${portalUrl}">${portalUrl}</a></p>
-        <p style="font-size:13px;color:#94a3b8;margin-top:32px">After setup, sign in anytime at <a href="${APP_URL}/portal/login">${APP_URL}/portal/login</a>. This setup link is valid for 30 days.</p>
+        <p style="font-size:13px;color:#94a3b8;margin-top:32px">After setup, sign in anytime at <a href="${APP_URL}/portal/login">${APP_URL}/portal/login</a>. This setup link is valid for 30 days and opens the homeowner login/setup page, not a public portal.</p>
       </div>
     `;
 

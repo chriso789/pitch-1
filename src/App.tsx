@@ -189,7 +189,7 @@ const AppContent = () => {
         <Route path="/reports/:token" element={<Suspense fallback={<PageLoader />}><PublicReportViewer /></Suspense>} />
         <Route path="/r/:token" element={<Suspense fallback={<PageLoader />}><PublicReportViewer /></Suspense>} />
         <Route path="/onboarding/:token" element={<Suspense fallback={<PageLoader />}><OnboardingWalkthrough /></Suspense>} />
-        <Route path="/customer/:token" element={<Suspense fallback={<PageLoader />}><CustomerPortalPublic /></Suspense>} />
+        <Route path="/customer/:token" element={<Suspense fallback={<PageLoader />}><HomeownerSetupAccount /></Suspense>} />
         <Route path="/sign/:token" element={<Suspense fallback={<PageLoader />}><PublicSignatureCapture /></Suspense>} />
         <Route path="/portal/login" element={<Suspense fallback={<PageLoader />}><PortalLoginPage /></Suspense>} />
         <Route path="/portal/setup" element={<Suspense fallback={<PageLoader />}><HomeownerSetupAccount /></Suspense>} />
