@@ -26,8 +26,11 @@ export function ProjectPhotoSteps({ leadId, contactId }: ProjectPhotoStepsProps)
   const [uploadingCategory, setUploadingCategory] = useState<PhotoCategory | null>(null);
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
+  const companyPhotos = photos.filter(p => p.category !== HOMEOWNER_CATEGORY);
+  const homeownerPhotos = photos.filter(p => p.category === HOMEOWNER_CATEGORY);
+
   const getCountForCategory = (category: PhotoCategory) =>
-    photos.filter(p => p.category === category).length;
+    companyPhotos.filter(p => p.category === category).length;
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>, category: PhotoCategory) => {
     const files = e.target.files;
