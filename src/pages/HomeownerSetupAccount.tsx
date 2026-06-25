@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,41 +28,54 @@ export default function HomeownerSetupAccount() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isCheckingInvite, setIsCheckingInvite] = useState(Boolean(token));
   const [contact, setContact] = useState<any>(null);
   const [error, setError] = useState('');
   
   const { toast } = useToast();
   const navigate = useNavigate();
 
+  useEffect(() => {
+    const verifyInvite = async () => {
+      if (!token) {
+        setIsCheckingInvite(false);
+        return;
+      }
+
+      setError('');
+      setIsCheckingInvite(true);
+
+      try {
+        const { data, error: inviteError } = await supabase.functions.invoke('homeowner-password', {
+          body: { action: 'verify-invite', token, contact_id: contactId }
+        });
+
+        if (inviteError) throw new Error(inviteError.message || 'Invalid invite link');
+        if (!data?.success || !data?.contact) throw new Error(data?.error || 'Invalid invite link');
+
+        setContact(data.contact);
+        setVerificationValue(data.contact.email || data.contact.phone || '');
+        setStep('password');
+      } catch (err: any) {
+        setError(err.message || 'This invite link is invalid or expired. Please ask your project manager to resend it.');
+      } finally {
+        setIsCheckingInvite(false);
+      }
+    };
+
+    verifyInvite();
+  }, [contactId, token]);
+
   const verifyIdentity = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setIsLoading(true);
 
-    try {
-      // Verify phone or email matches contact record
-      const { data: contactData, error: contactError } = await supabase
-        .from('contacts')
-        .select('id, first_name, email, phone, tenant_id, portal_access_enabled')
-        .or(`email.eq.${verificationValue.toLowerCase()},phone.eq.${verificationValue}`)
-        .single();
-
-      if (contactError || !contactData) {
-        throw new Error("We couldn't find an account matching that information. Please check and try again.");
-      }
-
-      if (!contactData.portal_access_enabled) {
-        throw new Error("Portal access hasn't been enabled for your account yet. Please contact your project manager.");
-      }
-
-      setContact(contactData);
-      setStep('password');
-
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
+    if (!token) {
+      setError('Please open the setup link from your email invite. If you already created a password, sign in instead.');
+      return;
     }
+
+    setIsCheckingInvite(true);
   };
 
   const createPassword = async (e: React.FormEvent) => {
@@ -87,38 +100,19 @@ export default function HomeownerSetupAccount() {
     setIsLoading(true);
 
     try {
-      // Hash password server-side via edge function
       const { data: pwResult, error: pwError } = await supabase.functions.invoke('homeowner-password', {
-        body: { action: 'set-password', contact_id: contact.id, password }
+        body: { action: 'set-password', contact_id: contact.id, token, password }
       });
 
       if (pwError) throw new Error(pwError.message || 'Failed to set password');
       if (!pwResult?.success) throw new Error(pwResult?.error || 'Failed to set password');
 
-      // Create session
-      const sessionToken = crypto.randomUUID();
-      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(); // 30 days
-
-      const { error: sessionError } = await supabase
-        .from('homeowner_portal_sessions')
-        .insert({
-          tenant_id: contact.tenant_id,
-          contact_id: contact.id,
-          token: sessionToken,
-          email: contact.email,
-          expires_at: expiresAt,
-          auth_method: 'password'
-        });
-
-      if (sessionError) throw sessionError;
-
-      // Store session
       localStorage.setItem('homeowner_session', JSON.stringify({
-        token: sessionToken,
-        contactId: contact.id,
-        tenantId: contact.tenant_id,
-        email: contact.email,
-        expiresAt
+        token: pwResult.token,
+        contactId: pwResult.contact_id,
+        tenantId: pwResult.tenant_id,
+        email: pwResult.email,
+        expiresAt: pwResult.expires_at
       }));
 
       toast({
@@ -134,6 +128,17 @@ export default function HomeownerSetupAccount() {
       setIsLoading(false);
     }
   };
+
+  if (isCheckingInvite) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-background to-muted/30 flex items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Opening your homeowner setup link…</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted/30 flex items-center justify-center p-4">
@@ -156,7 +161,7 @@ export default function HomeownerSetupAccount() {
             </CardTitle>
             <CardDescription>
               {step === 'verify' 
-                ? 'Enter your email or phone number to continue'
+                ? token ? 'Checking your invite link' : 'Open the setup link from your email invite'
                 : `Welcome, ${contact?.first_name}! Create a secure password`
               }
             </CardDescription>
@@ -174,9 +179,11 @@ export default function HomeownerSetupAccount() {
                     onChange={(e) => setVerificationValue(e.target.value)}
                     required
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Use the same contact info from your project
-                  </p>
+                  {!token && (
+                    <p className="text-xs text-muted-foreground">
+                      The invite email opens this page with a secure setup token.
+                    </p>
+                  )}
                 </div>
 
                 {error && (
