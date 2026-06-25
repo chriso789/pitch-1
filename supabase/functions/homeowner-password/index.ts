@@ -152,7 +152,7 @@ Deno.serve(async (req) => {
 
       // Hash with bcrypt via Web Crypto + salt
       const { hash } = await import("npm:bcryptjs@2.4.3");
-      const passwordHash = await hash(password);
+      const passwordHash = await hash(password, 10);
 
       const { error: updateErr } = await supabase
         .from("contacts")
