@@ -177,7 +177,9 @@ Deno.serve(async (req) => {
           progress_percentage: projectData.progress_percentage || 0,
           contract_amount: contractAmount,
           amount_paid: amountPaid,
-          address: projectData.property_address || "Address not set",
+          address: projectData.property_address
+            || [contact.address_street, contact.address_city, contact.address_state, contact.address_zip].filter(Boolean).join(", ")
+            || "Address not set",
         };
 
         const { data: photoRows } = await supabase
