@@ -504,13 +504,34 @@ export function HomeownerPortal() {
 
           <TabsContent value="photos" className="space-y-6">
             <Card>
-              <CardHeader>
-                <CardTitle>Project Photos</CardTitle>
-                <CardDescription>
-                  Photos from your project, organized by category
-                </CardDescription>
+              <CardHeader className="flex flex-row items-start justify-between gap-3">
+                <div>
+                  <CardTitle>Project Photos</CardTitle>
+                  <CardDescription>
+                    Photos from your project — share your own with the team too
+                  </CardDescription>
+                </div>
+                <div>
+                  <input
+                    id="homeowner-photo-upload"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handlePhotoUpload}
+                    disabled={isUploading}
+                  />
+                  <Button
+                    size="sm"
+                    onClick={() => document.getElementById("homeowner-photo-upload")?.click()}
+                    disabled={isUploading}
+                  >
+                    <ImageIcon className="h-4 w-4 mr-1" />
+                    {isUploading ? "Uploading…" : "Upload Photo"}
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
+
                 {photos.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
                     <ImageIcon className="h-12 w-12 mx-auto mb-3 opacity-50" />
