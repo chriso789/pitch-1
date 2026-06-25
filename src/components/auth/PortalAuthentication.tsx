@@ -108,47 +108,70 @@ export function PortalAuthentication() {
 
   const handleHomeownerLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!homeownerEmail.trim()) {
+    if (!homeownerEmail.trim() || !homeownerPassword) {
       toast({
-        title: "Email Required",
-        description: "Please enter your email address",
-        variant: "destructive"
+        title: "Email and password required",
+        description: "Please enter both your email and password",
+        variant: "destructive",
       });
       return;
     }
 
     setIsLoading(true);
     try {
-      // Request a magic link via secure edge function. The function performs
-      // the contact lookup server-side using the service role and only emails
-      // the link if a matching contact exists. We never reveal whether the
-      // email is on file, and we never create a session client-side.
-      const { error: fnError } = await supabase.functions.invoke(
-        "homeowner-magic-link",
-        {
-          body: { email: homeownerEmail.trim().toLowerCase() },
+      const { data, error } = await supabase.functions.invoke("homeowner-password", {
+        body: {
+          action: "login",
+          email: homeownerEmail.trim().toLowerCase(),
+          password: homeownerPassword,
+        },
+      });
+
+      let result: any = data;
+      if (error) {
+        const ctx: any = (error as any).context;
+        if (ctx?.body) {
+          try {
+            result = typeof ctx.body === "string" ? JSON.parse(ctx.body) : ctx.body;
+          } catch {}
         }
+        if (!result?.success) {
+          throw new Error(result?.error || (error as any).message || "Invalid email or password");
+        }
+      }
+
+      if (!result?.success || !result?.token) {
+        throw new Error(result?.error || "Invalid email or password");
+      }
+
+      localStorage.setItem(
+        "homeowner_session",
+        JSON.stringify({
+          token: result.token,
+          contactId: result.contact_id,
+          tenantId: result.tenant_id,
+          email: result.email,
+          expiresAt: result.expires_at,
+        }),
       );
 
-      if (fnError) throw fnError;
-
-      // Always show "email sent" — even if no match — to prevent enumeration
-      setEmailSent(true);
-
       toast({
-        title: "Check your email",
-        description: "If a project matches that email, we just sent you a secure sign-in link.",
+        title: "Welcome back!",
+        description: result.first_name ? `Signed in as ${result.first_name}` : "Signed in successfully",
       });
-    } catch (error: any) {
+
+      navigate("/homeowner");
+    } catch (err: any) {
       toast({
         title: "Login Failed",
-        description: error.message || "Unable to send login link",
-        variant: "destructive"
+        description: err.message || "Invalid email or password",
+        variant: "destructive",
       });
     } finally {
       setIsLoading(false);
     }
   };
+
 
   // Show loading while checking auth
   if (checkingAuth) {
