@@ -211,11 +211,16 @@ export function HomeownerPortal() {
   };
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const rawFile = e.target.files?.[0];
     e.target.value = "";
-    if (!file || !project) return;
-    if (file.size > 10 * 1024 * 1024) {
-      toast({ title: "File too large", description: "Photos must be under 10MB", variant: "destructive" });
+    if (!rawFile || !project) return;
+    let file: File = rawFile;
+    try {
+      const { compressImage } = await import("@/lib/imageCompression");
+      file = await compressImage(rawFile);
+    } catch (_) { /* fallback to raw */ }
+    if (file.size > 15 * 1024 * 1024) {
+      toast({ title: "File too large", description: "Photos must be under 15MB after compression", variant: "destructive" });
       return;
     }
     try {
