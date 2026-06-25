@@ -80,7 +80,7 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    const { action, contact_id, password, email, token } = await req.json();
+    const { action, contact_id, password, email, token, project_id, message, change_order_id } = await req.json();
 
     if (!action) return json({ error: "action required" }, 400);
 
