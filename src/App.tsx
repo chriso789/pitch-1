@@ -55,7 +55,6 @@ const ViewDocumentTracked = React.lazy(() => import("@/pages/ViewDocumentTracked
 const PublicReportViewer = React.lazy(() => import("@/pages/PublicReportViewer"));
 const ZellePaymentPage = React.lazy(() => import("@/pages/ZellePaymentPage"));
 const PublicPortalView = React.lazy(() => import("@/pages/PublicPortalView"));
-const CustomerPortalPublic = React.lazy(() => import("@/pages/CustomerPortalPublic"));
 const CrewPortalPage = React.lazy(() => import("@/pages/CrewPortalPage"));
 const HomeownerPortalPage = React.lazy(() => import("@/pages/HomeownerPortalPage"));
 const HomeownerSetupAccount = React.lazy(() => import("@/pages/HomeownerSetupAccount"));

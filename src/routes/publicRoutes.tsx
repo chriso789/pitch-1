@@ -14,7 +14,6 @@ const QuickBooksCallback = React.lazy(() => import("@/pages/QuickBooksCallback")
 const GoogleCalendarCallback = React.lazy(() => import("@/pages/GoogleCalendarCallback"));
 const PublicReportViewer = React.lazy(() => import("@/pages/PublicReportViewer"));
 const OnboardingWalkthrough = React.lazy(() => import("@/pages/onboarding/OnboardingWalkthrough"));
-const CustomerPortalPublic = React.lazy(() => import("@/pages/CustomerPortalPublic"));
 const PublicSignatureCapture = React.lazy(() => import("@/pages/PublicSignatureCapture"));
 const PortalLoginPage = React.lazy(() => import("@/pages/PortalLoginPage"));
 const HomeownerSetupAccount = React.lazy(() => import("@/pages/HomeownerSetupAccount"));
