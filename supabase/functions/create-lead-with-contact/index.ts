@@ -137,7 +137,10 @@ Deno.serve(async (req: Request) => {
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
-      throw new Error("No authorization header");
+      return errorResponse(
+        { code: "unauthorized", message: "Missing Authorization header." },
+        401,
+      );
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -149,7 +152,10 @@ Deno.serve(async (req: Request) => {
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     if (authError || !user) {
       console.error("[create-lead-with-contact] Auth error:", authError);
-      throw new Error("Unauthorized");
+      return errorResponse(
+        { code: "unauthorized", message: "Invalid or expired session. Please sign in again." },
+        401,
+      );
     }
 
     console.log("[create-lead-with-contact] User authenticated:", user.id);
@@ -163,7 +169,10 @@ Deno.serve(async (req: Request) => {
 
     if (profileError || !profile) {
       console.error("[create-lead-with-contact] Profile error:", profileError);
-      throw new Error("User profile not found");
+      return errorResponse(
+        { code: "profile_not_found", message: "Your user profile could not be loaded. Contact support." },
+        404,
+      );
     }
 
     const tenantId = profile.active_tenant_id || profile.tenant_id;
@@ -172,13 +181,73 @@ Deno.serve(async (req: Request) => {
     const body: LeadRequest = await req.json();
     console.log("[create-lead-with-contact] Request body:", JSON.stringify(body, null, 2));
 
-    // Server-side validation: require address
-    if (!body.address?.trim() && !body.selectedAddress && !body.existingContactId) {
-      return new Response(JSON.stringify({ success: false, error: "A verified address is required to create a lead." }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+    // Server-side validation: require name
+    if (!body.name?.trim() && !body.existingContactId) {
+      return errorResponse({
+        code: "validation_error",
+        field: "name",
+        message: "Name is required to create a lead.",
       });
     }
+
+    // Server-side validation: require address
+    if (!body.address?.trim() && !body.selectedAddress && !body.existingContactId) {
+      return errorResponse({
+        code: "validation_error",
+        field: "address",
+        message: "A verified address is required to create a lead.",
+      });
+    }
+
+    // -------------- IDEMPOTENCY --------------
+    // Accept idempotency key from header or body. If we've already processed this
+    // exact request for this tenant, replay the prior response.
+    const idempotencyKey =
+      req.headers.get("x-idempotency-key") || body.idempotencyKey || null;
+    const requestHash = await sha256Hex(
+      JSON.stringify({
+        tenant: tenantId,
+        name: body.name?.trim().toLowerCase() || null,
+        phone: normalizePhone(body.phone),
+        email: normalizeEmail(body.email),
+        address: (body.selectedAddress?.formatted_address || body.address || "")
+          .trim()
+          .toLowerCase(),
+      }),
+    );
+
+    if (idempotencyKey) {
+      const { data: existingKey } = await supabase
+        .from("idempotency_keys")
+        .select("response_data, status_code, request_hash, expires_at")
+        .eq("tenant_id", tenantId)
+        .eq("key", idempotencyKey)
+        .maybeSingle();
+
+      if (existingKey) {
+        const expired = existingKey.expires_at
+          ? new Date(existingKey.expires_at).getTime() < Date.now()
+          : false;
+        if (!expired) {
+          if (existingKey.request_hash && existingKey.request_hash !== requestHash) {
+            return errorResponse({
+              code: "idempotency_key_conflict",
+              message:
+                "This idempotency key was already used with a different request body.",
+            }, 409);
+          }
+          if (existingKey.response_data) {
+            console.log("[create-lead-with-contact] Idempotency replay for key:", idempotencyKey);
+            return new Response(JSON.stringify(existingKey.response_data), {
+              status: existingKey.status_code || 200,
+              headers: { ...corsHeaders, "Content-Type": "application/json", "x-idempotent-replay": "true" },
+            });
+          }
+        }
+      }
+    }
+
+
 
     // PRIORITY: Use locationId from request (client's current location switcher selection)
     // Then fall back to profile's active_location_id, then find a default
