@@ -63,6 +63,41 @@ Deno.serve(async (req) => {
 
     if (!action) return json({ error: "action required" }, 400);
 
+    // ACTION: validate-session — validate homeowner local session server-side
+    if (action === "validate-session") {
+      if (!token || typeof token !== "string") return json({ error: "Session token required" }, 400);
+
+      const { data: session, error: sessionErr } = await supabase
+        .from("homeowner_portal_sessions")
+        .select("id, tenant_id, contact_id, email, expires_at, auth_method, contact:contacts(id, tenant_id, email, phone, first_name, portal_access_enabled)")
+        .eq("token", token)
+        .gt("expires_at", new Date().toISOString())
+        .maybeSingle();
+
+      if (sessionErr) {
+        console.error("validate-session lookup error:", sessionErr);
+        return json({ error: "Unable to validate session" }, 500);
+      }
+
+      const contact = Array.isArray(session?.contact) ? session.contact[0] : session?.contact;
+      if (!session || !contact?.portal_access_enabled) return json({ error: "Invalid or expired session" }, 401);
+
+      await supabase
+        .from("homeowner_portal_sessions")
+        .update({ last_active_at: new Date().toISOString() })
+        .eq("id", session.id);
+
+      return json({
+        success: true,
+        token,
+        contact_id: session.contact_id,
+        tenant_id: session.tenant_id,
+        email: session.email || contact.email,
+        first_name: contact.first_name,
+        expires_at: session.expires_at,
+      });
+    }
+
     // ACTION: login — look up contact by email, verify password, create session
     if (action === "login") {
       if (!email || !password) return json({ error: "Email and password required" }, 400);
