@@ -49,7 +49,7 @@ Deno.serve(async (req) => {
         });
       }
 
-      const { compare } = await import("https://deno.land/x/bcrypt@v0.4.1/mod.ts");
+      const { compare } = await import("npm:bcryptjs@2.4.3");
       const valid = await compare(password, contact.portal_password_hash);
       if (!valid) {
         return new Response(JSON.stringify({ error: "Invalid email or password" }), {
@@ -151,8 +151,8 @@ Deno.serve(async (req) => {
       }
 
       // Hash with bcrypt via Web Crypto + salt
-      const { hash } = await import("https://deno.land/x/bcrypt@v0.4.1/mod.ts");
-      const passwordHash = await hash(password);
+      const { hash } = await import("npm:bcryptjs@2.4.3");
+      const passwordHash = await hash(password, 10);
 
       const { error: updateErr } = await supabase
         .from("contacts")
@@ -191,7 +191,7 @@ Deno.serve(async (req) => {
         });
       }
 
-      const { compare } = await import("https://deno.land/x/bcrypt@v0.4.1/mod.ts");
+      const { compare } = await import("npm:bcryptjs@2.4.3");
       const valid = await compare(password, contact.portal_password_hash);
 
       if (!valid) {
