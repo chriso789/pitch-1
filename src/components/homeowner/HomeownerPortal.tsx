@@ -514,16 +514,17 @@ export function HomeownerPortal() {
                 </div>
                 <div>
                   <input
+                    ref={photoInputRef}
                     id="homeowner-photo-upload"
                     type="file"
                     accept="image/*"
                     className="hidden"
                     onChange={handlePhotoUpload}
-                    disabled={isUploading}
                   />
                   <Button
                     size="sm"
-                    onClick={() => document.getElementById("homeowner-photo-upload")?.click()}
+                    type="button"
+                    onClick={() => photoInputRef.current?.click()}
                     disabled={isUploading}
                   >
                     <ImageIcon className="h-4 w-4 mr-1" />
