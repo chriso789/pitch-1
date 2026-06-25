@@ -190,8 +190,8 @@ Deno.serve(async (req) => {
 
       if (contactErr || !contact || !contact.portal_password_hash) return json({ error: "Invalid credentials" }, 401);
 
-      const { compare } = await import("npm:bcryptjs@2.4.3");
-      const valid = await compare(password, contact.portal_password_hash);
+      const bcrypt = (await import("npm:bcryptjs@2.4.3")).default;
+      const valid = bcrypt.compareSync(password, contact.portal_password_hash);
       if (!valid) return json({ error: "Invalid credentials" }, 401);
 
       await supabase.from("contacts").update({ portal_last_login_at: new Date().toISOString() }).eq("id", contact_id);
