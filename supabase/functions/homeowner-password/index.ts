@@ -80,9 +80,14 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    const { action, contact_id, password, email, token, project_id, message, change_order_id } = await req.json();
+    const body = await req.json();
+    const { action, contact_id, password, email, token, project_id, message, change_order_id } = body;
+    const { file_base64, file_name, mime_type, caption } = body as {
+      file_base64?: string; file_name?: string; mime_type?: string; caption?: string;
+    };
 
     if (!action) return json({ error: "action required" }, 400);
+
 
     // ACTION: validate-session — validate homeowner local session server-side
     if (action === "validate-session") {
