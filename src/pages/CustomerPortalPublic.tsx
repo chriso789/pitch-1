@@ -347,7 +347,55 @@ const CustomerPortalPublic: React.FC = () => {
             </div>
           </TabsContent>
 
+          {/* Photos Tab */}
+          <TabsContent value="photos" className="space-y-4">
+            <Card className="p-6">
+              <h3 className="font-semibold mb-4 flex items-center gap-2">
+                <Image className="h-4 w-4" />
+                Project Photos
+                <Badge variant="secondary">{photos.length}</Badge>
+              </h3>
+              {photos.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Image className="h-12 w-12 mx-auto mb-3 opacity-40" />
+                  <p>No photos have been shared yet.</p>
+                  <p className="text-xs mt-1">Photos from your project will appear here as work progresses.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                  {photos.map((photo: any) => (
+                    <a
+                      key={photo.id}
+                      href={photo.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group block relative aspect-square rounded-lg overflow-hidden border bg-muted hover:ring-2 hover:ring-primary transition"
+                    >
+                      <img
+                        src={photo.url}
+                        alt={photo.caption || 'Project photo'}
+                        loading="lazy"
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                      />
+                      {photo.category && (
+                        <Badge className="absolute top-2 left-2 capitalize" variant="secondary">
+                          {photo.category}
+                        </Badge>
+                      )}
+                      {photo.caption && (
+                        <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 to-transparent p-2">
+                          <p className="text-xs text-white line-clamp-2">{photo.caption}</p>
+                        </div>
+                      )}
+                    </a>
+                  ))}
+                </div>
+              )}
+            </Card>
+          </TabsContent>
+
           {/* Payments Tab */}
+
           <TabsContent value="payments" className="space-y-4">
             {/* Unpaid Invoices */}
             {unpaidInvoices.length > 0 && (
