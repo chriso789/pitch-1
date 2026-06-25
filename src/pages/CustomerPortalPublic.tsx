@@ -217,7 +217,34 @@ const CustomerPortalPublic: React.FC = () => {
               <Badge variant="outline" className={getStatusColor(project?.status)}>
                 {project?.status?.replace('_', ' ').toUpperCase()}
               </Badge>
-              <p className="text-muted-foreground">{project?.description}</p>
+              {(() => {
+                const h = project?.highlights || {};
+                const roofType = h.roof_type ? String(h.roof_type).replace(/_/g, ' ') : null;
+                const jobType = project?.job_type || h.job_type;
+                const brands: string[] = Array.isArray(h.brands) ? h.brands : [];
+                const materials: string[] = Array.isArray(h.materials) ? h.materials : [];
+                const isGeneric = !project?.description || /auto-?created|pipeline entry/i.test(project.description);
+                return (
+                  <div className="space-y-1.5">
+                    <div className="flex flex-wrap gap-1.5">
+                      {jobType && <Badge variant="secondary" className="capitalize">{String(jobType).replace(/_/g, ' ')}</Badge>}
+                      {roofType && <Badge variant="secondary" className="capitalize">{roofType} roof</Badge>}
+                      {brands.map((b) => (
+                        <Badge key={b} variant="outline" className="border-primary/40 text-primary">{b}</Badge>
+                      ))}
+                    </div>
+                    {materials.length > 0 && (
+                      <p className="text-sm text-muted-foreground">
+                        <span className="font-medium text-foreground">Materials:</span> {materials.join(' • ')}
+                      </p>
+                    )}
+                    {!isGeneric && <p className="text-muted-foreground">{project.description}</p>}
+                    {isGeneric && brands.length === 0 && materials.length === 0 && !jobType && !roofType && (
+                      <p className="text-muted-foreground">Your project details will appear here once your estimate is finalized.</p>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
             <div className="flex flex-col gap-2 min-w-[200px]">
               <div className="text-right">
