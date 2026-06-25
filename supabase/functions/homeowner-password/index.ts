@@ -141,8 +141,8 @@ Deno.serve(async (req) => {
       const { contact, error: inviteErr } = await getContactForInviteToken(supabase, token, contact_id);
       if (inviteErr || !contact) return json({ error: inviteErr || "Invalid invite link" }, 401);
 
-      const { hash } = await import("npm:bcryptjs@2.4.3");
-      const passwordHash = await hash(password, 10);
+      const bcrypt = (await import("npm:bcryptjs@2.4.3")).default;
+      const passwordHash = bcrypt.hashSync(password, 10);
 
       const { error: updateErr } = await supabase
         .from("contacts")
