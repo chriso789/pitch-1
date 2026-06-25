@@ -118,112 +118,34 @@ export function HomeownerPortal() {
       }
 
       const session = JSON.parse(sessionData);
-      
-      // Validate session against database and get contact
-      const { data: dbSession, error: sessionError } = await supabase
-        .from("homeowner_portal_sessions")
-        .select("*, contact:contacts(*)")
-        .eq("token", session.token)
-        .gt("expires_at", new Date().toISOString())
-        .maybeSingle();
 
-      if (sessionError || !dbSession) {
+      // Homeowners use a custom portal session, not Supabase Auth, so load through
+      // the Edge Function instead of browser-side RLS-protected table queries.
+      const { data, error } = await supabase.functions.invoke("homeowner-password", {
+        body: { action: "portal-data", token: session.token },
+      });
+
+      if (error || !data?.success) {
         console.error("Invalid or expired session");
         localStorage.removeItem("homeowner_session");
         setIsLoading(false);
         return;
       }
 
-      const contact = dbSession.contact;
-      if (contact) {
-        setContactInfo(contact);
-
-        // Get project for this contact
-        const { data: projectData } = await (supabase as any)
-          .from("projects")
-          .select("*")
-          .eq("contact_id", contact.id)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (projectData) {
-          const pData = projectData as any;
-
-          // Fallback: if no contract value set, use the active estimate's sale price
-          let contractAmount = Number(pData.total_contract_value) || 0;
-          let amountPaid = 0;
-          if (pData.pipeline_entry_id) {
-            try {
-              const { data: barData } = await supabase.rpc('api_estimate_hyperlink_bar', {
-                p_pipeline_entry_id: pData.pipeline_entry_id,
-              });
-              const bar = barData as { sale_price?: number } | null;
-              if (!contractAmount && bar?.sale_price) {
-                contractAmount = Number(bar.sale_price) || 0;
-              }
-              const { data: paymentRows } = await supabase
-                .from('project_payments')
-                .select('amount')
-                .eq('pipeline_entry_id', pData.pipeline_entry_id);
-              amountPaid = (paymentRows || []).reduce((s: number, p: any) => s + Number(p.amount || 0), 0);
-            } catch (e) {
-              console.warn('Estimate/payment fallback failed', e);
-            }
-          }
-
-          setProject({
-            id: pData.id,
-            name: pData.name,
-            status: pData.status,
-            start_date: pData.start_date,
-            end_date: pData.actual_completion_date || pData.target_completion_date,
-            progress_percentage: pData.progress_percentage || 0,
-            contract_amount: contractAmount,
-            amount_paid: amountPaid,
-            address: pData.property_address || "Address not set"
-          });
-
-          // Load project photos
-          const { data: projectPhotos } = await supabase
-            .from("project_photos")
-            .select("*")
-            .eq("project_id", pData.id)
-            .order("created_at", { ascending: false });
-
-          if (projectPhotos) {
-            setPhotos(projectPhotos.map((p: any) => ({
-              id: p.id,
-              url: p.storage_path || p.url,
-              caption: p.ai_description || "",
-              category: p.phase || "progress",
-              created_at: p.created_at
-            })));
-          }
-
-          // Load change orders
-          const { data: cos } = await supabase
-            .from("change_orders")
-            .select("*")
-            .eq("project_id", pData.id)
-            .order("created_at", { ascending: false });
-
-          if (cos) {
-            setChangeOrders(cos as any);
-          }
-
-          // Load messages
-          const { data: msgs } = await supabase
-            .from("portal_messages")
-            .select("*")
-            .eq("project_id", projectData.id)
-            .order("created_at", { ascending: false });
-
-          if (msgs) {
-            setMessages(msgs);
-          }
-        }
-      }
+      setContactInfo(data.contact || null);
+      setProject(data.project || null);
+      setPhotos(data.photos || []);
+      setChangeOrders(data.changeOrders || []);
+      setMessages(data.messages || []);
+      setPayments((data.payments || []).map((payment: any) => ({
+        id: payment.id,
+        amount: Number(payment.amount || 0),
+        status: payment.status || "pending",
+        due_date: payment.created_at,
+        paid_at: payment.payment_date || null,
+        description: payment.description || "Payment",
+      })));
+      setDocuments(data.documents || []);
     } catch (error) {
       console.error("Error loading portal data:", error);
     } finally {
@@ -235,18 +157,13 @@ export function HomeownerPortal() {
     if (!newMessage.trim() || !project) return;
 
     try {
-      const { error } = await supabase
-        .from("portal_messages")
-        .insert({
-          tenant_id: contactInfo?.tenant_id,
-          project_id: project.id,
-          sender_type: "homeowner",
-          sender_id: contactInfo?.id,
-          recipient_type: "admin",
-          message: newMessage
-        });
+      const sessionData = localStorage.getItem("homeowner_session");
+      const session = sessionData ? JSON.parse(sessionData) : null;
+      const { error, data } = await supabase.functions.invoke("homeowner-password", {
+        body: { action: "send-message", token: session?.token, project_id: project.id, message: newMessage },
+      });
 
-      if (error) throw error;
+      if (error || !data?.success) throw new Error(data?.error || "Unable to send message");
 
       setNewMessage("");
       loadPortalData();
@@ -265,15 +182,13 @@ export function HomeownerPortal() {
 
   const approveChangeOrder = async (changeOrderId: string) => {
     try {
-      const { error } = await supabase
-        .from("change_orders")
-        .update({ 
-          customer_approved: true,
-          customer_approved_at: new Date().toISOString()
-        })
-        .eq("id", changeOrderId);
+      const sessionData = localStorage.getItem("homeowner_session");
+      const session = sessionData ? JSON.parse(sessionData) : null;
+      const { error, data } = await supabase.functions.invoke("homeowner-password", {
+        body: { action: "approve-change-order", token: session?.token, change_order_id: changeOrderId },
+      });
 
-      if (error) throw error;
+      if (error || !data?.success) throw new Error(data?.error || "Unable to approve change order");
 
       toast({
         title: "Change Order Approved",

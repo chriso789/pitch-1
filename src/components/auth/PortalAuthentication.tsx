@@ -164,7 +164,7 @@ export function PortalAuthentication() {
         description: result.first_name ? `Signed in as ${result.first_name}` : "Signed in successfully",
       });
 
-      navigate("/homeowner");
+      navigate("/homeowner", { replace: true });
     } catch (err: any) {
       toast({
         title: "Login Failed",
