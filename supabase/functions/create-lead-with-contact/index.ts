@@ -384,9 +384,53 @@ Deno.serve(async (req: Request) => {
     // Create contact if not provided
     if (!contactId) {
       console.log("[create-lead-with-contact] Checking for existing contact...");
-      
-      // --- DEDUP: Check by name + address (warn, don't auto-merge) ---
-      if (body.name) {
+
+      const normalizedPhone = normalizePhone(body.phone);
+      const normalizedEmail = normalizeEmail(body.email);
+
+      // --- DEDUP TIER 1: exact phone or email match within tenant ---
+      if (normalizedPhone || normalizedEmail) {
+        const filters: string[] = [];
+        if (normalizedPhone) filters.push(`phone.ilike.%${normalizedPhone}`);
+        if (normalizedEmail) filters.push(`email.eq.${normalizedEmail}`);
+
+        const { data: contactMatch } = await supabase
+          .from("contacts")
+          .select("id, first_name, last_name, address_street, email, phone, location_id")
+          .eq("tenant_id", tenantId)
+          .eq("is_deleted", false)
+          .or(filters.join(","))
+          .limit(5);
+
+        const duplicate = contactMatch?.find((c) => {
+          const cPhone = normalizePhone(c.phone);
+          const cEmail = normalizeEmail(c.email);
+          return (
+            (normalizedPhone && cPhone === normalizedPhone) ||
+            (normalizedEmail && cEmail === normalizedEmail)
+          );
+        });
+
+        if (duplicate && !body.forceDuplicate) {
+          console.log("[create-lead-with-contact] Phone/email duplicate detected:", duplicate.id);
+          const matchedOn = normalizedPhone && normalizePhone(duplicate.phone) === normalizedPhone
+            ? "phone"
+            : "email";
+          return errorResponse({
+            code: "duplicate_contact",
+            field: matchedOn,
+            message: `A contact with this ${matchedOn} already exists. Re-submit with forceDuplicate=true to attach a new lead to this contact.`,
+            details: { existingContact: duplicate, matchedOn },
+          }, 409);
+        }
+        if (duplicate && body.forceDuplicate) {
+          contactId = duplicate.id;
+          console.log("[create-lead-with-contact] Force duplicate (phone/email): reusing contact", contactId);
+        }
+      }
+
+      // --- DEDUP TIER 2: name + street address ---
+      if (!contactId && body.name) {
         const nameParts = body.name.split(" ");
         const firstName = nameParts[0] || "";
         const lastName = nameParts.slice(1).join(" ") || "";
@@ -402,31 +446,25 @@ Deno.serve(async (req: Request) => {
             .limit(5);
 
           const normalizedStreet = addressComponents.street.toLowerCase().trim();
-          const duplicate = nameAddrMatch?.find(c =>
+          const duplicate = nameAddrMatch?.find((c) =>
             c.address_street?.toLowerCase().trim() === normalizedStreet
           );
 
           if (duplicate && !body.forceDuplicate) {
-            console.log("[create-lead-with-contact] Duplicate detected:", duplicate.id);
-            return new Response(
-              JSON.stringify({
-                success: false,
-                duplicate: true,
-                existingContact: duplicate,
-                message: `A contact named "${firstName} ${lastName}" already exists at this address.`,
-              }),
-              {
-                headers: { ...corsHeaders, "Content-Type": "application/json" },
-                status: 200,
-              }
-            );
+            console.log("[create-lead-with-contact] Name+address duplicate detected:", duplicate.id);
+            return errorResponse({
+              code: "duplicate_contact",
+              field: "address",
+              message: `A contact named "${firstName} ${lastName}" already exists at this address.`,
+              details: { existingContact: duplicate, matchedOn: "name_address" },
+            }, 409);
           } else if (duplicate && body.forceDuplicate) {
-            // Reuse existing contact — create a new lead/pipeline entry linked to it
             contactId = duplicate.id;
-            console.log("[create-lead-with-contact] Force duplicate: reusing existing contact", contactId);
+            console.log("[create-lead-with-contact] Force duplicate (name+addr): reusing contact", contactId);
           }
         }
       }
+
 
       if (!contactId) {
         // Parse name into first/last
