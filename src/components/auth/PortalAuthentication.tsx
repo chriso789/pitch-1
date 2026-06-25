@@ -221,59 +221,67 @@ export function PortalAuthentication() {
               </TabsList>
 
               <TabsContent value="homeowner">
-                {emailSent ? (
-                  <div className="text-center py-6">
-                    <div className="h-16 w-16 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <CheckCircle className="h-8 w-8 text-green-500" />
+                <form onSubmit={handleHomeownerLogin} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="homeowner-email">Email Address</Label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="homeowner-email"
+                        type="email"
+                        autoComplete="email"
+                        placeholder="you@example.com"
+                        value={homeownerEmail}
+                        onChange={(e) => setHomeownerEmail(e.target.value)}
+                        className="pl-10"
+                      />
                     </div>
-                    <h3 className="font-semibold text-lg mb-2">Check Your Email</h3>
-                    <p className="text-muted-foreground text-sm mb-4">
-                      We've sent a login link to<br />
-                      <span className="font-medium text-foreground">{homeownerEmail}</span>
-                    </p>
-                    <Button 
-                      variant="outline" 
-                      onClick={() => setEmailSent(false)}
-                      className="mt-2"
-                    >
-                      Use Different Email
-                    </Button>
                   </div>
-                ) : (
-                  <form onSubmit={handleHomeownerLogin} className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="homeowner-email">Email Address</Label>
-                      <div className="relative">
-                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input
-                          id="homeowner-email"
-                          type="email"
-                          placeholder="Enter your email"
-                          value={homeownerEmail}
-                          onChange={(e) => setHomeownerEmail(e.target.value)}
-                          className="pl-10"
-                        />
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Enter the email associated with your project
-                      </p>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="homeowner-password">Password</Label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="homeowner-password"
+                        type={showPassword ? "text" : "password"}
+                        autoComplete="current-password"
+                        placeholder="Enter your password"
+                        value={homeownerPassword}
+                        onChange={(e) => setHomeownerPassword(e.target.value)}
+                        className="pl-10 pr-10"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
+                        onClick={() => setShowPassword((s) => !s)}
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
                     </div>
-                    <Button type="submit" className="w-full" disabled={isLoading}>
-                      {isLoading ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Sending Link...
-                        </>
-                      ) : (
-                        <>
-                          Continue
-                          <ArrowRight className="h-4 w-4 ml-2" />
-                        </>
-                      )}
-                    </Button>
-                  </form>
-                )}
+                    <p className="text-xs text-muted-foreground">
+                      First time here? Use the setup link your contractor emailed you to create your password.
+                    </p>
+                  </div>
+
+                  <Button type="submit" className="w-full" disabled={isLoading}>
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Signing In...
+                      </>
+                    ) : (
+                      <>
+                        Sign In
+                        <ArrowRight className="h-4 w-4 ml-2" />
+                      </>
+                    )}
+                  </Button>
+                </form>
               </TabsContent>
+
 
               <TabsContent value="crew">
                 <form onSubmit={handleCrewLogin} className="space-y-4">
