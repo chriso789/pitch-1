@@ -52,26 +52,18 @@ export function HomeownerProtectedRoute({ children }: HomeownerProtectedRoutePro
         return;
       }
 
-      // Validate token against database
-      const { data: dbSession, error } = await supabase
-        .from("homeowner_portal_sessions")
-        .select("id, expires_at, contact_id")
-        .eq("token", session.token)
-        .gt("expires_at", new Date().toISOString())
-        .maybeSingle();
+      // Validate token server-side. Homeowners are not Supabase auth users, so
+      // direct browser RLS checks can fail even when the custom portal session is valid.
+      const { data: dbSession, error } = await supabase.functions.invoke("homeowner-password", {
+        body: { action: "validate-session", token: session.token },
+      });
 
-      if (error || !dbSession) {
+      if (error || !dbSession?.success) {
         localStorage.removeItem("homeowner_session");
         setIsValid(false);
         setIsValidating(false);
         return;
       }
-
-      // Update last_active_at
-      await supabase
-        .from("homeowner_portal_sessions")
-        .update({ last_active_at: new Date().toISOString() })
-        .eq("id", dbSession.id);
 
       setIsValid(true);
     } catch (error) {
