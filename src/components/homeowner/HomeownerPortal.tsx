@@ -101,6 +101,7 @@ export function HomeownerPortal() {
   const [contactInfo, setContactInfo] = useState<any>(null);
   const [company, setCompany] = useState<any>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
   const { toast } = useToast();
 
 
