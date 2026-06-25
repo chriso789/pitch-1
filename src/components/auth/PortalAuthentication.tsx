@@ -4,15 +4,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { 
-  Wrench, 
-  Home, 
-  Key, 
-  Mail, 
+import {
+  Wrench,
+  Home,
+  Key,
+  Mail,
+  Lock,
   ArrowRight,
   Loader2,
-  CheckCircle,
-  Building2
+  Building2,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -22,8 +24,9 @@ export function PortalAuthentication() {
   const [activeTab, setActiveTab] = useState<"crew" | "homeowner">("homeowner");
   const [crewToken, setCrewToken] = useState("");
   const [homeownerEmail, setHomeownerEmail] = useState("");
+  const [homeownerPassword, setHomeownerPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [emailSent, setEmailSent] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const { toast } = useToast();
   const navigate = useNavigate();
