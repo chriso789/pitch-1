@@ -515,7 +515,12 @@ Deno.serve(async (req: Request) => {
 
         if (contactError) {
           console.error("[create-lead-with-contact] Contact creation error:", contactError);
-          throw new Error(`Failed to create contact: ${contactError.message}`);
+          return errorResponse({
+            code: "contact_insert_failed",
+            field: "contact",
+            message: "Could not save contact. Check name, phone, and address fields.",
+            details: { db_message: contactError.message, db_code: (contactError as any).code },
+          }, 422);
         }
 
         contactId = newContact.id;
@@ -523,56 +528,7 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Map leadSource to the source enum
-    function mapLeadSource(value: string | null | undefined): string | null {
-      if (!value) return null;
-      const enumValues = ['referral', 'canvassing', 'online', 'advertisement', 'social_media', 'other'];
-      if (enumValues.includes(value)) return value;
-      const mapping: Record<string, string> = {
-        'google_ads': 'online',
-        'facebook_ads': 'social_media',
-        'instagram': 'social_media',
-        'door_knocking': 'canvassing',
-        'yard_sign': 'advertisement',
-        'direct_mail': 'advertisement',
-      };
-      return mapping[value] || 'other';
-    }
 
-    // Map roofType to the roof_type enum
-    function mapRoofType(value: string | null | undefined): string | null {
-      if (!value) return null;
-      const v = String(value).toLowerCase().trim();
-      const enumValues = ['shingle','metal','tile','flat','slate','cedar','other','vinyl_siding','fiber_cement_siding','aluminum_siding','wood_siding','engineered_wood_siding','stucco','stone_veneer','brick_veneer','insulated_vinyl_siding'];
-      if (enumValues.includes(v)) return v;
-      const mapping: Record<string, string> = {
-        'asphalt': 'shingle',
-        'asphalt_shingle': 'shingle',
-        'asphalt shingle': 'shingle',
-        'shingles': 'shingle',
-        'composition': 'shingle',
-        'comp': 'shingle',
-        'wood': 'cedar',
-        'wood_shake': 'cedar',
-        'shake': 'cedar',
-        'clay': 'tile',
-        'concrete': 'tile',
-        'tpo': 'flat',
-        'epdm': 'flat',
-        'rubber': 'flat',
-        'modified_bitumen': 'flat',
-        'vinyl': 'vinyl_siding',
-        'siding': 'vinyl_siding',
-      };
-      return mapping[v] || 'other';
-    }
-
-    // Map pipeline status to pipeline_status enum
-    function mapStatus(value: string | null | undefined): string {
-      const enumValues = ['lead','legal_review','contingency_signed','project','completed','closed','lost','canceled','duplicate','hold_mgr_review','legal','contingency','ready_for_approval','production','final_payment'];
-      if (value && enumValues.includes(value)) return value;
-      return 'lead';
-    }
 
     // Create pipeline entry (lead)
     const pipelineData: any = {
