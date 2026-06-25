@@ -1,8 +1,18 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
+import {
+  errorResponse,
+  mapLeadSource,
+  mapRoofType,
+  mapStatus,
+  normalizeEmail,
+  normalizePhone,
+  type StructuredError,
+} from "./_helpers.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-idempotency-key",
 };
 
 interface LeadRequest {
@@ -27,7 +37,17 @@ interface LeadRequest {
   };
   existingContactId?: string;
   locationId?: string; // Location ID from the location switcher
+  idempotencyKey?: string;
 }
+
+async function sha256Hex(input: string): Promise<string> {
+  const buf = new TextEncoder().encode(input);
+  const hash = await crypto.subtle.digest("SHA-256", buf);
+  return Array.from(new Uint8Array(hash))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 
 // Parse address string into components
 function parseAddressString(address: string): {
@@ -117,7 +137,10 @@ Deno.serve(async (req: Request) => {
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
-      throw new Error("No authorization header");
+      return errorResponse(
+        { code: "unauthorized", message: "Missing Authorization header." },
+        401,
+      );
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -129,7 +152,10 @@ Deno.serve(async (req: Request) => {
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     if (authError || !user) {
       console.error("[create-lead-with-contact] Auth error:", authError);
-      throw new Error("Unauthorized");
+      return errorResponse(
+        { code: "unauthorized", message: "Invalid or expired session. Please sign in again." },
+        401,
+      );
     }
 
     console.log("[create-lead-with-contact] User authenticated:", user.id);
@@ -143,7 +169,10 @@ Deno.serve(async (req: Request) => {
 
     if (profileError || !profile) {
       console.error("[create-lead-with-contact] Profile error:", profileError);
-      throw new Error("User profile not found");
+      return errorResponse(
+        { code: "profile_not_found", message: "Your user profile could not be loaded. Contact support." },
+        404,
+      );
     }
 
     const tenantId = profile.active_tenant_id || profile.tenant_id;
@@ -152,13 +181,73 @@ Deno.serve(async (req: Request) => {
     const body: LeadRequest = await req.json();
     console.log("[create-lead-with-contact] Request body:", JSON.stringify(body, null, 2));
 
-    // Server-side validation: require address
-    if (!body.address?.trim() && !body.selectedAddress && !body.existingContactId) {
-      return new Response(JSON.stringify({ success: false, error: "A verified address is required to create a lead." }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+    // Server-side validation: require name
+    if (!body.name?.trim() && !body.existingContactId) {
+      return errorResponse({
+        code: "validation_error",
+        field: "name",
+        message: "Name is required to create a lead.",
       });
     }
+
+    // Server-side validation: require address
+    if (!body.address?.trim() && !body.selectedAddress && !body.existingContactId) {
+      return errorResponse({
+        code: "validation_error",
+        field: "address",
+        message: "A verified address is required to create a lead.",
+      });
+    }
+
+    // -------------- IDEMPOTENCY --------------
+    // Accept idempotency key from header or body. If we've already processed this
+    // exact request for this tenant, replay the prior response.
+    const idempotencyKey =
+      req.headers.get("x-idempotency-key") || body.idempotencyKey || null;
+    const requestHash = await sha256Hex(
+      JSON.stringify({
+        tenant: tenantId,
+        name: body.name?.trim().toLowerCase() || null,
+        phone: normalizePhone(body.phone),
+        email: normalizeEmail(body.email),
+        address: (body.selectedAddress?.formatted_address || body.address || "")
+          .trim()
+          .toLowerCase(),
+      }),
+    );
+
+    if (idempotencyKey) {
+      const { data: existingKey } = await supabase
+        .from("idempotency_keys")
+        .select("response_data, status_code, request_hash, expires_at")
+        .eq("tenant_id", tenantId)
+        .eq("key", idempotencyKey)
+        .maybeSingle();
+
+      if (existingKey) {
+        const expired = existingKey.expires_at
+          ? new Date(existingKey.expires_at).getTime() < Date.now()
+          : false;
+        if (!expired) {
+          if (existingKey.request_hash && existingKey.request_hash !== requestHash) {
+            return errorResponse({
+              code: "idempotency_key_conflict",
+              message:
+                "This idempotency key was already used with a different request body.",
+            }, 409);
+          }
+          if (existingKey.response_data) {
+            console.log("[create-lead-with-contact] Idempotency replay for key:", idempotencyKey);
+            return new Response(JSON.stringify(existingKey.response_data), {
+              status: existingKey.status_code || 200,
+              headers: { ...corsHeaders, "Content-Type": "application/json", "x-idempotent-replay": "true" },
+            });
+          }
+        }
+      }
+    }
+
+
 
     // PRIORITY: Use locationId from request (client's current location switcher selection)
     // Then fall back to profile's active_location_id, then find a default
@@ -295,9 +384,53 @@ Deno.serve(async (req: Request) => {
     // Create contact if not provided
     if (!contactId) {
       console.log("[create-lead-with-contact] Checking for existing contact...");
-      
-      // --- DEDUP: Check by name + address (warn, don't auto-merge) ---
-      if (body.name) {
+
+      const normalizedPhone = normalizePhone(body.phone);
+      const normalizedEmail = normalizeEmail(body.email);
+
+      // --- DEDUP TIER 1: exact phone or email match within tenant ---
+      if (normalizedPhone || normalizedEmail) {
+        const filters: string[] = [];
+        if (normalizedPhone) filters.push(`phone.ilike.%${normalizedPhone}`);
+        if (normalizedEmail) filters.push(`email.eq.${normalizedEmail}`);
+
+        const { data: contactMatch } = await supabase
+          .from("contacts")
+          .select("id, first_name, last_name, address_street, email, phone, location_id")
+          .eq("tenant_id", tenantId)
+          .eq("is_deleted", false)
+          .or(filters.join(","))
+          .limit(5);
+
+        const duplicate = contactMatch?.find((c) => {
+          const cPhone = normalizePhone(c.phone);
+          const cEmail = normalizeEmail(c.email);
+          return (
+            (normalizedPhone && cPhone === normalizedPhone) ||
+            (normalizedEmail && cEmail === normalizedEmail)
+          );
+        });
+
+        if (duplicate && !body.forceDuplicate) {
+          console.log("[create-lead-with-contact] Phone/email duplicate detected:", duplicate.id);
+          const matchedOn = normalizedPhone && normalizePhone(duplicate.phone) === normalizedPhone
+            ? "phone"
+            : "email";
+          return errorResponse({
+            code: "duplicate_contact",
+            field: matchedOn,
+            message: `A contact with this ${matchedOn} already exists. Re-submit with forceDuplicate=true to attach a new lead to this contact.`,
+            details: { existingContact: duplicate, matchedOn },
+          }, 409);
+        }
+        if (duplicate && body.forceDuplicate) {
+          contactId = duplicate.id;
+          console.log("[create-lead-with-contact] Force duplicate (phone/email): reusing contact", contactId);
+        }
+      }
+
+      // --- DEDUP TIER 2: name + street address ---
+      if (!contactId && body.name) {
         const nameParts = body.name.split(" ");
         const firstName = nameParts[0] || "";
         const lastName = nameParts.slice(1).join(" ") || "";
@@ -313,31 +446,25 @@ Deno.serve(async (req: Request) => {
             .limit(5);
 
           const normalizedStreet = addressComponents.street.toLowerCase().trim();
-          const duplicate = nameAddrMatch?.find(c =>
+          const duplicate = nameAddrMatch?.find((c) =>
             c.address_street?.toLowerCase().trim() === normalizedStreet
           );
 
           if (duplicate && !body.forceDuplicate) {
-            console.log("[create-lead-with-contact] Duplicate detected:", duplicate.id);
-            return new Response(
-              JSON.stringify({
-                success: false,
-                duplicate: true,
-                existingContact: duplicate,
-                message: `A contact named "${firstName} ${lastName}" already exists at this address.`,
-              }),
-              {
-                headers: { ...corsHeaders, "Content-Type": "application/json" },
-                status: 200,
-              }
-            );
+            console.log("[create-lead-with-contact] Name+address duplicate detected:", duplicate.id);
+            return errorResponse({
+              code: "duplicate_contact",
+              field: "address",
+              message: `A contact named "${firstName} ${lastName}" already exists at this address.`,
+              details: { existingContact: duplicate, matchedOn: "name_address" },
+            }, 409);
           } else if (duplicate && body.forceDuplicate) {
-            // Reuse existing contact — create a new lead/pipeline entry linked to it
             contactId = duplicate.id;
-            console.log("[create-lead-with-contact] Force duplicate: reusing existing contact", contactId);
+            console.log("[create-lead-with-contact] Force duplicate (name+addr): reusing contact", contactId);
           }
         }
       }
+
 
       if (!contactId) {
         // Parse name into first/last
@@ -388,7 +515,12 @@ Deno.serve(async (req: Request) => {
 
         if (contactError) {
           console.error("[create-lead-with-contact] Contact creation error:", contactError);
-          throw new Error(`Failed to create contact: ${contactError.message}`);
+          return errorResponse({
+            code: "contact_insert_failed",
+            field: "contact",
+            message: "Could not save contact. Check name, phone, and address fields.",
+            details: { db_message: contactError.message, db_code: (contactError as any).code },
+          }, 422);
         }
 
         contactId = newContact.id;
@@ -396,56 +528,7 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Map leadSource to the source enum
-    function mapLeadSource(value: string | null | undefined): string | null {
-      if (!value) return null;
-      const enumValues = ['referral', 'canvassing', 'online', 'advertisement', 'social_media', 'other'];
-      if (enumValues.includes(value)) return value;
-      const mapping: Record<string, string> = {
-        'google_ads': 'online',
-        'facebook_ads': 'social_media',
-        'instagram': 'social_media',
-        'door_knocking': 'canvassing',
-        'yard_sign': 'advertisement',
-        'direct_mail': 'advertisement',
-      };
-      return mapping[value] || 'other';
-    }
 
-    // Map roofType to the roof_type enum
-    function mapRoofType(value: string | null | undefined): string | null {
-      if (!value) return null;
-      const v = String(value).toLowerCase().trim();
-      const enumValues = ['shingle','metal','tile','flat','slate','cedar','other','vinyl_siding','fiber_cement_siding','aluminum_siding','wood_siding','engineered_wood_siding','stucco','stone_veneer','brick_veneer','insulated_vinyl_siding'];
-      if (enumValues.includes(v)) return v;
-      const mapping: Record<string, string> = {
-        'asphalt': 'shingle',
-        'asphalt_shingle': 'shingle',
-        'asphalt shingle': 'shingle',
-        'shingles': 'shingle',
-        'composition': 'shingle',
-        'comp': 'shingle',
-        'wood': 'cedar',
-        'wood_shake': 'cedar',
-        'shake': 'cedar',
-        'clay': 'tile',
-        'concrete': 'tile',
-        'tpo': 'flat',
-        'epdm': 'flat',
-        'rubber': 'flat',
-        'modified_bitumen': 'flat',
-        'vinyl': 'vinyl_siding',
-        'siding': 'vinyl_siding',
-      };
-      return mapping[v] || 'other';
-    }
-
-    // Map pipeline status to pipeline_status enum
-    function mapStatus(value: string | null | undefined): string {
-      const enumValues = ['lead','legal_review','contingency_signed','project','completed','closed','lost','canceled','duplicate','hold_mgr_review','legal','contingency','ready_for_approval','production','final_payment'];
-      if (value && enumValues.includes(value)) return value;
-      return 'lead';
-    }
 
     // Create pipeline entry (lead)
     const pipelineData: any = {
@@ -488,7 +571,20 @@ Deno.serve(async (req: Request) => {
 
     if (pipelineError) {
       console.error("[create-lead-with-contact] Pipeline creation error:", pipelineError);
-      throw new Error(`Failed to create lead: ${pipelineError.message}`);
+      return errorResponse({
+        code: "pipeline_insert_failed",
+        field: "lead",
+        message: "Could not save lead. Check status, roof type, and source values.",
+        details: {
+          db_message: pipelineError.message,
+          db_code: (pipelineError as any).code,
+          attempted: {
+            status: pipelineData.status,
+            roof_type: pipelineData.roof_type,
+            source: pipelineData.source,
+          },
+        },
+      }, 422);
     }
 
     console.log("[create-lead-with-contact] Lead created successfully:", pipelineEntry.id);
@@ -522,29 +618,43 @@ Deno.serve(async (req: Request) => {
       console.warn('[create-lead-with-contact] CAPI error (non-fatal):', capiErr);
     }
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        lead: pipelineEntry,
-        contactId: contactId,
-        message: "Lead created successfully",
-      }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
+    const successPayload = {
+      success: true,
+      lead: pipelineEntry,
+      contactId: contactId,
+      message: "Lead created successfully",
+    };
+
+    // Persist idempotency record (24h TTL) so retries replay this response
+    if (idempotencyKey) {
+      try {
+        await supabase
+          .from("idempotency_keys")
+          .upsert({
+            tenant_id: tenantId,
+            key: idempotencyKey,
+            request_hash: requestHash,
+            response_data: successPayload,
+            status_code: 200,
+            expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          }, { onConflict: "tenant_id,key" });
+      } catch (idemErr) {
+        console.warn("[create-lead-with-contact] Failed to store idempotency record:", idemErr);
       }
-    );
+    }
+
+    return new Response(JSON.stringify(successPayload), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 200,
+    });
   } catch (error) {
-    console.error("[create-lead-with-contact] Error:", error);
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: error instanceof Error ? error.message : String(error) || "An unexpected error occurred",
-      }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 400,
-      }
-    );
+    console.error("[create-lead-with-contact] Unhandled error:", error);
+    const message = error instanceof Error ? error.message : String(error);
+    const structured: StructuredError = {
+      code: "internal_error",
+      message: message || "An unexpected error occurred.",
+    };
+    return errorResponse(structured, 500);
   }
 });
+
