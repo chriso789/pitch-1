@@ -4,15 +4,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { 
-  Wrench, 
-  Home, 
-  Key, 
-  Mail, 
+import {
+  Wrench,
+  Home,
+  Key,
+  Mail,
+  Lock,
   ArrowRight,
   Loader2,
-  CheckCircle,
-  Building2
+  Building2,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -22,8 +24,9 @@ export function PortalAuthentication() {
   const [activeTab, setActiveTab] = useState<"crew" | "homeowner">("homeowner");
   const [crewToken, setCrewToken] = useState("");
   const [homeownerEmail, setHomeownerEmail] = useState("");
+  const [homeownerPassword, setHomeownerPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [emailSent, setEmailSent] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -105,47 +108,70 @@ export function PortalAuthentication() {
 
   const handleHomeownerLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!homeownerEmail.trim()) {
+    if (!homeownerEmail.trim() || !homeownerPassword) {
       toast({
-        title: "Email Required",
-        description: "Please enter your email address",
-        variant: "destructive"
+        title: "Email and password required",
+        description: "Please enter both your email and password",
+        variant: "destructive",
       });
       return;
     }
 
     setIsLoading(true);
     try {
-      // Request a magic link via secure edge function. The function performs
-      // the contact lookup server-side using the service role and only emails
-      // the link if a matching contact exists. We never reveal whether the
-      // email is on file, and we never create a session client-side.
-      const { error: fnError } = await supabase.functions.invoke(
-        "homeowner-magic-link",
-        {
-          body: { email: homeownerEmail.trim().toLowerCase() },
+      const { data, error } = await supabase.functions.invoke("homeowner-password", {
+        body: {
+          action: "login",
+          email: homeownerEmail.trim().toLowerCase(),
+          password: homeownerPassword,
+        },
+      });
+
+      let result: any = data;
+      if (error) {
+        const ctx: any = (error as any).context;
+        if (ctx?.body) {
+          try {
+            result = typeof ctx.body === "string" ? JSON.parse(ctx.body) : ctx.body;
+          } catch {}
         }
+        if (!result?.success) {
+          throw new Error(result?.error || (error as any).message || "Invalid email or password");
+        }
+      }
+
+      if (!result?.success || !result?.token) {
+        throw new Error(result?.error || "Invalid email or password");
+      }
+
+      localStorage.setItem(
+        "homeowner_session",
+        JSON.stringify({
+          token: result.token,
+          contactId: result.contact_id,
+          tenantId: result.tenant_id,
+          email: result.email,
+          expiresAt: result.expires_at,
+        }),
       );
 
-      if (fnError) throw fnError;
-
-      // Always show "email sent" — even if no match — to prevent enumeration
-      setEmailSent(true);
-
       toast({
-        title: "Check your email",
-        description: "If a project matches that email, we just sent you a secure sign-in link.",
+        title: "Welcome back!",
+        description: result.first_name ? `Signed in as ${result.first_name}` : "Signed in successfully",
       });
-    } catch (error: any) {
+
+      navigate("/homeowner");
+    } catch (err: any) {
       toast({
         title: "Login Failed",
-        description: error.message || "Unable to send login link",
-        variant: "destructive"
+        description: err.message || "Invalid email or password",
+        variant: "destructive",
       });
     } finally {
       setIsLoading(false);
     }
   };
+
 
   // Show loading while checking auth
   if (checkingAuth) {
@@ -195,59 +221,67 @@ export function PortalAuthentication() {
               </TabsList>
 
               <TabsContent value="homeowner">
-                {emailSent ? (
-                  <div className="text-center py-6">
-                    <div className="h-16 w-16 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <CheckCircle className="h-8 w-8 text-green-500" />
+                <form onSubmit={handleHomeownerLogin} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="homeowner-email">Email Address</Label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="homeowner-email"
+                        type="email"
+                        autoComplete="email"
+                        placeholder="you@example.com"
+                        value={homeownerEmail}
+                        onChange={(e) => setHomeownerEmail(e.target.value)}
+                        className="pl-10"
+                      />
                     </div>
-                    <h3 className="font-semibold text-lg mb-2">Check Your Email</h3>
-                    <p className="text-muted-foreground text-sm mb-4">
-                      We've sent a login link to<br />
-                      <span className="font-medium text-foreground">{homeownerEmail}</span>
-                    </p>
-                    <Button 
-                      variant="outline" 
-                      onClick={() => setEmailSent(false)}
-                      className="mt-2"
-                    >
-                      Use Different Email
-                    </Button>
                   </div>
-                ) : (
-                  <form onSubmit={handleHomeownerLogin} className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="homeowner-email">Email Address</Label>
-                      <div className="relative">
-                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input
-                          id="homeowner-email"
-                          type="email"
-                          placeholder="Enter your email"
-                          value={homeownerEmail}
-                          onChange={(e) => setHomeownerEmail(e.target.value)}
-                          className="pl-10"
-                        />
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Enter the email associated with your project
-                      </p>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="homeowner-password">Password</Label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="homeowner-password"
+                        type={showPassword ? "text" : "password"}
+                        autoComplete="current-password"
+                        placeholder="Enter your password"
+                        value={homeownerPassword}
+                        onChange={(e) => setHomeownerPassword(e.target.value)}
+                        className="pl-10 pr-10"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
+                        onClick={() => setShowPassword((s) => !s)}
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
                     </div>
-                    <Button type="submit" className="w-full" disabled={isLoading}>
-                      {isLoading ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Sending Link...
-                        </>
-                      ) : (
-                        <>
-                          Continue
-                          <ArrowRight className="h-4 w-4 ml-2" />
-                        </>
-                      )}
-                    </Button>
-                  </form>
-                )}
+                    <p className="text-xs text-muted-foreground">
+                      First time here? Use the setup link your contractor emailed you to create your password.
+                    </p>
+                  </div>
+
+                  <Button type="submit" className="w-full" disabled={isLoading}>
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Signing In...
+                      </>
+                    ) : (
+                      <>
+                        Sign In
+                        <ArrowRight className="h-4 w-4 ml-2" />
+                      </>
+                    )}
+                  </Button>
+                </form>
               </TabsContent>
+
 
               <TabsContent value="crew">
                 <form onSubmit={handleCrewLogin} className="space-y-4">

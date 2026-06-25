@@ -11,10 +11,96 @@ Deno.serve(async (req) => {
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceKey);
 
-    const { action, contact_id, password, verification_value } = await req.json();
+    const { action, contact_id, password, verification_value, email } = await req.json();
 
-    if (!contact_id || !action) {
-      return new Response(JSON.stringify({ error: "contact_id and action required" }), {
+    if (!action) {
+      return new Response(JSON.stringify({ error: "action required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ACTION: login — look up contact by email, verify password, create session
+    if (action === "login") {
+      if (!email || !password) {
+        return new Response(JSON.stringify({ error: "Email and password required" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { data: contact, error: contactErr } = await supabase
+        .from("contacts")
+        .select("id, tenant_id, email, first_name, portal_password_hash, portal_access_enabled")
+        .ilike("email", email.trim())
+        .maybeSingle();
+
+      if (contactErr || !contact || !contact.portal_password_hash) {
+        return new Response(JSON.stringify({ error: "Invalid email or password" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      if (!contact.portal_access_enabled) {
+        return new Response(JSON.stringify({ error: "Portal access not enabled. Contact your project manager." }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { compare } = await import("https://deno.land/x/bcrypt@v0.4.1/mod.ts");
+      const valid = await compare(password, contact.portal_password_hash);
+      if (!valid) {
+        return new Response(JSON.stringify({ error: "Invalid email or password" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const sessionToken = crypto.randomUUID();
+      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+      const { error: sessionErr } = await supabase
+        .from("homeowner_portal_sessions")
+        .insert({
+          tenant_id: contact.tenant_id,
+          contact_id: contact.id,
+          token: sessionToken,
+          email: contact.email,
+          expires_at: expiresAt,
+          auth_method: "password",
+        });
+
+      if (sessionErr) {
+        console.error("session insert error:", sessionErr);
+        return new Response(JSON.stringify({ error: "Failed to create session" }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      await supabase
+        .from("contacts")
+        .update({ portal_last_login_at: new Date().toISOString() })
+        .eq("id", contact.id);
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          token: sessionToken,
+          contact_id: contact.id,
+          tenant_id: contact.tenant_id,
+          email: contact.email,
+          first_name: contact.first_name,
+          expires_at: expiresAt,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    if (!contact_id) {
+      return new Response(JSON.stringify({ error: "contact_id required" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
