@@ -35,6 +35,25 @@ export default function HomeownerSetupAccount() {
   const { toast } = useToast();
   const navigate = useNavigate();
 
+  const getFunctionErrorMessage = async (functionError: any, fallback: string) => {
+    const ctx = functionError?.context;
+    if (typeof ctx?.json === 'function') {
+      try {
+        const body = await ctx.json();
+        return body?.error || fallback;
+      } catch {}
+    }
+    if (ctx?.body) {
+      try {
+        const body = typeof ctx.body === 'string' ? JSON.parse(ctx.body) : ctx.body;
+        return body?.error || fallback;
+      } catch {}
+    }
+    return functionError?.message === 'Edge Function returned a non-2xx status code'
+      ? fallback
+      : functionError?.message || fallback;
+  };
+
   useEffect(() => {
     const verifyInvite = async () => {
       if (!token) {
@@ -50,7 +69,9 @@ export default function HomeownerSetupAccount() {
           body: { action: 'verify-invite', token, contact_id: contactId }
         });
 
-        if (inviteError) throw new Error(inviteError.message || 'Invalid invite link');
+        if (inviteError) {
+          throw new Error(await getFunctionErrorMessage(inviteError, 'This invite link is invalid or expired. Please ask your project manager to resend it.'));
+        }
         if (!data?.success || !data?.contact) throw new Error(data?.error || 'Invalid invite link');
 
         setContact(data.contact);
@@ -104,7 +125,7 @@ export default function HomeownerSetupAccount() {
         body: { action: 'set-password', contact_id: contact.id, token, password }
       });
 
-      if (pwError) throw new Error(pwError.message || 'Failed to set password');
+      if (pwError) throw new Error(await getFunctionErrorMessage(pwError, 'Failed to set password'));
       if (!pwResult?.success) throw new Error(pwResult?.error || 'Failed to set password');
 
       localStorage.setItem('homeowner_session', JSON.stringify({
