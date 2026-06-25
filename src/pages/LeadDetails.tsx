@@ -1423,6 +1423,11 @@ const LeadDetails = () => {
               />
             </TabsContent>
 
+            <TabsContent value="portal" className="mt-0">
+              <PortalMessagesPanel pipelineEntryId={id!} />
+            </TabsContent>
+
+
             <TabsContent value="timeline" className="mt-0">
               <UnifiedCommunicationsTimeline 
                 pipelineEntryId={id!}
