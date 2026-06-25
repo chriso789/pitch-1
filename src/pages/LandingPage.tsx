@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
+
 import { Card, CardContent } from '@/components/ui/card';
 import { 
   Phone, 
@@ -185,9 +187,30 @@ const LandingPage = () => {
               <Button variant="ghost" className="hidden md:inline-flex" onClick={() => navigate('/pricing')}>
                 Pricing
               </Button>
-              <Button variant="outline" size="sm" className="text-xs sm:text-sm" onClick={() => { trackNavLogin(); navigate('/login'); }}>
-                Log In
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="text-xs sm:text-sm" onClick={() => { trackNavLogin(); }}>
+                    Log In
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-64">
+                  <DropdownMenuLabel>Choose how you sign in</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => navigate('/login')} className="flex-col items-start gap-0.5 py-2">
+                    <span className="font-medium">Staff / Office Login</span>
+                    <span className="text-xs text-muted-foreground">Sales reps, managers, admins</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate('/portal/login')} className="flex-col items-start gap-0.5 py-2">
+                    <span className="font-medium">Homeowner Portal</span>
+                    <span className="text-xs text-muted-foreground">View your project, photos & invoices</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate('/crew')} className="flex-col items-start gap-0.5 py-2">
+                    <span className="font-medium">Crew Login</span>
+                    <span className="text-xs text-muted-foreground">Field crews & subcontractors</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
               <Button 
                 size="sm"
                 onClick={() => { trackNavSignup(); navigate('/demo-request'); }}
