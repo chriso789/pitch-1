@@ -75,8 +75,8 @@ Deno.serve(async (req) => {
       if (contactErr || !contact || !contact.portal_password_hash) return json({ error: "Invalid email or password" }, 401);
       if (!contact.portal_access_enabled) return json({ error: "Portal access not enabled. Contact your project manager." }, 403);
 
-      const { compare } = await import("npm:bcryptjs@2.4.3");
-      const valid = await compare(password, contact.portal_password_hash);
+      const bcrypt = (await import("npm:bcryptjs@2.4.3")).default;
+      const valid = bcrypt.compareSync(password, contact.portal_password_hash);
       if (!valid) return json({ error: "Invalid email or password" }, 401);
 
       const sessionToken = crypto.randomUUID();
