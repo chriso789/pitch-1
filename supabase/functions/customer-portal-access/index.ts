@@ -220,6 +220,32 @@ Deno.serve(async (req) => {
         .not('document_type', 'ilike', '%internal%')
         .order('created_at', { ascending: false });
 
+      // Get project photos with signed URLs
+      let photos: any[] = [];
+      if (resolvedProjectId) {
+        const { data: photoRows } = await supabase
+          .from('project_photos')
+          .select('id, filename, storage_path, phase, ai_description, capture_timestamp, created_at')
+          .eq('project_id', resolvedProjectId)
+          .order('created_at', { ascending: false });
+
+        if (photoRows && photoRows.length > 0) {
+          const paths = photoRows.map((p: any) => p.storage_path).filter(Boolean);
+          const { data: signed } = await supabase.storage
+            .from('smartdoc-assets')
+            .createSignedUrls(paths, 60 * 60 * 24);
+          const urlByPath = new Map((signed || []).map((s: any) => [s.path, s.signedUrl]));
+          photos = photoRows.map((p: any) => ({
+            id: p.id,
+            url: urlByPath.get(p.storage_path) || null,
+            caption: p.ai_description || p.filename || '',
+            category: p.phase || 'progress',
+            created_at: p.created_at,
+          })).filter((p: any) => p.url);
+        }
+      }
+
+
       // Get tenant settings for Zelle config
       const { data: tenantSettings } = await supabase
         .from('tenant_settings')
@@ -243,7 +269,9 @@ Deno.serve(async (req) => {
         payment_links: paymentLinks || [],
         messages: messages || [],
         documents: documents || [],
+        photos,
         company: tenant,
+
         zelle_enabled: tenantSettings?.zelle_enabled || false,
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
