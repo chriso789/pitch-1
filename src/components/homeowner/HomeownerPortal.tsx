@@ -532,6 +532,7 @@ export function HomeownerPortal() {
                     id="homeowner-photo-upload"
                     type="file"
                     accept="image/*"
+                    multiple
                     className="hidden"
                     onChange={handlePhotoUpload}
                   />
@@ -542,8 +543,9 @@ export function HomeownerPortal() {
                     disabled={isUploading}
                   >
                     <ImageIcon className="h-4 w-4 mr-1" />
-                    {isUploading ? "Uploading…" : "Upload Photo"}
+                    {isUploading ? "Uploading…" : "Upload Photos"}
                   </Button>
+
                 </div>
               </CardHeader>
               <CardContent>
