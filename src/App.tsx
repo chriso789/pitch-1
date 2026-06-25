@@ -193,6 +193,7 @@ const AppContent = () => {
         <Route path="/sign/:token" element={<Suspense fallback={<PageLoader />}><PublicSignatureCapture /></Suspense>} />
         <Route path="/portal/login" element={<Suspense fallback={<PageLoader />}><PortalLoginPage /></Suspense>} />
         <Route path="/portal/setup" element={<Suspense fallback={<PageLoader />}><HomeownerSetupAccount /></Suspense>} />
+        <Route path="/homeowner/verify" element={<Suspense fallback={<PageLoader />}><HomeownerSetupAccount /></Suspense>} />
         <Route path="/portal/:shareToken" element={<Suspense fallback={<PageLoader />}><PublicPortalView /></Suspense>} />
         <Route path="/crew" element={<Suspense fallback={<PageLoader />}><CrewPortalPage /></Suspense>} />
         <Route path="/homeowner" element={<Suspense fallback={<PageLoader />}><HomeownerProtectedRoute><HomeownerPortalPage /></HomeownerProtectedRoute></Suspense>} />
