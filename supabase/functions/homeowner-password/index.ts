@@ -50,6 +50,27 @@ async function getContactForInviteToken(supabase: any, token: string, contactId?
   return { contact, error: null };
 }
 
+async function getValidHomeownerSession(supabase: any, token: string) {
+  const { data: session, error: sessionErr } = await supabase
+    .from("homeowner_portal_sessions")
+    .select("id, tenant_id, contact_id, email, expires_at, auth_method, contact:contacts(id, tenant_id, email, phone, first_name, last_name, portal_access_enabled)")
+    .eq("token", token)
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
+
+  if (sessionErr) {
+    console.error("homeowner session lookup error:", sessionErr);
+    return { session: null, contact: null, error: "Unable to validate session" };
+  }
+
+  const contact = Array.isArray(session?.contact) ? session.contact[0] : session?.contact;
+  if (!session || !contact?.portal_access_enabled) {
+    return { session: null, contact: null, error: "Invalid or expired session" };
+  }
+
+  return { session, contact, error: null };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -67,20 +88,8 @@ Deno.serve(async (req) => {
     if (action === "validate-session") {
       if (!token || typeof token !== "string") return json({ error: "Session token required" }, 400);
 
-      const { data: session, error: sessionErr } = await supabase
-        .from("homeowner_portal_sessions")
-        .select("id, tenant_id, contact_id, email, expires_at, auth_method, contact:contacts(id, tenant_id, email, phone, first_name, portal_access_enabled)")
-        .eq("token", token)
-        .gt("expires_at", new Date().toISOString())
-        .maybeSingle();
-
-      if (sessionErr) {
-        console.error("validate-session lookup error:", sessionErr);
-        return json({ error: "Unable to validate session" }, 500);
-      }
-
-      const contact = Array.isArray(session?.contact) ? session.contact[0] : session?.contact;
-      if (!session || !contact?.portal_access_enabled) return json({ error: "Invalid or expired session" }, 401);
+      const { session, contact, error } = await getValidHomeownerSession(supabase, token);
+      if (error || !session || !contact) return json({ error: error || "Invalid or expired session" }, 401);
 
       await supabase
         .from("homeowner_portal_sessions")
@@ -96,6 +105,162 @@ Deno.serve(async (req) => {
         first_name: contact.first_name,
         expires_at: session.expires_at,
       });
+    }
+
+    // ACTION: portal-data — load homeowner portal data server-side for custom homeowner sessions
+    if (action === "portal-data") {
+      if (!token || typeof token !== "string") return json({ error: "Session token required" }, 400);
+
+      const { session, contact, error } = await getValidHomeownerSession(supabase, token);
+      if (error || !session || !contact) return json({ error: error || "Invalid or expired session" }, 401);
+
+      await supabase
+        .from("homeowner_portal_sessions")
+        .update({ last_active_at: new Date().toISOString() })
+        .eq("id", session.id);
+
+      const { data: pipelineRows } = await supabase
+        .from("pipeline_entries")
+        .select("id")
+        .eq("contact_id", contact.id)
+        .eq("tenant_id", session.tenant_id)
+        .order("created_at", { ascending: false });
+
+      const pipelineIds = (pipelineRows || []).map((row: any) => row.id);
+      const { data: projectData } = pipelineIds.length > 0
+        ? await supabase
+            .from("projects")
+            .select("*")
+            .in("pipeline_entry_id", pipelineIds)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        : { data: null as any };
+
+      let project = null;
+      let photos: any[] = [];
+      let changeOrders: any[] = [];
+      let messages: any[] = [];
+      let payments: any[] = [];
+
+      if (projectData) {
+        let contractAmount = Number(projectData.total_contract_value) || 0;
+        let amountPaid = 0;
+
+        if (projectData.pipeline_entry_id) {
+          const { data: barData } = await supabase.rpc("api_estimate_hyperlink_bar", {
+            p_pipeline_entry_id: projectData.pipeline_entry_id,
+          });
+          const bar = barData as { sale_price?: number } | null;
+          if (!contractAmount && bar?.sale_price) contractAmount = Number(bar.sale_price) || 0;
+
+          const { data: paymentRows } = await supabase
+            .from("project_payments")
+            .select("id, amount, status, created_at, payment_date, description")
+            .eq("pipeline_entry_id", projectData.pipeline_entry_id)
+            .order("created_at", { ascending: false });
+          payments = paymentRows || [];
+          amountPaid = payments.reduce((sum: number, payment: any) => sum + Number(payment.amount || 0), 0);
+        }
+
+        project = {
+          id: projectData.id,
+          name: projectData.name,
+          status: projectData.status,
+          start_date: projectData.start_date,
+          end_date: projectData.actual_completion_date || projectData.target_completion_date,
+          progress_percentage: projectData.progress_percentage || 0,
+          contract_amount: contractAmount,
+          amount_paid: amountPaid,
+          address: projectData.property_address || "Address not set",
+        };
+
+        const { data: photoRows } = await supabase
+          .from("project_photos")
+          .select("id, storage_path, url, ai_description, phase, created_at")
+          .eq("project_id", projectData.id)
+          .order("created_at", { ascending: false });
+        photos = (photoRows || []).map((photo: any) => ({
+          id: photo.id,
+          url: photo.storage_path || photo.url,
+          caption: photo.ai_description || "",
+          category: photo.phase || "progress",
+          created_at: photo.created_at,
+        }));
+
+        const { data: coRows } = await supabase
+          .from("change_orders")
+          .select("id, title, description, cost_impact, status, created_at")
+          .eq("project_id", projectData.id)
+          .order("created_at", { ascending: false });
+        changeOrders = coRows || [];
+
+        const { data: msgRows } = await supabase
+          .from("portal_messages")
+          .select("id, message, sender_type, created_at")
+          .eq("project_id", projectData.id)
+          .order("created_at", { ascending: false });
+        messages = msgRows || [];
+      }
+
+      return json({
+        success: true,
+        contact,
+        project,
+        photos,
+        changeOrders,
+        messages,
+        payments,
+        documents: [],
+      });
+    }
+
+    // ACTION: send-message — allow a homeowner session to message the project team
+    if (action === "send-message") {
+      if (!token || typeof token !== "string") return json({ error: "Session token required" }, 400);
+      if (!message || typeof message !== "string" || !message.trim()) return json({ error: "Message required" }, 400);
+      if (!project_id || typeof project_id !== "string") return json({ error: "Project required" }, 400);
+
+      const { session, contact, error } = await getValidHomeownerSession(supabase, token);
+      if (error || !session || !contact) return json({ error: error || "Invalid or expired session" }, 401);
+
+      const { error: msgErr } = await supabase.from("portal_messages").insert({
+        tenant_id: session.tenant_id,
+        project_id,
+        sender_type: "homeowner",
+        sender_id: contact.id,
+        recipient_type: "admin",
+        message: message.trim(),
+      });
+
+      if (msgErr) {
+        console.error("portal message insert error:", msgErr);
+        return json({ error: "Unable to send message" }, 500);
+      }
+
+      return json({ success: true });
+    }
+
+    // ACTION: approve-change-order — allow a homeowner session to approve a pending change order
+    if (action === "approve-change-order") {
+      if (!token || typeof token !== "string") return json({ error: "Session token required" }, 400);
+      if (!change_order_id || typeof change_order_id !== "string") return json({ error: "Change order required" }, 400);
+
+      const { session, error } = await getValidHomeownerSession(supabase, token);
+      if (error || !session) return json({ error: error || "Invalid or expired session" }, 401);
+
+      const { error: updateErr } = await supabase
+        .from("change_orders")
+        .update({ customer_approved: true, customer_approved_at: new Date().toISOString() })
+        .eq("id", change_order_id)
+        .eq("tenant_id", session.tenant_id);
+
+      if (updateErr) {
+        console.error("change order approval error:", updateErr);
+        return json({ error: "Unable to approve change order" }, 500);
+      }
+
+      return json({ success: true });
     }
 
     // ACTION: login — look up contact by email, verify password, create session
