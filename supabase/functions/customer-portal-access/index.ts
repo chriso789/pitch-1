@@ -269,7 +269,9 @@ Deno.serve(async (req) => {
         payment_links: paymentLinks || [],
         messages: messages || [],
         documents: documents || [],
+        photos,
         company: tenant,
+
         zelle_enabled: tenantSettings?.zelle_enabled || false,
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
