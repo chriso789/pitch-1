@@ -209,7 +209,46 @@ export function HomeownerPortal() {
     }
   };
 
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !project) return;
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ title: "File too large", description: "Photos must be under 10MB", variant: "destructive" });
+      return;
+    }
+    try {
+      setIsUploading(true);
+      const sessionData = localStorage.getItem("homeowner_session");
+      const session = sessionData ? JSON.parse(sessionData) : null;
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const { data, error } = await supabase.functions.invoke("homeowner-password", {
+        body: {
+          action: "upload-photo",
+          token: session?.token,
+          project_id: project.id,
+          file_base64: base64,
+          file_name: file.name,
+          mime_type: file.type,
+        },
+      });
+      if (error || !data?.success) throw new Error(data?.error || "Upload failed");
+      toast({ title: "Photo uploaded", description: "Your photo has been shared with the team." });
+      loadPortalData();
+    } catch (err: any) {
+      toast({ title: "Upload failed", description: err.message, variant: "destructive" });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const getStatusColor = (status: string) => {
+
     switch (status?.toLowerCase()) {
       case "in_progress": return "bg-blue-500/10 text-blue-500";
       case "completed": return "bg-green-500/10 text-green-500";
