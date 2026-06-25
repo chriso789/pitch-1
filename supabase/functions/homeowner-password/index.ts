@@ -53,7 +53,7 @@ async function getContactForInviteToken(supabase: any, token: string, contactId?
 async function getValidHomeownerSession(supabase: any, token: string) {
   const { data: session, error: sessionErr } = await supabase
     .from("homeowner_portal_sessions")
-    .select("id, tenant_id, contact_id, email, expires_at, auth_method, contact:contacts(id, tenant_id, email, phone, first_name, last_name, portal_access_enabled)")
+    .select("id, tenant_id, contact_id, email, expires_at, auth_method, contact:contacts(id, tenant_id, email, phone, first_name, last_name, portal_access_enabled, address_street, address_city, address_state, address_zip)")
     .eq("token", token)
     .gt("expires_at", new Date().toISOString())
     .maybeSingle();
