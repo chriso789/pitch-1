@@ -39,6 +39,8 @@ export const GlobalLayout = ({ children }: GlobalLayoutProps) => {
 
   return (
     <div className="flex h-screen w-full overflow-hidden">
+      <PortalMessageNotifier />
+
       <CollapsibleSidebar mobileOpen={mobileOpen} onMobileOpenChange={setMobileOpen}>
         <Sidebar />
       </CollapsibleSidebar>
