@@ -238,50 +238,85 @@ Deno.serve(async (req) => {
       const { session, contact, error } = await getValidHomeownerSession(supabase, token);
       if (error || !session || !contact) return json({ error: error || "Invalid or expired session" }, 401);
 
-      // Confirm project belongs to homeowner's contact + tenant
+      // Confirm project belongs to homeowner's contact + tenant; resolve lead_id via pipeline_entry
       const { data: proj } = await supabase
         .from("projects")
-        .select("id, tenant_id, pipeline_entry_id")
+        .select("id, tenant_id, pipeline_entry_id, contact_id, pipeline_entries:pipeline_entry_id(id, lead_id, contact_id)")
         .eq("id", project_id)
         .eq("tenant_id", session.tenant_id)
         .maybeSingle();
       if (!proj) return json({ error: "Project not found" }, 404);
 
+      const resolvedLeadId = proj?.pipeline_entries?.lead_id || proj?.pipeline_entries?.id || proj.pipeline_entry_id || null;
+      const resolvedContactId = proj.contact_id || proj?.pipeline_entries?.contact_id || contact.id;
+
+      // Accept multiple files: file_base64 may be string or string[]; file_name may be string or string[]
+      const files: { b64: string; name: string }[] = Array.isArray(file_base64)
+        ? (file_base64 as string[]).map((b: string, i: number) => ({
+            b64: b,
+            name: (Array.isArray(file_name) ? file_name[i] : file_name) || `photo-${Date.now()}-${i}.jpg`,
+          }))
+        : [{ b64: file_base64 as string, name: (file_name as string) || `photo-${Date.now()}.jpg` }];
+
       try {
-        const cleanedBase64 = file_base64.includes(",") ? file_base64.split(",")[1] : file_base64;
-        const binary = Uint8Array.from(atob(cleanedBase64), (c) => c.charCodeAt(0));
-        const safeName = (file_name || `photo-${Date.now()}.jpg`).replace(/[^a-zA-Z0-9._-]/g, "_");
-        const path = `${session.tenant_id}/projects/${project_id}/homeowner/${Date.now()}-${safeName}`;
-        const contentType = mime_type || "image/jpeg";
+        const results: any[] = [];
+        for (const f of files) {
+          const cleanedBase64 = f.b64.includes(",") ? f.b64.split(",")[1] : f.b64;
+          const binary = Uint8Array.from(atob(cleanedBase64), (c) => c.charCodeAt(0));
+          const safeName = f.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+          const path = `${session.tenant_id}/leads/${resolvedLeadId || project_id}/homeowner/${Date.now()}-${Math.random().toString(36).slice(2,7)}-${safeName}`;
+          const contentType = mime_type || "image/jpeg";
 
-        const { error: uploadErr } = await supabase.storage
-          .from("customer-photos")
-          .upload(path, binary, { contentType, upsert: false });
-        if (uploadErr) {
-          console.error("homeowner photo upload error:", uploadErr);
-          return json({ error: "Unable to upload photo" }, 500);
+          const { error: uploadErr } = await supabase.storage
+            .from("customer-photos")
+            .upload(path, binary, { contentType, upsert: false });
+          if (uploadErr) {
+            console.error("homeowner photo upload error:", uploadErr);
+            return json({ error: "Unable to upload photo" }, 500);
+          }
+
+          const { data: publicUrl } = supabase.storage.from("customer-photos").getPublicUrl(path);
+          const fileUrl = publicUrl?.publicUrl || path;
+          const descr = caption || `Uploaded by homeowner ${contact.first_name || ""}`.trim();
+
+          // Primary: customer_photos so it appears in the lead's photo views alongside company uploads
+          const { error: cpErr } = await supabase.from("customer_photos").insert({
+            tenant_id: session.tenant_id,
+            project_id,
+            lead_id: resolvedLeadId,
+            contact_id: resolvedContactId,
+            file_url: fileUrl,
+            file_name: path,
+            original_filename: safeName,
+            description: descr,
+            category: "homeowner_upload",
+            mime_type: contentType,
+            file_size: binary.length,
+            uploaded_by: contact.id,
+            include_in_estimate: false,
+          });
+          if (cpErr) {
+            console.error("customer_photos insert error:", cpErr);
+            return json({ error: "Photo saved but could not be recorded" }, 500);
+          }
+
+          // Mirror to project_photos for legacy timeline consumers (best-effort)
+          await supabase.from("project_photos").insert({
+            tenant_id: session.tenant_id,
+            project_id,
+            filename: safeName,
+            storage_path: fileUrl,
+            mime_type: contentType,
+            file_size: binary.length,
+            ai_description: descr,
+            workflow_status: "homeowner_upload",
+            uploaded_by: contact.id,
+          });
+
+          results.push({ url: fileUrl, path });
         }
 
-        const { data: publicUrl } = supabase.storage.from("customer-photos").getPublicUrl(path);
-
-        const { error: insertErr } = await supabase.from("project_photos").insert({
-          tenant_id: session.tenant_id,
-          project_id,
-          filename: safeName,
-          storage_path: publicUrl?.publicUrl || path,
-          mime_type: contentType,
-          file_size: binary.length,
-          ai_description: caption || `Uploaded by homeowner ${contact.first_name || ""}`.trim(),
-          workflow_status: "homeowner_upload",
-          uploaded_by: contact.id,
-        });
-
-        if (insertErr) {
-          console.error("project_photos insert error:", insertErr);
-          return json({ error: "Photo saved but could not be recorded" }, 500);
-        }
-
-        return json({ success: true });
+        return json({ success: true, uploaded: results.length, files: results });
       } catch (uploadEx: any) {
         console.error("upload-photo exception:", uploadEx);
         return json({ error: "Upload failed" }, 500);

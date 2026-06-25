@@ -211,47 +211,56 @@ export function HomeownerPortal() {
   };
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const rawFile = e.target.files?.[0];
+    const rawFiles = Array.from(e.target.files || []);
     e.target.value = "";
-    if (!rawFile || !project) return;
-    let file: File = rawFile;
-    try {
-      const { compressImage } = await import("@/lib/imageCompression");
-      file = await compressImage(rawFile);
-    } catch (_) { /* fallback to raw */ }
-    if (file.size > 15 * 1024 * 1024) {
-      toast({ title: "File too large", description: "Photos must be under 15MB after compression", variant: "destructive" });
-      return;
-    }
+    if (!rawFiles.length || !project) return;
     try {
       setIsUploading(true);
       const sessionData = localStorage.getItem("homeowner_session");
       const session = sessionData ? JSON.parse(sessionData) : null;
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result || ""));
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-      const { data, error } = await supabase.functions.invoke("homeowner-password", {
-        body: {
-          action: "upload-photo",
-          token: session?.token,
-          project_id: project.id,
-          file_base64: base64,
-          file_name: file.name,
-          mime_type: file.type,
-        },
-      });
-      if (error || !data?.success) throw new Error(data?.error || "Upload failed");
-      toast({ title: "Photo uploaded", description: "Your photo has been shared with the team." });
-      loadPortalData();
+      const { compressImage } = await import("@/lib/imageCompression");
+
+      let uploaded = 0;
+      for (const rawFile of rawFiles) {
+        let file: File = rawFile;
+        try { file = await compressImage(rawFile); } catch (_) { /* fallback */ }
+        if (file.size > 15 * 1024 * 1024) {
+          toast({ title: "File too large", description: `${rawFile.name} exceeds 15MB after compression`, variant: "destructive" });
+          continue;
+        }
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || ""));
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        const { data, error } = await supabase.functions.invoke("homeowner-password", {
+          body: {
+            action: "upload-photo",
+            token: session?.token,
+            project_id: project.id,
+            file_base64: base64,
+            file_name: file.name,
+            mime_type: file.type,
+          },
+        });
+        if (error || !data?.success) {
+          toast({ title: "Upload failed", description: (error as any)?.message || data?.error || rawFile.name, variant: "destructive" });
+          continue;
+        }
+        uploaded++;
+      }
+      if (uploaded > 0) {
+        toast({ title: "Photos uploaded", description: `${uploaded} photo${uploaded === 1 ? "" : "s"} shared with the team.` });
+        loadPortalData();
+      }
     } catch (err: any) {
       toast({ title: "Upload failed", description: err.message, variant: "destructive" });
     } finally {
       setIsUploading(false);
     }
   };
+
 
   const getStatusColor = (status: string) => {
 
@@ -523,6 +532,7 @@ export function HomeownerPortal() {
                     id="homeowner-photo-upload"
                     type="file"
                     accept="image/*"
+                    multiple
                     className="hidden"
                     onChange={handlePhotoUpload}
                   />
@@ -533,8 +543,9 @@ export function HomeownerPortal() {
                     disabled={isUploading}
                   >
                     <ImageIcon className="h-4 w-4 mr-1" />
-                    {isUploading ? "Uploading…" : "Upload Photo"}
+                    {isUploading ? "Uploading…" : "Upload Photos"}
                   </Button>
+
                 </div>
               </CardHeader>
               <CardContent>
