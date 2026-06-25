@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
+import bcrypt from "npm:bcryptjs@2.4.3";
 import { corsHeaders } from "../_shared/cors.ts";
 
 function json(payload: unknown, status = 200) {
@@ -75,7 +76,6 @@ Deno.serve(async (req) => {
       if (contactErr || !contact || !contact.portal_password_hash) return json({ error: "Invalid email or password" }, 401);
       if (!contact.portal_access_enabled) return json({ error: "Portal access not enabled. Contact your project manager." }, 403);
 
-      const bcrypt = (await import("npm:bcryptjs@2.4.3")).default;
       const valid = bcrypt.compareSync(password, contact.portal_password_hash);
       if (!valid) return json({ error: "Invalid email or password" }, 401);
 
@@ -141,7 +141,6 @@ Deno.serve(async (req) => {
       const { contact, error: inviteErr } = await getContactForInviteToken(supabase, token, contact_id);
       if (inviteErr || !contact) return json({ error: inviteErr || "Invalid invite link" }, 401);
 
-      const bcrypt = (await import("npm:bcryptjs@2.4.3")).default;
       const passwordHash = bcrypt.hashSync(password, 10);
 
       const { error: updateErr } = await supabase
@@ -190,7 +189,6 @@ Deno.serve(async (req) => {
 
       if (contactErr || !contact || !contact.portal_password_hash) return json({ error: "Invalid credentials" }, 401);
 
-      const bcrypt = (await import("npm:bcryptjs@2.4.3")).default;
       const valid = bcrypt.compareSync(password, contact.portal_password_hash);
       if (!valid) return json({ error: "Invalid credentials" }, 401);
 
