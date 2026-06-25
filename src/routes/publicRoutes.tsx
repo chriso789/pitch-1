@@ -56,6 +56,7 @@ export default function PublicRoutes() {
         <Route path="/sign/:token" element={<PublicSignatureCapture />} />
         <Route path="/portal/login" element={<PortalLoginPage />} />
         <Route path="/portal/setup" element={<HomeownerSetupAccount />} />
+        <Route path="/homeowner/verify" element={<HomeownerSetupAccount />} />
         <Route path="/crew" element={<CrewPortalPage />} />
         <Route path="/homeowner" element={<HomeownerProtectedRoute><HomeownerPortalPage /></HomeownerProtectedRoute>} />
         <Route path="/view-quote/:token" element={<ViewQuote />} />
