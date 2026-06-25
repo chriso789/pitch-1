@@ -208,9 +208,16 @@ Deno.serve(async (req) => {
         messages = msgRows || [];
       }
 
+      const { data: tenantRow } = await supabase
+        .from("tenants")
+        .select("id, name, logo_url, phone, email, website, brand_primary_color, brand_accent_color, primary_color, secondary_color, address_street, address_city, address_state, address_zip")
+        .eq("id", session.tenant_id)
+        .maybeSingle();
+
       return json({
         success: true,
         contact,
+        company: tenantRow || null,
         project,
         photos,
         changeOrders,
@@ -220,7 +227,65 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ACTION: send-message — allow a homeowner session to message the project team
+    // ACTION: upload-photo — homeowner uploads a photo to the project (base64 payload)
+    if (action === "upload-photo") {
+      if (!token || typeof token !== "string") return json({ error: "Session token required" }, 400);
+      if (!project_id || typeof project_id !== "string") return json({ error: "Project required" }, 400);
+      if (!file_base64 || typeof file_base64 !== "string") return json({ error: "file_base64 required" }, 400);
+
+      const { session, contact, error } = await getValidHomeownerSession(supabase, token);
+      if (error || !session || !contact) return json({ error: error || "Invalid or expired session" }, 401);
+
+      // Confirm project belongs to homeowner's contact + tenant
+      const { data: proj } = await supabase
+        .from("projects")
+        .select("id, tenant_id, pipeline_entry_id")
+        .eq("id", project_id)
+        .eq("tenant_id", session.tenant_id)
+        .maybeSingle();
+      if (!proj) return json({ error: "Project not found" }, 404);
+
+      try {
+        const cleanedBase64 = file_base64.includes(",") ? file_base64.split(",")[1] : file_base64;
+        const binary = Uint8Array.from(atob(cleanedBase64), (c) => c.charCodeAt(0));
+        const safeName = (file_name || `photo-${Date.now()}.jpg`).replace(/[^a-zA-Z0-9._-]/g, "_");
+        const path = `${session.tenant_id}/projects/${project_id}/homeowner/${Date.now()}-${safeName}`;
+        const contentType = mime_type || "image/jpeg";
+
+        const { error: uploadErr } = await supabase.storage
+          .from("customer-photos")
+          .upload(path, binary, { contentType, upsert: false });
+        if (uploadErr) {
+          console.error("homeowner photo upload error:", uploadErr);
+          return json({ error: "Unable to upload photo" }, 500);
+        }
+
+        const { data: publicUrl } = supabase.storage.from("customer-photos").getPublicUrl(path);
+
+        const { error: insertErr } = await supabase.from("project_photos").insert({
+          tenant_id: session.tenant_id,
+          project_id,
+          filename: safeName,
+          storage_path: publicUrl?.publicUrl || path,
+          mime_type: contentType,
+          file_size: binary.length,
+          ai_description: caption || `Uploaded by homeowner ${contact.first_name || ""}`.trim(),
+          workflow_status: "homeowner_upload",
+          uploaded_by: contact.id,
+        });
+
+        if (insertErr) {
+          console.error("project_photos insert error:", insertErr);
+          return json({ error: "Photo saved but could not be recorded" }, 500);
+        }
+
+        return json({ success: true });
+      } catch (uploadEx: any) {
+        console.error("upload-photo exception:", uploadEx);
+        return json({ error: "Upload failed" }, 500);
+      }
+    }
+
     if (action === "send-message") {
       if (!token || typeof token !== "string") return json({ error: "Session token required" }, 400);
       if (!message || typeof message !== "string" || !message.trim()) return json({ error: "Message required" }, 400);
