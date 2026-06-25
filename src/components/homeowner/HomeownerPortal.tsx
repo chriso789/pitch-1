@@ -99,7 +99,10 @@ export function HomeownerPortal() {
   const [isLoading, setIsLoading] = useState(true);
   const [newMessage, setNewMessage] = useState("");
   const [contactInfo, setContactInfo] = useState<any>(null);
+  const [company, setCompany] = useState<any>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const { toast } = useToast();
+
 
   useEffect(() => {
     loadPortalData();
