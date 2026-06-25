@@ -64,7 +64,8 @@ Deno.serve(async (req) => {
 
       if (insertError) throw insertError;
 
-      const portalUrl = `${req.headers.get('origin') || supabaseUrl.replace('.supabase.co', '')}/customer/${accessToken}`;
+      const appOrigin = req.headers.get('origin') || Deno.env.get('APP_URL') || 'https://pitch-crm.ai';
+      const portalUrl = `${appOrigin}/portal/setup?contact=${contact_id}&token=${accessToken}`;
 
       return new Response(JSON.stringify({
         success: true,

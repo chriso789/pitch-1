@@ -15,12 +15,13 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 export default function HomeownerSetupAccount() {
   const [searchParams] = useSearchParams();
+  const { token: pathToken } = useParams<{ token?: string }>();
   const contactId = searchParams.get('contact');
-  const token = searchParams.get('token');
+  const token = searchParams.get('token') || pathToken || '';
   
   const [step, setStep] = useState<'verify' | 'password'>('verify');
   const [verificationValue, setVerificationValue] = useState('');

@@ -55,7 +55,6 @@ const ViewDocumentTracked = React.lazy(() => import("@/pages/ViewDocumentTracked
 const PublicReportViewer = React.lazy(() => import("@/pages/PublicReportViewer"));
 const ZellePaymentPage = React.lazy(() => import("@/pages/ZellePaymentPage"));
 const PublicPortalView = React.lazy(() => import("@/pages/PublicPortalView"));
-const CustomerPortalPublic = React.lazy(() => import("@/pages/CustomerPortalPublic"));
 const CrewPortalPage = React.lazy(() => import("@/pages/CrewPortalPage"));
 const HomeownerPortalPage = React.lazy(() => import("@/pages/HomeownerPortalPage"));
 const HomeownerSetupAccount = React.lazy(() => import("@/pages/HomeownerSetupAccount"));
@@ -189,7 +188,7 @@ const AppContent = () => {
         <Route path="/reports/:token" element={<Suspense fallback={<PageLoader />}><PublicReportViewer /></Suspense>} />
         <Route path="/r/:token" element={<Suspense fallback={<PageLoader />}><PublicReportViewer /></Suspense>} />
         <Route path="/onboarding/:token" element={<Suspense fallback={<PageLoader />}><OnboardingWalkthrough /></Suspense>} />
-        <Route path="/customer/:token" element={<Suspense fallback={<PageLoader />}><CustomerPortalPublic /></Suspense>} />
+        <Route path="/customer/:token" element={<Suspense fallback={<PageLoader />}><HomeownerSetupAccount /></Suspense>} />
         <Route path="/sign/:token" element={<Suspense fallback={<PageLoader />}><PublicSignatureCapture /></Suspense>} />
         <Route path="/portal/login" element={<Suspense fallback={<PageLoader />}><PortalLoginPage /></Suspense>} />
         <Route path="/portal/setup" element={<Suspense fallback={<PageLoader />}><HomeownerSetupAccount /></Suspense>} />
