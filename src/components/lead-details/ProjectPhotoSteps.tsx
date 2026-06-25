@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Camera, CheckCircle, ImageIcon, Loader2, Upload } from 'lucide-react';
+import { Camera, CheckCircle, Home, ImageIcon, Loader2, Upload } from 'lucide-react';
 import { compressImage } from '@/lib/imageCompression';
 import { cn } from '@/lib/utils';
 import { usePhotos, type PhotoCategory, type CustomerPhoto } from '@/hooks/usePhotos';
@@ -18,6 +18,8 @@ const STEPS: { key: PhotoCategory; label: string; colorClass: string; bgClass: s
   { key: 'during', label: 'In Progress Photos', colorClass: 'text-orange-600 dark:text-orange-400', bgClass: 'bg-orange-100 dark:bg-orange-900/40', borderClass: 'border-orange-400' },
   { key: 'after', label: 'Final Photos', colorClass: 'text-green-600 dark:text-green-400', bgClass: 'bg-green-100 dark:bg-green-900/40', borderClass: 'border-green-400' },
 ];
+
+const HOMEOWNER_CATEGORY = 'homeowner_upload';
 
 export function ProjectPhotoSteps({ leadId, contactId }: ProjectPhotoStepsProps) {
   const { photos, uploadPhoto, isUploading } = usePhotos({ leadId, enabled: true });
