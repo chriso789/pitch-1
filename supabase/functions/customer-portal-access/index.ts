@@ -164,7 +164,7 @@ Deno.serve(async (req) => {
       if (project && pipelineEntryId) {
         const { data: enhanced } = await supabase
           .from('enhanced_estimates')
-          .select('id, selling_price, material_cost, labor_cost, pipeline_entry_id, updated_at')
+          .select('id, selling_price, material_cost, labor_cost, line_items, property_details, pipeline_entry_id, updated_at')
           .eq('pipeline_entry_id', pipelineEntryId)
           .order('updated_at', { ascending: false })
           .limit(1)
@@ -178,10 +178,32 @@ Deno.serve(async (req) => {
               selling_price: enhanced.selling_price,
               material_cost: enhanced.material_cost,
               labor_cost: enhanced.labor_cost,
+              line_items: enhanced.line_items,
+              property_details: enhanced.property_details,
             },
             ...((project.estimates || []).slice(1)),
           ];
         }
+
+        // Derive brand/material highlights from line items for the homeowner header
+        const items = Array.isArray(enhanced?.line_items) ? enhanced!.line_items : [];
+        const brands = new Set<string>();
+        const primaryMaterials: string[] = [];
+        for (const it of items as any[]) {
+          const brand = it?.brand || it?.metadata?.brand || it?.material_brand;
+          if (brand && typeof brand === 'string') brands.add(brand);
+          const name = it?.name || it?.description || it?.material_name;
+          const cat = (it?.category || it?.material_category || '').toString().toLowerCase();
+          if (name && (cat.includes('shingle') || cat.includes('roof') || cat.includes('material'))) {
+            if (primaryMaterials.length < 3) primaryMaterials.push(name);
+          }
+        }
+        (project as any).highlights = {
+          roof_type: project?.pipeline_entries?.[0]?.roof_type || null,
+          job_type: project?.pipeline_entries?.[0]?.source || project?.pipeline_entries?.[0]?.lead_type || null,
+          brands: Array.from(brands),
+          materials: primaryMaterials,
+        };
       }
       
       const { data: invoices } = await supabase
