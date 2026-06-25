@@ -412,16 +412,51 @@ Deno.serve(async (req: Request) => {
       return mapping[value] || 'other';
     }
 
+    // Map roofType to the roof_type enum
+    function mapRoofType(value: string | null | undefined): string | null {
+      if (!value) return null;
+      const v = String(value).toLowerCase().trim();
+      const enumValues = ['shingle','metal','tile','flat','slate','cedar','other','vinyl_siding','fiber_cement_siding','aluminum_siding','wood_siding','engineered_wood_siding','stucco','stone_veneer','brick_veneer','insulated_vinyl_siding'];
+      if (enumValues.includes(v)) return v;
+      const mapping: Record<string, string> = {
+        'asphalt': 'shingle',
+        'asphalt_shingle': 'shingle',
+        'asphalt shingle': 'shingle',
+        'shingles': 'shingle',
+        'composition': 'shingle',
+        'comp': 'shingle',
+        'wood': 'cedar',
+        'wood_shake': 'cedar',
+        'shake': 'cedar',
+        'clay': 'tile',
+        'concrete': 'tile',
+        'tpo': 'flat',
+        'epdm': 'flat',
+        'rubber': 'flat',
+        'modified_bitumen': 'flat',
+        'vinyl': 'vinyl_siding',
+        'siding': 'vinyl_siding',
+      };
+      return mapping[v] || 'other';
+    }
+
+    // Map pipeline status to pipeline_status enum
+    function mapStatus(value: string | null | undefined): string {
+      const enumValues = ['lead','legal_review','contingency_signed','project','completed','closed','lost','canceled','duplicate','hold_mgr_review','legal','contingency','ready_for_approval','production','final_payment'];
+      if (value && enumValues.includes(value)) return value;
+      return 'lead';
+    }
+
     // Create pipeline entry (lead)
     const pipelineData: any = {
       tenant_id: tenantId,
       contact_id: contactId,
       location_id: locationId,
       lead_name: body.name || null,
-      status: body.status || "lead",
+      status: mapStatus(body.status),
       priority: body.priority || "medium",
       estimated_value: body.estimatedValue ? parseFloat(body.estimatedValue) : null,
-      roof_type: body.roofType || null,
+      roof_type: mapRoofType(body.roofType),
       source: mapLeadSource(body.leadSource),
       assigned_to: body.salesReps?.[0] || user.id,
       notes: body.description || null,
@@ -434,7 +469,7 @@ Deno.serve(async (req: Request) => {
         } : null,
         secondary_reps: body.salesReps?.slice(1) || [],
         roof_age_years: parseInt(body.roofAge) || null,
-        roof_type: body.roofType,
+        roof_type_raw: body.roofType || null,
         lead_source_id: body.leadSource || null,
         created_via: "create-lead-with-contact",
       },
