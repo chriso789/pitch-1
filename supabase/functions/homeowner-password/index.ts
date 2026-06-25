@@ -53,7 +53,7 @@ async function getContactForInviteToken(supabase: any, token: string, contactId?
 async function getValidHomeownerSession(supabase: any, token: string) {
   const { data: session, error: sessionErr } = await supabase
     .from("homeowner_portal_sessions")
-    .select("id, tenant_id, contact_id, email, expires_at, auth_method, contact:contacts(id, tenant_id, email, phone, first_name, last_name, portal_access_enabled)")
+    .select("id, tenant_id, contact_id, email, expires_at, auth_method, contact:contacts(id, tenant_id, email, phone, first_name, last_name, portal_access_enabled, address_street, address_city, address_state, address_zip)")
     .eq("token", token)
     .gt("expires_at", new Date().toISOString())
     .maybeSingle();
@@ -177,7 +177,9 @@ Deno.serve(async (req) => {
           progress_percentage: projectData.progress_percentage || 0,
           contract_amount: contractAmount,
           amount_paid: amountPaid,
-          address: projectData.property_address || "Address not set",
+          address: projectData.property_address
+            || [contact.address_street, contact.address_city, contact.address_state, contact.address_zip].filter(Boolean).join(", ")
+            || "Address not set",
         };
 
         const { data: photoRows } = await supabase
