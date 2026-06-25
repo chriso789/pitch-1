@@ -258,10 +258,19 @@ const CustomerPortalPublic: React.FC = () => {
 
         {/* Tabs */}
         <Tabs defaultValue="overview" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="overview">
               <FileText className="h-4 w-4 mr-2 hidden sm:inline" />
               Overview
+            </TabsTrigger>
+            <TabsTrigger value="photos">
+              <Image className="h-4 w-4 mr-2 hidden sm:inline" />
+              Photos
+              {photos.length > 0 && (
+                <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
+                  {photos.length}
+                </Badge>
+              )}
             </TabsTrigger>
             <TabsTrigger value="payments">
               <DollarSign className="h-4 w-4 mr-2 hidden sm:inline" />
@@ -281,6 +290,7 @@ const CustomerPortalPublic: React.FC = () => {
               )}
             </TabsTrigger>
           </TabsList>
+
 
           {/* Overview Tab */}
           <TabsContent value="overview" className="space-y-4">
