@@ -75,7 +75,7 @@ export default function HomeownerSetupAccount() {
       return;
     }
 
-    setIsCheckingInvite(true);
+    setError('This invite link could not be verified. Please ask your project manager to resend it.');
   };
 
   const createPassword = async (e: React.FormEvent) => {
