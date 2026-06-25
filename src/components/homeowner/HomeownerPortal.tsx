@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -101,6 +101,7 @@ export function HomeownerPortal() {
   const [contactInfo, setContactInfo] = useState<any>(null);
   const [company, setCompany] = useState<any>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
   const { toast } = useToast();
 
 
@@ -210,11 +211,16 @@ export function HomeownerPortal() {
   };
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const rawFile = e.target.files?.[0];
     e.target.value = "";
-    if (!file || !project) return;
-    if (file.size > 10 * 1024 * 1024) {
-      toast({ title: "File too large", description: "Photos must be under 10MB", variant: "destructive" });
+    if (!rawFile || !project) return;
+    let file: File = rawFile;
+    try {
+      const { compressImage } = await import("@/lib/imageCompression");
+      file = await compressImage(rawFile);
+    } catch (_) { /* fallback to raw */ }
+    if (file.size > 15 * 1024 * 1024) {
+      toast({ title: "File too large", description: "Photos must be under 15MB after compression", variant: "destructive" });
       return;
     }
     try {
@@ -513,16 +519,17 @@ export function HomeownerPortal() {
                 </div>
                 <div>
                   <input
+                    ref={photoInputRef}
                     id="homeowner-photo-upload"
                     type="file"
                     accept="image/*"
                     className="hidden"
                     onChange={handlePhotoUpload}
-                    disabled={isUploading}
                   />
                   <Button
                     size="sm"
-                    onClick={() => document.getElementById("homeowner-photo-upload")?.click()}
+                    type="button"
+                    onClick={() => photoInputRef.current?.click()}
                     disabled={isUploading}
                   >
                     <ImageIcon className="h-4 w-4 mr-1" />
