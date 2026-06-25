@@ -130,7 +130,11 @@ export function PortalAuthentication() {
       let result: any = data;
       if (error) {
         const ctx: any = (error as any).context;
-        if (ctx?.body) {
+        if (typeof ctx?.json === "function") {
+          try {
+            result = await ctx.json();
+          } catch {}
+        } else if (ctx?.body) {
           try {
             result = typeof ctx.body === "string" ? JSON.parse(ctx.body) : ctx.body;
           } catch {}
