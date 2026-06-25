@@ -1,8 +1,18 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
+import {
+  errorResponse,
+  mapLeadSource,
+  mapRoofType,
+  mapStatus,
+  normalizeEmail,
+  normalizePhone,
+  type StructuredError,
+} from "./_helpers.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-idempotency-key",
 };
 
 interface LeadRequest {
@@ -27,7 +37,17 @@ interface LeadRequest {
   };
   existingContactId?: string;
   locationId?: string; // Location ID from the location switcher
+  idempotencyKey?: string;
 }
+
+async function sha256Hex(input: string): Promise<string> {
+  const buf = new TextEncoder().encode(input);
+  const hash = await crypto.subtle.digest("SHA-256", buf);
+  return Array.from(new Uint8Array(hash))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 
 // Parse address string into components
 function parseAddressString(address: string): {
