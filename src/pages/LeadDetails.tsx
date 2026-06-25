@@ -1345,10 +1345,15 @@ const LeadDetails = () => {
                   <FileText className="h-3 w-3 mr-1" />
                   Activity
                 </TabsTrigger>
+                <TabsTrigger value="portal" className="text-xs h-7 px-3 flex-shrink-0">
+                  <MessageSquare className="h-3 w-3 mr-1" />
+                  Portal
+                </TabsTrigger>
                 <TabsTrigger value="timeline" className="text-xs h-7 px-3 flex-shrink-0">
                   <Phone className="h-3 w-3 mr-1" />
                   Timeline
                 </TabsTrigger>
+
               </TabsList>
               <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-card to-transparent pointer-events-none" />
             </div>
