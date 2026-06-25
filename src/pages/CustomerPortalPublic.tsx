@@ -169,6 +169,8 @@ const CustomerPortalPublic: React.FC = () => {
   if (!data) return null;
 
   const { project, contact, invoices, payments, payment_links, messages, documents, company, zelle_enabled } = data;
+  const photos = data.photos || [];
+
   
   // Calculate totals from invoices and payments
   const contractValue = project?.estimates?.[0]?.selling_price || 0;
