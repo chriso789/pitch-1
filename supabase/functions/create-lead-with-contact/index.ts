@@ -571,7 +571,20 @@ Deno.serve(async (req: Request) => {
 
     if (pipelineError) {
       console.error("[create-lead-with-contact] Pipeline creation error:", pipelineError);
-      throw new Error(`Failed to create lead: ${pipelineError.message}`);
+      return errorResponse({
+        code: "pipeline_insert_failed",
+        field: "lead",
+        message: "Could not save lead. Check status, roof type, and source values.",
+        details: {
+          db_message: pipelineError.message,
+          db_code: (pipelineError as any).code,
+          attempted: {
+            status: pipelineData.status,
+            roof_type: pipelineData.roof_type,
+            source: pipelineData.source,
+          },
+        },
+      }, 422);
     }
 
     console.log("[create-lead-with-contact] Lead created successfully:", pipelineEntry.id);
@@ -605,29 +618,43 @@ Deno.serve(async (req: Request) => {
       console.warn('[create-lead-with-contact] CAPI error (non-fatal):', capiErr);
     }
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        lead: pipelineEntry,
-        contactId: contactId,
-        message: "Lead created successfully",
-      }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
+    const successPayload = {
+      success: true,
+      lead: pipelineEntry,
+      contactId: contactId,
+      message: "Lead created successfully",
+    };
+
+    // Persist idempotency record (24h TTL) so retries replay this response
+    if (idempotencyKey) {
+      try {
+        await supabase
+          .from("idempotency_keys")
+          .upsert({
+            tenant_id: tenantId,
+            key: idempotencyKey,
+            request_hash: requestHash,
+            response_data: successPayload,
+            status_code: 200,
+            expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          }, { onConflict: "tenant_id,key" });
+      } catch (idemErr) {
+        console.warn("[create-lead-with-contact] Failed to store idempotency record:", idemErr);
       }
-    );
+    }
+
+    return new Response(JSON.stringify(successPayload), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 200,
+    });
   } catch (error) {
-    console.error("[create-lead-with-contact] Error:", error);
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: error instanceof Error ? error.message : String(error) || "An unexpected error occurred",
-      }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 400,
-      }
-    );
+    console.error("[create-lead-with-contact] Unhandled error:", error);
+    const message = error instanceof Error ? error.message : String(error);
+    const structured: StructuredError = {
+      code: "internal_error",
+      message: message || "An unexpected error occurred.",
+    };
+    return errorResponse(structured, 500);
   }
 });
+
