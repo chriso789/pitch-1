@@ -37,9 +37,11 @@ interface PortalData {
   payment_links: any[];
   messages: any[];
   documents: any[];
+  photos: any[];
   company: any;
   zelle_enabled: boolean;
 }
+
 
 const CustomerPortalPublic: React.FC = () => {
   const { token } = useParams<{ token: string }>();
