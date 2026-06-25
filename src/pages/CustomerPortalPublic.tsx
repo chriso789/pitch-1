@@ -605,13 +605,19 @@ const CustomerPortalPublic: React.FC = () => {
 
       {/* Footer */}
       <div className="border-t mt-8 py-6 text-center text-sm text-muted-foreground">
-        <p>Powered by PITCH CRM</p>
+        <p className="font-medium text-foreground">{company?.name || 'Your Contractor'}</p>
         {company?.website && (
-          <a href={company.website} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-            {company.website}
+          <a
+            href={company.website.startsWith('http') ? company.website : `https://${company.website}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary hover:underline"
+          >
+            {company.website.replace(/^https?:\/\//, '')}
           </a>
         )}
       </div>
+
     </div>
   );
 };
