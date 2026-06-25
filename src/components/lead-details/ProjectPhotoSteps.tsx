@@ -132,6 +132,47 @@ export function ProjectPhotoSteps({ leadId, contactId }: ProjectPhotoStepsProps)
               </div>
             );
           })}
+
+          {/* Homeowner uploads — read-only, separated from team uploads */}
+          <div className="flex items-start gap-3">
+            <div className="flex flex-col items-center">
+              <div className={cn(
+                'w-8 h-8 rounded-full flex items-center justify-center border-2 shrink-0 transition-colors',
+                homeownerPhotos.length > 0
+                  ? 'bg-purple-100 dark:bg-purple-900/40 border-purple-400'
+                  : 'border-muted-foreground/30 bg-muted'
+              )}>
+                <Home className={cn('h-4 w-4', homeownerPhotos.length > 0 ? 'text-purple-600 dark:text-purple-400' : 'text-muted-foreground')} />
+              </div>
+            </div>
+            <div className="flex-1 pb-1">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-sm font-medium text-purple-600 dark:text-purple-400">Homeowner Uploads</span>
+                {homeownerPhotos.length > 0 && (
+                  <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
+                    {homeownerPhotos.length} {homeownerPhotos.length === 1 ? 'photo' : 'photos'}
+                  </Badge>
+                )}
+              </div>
+              {homeownerPhotos.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No photos shared by the homeowner yet.</p>
+              ) : (
+                <div className="grid grid-cols-4 gap-1.5 mt-1">
+                  {homeownerPhotos.slice(0, 8).map(p => (
+                    <a
+                      key={p.id}
+                      href={p.file_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="aspect-square rounded overflow-hidden border border-border bg-muted block"
+                    >
+                      <img src={p.file_url} alt={p.original_filename || 'Homeowner photo'} className="w-full h-full object-cover" loading="lazy" />
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </CardContent>
     </Card>
