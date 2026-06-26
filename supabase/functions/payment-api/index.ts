@@ -962,7 +962,7 @@ const centzSendInvoiceHandler = async (c: any) => {
 
   await svc
     .from("centz_invoices")
-    .update({ last_sent_at: new Date().toISOString(), last_sent_channel: channel })
+    .update({ sent_at: new Date().toISOString() })
     .eq("id", local.id)
     .eq("tenant_id", tenantId);
 
