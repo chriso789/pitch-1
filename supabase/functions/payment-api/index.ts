@@ -822,11 +822,165 @@ app.post("/centz/invoice/create-link", centzCreateInvoiceLinkHandler);
 // Backwards-compatible alias (original Phase 1 path)
 app.post("/centz/create-invoice-link", centzCreateInvoiceLinkHandler);
 
-// Phase 2 placeholders — wire when stage flow is verified end-to-end.
-app.post("/centz/send-invoice", (c) => jsonErr(c, "not_implemented", "Phase 2 — pending.", 501));
-app.post("/centz/get-invoice", (c) => jsonErr(c, "not_implemented", "Phase 2 — pending.", 501));
-app.post("/centz/sync-invoices", (c) => jsonErr(c, "not_implemented", "Phase 2 — pending.", 501));
-app.post("/centz/upsert-site-setup", (c) => jsonErr(c, "not_implemented", "Phase 2 — pending.", 501));
+// ============================================================
+// CENTZ — Phase 2A: invoice/get + invoice/send
+// ============================================================
+// Both routes are authenticated tenant routes. Tenant is resolved server-side
+// via requireTenant; external_id is the stable id we wrote during Phase 1.
+
+type CentzInvoiceLookup = {
+  id?: string;
+  external_id?: string;
+  status?: string;
+  payment_status?: string;
+  link?: string;
+  payment_link?: string;
+  totals?: { total?: number; taxes?: number; paid?: number };
+  customer?: { email?: string; mobile_phone?: string; first_name?: string; last_name?: string };
+  errors?: string[];
+  success?: boolean;
+};
+
+/** GET-style lookup. Manual fallback when webhooks are delayed/malformed. */
+const centzGetInvoiceHandler = async (c: any) => {
+  let body: { external_id?: string; centz_invoice_id?: string };
+  try { body = await c.req.json(); } catch { return jsonErr(c, "invalid_json", "Body must be JSON", 400); }
+  const externalId = body.external_id?.trim();
+  const centzId = body.centz_invoice_id?.trim();
+  if (!externalId && !centzId) {
+    return jsonErr(c, "external_id_required", "external_id or centz_invoice_id is required", 400);
+  }
+
+  const tenantId = c.get("tenantId")!;
+  const svc = serviceClient();
+
+  // Verify the invoice belongs to this tenant before calling Centz (prevents
+  // a tenant from probing another tenant's external_ids).
+  const localQuery = svc
+    .from("centz_invoices")
+    .select("id, external_id, centz_invoice_id, status, payment_link")
+    .eq("tenant_id", tenantId)
+    .limit(1);
+  const { data: local, error: localErr } = externalId
+    ? await localQuery.eq("external_id", externalId).maybeSingle()
+    : await localQuery.eq("centz_invoice_id", centzId!).maybeSingle();
+  if (localErr) return jsonErr(c, "lookup_failed", localErr.message, 500);
+  if (!local) return jsonErr(c, "not_found", "Invoice not found for this tenant", 404);
+
+  let conn;
+  try { conn = await loadCentzConnection(svc, tenantId); }
+  catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return jsonErr(c, msg === "centz_not_connected" ? "centz_not_connected" : "centz_connection_failed", msg, 400);
+  }
+
+  const lookupId = local.external_id ?? local.centz_invoice_id!;
+  const result = await centzGet<CentzInvoiceLookup>(
+    conn,
+    CENTZ_PATHS.invoiceGet,
+    { external_id: lookupId, site_id: conn.site_centz_id ?? conn.site_external_id ?? undefined, merchant_id: conn.merchant_id ?? undefined },
+  );
+  const resp = (result.data ?? {}) as CentzInvoiceLookup;
+
+  if (!result.ok || resp.success === false) {
+    const msg = resp.errors?.join("; ") || `Centz HTTP ${result.status}`;
+    return jsonErr(c, "centz_get_failed", msg, result.status >= 400 && result.status < 600 ? result.status : 502);
+  }
+
+  // Sync local mirror from authoritative Centz state.
+  const mappedStatus = mapCentzPaymentStatus(resp.payment_status ?? resp.status) ?? local.status;
+  const patch: Record<string, unknown> = {
+    status: mappedStatus,
+    payment_link: resp.link ?? resp.payment_link ?? local.payment_link ?? null,
+    centz_invoice_id: resp.id ?? local.centz_invoice_id ?? null,
+    last_synced_at: new Date().toISOString(),
+    raw_response: resp as unknown as object,
+  };
+  const { error: updErr } = await svc
+    .from("centz_invoices")
+    .update(patch)
+    .eq("id", local.id)
+    .eq("tenant_id", tenantId);
+  if (updErr) console.error("[payment-api] centz invoice sync update", updErr);
+
+  return jsonOk(c, {
+    invoice_id: local.id,
+    external_id: local.external_id,
+    centz_invoice_id: resp.id ?? local.centz_invoice_id ?? null,
+    status: mappedStatus,
+    payment_link: patch.payment_link,
+    centz: resp,
+  });
+};
+
+/** Ask Centz to email/SMS the invoice link to the stored customer. */
+const centzSendInvoiceHandler = async (c: any) => {
+  let body: { external_id?: string; channel?: "email" | "sms" | "both" };
+  try { body = await c.req.json(); } catch { return jsonErr(c, "invalid_json", "Body must be JSON", 400); }
+  const externalId = body.external_id?.trim();
+  if (!externalId) return jsonErr(c, "external_id_required", "external_id is required", 400);
+  const channel = body.channel ?? "both";
+
+  const tenantId = c.get("tenantId")!;
+  const svc = serviceClient();
+
+  const { data: local, error: localErr } = await svc
+    .from("centz_invoices")
+    .select("id, external_id, centz_invoice_id, customer_email, customer_mobile_phone")
+    .eq("tenant_id", tenantId)
+    .eq("external_id", externalId)
+    .maybeSingle();
+  if (localErr) return jsonErr(c, "lookup_failed", localErr.message, 500);
+  if (!local) return jsonErr(c, "not_found", "Invoice not found for this tenant", 404);
+  if (!local.customer_email && !local.customer_mobile_phone) {
+    return jsonErr(c, "no_customer_contact", "Invoice has no stored customer email or phone to send to", 400);
+  }
+
+  let conn;
+  try { conn = await loadCentzConnection(svc, tenantId); }
+  catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return jsonErr(c, msg === "centz_not_connected" ? "centz_not_connected" : "centz_connection_failed", msg, 400);
+  }
+
+  const result = await centzPost<{ success?: boolean; errors?: string[] }>(
+    conn,
+    CENTZ_PATHS.invoiceSend,
+    {
+      external_id: externalId,
+      send_email: channel !== "sms",
+      send_sms: channel !== "email",
+    },
+    { site_id: conn.site_centz_id ?? conn.site_external_id ?? undefined, merchant_id: conn.merchant_id ?? undefined },
+  );
+  const resp = result.data ?? {};
+
+  if (!result.ok || resp.success === false) {
+    const msg = resp.errors?.join("; ") || `Centz HTTP ${result.status}`;
+    return jsonErr(c, "centz_send_failed", msg, result.status >= 400 && result.status < 600 ? result.status : 502);
+  }
+
+  await svc
+    .from("centz_invoices")
+    .update({ last_sent_at: new Date().toISOString(), last_sent_channel: channel })
+    .eq("id", local.id)
+    .eq("tenant_id", tenantId);
+
+  return jsonOk(c, { invoice_id: local.id, external_id: externalId, channel, centz: resp });
+};
+
+// Canonical Phase 2A routes
+app.post("/centz/invoice/get", centzGetInvoiceHandler);
+app.post("/centz/invoice/send", centzSendInvoiceHandler);
+// Backwards-compatible aliases for the earlier names
+app.post("/centz/get-invoice", centzGetInvoiceHandler);
+app.post("/centz/send-invoice", centzSendInvoiceHandler);
+
+// Phase 2B placeholders — wire after invoice/get is exercised against a real invoice.
+app.post("/centz/site/upsert", (c) => jsonErr(c, "not_implemented", "Phase 2B — pending.", 501));
+app.post("/centz/upsert-site-setup", (c) => jsonErr(c, "not_implemented", "Phase 2B — pending.", 501));
+// Sync worker route — will live in payment-worker, not payment-api.
+app.post("/centz/sync-invoices", (c) => jsonErr(c, "not_implemented", "Phase 2B — moves to payment-worker.", 501));
 
 Deno.serve(app.fetch);
 
