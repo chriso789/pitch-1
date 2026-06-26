@@ -587,7 +587,7 @@ app.post("/zelle/payment-page", async (c) => jsonErr(c, "not_migrated", "Use zel
 // TODO Phase 2: /centz/send-invoice, /centz/get-invoice, /centz/sync-invoices,
 //               /centz/upsert-site-setup (all under this same payment-api).
 
-app.post("/centz/create-invoice-link", async (c) => {
+const centzCreateInvoiceLinkHandler = async (c: any) => {
   type LineIn = {
     description?: string;
     product?: { external_id: string; name: string; unit_price: number };
