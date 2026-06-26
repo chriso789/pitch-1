@@ -45,6 +45,8 @@ import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { DemoRequestsPanel } from '@/components/settings/DemoRequestsPanel';
 import { CompanyFeatureControl } from '@/components/admin/CompanyFeatureControl';
 import { PlatformFeatureKillSwitch } from '@/components/admin/PlatformFeatureKillSwitch';
+import { CentzConnectionsAdmin } from '@/components/admin/CentzConnectionsAdmin';
+import { KeyRound } from 'lucide-react';
 
 interface Company {
   id: string;
