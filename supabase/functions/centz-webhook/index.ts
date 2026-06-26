@@ -103,14 +103,36 @@ Deno.serve(async (req) => {
   }
 
   // 2. If we can match a local invoice, update status defensively
-  if (invoiceExternalId) {
-    const { data: invRow } = await sb
+  let matchedInvoiceId: string | null = null;
+  let unmatchedReason: string | null = null;
+
+  if (!invoiceExternalId) {
+    unmatchedReason = "no_invoice_external_id_in_payload";
+  } else {
+    const { data: invRow, error: lookupErr } = await sb
       .from("centz_invoices")
-      .select("id, status, paid_at, viewed_at")
+      .select("id, tenant_id, status, paid_at, viewed_at")
       .eq("external_id", invoiceExternalId)
       .maybeSingle();
 
-    if (invRow) {
+    if (lookupErr) {
+      unmatchedReason = `lookup_error:${lookupErr.message}`;
+      console.error("[centz-webhook] invoice lookup error", {
+        invoiceExternalId,
+        eventId,
+        eventType,
+        error: lookupErr,
+      });
+    } else if (!invRow) {
+      unmatchedReason = "invoice_external_id_not_found";
+      console.warn("[centz-webhook] unmatched event — no invoice row", {
+        invoiceExternalId,
+        eventId,
+        eventType,
+        primaryPaymentStatus,
+      });
+    } else {
+      matchedInvoiceId = invRow.id;
       const update: Record<string, unknown> = {
         notifications: (payload as any)?.notifications ?? undefined,
         payments: (payload as any)?.payments ?? (payload as any)?.invoice?.payments ?? undefined,
@@ -137,7 +159,6 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Strip undefined
       for (const k of Object.keys(update)) if (update[k] === undefined) delete update[k];
 
       const { error: updErr } = await sb
@@ -147,9 +168,29 @@ Deno.serve(async (req) => {
       if (updErr) console.error("[centz-webhook] invoice update error", updErr);
 
       await sb.from("centz_webhook_events")
-        .update({ processed_at: new Date().toISOString(), invoice_id: invRow.id })
+        .update({
+          processed_at: new Date().toISOString(),
+          invoice_id: invRow.id,
+          tenant_id: invRow.tenant_id,
+        })
         .eq("event_id", eventId);
     }
+  }
+
+  if (unmatchedReason) {
+    // Persist the unmatched reason so it's queryable from the DB, not just logs.
+    await sb.from("centz_webhook_events")
+      .update({
+        processed_at: new Date().toISOString(),
+        // payload already stored; tag in payment_status field if currently null
+      })
+      .eq("event_id", eventId);
+    console.warn("[centz-webhook] unmatched_event", {
+      eventId,
+      eventType,
+      invoiceExternalId,
+      reason: unmatchedReason,
+    });
   }
 
   return new Response(JSON.stringify({ received: true }), {
