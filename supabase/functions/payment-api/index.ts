@@ -813,7 +813,12 @@ const centzCreateInvoiceLinkHandler = async (c: any) => {
     status: "link_created",
     raw_response: respData,
   });
-});
+};
+
+// Canonical route
+app.post("/centz/invoice/create-link", centzCreateInvoiceLinkHandler);
+// Backwards-compatible alias (original Phase 1 path)
+app.post("/centz/create-invoice-link", centzCreateInvoiceLinkHandler);
 
 // Phase 2 placeholders — wire when stage flow is verified end-to-end.
 app.post("/centz/send-invoice", (c) => jsonErr(c, "not_implemented", "Phase 2 — pending.", 501));
