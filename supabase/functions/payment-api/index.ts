@@ -21,6 +21,13 @@ import {
   verifySquareWebhookSignature,
   type SquareEnvironment,
 } from "../_shared/square.ts";
+import {
+  loadCentzConnection,
+  centzPost,
+  CENTZ_PATHS,
+  centsToDecimal,
+  validateInvoiceTotals,
+} from "../_shared/centzClient.ts";
 
 const app = createRouter("payment-api");
 
@@ -569,4 +576,250 @@ app.post("/stripe/connect/tenant/onboard", async (c) => jsonErr(c, "not_migrated
 app.post("/stripe/connect/tenant/status", async (c) => jsonErr(c, "not_migrated", "Use stripe-connect-tenant-status until migrated.", 501));
 app.post("/zelle/payment-page", async (c) => jsonErr(c, "not_migrated", "Use zelle-payment-page (public) until migrated.", 501));
 
+// ============================================================
+// CENTZ — Phase 1: invoice/addUpdate → returned payment link
+// ============================================================
+// Centz flow (NOT Stripe Checkout):
+//   1. POST /api/v3.1/invoice/addUpdate with x-access-token header
+//   2. Omit `customer` from payload → Centz returns a `link` for self-checkout
+//   3. Include `customer` only when caller wants Centz to text/email instead
+// Per-tenant credentials live in public.centz_connections.
+// TODO Phase 2: /centz/send-invoice, /centz/get-invoice, /centz/sync-invoices,
+//               /centz/upsert-site-setup (all under this same payment-api).
+
+app.post("/centz/create-invoice-link", async (c) => {
+  type LineIn = {
+    description?: string;
+    product?: { external_id: string; name: string; unit_price: number };
+    unit_price: number;
+    qty: number;
+    total: number;
+  };
+  type Body = {
+    pitch_id?: string;
+    pipeline_entry_id?: string;
+    contact_id?: string;
+    external_id?: string;
+    invoice_number: string;
+    amount_cents: number;
+    taxes_cents?: number;
+    description?: string;
+    customer?: {
+      external_id?: string;
+      first_name?: string;
+      last_name?: string;
+      email?: string;
+      mobile_phone?: string;
+    };
+    send_customer_to_centz?: boolean;
+    customer_memo?: string;
+    internal_memo?: string;
+    invoice_date?: string;
+    due_date?: string;
+    expire_at?: string;
+    purchase_order_number?: string;
+    lines?: LineIn[];
+    attachments?: unknown[];
+    options?: Record<string, unknown>;
+  };
+
+  let body: Body;
+  try {
+    body = await c.req.json();
+  } catch {
+    return jsonErr(c, "invalid_json", "Body must be JSON", 400);
+  }
+
+  if (!body.invoice_number) return jsonErr(c, "invoice_number_required", "invoice_number is required", 400);
+  const amountCents = Math.round(Number(body.amount_cents));
+  if (!Number.isFinite(amountCents) || amountCents <= 0) {
+    return jsonErr(c, "invalid_amount", "amount_cents must be a positive integer", 400);
+  }
+  const taxesCents = Math.max(0, Math.round(Number(body.taxes_cents ?? 0)));
+  if (!body.lines?.length && !body.description) {
+    return jsonErr(c, "description_or_lines_required", "Centz requires lines OR a description", 400);
+  }
+
+  const tenantId = c.get("tenantId")!;
+  const userId = c.get("userId") ?? null;
+  const svc = serviceClient();
+
+  // Load per-tenant Centz connection
+  let conn;
+  try {
+    conn = await loadCentzConnection(svc, tenantId);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return jsonErr(c, msg === "centz_not_connected" ? "centz_not_connected" : "centz_connection_failed", msg, 400);
+  }
+
+  // Stable external_id rule
+  const externalId =
+    body.external_id ||
+    (body.pitch_id ? `pitch_${body.pitch_id}_invoice` : `pitch_manual_${crypto.randomUUID()}`);
+
+  const amountDecimal = centsToDecimal(amountCents);
+  const taxesDecimal = centsToDecimal(taxesCents);
+
+  // Build lines (validated)
+  const lines = (body.lines ?? []).map((l) => ({
+    description: l.description ?? l.product?.name ?? body.description ?? "Payment",
+    ...(l.product ? { product: l.product } : {}),
+    unit_price: Number(l.unit_price),
+    qty: Number(l.qty),
+    total: Math.round(Number(l.total) * 100) / 100,
+  }));
+
+  if (lines.length) {
+    const v = validateInvoiceTotals(lines, amountDecimal);
+    if (!v.ok) return jsonErr(c, "invalid_totals", v.error, 400);
+  }
+
+  // Webhook URL — Centz posts to our standalone centz-webhook function
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+  const projectRef = supabaseUrl.replace(/^https?:\/\//, "").split(".")[0];
+  const webhookUrl =
+    conn.webhook_url ?? `https://${projectRef}.functions.supabase.co/centz-webhook`;
+
+  // Build Centz payload (totals.taxes, NOT totals.tax)
+  const payload: Record<string, unknown> = {
+    external_id: externalId,
+    invoice_number: body.invoice_number,
+    description: body.description ?? undefined,
+    totals: { taxes: taxesDecimal, total: amountDecimal },
+    lines: lines.length ? lines : undefined,
+    customer_memo: body.customer_memo,
+    internal_memo: body.internal_memo,
+    invoice_date: body.invoice_date,
+    due_date: body.due_date,
+    expire_at: body.expire_at,
+    purchase_order_number: body.purchase_order_number,
+    active: true,
+    webhook_url: webhookUrl,
+    webhook_urls: [webhookUrl],
+    options: { tippingEnabled: false, ...(body.options ?? {}) },
+    attachments: body.attachments ?? [],
+  };
+
+  // Only include customer when caller asked Centz to notify them.
+  if (body.send_customer_to_centz && body.customer) {
+    payload.customer = {
+      external_id: body.customer.external_id,
+      first_name: body.customer.first_name,
+      last_name: body.customer.last_name,
+      mobile_phone: body.customer.mobile_phone,
+      email: body.customer.email,
+    };
+  }
+
+  // Strip undefined keys for a clean payload
+  for (const k of Object.keys(payload)) if (payload[k] === undefined) delete payload[k];
+
+  // Some Centz tenants use /api/v3.1/site/{site_id}/invoice/addUpdate.
+  // If your tenant requires the site-scoped variant, set
+  // CENTZ_INVOICE_ADD_UPDATE_PATH=/api/v3.1/site/{site_id}/invoice/addUpdate
+  // and the path placeholder below will be filled from the connection row.
+  const pathTemplate = CENTZ_PATHS.invoiceAddUpdate;
+  const pathParams = {
+    site_id: conn.site_centz_id ?? conn.site_external_id ?? undefined,
+    merchant_id: conn.merchant_id ?? undefined,
+  };
+
+  type CentzInvoiceResp = {
+    success?: boolean;
+    action?: "added" | "updated";
+    id?: string;
+    link?: string;
+    errors?: string[];
+  };
+
+  const result = await centzPost<CentzInvoiceResp>(conn, pathTemplate, payload, pathParams);
+  const respData = (result.data ?? {}) as CentzInvoiceResp;
+
+  // Persist local invoice row (raw_request/raw_response always saved)
+  const insertRow = {
+    tenant_id: tenantId,
+    created_by: userId,
+    pitch_id: body.pitch_id ?? null,
+    pipeline_entry_id: body.pipeline_entry_id ?? null,
+    contact_id: body.contact_id ?? null,
+    site_external_id: conn.site_external_id,
+    site_centz_id: conn.site_centz_id,
+    merchant_id: conn.merchant_id,
+    external_id: externalId,
+    invoice_number: body.invoice_number,
+    centz_invoice_id: respData.id ?? null,
+    customer_external_id: body.customer?.external_id ?? null,
+    customer_first_name: body.customer?.first_name ?? null,
+    customer_last_name: body.customer?.last_name ?? null,
+    customer_email: body.customer?.email ?? null,
+    customer_mobile_phone: body.customer?.mobile_phone ?? null,
+    amount_cents: amountCents,
+    amount_decimal: amountDecimal,
+    taxes_cents: taxesCents,
+    currency: "USD",
+    description: body.description ?? null,
+    customer_memo: body.customer_memo ?? null,
+    internal_memo: body.internal_memo ?? null,
+    invoice_date: body.invoice_date ?? null,
+    due_date: body.due_date ?? null,
+    expire_at: body.expire_at ?? null,
+    purchase_order_number: body.purchase_order_number ?? null,
+    status: !result.ok || respData.success === false
+      ? "error"
+      : respData.link
+        ? "link_created"
+        : respData.action === "updated" ? "updated" : "created",
+    payment_link: respData.link ?? null,
+    webhook_url: webhookUrl,
+    lines: lines as unknown as object,
+    totals: { taxes: taxesDecimal, total: amountDecimal },
+    raw_request: payload,
+    raw_response: respData as unknown as object,
+  };
+
+  const { data: localRow, error: upsertErr } = await svc
+    .from("centz_invoices")
+    .upsert(insertRow, { onConflict: "external_id" })
+    .select("id, external_id, status, payment_link, centz_invoice_id")
+    .single();
+
+  if (upsertErr) console.error("[payment-api] centz_invoices upsert", upsertErr);
+
+  if (!result.ok || respData.success === false) {
+    const msg = respData.errors?.join("; ") || `Centz HTTP ${result.status}`;
+    return jsonErr(c, "centz_invoice_failed", msg, 400);
+  }
+
+  if (!respData.link) {
+    // Customer was probably included → Centz notifies, no link returned.
+    return jsonOk(c, {
+      invoice_id: localRow?.id ?? null,
+      external_id: externalId,
+      invoice_number: body.invoice_number,
+      payment_link: null,
+      centz_invoice_id: respData.id ?? null,
+      status: localRow?.status ?? "created",
+      raw_response: respData,
+    });
+  }
+
+  return jsonOk(c, {
+    invoice_id: localRow?.id ?? null,
+    external_id: externalId,
+    invoice_number: body.invoice_number,
+    payment_link: respData.link,
+    centz_invoice_id: respData.id ?? null,
+    status: "link_created",
+    raw_response: respData,
+  });
+});
+
+// Phase 2 placeholders — wire when stage flow is verified end-to-end.
+app.post("/centz/send-invoice", (c) => jsonErr(c, "not_implemented", "Phase 2 — pending.", 501));
+app.post("/centz/get-invoice", (c) => jsonErr(c, "not_implemented", "Phase 2 — pending.", 501));
+app.post("/centz/sync-invoices", (c) => jsonErr(c, "not_implemented", "Phase 2 — pending.", 501));
+app.post("/centz/upsert-site-setup", (c) => jsonErr(c, "not_implemented", "Phase 2 — pending.", 501));
+
 Deno.serve(app.fetch);
+

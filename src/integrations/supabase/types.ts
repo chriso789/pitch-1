@@ -8681,6 +8681,269 @@ export type Database = {
           },
         ]
       }
+      centz_connections: {
+        Row: {
+          active: boolean
+          agency_external_id: string | null
+          agency_name: string | null
+          api_access_token: string
+          api_version_path: string
+          created_at: string
+          created_by: string | null
+          environment: string
+          id: string
+          merchant_id: string | null
+          raw_setup_response: Json | null
+          site_centz_id: string | null
+          site_enterprise_centz_id: string | null
+          site_enterprise_external_id: string | null
+          site_external_id: string | null
+          site_group_centz_id: string | null
+          site_group_external_id: string | null
+          tenant_id: string
+          updated_at: string
+          webhook_url: string | null
+        }
+        Insert: {
+          active?: boolean
+          agency_external_id?: string | null
+          agency_name?: string | null
+          api_access_token: string
+          api_version_path?: string
+          created_at?: string
+          created_by?: string | null
+          environment?: string
+          id?: string
+          merchant_id?: string | null
+          raw_setup_response?: Json | null
+          site_centz_id?: string | null
+          site_enterprise_centz_id?: string | null
+          site_enterprise_external_id?: string | null
+          site_external_id?: string | null
+          site_group_centz_id?: string | null
+          site_group_external_id?: string | null
+          tenant_id: string
+          updated_at?: string
+          webhook_url?: string | null
+        }
+        Update: {
+          active?: boolean
+          agency_external_id?: string | null
+          agency_name?: string | null
+          api_access_token?: string
+          api_version_path?: string
+          created_at?: string
+          created_by?: string | null
+          environment?: string
+          id?: string
+          merchant_id?: string | null
+          raw_setup_response?: Json | null
+          site_centz_id?: string | null
+          site_enterprise_centz_id?: string | null
+          site_enterprise_external_id?: string | null
+          site_external_id?: string | null
+          site_group_centz_id?: string | null
+          site_group_external_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+          webhook_url?: string | null
+        }
+        Relationships: []
+      }
+      centz_invoices: {
+        Row: {
+          amount_cents: number
+          amount_decimal: number
+          attachments: Json
+          centz_invoice_id: string | null
+          contact_id: string | null
+          created_at: string
+          created_by: string | null
+          currency: string
+          customer_email: string | null
+          customer_external_id: string | null
+          customer_first_name: string | null
+          customer_last_name: string | null
+          customer_memo: string | null
+          customer_mobile_phone: string | null
+          description: string | null
+          due_date: string | null
+          expire_at: string | null
+          external_id: string
+          failed_at: string | null
+          id: string
+          internal_memo: string | null
+          invoice_date: string | null
+          invoice_number: string
+          last_sync_response: Json | null
+          last_synced_at: string | null
+          lines: Json
+          merchant_id: string | null
+          notifications: Json
+          options: Json
+          paid_at: string | null
+          payment_link: string | null
+          payments: Json
+          pipeline_entry_id: string | null
+          pitch_id: string | null
+          purchase_order_number: string | null
+          raw_request: Json | null
+          raw_response: Json | null
+          sent_at: string | null
+          site_centz_id: string | null
+          site_external_id: string | null
+          status: string
+          taxes_cents: number
+          tenant_id: string
+          totals: Json
+          updated_at: string
+          viewed_at: string | null
+          webhook_url: string | null
+        }
+        Insert: {
+          amount_cents: number
+          amount_decimal: number
+          attachments?: Json
+          centz_invoice_id?: string | null
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          customer_email?: string | null
+          customer_external_id?: string | null
+          customer_first_name?: string | null
+          customer_last_name?: string | null
+          customer_memo?: string | null
+          customer_mobile_phone?: string | null
+          description?: string | null
+          due_date?: string | null
+          expire_at?: string | null
+          external_id: string
+          failed_at?: string | null
+          id?: string
+          internal_memo?: string | null
+          invoice_date?: string | null
+          invoice_number: string
+          last_sync_response?: Json | null
+          last_synced_at?: string | null
+          lines?: Json
+          merchant_id?: string | null
+          notifications?: Json
+          options?: Json
+          paid_at?: string | null
+          payment_link?: string | null
+          payments?: Json
+          pipeline_entry_id?: string | null
+          pitch_id?: string | null
+          purchase_order_number?: string | null
+          raw_request?: Json | null
+          raw_response?: Json | null
+          sent_at?: string | null
+          site_centz_id?: string | null
+          site_external_id?: string | null
+          status?: string
+          taxes_cents?: number
+          tenant_id: string
+          totals?: Json
+          updated_at?: string
+          viewed_at?: string | null
+          webhook_url?: string | null
+        }
+        Update: {
+          amount_cents?: number
+          amount_decimal?: number
+          attachments?: Json
+          centz_invoice_id?: string | null
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          customer_email?: string | null
+          customer_external_id?: string | null
+          customer_first_name?: string | null
+          customer_last_name?: string | null
+          customer_memo?: string | null
+          customer_mobile_phone?: string | null
+          description?: string | null
+          due_date?: string | null
+          expire_at?: string | null
+          external_id?: string
+          failed_at?: string | null
+          id?: string
+          internal_memo?: string | null
+          invoice_date?: string | null
+          invoice_number?: string
+          last_sync_response?: Json | null
+          last_synced_at?: string | null
+          lines?: Json
+          merchant_id?: string | null
+          notifications?: Json
+          options?: Json
+          paid_at?: string | null
+          payment_link?: string | null
+          payments?: Json
+          pipeline_entry_id?: string | null
+          pitch_id?: string | null
+          purchase_order_number?: string | null
+          raw_request?: Json | null
+          raw_response?: Json | null
+          sent_at?: string | null
+          site_centz_id?: string | null
+          site_external_id?: string | null
+          status?: string
+          taxes_cents?: number
+          tenant_id?: string
+          totals?: Json
+          updated_at?: string
+          viewed_at?: string | null
+          webhook_url?: string | null
+        }
+        Relationships: []
+      }
+      centz_webhook_events: {
+        Row: {
+          created_at: string
+          event_id: string
+          event_type: string
+          id: string
+          invoice_external_id: string | null
+          invoice_id: string | null
+          payload: Json
+          payment_status: string | null
+          processed_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          event_id: string
+          event_type?: string
+          id?: string
+          invoice_external_id?: string | null
+          invoice_id?: string | null
+          payload: Json
+          payment_status?: string | null
+          processed_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          event_id?: string
+          event_type?: string
+          id?: string
+          invoice_external_id?: string | null
+          invoice_id?: string | null
+          payload?: Json
+          payment_status?: string | null
+          processed_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "centz_webhook_events_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "centz_invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       change_order_line_items: {
         Row: {
           change_order_id: string
