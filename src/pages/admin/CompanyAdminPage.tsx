@@ -604,7 +604,7 @@ const CompanyAdminPage = () => {
 
         {/* Main Tabs */}
         <Tabs defaultValue="companies" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 max-w-2xl">
+          <TabsList className={`grid w-full ${currentUser?.role === 'master' ? 'grid-cols-5 max-w-3xl' : 'grid-cols-4 max-w-2xl'}`}>
             <TabsTrigger value="companies" className="flex items-center gap-2">
               <Building2 className="h-4 w-4" />
               Companies
@@ -626,6 +626,12 @@ const CompanyAdminPage = () => {
               <AlertTriangle className="h-4 w-4" />
               Kill Switch
             </TabsTrigger>
+            {currentUser?.role === 'master' && (
+              <TabsTrigger value="centz" className="flex items-center gap-2">
+                <KeyRound className="h-4 w-4" />
+                Centz
+              </TabsTrigger>
+            )}
           </TabsList>
 
           {/* Companies Tab */}
