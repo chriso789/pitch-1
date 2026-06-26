@@ -587,7 +587,7 @@ app.post("/zelle/payment-page", async (c) => jsonErr(c, "not_migrated", "Use zel
 // TODO Phase 2: /centz/send-invoice, /centz/get-invoice, /centz/sync-invoices,
 //               /centz/upsert-site-setup (all under this same payment-api).
 
-app.post("/centz/create-invoice-link", async (c) => {
+const centzCreateInvoiceLinkHandler = async (c: any) => {
   type LineIn = {
     description?: string;
     product?: { external_id: string; name: string; unit_price: number };
@@ -813,7 +813,12 @@ app.post("/centz/create-invoice-link", async (c) => {
     status: "link_created",
     raw_response: respData,
   });
-});
+};
+
+// Canonical route
+app.post("/centz/invoice/create-link", centzCreateInvoiceLinkHandler);
+// Backwards-compatible alias (original Phase 1 path)
+app.post("/centz/create-invoice-link", centzCreateInvoiceLinkHandler);
 
 // Phase 2 placeholders — wire when stage flow is verified end-to-end.
 app.post("/centz/send-invoice", (c) => jsonErr(c, "not_implemented", "Phase 2 — pending.", 501));

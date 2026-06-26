@@ -51,7 +51,7 @@ export interface CreateCentzInvoiceLinkResult {
 export async function createCentzInvoiceLink(input: CreateCentzInvoiceLinkInput) {
   return edgeApi<CreateCentzInvoiceLinkResult>(
     "payment-api",
-    "/centz/create-invoice-link",
+    "/centz/invoice/create-link",
     input as unknown as Record<string, unknown>,
   );
 }
