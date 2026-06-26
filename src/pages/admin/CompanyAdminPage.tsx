@@ -760,6 +760,12 @@ const CompanyAdminPage = () => {
           <TabsContent value="kill-switch">
             <PlatformFeatureKillSwitch />
           </TabsContent>
+
+          {currentUser?.role === 'master' && (
+            <TabsContent value="centz">
+              <CentzConnectionsAdmin />
+            </TabsContent>
+          )}
         </Tabs>
 
         {/* Create Company Dialog */}
