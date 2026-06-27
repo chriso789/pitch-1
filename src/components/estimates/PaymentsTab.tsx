@@ -366,7 +366,13 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
 
   const zelleEnabled = zelleSettings?.zelle_enabled || false;
 
-  const totalPaid = (payments || []).reduce((sum, p) => sum + Number(p.amount), 0);
+  // Contract-paid totals exclude pass-through CC processing fees: the
+  // homeowner pays the fee on top of the invoice and it is not applied to
+  // the contract balance owed to the company.
+  const totalPaid = (payments || []).reduce(
+    (sum, p) => sum + (Number(p.amount) - Number((p as any).cc_fee_amount || 0)),
+    0
+  );
   const contractBalance = sellingPrice - totalPaid;
 
   useEffect(() => {
