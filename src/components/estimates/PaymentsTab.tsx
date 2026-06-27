@@ -1262,11 +1262,58 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
 
               <Separator />
 
+              {/* Credit-card processing fee toggle (pass-through to homeowner) */}
+              <div className="rounded-md border bg-muted/30 p-3 space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1">
+                    <Label htmlFor="cc-fee-toggle" className="text-sm font-medium flex items-center gap-2 cursor-pointer">
+                      <CreditCard className="h-4 w-4" />
+                      Add credit card processing fee
+                    </Label>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Adds the fee on top of the invoice. Collected from the homeowner and not deducted from the contract balance.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="20"
+                      value={ccFeePercent}
+                      onChange={(e) => setCcFeePercent(Math.max(0, parseFloat(e.target.value) || 0))}
+                      disabled={!addCcFee}
+                      className="h-8 w-20 text-right"
+                    />
+                    <span className="text-sm text-muted-foreground">%</span>
+                    <input
+                      id="cc-fee-toggle"
+                      type="checkbox"
+                      checked={addCcFee}
+                      onChange={(e) => setAddCcFee(e.target.checked)}
+                      className="h-4 w-4 ml-1 cursor-pointer"
+                    />
+                  </div>
+                </div>
+              </div>
+
               {/* Subtotal */}
               <div className="flex justify-end">
-                <div className="text-right">
-                  <p className="text-xs text-muted-foreground">Invoice Total</p>
-                  <p className="text-lg font-bold">{formatCurrency(invoiceSubtotal)}</p>
+                <div className="text-right space-y-0.5">
+                  <div className="flex justify-between gap-8 text-sm">
+                    <span className="text-muted-foreground">Subtotal</span>
+                    <span className="font-medium">{formatCurrency(invoiceSubtotal)}</span>
+                  </div>
+                  {addCcFee && ccFeeAmount > 0 && (
+                    <div className="flex justify-between gap-8 text-sm">
+                      <span className="text-muted-foreground">CC processing fee ({ccFeePercent}%)</span>
+                      <span className="font-medium">{formatCurrency(ccFeeAmount)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between gap-8 pt-1 border-t mt-1">
+                    <span className="text-xs text-muted-foreground self-end">Invoice Total</span>
+                    <span className="text-lg font-bold">{formatCurrency(invoiceGrandTotal)}</span>
+                  </div>
                 </div>
               </div>
 
