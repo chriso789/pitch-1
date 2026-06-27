@@ -38650,6 +38650,8 @@ export type Database = {
         Row: {
           amount: number
           balance: number
+          cc_fee_amount: number
+          cc_fee_percent: number
           created_at: string | null
           created_by: string | null
           due_date: string | null
@@ -38667,6 +38669,8 @@ export type Database = {
         Insert: {
           amount: number
           balance: number
+          cc_fee_amount?: number
+          cc_fee_percent?: number
           created_at?: string | null
           created_by?: string | null
           due_date?: string | null
@@ -38684,6 +38688,8 @@ export type Database = {
         Update: {
           amount?: number
           balance?: number
+          cc_fee_amount?: number
+          cc_fee_percent?: number
           created_at?: string | null
           created_by?: string | null
           due_date?: string | null
@@ -38732,6 +38738,7 @@ export type Database = {
       project_payments: {
         Row: {
           amount: number
+          cc_fee_amount: number
           created_at: string | null
           created_by: string | null
           id: string
@@ -38748,6 +38755,7 @@ export type Database = {
         }
         Insert: {
           amount: number
+          cc_fee_amount?: number
           created_at?: string | null
           created_by?: string | null
           id?: string
@@ -38764,6 +38772,7 @@ export type Database = {
         }
         Update: {
           amount?: number
+          cc_fee_amount?: number
           created_at?: string | null
           created_by?: string | null
           id?: string

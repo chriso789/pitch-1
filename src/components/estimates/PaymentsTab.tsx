@@ -82,6 +82,11 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   const [invoiceDueDate, setInvoiceDueDate] = useState('');
   const [invoiceNotes, setInvoiceNotes] = useState('');
   const [showLineDetails, setShowLineDetails] = useState(false);
+  // Pass-through credit-card processing fee (added on top of the invoice
+  // total; collected from the homeowner so it does not deduct from the
+  // contract balance owed).
+  const [addCcFee, setAddCcFee] = useState(false);
+  const [ccFeePercent, setCcFeePercent] = useState<number>(3.5);
   const [expandedInvoices, setExpandedInvoices] = useState<Set<string>>(new Set());
 
   // Edit invoice state
@@ -293,6 +298,14 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
     () => invoiceGroups.filter((g) => g.selected).reduce((sum, g) => sum + groupTotal(g), 0),
     [invoiceGroups]
   );
+  const ccFeeAmount = useMemo(
+    () => (addCcFee ? Math.round(invoiceSubtotal * (ccFeePercent / 100) * 100) / 100 : 0),
+    [addCcFee, ccFeePercent, invoiceSubtotal]
+  );
+  const invoiceGrandTotal = useMemo(
+    () => Math.round((invoiceSubtotal + ccFeeAmount) * 100) / 100,
+    [invoiceSubtotal, ccFeeAmount]
+  );
 
   const { data: invoices, isLoading: loadingInvoices } = useQuery({
     queryKey: ['project-ar-invoices', pipelineEntryId],
@@ -353,7 +366,13 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
 
   const zelleEnabled = zelleSettings?.zelle_enabled || false;
 
-  const totalPaid = (payments || []).reduce((sum, p) => sum + Number(p.amount), 0);
+  // Contract-paid totals exclude pass-through CC processing fees: the
+  // homeowner pays the fee on top of the invoice and it is not applied to
+  // the contract balance owed to the company.
+  const totalPaid = (payments || []).reduce(
+    (sum, p) => sum + (Number(p.amount) - Number((p as any).cc_fee_amount || 0)),
+    0
+  );
   const contractBalance = sellingPrice - totalPaid;
 
   useEffect(() => {
@@ -455,8 +474,10 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
         .filter(({ g, total }) => g.selected && total > 0);
       if (selectedGroups.length === 0) throw new Error('Select at least one line item');
 
-      const amount = Math.round(selectedGroups.reduce((s, { total }) => s + total, 0) * 100) / 100;
-      if (amount <= 0) throw new Error('Invoice total must be greater than zero');
+      const subtotal = Math.round(selectedGroups.reduce((s, { total }) => s + total, 0) * 100) / 100;
+      if (subtotal <= 0) throw new Error('Invoice total must be greater than zero');
+      const feeAmount = addCcFee ? Math.round(subtotal * (ccFeePercent / 100) * 100) / 100 : 0;
+      const amount = Math.round((subtotal + feeAmount) * 100) / 100;
 
       // Get auth user directly to avoid profile mismatch
       const { data: { user } } = await supabase.auth.getUser();
@@ -472,6 +493,15 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
         unit_cost: total,
         line_total: total,
       }));
+      if (feeAmount > 0) {
+        lineItemsPayload.push({
+          description: `Credit Card Processing Fee (${ccFeePercent}%) — pass-through, not applied to contract balance`,
+          qty: 1,
+          unit: 'fee',
+          unit_cost: feeAmount,
+          line_total: feeAmount,
+        });
+      }
 
       const { error } = await supabase.from('project_invoices').insert({
         tenant_id: activeTenantId!,
@@ -484,7 +514,9 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
         notes: invoiceNotes || null,
         created_by: user.id,
         line_items: lineItemsPayload as any,
-      });
+        cc_fee_amount: feeAmount,
+        cc_fee_percent: addCcFee ? ccFeePercent : 0,
+      } as any);
       if (error) {
         console.error('Invoice creation error:', error);
         throw new Error(error.message || 'Failed to create invoice');
@@ -555,6 +587,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
       setShowInvoiceDialog(false);
       setInvoiceNotes('');
       setInvoiceDueDate('');
+      setAddCcFee(false);
       toast.success('Invoice created and PDF saved to Documents');
     },
     onError: (err: Error) => toast.error(err.message || 'Failed to create invoice'),
@@ -730,6 +763,19 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
+      // If the payment is applied to an invoice that has a pass-through CC
+      // fee, allocate the fee portion of this payment so it is excluded
+      // from contract-paid totals.
+      let allocatedFee = 0;
+      if (selectedInvoiceId) {
+        const inv = (invoices || []).find((i: any) => i.id === selectedInvoiceId) as any;
+        const invFee = Number(inv?.cc_fee_amount || 0);
+        const invAmount = Number(inv?.amount || 0);
+        if (invFee > 0 && invAmount > 0) {
+          allocatedFee = Math.min(invFee, Math.round(amount * (invFee / invAmount) * 100) / 100);
+        }
+      }
+
       const { error } = await supabase.from('project_payments').insert({
         tenant_id: activeTenantId!,
         pipeline_entry_id: pipelineEntryId,
@@ -740,7 +786,8 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
         payment_date: paymentDate,
         notes: paymentNotes || null,
         created_by: user.id,
-      });
+        cc_fee_amount: allocatedFee,
+      } as any);
       if (error) {
         console.error('Payment creation error:', error);
         throw new Error(error.message || 'Failed to record payment');
@@ -1215,11 +1262,58 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
 
               <Separator />
 
+              {/* Credit-card processing fee toggle (pass-through to homeowner) */}
+              <div className="rounded-md border bg-muted/30 p-3 space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1">
+                    <Label htmlFor="cc-fee-toggle" className="text-sm font-medium flex items-center gap-2 cursor-pointer">
+                      <CreditCard className="h-4 w-4" />
+                      Add credit card processing fee
+                    </Label>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Adds the fee on top of the invoice. Collected from the homeowner and not deducted from the contract balance.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="20"
+                      value={ccFeePercent}
+                      onChange={(e) => setCcFeePercent(Math.max(0, parseFloat(e.target.value) || 0))}
+                      disabled={!addCcFee}
+                      className="h-8 w-20 text-right"
+                    />
+                    <span className="text-sm text-muted-foreground">%</span>
+                    <input
+                      id="cc-fee-toggle"
+                      type="checkbox"
+                      checked={addCcFee}
+                      onChange={(e) => setAddCcFee(e.target.checked)}
+                      className="h-4 w-4 ml-1 cursor-pointer"
+                    />
+                  </div>
+                </div>
+              </div>
+
               {/* Subtotal */}
               <div className="flex justify-end">
-                <div className="text-right">
-                  <p className="text-xs text-muted-foreground">Invoice Total</p>
-                  <p className="text-lg font-bold">{formatCurrency(invoiceSubtotal)}</p>
+                <div className="text-right space-y-0.5">
+                  <div className="flex justify-between gap-8 text-sm">
+                    <span className="text-muted-foreground">Subtotal</span>
+                    <span className="font-medium">{formatCurrency(invoiceSubtotal)}</span>
+                  </div>
+                  {addCcFee && ccFeeAmount > 0 && (
+                    <div className="flex justify-between gap-8 text-sm">
+                      <span className="text-muted-foreground">CC processing fee ({ccFeePercent}%)</span>
+                      <span className="font-medium">{formatCurrency(ccFeeAmount)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between gap-8 pt-1 border-t mt-1">
+                    <span className="text-xs text-muted-foreground self-end">Invoice Total</span>
+                    <span className="text-lg font-bold">{formatCurrency(invoiceGrandTotal)}</span>
+                  </div>
                 </div>
               </div>
 
@@ -1240,7 +1334,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
                 disabled={createInvoiceMutation.isPending || invoiceSubtotal <= 0}
               >
                 {createInvoiceMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Plus className="h-4 w-4 mr-1" />}
-                Create Invoice — {formatCurrency(invoiceSubtotal)}
+                Create Invoice — {formatCurrency(invoiceGrandTotal)}
               </Button>
             </DialogFooter>
           </DialogContent>
