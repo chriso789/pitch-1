@@ -763,6 +763,19 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
+      // If the payment is applied to an invoice that has a pass-through CC
+      // fee, allocate the fee portion of this payment so it is excluded
+      // from contract-paid totals.
+      let allocatedFee = 0;
+      if (selectedInvoiceId) {
+        const inv = (invoices || []).find((i: any) => i.id === selectedInvoiceId) as any;
+        const invFee = Number(inv?.cc_fee_amount || 0);
+        const invAmount = Number(inv?.amount || 0);
+        if (invFee > 0 && invAmount > 0) {
+          allocatedFee = Math.min(invFee, Math.round(amount * (invFee / invAmount) * 100) / 100);
+        }
+      }
+
       const { error } = await supabase.from('project_payments').insert({
         tenant_id: activeTenantId!,
         pipeline_entry_id: pipelineEntryId,
@@ -773,7 +786,8 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
         payment_date: paymentDate,
         notes: paymentNotes || null,
         created_by: user.id,
-      });
+        cc_fee_amount: allocatedFee,
+      } as any);
       if (error) {
         console.error('Payment creation error:', error);
         throw new Error(error.message || 'Failed to record payment');
