@@ -298,6 +298,14 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
     () => invoiceGroups.filter((g) => g.selected).reduce((sum, g) => sum + groupTotal(g), 0),
     [invoiceGroups]
   );
+  const ccFeeAmount = useMemo(
+    () => (addCcFee ? Math.round(invoiceSubtotal * (ccFeePercent / 100) * 100) / 100 : 0),
+    [addCcFee, ccFeePercent, invoiceSubtotal]
+  );
+  const invoiceGrandTotal = useMemo(
+    () => Math.round((invoiceSubtotal + ccFeeAmount) * 100) / 100,
+    [invoiceSubtotal, ccFeeAmount]
+  );
 
   const { data: invoices, isLoading: loadingInvoices } = useQuery({
     queryKey: ['project-ar-invoices', pipelineEntryId],
