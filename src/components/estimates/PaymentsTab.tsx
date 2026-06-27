@@ -474,8 +474,10 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
         .filter(({ g, total }) => g.selected && total > 0);
       if (selectedGroups.length === 0) throw new Error('Select at least one line item');
 
-      const amount = Math.round(selectedGroups.reduce((s, { total }) => s + total, 0) * 100) / 100;
-      if (amount <= 0) throw new Error('Invoice total must be greater than zero');
+      const subtotal = Math.round(selectedGroups.reduce((s, { total }) => s + total, 0) * 100) / 100;
+      if (subtotal <= 0) throw new Error('Invoice total must be greater than zero');
+      const feeAmount = addCcFee ? Math.round(subtotal * (ccFeePercent / 100) * 100) / 100 : 0;
+      const amount = Math.round((subtotal + feeAmount) * 100) / 100;
 
       // Get auth user directly to avoid profile mismatch
       const { data: { user } } = await supabase.auth.getUser();
@@ -491,6 +493,15 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
         unit_cost: total,
         line_total: total,
       }));
+      if (feeAmount > 0) {
+        lineItemsPayload.push({
+          description: `Credit Card Processing Fee (${ccFeePercent}%) — pass-through, not applied to contract balance`,
+          qty: 1,
+          unit: 'fee',
+          unit_cost: feeAmount,
+          line_total: feeAmount,
+        });
+      }
 
       const { error } = await supabase.from('project_invoices').insert({
         tenant_id: activeTenantId!,
@@ -503,7 +514,9 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
         notes: invoiceNotes || null,
         created_by: user.id,
         line_items: lineItemsPayload as any,
-      });
+        cc_fee_amount: feeAmount,
+        cc_fee_percent: addCcFee ? ccFeePercent : 0,
+      } as any);
       if (error) {
         console.error('Invoice creation error:', error);
         throw new Error(error.message || 'Failed to create invoice');
