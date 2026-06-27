@@ -82,6 +82,11 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   const [invoiceDueDate, setInvoiceDueDate] = useState('');
   const [invoiceNotes, setInvoiceNotes] = useState('');
   const [showLineDetails, setShowLineDetails] = useState(false);
+  // Pass-through credit-card processing fee (added on top of the invoice
+  // total; collected from the homeowner so it does not deduct from the
+  // contract balance owed).
+  const [addCcFee, setAddCcFee] = useState(false);
+  const [ccFeePercent, setCcFeePercent] = useState<number>(3.5);
   const [expandedInvoices, setExpandedInvoices] = useState<Set<string>>(new Set());
 
   // Edit invoice state
