@@ -1334,7 +1334,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
                 disabled={createInvoiceMutation.isPending || invoiceSubtotal <= 0}
               >
                 {createInvoiceMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Plus className="h-4 w-4 mr-1" />}
-                Create Invoice — {formatCurrency(invoiceSubtotal)}
+                Create Invoice — {formatCurrency(invoiceGrandTotal)}
               </Button>
             </DialogFooter>
           </DialogContent>
