@@ -587,6 +587,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
       setShowInvoiceDialog(false);
       setInvoiceNotes('');
       setInvoiceDueDate('');
+      setAddCcFee(false);
       toast.success('Invoice created and PDF saved to Documents');
     },
     onError: (err: Error) => toast.error(err.message || 'Failed to create invoice'),
