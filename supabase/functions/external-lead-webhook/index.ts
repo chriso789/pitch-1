@@ -274,7 +274,15 @@ Deno.serve(async (req: Request) => {
           .eq('id', contactId);
         console.log('[external-lead-webhook] Updated contact assignment to:', defaultAssigneeId);
       }
-    } else {
+
+      // Backfill location_id on the existing contact if we resolved one and it's empty
+      if (locationId) {
+        await supabase
+          .from('contacts')
+          .update({ location_id: locationId })
+          .eq('id', contactId)
+          .is('location_id', null);
+      }
       // Create new contact with correct column names
       // Only include fields that have values - dismiss missing optional fields
       const contactData: Record<string, unknown> = {
