@@ -221,9 +221,10 @@ export function IntegrationSandboxConsole({ slug, name }: Props) {
                     Recent {name} payloads
                   </CardTitle>
                   <CardDescription className="text-xs">
-                    Live request/response records from{" "}
-                    <code>supplier_audit_log</code> (supplier ={" "}
-                    <code>{auditSupplier}</code>). Latest 50.
+                    Cross-tenant view from <code>supplier_audit_log</code>{" "}
+                    (supplier = <code>{auditSupplier}</code>) — includes the
+                    original sandbox testing performed in O'Brien Contracting
+                    when this connection was first wired up. Latest 100.
                   </CardDescription>
                 </div>
                 <div className="flex items-center gap-2">
