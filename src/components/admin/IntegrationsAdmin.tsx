@@ -55,6 +55,7 @@ import {
   Power,
 } from "lucide-react";
 import { CentzConnectionsAdmin } from "@/components/admin/CentzConnectionsAdmin";
+import { IntegrationSandboxConsole } from "@/components/admin/IntegrationSandboxConsole";
 
 interface PlatformIntegration {
   id: string;
@@ -444,7 +445,14 @@ export function IntegrationsAdmin() {
                 "Manage tenant-level credentials and connection state."}
             </SheetDescription>
           </SheetHeader>
-          <div className="mt-6">
+          <div className="mt-6 space-y-6">
+            {currentOpen && (
+              <IntegrationSandboxConsole
+                slug={currentOpen.slug}
+                name={currentOpen.name}
+              />
+            )}
+
             {currentOpen?.slug === "centz" ? (
               <CentzConnectionsAdmin />
             ) : currentOpen ? (
