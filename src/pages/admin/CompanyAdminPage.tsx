@@ -46,7 +46,8 @@ import { DemoRequestsPanel } from '@/components/settings/DemoRequestsPanel';
 import { CompanyFeatureControl } from '@/components/admin/CompanyFeatureControl';
 import { PlatformFeatureKillSwitch } from '@/components/admin/PlatformFeatureKillSwitch';
 import { CentzConnectionsAdmin } from '@/components/admin/CentzConnectionsAdmin';
-import { KeyRound } from 'lucide-react';
+import { IntegrationsAdmin } from '@/components/admin/IntegrationsAdmin';
+import { KeyRound, Plug } from 'lucide-react';
 
 interface Company {
   id: string;
@@ -627,9 +628,9 @@ const CompanyAdminPage = () => {
               Kill Switch
             </TabsTrigger>
             {currentUser?.role === 'master' && (
-              <TabsTrigger value="centz" className="flex items-center gap-2">
-                <KeyRound className="h-4 w-4" />
-                Centz
+              <TabsTrigger value="integrations" className="flex items-center gap-2">
+                <Plug className="h-4 w-4" />
+                Integrations
               </TabsTrigger>
             )}
           </TabsList>
@@ -762,8 +763,8 @@ const CompanyAdminPage = () => {
           </TabsContent>
 
           {currentUser?.role === 'master' && (
-            <TabsContent value="centz">
-              <CentzConnectionsAdmin />
+            <TabsContent value="integrations">
+              <IntegrationsAdmin />
             </TabsContent>
           )}
         </Tabs>
