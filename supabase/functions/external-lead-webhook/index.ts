@@ -23,11 +23,15 @@ interface LeadPayload {
   appointment_notes?: string;
   service_type?: string;
   custom_fields?: Record<string, unknown>;
+  location_code?: string;
+  location_id?: string;
 }
 
 interface ExternalLeadRequest {
   api_key: string;
   lead: LeadPayload;
+  location_code?: string;
+  expected_tenant_id?: string;
 }
 
 // Hash API key for comparison
