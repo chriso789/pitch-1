@@ -17,6 +17,7 @@ import { LeadCreationDialog } from "@/components/LeadCreationDialog";
 import { SendReferralLinkButton } from "@/components/referrals/SendReferralLinkButton";
 import { JobNumberBreakdown } from "@/components/JobNumberBreakdown";
 import { JobApprovalDialog } from "@/components/JobApprovalDialog";
+import { LeadSourceSelector } from "@/components/contact-profile/LeadSourceSelector";
 import {
   User,
   Phone,
@@ -316,6 +317,16 @@ const ContactProfile = () => {
                     </SelectContent>
                   </Select>
                   </div>
+                  {contact.tenant_id && (
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <LeadSourceSelector
+                        contactId={contact.id}
+                        tenantId={contact.tenant_id}
+                        value={contact.lead_source}
+                        onChange={(v) => setContact((prev: any) => prev ? { ...prev, lead_source: v } : prev)}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
