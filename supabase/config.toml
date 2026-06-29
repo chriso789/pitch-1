@@ -1346,3 +1346,6 @@ verify_jwt = true
 [functions.rasterize-blueprint-pages]
 verify_jwt = false
 
+
+[functions.admin-supplier-audit]
+verify_jwt = true

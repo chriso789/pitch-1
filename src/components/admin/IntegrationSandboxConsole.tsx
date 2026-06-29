@@ -47,6 +47,7 @@ interface AuditRow {
   action: string;
   result: string;
   tenant_id: string;
+  tenant_name?: string | null;
   request_id: string | null;
   metadata: any;
 }
@@ -127,18 +128,21 @@ export function IntegrationSandboxConsole({ slug, name }: Props) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    let q = supabase
-      .from("supplier_audit_log")
-      .select(
-        "id, created_at, supplier, action, result, tenant_id, request_id, metadata",
-      )
-      .eq("supplier", auditSupplier)
-      .order("created_at", { ascending: false })
-      .limit(50);
-    if (filter.trim()) {
-      q = q.ilike("action", `%${filter.trim()}%`);
-    }
-    const { data, error } = await q;
+    // Master-only cross-tenant view: routes through admin-supplier-audit,
+    // which reads with service role so historical sandbox testing performed
+    // inside the O'Brien Contracting tenant (when these connections were
+    // first wired up) is visible regardless of which tenant the master is
+    // currently switched into.
+    const { data, error } = await supabase.functions.invoke(
+      "admin-supplier-audit",
+      {
+        body: {
+          supplier: auditSupplier,
+          action: filter.trim() || undefined,
+          limit: 100,
+        },
+      },
+    );
     setLoading(false);
     if (error) {
       toast({
@@ -148,7 +152,15 @@ export function IntegrationSandboxConsole({ slug, name }: Props) {
       });
       return;
     }
-    setRows((data ?? []) as AuditRow[]);
+    if (data && (data as any).ok === false) {
+      toast({
+        title: "Couldn't load audit feed",
+        description: (data as any).error ?? "unknown",
+        variant: "destructive",
+      });
+      return;
+    }
+    setRows(((data as any)?.rows ?? []) as AuditRow[]);
   }, [auditSupplier, filter, toast]);
 
   useEffect(() => {
@@ -209,9 +221,10 @@ export function IntegrationSandboxConsole({ slug, name }: Props) {
                     Recent {name} payloads
                   </CardTitle>
                   <CardDescription className="text-xs">
-                    Live request/response records from{" "}
-                    <code>supplier_audit_log</code> (supplier ={" "}
-                    <code>{auditSupplier}</code>). Latest 50.
+                    Cross-tenant view from <code>supplier_audit_log</code>{" "}
+                    (supplier = <code>{auditSupplier}</code>) — includes the
+                    original sandbox testing performed in O'Brien Contracting
+                    when this connection was first wired up. Latest 100.
                   </CardDescription>
                 </div>
                 <div className="flex items-center gap-2">
@@ -360,6 +373,11 @@ function PayloadRow({ row }: { row: AuditRow }) {
                 {row.result}
               </Badge>
               <span className="text-sm font-medium truncate">{row.action}</span>
+              {row.tenant_name && (
+                <Badge variant="outline" className="text-[10px] shrink-0">
+                  {row.tenant_name}
+                </Badge>
+              )}
             </div>
             <div className="flex items-center gap-2 text-[11px] text-muted-foreground shrink-0">
               <span>{new Date(row.created_at).toLocaleString()}</span>
@@ -376,7 +394,14 @@ function PayloadRow({ row }: { row: AuditRow }) {
             <div className="text-[11px] text-muted-foreground grid grid-cols-2 gap-x-4 gap-y-0.5">
               <div>
                 <span className="font-medium">tenant:</span>{" "}
-                <code>{row.tenant_id}</code>
+                {row.tenant_name ? (
+                  <>
+                    <span>{row.tenant_name}</span>{" "}
+                    <code className="opacity-60">({row.tenant_id.slice(0, 8)})</code>
+                  </>
+                ) : (
+                  <code>{row.tenant_id}</code>
+                )}
               </div>
               <div>
                 <span className="font-medium">request_id:</span>{" "}
