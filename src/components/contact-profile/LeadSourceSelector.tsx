@@ -75,7 +75,7 @@ export function LeadSourceSelector({ contactId, tenantId, value, onChange }: Pro
     // Insert into lead_sources
     const { data, error } = await supabase
       .from("lead_sources")
-      .insert({ tenant_id: tenantId, name, is_active: true })
+      .insert({ tenant_id: tenantId, name, category: "direct", is_active: true })
       .select("id, name")
       .single();
     if (error || !data) {
