@@ -283,6 +283,7 @@ Deno.serve(async (req: Request) => {
           .eq('id', contactId)
           .is('location_id', null);
       }
+    } else {
       // Create new contact with correct column names
       // Only include fields that have values - dismiss missing optional fields
       const contactData: Record<string, unknown> = {
