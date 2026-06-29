@@ -47,6 +47,7 @@ interface AuditRow {
   action: string;
   result: string;
   tenant_id: string;
+  tenant_name?: string | null;
   request_id: string | null;
   metadata: any;
 }
