@@ -373,6 +373,11 @@ function PayloadRow({ row }: { row: AuditRow }) {
                 {row.result}
               </Badge>
               <span className="text-sm font-medium truncate">{row.action}</span>
+              {row.tenant_name && (
+                <Badge variant="outline" className="text-[10px] shrink-0">
+                  {row.tenant_name}
+                </Badge>
+              )}
             </div>
             <div className="flex items-center gap-2 text-[11px] text-muted-foreground shrink-0">
               <span>{new Date(row.created_at).toLocaleString()}</span>
