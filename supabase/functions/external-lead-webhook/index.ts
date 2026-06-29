@@ -303,7 +303,8 @@ Deno.serve(async (req: Request) => {
       if (lead.zip) contactData.address_zip = lead.zip;
       if (lead.message) contactData.notes = lead.message;
       if (lead.custom_fields) contactData.metadata = lead.custom_fields;
-      
+      if (locationId) contactData.location_id = locationId;
+
       // Auto-assign to default assignee if configured
       if (defaultAssigneeId) {
         contactData.assigned_to = defaultAssigneeId;
