@@ -35761,6 +35761,57 @@ export type Database = {
         }
         Relationships: []
       }
+      platform_integrations: {
+        Row: {
+          category: string
+          connections_table: string | null
+          created_at: string
+          description: string | null
+          docs_url: string | null
+          enabled: boolean
+          id: string
+          last_checked_at: string | null
+          name: string
+          notes: string | null
+          sandbox_mode: boolean
+          slug: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          category?: string
+          connections_table?: string | null
+          created_at?: string
+          description?: string | null
+          docs_url?: string | null
+          enabled?: boolean
+          id?: string
+          last_checked_at?: string | null
+          name: string
+          notes?: string | null
+          sandbox_mode?: boolean
+          slug: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          connections_table?: string | null
+          created_at?: string
+          description?: string | null
+          docs_url?: string | null
+          enabled?: boolean
+          id?: string
+          last_checked_at?: string | null
+          name?: string
+          notes?: string | null
+          sandbox_mode?: boolean
+          slug?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       platform_operators: {
         Row: {
           created_at: string | null
