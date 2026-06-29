@@ -223,37 +223,45 @@ Deno.serve(async (req: Request) => {
       console.log('[external-lead-webhook] Will assign to:', defaultAssigneeId);
     }
 
-    // Check for duplicate contact (by phone or email)
-    const normalizedPhone = normalizePhone(lead.phone);
-    let existingContact = null;
+    // Retry-tolerant contact lookup helper
+    async function lookupExistingContact(): Promise<{
+      id: string;
+      first_name: string;
+      last_name: string;
+      email: string | null;
+      phone: string;
+      assigned_to: string | null;
+    } | null> {
+      const normalizedPhone = normalizePhone(lead.phone);
 
-    // First try phone match
-    const { data: phoneMatch } = await supabase
-      .from('contacts')
-      .select('id, first_name, last_name, email, phone, assigned_to')
-      .eq('tenant_id', tenantId)
-      .eq('is_deleted', false)
-      .or(`phone.ilike.%${normalizedPhone}`)
-      .limit(1)
-      .maybeSingle();
-
-    if (phoneMatch) {
-      existingContact = phoneMatch;
-    } else if (lead.email) {
-      // Try email match
-      const { data: emailMatch } = await supabase
+      const { data: phoneMatch } = await supabase
         .from('contacts')
         .select('id, first_name, last_name, email, phone, assigned_to')
         .eq('tenant_id', tenantId)
         .eq('is_deleted', false)
-        .ilike('email', lead.email)
+        .or(`phone.ilike.%${normalizedPhone}`)
         .limit(1)
         .maybeSingle();
-      
-      if (emailMatch) {
-        existingContact = emailMatch;
+
+      if (phoneMatch) return phoneMatch;
+
+      if (lead.email) {
+        const { data: emailMatch } = await supabase
+          .from('contacts')
+          .select('id, first_name, last_name, email, phone, assigned_to')
+          .eq('tenant_id', tenantId)
+          .eq('is_deleted', false)
+          .ilike('email', lead.email)
+          .limit(1)
+          .maybeSingle();
+
+        if (emailMatch) return emailMatch;
       }
+
+      return null;
     }
+
+    let existingContact = await lookupExistingContact();
 
     let contactId: string;
     let pipelineEntryId: string | null = null;
@@ -265,7 +273,7 @@ Deno.serve(async (req: Request) => {
       contactId = existingContact.id;
       isDuplicate = true;
       console.log('[external-lead-webhook] Found existing contact:', contactId);
-      
+
       // Update assignment if not already assigned and we have a default assignee
       if (!existingContact.assigned_to && defaultAssigneeId) {
         await supabase
@@ -312,20 +320,73 @@ Deno.serve(async (req: Request) => {
 
       console.log('[external-lead-webhook] Creating contact with data:', JSON.stringify(contactData));
 
-      const { data: newContact, error: contactError } = await supabase
-        .from('contacts')
-        .insert(contactData)
-        .select('id')
-        .single();
+      // CLJ retry loop: contacts.trigger assigns a tenant-scoped contact_number
+      // that can race under concurrency. If we hit uniq_contacts_tenant_clj,
+      // re-lookup the contact that won and use it instead of failing.
+      const maxAttempts = 3;
+      let contactError: { code?: string; message: string } | null = null;
 
-      if (contactError) {
-        console.error('[external-lead-webhook] Error creating contact:', contactError);
-        throw new Error(`Failed to create contact: ${contactError.message}`);
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        contactError = null;
+        const { data: newContact, error: insertError } = await supabase
+          .from('contacts')
+          .insert(contactData)
+          .select('id')
+          .single();
+
+        if (!insertError) {
+          contactId = newContact.id;
+          console.log('[external-lead-webhook] Created new contact:', contactId);
+          break;
+        }
+
+        contactError = insertError;
+        console.warn(`[external-lead-webhook] Contact insert attempt ${attempt} failed:`, insertError);
+
+        // Postgres unique violation (e.g., uniq_contacts_tenant_clj) -> retry after re-lookup
+        if (insertError.code === '23505') {
+          const winner = await lookupExistingContact();
+          if (winner) {
+            existingContact = winner;
+            contactId = winner.id;
+            isDuplicate = true;
+            console.log('[external-lead-webhook] CLJ collision resolved; using existing contact:', contactId);
+            break;
+          }
+          // If we can't find the winner yet, small backoff before retry
+          if (attempt < maxAttempts) {
+            await new Promise((resolve) => setTimeout(resolve, 150 * attempt));
+          }
+        } else {
+          // Non-retryable error
+          break;
+        }
       }
 
-      contactId = newContact.id;
-      console.log('[external-lead-webhook] Created new contact:', contactId);
+      if (!contactId) {
+        console.error('[external-lead-webhook] Error creating contact after retries:', contactError);
+        throw new Error(`Failed to create contact: ${contactError?.message || 'unknown error'}`);
+      }
+
+      // If we resolved an existing contact after a CLJ collision, apply the same
+      // backfill updates we would have applied in the "existing contact" branch.
+      if (isDuplicate && existingContact) {
+        if (!existingContact.assigned_to && defaultAssigneeId) {
+          await supabase
+            .from('contacts')
+            .update({ assigned_to: defaultAssigneeId })
+            .eq('id', contactId);
+        }
+        if (locationId) {
+          await supabase
+            .from('contacts')
+            .update({ location_id: locationId })
+            .eq('id', contactId)
+            .is('location_id', null);
+        }
+      }
     }
+
 
     // Create pipeline entry (lead) for the contact
     const leadNumber = generateLeadNumber();
