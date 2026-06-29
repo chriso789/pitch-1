@@ -316,6 +316,16 @@ const ContactProfile = () => {
                     </SelectContent>
                   </Select>
                   </div>
+                  {contact.tenant_id && (
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <LeadSourceSelector
+                        contactId={contact.id}
+                        tenantId={contact.tenant_id}
+                        value={contact.lead_source}
+                        onChange={(v) => setContact((prev: any) => prev ? { ...prev, lead_source: v } : prev)}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
