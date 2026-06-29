@@ -17,6 +17,7 @@ import { LeadCreationDialog } from "@/components/LeadCreationDialog";
 import { SendReferralLinkButton } from "@/components/referrals/SendReferralLinkButton";
 import { JobNumberBreakdown } from "@/components/JobNumberBreakdown";
 import { JobApprovalDialog } from "@/components/JobApprovalDialog";
+import { LeadSourceSelector } from "@/components/contact-profile/LeadSourceSelector";
 import {
   User,
   Phone,
