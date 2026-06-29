@@ -354,6 +354,9 @@ Deno.serve(async (req: Request) => {
     if (defaultAssigneeId) {
       pipelineData.assigned_to = defaultAssigneeId;
     }
+    if (locationId) {
+      pipelineData.location_id = locationId;
+    }
     
     const { data: pipelineEntry, error: pipelineError } = await supabase
       .from('pipeline_entries')
