@@ -261,7 +261,6 @@ Deno.serve(async (req: Request) => {
       return null;
     }
 
-    const normalizedPhone = normalizePhone(lead.phone);
     let existingContact = await lookupExistingContact();
 
     let contactId: string;
