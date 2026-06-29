@@ -445,7 +445,14 @@ export function IntegrationsAdmin() {
                 "Manage tenant-level credentials and connection state."}
             </SheetDescription>
           </SheetHeader>
-          <div className="mt-6">
+          <div className="mt-6 space-y-6">
+            {currentOpen && (
+              <IntegrationSandboxConsole
+                slug={currentOpen.slug}
+                name={currentOpen.name}
+              />
+            )}
+
             {currentOpen?.slug === "centz" ? (
               <CentzConnectionsAdmin />
             ) : currentOpen ? (
