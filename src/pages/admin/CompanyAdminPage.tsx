@@ -46,6 +46,7 @@ import { DemoRequestsPanel } from '@/components/settings/DemoRequestsPanel';
 import { CompanyFeatureControl } from '@/components/admin/CompanyFeatureControl';
 import { PlatformFeatureKillSwitch } from '@/components/admin/PlatformFeatureKillSwitch';
 import { CentzConnectionsAdmin } from '@/components/admin/CentzConnectionsAdmin';
+import { IntegrationsAdmin } from '@/components/admin/IntegrationsAdmin';
 import { KeyRound } from 'lucide-react';
 
 interface Company {
