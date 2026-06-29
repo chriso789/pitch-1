@@ -23,11 +23,15 @@ interface LeadPayload {
   appointment_notes?: string;
   service_type?: string;
   custom_fields?: Record<string, unknown>;
+  location_code?: string;
+  location_id?: string;
 }
 
 interface ExternalLeadRequest {
   api_key: string;
   lead: LeadPayload;
+  location_code?: string;
+  expected_tenant_id?: string;
 }
 
 // Hash API key for comparison
@@ -171,8 +175,50 @@ Deno.serve(async (req: Request) => {
 
     const tenantId = apiKeyRecord.tenant_id;
     const defaultAssigneeId = apiKeyRecord.default_assignee_id;
-    
-    console.log('[external-lead-webhook] Processing lead for tenant:', tenantId);
+
+    // Tenant guardrail: if caller passed expected_tenant_id, reject mismatch
+    if (body.expected_tenant_id && body.expected_tenant_id !== tenantId) {
+      console.error('[external-lead-webhook] expected_tenant_id mismatch. expected=', body.expected_tenant_id, 'actual=', tenantId);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'API key tenant mismatch',
+          expected_tenant_id: body.expected_tenant_id,
+          actual_tenant_id: tenantId,
+        }),
+        { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Resolve location_code -> location_id (top-level wins, then custom_fields)
+    const rawLocCode =
+      (body.location_code as string | undefined) ||
+      (lead.location_code as string | undefined) ||
+      (lead.custom_fields?.location_code as string | undefined) ||
+      (lead.custom_fields?.location as string | undefined);
+    const locationCode = rawLocCode ? String(rawLocCode).trim().toUpperCase().replace(/[^A-Z0-9]/g, '') : null;
+    let locationId: string | null = (lead.location_id as string | undefined) ?? null;
+    if (!locationId && locationCode) {
+      // Accept common synonyms
+      const codeCandidates = [locationCode];
+      if (locationCode === 'WESTCOAST' || locationCode === 'WEST') codeCandidates.push('WC');
+      if (locationCode === 'EASTCOAST' || locationCode === 'EAST') codeCandidates.push('EC');
+      const { data: locRow } = await supabase
+        .from('locations')
+        .select('id, location_code')
+        .eq('tenant_id', tenantId)
+        .in('location_code', codeCandidates)
+        .limit(1)
+        .maybeSingle();
+      if (locRow) {
+        locationId = locRow.id;
+        console.log('[external-lead-webhook] Resolved location_code', locationCode, '->', locationId);
+      } else {
+        console.warn('[external-lead-webhook] Unknown location_code for tenant:', locationCode);
+      }
+    }
+
+    console.log('[external-lead-webhook] Processing lead for tenant:', tenantId, 'location:', locationId);
     if (defaultAssigneeId) {
       console.log('[external-lead-webhook] Will assign to:', defaultAssigneeId);
     }
@@ -228,6 +274,15 @@ Deno.serve(async (req: Request) => {
           .eq('id', contactId);
         console.log('[external-lead-webhook] Updated contact assignment to:', defaultAssigneeId);
       }
+
+      // Backfill location_id on the existing contact if we resolved one and it's empty
+      if (locationId) {
+        await supabase
+          .from('contacts')
+          .update({ location_id: locationId })
+          .eq('id', contactId)
+          .is('location_id', null);
+      }
     } else {
       // Create new contact with correct column names
       // Only include fields that have values - dismiss missing optional fields
@@ -248,7 +303,8 @@ Deno.serve(async (req: Request) => {
       if (lead.zip) contactData.address_zip = lead.zip;
       if (lead.message) contactData.notes = lead.message;
       if (lead.custom_fields) contactData.metadata = lead.custom_fields;
-      
+      if (locationId) contactData.location_id = locationId;
+
       // Auto-assign to default assignee if configured
       if (defaultAssigneeId) {
         contactData.assigned_to = defaultAssigneeId;
@@ -297,6 +353,9 @@ Deno.serve(async (req: Request) => {
     // Auto-assign pipeline entry to default assignee
     if (defaultAssigneeId) {
       pipelineData.assigned_to = defaultAssigneeId;
+    }
+    if (locationId) {
+      pipelineData.location_id = locationId;
     }
     
     const { data: pipelineEntry, error: pipelineError } = await supabase
