@@ -628,9 +628,9 @@ const CompanyAdminPage = () => {
               Kill Switch
             </TabsTrigger>
             {currentUser?.role === 'master' && (
-              <TabsTrigger value="centz" className="flex items-center gap-2">
-                <KeyRound className="h-4 w-4" />
-                Centz
+              <TabsTrigger value="integrations" className="flex items-center gap-2">
+                <Plug className="h-4 w-4" />
+                Integrations
               </TabsTrigger>
             )}
           </TabsList>
