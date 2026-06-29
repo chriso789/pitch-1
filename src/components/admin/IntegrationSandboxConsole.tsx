@@ -128,18 +128,21 @@ export function IntegrationSandboxConsole({ slug, name }: Props) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    let q = supabase
-      .from("supplier_audit_log")
-      .select(
-        "id, created_at, supplier, action, result, tenant_id, request_id, metadata",
-      )
-      .eq("supplier", auditSupplier)
-      .order("created_at", { ascending: false })
-      .limit(50);
-    if (filter.trim()) {
-      q = q.ilike("action", `%${filter.trim()}%`);
-    }
-    const { data, error } = await q;
+    // Master-only cross-tenant view: routes through admin-supplier-audit,
+    // which reads with service role so historical sandbox testing performed
+    // inside the O'Brien Contracting tenant (when these connections were
+    // first wired up) is visible regardless of which tenant the master is
+    // currently switched into.
+    const { data, error } = await supabase.functions.invoke(
+      "admin-supplier-audit",
+      {
+        body: {
+          supplier: auditSupplier,
+          action: filter.trim() || undefined,
+          limit: 100,
+        },
+      },
+    );
     setLoading(false);
     if (error) {
       toast({
@@ -149,7 +152,15 @@ export function IntegrationSandboxConsole({ slug, name }: Props) {
       });
       return;
     }
-    setRows((data ?? []) as AuditRow[]);
+    if (data && (data as any).ok === false) {
+      toast({
+        title: "Couldn't load audit feed",
+        description: (data as any).error ?? "unknown",
+        variant: "destructive",
+      });
+      return;
+    }
+    setRows(((data as any)?.rows ?? []) as AuditRow[]);
   }, [auditSupplier, filter, toast]);
 
   useEffect(() => {
