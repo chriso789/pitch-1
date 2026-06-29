@@ -763,8 +763,8 @@ const CompanyAdminPage = () => {
           </TabsContent>
 
           {currentUser?.role === 'master' && (
-            <TabsContent value="centz">
-              <CentzConnectionsAdmin />
+            <TabsContent value="integrations">
+              <IntegrationsAdmin />
             </TabsContent>
           )}
         </Tabs>
