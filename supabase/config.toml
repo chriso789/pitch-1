@@ -701,6 +701,9 @@ verify_jwt = false
 [functions.receive-lead]
 verify_jwt = false
 
+[functions.pitch-key-whoami]
+verify_jwt = false
+
 [functions.communication-inbox-manager]
 verify_jwt = true
 
