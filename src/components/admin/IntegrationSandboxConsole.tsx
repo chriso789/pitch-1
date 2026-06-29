@@ -389,7 +389,14 @@ function PayloadRow({ row }: { row: AuditRow }) {
             <div className="text-[11px] text-muted-foreground grid grid-cols-2 gap-x-4 gap-y-0.5">
               <div>
                 <span className="font-medium">tenant:</span>{" "}
-                <code>{row.tenant_id}</code>
+                {row.tenant_name ? (
+                  <>
+                    <span>{row.tenant_name}</span>{" "}
+                    <code className="opacity-60">({row.tenant_id.slice(0, 8)})</code>
+                  </>
+                ) : (
+                  <code>{row.tenant_id}</code>
+                )}
               </div>
               <div>
                 <span className="font-medium">request_id:</span>{" "}
