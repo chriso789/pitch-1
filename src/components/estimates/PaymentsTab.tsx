@@ -294,6 +294,50 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   const groupTotal = (g: InvoiceGroup) =>
     g.children.filter((c) => c.selected).reduce((s, c) => s + (Number(c.line_total) || 0), 0);
 
+  const scaleGroupsToInvoiceBalance = (groups: InvoiceGroup[], targetBalance: number) => {
+    const sourceTotal = groups.reduce((sum, group) => sum + groupTotal(group), 0);
+    const target = Math.max(0, Math.round(targetBalance * 100) / 100);
+
+    if (sourceTotal <= 0 || target >= sourceTotal) return groups;
+
+    const scale = target / sourceTotal;
+    let runningTotal = 0;
+    let lastSelected: { groupIndex: number; childIndex: number } | null = null;
+
+    const scaled = groups.map((group, groupIndex) => ({
+      ...group,
+      children: group.children.map((item, childIndex) => {
+        if (!item.selected) return item;
+
+        lastSelected = { groupIndex, childIndex };
+        const lineTotal = Math.round((Number(item.line_total) || 0) * scale * 100) / 100;
+        runningTotal += lineTotal;
+
+        const qty = Number(item.qty) || 1;
+        return {
+          ...item,
+          line_total: lineTotal,
+          unit_cost: qty > 0 ? Math.round((lineTotal / qty) * 100) / 100 : lineTotal,
+        };
+      }),
+    }));
+
+    const pennyAdjustment = Math.round((target - runningTotal) * 100) / 100;
+    if (lastSelected && pennyAdjustment !== 0) {
+      const { groupIndex, childIndex } = lastSelected;
+      const item = scaled[groupIndex].children[childIndex];
+      const lineTotal = Math.max(0, Math.round((Number(item.line_total) + pennyAdjustment) * 100) / 100);
+      const qty = Number(item.qty) || 1;
+      scaled[groupIndex].children[childIndex] = {
+        ...item,
+        line_total: lineTotal,
+        unit_cost: qty > 0 ? Math.round((lineTotal / qty) * 100) / 100 : lineTotal,
+      };
+    }
+
+    return scaled;
+  };
+
   const invoiceSubtotal = useMemo(
     () => invoiceGroups.filter((g) => g.selected).reduce((sum, g) => sum + groupTotal(g), 0),
     [invoiceGroups]
@@ -404,30 +448,10 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
         return { ...item, unit_cost: newUnitCost, line_total: newTotal };
       });
 
-      // Step 2: scale to remaining balance if prior payments/invoices exist.
-      const sellingTotal = sellingPriceItems.reduce((s, i) => s + i.line_total, 0);
-      const paidSoFar = (payments || []).reduce((s, p) => s + Number(p.amount || 0), 0);
-      const outstandingInvoiced = (invoices || [])
-        .filter((inv: any) => inv.status !== 'void')
-        .reduce((s: number, inv: any) => s + Number(inv.balance ?? inv.amount ?? 0), 0);
-      const remaining = Math.max(0, sellingPrice - paidSoFar - outstandingInvoiced);
-      const balanceScale =
-        sellingTotal > 0 && remaining < sellingTotal
-          ? remaining / sellingTotal
-          : 1;
-
-      const scaled = sellingPriceItems.map((item) => {
-        if (balanceScale === 1) return item;
-        const newTotal = Math.round(item.line_total * balanceScale * 100) / 100;
-        const qty = Number(item.qty) || 1;
-        const newUnitCost = qty > 0 ? Math.round((newTotal / qty) * 100) / 100 : item.unit_cost;
-        return { ...item, unit_cost: newUnitCost, line_total: newTotal };
-      });
-
       // Group by trade_type, preserving order of first appearance.
       const order: string[] = [];
       const byTrade = new Map<string, { label: string; items: (InvoiceLineItem & { selected: boolean })[] }>();
-      scaled.forEach((it) => {
+      sellingPriceItems.forEach((it) => {
         const tradeType = (it.trade_type || 'roofing').toString();
         const tradeLabel =
           it.trade_label ||
@@ -465,7 +489,22 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
       };
     });
 
-    setInvoiceGroups([...tradeGroups, ...coGroups]);
+    const invoiceReadyGroups = [...tradeGroups, ...coGroups];
+
+    // Default the invoice to the remaining contract balance after recorded
+    // payments and outstanding invoice balances. Apply this across the full
+    // invoice set, including change orders, so the Create Invoice dialog never
+    // re-bills the full contract by default.
+    const paidSoFar = (payments || []).reduce(
+      (s, p: any) => s + Math.max(0, Number(p.amount || 0) - Number(p.cc_fee_amount || 0)),
+      0
+    );
+    const outstandingInvoiced = (invoices || [])
+      .filter((inv: any) => inv.status !== 'void')
+      .reduce((s: number, inv: any) => s + Number(inv.balance ?? inv.amount ?? 0), 0);
+    const remaining = Math.max(0, Number(sellingPrice || 0) - paidSoFar - outstandingInvoiced);
+
+    setInvoiceGroups(scaleGroupsToInvoiceBalance(invoiceReadyGroups, remaining));
   }, [showInvoiceDialog, enhancedEstimates, legacyEstimates, payments, invoices, sellingPrice, approvedChangeOrders]);
 
   const createInvoiceMutation = useMutation({
