@@ -522,6 +522,20 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
       const feeAmount = addCcFee ? Math.round(subtotal * (ccFeePercent / 100) * 100) / 100 : 0;
       const amount = Math.round((subtotal + feeAmount) * 100) / 100;
 
+      // Enforce remaining-balance guard at submit time too, in case the
+      // override checkbox was bypassed by state manipulation or a stale UI.
+      const guard = validateInvoiceAgainstRemaining({
+        proposedTotal: amount,
+        remainingBalance: remainingInvoiceBalance,
+        overrideRemaining,
+      });
+      if (!guard.ok) {
+        throw new Error(
+          `Invoice total ${formatCurrency(amount)} exceeds the remaining unpaid balance ` +
+            `${formatCurrency(remainingInvoiceBalance)}. Toggle the override to bill above the contract balance.`,
+        );
+      }
+
       // Get auth user directly to avoid profile mismatch
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
