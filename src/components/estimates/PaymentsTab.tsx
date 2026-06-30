@@ -25,6 +25,12 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useCompanyInfo } from '@/hooks/useCompanyInfo';
 import { generateAndSaveInvoicePdf } from '@/lib/invoices/invoicePdfGenerator';
+import { useSearchParams } from 'react-router-dom';
+import {
+  computeRemainingInvoiceBalance,
+  scaleGroupsToInvoiceBalance as scaleGroupsToInvoiceBalanceShared,
+  validateInvoiceAgainstRemaining,
+} from '@/lib/invoices/invoiceBalance';
 
 interface PaymentsTabProps {
   pipelineEntryId: string;
@@ -87,6 +93,9 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   // contract balance owed).
   const [addCcFee, setAddCcFee] = useState(false);
   const [ccFeePercent, setCcFeePercent] = useState<number>(3.5);
+  // Override gate: a new invoice may not exceed the remaining unpaid balance
+  // unless the user explicitly toggles this on.
+  const [overrideRemaining, setOverrideRemaining] = useState(false);
   const [expandedInvoices, setExpandedInvoices] = useState<Set<string>>(new Set());
 
   // Edit invoice state
@@ -294,49 +303,8 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   const groupTotal = (g: InvoiceGroup) =>
     g.children.filter((c) => c.selected).reduce((s, c) => s + (Number(c.line_total) || 0), 0);
 
-  const scaleGroupsToInvoiceBalance = (groups: InvoiceGroup[], targetBalance: number) => {
-    const sourceTotal = groups.reduce((sum, group) => sum + groupTotal(group), 0);
-    const target = Math.max(0, Math.round(targetBalance * 100) / 100);
-
-    if (sourceTotal <= 0 || target >= sourceTotal) return groups;
-
-    const scale = target / sourceTotal;
-    let runningTotal = 0;
-    let lastSelected: { groupIndex: number; childIndex: number } | null = null;
-
-    const scaled = groups.map((group, groupIndex) => ({
-      ...group,
-      children: group.children.map((item, childIndex) => {
-        if (!item.selected) return item;
-
-        lastSelected = { groupIndex, childIndex };
-        const lineTotal = Math.round((Number(item.line_total) || 0) * scale * 100) / 100;
-        runningTotal += lineTotal;
-
-        const qty = Number(item.qty) || 1;
-        return {
-          ...item,
-          line_total: lineTotal,
-          unit_cost: qty > 0 ? Math.round((lineTotal / qty) * 100) / 100 : lineTotal,
-        };
-      }),
-    }));
-
-    const pennyAdjustment = Math.round((target - runningTotal) * 100) / 100;
-    if (lastSelected && pennyAdjustment !== 0) {
-      const { groupIndex, childIndex } = lastSelected;
-      const item = scaled[groupIndex].children[childIndex];
-      const lineTotal = Math.max(0, Math.round((Number(item.line_total) + pennyAdjustment) * 100) / 100);
-      const qty = Number(item.qty) || 1;
-      scaled[groupIndex].children[childIndex] = {
-        ...item,
-        line_total: lineTotal,
-        unit_cost: qty > 0 ? Math.round((lineTotal / qty) * 100) / 100 : lineTotal,
-      };
-    }
-
-    return scaled;
-  };
+  const scaleGroupsToInvoiceBalance = (groups: InvoiceGroup[], targetBalance: number) =>
+    scaleGroupsToInvoiceBalanceShared(groups, targetBalance);
 
   const invoiceSubtotal = useMemo(
     () => invoiceGroups.filter((g) => g.selected).reduce((sum, g) => sum + groupTotal(g), 0),
@@ -419,6 +387,42 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   );
   const contractBalance = sellingPrice - totalPaid;
 
+  // True remaining-billable balance: contract − recorded payments −
+  // outstanding (non-void) invoice balances. This is what a new invoice
+  // is allowed to total, unless the user explicitly overrides.
+  const remainingInvoiceBalance = useMemo(
+    () =>
+      computeRemainingInvoiceBalance({
+        sellingPrice,
+        payments,
+        outstandingInvoices: invoices,
+      }),
+    [sellingPrice, payments, invoices],
+  );
+
+  const remainingValidation = useMemo(
+    () =>
+      validateInvoiceAgainstRemaining({
+        proposedTotal: invoiceGrandTotal,
+        remainingBalance: remainingInvoiceBalance,
+        overrideRemaining,
+      }),
+    [invoiceGrandTotal, remainingInvoiceBalance, overrideRemaining],
+  );
+
+  // Allow Accounts Receivable to deep-link straight into the Create Invoice
+  // dialog with the remaining-balance default already applied. The dialog's
+  // own effect (below) handles the scaling once it opens.
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    if (searchParams.get('action') === 'create-invoice' && !showInvoiceDialog) {
+      setShowInvoiceDialog(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete('action');
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, showInvoiceDialog, setSearchParams]);
+
   useEffect(() => {
     if (!showInvoiceDialog) return;
 
@@ -495,16 +499,15 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
     // payments and outstanding invoice balances. Apply this across the full
     // invoice set, including change orders, so the Create Invoice dialog never
     // re-bills the full contract by default.
-    const paidSoFar = (payments || []).reduce(
-      (s, p: any) => s + Math.max(0, Number(p.amount || 0) - Number(p.cc_fee_amount || 0)),
-      0
-    );
-    const outstandingInvoiced = (invoices || [])
-      .filter((inv: any) => inv.status !== 'void')
-      .reduce((s: number, inv: any) => s + Number(inv.balance ?? inv.amount ?? 0), 0);
-    const remaining = Math.max(0, Number(sellingPrice || 0) - paidSoFar - outstandingInvoiced);
+    const remaining = computeRemainingInvoiceBalance({
+      sellingPrice,
+      payments,
+      outstandingInvoices: invoices,
+    });
 
     setInvoiceGroups(scaleGroupsToInvoiceBalance(invoiceReadyGroups, remaining));
+    // Re-opening the dialog should always reset the override gate.
+    setOverrideRemaining(false);
   }, [showInvoiceDialog, enhancedEstimates, legacyEstimates, payments, invoices, sellingPrice, approvedChangeOrders]);
 
   const createInvoiceMutation = useMutation({
@@ -518,6 +521,20 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
       if (subtotal <= 0) throw new Error('Invoice total must be greater than zero');
       const feeAmount = addCcFee ? Math.round(subtotal * (ccFeePercent / 100) * 100) / 100 : 0;
       const amount = Math.round((subtotal + feeAmount) * 100) / 100;
+
+      // Enforce remaining-balance guard at submit time too, in case the
+      // override checkbox was bypassed by state manipulation or a stale UI.
+      const guard = validateInvoiceAgainstRemaining({
+        proposedTotal: amount,
+        remainingBalance: remainingInvoiceBalance,
+        overrideRemaining,
+      });
+      if (!guard.ok) {
+        throw new Error(
+          `Invoice total ${formatCurrency(amount)} exceeds the remaining unpaid balance ` +
+            `${formatCurrency(remainingInvoiceBalance)}. Toggle the override to bill above the contract balance.`,
+        );
+      }
 
       // Get auth user directly to avoid profile mismatch
       const { data: { user } } = await supabase.auth.getUser();
@@ -1368,10 +1385,44 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
                 </div>
               </div>
             </div>
+
+            {/* Remaining-balance override gate */}
+            {!remainingValidation.ok && (
+              <div className="rounded-md border border-yellow-500/40 bg-yellow-500/10 p-3 space-y-2">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 text-yellow-700 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 text-xs">
+                    <p className="font-medium text-yellow-800">
+                      Invoice total exceeds the remaining unpaid balance
+                      ({formatCurrency(remainingInvoiceBalance)}) by{' '}
+                      {formatCurrency((remainingValidation as { overBy: number }).overBy)}.
+                    </p>
+                    <p className="text-yellow-700 mt-0.5">
+                      Toggle the override below to confirm you intentionally
+                      want to bill above the contract's remaining balance.
+                    </p>
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-yellow-800">
+                  <input
+                    type="checkbox"
+                    checked={overrideRemaining}
+                    onChange={(e) => setOverrideRemaining(e.target.checked)}
+                    className="h-4 w-4 cursor-pointer"
+                  />
+                  Override remaining balance limit
+                </label>
+              </div>
+            )}
+
             <DialogFooter>
-              <Button 
-                onClick={() => createInvoiceMutation.mutate()} 
-                disabled={createInvoiceMutation.isPending || invoiceSubtotal <= 0}
+              <Button
+                onClick={() => createInvoiceMutation.mutate()}
+                disabled={
+                  createInvoiceMutation.isPending ||
+                  invoiceSubtotal <= 0 ||
+                  !remainingValidation.ok
+                }
               >
                 {createInvoiceMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Plus className="h-4 w-4 mr-1" />}
                 Create Invoice — {formatCurrency(invoiceGrandTotal)}
