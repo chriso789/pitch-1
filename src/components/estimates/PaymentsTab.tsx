@@ -387,6 +387,42 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   );
   const contractBalance = sellingPrice - totalPaid;
 
+  // True remaining-billable balance: contract − recorded payments −
+  // outstanding (non-void) invoice balances. This is what a new invoice
+  // is allowed to total, unless the user explicitly overrides.
+  const remainingInvoiceBalance = useMemo(
+    () =>
+      computeRemainingInvoiceBalance({
+        sellingPrice,
+        payments,
+        outstandingInvoices: invoices,
+      }),
+    [sellingPrice, payments, invoices],
+  );
+
+  const remainingValidation = useMemo(
+    () =>
+      validateInvoiceAgainstRemaining({
+        proposedTotal: invoiceGrandTotal,
+        remainingBalance: remainingInvoiceBalance,
+        overrideRemaining,
+      }),
+    [invoiceGrandTotal, remainingInvoiceBalance, overrideRemaining],
+  );
+
+  // Allow Accounts Receivable to deep-link straight into the Create Invoice
+  // dialog with the remaining-balance default already applied. The dialog's
+  // own effect (below) handles the scaling once it opens.
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    if (searchParams.get('action') === 'create-invoice' && !showInvoiceDialog) {
+      setShowInvoiceDialog(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete('action');
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, showInvoiceDialog, setSearchParams]);
+
   useEffect(() => {
     if (!showInvoiceDialog) return;
 
