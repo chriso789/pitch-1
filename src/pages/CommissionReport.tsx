@@ -65,7 +65,9 @@ interface ComputedCommission {
 export default function CommissionReport() {
   const navigate = useNavigate();
   const { currentLocationId } = useLocationContext();
+  const effectiveTenantId = useEffectiveTenantId();
   const [dateRange, setDateRange] = useState({
+
     start: '2020-01-01',
     end: format(endOfMonth(new Date()), 'yyyy-MM-dd'),
   });
