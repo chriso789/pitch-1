@@ -234,11 +234,11 @@ describe('validateInvoiceAgainstRemaining', () => {
       remainingBalance: 3_000,
       overrideRemaining: false,
     });
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.reason).toBe('exceeds_remaining');
-      expect(result.overBy).toBe(1_500);
+    if (result.ok) {
+      throw new Error('expected validation to fail');
     }
+    expect(result.reason).toBe('exceeds_remaining');
+    expect(result.overBy).toBe(1_500);
   });
 
   it('allows over-billing when override is explicitly ON', () => {
