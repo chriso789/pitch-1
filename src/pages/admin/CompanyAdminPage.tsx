@@ -605,7 +605,7 @@ const CompanyAdminPage = () => {
 
         {/* Main Tabs */}
         <Tabs defaultValue="companies" className="space-y-6">
-          <TabsList className={`grid w-full ${currentUser?.role === 'master' ? 'grid-cols-5 max-w-3xl' : 'grid-cols-4 max-w-2xl'}`}>
+          <TabsList className={`grid w-full ${currentUser?.role === 'master' ? 'grid-cols-6 max-w-4xl' : 'grid-cols-5 max-w-3xl'}`}>
             <TabsTrigger value="companies" className="flex items-center gap-2">
               <Building2 className="h-4 w-4" />
               Companies
@@ -626,6 +626,10 @@ const CompanyAdminPage = () => {
             <TabsTrigger value="kill-switch" className="flex items-center gap-2">
               <AlertTriangle className="h-4 w-4" />
               Kill Switch
+            </TabsTrigger>
+            <TabsTrigger value="ai-measurement" className="flex items-center gap-2">
+              <FileText className="h-4 w-4" />
+              AI Measurement
             </TabsTrigger>
             {currentUser?.role === 'master' && (
               <TabsTrigger value="integrations" className="flex items-center gap-2">
@@ -760,6 +764,41 @@ const CompanyAdminPage = () => {
 
           <TabsContent value="kill-switch">
             <PlatformFeatureKillSwitch />
+          </TabsContent>
+
+          <TabsContent value="ai-measurement" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  AI Measurement (Developer Preview)
+                </CardTitle>
+                <CardDescription>
+                  AI Measurement is hidden from all tenant-facing screens while the
+                  pipeline is being finalized. Only platform developers / master users
+                  can see the "AI Measurements" button on a lead today.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm text-muted-foreground">
+                <p>
+                  <span className="font-medium text-foreground">Current state:</span>{' '}
+                  Button is rendered only for developer/master accounts on lead pages
+                  and estimate workflows. The legacy "Trace" button has been removed
+                  from every tenant surface.
+                </p>
+                <p>
+                  <span className="font-medium text-foreground">How to test:</span>{' '}
+                  Open any lead as a master user — the "AI Measurements" control will
+                  appear in the measurement panel. Tenant users will not see it.
+                </p>
+                <p>
+                  <span className="font-medium text-foreground">When ready to ship:</span>{' '}
+                  Enable the <em>measurements</em> feature for specific tenants from the{' '}
+                  <span className="font-medium">Per-Tenant</span> tab, or roll it out
+                  platform-wide from the <span className="font-medium">Kill Switch</span> tab.
+                </p>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {currentUser?.role === 'master' && (

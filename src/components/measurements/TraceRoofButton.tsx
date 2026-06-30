@@ -69,7 +69,13 @@ function traceFacetsToJson(facets?: TraceResult['facets']): any[] | null {
   }));
 }
 
-export function TraceRoofButton({ lat, lng, address, pipelineEntryId, onSuccess }: TraceRoofButtonProps) {
+export function TraceRoofButton(_props: TraceRoofButtonProps) {
+  // Trace Roof button has been removed from all tenant-facing surfaces.
+  // Keeping the export so existing imports do not break the build.
+  return null;
+}
+
+function _LegacyTraceRoofButton({ lat, lng, address, pipelineEntryId, onSuccess }: TraceRoofButtonProps) {
   const [isTracing, setIsTracing] = useState(false);
   const effectiveTenantId = useEffectiveTenantId();
 

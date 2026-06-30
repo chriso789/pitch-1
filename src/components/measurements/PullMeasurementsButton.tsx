@@ -15,6 +15,7 @@ import { triggerAutomation, AUTOMATION_EVENTS } from '@/lib/automations/triggerA
 import { useMeasurementJob } from '@/hooks/useMeasurementJob';
 import { MeasurementOrderAddressGate } from '@/components/address/MeasurementOrderAddressGate';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { useSupplierDeveloperMode } from '@/hooks/useSupplierDeveloperMode';
 import { EdgeConfirmationWizard } from './EdgeConfirmationWizard';
 import type { PlanEdge, EdgeType, AerialBackground } from './DimensionedPlanDrawing';
 
@@ -204,6 +205,7 @@ export function PullMeasurementsButton({
   onSuccess
 }: PullMeasurementsButtonProps) {
   const { toast } = useToast();
+  const { isDeveloper } = useSupplierDeveloperMode();
   const queryClient = useQueryClient();
   const imageCache = useImageCache();
   const navigate = useNavigate();
@@ -766,6 +768,12 @@ export function PullMeasurementsButton({
   // Determine button state from job status
   const isJobRunning = job?.status === 'queued' || job?.status === 'processing';
   const buttonDisabled = loading || loadingCoords || isJobRunning;
+
+  // AI Measurement is currently developer/master-only while the system is being finalized.
+  // Tenants will get access once it is enabled platform-wide from the admin AI Measurement tab.
+  if (!isDeveloper) {
+    return null;
+  }
 
   return (
     <>
