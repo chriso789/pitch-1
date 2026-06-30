@@ -205,6 +205,7 @@ export function PullMeasurementsButton({
   onSuccess
 }: PullMeasurementsButtonProps) {
   const { toast } = useToast();
+  const { isDeveloper } = useSupplierDeveloperMode();
   const queryClient = useQueryClient();
   const imageCache = useImageCache();
   const navigate = useNavigate();
