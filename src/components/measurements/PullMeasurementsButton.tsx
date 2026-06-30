@@ -769,6 +769,12 @@ export function PullMeasurementsButton({
   const isJobRunning = job?.status === 'queued' || job?.status === 'processing';
   const buttonDisabled = loading || loadingCoords || isJobRunning;
 
+  // AI Measurement is currently developer/master-only while the system is being finalized.
+  // Tenants will get access once it is enabled platform-wide from the admin AI Measurement tab.
+  if (!isDeveloper) {
+    return null;
+  }
+
   return (
     <>
       <div className="flex items-center gap-2 flex-wrap">
