@@ -1371,10 +1371,44 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
                 </div>
               </div>
             </div>
+
+            {/* Remaining-balance override gate */}
+            {!remainingValidation.ok && (
+              <div className="rounded-md border border-yellow-500/40 bg-yellow-500/10 p-3 space-y-2">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 text-yellow-700 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 text-xs">
+                    <p className="font-medium text-yellow-800">
+                      Invoice total exceeds the remaining unpaid balance
+                      ({formatCurrency(remainingInvoiceBalance)}) by{' '}
+                      {formatCurrency((remainingValidation as { overBy: number }).overBy)}.
+                    </p>
+                    <p className="text-yellow-700 mt-0.5">
+                      Toggle the override below to confirm you intentionally
+                      want to bill above the contract's remaining balance.
+                    </p>
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-yellow-800">
+                  <input
+                    type="checkbox"
+                    checked={overrideRemaining}
+                    onChange={(e) => setOverrideRemaining(e.target.checked)}
+                    className="h-4 w-4 cursor-pointer"
+                  />
+                  Override remaining balance limit
+                </label>
+              </div>
+            )}
+
             <DialogFooter>
-              <Button 
-                onClick={() => createInvoiceMutation.mutate()} 
-                disabled={createInvoiceMutation.isPending || invoiceSubtotal <= 0}
+              <Button
+                onClick={() => createInvoiceMutation.mutate()}
+                disabled={
+                  createInvoiceMutation.isPending ||
+                  invoiceSubtotal <= 0 ||
+                  !remainingValidation.ok
+                }
               >
                 {createInvoiceMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Plus className="h-4 w-4 mr-1" />}
                 Create Invoice — {formatCurrency(invoiceGrandTotal)}
