@@ -93,6 +93,9 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   // contract balance owed).
   const [addCcFee, setAddCcFee] = useState(false);
   const [ccFeePercent, setCcFeePercent] = useState<number>(3.5);
+  // Override gate: a new invoice may not exceed the remaining unpaid balance
+  // unless the user explicitly toggles this on.
+  const [overrideRemaining, setOverrideRemaining] = useState(false);
   const [expandedInvoices, setExpandedInvoices] = useState<Set<string>>(new Set());
 
   // Edit invoice state
