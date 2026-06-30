@@ -37,6 +37,8 @@ import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { formatCurrency, formatPercent } from '@/lib/commission-calculator';
 import { useNavigate } from 'react-router-dom';
 import { useLocation as useLocationContext } from '@/contexts/LocationContext';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+
 
 interface ComputedCommission {
   id: string;
@@ -63,7 +65,9 @@ interface ComputedCommission {
 export default function CommissionReport() {
   const navigate = useNavigate();
   const { currentLocationId } = useLocationContext();
+  const effectiveTenantId = useEffectiveTenantId();
   const [dateRange, setDateRange] = useState({
+
     start: '2020-01-01',
     end: format(endOfMonth(new Date()), 'yyyy-MM-dd'),
   });
@@ -105,27 +109,27 @@ export default function CommissionReport() {
 
   // Get qualifying pipeline stage keys for this tenant
   const { data: qualifyingStageKeys = [] } = useQuery({
-    queryKey: ['qualifying-stages', currentUser?.tenant_id],
+    queryKey: ['qualifying-stages', effectiveTenantId],
     queryFn: async () => {
-      if (!currentUser?.tenant_id) return [];
+      if (!effectiveTenantId) return [];
       const { data } = await supabase
         .from('pipeline_stages')
         .select('key, stage_order')
-        .eq('tenant_id', currentUser.tenant_id)
+        .eq('tenant_id', effectiveTenantId)
         .gte('stage_order', MIN_STAGE_ORDER);
       if (!data) return [];
       return data
         .filter(s => !EXCLUDED_STATUSES.includes(s.key))
         .map(s => s.key);
     },
-    enabled: !!currentUser?.tenant_id,
+    enabled: !!effectiveTenantId,
   });
 
   // Get reps for filter — only from selected location
   const { data: reps = [] } = useQuery({
-    queryKey: ['commission-reps', currentUser?.tenant_id, currentLocationId],
+    queryKey: ['commission-reps', effectiveTenantId, currentLocationId],
     queryFn: async () => {
-      if (!currentUser?.tenant_id) return [];
+      if (!effectiveTenantId) return [];
 
       if (currentLocationId) {
         // Get user IDs assigned to this location
@@ -139,7 +143,7 @@ export default function CommissionReport() {
         const { data } = await supabase
           .from('profiles')
           .select('id, first_name, last_name, is_developer')
-          .eq('tenant_id', currentUser.tenant_id)
+          .eq('tenant_id', effectiveTenantId)
           .in('id', userIds)
           .order('first_name');
         return (data || []).filter(r => !r.is_developer);
@@ -148,18 +152,18 @@ export default function CommissionReport() {
       const { data } = await supabase
         .from('profiles')
         .select('id, first_name, last_name, is_developer')
-        .eq('tenant_id', currentUser.tenant_id)
+        .eq('tenant_id', effectiveTenantId)
         .order('first_name');
       return (data || []).filter(r => !r.is_developer);
     },
-    enabled: !!currentUser?.tenant_id,
+    enabled: !!effectiveTenantId,
   });
 
   // Main data query: pipeline entries at project+ stages
   const { data: commissions = [], isLoading, refetch } = useQuery({
-    queryKey: ['commission-live', currentUser?.tenant_id, dateRange, selectedRep, qualifyingStageKeys, currentLocationId],
+    queryKey: ['commission-live', effectiveTenantId, dateRange, selectedRep, qualifyingStageKeys, currentLocationId],
     queryFn: async (): Promise<ComputedCommission[]> => {
-      if (!currentUser?.tenant_id || qualifyingStageKeys.length === 0) return [];
+      if (!effectiveTenantId || qualifyingStageKeys.length === 0) return [];
 
       // If location is selected, get rep IDs for that location first
       // This handles entries where location_id is NULL
@@ -180,7 +184,7 @@ export default function CommissionReport() {
           id, lead_name, status, assigned_to, estimated_value, created_at, contact_number, metadata,
           contacts!pipeline_entries_contact_id_fkey(first_name, last_name, address_street, address_city, address_state)
         `)
-        .eq('tenant_id', currentUser.tenant_id)
+        .eq('tenant_id', effectiveTenantId)
         .eq('is_deleted', false)
         .in('status', qualifyingStageKeys)
         // Defense in depth: never include lost/canceled at the API layer, even if a
@@ -273,7 +277,7 @@ export default function CommissionReport() {
       const { data: stages } = await supabase
         .from('pipeline_stages')
         .select('key, name')
-        .eq('tenant_id', currentUser.tenant_id);
+        .eq('tenant_id', effectiveTenantId);
       const stageMap = new Map((stages || []).map(s => [s.key, s.name]));
 
       // Map pipeline entries -> projects -> approved change orders, so contract value
@@ -380,7 +384,7 @@ export default function CommissionReport() {
         };
       });
     },
-    enabled: !!currentUser?.tenant_id && qualifyingStageKeys.length > 0,
+    enabled: !!effectiveTenantId && qualifyingStageKeys.length > 0,
   });
 
   // Defensive: exclude lost/canceled jobs from totals and table even if they
@@ -540,9 +544,9 @@ export default function CommissionReport() {
         />
 
         {/* Draw Tally */}
-        {currentUser?.tenant_id && (
+        {effectiveTenantId && (
           <DrawTally
-            tenantId={currentUser.tenant_id}
+            tenantId={effectiveTenantId}
             totalEarnedCommissions={totalCommissions}
             selectedRepId={selectedRep}
             isManager={!!isManager}
