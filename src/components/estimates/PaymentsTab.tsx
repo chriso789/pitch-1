@@ -25,6 +25,12 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useCompanyInfo } from '@/hooks/useCompanyInfo';
 import { generateAndSaveInvoicePdf } from '@/lib/invoices/invoicePdfGenerator';
+import { useSearchParams } from 'react-router-dom';
+import {
+  computeRemainingInvoiceBalance,
+  scaleGroupsToInvoiceBalance as scaleGroupsToInvoiceBalanceShared,
+  validateInvoiceAgainstRemaining,
+} from '@/lib/invoices/invoiceBalance';
 
 interface PaymentsTabProps {
   pipelineEntryId: string;
