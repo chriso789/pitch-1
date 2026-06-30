@@ -37,6 +37,8 @@ import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { formatCurrency, formatPercent } from '@/lib/commission-calculator';
 import { useNavigate } from 'react-router-dom';
 import { useLocation as useLocationContext } from '@/contexts/LocationContext';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+
 
 interface ComputedCommission {
   id: string;
