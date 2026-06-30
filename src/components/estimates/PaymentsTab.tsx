@@ -463,16 +463,15 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
     // payments and outstanding invoice balances. Apply this across the full
     // invoice set, including change orders, so the Create Invoice dialog never
     // re-bills the full contract by default.
-    const paidSoFar = (payments || []).reduce(
-      (s, p: any) => s + Math.max(0, Number(p.amount || 0) - Number(p.cc_fee_amount || 0)),
-      0
-    );
-    const outstandingInvoiced = (invoices || [])
-      .filter((inv: any) => inv.status !== 'void')
-      .reduce((s: number, inv: any) => s + Number(inv.balance ?? inv.amount ?? 0), 0);
-    const remaining = Math.max(0, Number(sellingPrice || 0) - paidSoFar - outstandingInvoiced);
+    const remaining = computeRemainingInvoiceBalance({
+      sellingPrice,
+      payments,
+      outstandingInvoices: invoices,
+    });
 
     setInvoiceGroups(scaleGroupsToInvoiceBalance(invoiceReadyGroups, remaining));
+    // Re-opening the dialog should always reset the override gate.
+    setOverrideRemaining(false);
   }, [showInvoiceDialog, enhancedEstimates, legacyEstimates, payments, invoices, sellingPrice, approvedChangeOrders]);
 
   const createInvoiceMutation = useMutation({
