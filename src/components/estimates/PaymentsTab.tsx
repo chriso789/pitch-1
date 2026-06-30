@@ -412,9 +412,10 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
         .reduce((s: number, inv: any) => s + Number(inv.balance ?? inv.amount ?? 0), 0);
       const remaining = Math.max(0, sellingPrice - paidSoFar - outstandingInvoiced);
       const balanceScale =
-        remaining > 0 && sellingTotal > 0 && remaining < sellingTotal
+        sellingTotal > 0 && remaining < sellingTotal
           ? remaining / sellingTotal
           : 1;
+
       const scaled = sellingPriceItems.map((item) => {
         if (balanceScale === 1) return item;
         const newTotal = Math.round(item.line_total * balanceScale * 100) / 100;
