@@ -708,25 +708,24 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
           </div>
         )}
 
-        {(rows.length > 0 || manualForm.invoice_amount) && (
-          <Button
-            onClick={submitAll}
-            disabled={submittingAll || submitAllCount === 0}
-            className="w-full"
-          >
-            {submittingAll ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Submitting...
-              </>
-            ) : (
-              <>
-                <CheckCircle className="h-4 w-4 mr-2" />
-                Submit All ({submitAllCount})
-              </>
-            )}
-          </Button>
-        )}
+        <Button
+          onClick={submitAll}
+          disabled={submittingAll || submitAllCount === 0}
+          className="w-full"
+        >
+          {submittingAll ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              Submitting...
+            </>
+          ) : (
+            <>
+              <CheckCircle className="h-4 w-4 mr-2" />
+              Submit Invoice{submitAllCount === 1 ? '' : 's'}{submitAllCount > 0 ? ` (${submitAllCount})` : ''}
+            </>
+          )}
+        </Button>
+
       </CardContent>
     </Card>
   );
@@ -925,12 +924,8 @@ const RowCard: React.FC<{
             </Collapsible>
           )}
 
-          {row.status === 'parsed' && (
-            <Button size="sm" className="w-full" onClick={onSubmit}>
-              <CheckCircle className="h-3.5 w-3.5 mr-1.5" />
-              Submit this invoice
-            </Button>
-          )}
+
+
         </div>
       )}
     </div>
