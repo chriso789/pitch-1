@@ -1006,6 +1006,9 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
               />
             </div>
 
+          </TabsContent>
+
+          <TabsContent value="breakdown" className="space-y-4 mt-0">
             {/* All Invoices List */}
             {(() => {
               const mergedMap = new Map<string, InvoiceData>();
@@ -1020,7 +1023,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
               });
               if (allInvoices.length === 0) return null;
               return (
-              <div className="mt-4">
+              <div>
                 <h4 className="text-sm font-medium mb-2">All Invoices ({allInvoices.length})</h4>
                 <div className="space-y-2">
                   {allInvoices.map((invoice) => {
@@ -1181,9 +1184,6 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
               );
             })()}
 
-          </TabsContent>
-
-          <TabsContent value="breakdown" className="space-y-4 mt-0">
             {!hasValidData ? (
               <div className="text-center py-8">
                 <Calculator className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
