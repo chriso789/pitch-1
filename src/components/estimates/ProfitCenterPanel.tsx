@@ -1006,12 +1006,25 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
               />
             </div>
 
-            {/* Recent Invoices List */}
-            {invoices && invoices.length > 0 && (
+            {/* All Invoices List */}
+            {(() => {
+              const mergedMap = new Map<string, InvoiceData>();
+              (invoices || []).forEach(inv => { if (inv.id) mergedMap.set(inv.id, inv); });
+              (pipelineOtherCharges || []).forEach(inv => {
+                if (inv.id && !mergedMap.has(inv.id)) mergedMap.set(inv.id, inv);
+              });
+              const allInvoices = Array.from(mergedMap.values()).sort((a, b) => {
+                const ad = a.created_at ? new Date(a.created_at).getTime() : 0;
+                const bd = b.created_at ? new Date(b.created_at).getTime() : 0;
+                return bd - ad;
+              });
+              if (allInvoices.length === 0) return null;
+              return (
               <div className="mt-4">
-                <h4 className="text-sm font-medium mb-2">Recent Invoices</h4>
+                <h4 className="text-sm font-medium mb-2">All Invoices ({allInvoices.length})</h4>
                 <div className="space-y-2">
-                  {invoices.map((invoice) => {
+                  {allInvoices.map((invoice) => {
+
                     const vendorLabel = invoice.vendor_name?.trim() || invoice.crew_name?.trim() || invoice.document_name?.trim() || (invoice.invoice_type === 'material' ? 'Supplier' : invoice.invoice_type === 'labor' ? 'Crew' : 'Vendor');
                     const displayName = `${vendorLabel}${jobLabel ? ` — ${jobLabel}` : ''}`;
                     const invoiceDateLabel = invoice.invoice_date
