@@ -455,7 +455,9 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
   const handleInvoiceSuccess = () => {
     queryClient.invalidateQueries({ queryKey: ['pipeline-invoices', pipelineEntryId] });
     queryClient.invalidateQueries({ queryKey: ['pipeline-invoices-totals', pipelineEntryId] });
+    queryClient.invalidateQueries({ queryKey: ['pipeline-other-charges', pipelineEntryId] });
   };
+
 
   const handleDeleteInvoice = async (invoiceId: string, invoiceType: InvoiceData['invoice_type']) => {
     if (!canDeleteInvoices) return;
