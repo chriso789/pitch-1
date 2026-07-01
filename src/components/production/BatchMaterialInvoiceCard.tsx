@@ -708,10 +708,10 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
           </div>
         )}
 
-        {rows.length > 0 && (
+        {(rows.length > 0 || manualForm.invoice_amount) && (
           <Button
             onClick={submitAll}
-            disabled={submittingAll || parsedCount === 0}
+            disabled={submittingAll || submitAllCount === 0}
             className="w-full"
           >
             {submittingAll ? (
@@ -722,7 +722,7 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
             ) : (
               <>
                 <CheckCircle className="h-4 w-4 mr-2" />
-                Submit All ({parsedCount})
+                Submit All ({submitAllCount})
               </>
             )}
           </Button>
