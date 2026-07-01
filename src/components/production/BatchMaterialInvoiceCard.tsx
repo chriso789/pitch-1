@@ -446,6 +446,11 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
   const submitAll = async () => {
     setSubmittingAll(true);
     try {
+      // Manual entry (if filled) is submitted alongside uploaded invoices.
+      if (manualForm.invoice_amount) {
+        await submitManualForm();
+      }
+
       for (const r of rows) {
         if (r.status !== 'parsed') continue;
         if (isLocalDuplicate(r, rows)) {
@@ -470,6 +475,8 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
   };
 
   const parsedCount = rows.filter(r => r.status === 'parsed').length;
+  const manualReadyCount = manualForm.invoice_amount ? 1 : 0;
+  const submitAllCount = parsedCount + manualReadyCount;
   const savedCount = rows.filter(r => r.status === 'saved').length;
   const duplicateCount = rows.filter(r => r.status === 'duplicate').length;
   const errorCount = rows.filter(r => r.status === 'error').length;
