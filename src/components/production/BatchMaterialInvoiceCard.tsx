@@ -924,12 +924,8 @@ const RowCard: React.FC<{
             </Collapsible>
           )}
 
-          {row.status === 'parsed' && (
-            <Button size="sm" className="w-full" onClick={onSubmit}>
-              <CheckCircle className="h-3.5 w-3.5 mr-1.5" />
-              Submit this invoice
-            </Button>
-          )}
+
+
         </div>
       )}
     </div>
