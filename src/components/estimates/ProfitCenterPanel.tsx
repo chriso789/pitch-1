@@ -396,13 +396,36 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
     .filter(inv => inv.invoice_type === 'labor')
     .reduce((sum, inv) => sum + inv.invoice_amount, 0);
   
-  // Other charges = overhead invoices (permits, dumps, etc.) — additive on top of percentage overhead
-  const otherChargesTotal = (invoices || [])
-    .filter(inv => inv.invoice_type === 'overhead' || inv.invoice_type === 'other')
-    .reduce((sum, inv) => sum + inv.invoice_amount, 0);
+  // Other charges = overhead/other invoices (permits, dumps, etc.) — additive on top of percentage overhead.
+  // Merge invoices from the main query with a dedicated pipeline-entry lookup so every recorded
+  // other-charge (including pending ones added from the Overhead tab) appears in the summary.
+  const { data: pipelineOtherCharges } = useQuery({
+    queryKey: ['pipeline-other-charges', pipelineEntryId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('project_cost_invoices')
+        .select('*')
+        .eq('pipeline_entry_id', pipelineEntryId)
+        .in('invoice_type', ['overhead', 'other'])
+        .in('status', ['pending', 'approved', 'verified'])
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data || []) as InvoiceData[];
+    },
+    enabled: !!pipelineEntryId,
+  });
 
-  const otherChargesInvoices = (invoices || []).filter(inv => inv.invoice_type === 'overhead' || inv.invoice_type === 'other');
+  const otherChargesInvoicesMap = new Map<string, InvoiceData>();
+  (invoices || [])
+    .filter(inv => inv.invoice_type === 'overhead' || inv.invoice_type === 'other')
+    .forEach(inv => { if (inv.id) otherChargesInvoicesMap.set(inv.id, inv); });
+  (pipelineOtherCharges || []).forEach(inv => {
+    if (inv.id && !otherChargesInvoicesMap.has(inv.id)) otherChargesInvoicesMap.set(inv.id, inv);
+  });
+  const otherChargesInvoices = Array.from(otherChargesInvoicesMap.values());
+  const otherChargesTotal = otherChargesInvoices.reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0);
   const hasOtherCharges = otherChargesTotal > 0;
+
 
   const hasActualMaterial = actualMaterialCost > 0;
   const hasActualLabor = actualLaborCost > 0;
