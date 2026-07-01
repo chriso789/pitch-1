@@ -217,7 +217,7 @@ function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists =
             <TableBody>
               {pricebookGroups.map((g: any, i: number) => (
                 <TableRow key={"pb-" + i}>
-                  <TableCell className="font-medium">{g.supplier_name}</TableCell>
+                  <TableCell className="font-medium">{canonicalizeVendorName(g.supplier_name).display}</TableCell>
                   <TableCell><Badge variant="outline" className="text-xs">Pricebook</Badge></TableCell>
                   <TableCell>
                     <Badge variant={g.is_active ? "default" : "outline"} className={g.is_active ? "bg-emerald-600" : ""}>
