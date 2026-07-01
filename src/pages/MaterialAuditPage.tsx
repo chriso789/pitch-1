@@ -217,7 +217,7 @@ function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists =
             <TableBody>
               {pricebookGroups.map((g: any, i: number) => (
                 <TableRow key={"pb-" + i}>
-                  <TableCell className="font-medium">{g.supplier_name}</TableCell>
+                  <TableCell className="font-medium">{canonicalizeVendorName(g.supplier_name).display}</TableCell>
                   <TableCell><Badge variant="outline" className="text-xs">Pricebook</Badge></TableCell>
                   <TableCell>
                     <Badge variant={g.is_active ? "default" : "outline"} className={g.is_active ? "bg-emerald-600" : ""}>
@@ -244,7 +244,7 @@ function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists =
               {/* Material Catalog (CSV) category rows intentionally hidden — only real uploaded price agreements are shown here. */}
               {legacyPriceLists.map((pl: any) => (
                 <TableRow key={pl.id}>
-                  <TableCell className="font-medium">{(pl as any).material_suppliers?.supplier_name}</TableCell>
+                  <TableCell className="font-medium">{canonicalizeVendorName((pl as any).material_suppliers?.supplier_name).display}</TableCell>
                   <TableCell><Badge variant="outline" className="text-xs">Imported List</Badge></TableCell>
                   <TableCell>
                     <Badge variant={pl.status === "active" ? "default" : "outline"} className={pl.status === "active" ? "bg-emerald-600" : ""}>{pl.status}</Badge>
