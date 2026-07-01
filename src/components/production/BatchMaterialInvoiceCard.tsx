@@ -110,7 +110,7 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
   });
   const [manualLineItems, setManualLineItems] = useState<LineItem[]>([]);
   const [manualLineItemsOpen, setManualLineItemsOpen] = useState(false);
-  const [submittingManual, setSubmittingManual] = useState(false);
+  const [submittingAll, setSubmittingAll] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
