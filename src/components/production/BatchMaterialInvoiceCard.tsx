@@ -110,7 +110,6 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
   });
   const [manualLineItems, setManualLineItems] = useState<LineItem[]>([]);
   const [manualLineItemsOpen, setManualLineItemsOpen] = useState(false);
-  const [submittingManual, setSubmittingManual] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -362,7 +361,7 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
       return;
     }
 
-    setSubmittingManual(true);
+    setSubmittingAll(true);
     try {
       const doSubmit = async (allowDuplicate: boolean) => {
         return supabase.functions.invoke('submit-project-invoice', {
@@ -440,13 +439,18 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
         variant: 'destructive',
       });
     } finally {
-      setSubmittingManual(false);
+      setSubmittingAll(false);
     }
   };
 
   const submitAll = async () => {
     setSubmittingAll(true);
     try {
+      // Manual entry (if filled) is submitted alongside uploaded invoices.
+      if (manualForm.invoice_amount) {
+        await submitManualForm();
+      }
+
       for (const r of rows) {
         if (r.status !== 'parsed') continue;
         if (isLocalDuplicate(r, rows)) {
@@ -471,6 +475,8 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
   };
 
   const parsedCount = rows.filter(r => r.status === 'parsed').length;
+  const manualReadyCount = manualForm.invoice_amount ? 1 : 0;
+  const submitAllCount = parsedCount + manualReadyCount;
   const savedCount = rows.filter(r => r.status === 'saved').length;
   const duplicateCount = rows.filter(r => r.status === 'duplicate').length;
   const errorCount = rows.filter(r => r.status === 'error').length;
@@ -685,23 +691,6 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
             />
           </div>
 
-          <Button
-            onClick={submitManualForm}
-            disabled={submittingManual || !manualForm.invoice_amount}
-            className="w-full"
-          >
-            {submittingManual ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Submitting...
-              </>
-            ) : (
-              <>
-                <CheckCircle className="h-4 w-4 mr-2" />
-                Submit Invoice
-              </>
-            )}
-          </Button>
         </div>
 
         {rows.length > 0 && (
@@ -719,10 +708,10 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
           </div>
         )}
 
-        {rows.length > 0 && (
+        {(rows.length > 0 || manualForm.invoice_amount) && (
           <Button
             onClick={submitAll}
-            disabled={submittingAll || parsedCount === 0}
+            disabled={submittingAll || submitAllCount === 0}
             className="w-full"
           >
             {submittingAll ? (
@@ -733,7 +722,7 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
             ) : (
               <>
                 <CheckCircle className="h-4 w-4 mr-2" />
-                Submit All ({parsedCount})
+                Submit All ({submitAllCount})
               </>
             )}
           </Button>
