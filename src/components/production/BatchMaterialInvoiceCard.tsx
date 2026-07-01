@@ -684,23 +684,6 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
             />
           </div>
 
-          <Button
-            onClick={submitManualForm}
-            disabled={submittingManual || !manualForm.invoice_amount}
-            className="w-full"
-          >
-            {submittingManual ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Submitting...
-              </>
-            ) : (
-              <>
-                <CheckCircle className="h-4 w-4 mr-2" />
-                Submit Invoice
-              </>
-            )}
-          </Button>
         </div>
 
         {rows.length > 0 && (
