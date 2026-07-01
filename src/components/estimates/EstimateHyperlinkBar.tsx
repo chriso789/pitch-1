@@ -354,9 +354,9 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       id: 'overhead',
       label: 'Overhead',
       icon: Settings,
-      value: formatCurrency(calculateRepOverhead() + otherChargesTotal),
-      hint: otherChargesTotal > 0 ? `${salesRepOverheadRate}% + charges` : `${salesRepOverheadRate}%`,
-      description: 'Overhead and other charges'
+      value: formatCurrency(calculateRepOverhead()),
+      hint: `${salesRepOverheadRate}%`,
+      description: 'Overhead fee (does not include other charges)'
     },
     {
       id: 'profit',
@@ -374,6 +374,7 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       hint: (hasActualMaterials || hasActualLabor) ? 'Actual' : (isCombined ? 'Combined' : null),
       description: 'Target gross margin percentage'
     },
+
     {
       id: 'total',
       label: 'Total',
