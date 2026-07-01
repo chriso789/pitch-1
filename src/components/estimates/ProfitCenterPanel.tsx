@@ -1178,7 +1178,9 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                   })}
                 </div>
               </div>
-            )}
+              );
+            })()}
+
           </TabsContent>
 
           <TabsContent value="breakdown" className="space-y-4 mt-0">
