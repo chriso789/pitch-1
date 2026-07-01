@@ -110,7 +110,6 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
   });
   const [manualLineItems, setManualLineItems] = useState<LineItem[]>([]);
   const [manualLineItemsOpen, setManualLineItemsOpen] = useState(false);
-  const [submittingAll, setSubmittingAll] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -362,7 +361,7 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
       return;
     }
 
-    setSubmittingManual(true);
+    setSubmittingAll(true);
     try {
       const doSubmit = async (allowDuplicate: boolean) => {
         return supabase.functions.invoke('submit-project-invoice', {
@@ -440,7 +439,7 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
         variant: 'destructive',
       });
     } finally {
-      setSubmittingManual(false);
+      setSubmittingAll(false);
     }
   };
 
