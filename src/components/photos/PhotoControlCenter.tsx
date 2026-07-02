@@ -322,28 +322,41 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
     });
   }, [selectedPhotos, toggleEstimateInclusion]);
 
-  // Export selected (or all filtered) photos to a standalone PDF report
   const [isExporting, setIsExporting] = useState(false);
-  const handleExportReport = useCallback(async () => {
-    const source = selectedPhotos.size > 0
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [emailPhotos, setEmailPhotos] = useState<CustomerPhoto[]>([]);
+
+  const resolveReportSource = useCallback((): CustomerPhoto[] => {
+    return selectedPhotos.size > 0
       ? filteredPhotos.filter(p => selectedPhotos.has(p.id))
       : filteredPhotos;
+  }, [selectedPhotos, filteredPhotos]);
+
+  const handleExportReport = useCallback(async () => {
+    const source = resolveReportSource();
     if (source.length === 0) {
       toast({ title: 'No photos to export', variant: 'destructive' });
       return;
     }
     setIsExporting(true);
+    const pending = toast({
+      title: 'Building photo report…',
+      description: `Rendering ${source.length} photo${source.length !== 1 ? 's' : ''} to PDF.`,
+    });
     try {
-      await exportPhotoReport({
+      const { filename } = await exportPhotoReport({
         photos: source,
         title: reportTitle || 'Photo Report',
         propertyAddress,
+        output: 'download',
       });
+      pending.dismiss();
       toast({
-        title: 'Photo report exported',
-        description: `${source.length} photo${source.length !== 1 ? 's' : ''} included`,
+        title: 'Photo report downloaded',
+        description: `${filename} · ${source.length} photo${source.length !== 1 ? 's' : ''}`,
       });
     } catch (err) {
+      pending.dismiss();
       console.error('Photo report export failed', err);
       toast({
         title: 'Export failed',
@@ -353,7 +366,18 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
     } finally {
       setIsExporting(false);
     }
-  }, [selectedPhotos, filteredPhotos, reportTitle, propertyAddress]);
+  }, [resolveReportSource, reportTitle, propertyAddress]);
+
+  const handleOpenEmailDialog = useCallback(() => {
+    const source = resolveReportSource();
+    if (source.length === 0) {
+      toast({ title: 'No photos to send', variant: 'destructive' });
+      return;
+    }
+    setEmailPhotos(source);
+    setEmailDialogOpen(true);
+  }, [resolveReportSource]);
+
 
 
   return (
