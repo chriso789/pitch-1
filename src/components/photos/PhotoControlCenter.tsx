@@ -154,7 +154,7 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
     ? photos 
     : photos.filter(p => p.category === filterCategory);
 
-  // Handle file upload
+  // Handle file upload — multi-file with instant previews + geotag prioritization
   const handleFileUpload = useCallback(async (files: FileList | null) => {
     if (!files?.length) return;
 
@@ -172,19 +172,80 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
       return;
     }
 
-    for (const file of imageFiles) {
+    // 1. Extract EXIF GPS from each file in parallel, then build previews
+    const withGeo = await Promise.all(
+      imageFiles.map(async (file) => {
+        const geo = await extractPhotoGeo(file);
+        const distanceM =
+          projectCoords && geo.latitude != null && geo.longitude != null
+            ? distanceMeters(projectCoords, { lat: geo.latitude, lng: geo.longitude })
+            : null;
+        const onSite = distanceM != null && distanceM <= onSiteRadiusMeters;
+        return { file, geo, distanceM, onSite };
+      })
+    );
+
+    // 2. Sort: on-site geotagged first, then any-geotagged nearest-first, then no-geo last
+    withGeo.sort((a, b) => {
+      if (a.onSite !== b.onSite) return a.onSite ? -1 : 1;
+      const ad = a.distanceM ?? Number.POSITIVE_INFINITY;
+      const bd = b.distanceM ?? Number.POSITIVE_INFINITY;
+      return ad - bd;
+    });
+
+    // 3. Push instant previews into local state so the user sees thumbnails immediately
+    const queued: PendingPreview[] = withGeo.map((w) => ({
+      id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      file: w.file,
+      previewUrl: URL.createObjectURL(w.file),
+      geo: w.geo,
+      onSite: w.onSite,
+      distanceM: w.distanceM,
+      status: 'queued',
+    }));
+    setPendingPreviews((prev) => [...queued, ...prev]);
+
+    const onSiteCount = queued.filter((q) => q.onSite).length;
+    if (projectCoords && onSiteCount > 0) {
+      toast({
+        title: `${onSiteCount} photo${onSiteCount !== 1 ? 's' : ''} match this project's location`,
+        description: 'On-site photos will upload first.',
+      });
+    }
+
+    // 4. Upload serially, updating status per item
+    for (const item of queued) {
+      setPendingPreviews((prev) =>
+        prev.map((p) => (p.id === item.id ? { ...p, status: 'uploading' } : p))
+      );
       try {
-        await uploadPhoto({ file, contactId, leadId, projectId });
+        await uploadPhoto({
+          file: item.file,
+          contactId,
+          leadId,
+          projectId,
+          geo: item.geo,
+        });
+        // Remove the preview once the real record lands via query invalidation
+        setPendingPreviews((prev) => {
+          const rest = prev.filter((p) => p.id !== item.id);
+          URL.revokeObjectURL(item.previewUrl);
+          return rest;
+        });
       } catch (error) {
         console.error('Upload error:', error);
+        setPendingPreviews((prev) =>
+          prev.map((p) => (p.id === item.id ? { ...p, status: 'error' } : p))
+        );
         toast({
           title: 'Upload failed',
-          description: `Failed to upload ${file.name}`,
+          description: `Failed to upload ${item.file.name}`,
           variant: 'destructive',
         });
       }
     }
-  }, [uploadPhoto, contactId, leadId, projectId]);
+  }, [uploadPhoto, contactId, leadId, projectId, projectCoords, onSiteRadiusMeters]);
+
 
   // Handle drag end
   const handleDragEnd = useCallback((event: DragEndEvent) => {
