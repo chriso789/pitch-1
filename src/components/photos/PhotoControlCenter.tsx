@@ -571,6 +571,19 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
           <Button
             size="sm"
             variant="outline"
+            onClick={handleViewReport}
+            disabled={isExporting || photos.length === 0}
+            title={selectedPhotos.size > 0
+              ? `Preview ${selectedPhotos.size} selected photos as PDF`
+              : 'Preview photo report in a new tab'}
+          >
+            <Eye className="h-4 w-4 mr-1.5" />
+            {selectedPhotos.size > 0 ? `View (${selectedPhotos.size})` : 'View Report'}
+          </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
             onClick={handleExportReport}
             disabled={isExporting || photos.length === 0}
             title={selectedPhotos.size > 0
