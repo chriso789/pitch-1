@@ -420,8 +420,23 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
                 disabled={isExporting || photos.length === 0}
                 title="Export a PDF photo report"
               >
-                <Download className="h-3.5 w-3.5 mr-1.5" />
-                {isExporting ? 'Exporting…' : 'Export Report'}
+                {isExporting ? (
+                  <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                ) : (
+                  <Download className="h-3.5 w-3.5 mr-1.5" />
+                )}
+                {isExporting ? 'Building…' : 'Export Report'}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8"
+                onClick={handleOpenEmailDialog}
+                disabled={photos.length === 0}
+                title="Email the photo report"
+              >
+                <Mail className="h-3.5 w-3.5 mr-1.5" />
+                Email
               </Button>
             </div>
           </div>
