@@ -357,16 +357,24 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
             accept="image/*,.heic,.heif"
             multiple
             className="hidden"
-            onChange={(e) => handleFileUpload(e.target.files)}
+            onChange={(e) => {
+              handleFileUpload(e.target.files);
+              e.target.value = '';
+            }}
           />
           <input
             ref={cameraInputRef}
             type="file"
             accept="image/*,.heic,.heif"
             capture="environment"
+            multiple
             className="hidden"
-            onChange={(e) => handleFileUpload(e.target.files)}
+            onChange={(e) => {
+              handleFileUpload(e.target.files);
+              e.target.value = '';
+            }}
           />
+
           
           <Button
             size="sm"
