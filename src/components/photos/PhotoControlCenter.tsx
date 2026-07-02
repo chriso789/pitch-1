@@ -923,6 +923,53 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
         propertyAddress={propertyAddress}
         reportTitle={reportTitle}
       />
+
+      {/* In-page PDF preview — no popup / new window. */}
+      <Dialog
+        open={previewOpen}
+        onOpenChange={(open) => {
+          setPreviewOpen(open);
+          if (!open && previewUrl) {
+            URL.revokeObjectURL(previewUrl);
+            setPreviewUrl(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-5xl w-[95vw] h-[90vh] p-0 flex flex-col overflow-hidden">
+          <DialogHeader className="px-4 py-2 border-b flex-row items-center justify-between space-y-0">
+            <DialogTitle className="text-sm font-medium truncate">
+              {companyInfo?.name ? `${companyInfo.name} · ` : ''}
+              {reportTitle || 'Photo Report'}
+            </DialogTitle>
+            <div className="flex items-center gap-2">
+              {previewUrl && (
+                <a
+                  href={previewUrl}
+                  download={previewFilename}
+                  className="text-xs inline-flex items-center gap-1 rounded-md border px-2 py-1 hover:bg-muted"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  Download
+                </a>
+              )}
+            </div>
+          </DialogHeader>
+          <div className="flex-1 bg-muted/30">
+            {previewUrl ? (
+              <iframe
+                key={previewUrl}
+                src={previewUrl}
+                title="Photo report preview"
+                className="w-full h-full border-0"
+              />
+            ) : (
+              <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+                Building preview…
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 };
