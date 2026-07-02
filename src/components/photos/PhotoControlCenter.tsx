@@ -571,6 +571,10 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
               <FileText className="h-3.5 w-3.5 mr-1" />
               Add to Estimate
             </Button>
+            <Button size="sm" variant="ghost" onClick={handleExportReport} disabled={isExporting}>
+              <Download className="h-3.5 w-3.5 mr-1" />
+              {isExporting ? 'Exporting…' : 'Export Report'}
+            </Button>
             <Button 
               size="sm" 
               variant="ghost" 
