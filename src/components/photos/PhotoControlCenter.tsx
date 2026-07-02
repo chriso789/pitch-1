@@ -335,12 +335,60 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
   const [isExporting, setIsExporting] = useState(false);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
   const [emailPhotos, setEmailPhotos] = useState<CustomerPhoto[]>([]);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewFilename, setPreviewFilename] = useState<string>('photo-report.pdf');
+
+  const { data: companyInfo } = useCompanyInfo();
+  // In-memory cache of AI captions so repeat previews don't re-charge the model.
+  const aiCaptionCache = useRef<Map<string, string>>(new Map());
 
   const resolveReportSource = useCallback((): CustomerPhoto[] => {
     return selectedPhotos.size > 0
       ? filteredPhotos.filter(p => selectedPhotos.has(p.id))
       : filteredPhotos;
   }, [selectedPhotos, filteredPhotos]);
+
+  /**
+   * For any photo missing a user-authored description, call the `photo-caption`
+   * edge function (Lovable AI vision) to fill one in. Returns a new photo
+   * array with `description` populated so the PDF always has captions.
+   */
+  const enrichWithAiCaptions = useCallback(async (source: CustomerPhoto[]): Promise<CustomerPhoto[]> => {
+    const needsCaption = source.filter(p => !p.description || !p.description.trim());
+    if (needsCaption.length === 0) return source;
+
+    const jobs = needsCaption.map(async (p) => {
+      const cached = aiCaptionCache.current.get(p.id);
+      if (cached) return { id: p.id, caption: cached };
+      try {
+        const { data, error } = await supabase.functions.invoke('photo-caption', {
+          body: {
+            image_url: p.file_url,
+            category: p.category,
+            address: propertyAddress,
+          },
+        });
+        if (error) throw error;
+        const caption = (data as { caption?: string })?.caption?.trim();
+        if (caption) {
+          aiCaptionCache.current.set(p.id, caption);
+          return { id: p.id, caption };
+        }
+      } catch (err) {
+        console.warn('AI caption failed for photo', p.id, err);
+      }
+      return { id: p.id, caption: '' };
+    });
+
+    const results = await Promise.all(jobs);
+    const captionById = new Map(results.map(r => [r.id, r.caption]));
+    return source.map(p => {
+      if (p.description && p.description.trim()) return p;
+      const c = captionById.get(p.id);
+      return c ? { ...p, description: c } : p;
+    });
+  }, [propertyAddress]);
 
   const handleExportReport = useCallback(async () => {
     const source = resolveReportSource();
