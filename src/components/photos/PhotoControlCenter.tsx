@@ -386,6 +386,17 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
               >
                 <List className="h-4 w-4" />
               </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 ml-1"
+                onClick={handleExportReport}
+                disabled={isExporting || photos.length === 0}
+                title="Export a PDF photo report"
+              >
+                <Download className="h-3.5 w-3.5 mr-1.5" />
+                {isExporting ? 'Exporting…' : 'Export Report'}
+              </Button>
             </div>
           </div>
         </CardHeader>
