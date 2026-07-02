@@ -7,6 +7,9 @@ interface PhotoReportOptions {
   title?: string;
   propertyAddress?: string;
   companyName?: string;
+  companyLogoUrl?: string;
+  companyPhone?: string;
+  companyEmail?: string;
   filename?: string;
   /** 'download' saves via jsPDF.save (default). 'blob' returns { blob, filename, base64 } without saving. */
   output?: 'download' | 'blob';
