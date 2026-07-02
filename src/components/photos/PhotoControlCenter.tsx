@@ -88,7 +88,10 @@ interface PhotoControlCenterProps {
   projectLongitude?: number;
   /** Radius (meters) considered "on-site". Default 500m. */
   onSiteRadiusMeters?: number;
-}
+  /** Address printed on the exported Photo Report cover. */
+  propertyAddress?: string;
+  /** Title for the exported Photo Report. Defaults to "Photo Report". */
+  reportTitle?: string;
 
 interface PendingPreview {
   id: string;
