@@ -381,39 +381,42 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
         .eq('id', user?.id)
         .single();
 
-      // For photo-type uploads, use the photo-upload edge function (canonical source)
+      // For photo-type uploads: compress (HEIC→JPEG, resize) then upload directly to
+      // storage. Avoids the 50MB edge-function payload cap that iPhone originals hit.
       if (documentType === 'required_photos' || documentType === 'inspection_photo' || documentType === 'photos') {
-        // Convert file to base64
-        const base64 = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => {
-            const result = reader.result as string;
-            const base64Data = result.split(',')[1];
-            resolve(base64Data);
-          };
-          reader.onerror = reject;
-          reader.readAsDataURL(file);
-        });
+        const { compressImage } = await import('@/lib/imageCompression');
+        const compressed = await compressImage(file);
 
-        // Call the photo-upload edge function
-        const { data, error } = await supabase.functions.invoke('photo-upload', {
-          body: {
-            action: 'upload',
-            tenant_id: profile?.tenant_id,
-            lead_id: pipelineEntryId,
-            file_data: base64,
-            filename: file.name,
-            mime_type: file.type,
-            category: 'inspection',
-          }
-        });
+        const safeName = compressed.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const storagePath = `${profile?.tenant_id}/leads/${pipelineEntryId}/photos/${Date.now()}_${safeName}`;
 
-        if (error) throw error;
-        if (data?.error) throw new Error(data.error);
+        const { error: uploadError } = await supabase.storage
+          .from('documents')
+          .upload(storagePath, compressed, {
+            contentType: compressed.type || 'image/jpeg',
+            cacheControl: '3600',
+            upsert: false,
+          });
+        if (uploadError) throw uploadError;
+
+        const { error: dbError } = await supabase.from('documents').insert({
+          tenant_id: profile?.tenant_id,
+          pipeline_entry_id: pipelineEntryId,
+          document_type: 'required_photos',
+          filename: compressed.name,
+          file_path: storagePath,
+          file_size: compressed.size,
+          mime_type: compressed.type || 'image/jpeg',
+          uploaded_by: user?.id,
+        });
+        if (dbError) {
+          await supabase.storage.from('documents').remove([storagePath]);
+          throw dbError;
+        }
 
         toast({
           title: "Photo Uploaded",
-          description: `Photo uploaded successfully via ${source}`,
+          description: `${compressed.name} uploaded via ${source}`,
         });
       } else {
         // For non-photo documents, use the documents bucket
