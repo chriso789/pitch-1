@@ -22,6 +22,35 @@ export interface PhotoReportResult {
 }
 
 async function loadImage(url: string): Promise<HTMLImageElement | null> {
+  // Fetch the image as a blob first so we can inline it as a data URL.
+  // This avoids CORS-tainted canvases (which silently produce blank JPEGs)
+  // when the storage host doesn't return permissive CORS headers for <img>.
+  const toImage = (src: string) =>
+    new Promise<HTMLImageElement | null>((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = src;
+    });
+
+  try {
+    const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
+    if (res.ok) {
+      const blob = await res.blob();
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(fr.result as string);
+        fr.onerror = () => reject(fr.error);
+        fr.readAsDataURL(blob);
+      });
+      const img = await toImage(dataUrl);
+      if (img) return img;
+    }
+  } catch {
+    /* fall through to direct load */
+  }
+
+  // Fallback: direct load with anonymous CORS
   return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
