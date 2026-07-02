@@ -459,6 +459,17 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
                 variant="outline"
                 size="sm"
                 className="h-8 ml-1"
+                onClick={handleViewReport}
+                disabled={isExporting || photos.length === 0}
+                title="Preview the PDF photo report in a new tab"
+              >
+                <Eye className="h-3.5 w-3.5 mr-1.5" />
+                View Report
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 ml-1"
                 onClick={handleExportReport}
                 disabled={isExporting || photos.length === 0}
                 title="Export a PDF photo report"
