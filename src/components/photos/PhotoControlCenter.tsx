@@ -115,6 +115,8 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
   projectLatitude,
   projectLongitude,
   onSiteRadiusMeters = 500,
+  propertyAddress,
+  reportTitle,
 }) => {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set());
