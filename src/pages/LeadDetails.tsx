@@ -1412,6 +1412,7 @@ const LeadDetails = () => {
             <TabsContent value="photos" className="mt-0 space-y-4">
               <PhotoControlCenter
                 leadId={id!}
+                contactId={lead?.contact?.id}
                 showHeader={false}
                 compactMode={true}
                 projectLatitude={
@@ -1423,10 +1424,15 @@ const LeadDetails = () => {
                 propertyAddress={(() => {
                   const c = lead?.contact;
                   if (!c) return undefined;
-                  if (c.verified_address?.formatted_address) return c.verified_address.formatted_address;
-                  const parts = [c.address_street, c.address_city, c.address_state, c.address_zip]
-                    .filter(Boolean);
-                  return parts.length ? parts.join(', ') : undefined;
+                  const verified = c.verified_address?.formatted_address?.trim();
+                  if (verified) return verified;
+                  const street = (c.address_street || '').trim();
+                  const cityStateZip = [c.address_city, c.address_state, c.address_zip]
+                    .map(v => (v || '').trim())
+                    .filter(Boolean)
+                    .join(', ');
+                  const combined = [street, cityStateZip].filter(Boolean).join(', ');
+                  return combined || undefined;
                 })()}
                 reportTitle={(() => {
                   const c = lead?.contact;

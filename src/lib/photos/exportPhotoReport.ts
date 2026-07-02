@@ -8,6 +8,14 @@ interface PhotoReportOptions {
   propertyAddress?: string;
   companyName?: string;
   filename?: string;
+  /** 'download' saves via jsPDF.save (default). 'blob' returns { blob, filename, base64 } without saving. */
+  output?: 'download' | 'blob';
+}
+
+export interface PhotoReportResult {
+  blob: Blob;
+  base64: string; // without data: prefix
+  filename: string;
 }
 
 async function loadImage(url: string): Promise<HTMLImageElement | null> {
@@ -50,8 +58,10 @@ export async function exportPhotoReport({
   propertyAddress,
   companyName,
   filename,
-}: PhotoReportOptions): Promise<void> {
+  output = 'download',
+}: PhotoReportOptions): Promise<PhotoReportResult> {
   if (!photos.length) throw new Error('No photos to export');
+
 
   const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
   const pageW = pdf.internal.pageSize.getWidth();
@@ -171,5 +181,22 @@ export async function exportPhotoReport({
   }
 
   const safeTitle = (filename || title).replace(/[^\w\-]+/g, '_');
-  pdf.save(`${safeTitle}_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`);
+  const outName = `${safeTitle}_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`;
+
+  const blob = pdf.output('blob') as Blob;
+  // Extract base64 from data URI (arraybuffer -> base64 without prefix)
+  const arrayBuf = pdf.output('arraybuffer') as ArrayBuffer;
+  const bytes = new Uint8Array(arrayBuf);
+  let binary = '';
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + CHUNK)));
+  }
+  const base64 = btoa(binary);
+
+  if (output === 'download') {
+    pdf.save(outName);
+  }
+
+  return { blob, base64, filename: outName };
 }

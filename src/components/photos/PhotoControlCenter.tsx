@@ -38,6 +38,7 @@ import {
   Download,
   MoreVertical,
   MapPin,
+  Mail,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePhotos, type PhotoCategory, type CustomerPhoto } from '@/hooks/usePhotos';
@@ -46,6 +47,7 @@ import { extractPhotoGeo, distanceMeters, type PhotoGeo } from '@/lib/exif/extra
 import { pickNativePhotos } from '@/lib/native/pickPhotos';
 import { isNativeApp } from '@/lib/native/appMode';
 import { exportPhotoReport } from '@/lib/photos/exportPhotoReport';
+import { PhotoEmailDialog } from './PhotoEmailDialog';
 import { SortablePhotoItem } from './SortablePhotoItem';
 import { PhotoMarkupEditor } from './PhotoMarkupEditor';
 import {
@@ -321,28 +323,41 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
     });
   }, [selectedPhotos, toggleEstimateInclusion]);
 
-  // Export selected (or all filtered) photos to a standalone PDF report
   const [isExporting, setIsExporting] = useState(false);
-  const handleExportReport = useCallback(async () => {
-    const source = selectedPhotos.size > 0
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [emailPhotos, setEmailPhotos] = useState<CustomerPhoto[]>([]);
+
+  const resolveReportSource = useCallback((): CustomerPhoto[] => {
+    return selectedPhotos.size > 0
       ? filteredPhotos.filter(p => selectedPhotos.has(p.id))
       : filteredPhotos;
+  }, [selectedPhotos, filteredPhotos]);
+
+  const handleExportReport = useCallback(async () => {
+    const source = resolveReportSource();
     if (source.length === 0) {
       toast({ title: 'No photos to export', variant: 'destructive' });
       return;
     }
     setIsExporting(true);
+    const pending = toast({
+      title: 'Building photo report…',
+      description: `Rendering ${source.length} photo${source.length !== 1 ? 's' : ''} to PDF.`,
+    });
     try {
-      await exportPhotoReport({
+      const { filename } = await exportPhotoReport({
         photos: source,
         title: reportTitle || 'Photo Report',
         propertyAddress,
+        output: 'download',
       });
+      pending.dismiss();
       toast({
-        title: 'Photo report exported',
-        description: `${source.length} photo${source.length !== 1 ? 's' : ''} included`,
+        title: 'Photo report downloaded',
+        description: `${filename} · ${source.length} photo${source.length !== 1 ? 's' : ''}`,
       });
     } catch (err) {
+      pending.dismiss();
       console.error('Photo report export failed', err);
       toast({
         title: 'Export failed',
@@ -352,7 +367,18 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
     } finally {
       setIsExporting(false);
     }
-  }, [selectedPhotos, filteredPhotos, reportTitle, propertyAddress]);
+  }, [resolveReportSource, reportTitle, propertyAddress]);
+
+  const handleOpenEmailDialog = useCallback(() => {
+    const source = resolveReportSource();
+    if (source.length === 0) {
+      toast({ title: 'No photos to send', variant: 'destructive' });
+      return;
+    }
+    setEmailPhotos(source);
+    setEmailDialogOpen(true);
+  }, [resolveReportSource]);
+
 
 
   return (
@@ -394,8 +420,23 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
                 disabled={isExporting || photos.length === 0}
                 title="Export a PDF photo report"
               >
-                <Download className="h-3.5 w-3.5 mr-1.5" />
-                {isExporting ? 'Exporting…' : 'Export Report'}
+                {isExporting ? (
+                  <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                ) : (
+                  <Download className="h-3.5 w-3.5 mr-1.5" />
+                )}
+                {isExporting ? 'Building…' : 'Export Report'}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8"
+                onClick={handleOpenEmailDialog}
+                disabled={photos.length === 0}
+                title="Email the photo report"
+              >
+                <Mail className="h-3.5 w-3.5 mr-1.5" />
+                Email
               </Button>
             </div>
           </div>
@@ -488,6 +529,19 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
               <Download className="h-4 w-4 mr-1.5" />
             )}
             {selectedPhotos.size > 0 ? `Export (${selectedPhotos.size})` : 'Export Report'}
+          </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleOpenEmailDialog}
+            disabled={photos.length === 0}
+            title={selectedPhotos.size > 0
+              ? `Email ${selectedPhotos.size} selected photos`
+              : 'Email photo report'}
+          >
+            <Mail className="h-4 w-4 mr-1.5" />
+            {selectedPhotos.size > 0 ? `Email (${selectedPhotos.size})` : 'Email Report'}
           </Button>
 
 
@@ -591,8 +645,16 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
               Add to Estimate
             </Button>
             <Button size="sm" variant="ghost" onClick={handleExportReport} disabled={isExporting}>
-              <Download className="h-3.5 w-3.5 mr-1" />
-              {isExporting ? 'Exporting…' : 'Export Report'}
+              {isExporting ? (
+                <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+              ) : (
+                <Download className="h-3.5 w-3.5 mr-1" />
+              )}
+              {isExporting ? 'Building…' : 'Export Report'}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={handleOpenEmailDialog}>
+              <Mail className="h-3.5 w-3.5 mr-1" />
+              Email Report
             </Button>
             <Button 
               size="sm" 
@@ -719,6 +781,16 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <PhotoEmailDialog
+        open={emailDialogOpen}
+        onOpenChange={setEmailDialogOpen}
+        photos={emailPhotos}
+        contactId={contactId}
+        leadId={leadId}
+        propertyAddress={propertyAddress}
+        reportTitle={reportTitle}
+      />
     </Card>
   );
 };
