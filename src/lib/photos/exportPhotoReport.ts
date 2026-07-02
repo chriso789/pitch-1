@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
 import { format } from 'date-fns';
+import heic2any from 'heic2any';
 import type { CustomerPhoto } from '@/hooks/usePhotos';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -49,6 +50,23 @@ async function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
+function isHeicSource(source?: string | null, blob?: Blob | null): boolean {
+  const lower = (source || '').toLowerCase();
+  const mime = (blob?.type || '').toLowerCase();
+  return lower.includes('.heic') || lower.includes('.heif') || mime.includes('heic') || mime.includes('heif');
+}
+
+async function normalizeReportImageBlob(blob: Blob, source?: string | null): Promise<Blob> {
+  if (!isHeicSource(source, blob)) return blob;
+
+  const converted = await heic2any({
+    blob,
+    toType: 'image/jpeg',
+    quality: 0.85,
+  });
+  return Array.isArray(converted) ? converted[0] : converted;
+}
+
 async function loadImage(url: string, storagePath?: string | null): Promise<HTMLImageElement | null> {
   // Fetch/download the image as a blob first so we can inline it as a data URL.
   // This avoids CORS-tainted canvases and fixes private customer-photos URLs
@@ -67,7 +85,8 @@ async function loadImage(url: string, storagePath?: string | null): Promise<HTML
         .from('customer-photos')
         .download(storagePath);
       if (!error && data) {
-        const img = await toImage(await blobToDataUrl(data));
+        const displayBlob = await normalizeReportImageBlob(data, storagePath);
+        const img = await toImage(await blobToDataUrl(displayBlob));
         if (img) return img;
       }
       if (error) console.warn('Photo storage download failed', storagePath, error.message);
@@ -80,7 +99,8 @@ async function loadImage(url: string, storagePath?: string | null): Promise<HTML
     const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
     if (res.ok) {
       const blob = await res.blob();
-      const dataUrl = await blobToDataUrl(blob);
+      const displayBlob = await normalizeReportImageBlob(blob, url);
+      const dataUrl = await blobToDataUrl(displayBlob);
       const img = await toImage(dataUrl);
       if (img) return img;
     }
