@@ -46,6 +46,7 @@ import { extractPhotoGeo, distanceMeters, type PhotoGeo } from '@/lib/exif/extra
 import { pickNativePhotos } from '@/lib/native/pickPhotos';
 import { isNativeApp } from '@/lib/native/appMode';
 import { exportPhotoReport } from '@/lib/photos/exportPhotoReport';
+import { PhotoEmailDialog } from './PhotoEmailDialog';
 import { SortablePhotoItem } from './SortablePhotoItem';
 import { PhotoMarkupEditor } from './PhotoMarkupEditor';
 import {
