@@ -956,12 +956,24 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
           </DialogHeader>
           <div className="flex-1 bg-muted/30">
             {previewUrl ? (
-              <iframe
+              <object
                 key={previewUrl}
-                src={previewUrl}
-                title="Photo report preview"
-                className="w-full h-full border-0"
-              />
+                data={`${previewUrl}#toolbar=1&navpanes=0&view=FitH`}
+                type="application/pdf"
+                className="w-full h-full"
+                aria-label="Photo report preview"
+              >
+                <div className="flex flex-col items-center justify-center h-full text-sm text-muted-foreground gap-2 p-6 text-center">
+                  <p>Your browser blocked the inline PDF preview.</p>
+                  <a
+                    href={previewUrl}
+                    download={previewFilename}
+                    className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-xs hover:bg-muted"
+                  >
+                    <Download className="h-3.5 w-3.5" /> Download PDF
+                  </a>
+                </div>
+              </object>
             ) : (
               <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
                 Building preview…
