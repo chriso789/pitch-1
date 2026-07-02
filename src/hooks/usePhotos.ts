@@ -137,6 +137,9 @@ export function usePhotos({ contactId, leadId, projectId, enabled = true }: UseP
 
       setUploadProgress(20);
 
+      // Extract EXIF GPS + capture date (from original file, before compression strips metadata)
+      const geo = options.geo ?? (await extractPhotoGeo(file));
+
       // Compress image client-side (converts HEIC, resizes large photos)
       const compressedFile = await compressImage(file);
       console.log(`[usePhotos] Compressed: ${file.name} ${(file.size/1024).toFixed(0)}KB → ${(compressedFile.size/1024).toFixed(0)}KB`);
