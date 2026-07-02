@@ -181,5 +181,22 @@ export async function exportPhotoReport({
   }
 
   const safeTitle = (filename || title).replace(/[^\w\-]+/g, '_');
-  pdf.save(`${safeTitle}_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`);
+  const outName = `${safeTitle}_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`;
+
+  const blob = pdf.output('blob') as Blob;
+  // Extract base64 from data URI (arraybuffer -> base64 without prefix)
+  const arrayBuf = pdf.output('arraybuffer') as ArrayBuffer;
+  const bytes = new Uint8Array(arrayBuf);
+  let binary = '';
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + CHUNK)));
+  }
+  const base64 = btoa(binary);
+
+  if (output === 'download') {
+    pdf.save(outName);
+  }
+
+  return { blob, base64, filename: outName };
 }
