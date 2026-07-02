@@ -370,6 +370,48 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
     }
   }, [resolveReportSource, reportTitle, propertyAddress]);
 
+  const handleViewReport = useCallback(async () => {
+    const source = resolveReportSource();
+    if (source.length === 0) {
+      toast({ title: 'No photos to preview', variant: 'destructive' });
+      return;
+    }
+    setIsExporting(true);
+    const pending = toast({
+      title: 'Building photo report…',
+      description: `Rendering ${source.length} photo${source.length !== 1 ? 's' : ''} for preview.`,
+    });
+    try {
+      const { blob } = await exportPhotoReport({
+        photos: source,
+        title: reportTitle || 'Photo Report',
+        propertyAddress,
+        output: 'blob',
+      });
+      const url = URL.createObjectURL(blob);
+      const win = window.open(url, '_blank', 'noopener,noreferrer');
+      if (!win) {
+        toast({
+          title: 'Pop-up blocked',
+          description: 'Allow pop-ups for this site to preview the report.',
+          variant: 'destructive',
+        });
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      pending.dismiss();
+    } catch (err) {
+      pending.dismiss();
+      console.error('Photo report preview failed', err);
+      toast({
+        title: 'Preview failed',
+        description: err instanceof Error ? err.message : 'Unable to build PDF',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  }, [resolveReportSource, reportTitle, propertyAddress]);
+
   const handleOpenEmailDialog = useCallback(() => {
     const source = resolveReportSource();
     if (source.length === 0) {
