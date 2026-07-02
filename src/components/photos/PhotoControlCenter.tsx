@@ -45,6 +45,7 @@ import { toast } from '@/components/ui/use-toast';
 import { extractPhotoGeo, distanceMeters, type PhotoGeo } from '@/lib/exif/extractGps';
 import { pickNativePhotos } from '@/lib/native/pickPhotos';
 import { isNativeApp } from '@/lib/native/appMode';
+import { exportPhotoReport } from '@/lib/photos/exportPhotoReport';
 import { SortablePhotoItem } from './SortablePhotoItem';
 import { PhotoMarkupEditor } from './PhotoMarkupEditor';
 import {
