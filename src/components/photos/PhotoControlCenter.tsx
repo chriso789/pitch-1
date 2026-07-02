@@ -321,6 +321,40 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
     });
   }, [selectedPhotos, toggleEstimateInclusion]);
 
+  // Export selected (or all filtered) photos to a standalone PDF report
+  const [isExporting, setIsExporting] = useState(false);
+  const handleExportReport = useCallback(async () => {
+    const source = selectedPhotos.size > 0
+      ? filteredPhotos.filter(p => selectedPhotos.has(p.id))
+      : filteredPhotos;
+    if (source.length === 0) {
+      toast({ title: 'No photos to export', variant: 'destructive' });
+      return;
+    }
+    setIsExporting(true);
+    try {
+      await exportPhotoReport({
+        photos: source,
+        title: reportTitle || 'Photo Report',
+        propertyAddress,
+      });
+      toast({
+        title: 'Photo report exported',
+        description: `${source.length} photo${source.length !== 1 ? 's' : ''} included`,
+      });
+    } catch (err) {
+      console.error('Photo report export failed', err);
+      toast({
+        title: 'Export failed',
+        description: err instanceof Error ? err.message : 'Unable to build PDF',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  }, [selectedPhotos, filteredPhotos, reportTitle, propertyAddress]);
+
+
   return (
     <Card className={cn('overflow-hidden', className)}>
       {showHeader && (
