@@ -39,6 +39,7 @@ import {
   MoreVertical,
   MapPin,
   Mail,
+  Eye,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePhotos, type PhotoCategory, type CustomerPhoto } from '@/hooks/usePhotos';
