@@ -60,6 +60,9 @@ export async function exportPhotoReport({
   title = 'Photo Report',
   propertyAddress,
   companyName,
+  companyLogoUrl,
+  companyPhone,
+  companyEmail,
   filename,
   output = 'download',
 }: PhotoReportOptions): Promise<PhotoReportResult> {
@@ -71,25 +74,59 @@ export async function exportPhotoReport({
   const pageH = pdf.internal.pageSize.getHeight();
   const margin = 12;
 
-  // Cover header
+  // Header band with tenant logo (if available) + title
+  const headerH = 22;
+  let logoDrawnW = 0;
+  if (companyLogoUrl) {
+    try {
+      const logoImg = await loadImage(companyLogoUrl);
+      if (logoImg) {
+        const maxH = 16;
+        const maxW = 42;
+        const r = logoImg.naturalWidth / logoImg.naturalHeight;
+        let w = maxH * r;
+        let h = maxH;
+        if (w > maxW) {
+          w = maxW;
+          h = maxW / r;
+        }
+        const dataUrl = imageToJpegDataUrl(logoImg, 600, 0.9);
+        pdf.addImage(dataUrl, 'JPEG', margin, margin, w, h, undefined, 'FAST');
+        logoDrawnW = w + 4;
+      }
+    } catch (e) {
+      console.warn('Logo embed failed', e);
+    }
+  }
+
   pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(20);
-  pdf.text(title, margin, margin + 6);
+  pdf.setFontSize(18);
+  pdf.text(title, margin + logoDrawnW, margin + 7);
   pdf.setFont('helvetica', 'normal');
   pdf.setFontSize(10);
-  let y = margin + 12;
+  let y = margin + 13;
   if (companyName) {
-    pdf.text(companyName, margin, y);
-    y += 5;
+    pdf.text(companyName, margin + logoDrawnW, y);
+    y += 4.5;
   }
+  const contactLine = [companyPhone, companyEmail].filter(Boolean).join('  •  ');
+  if (contactLine) {
+    pdf.setTextColor(110, 110, 110);
+    pdf.text(contactLine, margin + logoDrawnW, y);
+    pdf.setTextColor(0);
+    y += 4.5;
+  }
+  y = Math.max(y, margin + headerH);
   if (propertyAddress) {
+    pdf.setFontSize(10);
     pdf.text(propertyAddress, margin, y);
     y += 5;
   }
   pdf.setTextColor(120, 120, 120);
+  pdf.setFontSize(9);
   pdf.text(`Generated ${format(new Date(), 'PPp')}  •  ${photos.length} photo${photos.length !== 1 ? 's' : ''}`, margin, y);
   pdf.setTextColor(0);
-  y += 6;
+  y += 4;
   pdf.setDrawColor(220, 220, 220);
   pdf.line(margin, y, pageW - margin, y);
   y += 4;
