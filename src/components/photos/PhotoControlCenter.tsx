@@ -39,6 +39,7 @@ import {
   MoreVertical,
   MapPin,
   Mail,
+  Eye,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePhotos, type PhotoCategory, type CustomerPhoto } from '@/hooks/usePhotos';
@@ -369,6 +370,48 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
     }
   }, [resolveReportSource, reportTitle, propertyAddress]);
 
+  const handleViewReport = useCallback(async () => {
+    const source = resolveReportSource();
+    if (source.length === 0) {
+      toast({ title: 'No photos to preview', variant: 'destructive' });
+      return;
+    }
+    setIsExporting(true);
+    const pending = toast({
+      title: 'Building photo report…',
+      description: `Rendering ${source.length} photo${source.length !== 1 ? 's' : ''} for preview.`,
+    });
+    try {
+      const { blob } = await exportPhotoReport({
+        photos: source,
+        title: reportTitle || 'Photo Report',
+        propertyAddress,
+        output: 'blob',
+      });
+      const url = URL.createObjectURL(blob);
+      const win = window.open(url, '_blank', 'noopener,noreferrer');
+      if (!win) {
+        toast({
+          title: 'Pop-up blocked',
+          description: 'Allow pop-ups for this site to preview the report.',
+          variant: 'destructive',
+        });
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      pending.dismiss();
+    } catch (err) {
+      pending.dismiss();
+      console.error('Photo report preview failed', err);
+      toast({
+        title: 'Preview failed',
+        description: err instanceof Error ? err.message : 'Unable to build PDF',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  }, [resolveReportSource, reportTitle, propertyAddress]);
+
   const handleOpenEmailDialog = useCallback(() => {
     const source = resolveReportSource();
     if (source.length === 0) {
@@ -411,6 +454,17 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
                 onClick={() => setViewMode('list')}
               >
                 <List className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 ml-1"
+                onClick={handleViewReport}
+                disabled={isExporting || photos.length === 0}
+                title="Preview the PDF photo report in a new tab"
+              >
+                <Eye className="h-3.5 w-3.5 mr-1.5" />
+                View Report
               </Button>
               <Button
                 variant="outline"
@@ -512,6 +566,19 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
           >
             <Camera className="h-4 w-4 mr-1.5" />
             Take Photo
+          </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleViewReport}
+            disabled={isExporting || photos.length === 0}
+            title={selectedPhotos.size > 0
+              ? `Preview ${selectedPhotos.size} selected photos as PDF`
+              : 'Preview photo report in a new tab'}
+          >
+            <Eye className="h-4 w-4 mr-1.5" />
+            {selectedPhotos.size > 0 ? `View (${selectedPhotos.size})` : 'View Report'}
           </Button>
 
           <Button
@@ -643,6 +710,10 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
             <Button size="sm" variant="ghost" onClick={() => handleBulkEstimate(true)}>
               <FileText className="h-3.5 w-3.5 mr-1" />
               Add to Estimate
+            </Button>
+            <Button size="sm" variant="ghost" onClick={handleViewReport} disabled={isExporting}>
+              <Eye className="h-3.5 w-3.5 mr-1" />
+              View Report
             </Button>
             <Button size="sm" variant="ghost" onClick={handleExportReport} disabled={isExporting}>
               {isExporting ? (
