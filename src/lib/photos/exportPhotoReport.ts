@@ -25,7 +25,10 @@ export interface PhotoReportResult {
 
 function resolveCustomerPhotoStoragePath(photo: Pick<CustomerPhoto, 'file_name' | 'file_url'>): string | null {
   const directPath = photo.file_name?.trim();
-  if (directPath && !/^https?:\/\//i.test(directPath)) {
+  // New uploads store the full storage object path in file_name, but older
+  // rows may have only the original filename there. Treat values without a
+  // folder as a filename, then parse the real storage path from file_url.
+  if (directPath && !/^https?:\/\//i.test(directPath) && directPath.includes('/')) {
     return decodeURIComponent(directPath).replace(/^\/+/, '');
   }
 
@@ -35,10 +38,14 @@ function resolveCustomerPhotoStoragePath(photo: Pick<CustomerPhoto, 'file_name' 
   try {
     const parsed = new URL(urlValue);
     const match = parsed.pathname.match(/\/storage\/v1\/object\/(?:public|sign|authenticated)\/customer-photos\/(.+)$/);
-    return match?.[1] ? decodeURIComponent(match[1]) : null;
+    if (match?.[1]) return decodeURIComponent(match[1]);
   } catch {
-    return null;
+    // fall through
   }
+
+  return directPath && !/^https?:\/\//i.test(directPath)
+    ? decodeURIComponent(directPath).replace(/^\/+/, '')
+    : null;
 }
 
 async function blobToDataUrl(blob: Blob): Promise<string> {
