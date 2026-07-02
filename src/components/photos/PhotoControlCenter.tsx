@@ -390,6 +390,23 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
     });
   }, [propertyAddress]);
 
+  const buildReport = useCallback(async (
+    source: CustomerPhoto[],
+    outputMode: 'download' | 'blob',
+  ) => {
+    const enriched = await enrichWithAiCaptions(source);
+    return exportPhotoReport({
+      photos: enriched,
+      title: reportTitle || 'Photo Report',
+      propertyAddress,
+      companyName: companyInfo?.name,
+      companyLogoUrl: companyInfo?.logo_url,
+      companyPhone: companyInfo?.phone,
+      companyEmail: companyInfo?.email,
+      output: outputMode,
+    });
+  }, [enrichWithAiCaptions, reportTitle, propertyAddress, companyInfo]);
+
   const handleExportReport = useCallback(async () => {
     const source = resolveReportSource();
     if (source.length === 0) {
@@ -402,12 +419,7 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
       description: `Rendering ${source.length} photo${source.length !== 1 ? 's' : ''} to PDF.`,
     });
     try {
-      const { filename } = await exportPhotoReport({
-        photos: source,
-        title: reportTitle || 'Photo Report',
-        propertyAddress,
-        output: 'download',
-      });
+      const { filename } = await buildReport(source, 'download');
       pending.dismiss();
       toast({
         title: 'Photo report downloaded',
@@ -424,7 +436,7 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
     } finally {
       setIsExporting(false);
     }
-  }, [resolveReportSource, reportTitle, propertyAddress]);
+  }, [resolveReportSource, buildReport]);
 
   const handleViewReport = useCallback(async () => {
     const source = resolveReportSource();
@@ -438,22 +450,15 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
       description: `Rendering ${source.length} photo${source.length !== 1 ? 's' : ''} for preview.`,
     });
     try {
-      const { blob } = await exportPhotoReport({
-        photos: source,
-        title: reportTitle || 'Photo Report',
-        propertyAddress,
-        output: 'blob',
-      });
+      const { blob, filename } = await buildReport(source, 'blob');
       const url = URL.createObjectURL(blob);
-      const win = window.open(url, '_blank', 'noopener,noreferrer');
-      if (!win) {
-        toast({
-          title: 'Pop-up blocked',
-          description: 'Allow pop-ups for this site to preview the report.',
-          variant: 'destructive',
-        });
-      }
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      // Release the previous preview URL before swapping in the new one.
+      setPreviewUrl(prev => {
+        if (prev) URL.revokeObjectURL(prev);
+        return url;
+      });
+      setPreviewFilename(filename);
+      setPreviewOpen(true);
       pending.dismiss();
     } catch (err) {
       pending.dismiss();
@@ -466,7 +471,7 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
     } finally {
       setIsExporting(false);
     }
-  }, [resolveReportSource, reportTitle, propertyAddress]);
+  }, [resolveReportSource, buildReport]);
 
   const handleOpenEmailDialog = useCallback(() => {
     const source = resolveReportSource();
