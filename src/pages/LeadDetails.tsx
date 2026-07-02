@@ -1414,8 +1414,15 @@ const LeadDetails = () => {
                 leadId={id!}
                 showHeader={false}
                 compactMode={true}
+                projectLatitude={
+                  lead?.contact?.verified_address?.lat ?? lead?.contact?.latitude ?? undefined
+                }
+                projectLongitude={
+                  lead?.contact?.verified_address?.lng ?? lead?.contact?.longitude ?? undefined
+                }
               />
             </TabsContent>
+
 
 
             <TabsContent value="activity" className="mt-0">

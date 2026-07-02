@@ -36,11 +36,13 @@ import {
   ImageIcon,
   Edit2,
   Download,
-  MoreVertical
+  MoreVertical,
+  MapPin,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePhotos, type PhotoCategory, type CustomerPhoto } from '@/hooks/usePhotos';
 import { toast } from '@/components/ui/use-toast';
+import { extractPhotoGeo, distanceMeters, type PhotoGeo } from '@/lib/exif/extractGps';
 import { SortablePhotoItem } from './SortablePhotoItem';
 import { PhotoMarkupEditor } from './PhotoMarkupEditor';
 import {
@@ -78,6 +80,21 @@ interface PhotoControlCenterProps {
   className?: string;
   showHeader?: boolean;
   compactMode?: boolean;
+  /** Project/lead location — enables geotagged sort so on-site photos upload first. */
+  projectLatitude?: number;
+  projectLongitude?: number;
+  /** Radius (meters) considered "on-site". Default 500m. */
+  onSiteRadiusMeters?: number;
+}
+
+interface PendingPreview {
+  id: string;
+  file: File;
+  previewUrl: string;
+  geo: PhotoGeo;
+  onSite: boolean;
+  distanceM: number | null;
+  status: 'queued' | 'uploading' | 'done' | 'error';
 }
 
 export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
@@ -87,14 +104,26 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
   className,
   showHeader = true,
   compactMode = false,
+  projectLatitude,
+  projectLongitude,
+  onSiteRadiusMeters = 500,
 }) => {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set());
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [editingPhoto, setEditingPhoto] = useState<CustomerPhoto | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [pendingPreviews, setPendingPreviews] = useState<PendingPreview[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+
+  const projectCoords =
+    typeof projectLatitude === 'number' &&
+    typeof projectLongitude === 'number' &&
+    (projectLatitude !== 0 || projectLongitude !== 0)
+      ? { lat: projectLatitude, lng: projectLongitude }
+      : null;
+
 
   const {
     photos,
@@ -125,7 +154,7 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
     ? photos 
     : photos.filter(p => p.category === filterCategory);
 
-  // Handle file upload
+  // Handle file upload — multi-file with instant previews + geotag prioritization
   const handleFileUpload = useCallback(async (files: FileList | null) => {
     if (!files?.length) return;
 
@@ -143,19 +172,80 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
       return;
     }
 
-    for (const file of imageFiles) {
+    // 1. Extract EXIF GPS from each file in parallel, then build previews
+    const withGeo = await Promise.all(
+      imageFiles.map(async (file) => {
+        const geo = await extractPhotoGeo(file);
+        const distanceM =
+          projectCoords && geo.latitude != null && geo.longitude != null
+            ? distanceMeters(projectCoords, { lat: geo.latitude, lng: geo.longitude })
+            : null;
+        const onSite = distanceM != null && distanceM <= onSiteRadiusMeters;
+        return { file, geo, distanceM, onSite };
+      })
+    );
+
+    // 2. Sort: on-site geotagged first, then any-geotagged nearest-first, then no-geo last
+    withGeo.sort((a, b) => {
+      if (a.onSite !== b.onSite) return a.onSite ? -1 : 1;
+      const ad = a.distanceM ?? Number.POSITIVE_INFINITY;
+      const bd = b.distanceM ?? Number.POSITIVE_INFINITY;
+      return ad - bd;
+    });
+
+    // 3. Push instant previews into local state so the user sees thumbnails immediately
+    const queued: PendingPreview[] = withGeo.map((w) => ({
+      id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      file: w.file,
+      previewUrl: URL.createObjectURL(w.file),
+      geo: w.geo,
+      onSite: w.onSite,
+      distanceM: w.distanceM,
+      status: 'queued',
+    }));
+    setPendingPreviews((prev) => [...queued, ...prev]);
+
+    const onSiteCount = queued.filter((q) => q.onSite).length;
+    if (projectCoords && onSiteCount > 0) {
+      toast({
+        title: `${onSiteCount} photo${onSiteCount !== 1 ? 's' : ''} match this project's location`,
+        description: 'On-site photos will upload first.',
+      });
+    }
+
+    // 4. Upload serially, updating status per item
+    for (const item of queued) {
+      setPendingPreviews((prev) =>
+        prev.map((p) => (p.id === item.id ? { ...p, status: 'uploading' } : p))
+      );
       try {
-        await uploadPhoto({ file, contactId, leadId, projectId });
+        await uploadPhoto({
+          file: item.file,
+          contactId,
+          leadId,
+          projectId,
+          geo: item.geo,
+        });
+        // Remove the preview once the real record lands via query invalidation
+        setPendingPreviews((prev) => {
+          const rest = prev.filter((p) => p.id !== item.id);
+          URL.revokeObjectURL(item.previewUrl);
+          return rest;
+        });
       } catch (error) {
         console.error('Upload error:', error);
+        setPendingPreviews((prev) =>
+          prev.map((p) => (p.id === item.id ? { ...p, status: 'error' } : p))
+        );
         toast({
           title: 'Upload failed',
-          description: `Failed to upload ${file.name}`,
+          description: `Failed to upload ${item.file.name}`,
           variant: 'destructive',
         });
       }
     }
-  }, [uploadPhoto, contactId, leadId, projectId]);
+  }, [uploadPhoto, contactId, leadId, projectId, projectCoords, onSiteRadiusMeters]);
+
 
   // Handle drag end
   const handleDragEnd = useCallback((event: DragEndEvent) => {
@@ -267,16 +357,24 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
             accept="image/*,.heic,.heif"
             multiple
             className="hidden"
-            onChange={(e) => handleFileUpload(e.target.files)}
+            onChange={(e) => {
+              handleFileUpload(e.target.files);
+              e.target.value = '';
+            }}
           />
           <input
             ref={cameraInputRef}
             type="file"
             accept="image/*,.heic,.heif"
             capture="environment"
+            multiple
             className="hidden"
-            onChange={(e) => handleFileUpload(e.target.files)}
+            onChange={(e) => {
+              handleFileUpload(e.target.files);
+              e.target.value = '';
+            }}
           />
+
           
           <Button
             size="sm"
@@ -323,6 +421,71 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
             </SelectContent>
           </Select>
         </div>
+
+        {/* Pending upload previews — visible instantly while photos upload */}
+        {pendingPreviews.length > 0 && (
+          <div className="space-y-2 rounded-lg border bg-muted/30 p-2">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-xs font-medium text-muted-foreground">
+                Uploading {pendingPreviews.length} photo{pendingPreviews.length !== 1 ? 's' : ''}
+                {projectCoords && pendingPreviews.some((p) => p.onSite) && (
+                  <> · on-site photos prioritized</>
+                )}
+              </span>
+            </div>
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+              {pendingPreviews.map((p) => (
+                <div
+                  key={p.id}
+                  className={cn(
+                    'relative aspect-square rounded-md overflow-hidden border bg-background',
+                    p.status === 'error' && 'border-destructive'
+                  )}
+                >
+                  <img
+                    src={p.previewUrl}
+                    alt={p.file.name}
+                    className={cn(
+                      'h-full w-full object-cover',
+                      p.status === 'uploading' && 'opacity-60'
+                    )}
+                  />
+                  {p.status === 'uploading' && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <Loader2 className="h-5 w-5 animate-spin text-white drop-shadow" />
+                    </div>
+                  )}
+                  {p.onSite && (
+                    <Badge
+                      variant="outline"
+                      className="absolute top-1 left-1 h-5 px-1.5 py-0 text-[9px] bg-green-500/90 text-white border-0 gap-0.5"
+                    >
+                      <MapPin className="h-2.5 w-2.5" />
+                      On-site
+                    </Badge>
+                  )}
+                  {!p.onSite && p.distanceM != null && (
+                    <Badge
+                      variant="outline"
+                      className="absolute top-1 left-1 h-5 px-1.5 py-0 text-[9px] bg-background/85 gap-0.5"
+                    >
+                      <MapPin className="h-2.5 w-2.5" />
+                      {p.distanceM < 1000
+                        ? `${Math.round(p.distanceM)}m`
+                        : `${(p.distanceM / 1000).toFixed(1)}km`}
+                    </Badge>
+                  )}
+                  {p.status === 'error' && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-destructive/70">
+                      <X className="h-5 w-5 text-white" />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
 
         {/* Bulk actions */}
         {selectedPhotos.size > 0 && (

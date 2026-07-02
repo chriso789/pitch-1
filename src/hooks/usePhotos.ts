@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/use-toast';
 import { compressImage } from '@/lib/imageCompression';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { extractPhotoGeo } from '@/lib/exif/extractGps';
 
 export type PhotoCategory = 
   | 'before' | 'during' | 'after' | 'damage' | 'materials' 
@@ -52,6 +53,8 @@ interface UploadPhotoOptions {
   contactId?: string;
   leadId?: string;
   projectId?: string;
+  /** Optional pre-extracted GPS + capture date to avoid double EXIF parse. */
+  geo?: { latitude: number | null; longitude: number | null; takenAt: string | null };
 }
 
 export function usePhotos({ contactId, leadId, projectId, enabled = true }: UsePhotosOptions) {
@@ -134,6 +137,9 @@ export function usePhotos({ contactId, leadId, projectId, enabled = true }: UseP
 
       setUploadProgress(20);
 
+      // Extract EXIF GPS + capture date (from original file, before compression strips metadata)
+      const geo = options.geo ?? (await extractPhotoGeo(file));
+
       // Compress image client-side (converts HEIC, resizes large photos)
       const compressedFile = await compressImage(file);
       console.log(`[usePhotos] Compressed: ${file.name} ${(file.size/1024).toFixed(0)}KB → ${(compressedFile.size/1024).toFixed(0)}KB`);
@@ -188,6 +194,9 @@ export function usePhotos({ contactId, leadId, projectId, enabled = true }: UseP
           file_size: compressedFile.size,
           uploaded_by: user.id,
           include_in_estimate: false,
+          gps_latitude: geo.latitude,
+          gps_longitude: geo.longitude,
+          taken_at: geo.takenAt,
         })
         .select()
         .single();
