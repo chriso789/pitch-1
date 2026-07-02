@@ -781,6 +781,16 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <PhotoEmailDialog
+        open={emailDialogOpen}
+        onOpenChange={setEmailDialogOpen}
+        photos={emailPhotos}
+        contactId={contactId}
+        leadId={leadId}
+        propertyAddress={propertyAddress}
+        reportTitle={reportTitle}
+      />
     </Card>
   );
 };
