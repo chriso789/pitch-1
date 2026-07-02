@@ -104,8 +104,8 @@ export async function exportPhotoReport({
     const yImg = rowTop;
 
     // Placeholder frame
-    pdf.setDrawColor(200);
-    pdf.setFillColor(245);
+    pdf.setDrawColor(200, 200, 200);
+    pdf.setFillColor(245, 245, 245);
     pdf.rect(x, yImg, cellW, cellH, 'FD');
 
     const img = await loadImage(photo.file_url);
