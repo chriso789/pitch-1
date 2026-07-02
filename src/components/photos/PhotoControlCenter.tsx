@@ -36,11 +36,13 @@ import {
   ImageIcon,
   Edit2,
   Download,
-  MoreVertical
+  MoreVertical,
+  MapPin,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePhotos, type PhotoCategory, type CustomerPhoto } from '@/hooks/usePhotos';
 import { toast } from '@/components/ui/use-toast';
+import { extractPhotoGeo, distanceMeters, type PhotoGeo } from '@/lib/exif/extractGps';
 import { SortablePhotoItem } from './SortablePhotoItem';
 import { PhotoMarkupEditor } from './PhotoMarkupEditor';
 import {
