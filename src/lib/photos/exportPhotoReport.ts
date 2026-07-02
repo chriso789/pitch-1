@@ -58,8 +58,10 @@ export async function exportPhotoReport({
   propertyAddress,
   companyName,
   filename,
-}: PhotoReportOptions): Promise<void> {
+  output = 'download',
+}: PhotoReportOptions): Promise<PhotoReportResult> {
   if (!photos.length) throw new Error('No photos to export');
+
 
   const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
   const pageW = pdf.internal.pageSize.getWidth();
