@@ -73,11 +73,11 @@ export async function exportPhotoReport({
     pdf.text(propertyAddress, margin, y);
     y += 5;
   }
-  pdf.setTextColor(120);
+  pdf.setTextColor(120, 120, 120);
   pdf.text(`Generated ${format(new Date(), 'PPp')}  •  ${photos.length} photo${photos.length !== 1 ? 's' : ''}`, margin, y);
   pdf.setTextColor(0);
   y += 6;
-  pdf.setDrawColor(220);
+  pdf.setDrawColor(220, 220, 220);
   pdf.line(margin, y, pageW - margin, y);
   y += 4;
 
@@ -137,7 +137,7 @@ export async function exportPhotoReport({
     pdf.text(`${i + 1}. ${cat}`, x, capY);
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(8);
-    pdf.setTextColor(90);
+    pdf.setTextColor(90, 90, 90);
     const takenAt = photo.taken_at || photo.uploaded_at || photo.created_at;
     const dateStr = takenAt ? format(new Date(takenAt), 'PP p') : '';
     if (dateStr) pdf.text(dateStr, x, capY + 4);
@@ -166,7 +166,7 @@ export async function exportPhotoReport({
   for (let p = 1; p <= pageCount; p++) {
     pdf.setPage(p);
     pdf.setFontSize(8);
-    pdf.setTextColor(140);
+    pdf.setTextColor(140, 140, 140);
     pdf.text(`Page ${p} of ${pageCount}`, pageW - margin, pageH - 6, { align: 'right' });
   }
 
