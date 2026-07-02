@@ -194,6 +194,9 @@ export function usePhotos({ contactId, leadId, projectId, enabled = true }: UseP
           file_size: compressedFile.size,
           uploaded_by: user.id,
           include_in_estimate: false,
+          gps_latitude: geo.latitude,
+          gps_longitude: geo.longitude,
+          taken_at: geo.takenAt,
         })
         .select()
         .single();
