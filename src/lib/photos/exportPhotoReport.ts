@@ -32,7 +32,7 @@ function resolveCustomerPhotoStoragePath(photo: Pick<CustomerPhoto, 'file_name' 
     return decodeURIComponent(directPath).replace(/^\/+/, '');
   }
 
-  const urlValue = directPath || photo.file_url;
+  const urlValue = directPath && /^https?:\/\//i.test(directPath) ? directPath : photo.file_url;
   if (!urlValue) return null;
 
   try {
