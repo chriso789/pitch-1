@@ -56,6 +56,15 @@ function isHeicSource(source?: string | null, blob?: Blob | null): boolean {
   return lower.includes('.heic') || lower.includes('.heif') || mime.includes('heic') || mime.includes('heif');
 }
 
+function inferImageMime(source?: string | null): string | null {
+  const path = (source || '').split('?')[0].toLowerCase();
+  if (/\.jpe?g$/i.test(path)) return 'image/jpeg';
+  if (/\.png$/i.test(path)) return 'image/png';
+  if (/\.webp$/i.test(path)) return 'image/webp';
+  if (/\.gif$/i.test(path)) return 'image/gif';
+  return null;
+}
+
 async function normalizeReportImageBlob(blob: Blob, source?: string | null): Promise<Blob> {
   if (!isHeicSource(source, blob)) return blob;
 
@@ -65,6 +74,16 @@ async function normalizeReportImageBlob(blob: Blob, source?: string | null): Pro
     quality: 0.85,
   });
   return Array.isArray(converted) ? converted[0] : converted;
+}
+
+function ensureImageMime(blob: Blob, source?: string | null): Blob {
+  const currentType = blob.type?.toLowerCase();
+  if (currentType?.startsWith('image/')) return blob;
+
+  // Supabase uploads that don't include contentType can come back as
+  // application/octet-stream. A data URL with that MIME will not reliably
+  // decode in <img>, even though the bytes are a valid JPEG/PNG.
+  return new Blob([blob], { type: inferImageMime(source) || 'image/jpeg' });
 }
 
 async function loadImage(url: string, storagePath?: string | null): Promise<HTMLImageElement | null> {
@@ -85,7 +104,7 @@ async function loadImage(url: string, storagePath?: string | null): Promise<HTML
         .from('customer-photos')
         .download(storagePath);
       if (!error && data) {
-        const displayBlob = await normalizeReportImageBlob(data, storagePath);
+        const displayBlob = ensureImageMime(await normalizeReportImageBlob(data, storagePath), storagePath);
         const img = await toImage(await blobToDataUrl(displayBlob));
         if (img) return img;
       }
@@ -99,7 +118,7 @@ async function loadImage(url: string, storagePath?: string | null): Promise<HTML
     const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
     if (res.ok) {
       const blob = await res.blob();
-      const displayBlob = await normalizeReportImageBlob(blob, url);
+      const displayBlob = ensureImageMime(await normalizeReportImageBlob(blob, url), url);
       const dataUrl = await blobToDataUrl(displayBlob);
       const img = await toImage(dataUrl);
       if (img) return img;
