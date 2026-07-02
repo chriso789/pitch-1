@@ -8,6 +8,14 @@ interface PhotoReportOptions {
   propertyAddress?: string;
   companyName?: string;
   filename?: string;
+  /** 'download' saves via jsPDF.save (default). 'blob' returns { blob, filename, base64 } without saving. */
+  output?: 'download' | 'blob';
+}
+
+export interface PhotoReportResult {
+  blob: Blob;
+  base64: string; // without data: prefix
+  filename: string;
 }
 
 async function loadImage(url: string): Promise<HTMLImageElement | null> {
