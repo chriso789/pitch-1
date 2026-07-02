@@ -51,6 +51,14 @@ import { exportPhotoReport } from '@/lib/photos/exportPhotoReport';
 import { PhotoEmailDialog } from './PhotoEmailDialog';
 import { SortablePhotoItem } from './SortablePhotoItem';
 import { PhotoMarkupEditor } from './PhotoMarkupEditor';
+import { useCompanyInfo } from '@/hooks/useCompanyInfo';
+import { supabase } from '@/integrations/supabase/client';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
