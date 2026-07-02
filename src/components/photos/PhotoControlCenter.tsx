@@ -473,6 +473,25 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
             Take Photo
           </Button>
 
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleExportReport}
+            disabled={isExporting || photos.length === 0}
+            title={selectedPhotos.size > 0
+              ? `Export ${selectedPhotos.size} selected photos as PDF`
+              : 'Export all filtered photos as PDF'}
+          >
+            {isExporting ? (
+              <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4 mr-1.5" />
+            )}
+            {selectedPhotos.size > 0 ? `Export (${selectedPhotos.size})` : 'Export Report'}
+          </Button>
+
+
+
           <div className="flex-1" />
 
           {/* Category filter */}
