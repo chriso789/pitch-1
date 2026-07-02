@@ -795,17 +795,26 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
         onChange={handleFileSelect}
         className="hidden"
       />
-      {/* Generic file input for photos/documents bubbles */}
+      {/* Generic file input for photos/documents bubbles — multi-select for photos */}
       <input
         ref={genericFileInputRef}
         type="file"
-        accept="application/pdf,image/*,.doc,.docx"
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file && openGenericPopover) {
-            handleGenericUpload(file, openGenericPopover, 'file');
-          }
+        multiple
+        accept="application/pdf,image/*,.doc,.docx,.heic,.heif"
+        onChange={async (e) => {
+          const files = Array.from(e.target.files ?? []);
+          const docType = openGenericPopover;
           e.target.value = '';
+          if (!files.length || !docType) return;
+          // Upload sequentially so we don't blow past storage rate limits or crash
+          // Safari on iPhone when picking many originals at once.
+          for (const f of files) {
+            await handleGenericUpload(f, docType, 'file');
+          }
+          toast({
+            title: 'Uploads complete',
+            description: `${files.length} file${files.length === 1 ? '' : 's'} uploaded.`,
+          });
         }}
         className="hidden"
       />
