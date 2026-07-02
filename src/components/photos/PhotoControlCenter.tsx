@@ -531,6 +531,19 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
             {selectedPhotos.size > 0 ? `Export (${selectedPhotos.size})` : 'Export Report'}
           </Button>
 
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleOpenEmailDialog}
+            disabled={photos.length === 0}
+            title={selectedPhotos.size > 0
+              ? `Email ${selectedPhotos.size} selected photos`
+              : 'Email photo report'}
+          >
+            <Mail className="h-4 w-4 mr-1.5" />
+            {selectedPhotos.size > 0 ? `Email (${selectedPhotos.size})` : 'Email Report'}
+          </Button>
+
 
 
           <div className="flex-1" />
