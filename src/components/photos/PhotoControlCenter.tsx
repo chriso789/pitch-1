@@ -645,8 +645,16 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
               Add to Estimate
             </Button>
             <Button size="sm" variant="ghost" onClick={handleExportReport} disabled={isExporting}>
-              <Download className="h-3.5 w-3.5 mr-1" />
-              {isExporting ? 'Exporting…' : 'Export Report'}
+              {isExporting ? (
+                <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+              ) : (
+                <Download className="h-3.5 w-3.5 mr-1" />
+              )}
+              {isExporting ? 'Building…' : 'Export Report'}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={handleOpenEmailDialog}>
+              <Mail className="h-3.5 w-3.5 mr-1" />
+              Email Report
             </Button>
             <Button 
               size="sm" 
