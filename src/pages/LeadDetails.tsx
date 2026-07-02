@@ -1420,6 +1420,14 @@ const LeadDetails = () => {
                 projectLongitude={
                   lead?.contact?.verified_address?.lng ?? lead?.contact?.longitude ?? undefined
                 }
+                propertyAddress={
+                  lead?.contact?.verified_address?.formatted_address ||
+                  lead?.contact?.address ||
+                  undefined
+                }
+                reportTitle={
+                  lead?.contact?.name ? `${lead.contact.name} — Photo Report` : 'Photo Report'
+                }
               />
             </TabsContent>
 
