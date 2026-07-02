@@ -92,6 +92,8 @@ interface PhotoControlCenterProps {
   propertyAddress?: string;
   /** Title for the exported Photo Report. Defaults to "Photo Report". */
   reportTitle?: string;
+}
+
 
 interface PendingPreview {
   id: string;
