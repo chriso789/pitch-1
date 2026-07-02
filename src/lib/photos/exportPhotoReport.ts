@@ -1,6 +1,8 @@
 import jsPDF from 'jspdf';
 import { format } from 'date-fns';
+import heic2any from 'heic2any';
 import type { CustomerPhoto } from '@/hooks/usePhotos';
+import { supabase } from '@/integrations/supabase/client';
 
 interface PhotoReportOptions {
   photos: CustomerPhoto[];
@@ -21,10 +23,80 @@ export interface PhotoReportResult {
   filename: string;
 }
 
-async function loadImage(url: string): Promise<HTMLImageElement | null> {
-  // Fetch the image as a blob first so we can inline it as a data URL.
-  // This avoids CORS-tainted canvases (which silently produce blank JPEGs)
-  // when the storage host doesn't return permissive CORS headers for <img>.
+function resolveCustomerPhotoStoragePath(photo: Pick<CustomerPhoto, 'file_name' | 'file_url'>): string | null {
+  const directPath = photo.file_name?.trim();
+  // New uploads store the full storage object path in file_name, but older
+  // rows may have only the original filename there. Treat values without a
+  // folder as a filename, then parse the real storage path from file_url.
+  if (directPath && !/^https?:\/\//i.test(directPath) && directPath.includes('/')) {
+    return decodeURIComponent(directPath).replace(/^\/+/, '');
+  }
+
+  const urlValue = directPath && /^https?:\/\//i.test(directPath) ? directPath : photo.file_url;
+  if (!urlValue) return null;
+
+  try {
+    const parsed = new URL(urlValue);
+    const match = parsed.pathname.match(/\/storage\/v1\/object\/(?:public|sign|authenticated)\/customer-photos\/(.+)$/);
+    if (match?.[1]) return decodeURIComponent(match[1]);
+  } catch {
+    // fall through
+  }
+
+  return directPath && !/^https?:\/\//i.test(directPath)
+    ? decodeURIComponent(directPath).replace(/^\/+/, '')
+    : null;
+}
+
+async function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(fr.result as string);
+    fr.onerror = () => reject(fr.error);
+    fr.readAsDataURL(blob);
+  });
+}
+
+function isHeicSource(source?: string | null, blob?: Blob | null): boolean {
+  const lower = (source || '').toLowerCase();
+  const mime = (blob?.type || '').toLowerCase();
+  return lower.includes('.heic') || lower.includes('.heif') || mime.includes('heic') || mime.includes('heif');
+}
+
+function inferImageMime(source?: string | null): string | null {
+  const path = (source || '').split('?')[0].toLowerCase();
+  if (/\.jpe?g$/i.test(path)) return 'image/jpeg';
+  if (/\.png$/i.test(path)) return 'image/png';
+  if (/\.webp$/i.test(path)) return 'image/webp';
+  if (/\.gif$/i.test(path)) return 'image/gif';
+  return null;
+}
+
+async function normalizeReportImageBlob(blob: Blob, source?: string | null): Promise<Blob> {
+  if (!isHeicSource(source, blob)) return blob;
+
+  const converted = await heic2any({
+    blob,
+    toType: 'image/jpeg',
+    quality: 0.85,
+  });
+  return Array.isArray(converted) ? converted[0] : converted;
+}
+
+function ensureImageMime(blob: Blob, source?: string | null): Blob {
+  const currentType = blob.type?.toLowerCase();
+  if (currentType?.startsWith('image/')) return blob;
+
+  // Supabase uploads that don't include contentType can come back as
+  // application/octet-stream. A data URL with that MIME will not reliably
+  // decode in <img>, even though the bytes are a valid JPEG/PNG.
+  return new Blob([blob], { type: inferImageMime(source) || 'image/jpeg' });
+}
+
+async function loadImage(url: string, storagePath?: string | null): Promise<HTMLImageElement | null> {
+  // Fetch/download the image as a blob first so we can inline it as a data URL.
+  // This avoids CORS-tainted canvases and fixes private customer-photos URLs
+  // whose stored public URL is not directly readable by fetch/img.
   const toImage = (src: string) =>
     new Promise<HTMLImageElement | null>((resolve) => {
       const img = new Image();
@@ -33,16 +105,28 @@ async function loadImage(url: string): Promise<HTMLImageElement | null> {
       img.src = src;
     });
 
+  if (storagePath) {
+    try {
+      const { data, error } = await supabase.storage
+        .from('customer-photos')
+        .download(storagePath);
+      if (!error && data) {
+        const displayBlob = ensureImageMime(await normalizeReportImageBlob(data, storagePath), storagePath);
+        const img = await toImage(await blobToDataUrl(displayBlob));
+        if (img) return img;
+      }
+      if (error) console.warn('Photo storage download failed', storagePath, error.message);
+    } catch (e) {
+      console.warn('Photo storage download failed', storagePath, e);
+    }
+  }
+
   try {
     const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
     if (res.ok) {
       const blob = await res.blob();
-      const dataUrl: string = await new Promise((resolve, reject) => {
-        const fr = new FileReader();
-        fr.onload = () => resolve(fr.result as string);
-        fr.onerror = () => reject(fr.error);
-        fr.readAsDataURL(blob);
-      });
+      const displayBlob = ensureImageMime(await normalizeReportImageBlob(blob, url), url);
+      const dataUrl = await blobToDataUrl(displayBlob);
       const img = await toImage(dataUrl);
       if (img) return img;
     }
@@ -187,7 +271,7 @@ export async function exportPhotoReport({
     pdf.setFillColor(245, 245, 245);
     pdf.rect(x, yImg, cellW, cellH, 'FD');
 
-    const img = await loadImage(photo.file_url);
+    const img = await loadImage(photo.file_url, resolveCustomerPhotoStoragePath(photo));
     if (img) {
       try {
         const dataUrl = imageToJpegDataUrl(img);

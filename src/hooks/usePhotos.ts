@@ -162,6 +162,7 @@ export function usePhotos({ contactId, leadId, projectId, enabled = true }: UseP
         .from('customer-photos')
         .upload(storagePath, compressedFile, {
           cacheControl: '3600',
+          contentType: compressedFile.type || 'image/jpeg',
           upsert: false,
         });
 
