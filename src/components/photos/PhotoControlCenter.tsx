@@ -80,6 +80,21 @@ interface PhotoControlCenterProps {
   className?: string;
   showHeader?: boolean;
   compactMode?: boolean;
+  /** Project/lead location — enables geotagged sort so on-site photos upload first. */
+  projectLatitude?: number;
+  projectLongitude?: number;
+  /** Radius (meters) considered "on-site". Default 500m. */
+  onSiteRadiusMeters?: number;
+}
+
+interface PendingPreview {
+  id: string;
+  file: File;
+  previewUrl: string;
+  geo: PhotoGeo;
+  onSite: boolean;
+  distanceM: number | null;
+  status: 'queued' | 'uploading' | 'done' | 'error';
 }
 
 export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
