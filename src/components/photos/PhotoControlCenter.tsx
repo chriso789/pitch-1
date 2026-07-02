@@ -104,14 +104,26 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
   className,
   showHeader = true,
   compactMode = false,
+  projectLatitude,
+  projectLongitude,
+  onSiteRadiusMeters = 500,
 }) => {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set());
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [editingPhoto, setEditingPhoto] = useState<CustomerPhoto | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [pendingPreviews, setPendingPreviews] = useState<PendingPreview[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+
+  const projectCoords =
+    typeof projectLatitude === 'number' &&
+    typeof projectLongitude === 'number' &&
+    (projectLatitude !== 0 || projectLongitude !== 0)
+      ? { lat: projectLatitude, lng: projectLongitude }
+      : null;
+
 
   const {
     photos,
