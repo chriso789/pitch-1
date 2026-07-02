@@ -1420,6 +1420,19 @@ const LeadDetails = () => {
                 projectLongitude={
                   lead?.contact?.verified_address?.lng ?? lead?.contact?.longitude ?? undefined
                 }
+                propertyAddress={(() => {
+                  const c = lead?.contact;
+                  if (!c) return undefined;
+                  if (c.verified_address?.formatted_address) return c.verified_address.formatted_address;
+                  const parts = [c.address_street, c.address_city, c.address_state, c.address_zip]
+                    .filter(Boolean);
+                  return parts.length ? parts.join(', ') : undefined;
+                })()}
+                reportTitle={(() => {
+                  const c = lead?.contact;
+                  const name = c ? [c.first_name, c.last_name].filter(Boolean).join(' ').trim() : '';
+                  return name ? `${name} — Photo Report` : 'Photo Report';
+                })()}
               />
             </TabsContent>
 

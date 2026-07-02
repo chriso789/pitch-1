@@ -45,6 +45,7 @@ import { toast } from '@/components/ui/use-toast';
 import { extractPhotoGeo, distanceMeters, type PhotoGeo } from '@/lib/exif/extractGps';
 import { pickNativePhotos } from '@/lib/native/pickPhotos';
 import { isNativeApp } from '@/lib/native/appMode';
+import { exportPhotoReport } from '@/lib/photos/exportPhotoReport';
 import { SortablePhotoItem } from './SortablePhotoItem';
 import { PhotoMarkupEditor } from './PhotoMarkupEditor';
 import {
@@ -87,7 +88,12 @@ interface PhotoControlCenterProps {
   projectLongitude?: number;
   /** Radius (meters) considered "on-site". Default 500m. */
   onSiteRadiusMeters?: number;
+  /** Address printed on the exported Photo Report cover. */
+  propertyAddress?: string;
+  /** Title for the exported Photo Report. Defaults to "Photo Report". */
+  reportTitle?: string;
 }
+
 
 interface PendingPreview {
   id: string;
@@ -109,6 +115,8 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
   projectLatitude,
   projectLongitude,
   onSiteRadiusMeters = 500,
+  propertyAddress,
+  reportTitle,
 }) => {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set());
@@ -313,6 +321,40 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
     });
   }, [selectedPhotos, toggleEstimateInclusion]);
 
+  // Export selected (or all filtered) photos to a standalone PDF report
+  const [isExporting, setIsExporting] = useState(false);
+  const handleExportReport = useCallback(async () => {
+    const source = selectedPhotos.size > 0
+      ? filteredPhotos.filter(p => selectedPhotos.has(p.id))
+      : filteredPhotos;
+    if (source.length === 0) {
+      toast({ title: 'No photos to export', variant: 'destructive' });
+      return;
+    }
+    setIsExporting(true);
+    try {
+      await exportPhotoReport({
+        photos: source,
+        title: reportTitle || 'Photo Report',
+        propertyAddress,
+      });
+      toast({
+        title: 'Photo report exported',
+        description: `${source.length} photo${source.length !== 1 ? 's' : ''} included`,
+      });
+    } catch (err) {
+      console.error('Photo report export failed', err);
+      toast({
+        title: 'Export failed',
+        description: err instanceof Error ? err.message : 'Unable to build PDF',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  }, [selectedPhotos, filteredPhotos, reportTitle, propertyAddress]);
+
+
   return (
     <Card className={cn('overflow-hidden', className)}>
       {showHeader && (
@@ -343,6 +385,17 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
                 onClick={() => setViewMode('list')}
               >
                 <List className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 ml-1"
+                onClick={handleExportReport}
+                disabled={isExporting || photos.length === 0}
+                title="Export a PDF photo report"
+              >
+                <Download className="h-3.5 w-3.5 mr-1.5" />
+                {isExporting ? 'Exporting…' : 'Export Report'}
               </Button>
             </div>
           </div>
@@ -419,6 +472,25 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
             <Camera className="h-4 w-4 mr-1.5" />
             Take Photo
           </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleExportReport}
+            disabled={isExporting || photos.length === 0}
+            title={selectedPhotos.size > 0
+              ? `Export ${selectedPhotos.size} selected photos as PDF`
+              : 'Export all filtered photos as PDF'}
+          >
+            {isExporting ? (
+              <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4 mr-1.5" />
+            )}
+            {selectedPhotos.size > 0 ? `Export (${selectedPhotos.size})` : 'Export Report'}
+          </Button>
+
+
 
           <div className="flex-1" />
 
@@ -517,6 +589,10 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
             <Button size="sm" variant="ghost" onClick={() => handleBulkEstimate(true)}>
               <FileText className="h-3.5 w-3.5 mr-1" />
               Add to Estimate
+            </Button>
+            <Button size="sm" variant="ghost" onClick={handleExportReport} disabled={isExporting}>
+              <Download className="h-3.5 w-3.5 mr-1" />
+              {isExporting ? 'Exporting…' : 'Export Report'}
             </Button>
             <Button 
               size="sm" 
