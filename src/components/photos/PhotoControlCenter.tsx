@@ -711,6 +711,10 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
               <FileText className="h-3.5 w-3.5 mr-1" />
               Add to Estimate
             </Button>
+            <Button size="sm" variant="ghost" onClick={handleViewReport} disabled={isExporting}>
+              <Eye className="h-3.5 w-3.5 mr-1" />
+              View Report
+            </Button>
             <Button size="sm" variant="ghost" onClick={handleExportReport} disabled={isExporting}>
               {isExporting ? (
                 <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
