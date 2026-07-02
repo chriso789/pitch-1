@@ -43,6 +43,8 @@ import { cn } from '@/lib/utils';
 import { usePhotos, type PhotoCategory, type CustomerPhoto } from '@/hooks/usePhotos';
 import { toast } from '@/components/ui/use-toast';
 import { extractPhotoGeo, distanceMeters, type PhotoGeo } from '@/lib/exif/extractGps';
+import { pickNativePhotos } from '@/lib/native/pickPhotos';
+import { isNativeApp } from '@/lib/native/appMode';
 import { SortablePhotoItem } from './SortablePhotoItem';
 import { PhotoMarkupEditor } from './PhotoMarkupEditor';
 import {
@@ -378,7 +380,21 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
           
           <Button
             size="sm"
-            onClick={() => fileInputRef.current?.click()}
+            onClick={async () => {
+              // On native (Capacitor iOS/Android) use the OS photo picker so the
+              // user gets a true multi-select from the Photos library. EXIF is
+              // preserved so on-site photos still sort to the top via geotag.
+              if (isNativeApp()) {
+                const files = await pickNativePhotos();
+                if (files && files.length) {
+                  const dt = new DataTransfer();
+                  files.forEach((f) => dt.items.add(f));
+                  handleFileUpload(dt.files);
+                  return;
+                }
+              }
+              fileInputRef.current?.click();
+            }}
             disabled={isUploading}
           >
             {isUploading ? (
