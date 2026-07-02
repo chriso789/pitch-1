@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/use-toast';
 import { compressImage } from '@/lib/imageCompression';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { extractPhotoGeo } from '@/lib/exif/extractGps';
 
 export type PhotoCategory = 
   | 'before' | 'during' | 'after' | 'damage' | 'materials' 
