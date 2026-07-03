@@ -501,7 +501,7 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   const previewMessage = resolveSmsTags(previewSourceScript, sampleCtx);
 
   const hasStopClause = /stop/i.test(previewSourceScript);
-  const finalPreview = hasStopClause ? previewMessage : previewMessage + '\n\nReply STOP to opt out.';
+  const finalPreview = previewMessage;
 
   // Source of truth for what actually gets sent:
   // - Rotation OFF (default): only the previewed template is sent to every recipient.
@@ -1292,14 +1292,6 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
                 </div>
               </div>
 
-              {!hasStopClause && script.trim() && (
-                <div className="flex items-start gap-2 p-2 rounded-md bg-amber-500/10 border border-amber-500/20">
-                  <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
-                  <p className="text-xs text-amber-700 dark:text-amber-400">
-                    "Reply STOP to opt out" will be automatically appended for TCPA compliance.
-                  </p>
-                </div>
-              )}
             </CardContent>
           </Card>
 
