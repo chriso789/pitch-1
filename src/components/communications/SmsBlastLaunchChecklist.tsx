@@ -78,13 +78,6 @@ export function SmsBlastLaunchChecklist(props: SmsBlastLaunchChecklistProps) {
       reason: 'Some recipients are missing address_street_snapshot — production guard will block them.',
     },
     {
-      id: 'stop-language',
-      label: 'STOP language present',
-      ok: hasStopLanguage,
-      required: true,
-      reason: '"Reply STOP to opt out" is auto-appended if missing.',
-    },
-    {
       id: 'ai-followup',
       label: `AI follow-up: ${aiFollowupEnabled ? 'ON' : 'OFF'}`,
       ok: true,
