@@ -121,7 +121,8 @@ const handler = async (req: Request) => {
       });
     }
 
-    const appUrl = Deno.env.get("FRONTEND_URL") || Deno.env.get("APP_URL") || "https://pitch-crm.ai";
+    const { getPublicAppUrl } = await import("../_shared/public-app-url.ts");
+    const appUrl = getPublicAppUrl();
     const viewUrl = `${appUrl}/view-document/${trackingToken}`;
 
     const docLabel = doc.filename || "your document";
