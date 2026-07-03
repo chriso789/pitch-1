@@ -676,7 +676,7 @@ Deno.serve(async (req: Request) => {
     const fromDomain = Deno.env.get("RESEND_FROM_DOMAIN") || "resend.dev";
     const fromAddress = `PITCH CRM <onboarding@${fromDomain}>`;
     
-    const testUrl = "https://pitch-crm.lovable.app/login";
+    const testUrl = "https://pitch-crm.ai/login";
     const emailHtml = generateEnterpriseEmailHtml(first_name, company_name, testUrl);
     const emailSubject = `🧪 TEST: Welcome to PITCH CRM — ${company_name}`;
 

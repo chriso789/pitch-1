@@ -1,7 +1,7 @@
 import Papa from 'papaparse';
 import { BRAND } from '@/lib/branding/legal';
 
-const SITE_URL = 'https://pitch-1.lovable.app';
+const SITE_URL = 'https://pitch-crm.ai';
 const LOGO_URL = `${SITE_URL}/og-image.png`;
 
 /**

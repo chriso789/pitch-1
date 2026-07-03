@@ -158,7 +158,7 @@ Deno.serve(async (req: Request) => {
                   <blockquote style="border-left: 3px solid #2563eb; padding-left: 12px; margin: 16px 0; color: #374151;">
                     ${note_content}
                   </blockquote>
-                  <a href="${Deno.env.get('PUBLIC_APP_URL') || 'https://pitch-1.lovable.app'}${linkPath}" 
+                  <a href="${(Deno.env.get('PUBLIC_APP_URL') && !/lovable\.app|lovableproject\.com/i.test(Deno.env.get('PUBLIC_APP_URL')!)) ? Deno.env.get('PUBLIC_APP_URL') : 'https://pitch-crm.ai'}${linkPath}" 
                      style="display: inline-block; background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 16px;">
                     View ${pipeline_entry_id ? 'Lead' : 'Contact'}
                   </a>

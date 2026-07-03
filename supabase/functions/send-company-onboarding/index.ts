@@ -705,7 +705,8 @@ Deno.serve(async (req: Request) => {
     }
 
     // Build login URL - users will set password via the password reset email
-    const appUrl = Deno.env.get("APP_URL") || "https://pitch-crm.lovable.app";
+    const rawAppUrl = Deno.env.get("APP_URL") || "https://pitch-crm.ai";
+    const appUrl = /lovable\.app|lovableproject\.com/i.test(rawAppUrl) ? "https://pitch-crm.ai" : rawAppUrl;
     const onboardingUrl = `${appUrl}/login`;
 
     // Try to fetch custom template from database
