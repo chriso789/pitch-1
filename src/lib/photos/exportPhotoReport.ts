@@ -187,62 +187,70 @@ export async function exportPhotoReport({
   const pageH = pdf.internal.pageSize.getHeight();
   const margin = 12;
 
-  // Header band with tenant logo (if available) + title
-  const headerH = 22;
-  let logoDrawnW = 0;
+  // Header: logo left, company info right-aligned, title row, meta row, divider
+  const logoBoxH = 14;
+  let logoBoxW = 0;
   if (companyLogoUrl) {
     try {
       const logoImg = await loadImage(companyLogoUrl);
       if (logoImg) {
-        const maxH = 16;
-        const maxW = 42;
         const r = logoImg.naturalWidth / logoImg.naturalHeight;
-        let w = maxH * r;
-        let h = maxH;
-        if (w > maxW) {
-          w = maxW;
-          h = maxW / r;
-        }
+        let h = logoBoxH;
+        let w = h * r;
+        const maxW = 32;
+        if (w > maxW) { w = maxW; h = w / r; }
         const dataUrl = imageToJpegDataUrl(logoImg, 600, 0.9);
         pdf.addImage(dataUrl, 'JPEG', margin, margin, w, h, undefined, 'FAST');
-        logoDrawnW = w + 4;
+        logoBoxW = w + 5;
       }
     } catch (e) {
       console.warn('Logo embed failed', e);
     }
   }
 
-  pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(18);
-  pdf.text(title, margin + logoDrawnW, margin + 7);
-  pdf.setFont('helvetica', 'normal');
-  pdf.setFontSize(10);
-  let y = margin + 13;
+  // Right-aligned company block
+  const rightX = pageW - margin;
+  let ry = margin + 3.5;
   if (companyName) {
-    pdf.text(companyName, margin + logoDrawnW, y);
-    y += 4.5;
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(10.5);
+    pdf.setTextColor(30, 30, 30);
+    pdf.text(companyName, rightX, ry, { align: 'right' });
+    ry += 4.2;
   }
   const contactLine = [companyPhone, companyEmail].filter(Boolean).join('  •  ');
   if (contactLine) {
-    pdf.setTextColor(110, 110, 110);
-    pdf.text(contactLine, margin + logoDrawnW, y);
-    pdf.setTextColor(0);
-    y += 4.5;
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(8.5);
+    pdf.setTextColor(120, 120, 120);
+    pdf.text(contactLine, rightX, ry, { align: 'right' });
   }
-  y = Math.max(y, margin + headerH);
-  if (propertyAddress) {
-    pdf.setFontSize(10);
-    pdf.text(propertyAddress, margin, y);
-    y += 5;
-  }
-  pdf.setTextColor(120, 120, 120);
+  pdf.setTextColor(0);
+
+  // Title row (below logo)
+  let y = margin + logoBoxH + 6;
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(17);
+  pdf.text(title, margin, y);
+  y += 6;
+
+  // Meta row: address + generated info
+  pdf.setFont('helvetica', 'normal');
   pdf.setFontSize(9);
-  pdf.text(`Generated ${format(new Date(), 'PPp')}  •  ${photos.length} photo${photos.length !== 1 ? 's' : ''}`, margin, y);
+  pdf.setTextColor(110, 110, 110);
+  const metaBits = [
+    propertyAddress,
+    `${photos.length} photo${photos.length !== 1 ? 's' : ''}`,
+    `Generated ${format(new Date(), 'PP')}`,
+  ].filter(Boolean);
+  pdf.text(metaBits.join('  •  '), margin, y);
   pdf.setTextColor(0);
   y += 4;
-  pdf.setDrawColor(220, 220, 220);
+
+  pdf.setDrawColor(225, 225, 225);
+  pdf.setLineWidth(0.3);
   pdf.line(margin, y, pageW - margin, y);
-  y += 4;
+  y += 5;
 
   // 2 photos per row
   const cols = 2;
