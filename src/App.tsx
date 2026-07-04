@@ -209,6 +209,8 @@ const AppContent = () => {
         <Route path="/ref/:referralCode/reward" element={<Suspense fallback={<PageLoader />}><PublicReferralReward /></Suspense>} />
         <Route path="/ref/:referralCode" element={<Suspense fallback={<PageLoader />}><PublicReferralLanding /></Suspense>} />
         <Route path="/signup-ref/:partnerCode" element={<Suspense fallback={<PageLoader />}><PublicCrmReferralSignup /></Suspense>} />
+        <Route path="/request-inspection" element={<Suspense fallback={<PageLoader />}><RequestInspectionPage /></Suspense>} />
+        <Route path="/request-inspection/success" element={<Suspense fallback={<PageLoader />}><InspectionSuccessPage /></Suspense>} />
 
         {/* All other paths → protected app routes */}
         <Route path="/*" element={<ProtectedRoutes />} />
