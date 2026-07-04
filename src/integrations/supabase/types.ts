@@ -22318,6 +22318,105 @@ export type Database = {
           },
         ]
       }
+      inspection_requests: {
+        Row: {
+          address_line1: string
+          address_line2: string | null
+          amount_paid_cents: number | null
+          assigned_to: string | null
+          city: string
+          contact_id: string | null
+          created_at: string
+          email: string
+          first_name: string
+          id: string
+          insurance_company: string | null
+          last_name: string
+          metadata: Json | null
+          notes: string | null
+          paid_at: string | null
+          payment_link: string | null
+          payment_provider: string | null
+          payment_ref: string | null
+          payment_status: string
+          phone: string
+          price_cents: number
+          scheduled_at: string | null
+          service_type: string
+          source: string | null
+          state: string
+          status: string
+          tenant_id: string
+          updated_at: string
+          year_built: string | null
+          zip: string
+        }
+        Insert: {
+          address_line1: string
+          address_line2?: string | null
+          amount_paid_cents?: number | null
+          assigned_to?: string | null
+          city: string
+          contact_id?: string | null
+          created_at?: string
+          email: string
+          first_name: string
+          id?: string
+          insurance_company?: string | null
+          last_name: string
+          metadata?: Json | null
+          notes?: string | null
+          paid_at?: string | null
+          payment_link?: string | null
+          payment_provider?: string | null
+          payment_ref?: string | null
+          payment_status?: string
+          phone: string
+          price_cents?: number
+          scheduled_at?: string | null
+          service_type: string
+          source?: string | null
+          state: string
+          status?: string
+          tenant_id: string
+          updated_at?: string
+          year_built?: string | null
+          zip: string
+        }
+        Update: {
+          address_line1?: string
+          address_line2?: string | null
+          amount_paid_cents?: number | null
+          assigned_to?: string | null
+          city?: string
+          contact_id?: string | null
+          created_at?: string
+          email?: string
+          first_name?: string
+          id?: string
+          insurance_company?: string | null
+          last_name?: string
+          metadata?: Json | null
+          notes?: string | null
+          paid_at?: string | null
+          payment_link?: string | null
+          payment_provider?: string | null
+          payment_ref?: string | null
+          payment_status?: string
+          phone?: string
+          price_cents?: number
+          scheduled_at?: string | null
+          service_type?: string
+          source?: string | null
+          state?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+          year_built?: string | null
+          zip?: string
+        }
+        Relationships: []
+      }
       inspection_requirements: {
         Row: {
           completed_at: string | null
