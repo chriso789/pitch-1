@@ -40,7 +40,7 @@ import {
   Search,
   Truck,
   Wallet,
-  Gift
+  Gift,
   ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
