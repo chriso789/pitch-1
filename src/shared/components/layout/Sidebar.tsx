@@ -40,7 +40,8 @@ import {
   Search,
   Truck,
   Wallet,
-  Gift
+  Gift,
+  ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -276,6 +277,13 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       icon: DollarSign,
       description: "Track invoices & payments",
       featureKey: "accounts_receivable"
+    },
+    {
+      name: "Inspection Requests",
+      href: "inspection-requests",
+      path: "/inspection-requests",
+      icon: ShieldCheck,
+      description: "4-Point & Wind Mit website leads",
     },
     // Documents is now an expandable section - see below
     {
