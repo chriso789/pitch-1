@@ -374,6 +374,24 @@ async function handleCheckoutCompleted(
   tenantId: string | null,
 ) {
   const metadata = session.metadata ?? {};
+
+  // Inspection request payment (public /request-inspection flow)
+  if (metadata.kind === "inspection_request" && metadata.inspection_request_id) {
+    const amountPaid = session.amount_total ?? 0;
+    const { error } = await service
+      .from("inspection_requests")
+      .update({
+        status: "paid",
+        payment_status: "paid",
+        amount_paid_cents: amountPaid,
+        paid_at: new Date().toISOString(),
+        payment_ref: session.id,
+      })
+      .eq("id", metadata.inspection_request_id);
+    if (error) console.error("[stripe-webhook] inspection_request update failed", error);
+    return;
+  }
+
   const invoiceId = metadata.invoice_id || null;
   const pipelineEntryId = metadata.pipeline_entry_id || null;
   const amount = (session.amount_total ?? 0) / 100;
