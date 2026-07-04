@@ -283,6 +283,7 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       path: "/inspection-requests",
       icon: ShieldCheck,
       description: "4-Point & Wind Mit website leads",
+    },
     // Documents is now an expandable section - see below
     {
       name: "Presentations",
