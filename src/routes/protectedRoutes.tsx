@@ -109,6 +109,7 @@ const PdfTemplateDetail = React.lazy(() => import("@/pages/PdfTemplateDetail"));
 const PdfTemplateLibrary = React.lazy(() => import("@/pages/PdfTemplateLibrary"));
 const MaterialAuditPage = React.lazy(() => import("@/pages/MaterialAuditPage"));
 const ProductionDetail = React.lazy(() => import("@/pages/ProductionDetail"));
+const InspectionRequestsPage = React.lazy(() => import("@/pages/InspectionRequestsPage"));
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-background">
