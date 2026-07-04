@@ -71,6 +71,8 @@ const PublicChangeOrderView = React.lazy(() => import("@/pages/PublicChangeOrder
 const PublicReferralLanding = React.lazy(() => import("@/pages/PublicReferralLanding"));
 const PublicReferralReward = React.lazy(() => import("@/pages/PublicReferralReward"));
 const PublicCrmReferralSignup = React.lazy(() => import("@/pages/PublicCrmReferralSignup"));
+const RequestInspectionPage = React.lazy(() => import("@/pages/public/RequestInspectionPage"));
+const InspectionSuccessPage = React.lazy(() => import("@/pages/public/InspectionSuccessPage"));
 
 // Route-level loading fallback
 const PageLoader = () => (
