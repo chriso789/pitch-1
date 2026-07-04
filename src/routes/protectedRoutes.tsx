@@ -231,6 +231,7 @@ export default function ProtectedRoutes() {
         <Route path="/documents/pdf-engine/template/:id" element={<ProtectedRoute><PdfTemplateDetail /></ProtectedRoute>} />
         <Route path="/documents/pdf-engine/library" element={<ProtectedRoute><PdfTemplateLibrary /></ProtectedRoute>} />
         <Route path="/documents/pdf-engine/:id" element={<ProtectedRoute><PdfEngineEditor /></ProtectedRoute>} />
+        <Route path="/inspection-requests" element={<ProtectedRoute><InspectionRequestsPage /></ProtectedRoute>} />
       </Routes>
     </Suspense>
   );
