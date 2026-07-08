@@ -52,7 +52,8 @@ export const CalcTemplateItemGroup: React.FC<CalcTemplateItemGroupProps> = ({
       className={cn(
         'rounded-lg border bg-card',
         isDragging && 'opacity-50',
-        group.group_type === 'labor' && 'border-l-4 border-l-orange-500'
+        group.group_type === 'labor' && 'border-l-4 border-l-orange-500',
+        group.group_type === 'turnkey' && 'border-l-4 border-l-purple-500'
       )}
     >
       {/* Group header */}
