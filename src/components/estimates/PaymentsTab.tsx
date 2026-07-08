@@ -231,11 +231,12 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
     if (source === 'enhanced') {
       if (Array.isArray(lineItems.materials)) lineItems.materials.forEach((m: any) => pushItem(m, 'Material'));
       if (Array.isArray(lineItems.labor)) lineItems.labor.forEach((l: any) => pushItem(l, 'Labor'));
+      if (Array.isArray(lineItems.turnkey)) lineItems.turnkey.forEach((t: any) => pushItem(t, 'Turnkey'));
     } else {
       if (Array.isArray(lineItems)) {
         lineItems.forEach((it: any) => pushItem(it, 'Item'));
       } else if (typeof lineItems === 'object') {
-        ['materials', 'labor', 'items'].forEach((key) => {
+        ['materials', 'labor', 'turnkey', 'items'].forEach((key) => {
           if (Array.isArray(lineItems[key])) lineItems[key].forEach((it: any) => pushItem(it, key));
         });
       }
