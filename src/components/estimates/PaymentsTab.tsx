@@ -426,6 +426,11 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
 
   useEffect(() => {
     if (!showInvoiceDialog) return;
+    // Wait for payments and outstanding invoices to load so the default
+    // truly reflects the remaining balance. Otherwise the first pass would
+    // treat this project as unpaid and default the invoice to the full
+    // contract amount.
+    if (loadingPayments || loadingInvoices) return;
 
     const enhancedEst = (enhancedEstimates || [])[0];
     const legacyEst = (legacyEstimates || [])[0];
@@ -509,7 +514,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
     setInvoiceGroups(scaleGroupsToInvoiceBalance(invoiceReadyGroups, remaining));
     // Re-opening the dialog should always reset the override gate.
     setOverrideRemaining(false);
-  }, [showInvoiceDialog, enhancedEstimates, legacyEstimates, payments, invoices, sellingPrice, approvedChangeOrders]);
+  }, [showInvoiceDialog, loadingPayments, loadingInvoices, enhancedEstimates, legacyEstimates, payments, invoices, sellingPrice, approvedChangeOrders]);
 
   const createInvoiceMutation = useMutation({
     mutationFn: async () => {
