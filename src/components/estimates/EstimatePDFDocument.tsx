@@ -727,7 +727,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
           useScopeNarrative: !!(opts.useScopeNarrative && addEst.scopeNarrative),
           scopeNarrative: addEst.scopeNarrative,
         };
-        const addItems = [...addEst.materialItems, ...addEst.laborItems];
+        const addItems = [...addEst.materialItems, ...addEst.laborItems, ...(addEst.turnkeyItems || [])];
         const addScopeItems = addOpts.useScopeNarrative && addOpts.scopeNarrative ? [] : addItems;
         const { itemChunks: addItemChunks, blockChunks: addBlockChunks } = chunkItems(
           addScopeItems,
