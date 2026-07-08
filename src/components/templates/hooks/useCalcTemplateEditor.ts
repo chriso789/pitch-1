@@ -7,7 +7,7 @@ export interface CalcTemplateGroup {
   id: string;
   calc_template_id: string;
   name: string;
-  group_type: 'material' | 'labor';
+  group_type: 'material' | 'labor' | 'turnkey';
   sort_order: number;
   items: CalcTemplateItem[];
 }
@@ -18,7 +18,7 @@ export interface CalcTemplateItem {
   group_id: string | null;
   item_name: string;
   description: string | null;
-  item_type: 'material' | 'labor';
+  item_type: 'material' | 'labor' | 'turnkey';
   unit: string;
   unit_cost: number;
   qty_formula: string;
@@ -247,7 +247,7 @@ export const useCalcTemplateEditor = (templateId?: string) => {
           id: data.id,
           calc_template_id: data.calc_template_id,
           name: data.name,
-          group_type: data.group_type as 'material' | 'labor',
+          group_type: data.group_type as 'material' | 'labor' | 'turnkey',
           sort_order: data.sort_order,
           items: [],
         },
@@ -361,7 +361,7 @@ export const useCalcTemplateEditor = (templateId?: string) => {
         group_id: data.group_id,
         item_name: data.item_name || 'New Item',
         description: data.description,
-        item_type: (data.item_type as 'material' | 'labor') || 'material',
+        item_type: (data.item_type as 'material' | 'labor' | 'turnkey') || 'material',
         unit: data.unit,
         unit_cost: Number(data.unit_cost) || 0,
         qty_formula: data.qty_formula || '1',
