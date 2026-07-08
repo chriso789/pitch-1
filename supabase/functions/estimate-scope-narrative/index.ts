@@ -61,10 +61,24 @@ Deno.serve(async (req: Request) => {
     const hasChangeOrders = Array.isArray(change_order_items) && change_order_items.length > 0;
     const changeOrderSummary = hasChangeOrders ? formatItems(change_order_items as IncomingItem[]) : '';
 
+    // Detect turnkey items — bundled subcontracted scopes that should be
+    // presented as an all-inclusive package rather than a line-item list.
+    const turnkeyItems = (items as IncomingItem[]).filter(
+      (it) => (it.item_type || '').toLowerCase() === 'turnkey',
+    );
+    const hasTurnkey = turnkeyItems.length > 0;
+    const isFullyTurnkey = hasTurnkey && turnkeyItems.length === items.length;
+
     const changeOrderSection = hasChangeOrders ? `
 
 Potential Change Orders
 A short intro sentence explaining these are optional/conditional items that may be added if site conditions or customer selections require them, followed by a bulleted list (one tight sentence each, leading "- ") describing each potential change order in customer-friendly language. Do NOT include pricing.` : '';
+
+    const turnkeySection = hasTurnkey ? `
+
+Turnkey Package (What's Included)
+A short intro sentence framing this as an all-inclusive, turnkey scope where materials, labor, permits, and cleanup are handled end-to-end by ${company_name || 'our team'} and its trusted trade partners.
+Then a bulleted list (leading "- ", one tight sentence each) that summarizes every turnkey scope in customer-friendly language — describe the deliverable, not the SKU. Explicitly reassure the customer that everything needed to complete each turnkey scope is included at a single price (no hidden add-ons for standard work).${isFullyTurnkey ? '\nBecause this proposal is fully turnkey, the "Scope of Work" section above should stay high-level and reference the turnkey package rather than breaking work into material/labor phases.' : '\nCall out that the turnkey items complement the standard Scope of Work above and are delivered as a single, coordinated package.'}` : '';
 
     const systemPrompt = `You are a senior roofing project manager writing the "Project Scope" section of a customer-facing proposal for ${company_name || 'a professional roofing contractor'}.
 
@@ -73,10 +87,10 @@ Turn the technical line-item list into a clean, bulletin-style scope the custome
 Required structure (in this exact order, use these exact headings on their own line):
 
 Opening
-One short paragraph (2–3 sentences) introducing the project, the property, and the overall system/approach being installed.
+One short paragraph (2–3 sentences) introducing the project, the property, and the overall system/approach being installed.${hasTurnkey ? ' If the estimate is (partly or fully) turnkey, make it clear the customer is getting an all-inclusive package.' : ''}
 
 Scope of Work
-A bulleted list of 6–12 concise bullets covering the work in logical order (e.g. Tear-Off & Prep, Decking & Repairs, Underlayment & Ice/Water Shield, Flashings & Penetrations, Main System Installation, Ventilation, Ridge & Detailing, Cleanup & Final Walkthrough). Each bullet: one tight sentence starting with a strong verb. Reference material brand/system at a high level when relevant. Use a leading "- " for each bullet. No numbered lists.
+A bulleted list of 6–12 concise bullets covering the work in logical order (e.g. Tear-Off & Prep, Decking & Repairs, Underlayment & Ice/Water Shield, Flashings & Penetrations, Main System Installation, Ventilation, Ridge & Detailing, Cleanup & Final Walkthrough). Each bullet: one tight sentence starting with a strong verb. Reference material brand/system at a high level when relevant. Use a leading "- " for each bullet. No numbered lists.${turnkeySection}
 ${changeOrderSection}
 Closing
 One short paragraph (1–2 sentences) reassuring the customer about quality, cleanup, warranty-readiness, and next steps.
