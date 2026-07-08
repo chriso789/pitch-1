@@ -861,7 +861,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
       signaturePageIdx,
       standaloneFlags,
     };
-  }, [materialItems, laborItems, changeOrderItems, opts, measurementSummary, jobPhotos, breakdown, config, customerName, customerAddress, customerPhone, customerEmail, finePrintContent, skipCoverPage, skipWarrantyAndTerms, skipExtraPages, effectivePageOrder, warrantyTerms, templateAttachments, additionalEstimates]);
+  }, [materialItems, laborItems, turnkeyItems, changeOrderItems, opts, measurementSummary, jobPhotos, breakdown, config, customerName, customerAddress, customerPhone, customerEmail, finePrintContent, skipCoverPage, skipWarrantyAndTerms, skipExtraPages, effectivePageOrder, warrantyTerms, templateAttachments, additionalEstimates]);
 
 
   const commonProps = {
