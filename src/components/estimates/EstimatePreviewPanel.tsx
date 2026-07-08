@@ -1922,6 +1922,7 @@ export function EstimatePreviewPanel({
                         estimateName: d.estimateName,
                         materialItems: d.materialItems,
                         laborItems: d.laborItems,
+                        turnkeyItems: d.turnkeyItems,
                         breakdown: d.breakdown,
                         config: d.config,
                         scopeNarrative: additionalScopeNarratives[estId],
