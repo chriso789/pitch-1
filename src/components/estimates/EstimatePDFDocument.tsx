@@ -151,6 +151,7 @@ interface EstimatePDFDocumentProps {
     estimateName?: string;
     materialItems: LineItem[];
     laborItems: LineItem[];
+    turnkeyItems?: LineItem[];
     breakdown: EstimatePDFDocumentProps['breakdown'];
     config: EstimatePDFDocumentProps['config'];
     /**
