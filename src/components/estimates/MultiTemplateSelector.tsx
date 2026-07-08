@@ -1693,6 +1693,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         companyLocations,
         materialItems,
         laborItems,
+        turnkeyItems,
         changeOrderItems,
         breakdown,
         config,
