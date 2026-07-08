@@ -109,16 +109,46 @@ const handler = async (req: Request): Promise<Response> => {
         .eq('id', update.id);
     }
 
-    // Send emails to recipients (in a real implementation, you'd use a proper email service)
+    // Look up sender profile for name/reply-to
+    const { data: senderProfile } = await supabaseClient
+      .from('profiles')
+      .select('first_name, last_name, email')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    const senderName = senderProfile
+      ? `${senderProfile.first_name ?? ''} ${senderProfile.last_name ?? ''}`.trim() || 'Your Contractor'
+      : 'Your Contractor';
+    const senderEmail = senderProfile?.email || user.email;
+
+    // Actually send emails via Resend through email-signature-request
     for (const recipient of envelope.recipients) {
-      const frontendUrl = Deno.env.get('FRONTEND_URL') || Deno.env.get('APP_URL') || 'https://pitch-crm.ai';
-      const signingUrl = `${frontendUrl}/sign/${recipient.access_token}`;
-      
-      // In production, implement actual email sending here
-      console.log(`Would send email to ${recipient.recipient_email}:`);
-      console.log(`Subject: ${email_subject || `Please sign: ${envelope.title}`}`);
-      console.log(`Signing URL: ${signingUrl}`);
-      
+      const updated = recipientUpdates.find((u) => u.id === recipient.id);
+      const accessToken = updated?.access_token || recipient.access_token;
+
+      const { error: emailError } = await supabaseClient.functions.invoke(
+        'email-signature-request',
+        {
+          body: {
+            envelope_id,
+            recipient_id: recipient.id,
+            recipient_name: recipient.recipient_name,
+            recipient_email: recipient.recipient_email,
+            access_token: accessToken,
+            sender_name: senderName,
+            sender_email: senderEmail,
+            subject: email_subject || `Please sign: ${envelope.title}`,
+            message: email_message || '',
+            // Always BCC support so we can verify delivery
+            bcc: ['support@pitch-crm.ai'],
+          },
+        }
+      );
+
+      if (emailError) {
+        console.error(`Failed to email ${recipient.recipient_email}:`, emailError);
+      }
+
       // Log email sent event
       await supabaseClient.rpc('log_signature_event', {
         p_envelope_id: envelope_id,
@@ -127,8 +157,8 @@ const handler = async (req: Request): Promise<Response> => {
         p_description: `Signing invitation sent to ${recipient.recipient_email}`,
         p_metadata: {
           recipient_email: recipient.recipient_email,
-          signing_url: signingUrl
-        }
+          email_error: emailError ? String(emailError) : null,
+        },
       });
     }
 
