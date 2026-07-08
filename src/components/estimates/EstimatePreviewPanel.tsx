@@ -640,6 +640,7 @@ export function EstimatePreviewPanel({
           const lineItemsData = est.line_items as any;
           const materials: LineItem[] = (lineItemsData?.materials || []).map((item: any) => ({ ...item, item_type: 'material' as const }));
           const labor: LineItem[] = (lineItemsData?.labor || []).map((item: any) => ({ ...item, item_type: 'labor' as const }));
+          const turnkey: LineItem[] = (lineItemsData?.turnkey || []).map((item: any) => ({ ...item, item_type: 'turnkey' as const }));
 
           const matTotal = est.material_total || 0;
           const labTotal = est.labor_total || 0;
@@ -653,6 +654,7 @@ export function EstimatePreviewPanel({
             estimateName: est.display_name || undefined,
             materialItems: materials,
             laborItems: labor,
+            turnkeyItems: turnkey,
             breakdown: {
               materialsTotal: matTotal,
               laborTotal: labTotal,
