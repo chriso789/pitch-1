@@ -922,7 +922,7 @@ export function EstimatePreviewPanel({
     Array.from(selectedAdditionalIds).forEach((estId) => {
       const fetched = fetchedEstimates.get(estId);
       if (!fetched) return;
-      const addCombined = [...fetched.materialItems, ...fetched.laborItems];
+      const addCombined = [...fetched.materialItems, ...fetched.laborItems, ...(fetched.turnkeyItems || [])];
       if (addCombined.length === 0) return;
       tasks.push({
         key: estId,
