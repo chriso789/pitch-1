@@ -7,7 +7,7 @@ export interface TemplateGroup {
   id: string;
   template_id: string;
   name: string;
-  group_type: 'material' | 'labor';
+  group_type: 'material' | 'labor' | 'turnkey';
   sort_order: number;
   items: TemplateItem[];
 }
@@ -19,7 +19,7 @@ export interface TemplateItem {
   name: string;
   estimate_item_name: string | null;
   description: string | null;
-  item_type: 'material' | 'labor';
+  item_type: 'material' | 'labor' | 'turnkey';
   unit: string;
   unit_cost: number;
   waste_pct: number;
@@ -252,7 +252,7 @@ export const useTemplateEditor = (templateId?: string) => {
           id: data.id,
           template_id: data.template_id,
           name: data.name,
-          group_type: data.group_type as 'material' | 'labor',
+          group_type: data.group_type as 'material' | 'labor' | 'turnkey',
           sort_order: data.sort_order,
           items: [],
         },
@@ -344,7 +344,7 @@ export const useTemplateEditor = (templateId?: string) => {
         name: data.item_name || 'New Item',
         estimate_item_name: data.estimate_item_name,
         description: data.description,
-        item_type: (data.item_type as 'material' | 'labor') || 'material',
+        item_type: (data.item_type as 'material' | 'labor' | 'turnkey') || 'material',
         unit: data.unit,
         unit_cost: data.unit_cost,
         waste_pct: data.waste_pct,
