@@ -884,11 +884,11 @@ export function EstimatePreviewPanel({
 
   // Generate an AI customer-friendly Project Scope narrative from the line items
   const handleGenerateScopeNarrative = async () => {
-    const combined = [...materialItems, ...laborItems];
+    const combined = [...materialItems, ...laborItems, ...turnkeyItems];
     if (combined.length === 0) {
       toast({
         title: 'No line items',
-        description: 'Add materials or labor before generating an AI scope.',
+        description: 'Add materials, labor, or turnkey scopes before generating an AI scope.',
         variant: 'destructive',
       });
       return;
