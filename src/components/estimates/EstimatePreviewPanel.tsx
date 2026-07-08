@@ -163,6 +163,7 @@ interface FetchedEstimateData {
   estimateName?: string;
   materialItems: LineItem[];
   laborItems: LineItem[];
+  turnkeyItems: LineItem[];
   breakdown: EstimatePreviewPanelProps['breakdown'];
   config: EstimatePreviewPanelProps['config'];
 }
