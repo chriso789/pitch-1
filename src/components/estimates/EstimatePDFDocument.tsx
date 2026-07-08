@@ -211,7 +211,8 @@ function buildRenderBlocks(items: LineItem[]): RenderBlock[] {
     const group = tradeMap.get(tradeType)!;
     const materialItems = group.items.filter(i => (i as any).item_type === 'material').sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
     const allLabor = group.items.filter(i => (i as any).item_type === 'labor').sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
-    const otherItems = group.items.filter(i => !(i as any).item_type || !['material', 'labor'].includes((i as any).item_type));
+    const turnkeyItems = group.items.filter(i => (i as any).item_type === 'turnkey').sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+    const otherItems = group.items.filter(i => !(i as any).item_type || !['material', 'labor', 'turnkey'].includes((i as any).item_type));
 
     // Order labor: tear-off items first, then installation items
     const tearOffLabor = allLabor.filter(i => 
@@ -221,7 +222,7 @@ function buildRenderBlocks(items: LineItem[]): RenderBlock[] {
     const installLabor = allLabor.filter(i => !tearOffLabor.includes(i));
     const combinedLabor = [...tearOffLabor, ...installLabor];
 
-    const hasSections = combinedLabor.length > 0 || materialItems.length > 0;
+    const hasSections = combinedLabor.length > 0 || materialItems.length > 0 || turnkeyItems.length > 0;
 
     if (hasMultipleTrades) {
       blocks.push({ type: 'trade-header', label: group.label, tradeType });
@@ -238,9 +239,15 @@ function buildRenderBlocks(items: LineItem[]): RenderBlock[] {
         blocks.push({ type: 'sub-header', label: 'Materials' });
         materialItems.forEach(item => blocks.push({ type: 'item', item }));
       }
+      // 3. Turnkey (bundled/subcontracted scopes)
+      if (turnkeyItems.length > 0) {
+        blocks.push({ type: 'sub-header', label: 'Turnkey' });
+        turnkeyItems.forEach(item => blocks.push({ type: 'item', item }));
+      }
     } else {
       materialItems.forEach(item => blocks.push({ type: 'item', item }));
       allLabor.forEach(item => blocks.push({ type: 'item', item }));
+      turnkeyItems.forEach(item => blocks.push({ type: 'item', item }));
     }
     otherItems.forEach(item => blocks.push({ type: 'item', item }));
   });
