@@ -586,7 +586,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
       ? [] // Narrative replaces the line-item list — no chunking needed
       : opts.showUnifiedItems
       ? (() => {
-          const combined = [...materialItems, ...laborItems];
+          const combined = [...materialItems, ...laborItems, ...turnkeyItems];
           const tradeOrder = new Map<string, number>();
           combined.forEach(item => {
             const trade = (item as any).trade_type || 'roofing';
@@ -602,7 +602,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
             return (a.item_name || '').localeCompare(b.item_name || '');
           });
         })()
-      : materialItems;
+      : [...materialItems, ...turnkeyItems];
 
     const { itemChunks, blockChunks } = chunkItems(scopeItems, MAX_ROWS_FIRST_PAGE, MAX_ROWS_CONTINUATION, opts);
 
