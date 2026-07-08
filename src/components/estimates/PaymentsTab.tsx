@@ -514,7 +514,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
     setInvoiceGroups(scaleGroupsToInvoiceBalance(invoiceReadyGroups, remaining));
     // Re-opening the dialog should always reset the override gate.
     setOverrideRemaining(false);
-  }, [showInvoiceDialog, enhancedEstimates, legacyEstimates, payments, invoices, sellingPrice, approvedChangeOrders]);
+  }, [showInvoiceDialog, loadingPayments, loadingInvoices, enhancedEstimates, legacyEstimates, payments, invoices, sellingPrice, approvedChangeOrders]);
 
   const createInvoiceMutation = useMutation({
     mutationFn: async () => {
