@@ -2896,6 +2896,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         templateStyle={proposalTemplateStyle}
         materialItems={materialItems}
         laborItems={laborItems}
+        turnkeyItems={turnkeyItems}
         changeOrderItems={changeOrderItems}
         breakdown={breakdown}
         config={config}
