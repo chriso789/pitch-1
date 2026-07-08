@@ -1158,7 +1158,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           id: item.id,
           item_name: item.item_name,
           description,
-          item_type: item.item_type as 'material' | 'labor',
+          item_type: item.item_type as 'material' | 'labor' | 'turnkey',
           qty: calculatedQty,
           qty_original: calculatedQty,
           unit: item.unit,
