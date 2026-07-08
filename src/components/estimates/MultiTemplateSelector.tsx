@@ -2866,6 +2866,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
             companyLocations={pdfData.companyLocations}
             materialItems={pdfData.materialItems}
             laborItems={pdfData.laborItems}
+            turnkeyItems={pdfData.turnkeyItems || []}
             changeOrderItems={pdfData.changeOrderItems || []}
             breakdown={pdfData.breakdown}
             config={pdfData.config}
