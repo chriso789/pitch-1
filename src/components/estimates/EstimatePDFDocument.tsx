@@ -798,7 +798,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
         isStandalone: false,
         nodes: photoChunks.map((chunk, chunkIdx) => (
           <PhotosPage
-            key={`photos-page-${chunkIdx}`}
+            key={`photos-page-${layout}-${cols}-${chunkIdx}`}
             jobPhotos={chunk}
             cols={cols}
             pageIndex={chunkIdx}
