@@ -222,6 +222,7 @@ export function EstimatePreviewPanel({
   templateStyle,
   materialItems,
   laborItems,
+  turnkeyItems = [],
   changeOrderItems = [],
   breakdown,
   config,
