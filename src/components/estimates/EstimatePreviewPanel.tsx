@@ -113,6 +113,7 @@ interface EstimatePreviewPanelProps {
   templateStyle?: string | null;
   materialItems: LineItem[];
   laborItems: LineItem[];
+  turnkeyItems?: LineItem[];
   changeOrderItems?: LineItem[];
   breakdown: {
     materialsTotal: number;
@@ -162,6 +163,7 @@ interface FetchedEstimateData {
   estimateName?: string;
   materialItems: LineItem[];
   laborItems: LineItem[];
+  turnkeyItems: LineItem[];
   breakdown: EstimatePreviewPanelProps['breakdown'];
   config: EstimatePreviewPanelProps['config'];
 }
@@ -220,6 +222,7 @@ export function EstimatePreviewPanel({
   templateStyle,
   materialItems,
   laborItems,
+  turnkeyItems = [],
   changeOrderItems = [],
   breakdown,
   config,
@@ -637,6 +640,7 @@ export function EstimatePreviewPanel({
           const lineItemsData = est.line_items as any;
           const materials: LineItem[] = (lineItemsData?.materials || []).map((item: any) => ({ ...item, item_type: 'material' as const }));
           const labor: LineItem[] = (lineItemsData?.labor || []).map((item: any) => ({ ...item, item_type: 'labor' as const }));
+          const turnkey: LineItem[] = (lineItemsData?.turnkey || []).map((item: any) => ({ ...item, item_type: 'turnkey' as const }));
 
           const matTotal = est.material_total || 0;
           const labTotal = est.labor_total || 0;
@@ -650,6 +654,7 @@ export function EstimatePreviewPanel({
             estimateName: est.display_name || undefined,
             materialItems: materials,
             laborItems: labor,
+            turnkeyItems: turnkey,
             breakdown: {
               materialsTotal: matTotal,
               laborTotal: labTotal,
@@ -879,11 +884,11 @@ export function EstimatePreviewPanel({
 
   // Generate an AI customer-friendly Project Scope narrative from the line items
   const handleGenerateScopeNarrative = async () => {
-    const combined = [...materialItems, ...laborItems];
+    const combined = [...materialItems, ...laborItems, ...turnkeyItems];
     if (combined.length === 0) {
       toast({
         title: 'No line items',
-        description: 'Add materials or labor before generating an AI scope.',
+        description: 'Add materials, labor, or turnkey scopes before generating an AI scope.',
         variant: 'destructive',
       });
       return;
@@ -917,7 +922,7 @@ export function EstimatePreviewPanel({
     Array.from(selectedAdditionalIds).forEach((estId) => {
       const fetched = fetchedEstimates.get(estId);
       if (!fetched) return;
-      const addCombined = [...fetched.materialItems, ...fetched.laborItems];
+      const addCombined = [...fetched.materialItems, ...fetched.laborItems, ...(fetched.turnkeyItems || [])];
       if (addCombined.length === 0) return;
       tasks.push({
         key: estId,
@@ -1887,6 +1892,7 @@ export function EstimatePreviewPanel({
                     companyLogo={companyInfo?.logo_url || undefined}
                     materialItems={materialItems}
                     laborItems={laborItems}
+                    turnkeyItems={turnkeyItems}
                     changeOrderItems={changeOrderItems}
                     breakdown={breakdown}
                     config={config}
@@ -1916,6 +1922,7 @@ export function EstimatePreviewPanel({
                         estimateName: d.estimateName,
                         materialItems: d.materialItems,
                         laborItems: d.laborItems,
+                        turnkeyItems: d.turnkeyItems,
                         breakdown: d.breakdown,
                         config: d.config,
                         scopeNarrative: additionalScopeNarratives[estId],

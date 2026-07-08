@@ -102,6 +102,7 @@ interface EstimatePDFDocumentProps {
   companyLocations?: CompanyLocation[];
   materialItems: LineItem[];
   laborItems: LineItem[];
+  turnkeyItems?: LineItem[];
   changeOrderItems?: LineItem[];
   breakdown: {
     materialsTotal: number;
@@ -150,6 +151,7 @@ interface EstimatePDFDocumentProps {
     estimateName?: string;
     materialItems: LineItem[];
     laborItems: LineItem[];
+    turnkeyItems?: LineItem[];
     breakdown: EstimatePDFDocumentProps['breakdown'];
     config: EstimatePDFDocumentProps['config'];
     /**
@@ -209,7 +211,8 @@ function buildRenderBlocks(items: LineItem[]): RenderBlock[] {
     const group = tradeMap.get(tradeType)!;
     const materialItems = group.items.filter(i => (i as any).item_type === 'material').sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
     const allLabor = group.items.filter(i => (i as any).item_type === 'labor').sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
-    const otherItems = group.items.filter(i => !(i as any).item_type || !['material', 'labor'].includes((i as any).item_type));
+    const turnkeyItems = group.items.filter(i => (i as any).item_type === 'turnkey').sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+    const otherItems = group.items.filter(i => !(i as any).item_type || !['material', 'labor', 'turnkey'].includes((i as any).item_type));
 
     // Order labor: tear-off items first, then installation items
     const tearOffLabor = allLabor.filter(i => 
@@ -219,7 +222,7 @@ function buildRenderBlocks(items: LineItem[]): RenderBlock[] {
     const installLabor = allLabor.filter(i => !tearOffLabor.includes(i));
     const combinedLabor = [...tearOffLabor, ...installLabor];
 
-    const hasSections = combinedLabor.length > 0 || materialItems.length > 0;
+    const hasSections = combinedLabor.length > 0 || materialItems.length > 0 || turnkeyItems.length > 0;
 
     if (hasMultipleTrades) {
       blocks.push({ type: 'trade-header', label: group.label, tradeType });
@@ -236,9 +239,15 @@ function buildRenderBlocks(items: LineItem[]): RenderBlock[] {
         blocks.push({ type: 'sub-header', label: 'Materials' });
         materialItems.forEach(item => blocks.push({ type: 'item', item }));
       }
+      // 3. Turnkey (bundled/subcontracted scopes)
+      if (turnkeyItems.length > 0) {
+        blocks.push({ type: 'sub-header', label: 'Turnkey' });
+        turnkeyItems.forEach(item => blocks.push({ type: 'item', item }));
+      }
     } else {
       materialItems.forEach(item => blocks.push({ type: 'item', item }));
       allLabor.forEach(item => blocks.push({ type: 'item', item }));
+      turnkeyItems.forEach(item => blocks.push({ type: 'item', item }));
     }
     otherItems.forEach(item => blocks.push({ type: 'item', item }));
   });
@@ -530,6 +539,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
   companyLocations,
   materialItems,
   laborItems,
+  turnkeyItems = [],
   changeOrderItems = [],
   breakdown,
   config,
@@ -576,7 +586,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
       ? [] // Narrative replaces the line-item list — no chunking needed
       : opts.showUnifiedItems
       ? (() => {
-          const combined = [...materialItems, ...laborItems];
+          const combined = [...materialItems, ...laborItems, ...turnkeyItems];
           const tradeOrder = new Map<string, number>();
           combined.forEach(item => {
             const trade = (item as any).trade_type || 'roofing';
@@ -592,7 +602,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
             return (a.item_name || '').localeCompare(b.item_name || '');
           });
         })()
-      : materialItems;
+      : [...materialItems, ...turnkeyItems];
 
     const { itemChunks, blockChunks } = chunkItems(scopeItems, MAX_ROWS_FIRST_PAGE, MAX_ROWS_CONTINUATION, opts);
 
@@ -717,7 +727,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
           useScopeNarrative: !!(opts.useScopeNarrative && addEst.scopeNarrative),
           scopeNarrative: addEst.scopeNarrative,
         };
-        const addItems = [...addEst.materialItems, ...addEst.laborItems];
+        const addItems = [...addEst.materialItems, ...addEst.laborItems, ...(addEst.turnkeyItems || [])];
         const addScopeItems = addOpts.useScopeNarrative && addOpts.scopeNarrative ? [] : addItems;
         const { itemChunks: addItemChunks, blockChunks: addBlockChunks } = chunkItems(
           addScopeItems,
@@ -851,7 +861,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
       signaturePageIdx,
       standaloneFlags,
     };
-  }, [materialItems, laborItems, changeOrderItems, opts, measurementSummary, jobPhotos, breakdown, config, customerName, customerAddress, customerPhone, customerEmail, finePrintContent, skipCoverPage, skipWarrantyAndTerms, skipExtraPages, effectivePageOrder, warrantyTerms, templateAttachments, additionalEstimates]);
+  }, [materialItems, laborItems, turnkeyItems, changeOrderItems, opts, measurementSummary, jobPhotos, breakdown, config, customerName, customerAddress, customerPhone, customerEmail, finePrintContent, skipCoverPage, skipWarrantyAndTerms, skipExtraPages, effectivePageOrder, warrantyTerms, templateAttachments, additionalEstimates]);
 
 
   const commonProps = {
