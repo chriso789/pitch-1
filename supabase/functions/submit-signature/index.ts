@@ -1,3 +1,4 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 import {
   createServiceClient,
   hashToken,
@@ -182,6 +183,70 @@ Deno.serve(async (req: Request) => {
         action_url: `/signature-envelopes/${envelope.id}`,
       },
     });
+
+    // Instant realtime broadcast + SMS to envelope creator (parity with signer-open)
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+    try {
+      const broadcastClient = createClient(supabaseUrl, supabaseAnonKey);
+      await broadcastClient
+        .channel(`broadcast:${envelope.tenant_id}:${envelope.created_by}`)
+        .send({
+          type: 'broadcast',
+          event: 'notification',
+          payload: {
+            id: crypto.randomUUID(),
+            type: 'signature_received',
+            title: allSigned ? 'Envelope Completed ✅' : 'Signature Received ✍️',
+            message: allSigned
+              ? `All recipients have signed "${envelope.title}"`
+              : `${recipient.recipient_name} signed "${envelope.title}"`,
+            metadata: {
+              envelope_id: envelope.id,
+              recipient_id: recipient.id,
+              all_signed: allSigned,
+              action_url: `/signature-envelopes/${envelope.id}`,
+            },
+          },
+        });
+    } catch (broadcastErr) {
+      console.warn('Broadcast notification failed (non-blocking):', broadcastErr);
+    }
+
+    try {
+      const { data: creatorProfile } = await supabase
+        .from('profiles')
+        .select('phone, first_name')
+        .eq('id', envelope.created_by)
+        .single();
+
+      if (creatorProfile?.phone) {
+        const smsMessage = allSigned
+          ? `✅ All recipients have signed "${envelope.title}". The signed document is ready.`
+          : `✍️ ${recipient.recipient_name} just signed your signature request for "${envelope.title}".`;
+
+        await fetch(`${supabaseUrl}/functions/v1/telnyx-send-sms`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${serviceRoleKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            to: creatorProfile.phone,
+            message: smsMessage,
+            tenant_id: envelope.tenant_id,
+            sent_by: envelope.created_by,
+          }),
+        });
+        console.log(`Signature SMS sent to ${creatorProfile.first_name} at ${creatorProfile.phone} (allSigned=${allSigned})`);
+      } else {
+        console.log('No creator phone on profile — skipping SMS notification');
+      }
+    } catch (smsErr) {
+      console.warn('SMS notification failed (non-blocking):', smsErr);
+    }
 
     // If all signed, call finalize-envelope via direct fetch with service role key
     if (allSigned) {
