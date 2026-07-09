@@ -231,8 +231,9 @@ Deno.serve(async (req: Request) => {
 
     const repSigX = companySigBox.xPt;
     const repSigY = companySigBox.yPt;
-    const repMaxSigWidth = Math.min(companySigBox.widthPt, 140);
-    const repMaxSigHeight = Math.min(28, (companyDateBox ? repSigY - companyDateBox.yPt - 4 : 28));
+    const repMaxSigWidth = companySigBox.widthPt;
+    const repGapToDate = companyDateBox ? (repSigY - companyDateBox.yPt - 6) : 60;
+    const repMaxSigHeight = Math.max(40, Math.min(60, repGapToDate));
 
     // Tenant name for label
     let tenantName = 'Authorized Representative';
@@ -285,7 +286,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const dims = embeddedImg.scale(1);
-    const scale = Math.min(repMaxSigWidth / dims.width, repMaxSigHeight / dims.height, 1);
+    const scale = Math.min(repMaxSigWidth / dims.width, repMaxSigHeight / dims.height);
     const drawW = dims.width * scale;
     const drawH = dims.height * scale;
 
