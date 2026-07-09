@@ -221,7 +221,7 @@ Deno.serve(async (req: Request) => {
                 }
 
                 const dims = embeddedImg.scale(1);
-                const scale = Math.min(maxSigWidth / dims.width, maxSigHeight / dims.height, 1);
+                const scale = Math.min(maxSigWidth / dims.width, maxSigHeight / dims.height);
                 const drawW = dims.width * scale;
                 const drawH = dims.height * scale;
 
