@@ -197,8 +197,12 @@ Deno.serve(async (req: Request) => {
 
             let sigX = customerSigBox.xPt;
             const signatureLineY = customerSigBox.yPt;
-            const maxSigWidth = Math.min(customerSigBox.widthPt, 220);
-            const maxSigHeight = Math.min(28, (customerDateBox ? signatureLineY - customerDateBox.yPt - 4 : 28));
+            // Use the full width of the signature line and a taller box so
+            // captured signatures render at a legible size rather than getting
+            // squashed into ~28pt of height.
+            const maxSigWidth = customerSigBox.widthPt;
+            const gapToDate = customerDateBox ? (signatureLineY - customerDateBox.yPt - 6) : 60;
+            const maxSigHeight = Math.max(40, Math.min(60, gapToDate));
             console.log(`Signature placement: anchor=${!!anchor} page=${effectivePageIdx} sig=(${sigX},${signatureLineY},${maxSigWidth}) date=${customerDateBox ? `(${customerDateBox.xPt},${customerDateBox.yPt},${customerDateBox.widthPt})` : 'none'}`);
 
             for (const sig of signatures) {
