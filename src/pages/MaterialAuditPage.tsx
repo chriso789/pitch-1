@@ -979,7 +979,11 @@ function getInvoiceJobLabel(inv: any): string {
   const contactName = contact ? `${contact.first_name || ""} ${contact.last_name || ""}`.trim() : "";
   const project = inv?.projects;
   const projectNumber = project?.project_number || (project?.job_number != null ? `Job ${project.job_number}` : "");
-  return pe?.lead_name || project?.name || projectNumber || contactName || "—";
+  // Ignore the auto-generated placeholder name that gets stamped on projects
+  // created from a pipeline entry conversion — it's not a real project name.
+  const placeholderNames = new Set(["Project from Pipeline Entry", "Project from Pipeline"]);
+  const projectName = project?.name && !placeholderNames.has(project.name) ? project.name : "";
+  return pe?.lead_name || contactName || projectName || projectNumber || "—";
 }
 
 function AuditResultsTab({ audits, getAuditStatusBadge, tenantId, queryClient, materialInvoices }: any) {
