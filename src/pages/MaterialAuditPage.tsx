@@ -629,7 +629,7 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
       if (!sid) return [];
       const { data } = await supabase
         .from("supplier_price_list_items")
-        .select("id, item_description, supplier_sku, agreed_unit_price, unit_of_measure, pack_quantity, pack_uom")
+        .select("id, price_list_id, item_description, normalized_description, supplier_sku, manufacturer_sku, brand, category, agreed_unit_price, unit_of_measure, pack_quantity, pack_uom, created_at, supplier_price_lists(list_name, status, effective_start_date, created_at)")
         .eq("supplier_id", sid)
         .order("item_description")
         .limit(1000);
@@ -639,7 +639,8 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
   });
 
   const filteredItems = React.useMemo(() => {
-    if (!search) return (priceItems as any[]).slice(0, 200);
+    const groupedItems = groupCanonicalPriceItems(priceItems as any[], mapLine?.price_list_id || null);
+    if (!search) return groupedItems.slice(0, 200);
     // Broad fuzzy: split query into tokens, normalize (strip punctuation/quotes/units),
     // and require each token to appear in any searchable field. Also score by hits
     // so closer matches surface first.
@@ -651,19 +652,20 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
         .trim();
     const tokens = normalize(search).split(" ").filter((t) => t.length >= 2);
     if (tokens.length === 0) return (priceItems as any[]).slice(0, 200);
-    const scored = (priceItems as any[])
-      .map((p) => {
+    const scored = groupedItems
+      .map((group) => {
+        const p = group.representative;
         const haystack = normalize(
-          [p.item_description, p.supplier_sku, p.manufacturer_sku, p.brand, p.category, p.unit_of_measure]
+          [p.item_description, p.supplier_sku, p.manufacturer_sku, p.brand, p.category, p.unit_of_measure, ...group.supplierSkus, ...group.manufacturerSkus]
             .filter(Boolean)
             .join(" ")
         );
         const hits = tokens.filter((t) => haystack.includes(t)).length;
-        return { p, hits };
+        return { group, hits };
       })
       .filter((x) => x.hits > 0)
       .sort((a, b) => b.hits - a.hits);
-    return scored.slice(0, 200).map((x) => x.p);
+    return scored.slice(0, 200).map((x) => x.group);
   }, [priceItems, search]);
 
   const [cataloging, setCataloging] = React.useState(false);
@@ -721,24 +723,45 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
           unit_of_measure: mapLine.invoice_uom || "ea",
           agreed_unit_price: agreedUnit,
         })
-        .select("id, item_description, supplier_sku, agreed_unit_price, unit_of_measure")
+        .select("id, price_list_id, item_description, normalized_description, supplier_sku, manufacturer_sku, agreed_unit_price, unit_of_measure")
         .single();
       if (itemErr) throw itemErr;
 
-      // Mirror into the global materials catalog so it appears in materials search
-      // across estimates and the rest of the app (not just inside the audit mapper).
+      // Mirror into one canonical material row. Supplier-specific SKU and pricing live
+      // inside attributes.supplier_prices instead of creating duplicate material items.
       try {
-        const code = `SPLI-${newItem.id}`;
-        await supabase.from("materials" as any).insert({
-          tenant_id: tenantId,
-          code,
-          name: desc,
-          description: desc,
-          uom: mapLine.invoice_uom || "ea",
-          base_cost: agreedUnit,
-          supplier_sku: mapLine.supplier_sku || null,
-          active: true,
-        });
+        const materialKey = canonicalMaterialKey(desc, mapLine.invoice_uom || "EA");
+        const { data: existingMaterials } = await supabase
+          .from("materials" as any)
+          .select("id, attributes, base_cost, supplier_sku")
+          .eq("tenant_id", tenantId)
+          .eq("active", true)
+          .or(`attributes->>canonical_material_key.eq.${materialKey},name.ilike.${desc.replace(/[%,]/g, "")}`)
+          .limit(10);
+        const existing = (existingMaterials || []).find((m: any) =>
+          m?.attributes?.canonical_material_key === materialKey || canonicalMaterialKey(m?.name || desc, mapLine.invoice_uom || "EA") === materialKey
+        );
+        const attrs = mergeSupplierPriceAttributes(existing?.attributes, sid, null, newItem);
+        if (existing?.id) {
+          await supabase.from("materials" as any).update({
+            attributes: attrs,
+            base_cost: existing.base_cost ?? agreedUnit,
+            supplier_sku: existing.supplier_sku || mapLine.supplier_sku || null,
+            updated_at: new Date().toISOString(),
+          }).eq("id", existing.id);
+        } else {
+          await supabase.from("materials" as any).insert({
+            tenant_id: tenantId,
+            code: `MAT-${newItem.id}`,
+            name: desc,
+            description: desc,
+            uom: mapLine.invoice_uom || "EA",
+            base_cost: agreedUnit,
+            supplier_sku: mapLine.supplier_sku || null,
+            attributes: attrs,
+            active: true,
+          });
+        }
       } catch (mirrorErr) {
         // Non-fatal: price list item is the source of truth for the audit
         console.warn("[catalogNewItem] materials mirror failed", mirrorErr);
