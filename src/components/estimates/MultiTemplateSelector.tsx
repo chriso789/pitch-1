@@ -1232,9 +1232,22 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
 
   const fetchTemplates = async (): Promise<void> => {
     try {
+      const { data: { user } } = await supabaseClient.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data: profile } = await supabaseClient
+        .from('profiles')
+        .select('tenant_id, active_tenant_id')
+        .eq('id', user.id)
+        .single();
+
+      const tenantId = profile?.active_tenant_id || profile?.tenant_id;
+      if (!tenantId) throw new Error('No tenant found');
+
       const result = await supabaseClient
         .from('estimate_calculation_templates')
         .select('id, name, roof_type, template_category')
+        .eq('tenant_id', tenantId)
         .eq('is_active', true)
         .order('roof_type')
         .order('name');
