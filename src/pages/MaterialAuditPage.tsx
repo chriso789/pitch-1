@@ -2406,9 +2406,16 @@ function UnmatchedMappingTab({ tenantId, unmatchedLines, suppliers, queryClient 
               <Select value={selectedPriceItem} onValueChange={setSelectedPriceItem}>
                 <SelectTrigger><SelectValue placeholder="Select correct price list item..." /></SelectTrigger>
                 <SelectContent>
-                  {priceItems.map((pi: any) => (
-                    <SelectItem key={pi.id} value={pi.id}>{pi.item_description} {"\u2014"} ${pi.agreed_unit_price}/{pi.unit_of_measure} {pi.supplier_sku ? "(" + pi.supplier_sku + ")" : ""}</SelectItem>
-                  ))}
+                  {groupedPriceItems.map((group: any) => {
+                    const pi = group.representative;
+                    return (
+                      <SelectItem key={group.key} value={pi.id}>
+                        {pi.item_description} — {group.supplierPrices.join(" · ")}
+                        {group.supplierSkus.length ? ` (${group.supplierSkus.join(", ")})` : ""}
+                        {group.variants.length > 1 ? ` · ${group.variants.length} entries` : ""}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
               <div className="flex gap-2">
