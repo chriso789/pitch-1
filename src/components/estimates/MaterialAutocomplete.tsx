@@ -94,7 +94,7 @@ export function MaterialAutocomplete({
     ? materials.filter(m =>
         m.name.toLowerCase().includes(value.toLowerCase()) ||
         m.code.toLowerCase().includes(value.toLowerCase())
-      ).slice(0, 10)
+      ).slice(0, 50)
     : [];
 
   // Handle keyboard navigation
