@@ -63,11 +63,6 @@ function itemHasSku(item: any, sku: string | null | undefined): boolean {
     || (item._manufacturer_skus || []).includes(sku);
 }
 
-function itemHasVariantId(item: any, id: string | null | undefined): boolean {
-  if (!id) return false;
-  return item.id === id || (item._variant_ids || []).includes(id);
-}
-
 function tokenScore(a: string, b: string): number {
   const A = new Set(a.split(" ").filter((w) => w.length > 2));
   const B = new Set(b.split(" ").filter((w) => w.length > 2));
