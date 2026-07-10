@@ -42,6 +42,84 @@ function normalizeInvoiceText(raw: string | null | undefined): string {
   return (raw || "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
+function canonicalMaterialKey(raw: string | null | undefined, uom?: string | null): string {
+  const normalized = normalizeInvoiceText(raw)
+    .replace(/\bfeet\b|\bfoot\b|\bft\b/g, "")
+    .replace(/\binches\b|\binch\b|\bin\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return `${normalized}|${String(uom || "").toLowerCase().trim()}`;
+}
+
+function getPriceListDate(item: any): string {
+  const list = item?.supplier_price_lists;
+  return list?.effective_start_date || list?.created_at || item?.created_at || "";
+}
+
+function pickCanonicalPriceItem(items: any[], preferredPriceListId?: string | null) {
+  return [...items].sort((a, b) => {
+    if (preferredPriceListId) {
+      if (a.price_list_id === preferredPriceListId && b.price_list_id !== preferredPriceListId) return -1;
+      if (b.price_list_id === preferredPriceListId && a.price_list_id !== preferredPriceListId) return 1;
+    }
+    const aActive = a.supplier_price_lists?.status === "active" ? 1 : 0;
+    const bActive = b.supplier_price_lists?.status === "active" ? 1 : 0;
+    if (aActive !== bActive) return bActive - aActive;
+    return getPriceListDate(b).localeCompare(getPriceListDate(a));
+  })[0];
+}
+
+function groupCanonicalPriceItems(items: any[], preferredPriceListId?: string | null) {
+  const groups = new Map<string, any[]>();
+  items.forEach((item) => {
+    const key = canonicalMaterialKey(item.normalized_description || item.item_description, item.unit_of_measure);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(item);
+  });
+  return Array.from(groups.values()).map((variants) => {
+    const representative = pickCanonicalPriceItem(variants, preferredPriceListId);
+    const supplierSkus = Array.from(new Set(variants.map((v) => v.supplier_sku).filter(Boolean)));
+    const manufacturerSkus = Array.from(new Set(variants.map((v) => v.manufacturer_sku).filter(Boolean)));
+    const supplierPrices = Array.from(new Set(variants.map((v) => `${Number(v.agreed_unit_price || 0).toFixed(2)}/${v.unit_of_measure || "ea"}`)));
+    return {
+      key: canonicalMaterialKey(representative?.normalized_description || representative?.item_description, representative?.unit_of_measure),
+      representative,
+      variants,
+      variantIds: new Set(variants.map((v) => v.id)),
+      supplierSkus,
+      manufacturerSkus,
+      supplierPrices,
+    };
+  }).sort((a, b) => String(a.representative?.item_description || "").localeCompare(String(b.representative?.item_description || "")));
+}
+
+function mergeSupplierPriceAttributes(attributes: any, supplierId: string, supplierName: string | null | undefined, item: any) {
+  const current = attributes && typeof attributes === "object" && !Array.isArray(attributes) ? attributes : {};
+  const supplierPrices = current.supplier_prices && typeof current.supplier_prices === "object" ? current.supplier_prices : {};
+  const supplierSkus = new Set([...(Array.isArray(current.supplier_skus) ? current.supplier_skus : []), item.supplier_sku].filter(Boolean));
+  const manufacturerSkus = new Set([...(Array.isArray(current.manufacturer_skus) ? current.manufacturer_skus : []), item.manufacturer_sku].filter(Boolean));
+  return {
+    ...current,
+    canonical_material_key: canonicalMaterialKey(item.item_description, item.unit_of_measure),
+    supplier_skus: Array.from(supplierSkus),
+    manufacturer_skus: Array.from(manufacturerSkus),
+    supplier_prices: {
+      ...supplierPrices,
+      [supplierId]: {
+        supplier_id: supplierId,
+        supplier_name: supplierName || null,
+        price_list_item_id: item.id || null,
+        supplier_sku: item.supplier_sku || null,
+        manufacturer_sku: item.manufacturer_sku || null,
+        unit_price: Number(item.agreed_unit_price || 0),
+        uom: item.unit_of_measure || "EA",
+        item_description: item.item_description || null,
+        updated_at: new Date().toISOString(),
+      },
+    },
+  };
+}
+
 // A vendor is treated as a labor crew / subcontractor (not a material supplier) when
 // (a) any of its invoices is typed 'labor', or (b) the name reads like a service company.
 export function isCrewVendor(supplier: { supplier_name?: string; invoice_types?: string[] }): boolean {
