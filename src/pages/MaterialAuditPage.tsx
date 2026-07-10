@@ -1062,7 +1062,7 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
                 <Button
                   variant="secondary"
                   onClick={catalogNewItem}
-                  disabled={cataloging || !catalogName.trim() || !(Number(catalogPrice) > 0)}
+                  disabled={cataloging || !catalogName.trim()}
                   title="Add this item to the supplier pricelist at the contracted price"
                 >
                   <Package className="h-4 w-4 mr-2" />
