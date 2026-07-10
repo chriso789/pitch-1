@@ -42,6 +42,84 @@ function normalizeInvoiceText(raw: string | null | undefined): string {
   return (raw || "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
+function canonicalMaterialKey(raw: string | null | undefined, uom?: string | null): string {
+  const normalized = normalizeInvoiceText(raw)
+    .replace(/\bfeet\b|\bfoot\b|\bft\b/g, "")
+    .replace(/\binches\b|\binch\b|\bin\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return `${normalized}|${String(uom || "").toLowerCase().trim()}`;
+}
+
+function getPriceListDate(item: any): string {
+  const list = item?.supplier_price_lists;
+  return list?.effective_start_date || list?.created_at || item?.created_at || "";
+}
+
+function pickCanonicalPriceItem(items: any[], preferredPriceListId?: string | null) {
+  return [...items].sort((a, b) => {
+    if (preferredPriceListId) {
+      if (a.price_list_id === preferredPriceListId && b.price_list_id !== preferredPriceListId) return -1;
+      if (b.price_list_id === preferredPriceListId && a.price_list_id !== preferredPriceListId) return 1;
+    }
+    const aActive = a.supplier_price_lists?.status === "active" ? 1 : 0;
+    const bActive = b.supplier_price_lists?.status === "active" ? 1 : 0;
+    if (aActive !== bActive) return bActive - aActive;
+    return getPriceListDate(b).localeCompare(getPriceListDate(a));
+  })[0];
+}
+
+function groupCanonicalPriceItems(items: any[], preferredPriceListId?: string | null) {
+  const groups = new Map<string, any[]>();
+  items.forEach((item) => {
+    const key = canonicalMaterialKey(item.normalized_description || item.item_description, item.unit_of_measure);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(item);
+  });
+  return Array.from(groups.values()).map((variants) => {
+    const representative = pickCanonicalPriceItem(variants, preferredPriceListId);
+    const supplierSkus = Array.from(new Set(variants.map((v) => v.supplier_sku).filter(Boolean)));
+    const manufacturerSkus = Array.from(new Set(variants.map((v) => v.manufacturer_sku).filter(Boolean)));
+    const supplierPrices = Array.from(new Set(variants.map((v) => `${Number(v.agreed_unit_price || 0).toFixed(2)}/${v.unit_of_measure || "ea"}`)));
+    return {
+      key: canonicalMaterialKey(representative?.normalized_description || representative?.item_description, representative?.unit_of_measure),
+      representative,
+      variants,
+      variantIds: new Set(variants.map((v) => v.id)),
+      supplierSkus,
+      manufacturerSkus,
+      supplierPrices,
+    };
+  }).sort((a, b) => String(a.representative?.item_description || "").localeCompare(String(b.representative?.item_description || "")));
+}
+
+function mergeSupplierPriceAttributes(attributes: any, supplierId: string, supplierName: string | null | undefined, item: any) {
+  const current = attributes && typeof attributes === "object" && !Array.isArray(attributes) ? attributes : {};
+  const supplierPrices = current.supplier_prices && typeof current.supplier_prices === "object" ? current.supplier_prices : {};
+  const supplierSkus = new Set([...(Array.isArray(current.supplier_skus) ? current.supplier_skus : []), item.supplier_sku].filter(Boolean));
+  const manufacturerSkus = new Set([...(Array.isArray(current.manufacturer_skus) ? current.manufacturer_skus : []), item.manufacturer_sku].filter(Boolean));
+  return {
+    ...current,
+    canonical_material_key: canonicalMaterialKey(item.item_description, item.unit_of_measure),
+    supplier_skus: Array.from(supplierSkus),
+    manufacturer_skus: Array.from(manufacturerSkus),
+    supplier_prices: {
+      ...supplierPrices,
+      [supplierId]: {
+        supplier_id: supplierId,
+        supplier_name: supplierName || null,
+        price_list_item_id: item.id || null,
+        supplier_sku: item.supplier_sku || null,
+        manufacturer_sku: item.manufacturer_sku || null,
+        unit_price: Number(item.agreed_unit_price || 0),
+        uom: item.unit_of_measure || "EA",
+        item_description: item.item_description || null,
+        updated_at: new Date().toISOString(),
+      },
+    },
+  };
+}
+
 // A vendor is treated as a labor crew / subcontractor (not a material supplier) when
 // (a) any of its invoices is typed 'labor', or (b) the name reads like a service company.
 export function isCrewVendor(supplier: { supplier_name?: string; invoice_types?: string[] }): boolean {
@@ -551,7 +629,7 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
       if (!sid) return [];
       const { data } = await supabase
         .from("supplier_price_list_items")
-        .select("id, item_description, supplier_sku, agreed_unit_price, unit_of_measure, pack_quantity, pack_uom")
+        .select("id, price_list_id, item_description, normalized_description, supplier_sku, manufacturer_sku, brand, category, agreed_unit_price, unit_of_measure, pack_quantity, pack_uom, created_at, supplier_price_lists(list_name, status, effective_start_date, created_at)")
         .eq("supplier_id", sid)
         .order("item_description")
         .limit(1000);
@@ -561,7 +639,8 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
   });
 
   const filteredItems = React.useMemo(() => {
-    if (!search) return (priceItems as any[]).slice(0, 200);
+    const groupedItems = groupCanonicalPriceItems(priceItems as any[], mapLine?.price_list_id || null);
+    if (!search) return groupedItems.slice(0, 200);
     // Broad fuzzy: split query into tokens, normalize (strip punctuation/quotes/units),
     // and require each token to appear in any searchable field. Also score by hits
     // so closer matches surface first.
@@ -572,29 +651,32 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
         .replace(/\s+/g, " ")
         .trim();
     const tokens = normalize(search).split(" ").filter((t) => t.length >= 2);
-    if (tokens.length === 0) return (priceItems as any[]).slice(0, 200);
-    const scored = (priceItems as any[])
-      .map((p) => {
+    if (tokens.length === 0) return groupedItems.slice(0, 200);
+    const scored = groupedItems
+      .map((group) => {
+        const p = group.representative;
         const haystack = normalize(
-          [p.item_description, p.supplier_sku, p.manufacturer_sku, p.brand, p.category, p.unit_of_measure]
+          [p.item_description, p.supplier_sku, p.manufacturer_sku, p.brand, p.category, p.unit_of_measure, ...group.supplierSkus, ...group.manufacturerSkus]
             .filter(Boolean)
             .join(" ")
         );
         const hits = tokens.filter((t) => haystack.includes(t)).length;
-        return { p, hits };
+        return { group, hits };
       })
       .filter((x) => x.hits > 0)
       .sort((a, b) => b.hits - a.hits);
-    return scored.slice(0, 200).map((x) => x.p);
-  }, [priceItems, search]);
+    return scored.slice(0, 200).map((x) => x.group);
+  }, [priceItems, search, mapLine?.price_list_id]);
 
   const [cataloging, setCataloging] = React.useState(false);
   const [catalogName, setCatalogName] = React.useState("");
   const [catalogPrice, setCatalogPrice] = React.useState<string>("");
+  const [catalogManufacturerSku, setCatalogManufacturerSku] = React.useState("");
 
   React.useEffect(() => {
     const raw = mapLine?.invoice_description || "";
     setCatalogName(raw.replace(/\\(["'\\])/g, "$1"));
+    setCatalogManufacturerSku("");
     // Intentionally blank — must be the contracted/pricelist price, NOT the invoice price.
     setCatalogPrice("");
   }, [mapLine?.id, mapLine?.invoice_description]);
@@ -640,27 +722,49 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
           item_description: desc,
           normalized_description: normalizeInvoiceText(desc),
           supplier_sku: mapLine.supplier_sku || null,
+          manufacturer_sku: catalogManufacturerSku.trim() || null,
           unit_of_measure: mapLine.invoice_uom || "ea",
           agreed_unit_price: agreedUnit,
         })
-        .select("id, item_description, supplier_sku, agreed_unit_price, unit_of_measure")
+        .select("id, price_list_id, item_description, normalized_description, supplier_sku, manufacturer_sku, agreed_unit_price, unit_of_measure")
         .single();
       if (itemErr) throw itemErr;
 
-      // Mirror into the global materials catalog so it appears in materials search
-      // across estimates and the rest of the app (not just inside the audit mapper).
+      // Mirror into one canonical material row. Supplier-specific SKU and pricing live
+      // inside attributes.supplier_prices instead of creating duplicate material items.
       try {
-        const code = `SPLI-${newItem.id}`;
-        await supabase.from("materials" as any).insert({
-          tenant_id: tenantId,
-          code,
-          name: desc,
-          description: desc,
-          uom: mapLine.invoice_uom || "ea",
-          base_cost: agreedUnit,
-          supplier_sku: mapLine.supplier_sku || null,
-          active: true,
-        });
+        const materialKey = canonicalMaterialKey(desc, mapLine.invoice_uom || "EA");
+        const { data: existingMaterials } = await supabase
+          .from("materials" as any)
+          .select("id, name, attributes, base_cost, supplier_sku")
+          .eq("tenant_id", tenantId)
+          .eq("active", true)
+          .limit(5000);
+        const existingMaterialRows = ((existingMaterials as any[] | null) || []);
+        const existing = existingMaterialRows.find((m: any) =>
+          m?.attributes?.canonical_material_key === materialKey || canonicalMaterialKey(m?.name || desc, mapLine.invoice_uom || "EA") === materialKey
+        );
+        const attrs = mergeSupplierPriceAttributes(existing?.attributes, sid, null, newItem);
+        if (existing?.id) {
+          await supabase.from("materials" as any).update({
+            attributes: attrs,
+            base_cost: existing.base_cost ?? agreedUnit,
+            supplier_sku: existing.supplier_sku || mapLine.supplier_sku || null,
+            updated_at: new Date().toISOString(),
+          }).eq("id", existing.id);
+        } else {
+          await supabase.from("materials" as any).insert({
+            tenant_id: tenantId,
+            code: `MAT-${newItem.id}`,
+            name: desc,
+            description: desc,
+            uom: mapLine.invoice_uom || "EA",
+            base_cost: agreedUnit,
+            supplier_sku: mapLine.supplier_sku || null,
+            attributes: attrs,
+            active: true,
+          });
+        }
       } catch (mirrorErr) {
         // Non-fatal: price list item is the source of truth for the audit
         console.warn("[catalogNewItem] materials mirror failed", mirrorErr);
@@ -781,7 +885,8 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
 
   const saveMapping = async () => {
     if (!pickItem) return;
-    const selectedItem = (priceItems as any[]).find((p) => p.id === pickItem);
+    const selectedGroup = (filteredItems as any[]).find((group) => group.variantIds?.has(pickItem));
+    const selectedItem = selectedGroup?.representative || (priceItems as any[]).find((p) => p.id === pickItem);
     if (!selectedItem) { toast.error("Pick a price-list item first"); return; }
     await saveMappingWithItem(selectedItem);
   };
@@ -893,19 +998,25 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
               </div>
               <Input placeholder="Search price list..." value={search} onChange={(e) => setSearch(e.target.value)} />
               <div className="border rounded-md max-h-[320px] overflow-y-auto divide-y">
-                {filteredItems.map((p: any) => (
+                {filteredItems.map((group: any) => {
+                  const p = group.representative;
+                  return (
                   <button
-                    key={p.id}
+                    key={group.key}
                     type="button"
-                    className={`w-full text-left px-3 py-2 text-xs hover:bg-accent ${pickItem === p.id ? "bg-accent" : ""}`}
+                    className={`w-full text-left px-3 py-2 text-xs hover:bg-accent ${group.variantIds?.has(pickItem) ? "bg-accent" : ""}`}
                     onClick={() => setPickItem(p.id)}
                   >
                     <div className="font-medium">{p.item_description}</div>
                     <div className="text-[10px] text-muted-foreground">
-                      ${Number(p.agreed_unit_price || 0).toFixed(2)}/{p.unit_of_measure || "ea"} {p.supplier_sku ? `· ${p.supplier_sku}` : ""}
+                      {group.supplierPrices.join(" · ")}
+                      {group.supplierSkus.length ? ` · Supplier SKU ${group.supplierSkus.join(", ")}` : ""}
+                      {group.manufacturerSkus.length ? ` · Mfr SKU ${group.manufacturerSkus.join(", ")}` : ""}
+                      {group.variants.length > 1 ? ` · ${group.variants.length} supplier price entries` : ""}
                     </div>
                   </button>
-                ))}
+                  );
+                })}
                 {filteredItems.length === 0 && (
                   <div className="px-3 py-6 text-center text-xs text-muted-foreground">No items found</div>
                 )}
@@ -914,13 +1025,21 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
                 <div className="text-[11px] text-muted-foreground">
                   Can't find this item above? Add it to the supplier pricelist with the <span className="font-semibold text-foreground">contracted price</span> from the SRS pricelist PDF — <span className="font-semibold">not</span> the invoice price. The audit will then flag the invoice as overcharged.
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground">Pricelist item name</label>
                     <Input
                       placeholder="Item description"
                       value={catalogName}
                       onChange={(e) => setCatalogName(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">Manufacturer SKU</label>
+                    <Input
+                      placeholder="Optional"
+                      value={catalogManufacturerSku}
+                      onChange={(e) => setCatalogManufacturerSku(e.target.value)}
                     />
                   </div>
                   <div className="space-y-1">
@@ -2250,11 +2369,20 @@ function UnmatchedMappingTab({ tenantId, unmatchedLines, suppliers, queryClient 
     queryKey: ["mapping-price-items", mappingLine?.supplier_id],
     queryFn: async () => {
       if (!mappingLine?.supplier_id) return [];
-      const { data } = await supabase.from("supplier_price_list_items").select("*").eq("supplier_id", mappingLine.supplier_id).limit(500);
+      const { data } = await supabase
+        .from("supplier_price_list_items")
+        .select("*, supplier_price_lists(list_name, status, effective_start_date, created_at)")
+        .eq("supplier_id", mappingLine.supplier_id)
+        .limit(1000);
       return data || [];
     },
     enabled: !!mappingLine?.supplier_id,
   });
+
+  const groupedPriceItems = React.useMemo(
+    () => groupCanonicalPriceItems(priceItems as any[], mappingLine?.price_list_id || null),
+    [priceItems, mappingLine?.price_list_id]
+  );
 
   const saveMapping = async () => {
     if (!mappingLine || !selectedPriceItem || !tenantId) return;
@@ -2289,9 +2417,16 @@ function UnmatchedMappingTab({ tenantId, unmatchedLines, suppliers, queryClient 
               <Select value={selectedPriceItem} onValueChange={setSelectedPriceItem}>
                 <SelectTrigger><SelectValue placeholder="Select correct price list item..." /></SelectTrigger>
                 <SelectContent>
-                  {priceItems.map((pi: any) => (
-                    <SelectItem key={pi.id} value={pi.id}>{pi.item_description} {"\u2014"} ${pi.agreed_unit_price}/{pi.unit_of_measure} {pi.supplier_sku ? "(" + pi.supplier_sku + ")" : ""}</SelectItem>
-                  ))}
+                  {groupedPriceItems.map((group: any) => {
+                    const pi = group.representative;
+                    return (
+                      <SelectItem key={group.key} value={pi.id}>
+                        {pi.item_description} — {group.supplierPrices.join(" · ")}
+                        {group.supplierSkus.length ? ` (${group.supplierSkus.join(", ")})` : ""}
+                        {group.variants.length > 1 ? ` · ${group.variants.length} entries` : ""}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
               <div className="flex gap-2">

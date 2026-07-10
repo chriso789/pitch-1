@@ -6,6 +6,46 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+function normalizeText(raw: string | null | undefined): string {
+  return (raw || "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function canonicalMaterialKey(raw: string | null | undefined, uom?: string | null): string {
+  const normalized = normalizeText(raw)
+    .replace(/\bfeet\b|\bfoot\b|\bft\b/g, "")
+    .replace(/\binches\b|\binch\b|\bin\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return `${normalized}|${String(uom || "").toLowerCase().trim()}`;
+}
+
+function mergeSupplierPriceAttributes(attributes: any, supplierId: string, supplierName: string, item: any) {
+  const current = attributes && typeof attributes === "object" && !Array.isArray(attributes) ? attributes : {};
+  const supplierPrices = current.supplier_prices && typeof current.supplier_prices === "object" ? current.supplier_prices : {};
+  const supplierSkus = new Set([...(Array.isArray(current.supplier_skus) ? current.supplier_skus : []), item.supplier_sku].filter(Boolean));
+  const manufacturerSkus = new Set([...(Array.isArray(current.manufacturer_skus) ? current.manufacturer_skus : []), item.manufacturer_sku].filter(Boolean));
+  return {
+    ...current,
+    canonical_material_key: canonicalMaterialKey(item.item_description, item.unit_of_measure),
+    supplier_skus: Array.from(supplierSkus),
+    manufacturer_skus: Array.from(manufacturerSkus),
+    supplier_prices: {
+      ...supplierPrices,
+      [supplierId]: {
+        supplier_id: supplierId,
+        supplier_name: supplierName,
+        price_list_item_id: item.id,
+        supplier_sku: item.supplier_sku || null,
+        manufacturer_sku: item.manufacturer_sku || null,
+        unit_price: Number(item.agreed_unit_price || 0),
+        uom: item.unit_of_measure || "EA",
+        item_description: item.item_description || null,
+        updated_at: new Date().toISOString(),
+      },
+    },
+  };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -82,7 +122,7 @@ Deno.serve(async (req: Request) => {
       }
       const { data: normDesc } = await admin.rpc("normalize_material_description", { input: r.description });
 
-      const { error: insErr } = await admin.from("supplier_price_list_items").insert({
+      const { data: insertedItem, error: insErr } = await admin.from("supplier_price_list_items").insert({
         company_id: companyId,
         supplier_id: supplier.id,
         price_list_id: priceList.id,
@@ -95,10 +135,41 @@ Deno.serve(async (req: Request) => {
         material_type: r.materialType || null,
         unit_of_measure: r.unitOfMeasure,
         agreed_unit_price: r.agreedUnitPrice,
-      });
+      }).select("id, item_description, normalized_description, supplier_sku, manufacturer_sku, unit_of_measure, agreed_unit_price").single();
       if (insErr) {
         failures.push({ row: i, error: insErr.message });
       } else {
+        const materialKey = canonicalMaterialKey(insertedItem.item_description, insertedItem.unit_of_measure);
+        const { data: existingMaterials } = await admin
+          .from("materials")
+          .select("id, name, attributes, base_cost, supplier_sku")
+          .eq("tenant_id", companyId)
+          .eq("active", true)
+          .limit(5000);
+        const existing = (existingMaterials || []).find((m: any) =>
+          m?.attributes?.canonical_material_key === materialKey || canonicalMaterialKey(m?.name, insertedItem.unit_of_measure) === materialKey
+        );
+        const attrs = mergeSupplierPriceAttributes(existing?.attributes, supplier.id, supplierName, insertedItem);
+        if (existing?.id) {
+          await admin.from("materials").update({
+            attributes: attrs,
+            base_cost: existing.base_cost ?? insertedItem.agreed_unit_price,
+            supplier_sku: existing.supplier_sku || insertedItem.supplier_sku || null,
+            updated_at: new Date().toISOString(),
+          }).eq("id", existing.id);
+        } else {
+          await admin.from("materials").insert({
+            tenant_id: companyId,
+            code: `MAT-${insertedItem.id}`,
+            name: insertedItem.item_description,
+            description: insertedItem.item_description,
+            uom: insertedItem.unit_of_measure || "EA",
+            base_cost: insertedItem.agreed_unit_price,
+            supplier_sku: insertedItem.supplier_sku || null,
+            attributes: attrs,
+            active: true,
+          });
+        }
         imported++;
       }
     }

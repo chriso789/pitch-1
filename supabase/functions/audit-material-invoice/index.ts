@@ -1,6 +1,49 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.4";
 import { corsHeaders } from "npm:@supabase/supabase-js@2.49.4/cors";
 
+function normalizeText(raw: string | null | undefined): string {
+  return (raw || "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function canonicalMaterialKey(raw: string | null | undefined, uom?: string | null): string {
+  const normalized = normalizeText(raw)
+    .replace(/\bfeet\b|\bfoot\b|\bft\b/g, "")
+    .replace(/\binches\b|\binch\b|\bin\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return `${normalized}|${String(uom || "").toLowerCase().trim()}`;
+}
+
+function dedupePriceItems(items: any[]): any[] {
+  const buckets = new Map<string, any[]>();
+  for (const item of items) {
+    const key = canonicalMaterialKey(item.normalized_description || item.item_description, item.unit_of_measure);
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key)!.push(item);
+  }
+  return Array.from(buckets.values()).map((variants) => {
+    const representative = variants[0];
+    return {
+      ...representative,
+      _variant_ids: variants.map((v) => v.id),
+      _supplier_skus: Array.from(new Set(variants.map((v) => v.supplier_sku).filter(Boolean))),
+      _manufacturer_skus: Array.from(new Set(variants.map((v) => v.manufacturer_sku).filter(Boolean))),
+    };
+  });
+}
+
+function itemHasSku(item: any, sku: string | null | undefined): boolean {
+  if (!sku) return false;
+  return item.supplier_sku === sku || item.manufacturer_sku === sku
+    || (item._supplier_skus || []).includes(sku)
+    || (item._manufacturer_skus || []).includes(sku);
+}
+
+function itemHasVariantId(item: any, id: string | null | undefined): boolean {
+  if (!id) return false;
+  return item.id === id || (item._variant_ids || []).includes(id);
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -37,7 +80,7 @@ Deno.serve(async (req: Request) => {
     if (priceListId) {
       const { data } = await supabase.from("supplier_price_list_items")
         .select("*").eq("price_list_id", priceListId).eq("supplier_id", supplierId);
-      priceListItems = data || [];
+      priceListItems = dedupePriceItems(data || []);
     }
 
     // Load match rules for this supplier
@@ -72,13 +115,13 @@ Deno.serve(async (req: Request) => {
 
       // 1. Supplier SKU exact
       if (!matchedItem && line.supplier_sku) {
-        matchedItem = priceListItems.find(p => p.supplier_sku && p.supplier_sku === line.supplier_sku);
+        matchedItem = priceListItems.find(p => itemHasSku(p, line.supplier_sku));
         if (matchedItem) { matchType = "supplier_sku_exact"; matchConfidence = 1.0; }
       }
 
       // 2. Manufacturer SKU exact
       if (!matchedItem && line.manufacturer_sku) {
-        matchedItem = priceListItems.find(p => p.manufacturer_sku && p.manufacturer_sku === line.manufacturer_sku);
+        matchedItem = priceListItems.find(p => itemHasSku(p, line.manufacturer_sku));
         if (matchedItem) { matchType = "manufacturer_sku_exact"; matchConfidence = 0.98; }
       }
 
@@ -91,7 +134,7 @@ Deno.serve(async (req: Request) => {
           return false;
         });
         if (rule) {
-          matchedItem = priceListItems.find(p => p.id === rule.price_list_item_id);
+          matchedItem = priceListItems.find(p => itemHasVariantId(p, rule.price_list_item_id));
           if (matchedItem) { matchType = "manual_rule"; matchConfidence = rule.confidence || 0.95; }
         }
       }
