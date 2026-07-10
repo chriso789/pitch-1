@@ -651,7 +651,7 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
         .replace(/\s+/g, " ")
         .trim();
     const tokens = normalize(search).split(" ").filter((t) => t.length >= 2);
-    if (tokens.length === 0) return (priceItems as any[]).slice(0, 200);
+    if (tokens.length === 0) return groupedItems.slice(0, 200);
     const scored = groupedItems
       .map((group) => {
         const p = group.representative;
@@ -733,12 +733,13 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
         const materialKey = canonicalMaterialKey(desc, mapLine.invoice_uom || "EA");
         const { data: existingMaterials } = await supabase
           .from("materials" as any)
-          .select("id, attributes, base_cost, supplier_sku")
+          .select("id, name, attributes, base_cost, supplier_sku")
           .eq("tenant_id", tenantId)
           .eq("active", true)
           .or(`attributes->>canonical_material_key.eq.${materialKey},name.ilike.${desc.replace(/[%,]/g, "")}`)
           .limit(10);
-        const existing = (existingMaterials || []).find((m: any) =>
+        const existingMaterialRows = ((existingMaterials as any[] | null) || []);
+        const existing = existingMaterialRows.find((m: any) =>
           m?.attributes?.canonical_material_key === materialKey || canonicalMaterialKey(m?.name || desc, mapLine.invoice_uom || "EA") === materialKey
         );
         const attrs = mergeSupplierPriceAttributes(existing?.attributes, sid, null, newItem);
