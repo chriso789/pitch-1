@@ -883,7 +883,8 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
 
   const saveMapping = async () => {
     if (!pickItem) return;
-    const selectedItem = (priceItems as any[]).find((p) => p.id === pickItem);
+    const selectedGroup = (filteredItems as any[]).find((group) => group.variantIds?.has(pickItem));
+    const selectedItem = selectedGroup?.representative || (priceItems as any[]).find((p) => p.id === pickItem);
     if (!selectedItem) { toast.error("Pick a price-list item first"); return; }
     await saveMappingWithItem(selectedItem);
   };
@@ -995,19 +996,25 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
               </div>
               <Input placeholder="Search price list..." value={search} onChange={(e) => setSearch(e.target.value)} />
               <div className="border rounded-md max-h-[320px] overflow-y-auto divide-y">
-                {filteredItems.map((p: any) => (
+                {filteredItems.map((group: any) => {
+                  const p = group.representative;
+                  return (
                   <button
-                    key={p.id}
+                    key={group.key}
                     type="button"
-                    className={`w-full text-left px-3 py-2 text-xs hover:bg-accent ${pickItem === p.id ? "bg-accent" : ""}`}
+                    className={`w-full text-left px-3 py-2 text-xs hover:bg-accent ${group.variantIds?.has(pickItem) ? "bg-accent" : ""}`}
                     onClick={() => setPickItem(p.id)}
                   >
                     <div className="font-medium">{p.item_description}</div>
                     <div className="text-[10px] text-muted-foreground">
-                      ${Number(p.agreed_unit_price || 0).toFixed(2)}/{p.unit_of_measure || "ea"} {p.supplier_sku ? `· ${p.supplier_sku}` : ""}
+                      {group.supplierPrices.join(" · ")}
+                      {group.supplierSkus.length ? ` · Supplier SKU ${group.supplierSkus.join(", ")}` : ""}
+                      {group.manufacturerSkus.length ? ` · Mfr SKU ${group.manufacturerSkus.join(", ")}` : ""}
+                      {group.variants.length > 1 ? ` · ${group.variants.length} supplier price entries` : ""}
                     </div>
                   </button>
-                ))}
+                  );
+                })}
                 {filteredItems.length === 0 && (
                   <div className="px-3 py-6 text-center text-xs text-muted-foreground">No items found</div>
                 )}
