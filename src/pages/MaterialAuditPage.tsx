@@ -666,7 +666,7 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
       .filter((x) => x.hits > 0)
       .sort((a, b) => b.hits - a.hits);
     return scored.slice(0, 200).map((x) => x.group);
-  }, [priceItems, search]);
+  }, [priceItems, search, mapLine?.price_list_id]);
 
   const [cataloging, setCataloging] = React.useState(false);
   const [catalogName, setCatalogName] = React.useState("");
@@ -736,8 +736,7 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
           .select("id, name, attributes, base_cost, supplier_sku")
           .eq("tenant_id", tenantId)
           .eq("active", true)
-          .or(`attributes->>canonical_material_key.eq.${materialKey},name.ilike.${desc.replace(/[%,]/g, "")}`)
-          .limit(10);
+          .limit(5000);
         const existingMaterialRows = ((existingMaterials as any[] | null) || []);
         const existing = existingMaterialRows.find((m: any) =>
           m?.attributes?.canonical_material_key === materialKey || canonicalMaterialKey(m?.name || desc, mapLine.invoice_uom || "EA") === materialKey
