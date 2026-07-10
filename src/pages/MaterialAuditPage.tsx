@@ -2358,11 +2358,20 @@ function UnmatchedMappingTab({ tenantId, unmatchedLines, suppliers, queryClient 
     queryKey: ["mapping-price-items", mappingLine?.supplier_id],
     queryFn: async () => {
       if (!mappingLine?.supplier_id) return [];
-      const { data } = await supabase.from("supplier_price_list_items").select("*").eq("supplier_id", mappingLine.supplier_id).limit(500);
+      const { data } = await supabase
+        .from("supplier_price_list_items")
+        .select("*, supplier_price_lists(list_name, status, effective_start_date, created_at)")
+        .eq("supplier_id", mappingLine.supplier_id)
+        .limit(1000);
       return data || [];
     },
     enabled: !!mappingLine?.supplier_id,
   });
+
+  const groupedPriceItems = React.useMemo(
+    () => groupCanonicalPriceItems(priceItems as any[], mappingLine?.price_list_id || null),
+    [priceItems, mappingLine?.price_list_id]
+  );
 
   const saveMapping = async () => {
     if (!mappingLine || !selectedPriceItem || !tenantId) return;
