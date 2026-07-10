@@ -29,6 +29,45 @@ function normalize(s: string | null | undefined): string {
   return (s || "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
+function canonicalMaterialKey(raw: string | null | undefined, uom?: string | null): string {
+  const normalized = normalize(raw)
+    .replace(/\bfeet\b|\bfoot\b|\bft\b/g, "")
+    .replace(/\binches\b|\binch\b|\bin\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return `${normalized}|${String(uom || "").toLowerCase().trim()}`;
+}
+
+function dedupePriceItems(items: any[]): any[] {
+  const buckets = new Map<string, any[]>();
+  for (const item of items) {
+    const key = canonicalMaterialKey(item.normalized_description || item.item_description, item.unit_of_measure);
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key)!.push(item);
+  }
+  return Array.from(buckets.values()).map((variants) => {
+    const representative = variants[0];
+    return {
+      ...representative,
+      _variant_ids: variants.map((v) => v.id),
+      _supplier_skus: Array.from(new Set(variants.map((v) => v.supplier_sku).filter(Boolean))),
+      _manufacturer_skus: Array.from(new Set(variants.map((v) => v.manufacturer_sku).filter(Boolean))),
+    };
+  });
+}
+
+function itemHasSku(item: any, sku: string | null | undefined): boolean {
+  if (!sku) return false;
+  return item.supplier_sku === sku || item.manufacturer_sku === sku
+    || (item._supplier_skus || []).includes(sku)
+    || (item._manufacturer_skus || []).includes(sku);
+}
+
+function itemHasVariantId(item: any, id: string | null | undefined): boolean {
+  if (!id) return false;
+  return item.id === id || (item._variant_ids || []).includes(id);
+}
+
 function tokenScore(a: string, b: string): number {
   const A = new Set(a.split(" ").filter((w) => w.length > 2));
   const B = new Set(b.split(" ").filter((w) => w.length > 2));
@@ -262,6 +301,7 @@ Deno.serve(async (req: Request) => {
           usedDerived = true;
         }
       }
+      items = dedupePriceItems(items);
       // Manual mapping rules saved by users for this supplier
       const { data: rules } = await supabase
         .from("material_item_match_rules")
@@ -310,7 +350,7 @@ Deno.serve(async (req: Request) => {
         skipInvoice(inv, `No price list for supplier "${supplier.supplier_name}" (no derived prices yet — run "Build Derived Pricelists")`);
         continue;
       }
-      const itemsById = new Map(items.map((i) => [i.id, i]));
+      const itemsById = new Map(items.flatMap((i) => [[i.id, i], ...((i._variant_ids || []).map((id: string) => [id, i]))]));
 
       const { data: storedLines } = await supabase
         .from("project_cost_invoice_line_items")
@@ -383,7 +423,7 @@ Deno.serve(async (req: Request) => {
         }
         // 2. SKU exact
         if (!matchedItem && line.sku) {
-          matchedItem = items.find((p) => p.supplier_sku === line.sku || p.manufacturer_sku === line.sku);
+          matchedItem = items.find((p) => itemHasSku(p, line.sku));
           if (matchedItem) { matchType = "sku_exact"; matchConfidence = 1.0; }
         }
         // 3. Fuzzy description
