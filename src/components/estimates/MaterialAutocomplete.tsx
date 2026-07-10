@@ -94,7 +94,7 @@ export function MaterialAutocomplete({
     ? materials.filter(m =>
         m.name.toLowerCase().includes(value.toLowerCase()) ||
         m.code.toLowerCase().includes(value.toLowerCase())
-      ).slice(0, 10)
+      ).slice(0, 50)
     : [];
 
   // Handle keyboard navigation
@@ -167,7 +167,7 @@ export function MaterialAutocomplete({
 
       {showDropdown && filtered.length > 0 && (
         <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-lg">
-          <ScrollArea className="max-h-[240px]">
+          <ScrollArea className="h-[360px]">
             <div className="py-1">
               {filtered.map((material, index) => (
                 <div
