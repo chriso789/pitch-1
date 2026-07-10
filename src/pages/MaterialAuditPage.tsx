@@ -671,10 +671,12 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
   const [cataloging, setCataloging] = React.useState(false);
   const [catalogName, setCatalogName] = React.useState("");
   const [catalogPrice, setCatalogPrice] = React.useState<string>("");
+  const [catalogManufacturerSku, setCatalogManufacturerSku] = React.useState("");
 
   React.useEffect(() => {
     const raw = mapLine?.invoice_description || "";
     setCatalogName(raw.replace(/\\(["'\\])/g, "$1"));
+    setCatalogManufacturerSku("");
     // Intentionally blank — must be the contracted/pricelist price, NOT the invoice price.
     setCatalogPrice("");
   }, [mapLine?.id, mapLine?.invoice_description]);
@@ -720,6 +722,7 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
           item_description: desc,
           normalized_description: normalizeInvoiceText(desc),
           supplier_sku: mapLine.supplier_sku || null,
+          manufacturer_sku: catalogManufacturerSku.trim() || null,
           unit_of_measure: mapLine.invoice_uom || "ea",
           agreed_unit_price: agreedUnit,
         })
@@ -1022,13 +1025,21 @@ function AuditLineDetails({ auditId, supplierId, tenantId }: { auditId: string; 
                 <div className="text-[11px] text-muted-foreground">
                   Can't find this item above? Add it to the supplier pricelist with the <span className="font-semibold text-foreground">contracted price</span> from the SRS pricelist PDF — <span className="font-semibold">not</span> the invoice price. The audit will then flag the invoice as overcharged.
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground">Pricelist item name</label>
                     <Input
                       placeholder="Item description"
                       value={catalogName}
                       onChange={(e) => setCatalogName(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">Manufacturer SKU</label>
+                    <Input
+                      placeholder="Optional"
+                      value={catalogManufacturerSku}
+                      onChange={(e) => setCatalogManufacturerSku(e.target.value)}
                     />
                   </div>
                   <div className="space-y-1">
