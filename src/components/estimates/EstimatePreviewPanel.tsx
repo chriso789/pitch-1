@@ -1865,8 +1865,11 @@ export function EstimatePreviewPanel({
             </div>
           </div>
 
-          {/* Right Panel - Live Preview */}
-          <div className="hidden md:block flex-1 bg-muted/50 overflow-auto p-6">
+          {/* Right Panel - Live Preview.
+              On mobile the visible preview panel is hidden, but we still render
+              the template into the DOM off-screen so PDF generation and Share
+              work from a phone. */}
+          <div className="flex-1 bg-muted/50 overflow-auto p-6 hidden md:block">
             <div className="flex justify-center">
               <div
                 ref={previewRef}
