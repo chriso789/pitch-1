@@ -355,10 +355,15 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const shouldShowTemplateContent = useMemo(() => {
     // Show content if any trade has a template selected
     const anyTradeHasTemplate = tradeSections.some(t => !!t.templateId);
-    return isEditingLoadedEstimate || 
-           (isCreatingNewEstimate && (!!selectedTemplateId || anyTradeHasTemplate)) || 
-           existingEstimateId !== null;
-  }, [isEditingLoadedEstimate, isCreatingNewEstimate, selectedTemplateId, existingEstimateId, tradeSections]);
+    // Also show content when the user has manually added line items,
+    // even without picking a template — otherwise the budget / overhead /
+    // profit / save controls stay hidden on mobile ad-hoc estimates.
+    const hasManualLineItems = lineItems.length > 0;
+    return isEditingLoadedEstimate ||
+           (isCreatingNewEstimate && (!!selectedTemplateId || anyTradeHasTemplate || hasManualLineItems)) ||
+           existingEstimateId !== null ||
+           hasManualLineItems;
+  }, [isEditingLoadedEstimate, isCreatingNewEstimate, selectedTemplateId, existingEstimateId, tradeSections, lineItems.length]);
 
   // Track if there are unsaved changes (items with is_override flag)
   const hasUnsavedChanges = useMemo(() => {
