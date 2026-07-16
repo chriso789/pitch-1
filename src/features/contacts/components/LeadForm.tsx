@@ -236,6 +236,9 @@ export function LeadForm({ open, onOpenChange, onLeadCreated }: LeadFormProps) {
           tenant_id: profile.tenant_id,
           location_id: currentLocationId || null,
           contact_id: contact.id,
+          // Persist the name entered at creation on the pipeline entry itself,
+          // so the lead's display name is decoupled from later contact edits.
+          lead_name: `${formData.firstName} ${formData.lastName}`.trim() || null,
           status: 'lead',
           priority: formData.urgency === 'immediate' ? 'urgent' : 'medium',
           lead_quality_score: leadScore,
