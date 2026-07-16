@@ -226,6 +226,27 @@ export const PhotoMarkupEditor: React.FC<PhotoMarkupEditorProps> = ({
     };
   };
 
+  // Draw dashed crop selection rectangle overlay
+  const drawCropOverlay = (
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+  ) => {
+    ctx.save();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 6]);
+    ctx.strokeRect(x, y, w, h);
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([8, 6]);
+    ctx.lineDashOffset = 4;
+    ctx.strokeRect(x, y, w, h);
+    ctx.restore();
+  };
+
   // Handle mouse down
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const pos = getMousePos(e);
@@ -236,6 +257,11 @@ export const PhotoMarkupEditor: React.FC<PhotoMarkupEditorProps> = ({
       setTextPosition(pos);
       setShowTextInput(true);
       setIsDrawing(false);
+      return;
+    }
+
+    if (tool === 'crop') {
+      setCropRect({ x: pos.x, y: pos.y, w: 0, h: 0 });
       return;
     }
 
@@ -266,6 +292,17 @@ export const PhotoMarkupEditor: React.FC<PhotoMarkupEditorProps> = ({
     if (tool === 'pen' || tool === 'eraser') {
       ctx.lineTo(pos.x, pos.y);
       ctx.stroke();
+    } else if (tool === 'crop') {
+      // Redraw base image then overlay a live crop rectangle
+      if (historyIndex >= 0) {
+        ctx.putImageData(history[historyIndex], 0, 0);
+      }
+      const x = Math.min(startPos.x, pos.x);
+      const y = Math.min(startPos.y, pos.y);
+      const w = Math.abs(pos.x - startPos.x);
+      const h = Math.abs(pos.y - startPos.y);
+      setCropRect({ x, y, w, h });
+      drawCropOverlay(ctx, x, y, w, h);
     } else if (tool === 'arrow' || tool === 'circle' || tool === 'rectangle') {
       // Restore previous state and redraw shape
       if (historyIndex >= 0) {
@@ -298,11 +335,54 @@ export const PhotoMarkupEditor: React.FC<PhotoMarkupEditorProps> = ({
 
   // Handle mouse up
   const handleMouseUp = () => {
-    if (isDrawing) {
-      setIsDrawing(false);
-      saveToHistory();
+    if (!isDrawing) return;
+    setIsDrawing(false);
+    if (tool === 'crop') {
+      // Don't push to history — overlay is transient until user applies or cancels
+      return;
     }
+    saveToHistory();
   };
+
+  // Apply crop — replace canvas with cropped region
+  const handleApplyCrop = useCallback(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!ctx || !canvas || !cropRect || cropRect.w < 5 || cropRect.h < 5) {
+      setCropRect(null);
+      return;
+    }
+
+    // The current canvas has the dashed overlay drawn on it. Restore the clean
+    // last-history state before cropping so the overlay isn't baked into pixels.
+    const base = historyIndex >= 0 ? history[historyIndex] : null;
+    if (base) ctx.putImageData(base, 0, 0);
+
+    const { x, y, w, h } = cropRect;
+    const sx = Math.max(0, Math.round(x));
+    const sy = Math.max(0, Math.round(y));
+    const sw = Math.min(canvas.width - sx, Math.round(w));
+    const sh = Math.min(canvas.height - sy, Math.round(h));
+
+    const cropped = ctx.getImageData(sx, sy, sw, sh);
+
+    canvas.width = sw;
+    canvas.height = sh;
+    ctx.putImageData(cropped, 0, 0);
+
+    const snapshot = ctx.getImageData(0, 0, sw, sh);
+    setHistory([snapshot]);
+    setHistoryIndex(0);
+    setCropRect(null);
+    setTool('pen');
+  }, [cropRect, history, historyIndex]);
+
+  const handleCancelCrop = useCallback(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (ctx && historyIndex >= 0) ctx.putImageData(history[historyIndex], 0, 0);
+    setCropRect(null);
+  }, [history, historyIndex]);
 
   // Draw arrow helper
   const drawArrow = (
