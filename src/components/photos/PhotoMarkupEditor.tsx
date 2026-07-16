@@ -148,6 +148,7 @@ export const PhotoMarkupEditor: React.FC<PhotoMarkupEditorProps> = ({
     loadImage();
 
     return () => {
+      if (objectUrlToRevoke) URL.revokeObjectURL(objectUrlToRevoke);
       setImageLoaded(false);
       setHistory([]);
       setHistoryIndex(-1);
