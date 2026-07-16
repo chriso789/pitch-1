@@ -170,8 +170,8 @@ export const EnhancedDashboard = ({ onBack }: EnhancedDashboardProps) => {
         const statusCounts: any = {};
         const statusTotals: any = {};
         
-        // Initialize all statuses
-        const allStatuses = ['lead', 'estimate_sent', 'legal', 'contingency_signed', 'project', 'completed', 'closed'];
+        // Initialize all statuses (exclude closed/lost terminal stages from dashboard overview)
+        const allStatuses = ['lead', 'estimate_sent', 'legal', 'contingency_signed', 'project', 'completed'];
         allStatuses.forEach(status => {
           groupedEntries[status] = [];
           statusCounts[status] = 0;
@@ -233,14 +233,6 @@ export const EnhancedDashboard = ({ onBack }: EnhancedDashboardProps) => {
             total: statusTotals.completed || 0,
             color: "bg-green-600", 
             icon: CheckCircle
-          },
-          { 
-            status: "Closed", 
-            key: "closed",
-            count: statusCounts.closed || 0, 
-            total: statusTotals.closed || 0,
-            color: "bg-gray-500", 
-            icon: Clock
           }
         ];
 
