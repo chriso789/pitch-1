@@ -78,38 +78,61 @@ export const PhotoMarkupEditor: React.FC<PhotoMarkupEditorProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    let objectUrlToRevoke: string | null = null;
+
     const loadImage = async () => {
       let imgSrc = photo.file_url;
-      
-      // Convert HEIC/HEIF to blob URL
-      const lower = imgSrc.toLowerCase();
-      if (lower.includes('.heic') || lower.includes('.heif')) {
-        try {
-          const resp = await fetch(imgSrc);
-          const blob = await resp.blob();
-          const converted = await heic2any({ blob, toType: 'image/jpeg', quality: 0.85 });
-          const jpegBlob = Array.isArray(converted) ? converted[0] : converted;
-          imgSrc = URL.createObjectURL(jpegBlob);
-        } catch (err) {
-          console.warn('[PhotoMarkupEditor] HEIC conversion failed:', err);
+
+      // Fetch as blob → object URL. Avoids CORS-tainted canvas so toDataURL works,
+      // and sidesteps flaky crossOrigin behavior on Supabase Storage URLs.
+      try {
+        const resp = await fetch(imgSrc, { mode: 'cors', credentials: 'omit' });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        let blob = await resp.blob();
+
+        const lower = imgSrc.toLowerCase();
+        const isHeic =
+          lower.includes('.heic') ||
+          lower.includes('.heif') ||
+          blob.type === 'image/heic' ||
+          blob.type === 'image/heif';
+
+        if (isHeic) {
+          try {
+            const converted = await heic2any({ blob, toType: 'image/jpeg', quality: 0.85 });
+            blob = (Array.isArray(converted) ? converted[0] : converted) as Blob;
+          } catch (err) {
+            console.warn('[PhotoMarkupEditor] HEIC conversion failed:', err);
+          }
         }
+
+        imgSrc = URL.createObjectURL(blob);
+        objectUrlToRevoke = imgSrc;
+      } catch (err) {
+        console.warn('[PhotoMarkupEditor] Blob fetch failed, falling back to direct src:', err);
+        // fallthrough: use original URL directly
       }
 
       const img = new Image();
-      img.crossOrigin = 'anonymous';
       img.onload = () => {
         const maxWidth = Math.min(800, window.innerWidth - 100);
         const maxHeight = window.innerHeight - 300;
         const scale = Math.min(maxWidth / img.width, maxHeight / img.height, 1);
-        
+
         canvas.width = img.width * scale;
         canvas.height = img.height * scale;
-        
+
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        setHistory([imageData]);
-        setHistoryIndex(0);
+
+        try {
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          setHistory([imageData]);
+          setHistoryIndex(0);
+        } catch (err) {
+          console.warn('[PhotoMarkupEditor] getImageData blocked (tainted canvas):', err);
+          setHistory([]);
+          setHistoryIndex(-1);
+        }
         setImageLoaded(true);
       };
       img.onerror = () => {
