@@ -228,10 +228,12 @@ export const SortablePhotoItem: React.FC<SortablePhotoItemProps> = ({
           loading={imageLoading}
         />
 
-        {/* Drag handle & checkbox on hover */}
+        {/* Drag handle & checkbox */}
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors">
           <button
-            className="absolute top-2 left-2 p-1 rounded bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-grab touch-none"
+            className="absolute top-2 left-2 p-1.5 rounded bg-black/60 hover:bg-black/80 text-white cursor-grab active:cursor-grabbing touch-none shadow-md"
+            title="Drag to reorder"
+            aria-label="Drag to reorder"
             {...attributes}
             {...listeners}
           >
