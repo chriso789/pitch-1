@@ -74,6 +74,8 @@ export const PhotoMarkupEditor: React.FC<PhotoMarkupEditorProps> = ({
   const [textPosition, setTextPosition] = useState({ x: 0, y: 0 });
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [cropRect, setCropRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
 
   // Load image into canvas
   useEffect(() => {
