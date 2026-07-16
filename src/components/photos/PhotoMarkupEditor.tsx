@@ -509,12 +509,39 @@ export const PhotoMarkupEditor: React.FC<PhotoMarkupEditorProps> = ({
               <Type className="h-4 w-4" />
             </Button>
             <Button
-              variant={tool === 'eraser' ? 'default' : 'ghost'}
+              variant={tool === 'crop' ? 'default' : 'ghost'}
               size="icon"
-              onClick={() => setTool('eraser')}
-              title="Eraser"
+              onClick={() => setTool('crop')}
+              title="Crop"
             >
-              <Eraser className="h-4 w-4" />
+              <Crop className="h-4 w-4" />
+            </Button>
+
+            <Separator className="my-1" />
+
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setZoom((z) => Math.min(4, +(z + 0.25).toFixed(2)))}
+              title="Zoom in"
+            >
+              <ZoomIn className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setZoom((z) => Math.max(0.25, +(z - 0.25).toFixed(2)))}
+              title="Zoom out"
+            >
+              <ZoomOut className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setZoom(1)}
+              title="Fit"
+            >
+              <Maximize2 className="h-4 w-4" />
             </Button>
 
             <Separator className="my-1" />
