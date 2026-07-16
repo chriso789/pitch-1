@@ -15,6 +15,7 @@ import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
 import { TEST_IDS } from "../../../../tests/utils/test-ids";
 import { useContactDraftPersistence } from "@/hooks/useContactDraftPersistence";
 import { useNavigate } from "react-router-dom";
+import { useLocation } from "@/contexts/LocationContext";
 
 interface ContactFormData {
   first_name: string;
