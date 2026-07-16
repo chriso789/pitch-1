@@ -418,7 +418,10 @@ const Dashboard = () => {
         // Hide MSFH (My Safe Florida Home) stages from the dashboard pipeline overview
         const name = (stage.name || '').toLowerCase();
         const key = (stage.key || '').toLowerCase();
-        return !name.includes('msfh') && !key.includes('msfh');
+        return !name.includes('msfh') && !key.includes('msfh')
+          // Hide closed/lost terminal stages from dashboard; still tracked on pipeline page
+          && !name.includes('closed') && !key.includes('closed')
+          && !name.includes('lost') && !key.includes('lost');
       })
       .map(stage => ({
         status: stage.name,
