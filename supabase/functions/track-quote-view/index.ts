@@ -108,13 +108,8 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Check expiration
-    if (trackingLink.expires_at && new Date(trackingLink.expires_at) < new Date()) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Link has expired" }),
-        { status: 410, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    // Quote links never expire — every view is tracked and notifies the sender
+
 
     // Get client info
     const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0] || 
