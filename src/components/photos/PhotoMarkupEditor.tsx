@@ -26,12 +26,17 @@ import {
   Loader2,
   RotateCcw,
   Trash2,
+  Crop,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+  Check,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { type CustomerPhoto } from '@/hooks/usePhotos';
 import { toast } from '@/components/ui/use-toast';
 
-type DrawingTool = 'pen' | 'arrow' | 'circle' | 'rectangle' | 'text' | 'eraser';
+type DrawingTool = 'pen' | 'arrow' | 'circle' | 'rectangle' | 'text' | 'eraser' | 'crop';
 
 const COLORS = [
   { name: 'Red', value: '#ef4444' },
@@ -69,6 +74,8 @@ export const PhotoMarkupEditor: React.FC<PhotoMarkupEditorProps> = ({
   const [textPosition, setTextPosition] = useState({ x: 0, y: 0 });
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [cropRect, setCropRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
 
   // Load image into canvas
   useEffect(() => {
@@ -219,6 +226,27 @@ export const PhotoMarkupEditor: React.FC<PhotoMarkupEditorProps> = ({
     };
   };
 
+  // Draw dashed crop selection rectangle overlay
+  const drawCropOverlay = (
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+  ) => {
+    ctx.save();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 6]);
+    ctx.strokeRect(x, y, w, h);
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([8, 6]);
+    ctx.lineDashOffset = 4;
+    ctx.strokeRect(x, y, w, h);
+    ctx.restore();
+  };
+
   // Handle mouse down
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const pos = getMousePos(e);
@@ -229,6 +257,11 @@ export const PhotoMarkupEditor: React.FC<PhotoMarkupEditorProps> = ({
       setTextPosition(pos);
       setShowTextInput(true);
       setIsDrawing(false);
+      return;
+    }
+
+    if (tool === 'crop') {
+      setCropRect({ x: pos.x, y: pos.y, w: 0, h: 0 });
       return;
     }
 
@@ -259,6 +292,17 @@ export const PhotoMarkupEditor: React.FC<PhotoMarkupEditorProps> = ({
     if (tool === 'pen' || tool === 'eraser') {
       ctx.lineTo(pos.x, pos.y);
       ctx.stroke();
+    } else if (tool === 'crop') {
+      // Redraw base image then overlay a live crop rectangle
+      if (historyIndex >= 0) {
+        ctx.putImageData(history[historyIndex], 0, 0);
+      }
+      const x = Math.min(startPos.x, pos.x);
+      const y = Math.min(startPos.y, pos.y);
+      const w = Math.abs(pos.x - startPos.x);
+      const h = Math.abs(pos.y - startPos.y);
+      setCropRect({ x, y, w, h });
+      drawCropOverlay(ctx, x, y, w, h);
     } else if (tool === 'arrow' || tool === 'circle' || tool === 'rectangle') {
       // Restore previous state and redraw shape
       if (historyIndex >= 0) {
@@ -291,11 +335,54 @@ export const PhotoMarkupEditor: React.FC<PhotoMarkupEditorProps> = ({
 
   // Handle mouse up
   const handleMouseUp = () => {
-    if (isDrawing) {
-      setIsDrawing(false);
-      saveToHistory();
+    if (!isDrawing) return;
+    setIsDrawing(false);
+    if (tool === 'crop') {
+      // Don't push to history — overlay is transient until user applies or cancels
+      return;
     }
+    saveToHistory();
   };
+
+  // Apply crop — replace canvas with cropped region
+  const handleApplyCrop = useCallback(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!ctx || !canvas || !cropRect || cropRect.w < 5 || cropRect.h < 5) {
+      setCropRect(null);
+      return;
+    }
+
+    // The current canvas has the dashed overlay drawn on it. Restore the clean
+    // last-history state before cropping so the overlay isn't baked into pixels.
+    const base = historyIndex >= 0 ? history[historyIndex] : null;
+    if (base) ctx.putImageData(base, 0, 0);
+
+    const { x, y, w, h } = cropRect;
+    const sx = Math.max(0, Math.round(x));
+    const sy = Math.max(0, Math.round(y));
+    const sw = Math.min(canvas.width - sx, Math.round(w));
+    const sh = Math.min(canvas.height - sy, Math.round(h));
+
+    const cropped = ctx.getImageData(sx, sy, sw, sh);
+
+    canvas.width = sw;
+    canvas.height = sh;
+    ctx.putImageData(cropped, 0, 0);
+
+    const snapshot = ctx.getImageData(0, 0, sw, sh);
+    setHistory([snapshot]);
+    setHistoryIndex(0);
+    setCropRect(null);
+    setTool('pen');
+  }, [cropRect, history, historyIndex]);
+
+  const handleCancelCrop = useCallback(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (ctx && historyIndex >= 0) ctx.putImageData(history[historyIndex], 0, 0);
+    setCropRect(null);
+  }, [history, historyIndex]);
 
   // Draw arrow helper
   const drawArrow = (
@@ -429,6 +516,41 @@ export const PhotoMarkupEditor: React.FC<PhotoMarkupEditorProps> = ({
             >
               <Eraser className="h-4 w-4" />
             </Button>
+            <Button
+              variant={tool === 'crop' ? 'default' : 'ghost'}
+              size="icon"
+              onClick={() => setTool('crop')}
+              title="Crop"
+            >
+              <Crop className="h-4 w-4" />
+            </Button>
+
+            <Separator className="my-1" />
+
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setZoom((z) => Math.min(4, +(z + 0.25).toFixed(2)))}
+              title="Zoom in"
+            >
+              <ZoomIn className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setZoom((z) => Math.max(0.25, +(z - 0.25).toFixed(2)))}
+              title="Zoom out"
+            >
+              <ZoomOut className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setZoom(1)}
+              title="Fit"
+            >
+              <Maximize2 className="h-4 w-4" />
+            </Button>
 
             <Separator className="my-1" />
 
@@ -462,14 +584,26 @@ export const PhotoMarkupEditor: React.FC<PhotoMarkupEditorProps> = ({
 
           {/* Canvas area */}
           <div className="flex-1 p-4 overflow-auto bg-gray-100 dark:bg-gray-900" ref={containerRef}>
-            <div className="relative inline-block">
+            {cropRect && (
+              <div className="mb-2 flex items-center gap-2 text-xs bg-primary/10 border border-primary/30 rounded px-2 py-1 w-fit">
+                <span className="font-medium">Crop: drag to adjust, then</span>
+                <Button size="sm" variant="default" className="h-7 px-2" onClick={handleApplyCrop}>
+                  <Check className="h-3.5 w-3.5 mr-1" /> Apply
+                </Button>
+                <Button size="sm" variant="ghost" className="h-7 px-2" onClick={handleCancelCrop}>
+                  <X className="h-3.5 w-3.5 mr-1" /> Cancel
+                </Button>
+              </div>
+            )}
+            <div className="relative inline-block" style={{ transform: `scale(${zoom})`, transformOrigin: 'top left' }}>
               <canvas
                 ref={canvasRef}
                 className={cn(
                   'max-w-full rounded shadow-lg',
                   tool === 'pen' && 'cursor-crosshair',
                   tool === 'eraser' && 'cursor-cell',
-                  tool === 'text' && 'cursor-text'
+                  tool === 'text' && 'cursor-text',
+                  tool === 'crop' && 'cursor-crosshair',
                 )}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
