@@ -509,6 +509,14 @@ export const PhotoMarkupEditor: React.FC<PhotoMarkupEditorProps> = ({
               <Type className="h-4 w-4" />
             </Button>
             <Button
+              variant={tool === 'eraser' ? 'default' : 'ghost'}
+              size="icon"
+              onClick={() => setTool('eraser')}
+              title="Eraser"
+            >
+              <Eraser className="h-4 w-4" />
+            </Button>
+            <Button
               variant={tool === 'crop' ? 'default' : 'ghost'}
               size="icon"
               onClick={() => setTool('crop')}
