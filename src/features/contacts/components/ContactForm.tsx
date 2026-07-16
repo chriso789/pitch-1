@@ -47,6 +47,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
 }) => {
   const { user: currentUser } = useCurrentUser();
   const effectiveTenantId = useEffectiveTenantId();
+  const { currentLocationId } = useLocation();
   const { toast } = useToast();
   const navigate = useNavigate();
   const { 
