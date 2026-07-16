@@ -584,14 +584,26 @@ export const PhotoMarkupEditor: React.FC<PhotoMarkupEditorProps> = ({
 
           {/* Canvas area */}
           <div className="flex-1 p-4 overflow-auto bg-gray-100 dark:bg-gray-900" ref={containerRef}>
-            <div className="relative inline-block">
+            {cropRect && (
+              <div className="mb-2 flex items-center gap-2 text-xs bg-primary/10 border border-primary/30 rounded px-2 py-1 w-fit">
+                <span className="font-medium">Crop: drag to adjust, then</span>
+                <Button size="sm" variant="default" className="h-7 px-2" onClick={handleApplyCrop}>
+                  <Check className="h-3.5 w-3.5 mr-1" /> Apply
+                </Button>
+                <Button size="sm" variant="ghost" className="h-7 px-2" onClick={handleCancelCrop}>
+                  <X className="h-3.5 w-3.5 mr-1" /> Cancel
+                </Button>
+              </div>
+            )}
+            <div className="relative inline-block" style={{ transform: `scale(${zoom})`, transformOrigin: 'top left' }}>
               <canvas
                 ref={canvasRef}
                 className={cn(
                   'max-w-full rounded shadow-lg',
                   tool === 'pen' && 'cursor-crosshair',
                   tool === 'eraser' && 'cursor-cell',
-                  tool === 'text' && 'cursor-text'
+                  tool === 'text' && 'cursor-text',
+                  tool === 'crop' && 'cursor-crosshair',
                 )}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
