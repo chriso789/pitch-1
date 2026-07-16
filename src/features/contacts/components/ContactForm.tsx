@@ -15,6 +15,7 @@ import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
 import { TEST_IDS } from "../../../../tests/utils/test-ids";
 import { useContactDraftPersistence } from "@/hooks/useContactDraftPersistence";
 import { useNavigate } from "react-router-dom";
+import { useLocation } from "@/contexts/LocationContext";
 
 interface ContactFormData {
   first_name: string;
@@ -46,6 +47,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
 }) => {
   const { user: currentUser } = useCurrentUser();
   const effectiveTenantId = useEffectiveTenantId();
+  const { currentLocationId } = useLocation();
   const { toast } = useToast();
   const navigate = useNavigate();
   const { 
@@ -287,6 +289,8 @@ const ContactForm: React.FC<ContactFormProps> = ({
         
         // System fields - use effective tenant ID
         tenant_id: tenantIdToUse,
+        // Save into the location the user is currently viewing, not the trigger's first-assigned fallback
+        location_id: currentLocationId || null,
         assigned_to: assignedTo || null,
         created_by_ghost: isGhostAccount ? user.id : null,
         
