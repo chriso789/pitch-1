@@ -1435,10 +1435,13 @@ const LeadDetails = () => {
                   return combined || undefined;
                 })()}
                 reportTitle={(() => {
+                  const leadName = (lead as any)?.lead_name?.trim?.();
                   const c = lead?.contact;
-                  const name = c ? [c.first_name, c.last_name].filter(Boolean).join(' ').trim() : '';
+                  const contactName = c ? [c.first_name, c.last_name].filter(Boolean).join(' ').trim() : '';
+                  const name = leadName || contactName;
                   return name ? `${name} — Photo Report` : 'Photo Report';
                 })()}
+
               />
             </TabsContent>
 
