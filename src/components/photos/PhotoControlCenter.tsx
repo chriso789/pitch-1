@@ -937,7 +937,7 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
         }}
       >
         <DialogContent className="max-w-5xl w-[95vw] h-[90vh] p-0 flex flex-col overflow-hidden">
-          <DialogHeader className="px-4 py-2 border-b flex-row items-center justify-between space-y-0">
+          <DialogHeader className="px-4 py-2 pr-12 border-b flex-row items-center justify-between space-y-0">
             <DialogTitle className="text-sm font-medium truncate">
               {companyInfo?.name ? `${companyInfo.name} · ` : ''}
               {reportTitle || 'Photo Report'}
