@@ -240,7 +240,8 @@ Deno.serve(async (req: Request) => {
         recipient_email: body.recipient_email,
         recipient_name: body.recipient_name,
         sent_by: user.id,
-        expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+        // No expiration — quote links stay accessible for unlimited views
+        expires_at: null
       })
       .select()
       .single();
