@@ -289,6 +289,8 @@ const ContactForm: React.FC<ContactFormProps> = ({
         
         // System fields - use effective tenant ID
         tenant_id: tenantIdToUse,
+        // Save into the location the user is currently viewing, not the trigger's first-assigned fallback
+        location_id: currentLocationId || null,
         assigned_to: assignedTo || null,
         created_by_ghost: isGhostAccount ? user.id : null,
         
