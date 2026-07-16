@@ -26,12 +26,17 @@ import {
   Loader2,
   RotateCcw,
   Trash2,
+  Crop,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+  Check,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { type CustomerPhoto } from '@/hooks/usePhotos';
 import { toast } from '@/components/ui/use-toast';
 
-type DrawingTool = 'pen' | 'arrow' | 'circle' | 'rectangle' | 'text' | 'eraser';
+type DrawingTool = 'pen' | 'arrow' | 'circle' | 'rectangle' | 'text' | 'eraser' | 'crop';
 
 const COLORS = [
   { name: 'Red', value: '#ef4444' },
