@@ -770,6 +770,30 @@ const CompanyAdminPage = () => {
           </TabsContent>
 
           <TabsContent value="ai-measurement" className="space-y-4">
+            {/* 1. Testing Area — TOP */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  Developer Testing Area
+                </CardTitle>
+                <CardDescription>
+                  Run the canonical <code>start-ai-measurement</code> pipeline end-to-end against a real address or coordinates.
+                  After the test completes, open the full measurement report to see the roof aerial with measurement overlays applied.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <MeasurementTestPanel />
+              </CardContent>
+            </Card>
+
+            {/* 2. Live Pipeline Health + Buildout Log */}
+            <AIMeasurementBuildoutLog />
+
+            {/* 3. Program Checklist — BOTTOM (use to verify UI accuracy after each test run) */}
+            <AIMeasurementProgramCards />
+
+            {/* 4. Developer Preview footer info */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -802,26 +826,6 @@ const CompanyAdminPage = () => {
                 </p>
               </CardContent>
             </Card>
-
-            <AIMeasurementProgramCards />
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="h-5 w-5" />
-                  Developer Testing Area
-                </CardTitle>
-                <CardDescription>
-                  Run the canonical <code>start-ai-measurement</code> pipeline end-to-end against a real address or coordinates.
-                  Moved here from Settings → Roof Training so all AI Measurement operator surfaces live in one tab.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <MeasurementTestPanel />
-              </CardContent>
-            </Card>
-
-            <AIMeasurementBuildoutLog />
 
           </TabsContent>
 
