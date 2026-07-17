@@ -1207,6 +1207,8 @@ export function SchematicRoofDiagram({
     };
   }, [localShowOverlay, satelliteImageUrl, computedImageCrop, width, height]);
 
+  const usesCanonicalPixelOverlay = debugInfo?.transformMode === 'overlay-schema-pixel';
+
   useEffect(() => {
     let cancelled = false;
 
@@ -1214,6 +1216,7 @@ export function SchematicRoofDiagram({
       localShowOverlay &&
       !!satelliteImageUrl &&
       !!overlayImageStyle &&
+      !usesCanonicalPixelOverlay &&
       (eaveSegments.length > 0 || rakeSegments.length > 0 || ridgeSegments.length > 0 || hipSegments.length > 0 || valleySegments.length > 0);
 
     if (!shouldFitEdges || !overlayImageStyle) {
@@ -1264,6 +1267,7 @@ export function SchematicRoofDiagram({
     localShowOverlay,
     overlayImageStyle,
     satelliteImageUrl,
+    usesCanonicalPixelOverlay,
     width,
   ]);
 
