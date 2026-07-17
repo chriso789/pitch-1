@@ -18,6 +18,33 @@ Deno.test("legacy admin test route includes nationwide US ArcGIS before Regrid/S
   assert(source.includes("US ArcGIS ${usResult.source} candidate"), "solar fast path must collect US ArcGIS as a candidate before falling back to a rectangle");
 });
 
+Deno.test("solar fast path refuses to complete complex roofs from solar bbox fallback", async () => {
+  const source = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
+
+  assert(
+    source.includes("fastPathBlockedByBbox = footprintSource === 'solar_bbox_fallback' && segmentCount >= 4"),
+    "complex roofs with only solar_bbox_fallback must be blocked from fast-path completion",
+  );
+  assert(
+    source.includes("complex roof requires full AI trace; solar_bbox_fallback is diagnostic-only"),
+    "blocked fast path must return an explicit diagnostic reason instead of saving stale synthetic lines",
+  );
+  assert(
+    source.includes("would reuse synthetic hips/ridges/valleys"),
+    "logs must explain that bbox fast path would reuse fake topology lines",
+  );
+});
+
+Deno.test("legacy analyze inserts normalize result state and block customer-ready report", async () => {
+  const source = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
+
+  assert(source.includes("normalizeResultStateForWrite"), "legacy route must normalize result_state before DB writes");
+  assert(source.includes("result_state: resultState"), "legacy route must persist a nonblank canonical result_state");
+  assert(source.includes("customer_report_ready: false"), "legacy noncanonical rows must never be customer-ready");
+  assert(source.includes("report_blocked: true"), "legacy noncanonical rows must be blocked from customer report rendering");
+  assert(source.includes("route_warning = 'legacy_noncanonical_measurement_path'"), "legacy provenance must remain visible in geometry_report_json");
+});
+
 Deno.test("geometry validator accepts nationwide US ArcGIS footprint source tokens", () => {
   const rectangle = [
     { lat: 26.123, lng: -80.123 },
