@@ -50319,8 +50319,10 @@ export type Database = {
           id: string
           in_stock: boolean | null
           order_id: string
+          product_color: string | null
           product_description: string | null
           product_name: string
+          product_option: string | null
           quantity: number
           srs_product_id: number | null
           total_price: number | null
@@ -50332,8 +50334,10 @@ export type Database = {
           id?: string
           in_stock?: boolean | null
           order_id: string
+          product_color?: string | null
           product_description?: string | null
           product_name: string
+          product_option?: string | null
           quantity: number
           srs_product_id?: number | null
           total_price?: number | null
@@ -50345,8 +50349,10 @@ export type Database = {
           id?: string
           in_stock?: boolean | null
           order_id?: string
+          product_color?: string | null
           product_description?: string | null
           product_name?: string
+          product_option?: string | null
           quantity?: number
           srs_product_id?: number | null
           total_price?: number | null
