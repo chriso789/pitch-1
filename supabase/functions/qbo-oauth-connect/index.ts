@@ -632,7 +632,8 @@ Deno.serve(async (req) => {
       if (connection) {
         try {
           const ctx = getQboContextForConnection(connection);
-          const revokeResp = await fetch(QBO_REVOKE_URL, {
+          const revokeEndpoints = await getQboOAuthEndpoints(ctx.mode);
+          const revokeResp = await fetch(revokeEndpoints.revocation_endpoint, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
