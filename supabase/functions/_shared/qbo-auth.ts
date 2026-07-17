@@ -75,12 +75,13 @@ function basicAuthHeader(clientId: string, clientSecret: string) {
   return `Basic ${btoa(`${clientId}:${clientSecret}`)}`;
 }
 
-export function buildAuthorizeUrl(opts: {
+export async function buildAuthorizeUrl(opts: {
   state: string;
   scopes?: string;
 }) {
-  const { clientId, redirectUri } = getQboEnv();
-  const url = new URL(QBO_AUTH_URL);
+  const { clientId, redirectUri, environment } = getQboEnv();
+  const endpoints = await getQboOAuthEndpoints(environment);
+  const url = new URL(endpoints.authorization_endpoint);
   url.searchParams.set("client_id", clientId);
   url.searchParams.set("redirect_uri", redirectUri);
   url.searchParams.set("response_type", "code");
