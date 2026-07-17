@@ -644,6 +644,7 @@ Deno.serve(async (req) => {
             headers: {
               "Content-Type": "application/json",
               Accept: "application/json",
+              "User-Agent": QBO_USER_AGENT,
               Authorization: basicAuth(ctx.clientId, ctx.clientSecret),
             },
             body: JSON.stringify({ token: connection.refresh_token }),
