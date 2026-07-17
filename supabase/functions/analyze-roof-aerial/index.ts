@@ -4370,6 +4370,27 @@ async function saveMeasurementToDatabase(supabase: any, params: any) {
     console.log(`📐 Using ${authoritativeFootprint.source} footprint for perimeter WKT`);
   }
 
+  const finalOverlaySchema = buildOverlaySchemaFromFinalGeometry({
+    perimeterWkt: finalPerimeterWkt,
+    footprintVertices: authoritativeFootprint?.vertices || null,
+    linearFeatures,
+    center: coordinates,
+    imageSize: imageSize || IMAGE_SIZE,
+    zoom: IMAGE_ZOOM,
+    imageSource,
+    footprintSource: authoritativeFootprint?.source || 'ai_detection',
+  });
+
+  const finalImageBounds = calculateStaticMapImageBounds(coordinates, IMAGE_ZOOM, imageSize || IMAGE_SIZE);
+  const finalImageSizeMetadata = analysisImageSizeMetadata(imageSource, imageSize || IMAGE_SIZE);
+  const finalMetadata = {
+    ...(metadata || {}),
+    overlay_registration_fix: 'analysis-raster-metadata-v1',
+    overlay_coordinate_space: 'analysis_image_px',
+    image_bounds: finalImageBounds,
+    analysis_image_size: finalImageSizeMetadata,
+  };
+
   const { data, error } = await insertRoofMeasurementWithDiagramRetry(supabase, {
     ...LEGACY_ANALYZE_PROVENANCE,
     customer_id: customerId || null,
@@ -4411,7 +4432,9 @@ async function saveMeasurementToDatabase(supabase: any, params: any) {
     bounding_box: aiAnalysis.boundingBox,
     roof_perimeter: aiAnalysis.roofPerimeter,
     analysis_zoom: IMAGE_ZOOM,
-    analysis_image_size: { width: imageSize, height: imageSize },
+    analysis_image_size: finalImageSizeMetadata,
+    image_bounds: finalImageBounds,
+    overlay_schema: finalOverlaySchema,
     validation_status: 'pending',
     vertex_count: vertexStats?.totalCount || 0,
     perimeter_vertex_count: vertexStats?.totalCount || 0,
@@ -4419,7 +4442,7 @@ async function saveMeasurementToDatabase(supabase: any, params: any) {
     hip_corner_count: vertexStats?.hipCornerCount || 0,
     valley_entry_count: vertexStats?.valleyEntryCount || 0,
     gable_peak_count: vertexStats?.gablePeakCount || 0,
-    metadata: metadata || {},
+    metadata: finalMetadata,
     // NEW: Authoritative footprint tracking fields
     footprint_source: authoritativeFootprint?.source || 'ai_detection',
     footprint_confidence: authoritativeFootprint?.confidence || 0.5,
