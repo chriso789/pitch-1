@@ -1,0 +1,1 @@
+alter table public.abc_oauth_states add column if not exists return_path text;

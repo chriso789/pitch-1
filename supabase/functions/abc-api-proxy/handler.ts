@@ -534,6 +534,18 @@ export const handle = async (req) => {
         }
       } catch { /* ignore bad origin */ }
 
+      // Optional caller-supplied return_path — must be a same-origin relative
+      // path so we can send the admin back to the exact Pitch screen they
+      // launched the connection from (e.g. `/admin/companies?tab=integrations`).
+      const rawReturnPath = (body.return_path || "").toString().trim();
+      let safeReturnPath: string | null = null;
+      if (rawReturnPath.startsWith("/") && !rawReturnPath.startsWith("//")) {
+        // Cap at a reasonable length and forbid whitespace/newlines.
+        if (rawReturnPath.length <= 512 && !/\s/.test(rawReturnPath)) {
+          safeReturnPath = rawReturnPath;
+        }
+      }
+
       const { error: stateErr } = await supabase.from("abc_oauth_states").insert({
         state,
         tenant_id,
@@ -541,6 +553,7 @@ export const handle = async (req) => {
         code_verifier: verifier,
         redirect_uri: redirectUri,
         return_origin: safeReturnOrigin,
+        return_path: safeReturnPath,
         created_by: userId,
         expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
       });

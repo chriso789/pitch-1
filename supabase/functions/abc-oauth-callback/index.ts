@@ -149,9 +149,19 @@ Deno.serve(async (req) => {
 
     // If the start_oauth call captured the originating app origin (e.g. preview URL),
     // redirect the user back there instead of the hardcoded production domain.
+    // If a same-origin return_path was also captured, land on that exact screen
+    // (e.g. /admin/companies?tab=integrations) so the admin returns to the
+    // Integrations sheet they launched OAuth from, not a generic settings page.
     const stateOrigin = (stateRow as any).return_origin as string | null | undefined;
+    const stateReturnPath = (stateRow as any).return_path as string | null | undefined;
     if (stateOrigin && /^https?:\/\//.test(stateOrigin)) {
-      returnTo = `${stateOrigin.replace(/\/$/, "")}/settings?tab=supplier-connections&supplier=abc&abc=`;
+      const origin = stateOrigin.replace(/\/$/, "");
+      if (stateReturnPath && stateReturnPath.startsWith("/") && !stateReturnPath.startsWith("//")) {
+        const sep = stateReturnPath.includes("?") ? "&" : "?";
+        returnTo = `${origin}${stateReturnPath}${sep}abc=`;
+      } else {
+        returnTo = `${origin}/settings?tab=supplier-connections&supplier=abc&abc=`;
+      }
     }
 
     if (new Date(stateRow.expires_at).getTime() < Date.now()) {
