@@ -5199,12 +5199,21 @@ async function processSolarFastPath(
     return { success: false, reason: 'Could not build valid perimeter' }
   }
   
+  const segmentCount = solarData.roofSegments.length
+  const fastPathBlockedByBbox = footprintSource === 'solar_bbox_fallback' && segmentCount >= 4
+  if (fastPathBlockedByBbox) {
+    console.warn(`🚫 Solar Fast Path blocked: ${segmentCount} Solar segments on a solar_bbox_fallback perimeter would reuse synthetic hips/ridges/valleys. Falling back to full AI trace.`)
+    return {
+      success: false,
+      reason: 'complex roof requires full AI trace; solar_bbox_fallback is diagnostic-only'
+    }
+  }
+  
   // ═══════════════════════════════════════════════════════════════════════════
   // 🏠 L-SHAPE CROSS-VALIDATION: Check if Solar segments suggest complex roof
   // but footprint is simplified (4-5 vertices = rectangle)
   // If mismatch detected, trigger AI Vision to capture true L-shape footprint
   // ═══════════════════════════════════════════════════════════════════════════
-  const segmentCount = solarData.roofSegments.length
   const directions = solarData.roofSegments.map((s: any) => {
     const az = s.azimuthDegrees || 0
     if (az >= 315 || az < 45) return 'N'
