@@ -40,6 +40,9 @@ const corsHeaders = {
 const APP_BASE_URL = Deno.env.get("QBO_APP_BASE_URL") ?? "https://pitch-crm.ai";
 const SETTINGS_RETURN_PATH = "/settings/integrations";
 
+// Intuit publishing requirement: apps must identify themselves on OAuth + API calls.
+const QBO_USER_AGENT = "PitchCRM/1.0 (+https://pitch-crm.ai; support@pitch-crm.ai)";
+
 const REQUIRED_LEGAL_KEYS = ["privacy_policy", "terms_of_service", "qbo_integration_consent"] as const;
 
 interface TokenResponse {
@@ -145,6 +148,7 @@ async function handleServerCallback(reqUrl: URL): Promise<Response> {
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
       Accept: "application/json",
+      "User-Agent": QBO_USER_AGENT,
       Authorization: basicAuth(ctx.clientId, ctx.clientSecret),
     },
     body: new URLSearchParams({
@@ -200,6 +204,7 @@ async function handleServerCallback(reqUrl: URL): Promise<Response> {
         headers: {
           Authorization: `Bearer ${tokens.access_token}`,
           Accept: "application/json",
+          "User-Agent": QBO_USER_AGENT,
         },
       },
     );
@@ -530,6 +535,7 @@ Deno.serve(async (req) => {
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
           Accept: "application/json",
+          "User-Agent": QBO_USER_AGENT,
           Authorization: basicAuth(ctx.clientId, ctx.clientSecret),
         },
         body: new URLSearchParams({
@@ -638,6 +644,7 @@ Deno.serve(async (req) => {
             headers: {
               "Content-Type": "application/json",
               Accept: "application/json",
+              "User-Agent": QBO_USER_AGENT,
               Authorization: basicAuth(ctx.clientId, ctx.clientSecret),
             },
             body: JSON.stringify({ token: connection.refresh_token }),

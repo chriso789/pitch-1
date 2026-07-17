@@ -31,6 +31,9 @@ export const QBO_REVOKE_URL = "https://developer.api.intuit.com/v2/oauth2/tokens
 
 export const QBO_DEFAULT_SCOPES = "com.intuit.quickbooks.accounting openid email profile";
 
+// Intuit publishing requirement: identify the app on every OAuth/API call.
+const QBO_USER_AGENT = "PitchCRM/1.0 (+https://pitch-crm.ai; support@pitch-crm.ai)";
+
 const REFRESH_SKEW_SECONDS = 5 * 60;
 
 export interface QboTokenResponse {
@@ -101,6 +104,7 @@ export async function exchangeAuthorizationCode(
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
       Accept: "application/json",
+      "User-Agent": QBO_USER_AGENT,
       Authorization: basicAuthHeader(c.clientId, c.clientSecret),
     },
     body: new URLSearchParams({
@@ -137,6 +141,7 @@ export async function refreshAccessToken(
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
       Accept: "application/json",
+      "User-Agent": QBO_USER_AGENT,
       Authorization: basicAuthHeader(c.clientId, c.clientSecret),
     },
     body: new URLSearchParams({
@@ -309,6 +314,7 @@ export async function revokeConnection(service: SupabaseClient, tenant_id: strin
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
+        "User-Agent": QBO_USER_AGENT,
         Authorization: basicAuthHeader(ctx.clientId, ctx.clientSecret),
       },
       body: JSON.stringify({ token: (conn as { refresh_token: string }).refresh_token }),
