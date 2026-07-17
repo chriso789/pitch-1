@@ -26,6 +26,26 @@ import { getQboContextForConnection } from "./qbo-context.ts";
 
 const REFRESH_SKEW_MS = 5 * 60 * 1000; // refresh if <5min remaining on access token
 
+// Intuit publishing requirement: apps must identify themselves via User-Agent
+// and gracefully handle throttling (500 req/min per realm) with backoff.
+const QBO_USER_AGENT = "PitchCRM/1.0 (+https://pitch-crm.ai; support@pitch-crm.ai)";
+const QBO_MAX_RETRIES = 3;
+const QBO_BASE_BACKOFF_MS = 500;
+
+function parseRetryAfterMs(res: Response): number | null {
+  const h = res.headers.get("Retry-After");
+  if (!h) return null;
+  const n = Number(h);
+  if (!isNaN(n)) return Math.min(n, 30) * 1000;
+  const asDate = Date.parse(h);
+  if (!isNaN(asDate)) return Math.max(0, Math.min(asDate - Date.now(), 30_000));
+  return null;
+}
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 export interface QboLogContext {
   /** Logical action name, e.g. `qbo_customer_sync`, `qbo_invoice_create`. */
   action: string;
