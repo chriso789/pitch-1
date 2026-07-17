@@ -308,22 +308,46 @@ export function IntegrationSandboxConsole({ slug, name }: Props) {
                     <Button
                       size="sm"
                       variant="outline"
-                      asChild
+                      onClick={async () => {
+                        try {
+                          const { data, error } = await supabase.functions.invoke(
+                            "abc-api-proxy",
+                            {
+                              body: {
+                                action: "start_oauth",
+                                environment: "sandbox",
+                                return_origin: window.location.origin,
+                              },
+                            },
+                          );
+                          if (error) throw new Error(error.message);
+                          if (!data?.success || !data?.authorization_url) {
+                            throw new Error(
+                              data?.human_message ||
+                                data?.error_code ||
+                                "Could not build ABC authorize URL",
+                            );
+                          }
+                          window.open(
+                            data.authorization_url,
+                            "_blank",
+                            "noopener,noreferrer",
+                          );
+                        } catch (e: any) {
+                          toast({
+                            title: "ABC sandbox login unavailable",
+                            description:
+                              e?.message ||
+                              "start_oauth failed — check ABC_CLIENT_ID_SANDBOX / secret / redirect config.",
+                            variant: "destructive",
+                          });
+                        }
+                      }}
                     >
-                      <a
-                        href="https://sandbox.auth.partners.abcsupply.com/oauth2/aus1vp07knpuqf6Xz0h8/v1/authorize"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        <ExternalLink className="h-3.5 w-3.5 mr-1" />
-                        ABC sandbox login
-                      </a>
+                      <ExternalLink className="h-3.5 w-3.5 mr-1" />
+                      ABC sandbox login
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      asChild
-                    >
+                    <Button size="sm" variant="outline" asChild>
                       <a
                         href="https://my.abcsupply.com/"
                         target="_blank"
