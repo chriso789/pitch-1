@@ -103,7 +103,7 @@ export function MeasurementTestPanel() {
 
       const { data: measurementData, error: measurementError } = await supabase.functions.invoke('analyze-roof-aerial', {
         body: {
-          address: address || `${coordinates.lat}, ${coordinates.lng}`,
+          address: runAddress,
           coordinates,
           customerId: null, // Test mode - no customer
           userId: null
