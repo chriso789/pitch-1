@@ -56,6 +56,7 @@ import {
 } from "lucide-react";
 import { CentzConnectionsAdmin } from "@/components/admin/CentzConnectionsAdmin";
 import { IntegrationSandboxConsole } from "@/components/admin/IntegrationSandboxConsole";
+import { AbcAdminSurfaces } from "@/components/admin/AbcAdminSurfaces";
 
 interface PlatformIntegration {
   id: string;
