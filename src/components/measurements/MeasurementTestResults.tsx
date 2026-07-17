@@ -281,6 +281,66 @@ export function MeasurementTestResults({ result, previousResults = [] }: Measure
             </Badge>
           </div>
 
+          {/* Inline aerial + roof-tracing preview — always visible after test.
+              Renders the persisted roof_measurements row (google satellite tile
+              + perimeter + linear features from linear_features_wkt) so the
+              user immediately sees the aerial with measurements applied even
+              if the full report dialog gates it out. */}
+          <div className="rounded-lg border bg-card overflow-hidden">
+            <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/40">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <ImageIcon className="h-4 w-4" />
+                Aerial with roof tracing
+              </div>
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                {inlineMeasurement?.selected_image_source || inlineMeasurement?.image_source || 'google'} · zoom {inlineMeasurement?.analysis_zoom ?? 20}
+              </div>
+            </div>
+            <div className="relative bg-muted/20" style={{ minHeight: 320 }}>
+              {inlineLoading && (
+                <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Loading aerial + overlays…
+                </div>
+              )}
+              {!inlineLoading && !inlineMeasurement && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-xs text-muted-foreground p-4 text-center">
+                  <AlertTriangle className="h-5 w-5 mb-1 text-amber-500" />
+                  Persisted roof_measurements row was not found for this test.
+                  <span className="mt-1">Overlay cannot be rendered.</span>
+                </div>
+              )}
+              {!inlineLoading && inlineMeasurement && (
+                <SchematicRoofDiagram
+                  measurement={inlineMeasurement}
+                  tags={{}}
+                  measurementId={inlineMeasurement.id}
+                  width={880}
+                  height={520}
+                  satelliteImageUrl={inlineMeasurement.google_maps_image_url || inlineMeasurement.mapbox_image_url || inlineMeasurement.satellite_overlay_url || undefined}
+                  showSatelliteOverlay={true}
+                  satelliteOpacity={0.95}
+                  showLengthLabels={true}
+                  showLegend={true}
+                  showCompass={false}
+                  showTotals={false}
+                  showFacets={true}
+                  showQAPanel={false}
+                />
+              )}
+            </div>
+            {inlineMeasurement && (
+              <div className="px-3 py-2 border-t bg-muted/30 text-[11px] text-muted-foreground flex flex-wrap gap-x-4 gap-y-1">
+                <span><span className="font-medium text-foreground">Perimeter:</span> {inlineMeasurement.perimeter_wkt ? '✓' : '—'}</span>
+                <span><span className="font-medium text-foreground">Roof lines:</span> {inlineMeasurement.linear_features_wkt ? '✓' : '—'}</span>
+                <span><span className="font-medium text-foreground">Footprint src:</span> {inlineMeasurement.footprint_source || '—'}</span>
+                <span><span className="font-medium text-foreground">Bounds:</span> {inlineMeasurement.image_bounds ? '✓' : '—'}</span>
+                <span><span className="font-medium text-foreground">Result:</span> {inlineMeasurement.result_state || '—'}</span>
+              </div>
+            )}
+          </div>
+
+
           {/* Open Full Report — surfaces all current geometry buildouts:
               perimeter overlay, phase gates, roof lines, DSM overlays,
               visual QA, layer toggles, manual verification, etc. */}
