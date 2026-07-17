@@ -80,7 +80,31 @@ export function MeasurementTestResults({ result, previousResults = [] }: Measure
   const [reportLoading, setReportLoading] = useState(false);
   const [reportMeasurement, setReportMeasurement] = useState<any | null>(null);
   const [reportJobId, setReportJobId] = useState<string | null>(null);
+  const [inlineMeasurement, setInlineMeasurement] = useState<any | null>(null);
+  const [inlineLoading, setInlineLoading] = useState(false);
   const { toast } = useToast();
+
+  // Auto-load the persisted roof_measurements row so we can render the
+  // aerial + roof tracing inline the moment the test completes.
+  useEffect(() => {
+    let cancelled = false;
+    async function loadInline() {
+      if (!result.measurementId) return;
+      setInlineLoading(true);
+      try {
+        const { data } = await supabase
+          .from('roof_measurements')
+          .select('*')
+          .eq('id', result.measurementId)
+          .maybeSingle();
+        if (!cancelled) setInlineMeasurement(data ?? null);
+      } finally {
+        if (!cancelled) setInlineLoading(false);
+      }
+    }
+    loadInline();
+    return () => { cancelled = true; };
+  }, [result.measurementId]);
 
   const openFullReport = async () => {
     if (!result.measurementId) return;
