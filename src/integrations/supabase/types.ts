@@ -62284,6 +62284,28 @@ export type Database = {
         Args: { folder_name: string; user_id: string }
         Returns: boolean
       }
+      submit_demo_request: {
+        Args: {
+          p_company: string
+          p_email: string
+          p_first_name: string
+          p_job_title?: string
+          p_last_name: string
+          p_message?: string
+          p_phone?: string
+        }
+        Returns: string
+      }
+      submit_demo_request_slots: {
+        Args: {
+          p_id: string
+          p_slot_1: string
+          p_slot_2: string
+          p_slot_3: string
+          p_timezone: string
+        }
+        Returns: undefined
+      }
       submit_public_referral: { Args: { _payload: Json }; Returns: Json }
       switch_active_tenant: { Args: { p_tenant_id: string }; Returns: Json }
       switch_developer_context: {

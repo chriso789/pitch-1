@@ -73,20 +73,18 @@ const DemoRequest: React.FC = () => {
         : '';
       const messageToStore = (formData.message || '') + consentNote;
 
-      const { data, error: dbError } = await supabase.from('demo_requests').insert({
-        first_name: formData.firstName,
-        last_name: formData.lastName,
-        email: formData.email,
-        phone: phoneToStore,
-        company_name: formData.companyName,
-        job_title: formData.jobTitle || null,
-        message: messageToStore || null,
-        email_sent: false,
-        interview_status: 'pending',
-      }).select('id').single();
+      const { data, error: dbError } = await (supabase as any).rpc('submit_demo_request', {
+        p_first_name: formData.firstName,
+        p_last_name: formData.lastName,
+        p_email: formData.email,
+        p_company: formData.companyName,
+        p_phone: phoneToStore,
+        p_job_title: formData.jobTitle || null,
+        p_message: messageToStore || null,
+      });
 
       if (dbError) throw dbError;
-      setDemoRequestId(data.id);
+      setDemoRequestId(data as string);
       setStep('schedule');
     } catch (error: any) {
       console.error('Demo request error:', error);
@@ -122,15 +120,13 @@ const DemoRequest: React.FC = () => {
     setLoading(true);
     try {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      const { error } = await supabase
-        .from('demo_requests')
-        .update({
-          preferred_slot_1: combined[0]!.toISOString(),
-          preferred_slot_2: combined[1]!.toISOString(),
-          preferred_slot_3: combined[2]!.toISOString(),
-          timezone: tz,
-        })
-        .eq('id', demoRequestId!);
+      const { error } = await (supabase as any).rpc('submit_demo_request_slots', {
+        p_id: demoRequestId!,
+        p_slot_1: combined[0]!.toISOString(),
+        p_slot_2: combined[1]!.toISOString(),
+        p_slot_3: combined[2]!.toISOString(),
+        p_timezone: tz,
+      });
 
       if (error) throw error;
 
