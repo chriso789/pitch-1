@@ -457,6 +457,8 @@ export function IntegrationsAdmin() {
 
             {currentOpen?.slug === "abc_supply" ? (
               <AbcAdminSurfaces />
+            ) : currentOpen?.slug === "srs" ? (
+              <SrsAdminSurfaces />
             ) : currentOpen?.slug === "centz" ? (
               <CentzConnectionsAdmin />
             ) : currentOpen ? (
