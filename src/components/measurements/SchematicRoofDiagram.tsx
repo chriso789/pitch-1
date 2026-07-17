@@ -598,7 +598,7 @@ export function SchematicRoofDiagram({
         },
         geometrySource: 'database' as const,
         imageCrop: imgCrop,
-        isLowConfidenceEdges: false,
+        isLowConfidenceEdges: isLowConf,
       };
     }
     
