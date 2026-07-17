@@ -26,15 +26,16 @@ import {
 } from "../_shared/qbo-context.ts";
 import { getIntuitTid } from "../_shared/qbo-intuit-tid.ts";
 import { writeQboApiLog } from "../_shared/qbo-api.ts";
+import { getQboOAuthEndpoints } from "../_shared/qbo-discovery.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const QBO_AUTH_URL = "https://appcenter.intuit.com/connect/oauth2";
-const QBO_TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer";
-const QBO_REVOKE_URL = "https://developer.api.intuit.com/v2/oauth2/tokens/revoke";
+// Intuit publishing requirement: OAuth 2.0 endpoints come from the OpenID
+// discovery document at runtime (see qbo-discovery.ts). These constants are
+// only used if the discovery fetch fails — see FALLBACK_ENDPOINTS there.
 
 const APP_BASE_URL = Deno.env.get("QBO_APP_BASE_URL") ?? "https://pitch-crm.ai";
 const SETTINGS_RETURN_PATH = "/settings/integrations";
