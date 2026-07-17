@@ -101,12 +101,20 @@ export function MeasurementTestPanel() {
       setProgress(60);
       setProgressMessage('Analyzing roof with AI...');
 
+      // Stamp the current signed-in user so RLS (`measured_by = auth.uid()`)
+      // lets the browser read the persisted `roof_measurements` row that
+      // the edge function inserts. Without this the tester sees
+      // "Persisted roof_measurements row was not found" even though the
+      // AI trace was saved successfully.
+      const { data: authData } = await supabase.auth.getUser();
+      const currentUserId = authData?.user?.id ?? null;
+
       const { data: measurementData, error: measurementError } = await supabase.functions.invoke('analyze-roof-aerial', {
         body: {
           address: runAddress,
           coordinates,
           customerId: null, // Test mode - no customer
-          userId: null
+          userId: currentUserId,
         }
       });
 

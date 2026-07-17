@@ -306,8 +306,17 @@ export function MeasurementTestResults({ result, previousResults = [] }: Measure
               {!inlineLoading && !inlineMeasurement && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-xs text-muted-foreground p-4 text-center">
                   <AlertTriangle className="h-5 w-5 mb-1 text-amber-500" />
-                  Persisted roof_measurements row was not found for this test.
-                  <span className="mt-1">Overlay cannot be rendered.</span>
+                  <span className="font-medium text-foreground">Trace saved, but not visible to this account.</span>
+                  <span className="mt-1 max-w-md">
+                    The AI trace for measurement <code className="px-1 rounded bg-muted">{result.measurementId?.slice(0, 8)}…</code> was
+                    written by the edge function, but RLS on <code className="px-1 rounded bg-muted">roof_measurements</code> is
+                    blocking this browser session from reading it back
+                    (<code className="px-1 rounded bg-muted">measured_by</code> / <code className="px-1 rounded bg-muted">tenant_id</code> mismatch).
+                  </span>
+                  <span className="mt-2 text-[10px]">
+                    Fix: rerun the test now that the tester stamps <code>measured_by = auth.uid()</code>, or open the full report
+                    (service-role) below.
+                  </span>
                 </div>
               )}
               {!inlineLoading && inlineMeasurement && (
