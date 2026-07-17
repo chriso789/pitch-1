@@ -277,11 +277,47 @@ export const AbcCatalogBrowser: React.FC = () => {
     return parts.join(' • ');
   }, [branchNumber, shipToNumber]);
 
+  const usingSandboxFallback =
+    shipToNumber === SANDBOX_SHIP_TO && !shipTos.length;
+
+  const syncAccounts = async () => {
+    if (!tenantId) return;
+    setSyncing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
+        body: {
+          action: 'sync_accounts',
+          tenant_id: tenantId,
+          environment: environment || 'sandbox',
+        },
+      });
+      if (error) throw new Error(error.message);
+      if (!data?.success) {
+        throw new Error(data?.error_code || data?.error || 'sync_accounts failed');
+      }
+      toast({
+        title: 'ABC accounts synced',
+        description: `Loaded ${data?.ship_tos_upserted ?? 0} ship-to(s) and ${data?.branches_upserted ?? 0} branch(es). Refreshing pricing…`,
+      });
+      // Nudge downstream data — the useAbcCatalog hook re-subscribes on tenant change,
+      // but a full reload guarantees fresh ship-to/branch rows.
+      window.location.reload();
+    } catch (e: any) {
+      toast({
+        title: 'ABC account sync failed',
+        description: e?.message || 'Could not pull ship-tos from ABC.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3">
             <div>
               <CardTitle className="flex items-center gap-2">
                 <Package className="h-5 w-5" />
@@ -289,10 +325,44 @@ export const AbcCatalogBrowser: React.FC = () => {
               </CardTitle>
               <p className="text-sm text-muted-foreground mt-1">{subtitle}</p>
             </div>
-            <Badge variant="secondary">
-              {loading ? '…' : `${items.length} items`}
-            </Badge>
+            <div className="flex items-center gap-2">
+              {isConnected && (
+                <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white gap-1">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Connected{environment ? ` · ${environment}` : ''}
+                </Badge>
+              )}
+              {isConnected && usingSandboxFallback && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={syncAccounts}
+                  disabled={syncing}
+                >
+                  {syncing ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                  ) : (
+                    <RefreshCw className="h-3.5 w-3.5 mr-1" />
+                  )}
+                  Sync my ABC accounts
+                </Button>
+              )}
+              <Badge variant="secondary">
+                {loading ? '…' : `${items.length} items`}
+              </Badge>
+            </div>
           </div>
+
+          {isConnected && usingSandboxFallback && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              You're connected to ABC, but no ship-tos have been pulled for your
+              account yet — that's why pricing is quoting against the generic
+              sandbox ship-to <span className="font-mono">{SANDBOX_SHIP_TO}</span>{' '}
+              (which has no contract for these SKUs, so ABC replies "Call for
+              pricing"). Click <b>Sync my ABC accounts</b> to hydrate your real
+              ship-to numbers and get live contract pricing.
+            </div>
+          )}
 
           <div className="relative">
             <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
