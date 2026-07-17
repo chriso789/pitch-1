@@ -240,10 +240,18 @@ function geoPointToAnalysisPx(
   imageSize: number = IMAGE_SIZE,
   zoom: number = IMAGE_ZOOM,
 ): [number, number] {
-  const pct = geoToPixel(point.lat, point.lng, center, imageSize, zoom)
+  const bounds = calculateStaticMapImageBounds(center, zoom, imageSize)
+  const toRad = (deg: number) => deg * Math.PI / 180
+  const mercY = (lat: number) => Math.log(Math.tan(Math.PI / 4 + toRad(lat) / 2))
+  const lngRange = bounds.topRight.lng - bounds.topLeft.lng
+  const mercTop = mercY(bounds.topLeft.lat)
+  const mercBottom = mercY(bounds.bottomLeft.lat)
+  const mercRange = mercTop - mercBottom
+  const x = ((point.lng - bounds.topLeft.lng) / lngRange) * imageSize
+  const y = ((mercTop - mercY(point.lat)) / mercRange) * imageSize
   return [
-    Math.round((pct.x / 100) * imageSize * 100) / 100,
-    Math.round((pct.y / 100) * imageSize * 100) / 100,
+    Math.round(x * 100) / 100,
+    Math.round(y * 100) / 100,
   ]
 }
 
