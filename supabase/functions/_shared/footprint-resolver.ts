@@ -8,6 +8,8 @@ export type FootprintSource =
   | 'mapbox_vector'
   | 'microsoft_buildings'
   | 'osm_buildings'
+  | 'usa_structures'
+  | 'usa_parcels'
   | 'regrid_parcel'
   | 'solar_bbox_fallback'
   | 'ai_detected';
