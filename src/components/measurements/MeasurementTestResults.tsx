@@ -75,6 +75,47 @@ interface MeasurementTestResultsProps {
 export function MeasurementTestResults({ result, previousResults = [] }: MeasurementTestResultsProps) {
   const [showDebug, setShowDebug] = useState(false);
   const [showComparison, setShowComparison] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportMeasurement, setReportMeasurement] = useState<any | null>(null);
+  const [reportJobId, setReportJobId] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  const openFullReport = async () => {
+    if (!result.measurementId) return;
+    setReportLoading(true);
+    try {
+      // Load canonical roof_measurements row with all geometry buildouts
+      const { data: rm, error: rmErr } = await supabase
+        .from('roof_measurements')
+        .select('*')
+        .eq('id', result.measurementId)
+        .maybeSingle();
+      if (rmErr) throw rmErr;
+
+      // Also resolve the ai_measurement_jobs id (for diagrams + overlays)
+      const { data: job } = await supabase
+        .from('ai_measurement_jobs')
+        .select('id')
+        .eq('roof_measurement_id', result.measurementId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      setReportMeasurement(rm);
+      setReportJobId(job?.id ?? null);
+      setReportOpen(true);
+    } catch (e: any) {
+      toast({
+        title: 'Could not load full report',
+        description: e?.message || String(e),
+        variant: 'destructive',
+      });
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
 
   const { data, timing, qualityAssessment } = result;
   const measurements = data?.measurements;
