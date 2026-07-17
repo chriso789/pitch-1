@@ -73,20 +73,18 @@ const DemoRequest: React.FC = () => {
         : '';
       const messageToStore = (formData.message || '') + consentNote;
 
-      const { data, error: dbError } = await supabase.from('demo_requests').insert({
-        first_name: formData.firstName,
-        last_name: formData.lastName,
-        email: formData.email,
-        phone: phoneToStore,
-        company_name: formData.companyName,
-        job_title: formData.jobTitle || null,
-        message: messageToStore || null,
-        email_sent: false,
-        interview_status: 'pending',
-      }).select('id').single();
+      const { data, error: dbError } = await (supabase as any).rpc('submit_demo_request', {
+        p_first_name: formData.firstName,
+        p_last_name: formData.lastName,
+        p_email: formData.email,
+        p_company: formData.companyName,
+        p_phone: phoneToStore,
+        p_job_title: formData.jobTitle || null,
+        p_message: messageToStore || null,
+      });
 
       if (dbError) throw dbError;
-      setDemoRequestId(data.id);
+      setDemoRequestId(data as string);
       setStep('schedule');
     } catch (error: any) {
       console.error('Demo request error:', error);
