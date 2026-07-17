@@ -12,7 +12,6 @@ import { useToast } from '@/hooks/use-toast';
 import { MeasurementTestResults } from './MeasurementTestResults';
 import { ImageQualityBadge } from './ImageQualityBadge';
 import { AddressAutocomplete, type AddressComponents } from '@/components/AddressAutocomplete';
-import { CheckCircle2 } from 'lucide-react';
 
 interface TestResult {
   measurementId: string;
