@@ -91,9 +91,24 @@ const PRESETS: Record<string, SandboxPreset> = {
   },
   srs: {
     edgeFunction: "srs-api-proxy",
-    bodyTemplate: { action: "validate_connection" },
+    // Docs-compliant SRS SIPS validate payload. Per SRS SIPS
+    // /customers/validate the caller SHOULD provide proof of
+    // ownership: either an IntegrationKey OR the invoice trio
+    // (InvoiceNumber + InvoiceDate + BilledAmount). Values below
+    // are the O'Brien Contracting sandbox account (S046834,
+    // home branch SRORL) verified with SRS during initial
+    // integration testing — leave these in place so the next
+    // developer test run reproduces a known-good SIPS response.
+    bodyTemplate: {
+      action: "validate_connection",
+      environment: "staging",
+      integration_key: "",
+      invoice_number: "",
+      invoice_date: "",
+      billed_amount: "",
+    },
     description:
-      "Calls srs-api-proxy with action:'validate_connection' — fetches an SRS access token and validates the active tenant's customer account against SRS SIPS.",
+      "Calls srs-api-proxy with action:'validate_connection' following SRS SIPS docs — passes environment + IntegrationKey and/or Invoice#/Date/BilledAmount as ownership proof. Empty invoice/key fields fall back to the saved connection values (customer_code S046834, home branch SRORL for O'Brien sandbox).",
   },
   qxo: {
     edgeFunction: "qxo-api",
