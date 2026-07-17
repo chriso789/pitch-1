@@ -233,6 +233,10 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
         unit ? ` ${unit}` : ""
       }`;
   };
+  const isDiagnosticBboxTrace =
+    (m.footprint_source === "solar_bbox_fallback" || grj.footprint_source === "solar_bbox_fallback") &&
+    m.result_state !== "customer_report_ready";
+  const fmtVerifiedLine = (v: any, unit = "LF") => isDiagnosticBboxTrace ? "—" : fmt(v, unit);
 
   const rows: { label: string; value: string; icon?: React.ReactNode }[] = [
     {
@@ -256,16 +260,16 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
     },
     {
       label: "Ridge",
-      value: fmt(m.total_ridge_length ?? m.ridges_lf, "LF"),
+      value: fmtVerifiedLine(m.total_ridge_length ?? m.ridges_lf),
       icon: <Ruler className="h-4 w-4" />,
     },
-    { label: "Hip", value: fmt(m.total_hip_length ?? m.hips_lf, "LF") },
+    { label: "Hip", value: fmtVerifiedLine(m.total_hip_length ?? m.hips_lf) },
     {
       label: "Valley",
-      value: fmt(m.total_valley_length ?? m.valleys_lf, "LF"),
+      value: fmtVerifiedLine(m.total_valley_length ?? m.valleys_lf),
     },
-    { label: "Eave", value: fmt(m.total_eave_length ?? m.eaves_lf, "LF") },
-    { label: "Rake", value: fmt(m.total_rake_length ?? m.rakes_lf, "LF") },
+    { label: "Eave", value: fmtVerifiedLine(m.total_eave_length ?? m.eaves_lf) },
+    { label: "Rake", value: fmtVerifiedLine(m.total_rake_length ?? m.rakes_lf) },
   ];
 
   const isBboxRescue = detectBboxRescue(m);
