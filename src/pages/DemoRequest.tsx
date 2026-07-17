@@ -120,15 +120,13 @@ const DemoRequest: React.FC = () => {
     setLoading(true);
     try {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      const { error } = await supabase
-        .from('demo_requests')
-        .update({
-          preferred_slot_1: combined[0]!.toISOString(),
-          preferred_slot_2: combined[1]!.toISOString(),
-          preferred_slot_3: combined[2]!.toISOString(),
-          timezone: tz,
-        })
-        .eq('id', demoRequestId!);
+      const { error } = await (supabase as any).rpc('submit_demo_request_slots', {
+        p_id: demoRequestId!,
+        p_slot_1: combined[0]!.toISOString(),
+        p_slot_2: combined[1]!.toISOString(),
+        p_slot_3: combined[2]!.toISOString(),
+        p_timezone: tz,
+      });
 
       if (error) throw error;
 
