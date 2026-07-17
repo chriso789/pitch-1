@@ -226,8 +226,13 @@ function deriveEndpoint(url: string): string {
  * Core QBO fetch wrapper. Refreshes token if near expiry, sets standard headers, and
  * captures `intuit_tid` + writes qbo_api_logs row.
  *
+ * Intuit publishing requirements enforced here:
+ *   - User-Agent identifies the app + support contact.
+ *   - 429/503 responses honor Retry-After with exponential backoff (up to 3 retries).
+ *   - 5xx transient errors retry with backoff.
+ *   - A 401 triggers ONE forced refresh + retry before marking the connection reauth_required.
+ *
  * Returns the raw Response (caller decides .json() / .text()) plus the captured tid.
- * On 401 with refresh already attempted, marks reauth_required and surfaces the response.
  */
 export async function qboFetch(
   service: SupabaseClient,
@@ -245,26 +250,66 @@ export async function qboFetch(
   const endpoint = deriveEndpoint(url);
   const method = (options.method ?? "GET").toUpperCase();
 
-  // Build headers: always inject Authorization + Accept; do not overwrite caller's
-  // Content-Type if provided.
-  const headers = new Headers(options.headers ?? {});
-  headers.set("Authorization", `Bearer ${conn.access_token}`);
-  if (!headers.has("Accept")) headers.set("Accept", "application/json");
+  const buildHeaders = (accessToken: string) => {
+    const h = new Headers(options.headers ?? {});
+    h.set("Authorization", `Bearer ${accessToken}`);
+    if (!h.has("Accept")) h.set("Accept", "application/json");
+    if (!h.has("User-Agent")) h.set("User-Agent", QBO_USER_AGENT);
+    return h;
+  };
 
   const started = Date.now();
-  let response: Response;
+  let response!: Response;
   let intuit_tid: string | null = null;
   let success = false;
   let errorMessage: string | null = null;
   let httpStatus: number | null = null;
+  let attempts = 0;
+  let retriedForcedRefresh = false;
 
   try {
-    response = await fetch(url, { ...options, headers });
-    intuit_tid = getIntuitTid(response);
-    httpStatus = response.status;
-    success = response.ok;
+    for (;;) {
+      attempts++;
+      response = await fetch(url, { ...options, headers: buildHeaders(conn.access_token) });
+      intuit_tid = getIntuitTid(response);
+      httpStatus = response.status;
+      success = response.ok;
+
+      // 401: force refresh once and retry.
+      if (response.status === 401 && !retriedForcedRefresh && !options.skipRefresh) {
+        retriedForcedRefresh = true;
+        try {
+          const refreshed = await refreshAccessToken(conn.refresh_token, getQboContextForConnection(conn));
+          conn = await persistTokens(service, {
+            tenant_id: conn.tenant_id,
+            realm_id: conn.realm_id,
+            tokens: refreshed,
+          });
+          await response.body?.cancel().catch(() => {});
+          continue;
+        } catch (e) {
+          if (e instanceof QboReauthRequiredError) {
+            await markQboReauthRequired(service, conn.id, "invalid_grant");
+          }
+          break;
+        }
+      }
+
+      // 429 / 503: honor Retry-After. 5xx: backoff and retry.
+      const isThrottled = response.status === 429 || response.status === 503;
+      const isTransient5xx = response.status >= 500 && response.status <= 599;
+      if ((isThrottled || isTransient5xx) && attempts <= QBO_MAX_RETRIES) {
+        const retryAfter = parseRetryAfterMs(response);
+        const backoff = retryAfter ?? QBO_BASE_BACKOFF_MS * 2 ** (attempts - 1);
+        await response.body?.cancel().catch(() => {});
+        await sleep(backoff);
+        continue;
+      }
+
+      break;
+    }
+
     if (!success) {
-      // Peek body for error message, but do not consume — clone for the caller.
       try {
         const peek = await response.clone().text();
         errorMessage = truncate(peek, 500);
@@ -277,7 +322,6 @@ export async function qboFetch(
     throw e;
   } finally {
     const duration_ms = Date.now() - started;
-    // Fire-and-forget logging.
     void writeQboApiLog(service, {
       action: logCtx.action,
       tenant_id: logCtx.tenant_id ?? conn.tenant_id ?? null,
@@ -296,17 +340,18 @@ export async function qboFetch(
         ...(logCtx.op ? { op: logCtx.op } : {}),
         ...(logCtx.qbo_entity ? { qbo_entity: logCtx.qbo_entity } : {}),
         ...(logCtx.qbo_entity_id ? { qbo_entity_id: logCtx.qbo_entity_id } : {}),
+        ...(attempts > 1 ? { retry_attempts: attempts } : {}),
         ...(logCtx.request_metadata ?? {}),
       },
     });
   }
 
-  // If we got a 401 even after refresh, flip the connection into reauth_required.
-  if (response!.status === 401 && !options.skipRefresh) {
+  // If a 401 still stands after the forced refresh + retry, flip to reauth_required.
+  if (response.status === 401 && retriedForcedRefresh) {
     await markQboReauthRequired(service, conn.id, "401_after_refresh");
   }
 
-  return { response: response!, intuit_tid, duration_ms: Date.now() - started, connection: conn };
+  return { response, intuit_tid, duration_ms: Date.now() - started, connection: conn };
 }
 
 /**
