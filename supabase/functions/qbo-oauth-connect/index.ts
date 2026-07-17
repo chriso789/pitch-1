@@ -524,7 +524,8 @@ Deno.serve(async (req) => {
         );
       }
 
-      const tokenResp = await fetch(QBO_TOKEN_URL, {
+      const refreshEndpoints = await getQboOAuthEndpoints(ctx.mode);
+      const tokenResp = await fetch(refreshEndpoints.token_endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
