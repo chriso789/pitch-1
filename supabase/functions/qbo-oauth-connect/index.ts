@@ -40,6 +40,9 @@ const corsHeaders = {
 const APP_BASE_URL = Deno.env.get("QBO_APP_BASE_URL") ?? "https://pitch-crm.ai";
 const SETTINGS_RETURN_PATH = "/settings/integrations";
 
+// Intuit publishing requirement: apps must identify themselves on OAuth + API calls.
+const QBO_USER_AGENT = "PitchCRM/1.0 (+https://pitch-crm.ai; support@pitch-crm.ai)";
+
 const REQUIRED_LEGAL_KEYS = ["privacy_policy", "terms_of_service", "qbo_integration_consent"] as const;
 
 interface TokenResponse {
