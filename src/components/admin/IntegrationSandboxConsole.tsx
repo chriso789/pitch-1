@@ -317,6 +317,8 @@ export function IntegrationSandboxConsole({ slug, name }: Props) {
                                 action: "start_oauth",
                                 environment: "sandbox",
                                 return_origin: window.location.origin,
+                                return_path:
+                                  window.location.pathname + window.location.search,
                               },
                             },
                           );
