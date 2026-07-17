@@ -57,6 +57,7 @@ import {
 import { CentzConnectionsAdmin } from "@/components/admin/CentzConnectionsAdmin";
 import { IntegrationSandboxConsole } from "@/components/admin/IntegrationSandboxConsole";
 import { AbcAdminSurfaces } from "@/components/admin/AbcAdminSurfaces";
+import { SrsAdminSurfaces } from "@/components/admin/SrsAdminSurfaces";
 
 interface PlatformIntegration {
   id: string;
