@@ -95,7 +95,8 @@ export async function exchangeAuthorizationCode(
   ctx?: QboContext,
 ): Promise<QboTokenResponse> {
   const c = ctx ?? getQboContextForMode(getDefaultQboMode());
-  const res = await fetch(QBO_TOKEN_URL, {
+  const endpoints = await getQboOAuthEndpoints(c.mode);
+  const res = await fetch(endpoints.token_endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
