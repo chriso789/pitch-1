@@ -343,6 +343,13 @@ export const AbcCatalogBrowser: React.FC = () => {
                           <TableCell className="text-right font-mono">
                             {pricesLoading && !p ? (
                               <Loader2 className="h-3.5 w-3.5 animate-spin inline" />
+                            ) : p && p.unitPrice == null && p.statusMessage ? (
+                              <span
+                                className="text-xs text-amber-600"
+                                title={p.statusMessage}
+                              >
+                                Call for pricing
+                              </span>
                             ) : (
                               fmtPrice(p)
                             )}
