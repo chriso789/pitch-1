@@ -57,6 +57,22 @@ const formatProjectType = (raw?: string | null): string => {
     .trim();
 };
 
+// Show only the token relevant to the entity type (e.g. L442 for leads,
+// J442 for jobs, C442 for contacts) instead of the full C-L-J string so the
+// search dropdown stays uncluttered.
+const formatCljForType = (
+  clj: string | null | undefined,
+  type: 'contact' | 'lead' | 'job'
+): string => {
+  if (!clj) return '';
+  const match = clj.match(/C(\d+)-L(\d+)-J(\d+)/);
+  if (!match) return clj; // non-standard format (e.g. legacy WC-0783-01-00)
+  const [, c, l, j] = match;
+  if (type === 'lead') return `L${l}`;
+  if (type === 'job') return `J${j}`;
+  return `C${c}`;
+};
+
 const MAX_RECENTS = 5;
 // Scope recents to BOTH tenant and active location so switching locations
 // doesn't surface results from a different location (e.g. East Coast jobs
