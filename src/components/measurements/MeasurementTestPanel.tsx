@@ -182,17 +182,41 @@ export function MeasurementTestPanel() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Address Input */}
+          {/* Address Input — Google Places autocomplete + verification */}
           <div className="space-y-2">
             <Label htmlFor="test-address">Property Address</Label>
-            <Input
-              id="test-address"
-              placeholder="123 Main St, City, State ZIP"
+            <AddressAutocomplete
               value={address}
-              onChange={(e) => setAddress(e.target.value)}
+              onChange={(v) => {
+                setAddress(v);
+                // Any manual edit invalidates the last verified pick.
+                if (verifiedAddress && v !== verifiedAddress.formatted_address) {
+                  setVerifiedAddress(null);
+                }
+              }}
+              onAddressSelect={(components) => {
+                setVerifiedAddress(components);
+                setAddress(components.formatted_address);
+                if (components.latitude && components.longitude) {
+                  setLat(components.latitude.toString());
+                  setLng(components.longitude.toString());
+                }
+              }}
+              placeholder="Start typing an address..."
               disabled={isRunning}
             />
+            {!hasVerifiedAddress && address.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                Pick a suggestion to verify the address before running the test.
+              </p>
+            )}
+            {hasVerifiedAddress && (
+              <p className="text-xs text-green-600">
+                Verified via Google: {verifiedAddress!.formatted_address}
+              </p>
+            )}
           </div>
+
 
           {/* Coordinates (optional) */}
           <Collapsible open={showDebug} onOpenChange={setShowDebug}>
