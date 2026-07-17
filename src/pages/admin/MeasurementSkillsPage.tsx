@@ -75,6 +75,8 @@ export default function MeasurementSkillsPage() {
         </CardContent>
       </Card>
 
+      <AIMeasurementProgramCards />
+
       <WorkerTestReportPanel />
 
       <Card>
