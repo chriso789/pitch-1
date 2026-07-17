@@ -314,6 +314,7 @@ export async function revokeConnection(service: SupabaseClient, tenant_id: strin
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
+        "User-Agent": QBO_USER_AGENT,
         Authorization: basicAuthHeader(ctx.clientId, ctx.clientSecret),
       },
       body: JSON.stringify({ token: (conn as { refresh_token: string }).refresh_token }),
