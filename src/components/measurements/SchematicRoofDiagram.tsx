@@ -751,6 +751,15 @@ export function SchematicRoofDiagram({
     const isBboxFallback = measurement?.footprint_source === 'solar_bbox_fallback' || 
                            measurement?.detection_method === 'solar_bbox_fallback' ||
                            (perimCoords.length === 4 && measurement?.footprint_confidence && measurement.footprint_confidence < 0.5);
+    const isDiagnosticBboxTrace = isBboxFallback && (
+      measurement?.result_state !== 'customer_report_ready' ||
+      measurement?.geometry_report_json?.route_warning === 'legacy_noncanonical_measurement_path'
+    );
+    if (isDiagnosticBboxTrace && linearFeaturesData.some(f => f.type === 'ridge' || f.type === 'hip' || f.type === 'valley')) {
+      linearFeaturesData = linearFeaturesData.filter(f => f.type === 'eave' || f.type === 'rake');
+      geometrySource = 'perimeter';
+      console.warn('⚠️ Diagnostic solar_bbox_fallback row: hiding interior ridge/hip/valley lines because they are synthetic, not AI-verified roof topology');
+    }
     
     if (linearFeaturesData.length === 0 && perimCoords.length >= 4 && !isBboxFallback) {
       console.log('🔄 No WKT features found, using client-side reconstruction');
