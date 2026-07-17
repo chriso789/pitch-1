@@ -3896,7 +3896,7 @@ function calculateAreaFromPerimeterVertices(
   // and NOT override with Solar API (which is often a bounding box approximation)
   // NOTE: solar_bbox_fallback is NOT authoritative - it's a simple rectangle that over-estimates
   const hasAuthoritativePolygon = footprintSource && [
-    'mapbox_vector', 'osm_buildings', 'osm_overpass', 'microsoft_buildings', 'regrid_parcel'
+    'mapbox_vector', 'osm_buildings', 'osm_overpass', 'microsoft_buildings', 'usa_structures', 'usa_parcels', 'regrid_parcel'
   ].includes(footprintSource);
   
   // CRITICAL: When using solar_bbox_fallback, the bounding box typically over-estimates by 15-25%
@@ -4973,7 +4973,7 @@ async function processSolarFastPath(
   
   const boundingBox = solarData.boundingBox
   let perimeterXY: [number, number][] = []
-  let footprintSource: 'mapbox_vector' | 'regrid_parcel' | 'osm_overpass' | 'microsoft_buildings' | 'ai_vision_detected' | 'google_solar_api' | 'solar_bbox_fallback' = 'solar_bbox_fallback'
+  let footprintSource: 'mapbox_vector' | 'regrid_parcel' | 'osm_overpass' | 'microsoft_buildings' | 'usa_structures' | 'usa_parcels' | 'ai_vision_detected' | 'google_solar_api' | 'solar_bbox_fallback' = 'solar_bbox_fallback'
   let footprintConfidence = 0.75
   let footprintVertexCount = 4
   
@@ -5070,6 +5070,26 @@ async function processSolarFastPath(
           console.log(`✅ Microsoft candidate: ${msftResult.footprint.vertexCount} vertices, confidence ${(conf * 100).toFixed(0)}%`)
         }
       } catch (err) { console.warn('⚠️ Microsoft fetch failed:', err) }
+    })()
+  )
+  
+  // 5. Nationwide US ArcGIS Structures/Parcels (free, no key)
+  footprintPromises.push(
+    (async () => {
+      try {
+        const usResult = await fetchUsParcelOrStructure(coordinates.lat, coordinates.lng, { timeoutMs: 6000 })
+        if (usResult?.vertices?.length >= 4) {
+          const coords = usResult.vertices.map(v => [v.lng, v.lat] as [number, number])
+          const areaSqft = calculateAreaSqFt(usResult.vertices)
+          let conf = usResult.confidence
+          if (areaSqft > 0 && totalFlatArea > 0) {
+            const ratio = areaSqft / totalFlatArea
+            if (ratio < 0.5 || ratio > 2.0) conf = Math.max(0.55, conf - 0.15)
+          }
+          footprintCandidates.push({ source: usResult.source, coordinates: coords, confidence: conf, vertexCount: usResult.vertices.length, areaSqft })
+          console.log(`✅ US ArcGIS ${usResult.source} candidate: ${usResult.vertices.length} vertices, confidence ${(conf * 100).toFixed(0)}%`)
+        }
+      } catch (err) { console.warn('⚠️ US ArcGIS fetch failed:', err) }
     })()
   )
   

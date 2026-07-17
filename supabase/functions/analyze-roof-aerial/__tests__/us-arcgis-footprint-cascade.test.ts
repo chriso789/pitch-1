@@ -15,6 +15,7 @@ Deno.test("legacy admin test route includes nationwide US ArcGIS before Regrid/S
   assert(usArcgisIndex < solarIndex, "US ArcGIS must run before solar_bbox_fallback");
   assert(source.includes("fetchUsParcelOrStructure"), "legacy route must call the shared national extractor");
   assert(source.includes("'usa_structures', 'usa_parcels'"), "US ArcGIS sources must be treated as vector footprints in the UI-visible row");
+  assert(source.includes("US ArcGIS ${usResult.source} candidate"), "solar fast path must collect US ArcGIS as a candidate before falling back to a rectangle");
 });
 
 Deno.test("geometry validator accepts nationwide US ArcGIS footprint source tokens", () => {
