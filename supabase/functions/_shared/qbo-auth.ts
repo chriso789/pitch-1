@@ -18,7 +18,13 @@ import {
   type QboContext,
 } from "./qbo-context.ts";
 import { getIntuitTid } from "./qbo-intuit-tid.ts";
+import { getQboOAuthEndpoints } from "./qbo-discovery.ts";
 
+// Historical constants — retained as fallbacks and re-exported for legacy
+// callers. The runtime OAuth 2.0 endpoints are resolved from Intuit's OpenID
+// discovery document (see qbo-discovery.ts) per Intuit's publishing
+// requirements ("Use the discovery document to get the latest endpoints for
+// the OAuth2.0 flow.").
 export const QBO_AUTH_URL = "https://appcenter.intuit.com/connect/oauth2";
 export const QBO_TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer";
 export const QBO_REVOKE_URL = "https://developer.api.intuit.com/v2/oauth2/tokens/revoke";
