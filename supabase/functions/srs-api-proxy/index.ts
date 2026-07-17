@@ -565,25 +565,62 @@ Deno.serve(async (req) => {
 
     const firstCatalogVariant = (product: any, hint = "") => {
       const variants = Array.isArray(product?.productVariant) ? product.productVariant : [];
-      const normalizedHint = String(hint || "").toLowerCase();
-      return variants.find((v: any) => {
-        const optionText = `${v?.selectedOption || ""} ${v?.colorName || ""} ${v?.sizeName || ""}`.toLowerCase();
-        return normalizedHint && optionText && normalizedHint.includes(optionText.trim());
-      }) || variants[0] || null;
+      const normalizedHint = String(hint || "").toLowerCase().trim();
+      if (!normalizedHint) return variants[0] || null;
+      // Prefer an exact colorName / selectedOption match, then substring.
+      const exact = variants.find((v: any) => {
+        const c = String(v?.colorName || "").toLowerCase().trim();
+        const o = String(v?.selectedOption || "").toLowerCase().trim();
+        return (c && c === normalizedHint) || (o && o === normalizedHint);
+      });
+      if (exact) return exact;
+      const partial = variants.find((v: any) => {
+        const c = String(v?.colorName || "").toLowerCase();
+        const o = String(v?.selectedOption || "").toLowerCase();
+        return (c && normalizedHint.includes(c)) || (o && normalizedHint.includes(o));
+      });
+      return partial || variants[0] || null;
     };
 
     const buildCatalogSubmitItem = (item: any, product: any, customerItemFallback: string) => {
-      const variant = firstCatalogVariant(product, `${item.product_name || ""} ${item.product_description || ""} ${item.product_option || ""}`);
+      // Prefer the explicit color/option persisted on the order line.
+      const colorHint = String(
+        item.product_option || item.product_color || item.product_description || item.product_name || ""
+      );
+      const variant = firstCatalogVariant(product, colorHint);
       const allowedUoms = Array.isArray(variant?.uoMs) ? variant.uoMs.map((u: any) => String(u).toUpperCase()) : [];
       const requestedUom = normalizeUom(item.uom);
       const catalogUom = allowedUoms.includes(requestedUom)
         ? requestedUom
         : String(variant?.defaultUOM || allowedUoms[0] || requestedUom || "EA").toUpperCase();
-      const option = String(item.product_option || variant?.selectedOption || product?.productOptions?.[0] || "").trim();
+
+      // Resolve the SRS `option` (color/style). Priority:
+      //   1. explicit product_option/product_color saved with the order line
+      //   2. the matched catalog variant's colorName / selectedOption
+      //   3. product-level productOptions[0]
+      const explicitOption = String(item.product_option || item.product_color || "").trim();
+      const variantOption = String(variant?.colorName || variant?.selectedOption || "").trim();
+      const productOptions: string[] = Array.isArray(product?.productOptions) ? product.productOptions : [];
+      const option = (explicitOption || variantOption || String(productOptions[0] || "")).trim();
+
+      // Guardrail: if SRS lists >1 color/variant on this product and we have
+      // no explicit option, refuse to submit rather than silently shipping the
+      // wrong color. SRS will price/pick the wrong SKU otherwise.
+      const distinctColors = new Set(
+        (Array.isArray(product?.productVariant) ? product.productVariant : [])
+          .map((v: any) => String(v?.colorName || v?.selectedOption || "").trim().toLowerCase())
+          .filter(Boolean),
+      );
+      if (!explicitOption && distinctColors.size > 1) {
+        throw new Error(
+          `SRS product "${product?.productName || item.product_name}" has ${distinctColors.size} color/variant options — a color must be selected on the order line before pushing to SRS.`,
+        );
+      }
+
       return {
         productId: Number(item.srs_product_id),
         productName: product?.productName || item.product_name || item.product_description || "",
-        option,
+        option: option || "N/A",
         quantity: Number(item.quantity),
         uom: catalogUom,
         customerItem: (item.customer_item && String(item.customer_item).trim()) || customerItemFallback,
