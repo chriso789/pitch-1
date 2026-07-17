@@ -391,6 +391,17 @@ export function MeasurementTestResults({ result, previousResults = [] }: Measure
           </CollapsibleContent>
         </Collapsible>
       )}
+
+      {/* Full report dialog — renders every current geometry/buildout layer */}
+      {reportMeasurement && (
+        <MeasurementReportDialog
+          open={reportOpen}
+          onOpenChange={setReportOpen}
+          measurement={reportMeasurement}
+          address={data?.address}
+          aiMeasurementJobId={reportJobId}
+        />
+      )}
     </div>
   );
 }
