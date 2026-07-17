@@ -48,6 +48,8 @@ import { PlatformFeatureKillSwitch } from '@/components/admin/PlatformFeatureKil
 import { CentzConnectionsAdmin } from '@/components/admin/CentzConnectionsAdmin';
 import { IntegrationsAdmin } from '@/components/admin/IntegrationsAdmin';
 import { AIMeasurementProgramCards } from '@/components/admin/AIMeasurementProgramCards';
+import { AIMeasurementBuildoutLog } from '@/components/admin/AIMeasurementBuildoutLog';
+import { MeasurementTestPanel } from '@/components/measurements/MeasurementTestPanel';
 import { KeyRound, Plug } from 'lucide-react';
 
 interface Company {
