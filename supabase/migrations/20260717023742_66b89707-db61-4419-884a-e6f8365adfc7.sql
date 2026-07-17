@@ -1,0 +1,1 @@
+DELETE FROM public.demo_requests WHERE email IN ('probe+rpc@example.com','probe+test@example.com','probe+verify@example.com','probe+verify2@example.com','probe+noret@example.com','probe+minimal@example.com');
