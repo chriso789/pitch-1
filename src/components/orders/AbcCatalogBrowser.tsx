@@ -78,7 +78,7 @@ function normalizePriceRows(body: any): Record<string, AbcPrice> {
   for (const r of rows) {
     const item = String(r.itemNumber || r.item_number || r.sku || '').trim();
     if (!item) continue;
-    const unit =
+    const rawUnit =
       r.unitPrice ??
       r.unit_price ??
       r.price ??
@@ -90,10 +90,23 @@ function normalizePriceRows(body: any): Record<string, AbcPrice> {
       typeof cur === 'string'
         ? cur
         : (cur && typeof cur === 'object' && (cur.code || cur.currency)) || 'USD';
+    // ABC returns per-line `status: { code: 'Error'|'Ok', message }` — when
+    // `Error` (e.g. "Cannot price item X. Call for pricing.") ABC also sends
+    // unitPrice: 0. Treat that as "no contract price", not $0.00.
+    const statusCode: string | null =
+      (r.status && typeof r.status === 'object' && r.status.code) || null;
+    const statusMessage: string | null =
+      (r.status && typeof r.status === 'object' && r.status.message) || null;
+    const isErrored =
+      statusCode && String(statusCode).toLowerCase() !== 'ok';
+    const unit =
+      isErrored || rawUnit == null ? null : Number(rawUnit);
     out[item] = {
-      unitPrice: unit == null ? null : Number(unit),
+      unitPrice: unit,
       uom: r.uom || r.unitOfMeasure || null,
       currency: String(curStr).toUpperCase().slice(0, 3) || 'USD',
+      statusCode,
+      statusMessage,
     };
   }
   return out;
