@@ -98,6 +98,7 @@ import {
   type OSMFootprint,
   type OSMFootprintResult 
 } from '../_shared/osm-footprint-extractor.ts'
+import { fetchUsParcelOrStructure } from '../_shared/us-parcel-extractor.ts'
 import { 
   validateGeometry, 
   calculateAreaSqFt, 
@@ -303,9 +304,10 @@ Deno.serve(async (req) => {
     // 1. Mapbox Vector (highest fidelity - included with Mapbox subscription)
     // 2. Microsoft/Esri Buildings (FREE, 92% accuracy - better than Regrid!)
     // 3. OSM Overpass API (FREE, community-mapped buildings)
-    // 4. Regrid parcel data (PAID ~$0.03-0.10/lookup - only when free sources fail)
-    // 5. Solar API bounding box (rectangular, 4 vertices - LAST RESORT)
-    // 6. AI Detection (fallback when all else fails)
+    // 4. US ArcGIS Structures/Parcels (FREE, nationwide)
+    // 5. Regrid parcel data (PAID ~$0.03-0.10/lookup - only when free sources fail)
+    // 6. Solar API bounding box (rectangular, 4 vertices - LAST RESORT)
+    // 7. AI Detection (fallback when all else fails)
     // ═══════════════════════════════════════════════════════════════════════════
     
     // Performance tracking for visibility
@@ -446,6 +448,42 @@ Deno.serve(async (req) => {
     }
     timings.footprint_osm = Date.now() - footprintFetchStart - (timings.footprint_mapbox || 0) - (timings.footprint_microsoft || 0);
 
+    // STEP 3.5: Nationwide US ArcGIS Structures/Parcels (FREE, no key)
+    // Mirrors the canonical footprint resolver so this admin test surface can
+    // pick up the same national county/structure fallback instead of dropping
+    // to solar_bbox_fallback when Mapbox/Microsoft/OSM miss.
+    if (!authoritativeFootprint) {
+      console.log('🏛️ STEP 3.5: Trying US ArcGIS Structures/Parcels (FREE, nationwide)...');
+
+      try {
+        const usResult = await fetchUsParcelOrStructure(coordinates.lat, coordinates.lng, { timeoutMs: 6000 });
+
+        if (usResult?.vertices?.length >= 4) {
+          const overhangFt = usResult.source === 'usa_structures' ? 0.5 : 0.25;
+          const expandedVertices = expandFootprintForOverhang(usResult.vertices, overhangFt);
+          const validation = validateGeometry(expandedVertices, usResult.source as FootprintSource);
+
+          if (validation.valid) {
+            authoritativeFootprint = {
+              vertices: expandedVertices,
+              confidence: Math.min(usResult.confidence, validation.confidence),
+              source: usResult.source as FootprintSource,
+              requiresManualReview: usResult.source === 'usa_parcels',
+              validation,
+            };
+            console.log(`✅ US ArcGIS ${usResult.source}: ${validation.metrics.areaSqFt.toFixed(0)} sqft, ${usResult.vertices.length} vertices, ${(authoritativeFootprint.confidence * 100).toFixed(0)}% confidence`);
+          } else {
+            console.log(`⚠️ US ArcGIS ${usResult.source} footprint failed validation: ${validation.errors.join(', ')}`);
+          }
+        } else {
+          console.log('⚠️ US ArcGIS returned no usable structure/parcel footprint');
+        }
+      } catch (usArcgisErr) {
+        console.warn('⚠️ US ArcGIS Structures/Parcels lookup failed:', usArcgisErr);
+      }
+    }
+    timings.footprint_us_arcgis = Date.now() - footprintFetchStart - (timings.footprint_mapbox || 0) - (timings.footprint_microsoft || 0) - (timings.footprint_osm || 0);
+
     // STEP 4: Fallback to Regrid parcel data (PAID - only when free sources fail)
     const REGRID_API_KEY = Deno.env.get('REGRID_API_KEY');
     if (!authoritativeFootprint && REGRID_API_KEY) {
@@ -474,7 +512,7 @@ Deno.serve(async (req) => {
         console.warn('⚠️ Regrid lookup failed:', regridErr);
       }
     }
-    timings.footprint_regrid = Date.now() - footprintFetchStart - (timings.footprint_mapbox || 0) - (timings.footprint_microsoft || 0) - (timings.footprint_osm || 0);
+    timings.footprint_regrid = Date.now() - footprintFetchStart - (timings.footprint_mapbox || 0) - (timings.footprint_microsoft || 0) - (timings.footprint_osm || 0) - (timings.footprint_us_arcgis || 0);
 
     // Select best image EARLY (needed for AI Vision step)
     const selectedImage = googleImage.url ? googleImage : mapboxImage;
@@ -569,12 +607,12 @@ Deno.serve(async (req) => {
         console.warn(`⚠️ Solar footprint failed validation: ${validation.errors.join(', ')}`);
       }
     }
-    timings.footprint_solar = Date.now() - footprintFetchStart - (timings.footprint_mapbox || 0) - (timings.footprint_regrid || 0) - (timings.footprint_osm || 0) - (timings.footprint_microsoft || 0) - (timings.footprint_ai_vision || 0);
+    timings.footprint_solar = Date.now() - footprintFetchStart - (timings.footprint_mapbox || 0) - (timings.footprint_regrid || 0) - (timings.footprint_osm || 0) - (timings.footprint_microsoft || 0) - (timings.footprint_us_arcgis || 0) - (timings.footprint_ai_vision || 0);
     timings.footprint_total = Date.now() - footprintFetchStart;
 
     // Determine if we have a vector footprint (for conditional Florida shrinkage)
     const hasVectorFootprint = authoritativeFootprint && 
-      ['mapbox_vector', 'regrid_parcel', 'osm_buildings', 'microsoft_buildings', 'ai_vision_detected'].includes(authoritativeFootprint.source);
+      ['mapbox_vector', 'regrid_parcel', 'osm_buildings', 'microsoft_buildings', 'usa_structures', 'usa_parcels', 'ai_vision_detected'].includes(authoritativeFootprint.source);
     const usingSolarBboxFallback = authoritativeFootprint?.source === 'solar_bbox_fallback';
 
     // Log footprint source for tracking
