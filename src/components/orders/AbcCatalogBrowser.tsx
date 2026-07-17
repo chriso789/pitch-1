@@ -86,14 +86,24 @@ function normalizePriceRows(body: any): Record<string, AbcPrice> {
       r.netPrice ??
       r.net_price ??
       null;
+    const rawList =
+      r.listPrice ??
+      r.list_price ??
+      r.suggestedRetailPrice ??
+      r.suggested_retail_price ??
+      r.retailPrice ??
+      r.retail_price ??
+      r.msrp ??
+      null;
     const cur: any = r.currency ?? r.currencyCode ?? r.currency_code;
     const curStr =
       typeof cur === 'string'
         ? cur
         : (cur && typeof cur === 'object' && (cur.code || cur.currency)) || 'USD';
-    // ABC returns per-line `status: { code: 'Error'|'Ok', message }` — when
-    // `Error` (e.g. "Cannot price item X. Call for pricing.") ABC also sends
-    // unitPrice: 0. Treat that as "no contract price", not $0.00.
+    // ABC returns per-line `status: { code: 'Error'|'Ok', message }`. When
+    // Error (e.g. "Cannot price item X. Call for pricing.") ABC sends
+    // unitPrice: 0 but often still returns a valid listPrice/MSRP — surface
+    // that instead of hiding the number.
     const statusCode: string | null =
       (r.status && typeof r.status === 'object' && r.status.code) || null;
     const statusMessage: string | null =
@@ -102,8 +112,10 @@ function normalizePriceRows(body: any): Record<string, AbcPrice> {
       statusCode && String(statusCode).toLowerCase() !== 'ok';
     const unit =
       isErrored || rawUnit == null ? null : Number(rawUnit);
+    const list = rawList == null ? null : Number(rawList);
     out[item] = {
       unitPrice: unit,
+      listPrice: Number.isFinite(list as number) ? (list as number) : null,
       uom: r.uom || r.unitOfMeasure || null,
       currency: String(curStr).toUpperCase().slice(0, 3) || 'USD',
       statusCode,
@@ -113,17 +125,24 @@ function normalizePriceRows(body: any): Record<string, AbcPrice> {
   return out;
 }
 
-function fmtPrice(p?: AbcPrice): string {
-  if (!p || p.unitPrice == null || Number.isNaN(p.unitPrice)) return '—';
-  const currency = typeof p.currency === 'string' && /^[A-Z]{3}$/.test(p.currency) ? p.currency : 'USD';
+function fmtCurrency(value: number, currency: string): string {
+  const c = /^[A-Z]{3}$/.test(currency) ? currency : 'USD';
   try {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency,
-    }).format(p.unitPrice);
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: c }).format(value);
   } catch {
-    return `$${p.unitPrice.toFixed(2)}`;
+    return `$${value.toFixed(2)}`;
   }
+}
+
+function fmtPrice(p?: AbcPrice): string {
+  if (!p) return '—';
+  if (p.unitPrice != null && !Number.isNaN(p.unitPrice)) {
+    return fmtCurrency(p.unitPrice, p.currency);
+  }
+  if (p.listPrice != null && !Number.isNaN(p.listPrice)) {
+    return fmtCurrency(p.listPrice, p.currency);
+  }
+  return '—';
 }
 
 export const AbcCatalogBrowser: React.FC = () => {
