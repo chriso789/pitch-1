@@ -537,9 +537,12 @@ export function SchematicRoofDiagram({
       const classifiedHips: any[] = [];
       const classifiedValleys: any[] = [];
       const dummyGps = { lat: 0, lng: 0 };
+      const overallConf = Number(measurement?.confidence_score ?? measurement?.footprint_confidence ?? 1);
+      const isLowConf = overallConf > 0 && overallConf < 0.6;
       const suppressDiagnosticBboxInterior =
-        measurement?.footprint_source === 'solar_bbox_fallback' &&
-        measurement?.result_state !== 'customer_report_ready';
+        (measurement?.footprint_source === 'solar_bbox_fallback' &&
+          measurement?.result_state !== 'customer_report_ready') ||
+        isLowConf; // hide AI-guessed ridge/hip/valley when the run is low confidence
 
       const linFeatures = overlayFeatures
         .map((f: any) => {
