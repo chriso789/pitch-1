@@ -5706,6 +5706,19 @@ async function processSolarFastPath(
   // Determine if DSM data was available (for badge display)
   // Solar Fast Path doesn't use DSM currently, but we track for future enhancement
   const dsmAvailable = false;
+
+  const finalImageBounds = calculateStaticMapImageBounds(coordinates, IMAGE_ZOOM, IMAGE_SIZE);
+  const finalImageSizeMetadata = analysisImageSizeMetadata(imageSource, IMAGE_SIZE);
+  const finalOverlaySchema = buildOverlaySchemaFromFinalGeometry({
+    perimeterWkt,
+    footprintVertices: solarFastPathFootprint.vertices,
+    linearFeatures,
+    center: coordinates,
+    imageSize: IMAGE_SIZE,
+    zoom: IMAGE_ZOOM,
+    imageSource,
+    footprintSource,
+  });
   
   console.log(`📊 Footprint tracking: source=${footprintSource}, vertices=${footprintVertexCount}, confidence=${(footprintConfidence * 100).toFixed(0)}%`);
 
@@ -5751,7 +5764,9 @@ async function processSolarFastPath(
     perimeter_wkt: perimeterWkt,
     bounding_box: aiAnalysis.boundingBox,
     analysis_zoom: IMAGE_ZOOM,
-    analysis_image_size: { width: 640, height: 640 },
+    analysis_image_size: finalImageSizeMetadata,
+    image_bounds: finalImageBounds,
+    overlay_schema: finalOverlaySchema,
     validation_status: 'pending',
     vertex_count: footprintVertexCount,
     perimeter_vertex_count: footprintVertexCount,
@@ -5760,7 +5775,11 @@ async function processSolarFastPath(
       fast_path: true, 
       solar_segments: solarData.roofSegments.length,
       footprint_source: footprintSource,
-      footprint_vertex_count: footprintVertexCount
+      footprint_vertex_count: footprintVertexCount,
+      overlay_registration_fix: 'analysis-raster-metadata-v1',
+      overlay_coordinate_space: 'analysis_image_px',
+      image_bounds: finalImageBounds,
+      analysis_image_size: finalImageSizeMetadata,
     },
     // Authoritative footprint tracking fields (now correctly tracks source!)
     footprint_source: footprintSource,
