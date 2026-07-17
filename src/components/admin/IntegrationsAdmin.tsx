@@ -454,7 +454,9 @@ export function IntegrationsAdmin() {
               />
             )}
 
-            {currentOpen?.slug === "centz" ? (
+            {currentOpen?.slug === "abc_supply" ? (
+              <AbcAdminSurfaces />
+            ) : currentOpen?.slug === "centz" ? (
               <CentzConnectionsAdmin />
             ) : currentOpen ? (
               <Card>
