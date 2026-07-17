@@ -294,6 +294,13 @@ export const AbcCatalogBrowser: React.FC = () => {
                 Pricing unavailable: {priceError}
               </div>
             )}
+            <div className="text-xs text-muted-foreground mb-2">
+              Prices are quoted against ABC ship-to <span className="font-mono">{shipToNumber}</span>{' '}
+              on branch <span className="font-mono">{branchNumber}</span>. Items that are not on
+              this ship-to's negotiated contract are returned by ABC as{' '}
+              <em>"Call for pricing"</em> and cannot be quoted through the API — this is ABC's
+              documented behavior in both sandbox and production.
+            </div>
             <div className="rounded-md border">
               <Table>
                 <TableHeader>
