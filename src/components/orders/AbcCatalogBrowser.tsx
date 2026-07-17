@@ -44,6 +44,8 @@ interface AbcPrice {
   unitPrice: number | null;
   uom: string | null;
   currency: string;
+  statusCode?: string | null;
+  statusMessage?: string | null;
 }
 
 const SANDBOX_SHIP_TO = '2010466-2';
