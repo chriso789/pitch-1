@@ -11,6 +11,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { MeasurementTestResults } from './MeasurementTestResults';
 import { ImageQualityBadge } from './ImageQualityBadge';
+import { AddressAutocomplete, type AddressComponents } from '@/components/AddressAutocomplete';
 
 interface TestResult {
   measurementId: string;
@@ -51,6 +52,7 @@ interface TestResult {
 export function MeasurementTestPanel() {
   const { toast } = useToast();
   const [address, setAddress] = useState('');
+  const [verifiedAddress, setVerifiedAddress] = useState<AddressComponents | null>(null);
   const [lat, setLat] = useState('');
   const [lng, setLng] = useState('');
   const [isRunning, setIsRunning] = useState(false);
@@ -60,11 +62,14 @@ export function MeasurementTestPanel() {
   const [previousResults, setPreviousResults] = useState<TestResult[]>([]);
   const [showDebug, setShowDebug] = useState(false);
 
+  const hasVerifiedAddress = !!verifiedAddress?.latitude && !!verifiedAddress?.longitude;
+  const hasManualCoords = !!lat && !!lng;
+
   const runMeasurement = async () => {
-    if (!address && (!lat || !lng)) {
+    if (!hasVerifiedAddress && !hasManualCoords) {
       toast({
-        title: 'Input required',
-        description: 'Please enter an address or coordinates',
+        title: 'Verified address required',
+        description: 'Pick an address from the Google suggestions, or enter lat/lng in Advanced Options.',
         variant: 'destructive'
       });
       return;
@@ -72,32 +77,22 @@ export function MeasurementTestPanel() {
 
     setIsRunning(true);
     setProgress(10);
-    setProgressMessage('Geocoding address...');
+    setProgressMessage('Preparing measurement...');
     setResult(null);
 
     try {
-      let coordinates = { lat: parseFloat(lat), lng: parseFloat(lng) };
-      
-      // If address provided, geocode it
-      if (address && (!lat || !lng)) {
-        setProgress(20);
-        setProgressMessage('Looking up address...');
-        
-        const { data: geocodeData, error: geocodeError } = await supabase.functions.invoke('google-address-validation', {
-          body: { address }
-        });
-        
-        if (geocodeError || !geocodeData?.success) {
-          throw new Error('Failed to geocode address');
-        }
-        
-        coordinates = {
-          lat: geocodeData.data.latitude,
-          lng: geocodeData.data.longitude
-        };
+      // Prefer the verified Google Places address; otherwise manual lat/lng.
+      let coordinates = hasVerifiedAddress
+        ? { lat: verifiedAddress!.latitude!, lng: verifiedAddress!.longitude! }
+        : { lat: parseFloat(lat), lng: parseFloat(lng) };
+
+      const runAddress = verifiedAddress?.formatted_address || address || `${coordinates.lat}, ${coordinates.lng}`;
+
+      if (hasVerifiedAddress) {
         setLat(coordinates.lat.toString());
         setLng(coordinates.lng.toString());
       }
+
 
       setProgress(40);
       setProgressMessage('Fetching satellite imagery...');
@@ -108,7 +103,7 @@ export function MeasurementTestPanel() {
 
       const { data: measurementData, error: measurementError } = await supabase.functions.invoke('analyze-roof-aerial', {
         body: {
-          address: address || `${coordinates.lat}, ${coordinates.lng}`,
+          address: runAddress,
           coordinates,
           customerId: null, // Test mode - no customer
           userId: null
@@ -187,17 +182,41 @@ export function MeasurementTestPanel() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Address Input */}
+          {/* Address Input — Google Places autocomplete + verification */}
           <div className="space-y-2">
             <Label htmlFor="test-address">Property Address</Label>
-            <Input
-              id="test-address"
-              placeholder="123 Main St, City, State ZIP"
+            <AddressAutocomplete
               value={address}
-              onChange={(e) => setAddress(e.target.value)}
+              onChange={(v) => {
+                setAddress(v);
+                // Any manual edit invalidates the last verified pick.
+                if (verifiedAddress && v !== verifiedAddress.formatted_address) {
+                  setVerifiedAddress(null);
+                }
+              }}
+              onAddressSelect={(components) => {
+                setVerifiedAddress(components);
+                setAddress(components.formatted_address);
+                if (components.latitude && components.longitude) {
+                  setLat(components.latitude.toString());
+                  setLng(components.longitude.toString());
+                }
+              }}
+              placeholder="Start typing an address..."
               disabled={isRunning}
             />
+            {!hasVerifiedAddress && address.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                Pick a suggestion to verify the address before running the test.
+              </p>
+            )}
+            {hasVerifiedAddress && (
+              <p className="text-xs text-green-600">
+                Verified via Google: {verifiedAddress!.formatted_address}
+              </p>
+            )}
           </div>
+
 
           {/* Coordinates (optional) */}
           <Collapsible open={showDebug} onOpenChange={setShowDebug}>
@@ -244,7 +263,7 @@ export function MeasurementTestPanel() {
           {/* Run Button */}
           <Button 
             onClick={runMeasurement} 
-            disabled={isRunning || (!address && (!lat || !lng))}
+            disabled={isRunning || (!hasVerifiedAddress && !hasManualCoords)}
             className="w-full"
           >
             {isRunning ? (
