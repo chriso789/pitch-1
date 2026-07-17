@@ -52,6 +52,7 @@ interface TestResult {
 export function MeasurementTestPanel() {
   const { toast } = useToast();
   const [address, setAddress] = useState('');
+  const [verifiedAddress, setVerifiedAddress] = useState<AddressComponents | null>(null);
   const [lat, setLat] = useState('');
   const [lng, setLng] = useState('');
   const [isRunning, setIsRunning] = useState(false);
@@ -60,6 +61,19 @@ export function MeasurementTestPanel() {
   const [result, setResult] = useState<TestResult | null>(null);
   const [previousResults, setPreviousResults] = useState<TestResult[]>([]);
   const [showDebug, setShowDebug] = useState(false);
+
+  const hasVerifiedAddress = !!verifiedAddress?.latitude && !!verifiedAddress?.longitude;
+  const hasManualCoords = !!lat && !!lng;
+
+  const runMeasurement = async () => {
+    if (!hasVerifiedAddress && !hasManualCoords) {
+      toast({
+        title: 'Verified address required',
+        description: 'Pick an address from the Google suggestions, or enter lat/lng in Advanced Options.',
+        variant: 'destructive'
+      });
+      return;
+    }
 
   const runMeasurement = async () => {
     if (!address && (!lat || !lng)) {
