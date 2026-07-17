@@ -658,7 +658,7 @@ Deno.serve(async (req) => {
     let perimeterResult: any;
     let footprintCheck: any;
     
-    if (authoritativeFootprint && authoritativeFootprint.vertices.length >= 4) {
+    if (authoritativeFootprint && authoritativeFootprint.source !== 'solar_bbox_fallback' && authoritativeFootprint.vertices.length >= 4) {
       // FAST PATH: Convert authoritative footprint vertices to pixel coordinates
       console.log(`🚀 SKIPPING SLOW AI PASSES: Using ${authoritativeFootprint.source} footprint with ${authoritativeFootprint.vertices.length} vertices`);
       
@@ -896,7 +896,7 @@ Deno.serve(async (req) => {
       IMAGE_ZOOM,
       solarData,
       address,
-      authoritativeFootprint?.source // NEW: Pass footprint source for authority check
+      authoritativeFootprint?.source === 'solar_bbox_fallback' ? undefined : authoritativeFootprint?.source // NEW: Pass footprint source for authority check
     )
     console.log(`📐 Validated area from perimeter: ${actualAreaSqft.toFixed(0)} sqft (source: ${authoritativeFootprint?.source || 'ai_detection'})`)
     
@@ -1031,7 +1031,7 @@ Deno.serve(async (req) => {
       footprintValidation: footprintCheck,
       metadata: measurementMetadata,
       shadowRisk: shadowRiskAssessment,
-      authoritativeFootprint, // NEW: Pass footprint data for database storage
+      authoritativeFootprint: authoritativeFootprint?.source === 'solar_bbox_fallback' ? null : authoritativeFootprint, // NEW: Pass footprint data for database storage
     })
     
     // Save vertices and edges to dedicated tables
@@ -1206,11 +1206,11 @@ Deno.serve(async (req) => {
         },
         // NEW: Footprint tracking for frontend badge display
         footprint: {
-          source: authoritativeFootprint?.source || 'ai_detection',
-          confidence: authoritativeFootprint?.confidence || 0.5,
-          vertexCount: authoritativeFootprint?.vertices?.length || perimeterResult.vertices.length,
+          source: authoritativeFootprint?.source === 'solar_bbox_fallback' ? 'ai_detection' : (authoritativeFootprint?.source || 'ai_detection'),
+          confidence: authoritativeFootprint?.source === 'solar_bbox_fallback' ? 0.5 : (authoritativeFootprint?.confidence || 0.5),
+          vertexCount: authoritativeFootprint?.source === 'solar_bbox_fallback' ? perimeterResult.vertices.length : (authoritativeFootprint?.vertices?.length || perimeterResult.vertices.length),
           dsmAvailable: false,
-          requiresReview: !authoritativeFootprint
+          requiresReview: !authoritativeFootprint || authoritativeFootprint?.source === 'solar_bbox_fallback'
         },
         // NEW: Performance metrics for transparency
         performance: {
@@ -1225,7 +1225,7 @@ Deno.serve(async (req) => {
             skeleton_generation: 0,
             total: totalTime
           },
-          footprint_source: authoritativeFootprint?.source || 'ai_detection'
+          footprint_source: authoritativeFootprint?.source === 'solar_bbox_fallback' ? 'ai_detection' : (authoritativeFootprint?.source || 'ai_detection')
         }
       }
     }), {
