@@ -819,6 +819,7 @@ export type Database = {
           integration_id: string | null
           redirect_uri: string
           return_origin: string | null
+          return_path: string | null
           state: string
           tenant_id: string
         }
@@ -830,6 +831,7 @@ export type Database = {
           integration_id?: string | null
           redirect_uri: string
           return_origin?: string | null
+          return_path?: string | null
           state: string
           tenant_id: string
         }
@@ -841,6 +843,7 @@ export type Database = {
           integration_id?: string | null
           redirect_uri?: string
           return_origin?: string | null
+          return_path?: string | null
           state?: string
           tenant_id?: string
         }
