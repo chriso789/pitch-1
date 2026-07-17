@@ -294,12 +294,48 @@ export function IntegrationSandboxConsole({ slug, name }: Props) {
         <TabsContent value="test" className="space-y-3 mt-4">
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">Send sandbox payload</CardTitle>
-              <CardDescription className="text-xs">
-                {preset
-                  ? preset.description
-                  : "No sandbox preset is registered for this integration. Add one in IntegrationSandboxConsole.tsx → PRESETS."}
-              </CardDescription>
+              <div className="flex items-start justify-between gap-2 flex-wrap">
+                <div>
+                  <CardTitle className="text-base">Send sandbox payload</CardTitle>
+                  <CardDescription className="text-xs">
+                    {preset
+                      ? preset.description
+                      : "No sandbox preset is registered for this integration. Add one in IntegrationSandboxConsole.tsx → PRESETS."}
+                  </CardDescription>
+                </div>
+                {slug === "abc_supply" && (
+                  <div className="flex flex-col gap-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      asChild
+                    >
+                      <a
+                        href="https://sandbox.auth.partners.abcsupply.com/oauth2/aus1vp07knpuqf6Xz0h8/v1/authorize"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5 mr-1" />
+                        ABC sandbox login
+                      </a>
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      asChild
+                    >
+                      <a
+                        href="https://my.abcsupply.com/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5 mr-1" />
+                        myABCsupply (contractor)
+                      </a>
+                    </Button>
+                  </div>
+                )}
+              </div>
             </CardHeader>
             <CardContent className="space-y-3">
               {preset && (
