@@ -370,7 +370,19 @@ export const AbcCatalogBrowser: React.FC = () => {
                           <TableCell className="text-right font-mono">
                             {pricesLoading && !p ? (
                               <Loader2 className="h-3.5 w-3.5 animate-spin inline" />
-                            ) : p && p.unitPrice == null && p.statusMessage ? (
+                            ) : p && p.unitPrice != null ? (
+                              fmtPrice(p)
+                            ) : p && p.listPrice != null ? (
+                              <span
+                                className="text-foreground"
+                                title={p.statusMessage || 'ABC list price (no contract price on file)'}
+                              >
+                                {fmtPrice(p)}
+                                <span className="ml-1 text-[10px] uppercase text-muted-foreground">
+                                  list
+                                </span>
+                              </span>
+                            ) : p && p.statusMessage ? (
                               <span
                                 className="text-xs text-amber-600"
                                 title={p.statusMessage}
