@@ -75,44 +75,24 @@ export function MeasurementTestPanel() {
       return;
     }
 
-  const runMeasurement = async () => {
-    if (!address && (!lat || !lng)) {
-      toast({
-        title: 'Input required',
-        description: 'Please enter an address or coordinates',
-        variant: 'destructive'
-      });
-      return;
-    }
-
     setIsRunning(true);
     setProgress(10);
-    setProgressMessage('Geocoding address...');
+    setProgressMessage('Preparing measurement...');
     setResult(null);
 
     try {
-      let coordinates = { lat: parseFloat(lat), lng: parseFloat(lng) };
-      
-      // If address provided, geocode it
-      if (address && (!lat || !lng)) {
-        setProgress(20);
-        setProgressMessage('Looking up address...');
-        
-        const { data: geocodeData, error: geocodeError } = await supabase.functions.invoke('google-address-validation', {
-          body: { address }
-        });
-        
-        if (geocodeError || !geocodeData?.success) {
-          throw new Error('Failed to geocode address');
-        }
-        
-        coordinates = {
-          lat: geocodeData.data.latitude,
-          lng: geocodeData.data.longitude
-        };
+      // Prefer the verified Google Places address; otherwise manual lat/lng.
+      let coordinates = hasVerifiedAddress
+        ? { lat: verifiedAddress!.latitude!, lng: verifiedAddress!.longitude! }
+        : { lat: parseFloat(lat), lng: parseFloat(lng) };
+
+      const runAddress = verifiedAddress?.formatted_address || address || `${coordinates.lat}, ${coordinates.lng}`;
+
+      if (hasVerifiedAddress) {
         setLat(coordinates.lat.toString());
         setLng(coordinates.lng.toString());
       }
+
 
       setProgress(40);
       setProgressMessage('Fetching satellite imagery...');
