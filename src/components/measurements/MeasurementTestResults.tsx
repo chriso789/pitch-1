@@ -1,10 +1,14 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { CheckCircle2, AlertTriangle, Clock, MapPin, Layers, ChevronDown, Bug, ArrowUpRight, ArrowDownRight, Minus } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Clock, MapPin, Layers, ChevronDown, Bug, ArrowUpRight, ArrowDownRight, Minus, FileText, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import { ImageQualityBadge } from './ImageQualityBadge';
 import { MeasurementComparisonTool } from './MeasurementComparisonTool';
+import MeasurementReportDialog from './MeasurementReportDialog';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
 interface TestResult {
