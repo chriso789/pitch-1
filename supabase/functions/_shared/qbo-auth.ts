@@ -141,6 +141,7 @@ export async function refreshAccessToken(
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
       Accept: "application/json",
+      "User-Agent": QBO_USER_AGENT,
       Authorization: basicAuthHeader(c.clientId, c.clientSecret),
     },
     body: new URLSearchParams({
