@@ -48,6 +48,8 @@ import { PlatformFeatureKillSwitch } from '@/components/admin/PlatformFeatureKil
 import { CentzConnectionsAdmin } from '@/components/admin/CentzConnectionsAdmin';
 import { IntegrationsAdmin } from '@/components/admin/IntegrationsAdmin';
 import { AIMeasurementProgramCards } from '@/components/admin/AIMeasurementProgramCards';
+import { AIMeasurementBuildoutLog } from '@/components/admin/AIMeasurementBuildoutLog';
+import { MeasurementTestPanel } from '@/components/measurements/MeasurementTestPanel';
 import { KeyRound, Plug } from 'lucide-react';
 
 interface Company {
@@ -802,6 +804,25 @@ const CompanyAdminPage = () => {
             </Card>
 
             <AIMeasurementProgramCards />
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  Developer Testing Area
+                </CardTitle>
+                <CardDescription>
+                  Run the canonical <code>start-ai-measurement</code> pipeline end-to-end against a real address or coordinates.
+                  Moved here from Settings → Roof Training so all AI Measurement operator surfaces live in one tab.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <MeasurementTestPanel />
+              </CardContent>
+            </Card>
+
+            <AIMeasurementBuildoutLog />
+
           </TabsContent>
 
           {currentUser?.role === 'master' && (
