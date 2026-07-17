@@ -481,8 +481,9 @@ export function SchematicRoofDiagram({
       let cMinY = Math.min(...overlayPolygon.map(p => p.y));
       let cMaxY = Math.max(...overlayPolygon.map(p => p.y));
 
-      const padX = Math.max((cMaxX - cMinX) * 0.08, 12);
-      const padY = Math.max((cMaxY - cMinY) * 0.08, 12);
+      // Wider crop so users see roof context, not a claustrophobic zoom.
+      const padX = Math.max((cMaxX - cMinX) * 0.25, 80);
+      const padY = Math.max((cMaxY - cMinY) * 0.25, 80);
       cMinX -= padX; cMaxX += padX; cMinY -= padY; cMaxY += padY;
 
       const containerAspect = width / height;
