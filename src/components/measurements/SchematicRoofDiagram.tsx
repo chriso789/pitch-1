@@ -1462,6 +1462,14 @@ export function SchematicRoofDiagram({
           </Badge>
         </div>
       )}
+      {measurement?.footprint_source === 'solar_bbox_fallback' && measurement?.result_state !== 'customer_report_ready' && (
+        <div className="absolute left-1/2 top-2 z-20 -translate-x-1/2 max-w-[70%]">
+          <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300 text-xs whitespace-normal justify-center text-center">
+            <ShieldAlert className="w-3 h-3 mr-1 shrink-0" />
+            Footprint not updated — Solar rectangle only; interior roof lines hidden until full AI trace passes
+          </Badge>
+        </div>
+      )}
       {/* Satellite image background (when overlay is enabled) */}
       {localShowOverlay && satelliteImageUrl && (
         <img 
