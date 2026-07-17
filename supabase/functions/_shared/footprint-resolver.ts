@@ -489,6 +489,29 @@ async function tryOSMBuildings(options: FootprintResolverOptions): Promise<{
   return null;
 }
 
+// Try nationwide US ArcGIS layers (USA_Structures buildings, then USA_Parcels).
+// Free, no key, covers most US counties. Good coverage for states beyond FL.
+async function tryUsParcelArcgis(options: FootprintResolverOptions): Promise<{
+  vertices: FootprintVertex[];
+  source: FootprintSource;
+  confidence: number;
+} | null> {
+  try {
+    const { fetchUsParcelOrStructure } = await import('./us-parcel-extractor.ts');
+    const result = await fetchUsParcelOrStructure(options.lat, options.lng, { timeoutMs: 6000 });
+    if (result && result.vertices.length >= 4) {
+      return {
+        vertices: expandFootprintForOverhang(result.vertices, options.eaveOverhangFt || 0.5),
+        source: result.source,
+        confidence: result.confidence,
+      };
+    }
+  } catch (err) {
+    console.warn('US ArcGIS parcel/structure fetch failed:', err);
+  }
+  return null;
+}
+
 // Try fetching from Regrid (paid)
 async function tryRegridParcel(options: FootprintResolverOptions): Promise<{
   vertices: FootprintVertex[];
