@@ -272,6 +272,22 @@ export function SchematicRoofDiagram({
   // Default to minimized (badge) state - user can expand if needed
   const [showWarningBanner, setShowWarningBanner] = useState(false);
   const [fittedEdges, setFittedEdges] = useState<AutoFitAllEdgesResult | null>(null);
+  const effectiveSatelliteImageUrl = useMemo(() => {
+    if (satelliteImageUrl) return satelliteImageUrl;
+    const selectedSource = String(measurement?.selected_image_source || measurement?.image_source || '').toLowerCase();
+    if (selectedSource.includes('mapbox') && measurement?.mapbox_image_url) return measurement.mapbox_image_url;
+    if (selectedSource.includes('google') && measurement?.google_maps_image_url) return measurement.google_maps_image_url;
+    if (measurement?.satellite_overlay_url) return measurement.satellite_overlay_url;
+    if (measurement?.google_maps_image_url) return measurement.google_maps_image_url;
+    if (measurement?.mapbox_image_url) return measurement.mapbox_image_url;
+
+    const lat = measurement?.target_lat ?? measurement?.center_lat ?? measurement?.gps_coordinates?.lat;
+    const lng = measurement?.target_lng ?? measurement?.center_lng ?? measurement?.gps_coordinates?.lng;
+    if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) return undefined;
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://alxelfrbjzkmtnsulcei.supabase.co';
+    const zoom = measurement?.analysis_zoom || 20;
+    return `${supabaseUrl}/functions/v1/satellite-tile?lat=${lat}&lng=${lng}&zoom=${zoom}&size=640`;
+  }, [measurement, satelliteImageUrl]);
   
   // Manual segment correction state
   const [segmentOverrides, setSegmentOverrides] = useState<Record<string, string>>({}); // key: "featureIndex" → new type
@@ -520,12 +536,17 @@ export function SchematicRoofDiagram({
       const classifiedHips: any[] = [];
       const classifiedValleys: any[] = [];
       const dummyGps = { lat: 0, lng: 0 };
+      const suppressDiagnosticBboxInterior =
+        measurement?.footprint_source === 'solar_bbox_fallback' &&
+        measurement?.result_state !== 'customer_report_ready';
+
       const linFeatures = overlayFeatures
         .map((f: any) => {
           const p1 = Array.isArray(f?.p1) ? { x: Number(f.p1[0]), y: Number(f.p1[1]) } : null;
           const p2 = Array.isArray(f?.p2) ? { x: Number(f.p2[0]), y: Number(f.p2[1]) } : null;
           if (!p1 || !p2 || !Number.isFinite(p1.x) || !Number.isFinite(p2.x)) return null;
           const type = String(f.type || 'ridge').toLowerCase();
+          if (suppressDiagnosticBboxInterior && ['ridge', 'hip', 'valley'].includes(type)) return null;
           const points = [toSvgPx(p1), toSvgPx(p2)];
           const length = Number(f.length_ft || 0);
           const segData = { start: points[0], end: points[1], points, length, gpsStart: dummyGps, gpsEnd: dummyGps, gpsPoints: [dummyGps, dummyGps] };
@@ -1166,7 +1187,7 @@ export function SchematicRoofDiagram({
       imageCrop: imgCrop,
       isLowConfidenceEdges: isLowQualityFootprint,
     };
-  }, [measurement, width, height, facets, localShowOverlay, imageBounds, satelliteImageUrl]);
+  }, [measurement, width, height, facets, localShowOverlay, imageBounds, effectiveSatelliteImageUrl]);
   
   // Update diagram source state when geometry source changes
   useEffect(() => {
@@ -1192,7 +1213,7 @@ export function SchematicRoofDiagram({
   // Image-space CSS positioning: uses the same imageCrop rect as toSvg
   // This guarantees the background image and SVG lines share the exact same transform
   const overlayImageStyle = useMemo(() => {
-    if (!localShowOverlay || !satelliteImageUrl || !computedImageCrop) {
+    if (!localShowOverlay || !effectiveSatelliteImageUrl || !computedImageCrop) {
       return undefined;
     }
 
@@ -1205,15 +1226,18 @@ export function SchematicRoofDiagram({
       width: (computedImageCrop.srcW * width) / cropW,
       height: (computedImageCrop.srcH * height) / cropH,
     };
-  }, [localShowOverlay, satelliteImageUrl, computedImageCrop, width, height]);
+  }, [localShowOverlay, effectiveSatelliteImageUrl, computedImageCrop, width, height]);
+
+  const usesCanonicalPixelOverlay = debugInfo?.transformMode === 'overlay-schema-pixel';
 
   useEffect(() => {
     let cancelled = false;
 
     const shouldFitEdges =
       localShowOverlay &&
-      !!satelliteImageUrl &&
+      !!effectiveSatelliteImageUrl &&
       !!overlayImageStyle &&
+      !usesCanonicalPixelOverlay &&
       (eaveSegments.length > 0 || rakeSegments.length > 0 || ridgeSegments.length > 0 || hipSegments.length > 0 || valleySegments.length > 0);
 
     if (!shouldFitEdges || !overlayImageStyle) {
@@ -1224,7 +1248,7 @@ export function SchematicRoofDiagram({
     }
 
     autoFitAllEdges({
-      imageUrl: satelliteImageUrl,
+      imageUrl: effectiveSatelliteImageUrl,
       imagePlacement: {
         left: overlayImageStyle.left,
         top: overlayImageStyle.top,
@@ -1263,7 +1287,8 @@ export function SchematicRoofDiagram({
     height,
     localShowOverlay,
     overlayImageStyle,
-    satelliteImageUrl,
+    effectiveSatelliteImageUrl,
+    usesCanonicalPixelOverlay,
     width,
   ]);
 
@@ -1471,9 +1496,9 @@ export function SchematicRoofDiagram({
         </div>
       )}
       {/* Satellite image background (when overlay is enabled) */}
-      {localShowOverlay && satelliteImageUrl && (
+      {localShowOverlay && effectiveSatelliteImageUrl && (
         <img 
-          src={satelliteImageUrl}
+          src={effectiveSatelliteImageUrl}
           alt="Satellite view"
           loading="lazy"
           className="absolute max-w-none select-none"
@@ -2071,9 +2096,9 @@ export function SchematicRoofDiagram({
       </svg>
       
       {/* Debug Controls (top-left) */}
-      {(satelliteImageUrl || showDebugMarkers || showDebugPanel) && (
+      {(effectiveSatelliteImageUrl || showDebugMarkers || showDebugPanel) && (
         <div className="absolute top-3 left-24 flex gap-1">
-          {satelliteImageUrl && (
+          {effectiveSatelliteImageUrl && (
             <button
               onClick={() => setLocalShowOverlay(!localShowOverlay)}
               className={`p-1.5 rounded-md text-xs flex items-center gap-1 ${
