@@ -33,6 +33,14 @@ Deno.test("solar fast path refuses to complete complex roofs from solar bbox fal
     source.includes("would reuse synthetic hips/ridges/valleys"),
     "logs must explain that bbox fast path would reuse fake topology lines",
   );
+  assert(
+    source.includes("authoritativeFootprint.source !== 'solar_bbox_fallback'"),
+    "the full AI path must not skip AI vision when the only footprint is a Solar bbox rectangle",
+  );
+  assert(
+    source.includes("authoritativeFootprint?.source === 'solar_bbox_fallback' ? null : authoritativeFootprint"),
+    "Solar bbox must not be persisted as the authoritative footprint after full AI tracing",
+  );
 });
 
 Deno.test("legacy analyze inserts normalize result state and block customer-ready report", async () => {
