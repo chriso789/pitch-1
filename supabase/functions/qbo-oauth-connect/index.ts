@@ -148,6 +148,7 @@ async function handleServerCallback(reqUrl: URL): Promise<Response> {
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
       Accept: "application/json",
+      "User-Agent": QBO_USER_AGENT,
       Authorization: basicAuth(ctx.clientId, ctx.clientSecret),
     },
     body: new URLSearchParams({
