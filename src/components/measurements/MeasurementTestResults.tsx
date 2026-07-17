@@ -57,6 +57,10 @@ interface TestResult {
     images: {
       selected: string;
     };
+    footprint?: {
+      source?: string;
+      requiresReview?: boolean;
+    };
   };
   qualityAssessment?: {
     shadow_risk: 'low' | 'medium' | 'high';
@@ -144,7 +148,11 @@ export function MeasurementTestResults({ result, previousResults = [] }: Measure
 
   const { data, timing, qualityAssessment } = result;
   const measurements = data?.measurements;
-  const diagnosticBboxTrace = inlineMeasurement?.footprint_source === 'solar_bbox_fallback' && inlineMeasurement?.result_state !== 'customer_report_ready';
+  const responseFootprintSource = data?.footprint?.source;
+  const diagnosticBboxTrace = (
+    inlineMeasurement?.footprint_source === 'solar_bbox_fallback' ||
+    responseFootprintSource === 'solar_bbox_fallback'
+  ) && inlineMeasurement?.result_state !== 'customer_report_ready';
   const displayedLinear = diagnosticBboxTrace ? null : measurements?.linear;
   const analysis = data?.aiAnalysis;
   const confidence = data?.confidence;
