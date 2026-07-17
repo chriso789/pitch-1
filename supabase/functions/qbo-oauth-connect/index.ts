@@ -138,8 +138,9 @@ async function handleServerCallback(reqUrl: URL): Promise<Response> {
     return redirectToSettings({ status: "exchange_failed", reason: "credentials_missing" });
   }
 
-  // 5. Exchange code for tokens.
-  const tokenResp = await fetch(QBO_TOKEN_URL, {
+  // 5. Exchange code for tokens (endpoint from Intuit discovery doc).
+  const endpoints = await getQboOAuthEndpoints(ctx.mode);
+  const tokenResp = await fetch(endpoints.token_endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
