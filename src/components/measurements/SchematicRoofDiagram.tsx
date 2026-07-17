@@ -481,8 +481,9 @@ export function SchematicRoofDiagram({
       let cMinY = Math.min(...overlayPolygon.map(p => p.y));
       let cMaxY = Math.max(...overlayPolygon.map(p => p.y));
 
-      const padX = Math.max((cMaxX - cMinX) * 0.08, 12);
-      const padY = Math.max((cMaxY - cMinY) * 0.08, 12);
+      // Wider crop so users see roof context, not a claustrophobic zoom.
+      const padX = Math.max((cMaxX - cMinX) * 0.25, 80);
+      const padY = Math.max((cMaxY - cMinY) * 0.25, 80);
       cMinX -= padX; cMaxX += padX; cMinY -= padY; cMaxY += padY;
 
       const containerAspect = width / height;
@@ -536,9 +537,12 @@ export function SchematicRoofDiagram({
       const classifiedHips: any[] = [];
       const classifiedValleys: any[] = [];
       const dummyGps = { lat: 0, lng: 0 };
+      const overallConf = Number(measurement?.confidence_score ?? measurement?.footprint_confidence ?? 1);
+      const isLowConf = overallConf > 0 && overallConf < 0.6;
       const suppressDiagnosticBboxInterior =
-        measurement?.footprint_source === 'solar_bbox_fallback' &&
-        measurement?.result_state !== 'customer_report_ready';
+        (measurement?.footprint_source === 'solar_bbox_fallback' &&
+          measurement?.result_state !== 'customer_report_ready') ||
+        isLowConf; // hide AI-guessed ridge/hip/valley when the run is low confidence
 
       const linFeatures = overlayFeatures
         .map((f: any) => {
@@ -594,7 +598,7 @@ export function SchematicRoofDiagram({
         },
         geometrySource: 'database' as const,
         imageCrop: imgCrop,
-        isLowConfidenceEdges: false,
+        isLowConfidenceEdges: isLowConf,
       };
     }
     
