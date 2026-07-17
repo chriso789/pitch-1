@@ -26,6 +26,8 @@ export type FootprintSource =
   | 'osm_overpass'
   | 'osm_buildings'
   | 'microsoft_buildings'
+  | 'usa_structures'
+  | 'usa_parcels'
   | 'ai_vision_detected'
   | 'solar_bbox_fallback';
 
