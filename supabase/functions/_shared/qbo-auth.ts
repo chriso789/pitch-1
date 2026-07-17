@@ -303,7 +303,8 @@ export async function revokeConnection(service: SupabaseClient, tenant_id: strin
 
   try {
     const ctx = getQboContextForConnection(conn);
-    const revokeRes = await fetch(QBO_REVOKE_URL, {
+    const endpoints = await getQboOAuthEndpoints(ctx.mode);
+    const revokeRes = await fetch(endpoints.revocation_endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
