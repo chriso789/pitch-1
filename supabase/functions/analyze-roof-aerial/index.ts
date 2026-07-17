@@ -165,6 +165,152 @@ const IMAGE_SIZE = 640
 const AI_CALL_TIMEOUT_MS = 45000 // 45 second timeout per AI call
 const OVERALL_BUDGET_MS = 85000 // 85 second hard budget to avoid connection drops
 
+function calculateStaticMapImageBounds(
+  center: { lat: number; lng: number },
+  zoom: number = IMAGE_ZOOM,
+  imageSize: number = IMAGE_SIZE,
+) {
+  const toRad = (deg: number) => deg * Math.PI / 180
+  const toDeg = (rad: number) => rad * 180 / Math.PI
+  const metersPerPixel = (156543.03392 * Math.cos(toRad(center.lat))) / Math.pow(2, zoom)
+  const degreesPerPixelLng = metersPerPixel / (111111 * Math.cos(toRad(center.lat)))
+  const halfWidth = (imageSize / 2) * degreesPerPixelLng
+  const mercY = Math.log(Math.tan(Math.PI / 4 + toRad(center.lat) / 2))
+  const mercPerPixel = metersPerPixel / 6371000
+  const mercTop = mercY + (imageSize / 2) * mercPerPixel
+  const mercBottom = mercY - (imageSize / 2) * mercPerPixel
+  const north = toDeg(2 * Math.atan(Math.exp(mercTop)) - Math.PI / 2)
+  const south = toDeg(2 * Math.atan(Math.exp(mercBottom)) - Math.PI / 2)
+
+  return {
+    topLeft: { lat: north, lng: center.lng - halfWidth },
+    topRight: { lat: north, lng: center.lng + halfWidth },
+    bottomLeft: { lat: south, lng: center.lng - halfWidth },
+    bottomRight: { lat: south, lng: center.lng + halfWidth },
+    centerLat: center.lat,
+    centerLng: center.lng,
+    zoom,
+    logicalWidth: imageSize,
+    logicalHeight: imageSize,
+  }
+}
+
+function analysisImageSizeMetadata(imageSource: string | undefined, logicalSize: number = IMAGE_SIZE) {
+  const rasterScale = imageSource === 'mapbox' ? 2 : 1
+  return {
+    width: logicalSize,
+    height: logicalSize,
+    logicalWidth: logicalSize,
+    logicalHeight: logicalSize,
+    rasterWidth: logicalSize * rasterScale,
+    rasterHeight: logicalSize * rasterScale,
+    rasterScale,
+  }
+}
+
+function parseLineStringWkt(wkt?: string): Array<{ lng: number; lat: number }> {
+  if (!wkt || typeof wkt !== 'string') return []
+  const match = wkt.match(/LINESTRING\s*\(([^)]+)\)/i)
+  if (!match) return []
+  return match[1]
+    .split(',')
+    .map(pair => {
+      const [lng, lat] = pair.trim().split(/\s+/).map(Number)
+      return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null
+    })
+    .filter((p): p is { lng: number; lat: number } => !!p)
+}
+
+function parsePolygonWkt(wkt?: string): Array<{ lng: number; lat: number }> {
+  if (!wkt || typeof wkt !== 'string') return []
+  const match = wkt.match(/POLYGON\s*\(\(([^)]+)\)\)/i)
+  if (!match) return []
+  return match[1]
+    .split(',')
+    .map(pair => {
+      const [lng, lat] = pair.trim().split(/\s+/).map(Number)
+      return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null
+    })
+    .filter((p): p is { lng: number; lat: number } => !!p)
+}
+
+function geoPointToAnalysisPx(
+  point: { lat: number; lng: number },
+  center: { lat: number; lng: number },
+  imageSize: number = IMAGE_SIZE,
+  zoom: number = IMAGE_ZOOM,
+): [number, number] {
+  const pct = geoToPixel(point.lat, point.lng, center, imageSize, zoom)
+  return [
+    Math.round((pct.x / 100) * imageSize * 100) / 100,
+    Math.round((pct.y / 100) * imageSize * 100) / 100,
+  ]
+}
+
+function buildOverlaySchemaFromFinalGeometry(params: {
+  perimeterWkt?: string | null;
+  footprintVertices?: Array<{ lat: number; lng: number }> | null;
+  linearFeatures?: any[];
+  center: { lat: number; lng: number };
+  imageSize?: number;
+  zoom?: number;
+  imageSource?: string;
+  footprintSource?: string;
+}) {
+  const imageSize = params.imageSize || IMAGE_SIZE
+  const zoom = params.zoom || IMAGE_ZOOM
+  const footprintPoints = params.footprintVertices?.length
+    ? params.footprintVertices
+    : parsePolygonWkt(params.perimeterWkt).map(p => ({ lat: p.lat, lng: p.lng }))
+
+  const polygon = footprintPoints
+    .map(p => geoPointToAnalysisPx(p, params.center, imageSize, zoom))
+    .filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y))
+
+  if (polygon.length < 3) return null
+
+  const features = (params.linearFeatures || [])
+    .map((feature: any) => {
+      const coords = parseLineStringWkt(feature?.wkt)
+      if (coords.length < 2) return null
+      const p1 = geoPointToAnalysisPx({ lat: coords[0].lat, lng: coords[0].lng }, params.center, imageSize, zoom)
+      const p2 = geoPointToAnalysisPx({ lat: coords[coords.length - 1].lat, lng: coords[coords.length - 1].lng }, params.center, imageSize, zoom)
+      return {
+        type: String(feature?.type || 'unknown').toLowerCase(),
+        p1,
+        p2,
+        length_ft: Number(feature?.length_ft || feature?.surface_length_ft || 0),
+        length_px: Math.round(Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) * 100) / 100,
+        source: feature?.source || 'final_geometry_wkt',
+      }
+    })
+    .filter(Boolean)
+
+  return {
+    version: 'analysis-raster-overlay-v1',
+    coordinate_space: 'analysis_image_px',
+    image: {
+      width: imageSize,
+      height: imageSize,
+      logicalWidth: imageSize,
+      logicalHeight: imageSize,
+      zoom,
+      source: params.imageSource || 'unknown',
+      bounds: calculateStaticMapImageBounds(params.center, zoom, imageSize),
+    },
+    transform: {
+      imageWidth: imageSize,
+      imageHeight: imageSize,
+      zoom,
+      rasterScale: params.imageSource === 'mapbox' ? 2 : 1,
+    },
+    polygon,
+    features,
+    source: 'analyze-roof-aerial-final-geometry',
+    footprint_source: params.footprintSource || 'unknown',
+  }
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
