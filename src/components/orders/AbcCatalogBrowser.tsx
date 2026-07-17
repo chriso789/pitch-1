@@ -149,7 +149,9 @@ function fmtPrice(p?: AbcPrice): string {
 
 export const AbcCatalogBrowser: React.FC = () => {
   const tenantId = useEffectiveTenantId();
-  const { defaultBranchCode } = useAbcConnectionStatus();
+  const { defaultBranchCode, isConnected, environment } = useAbcConnectionStatus();
+  const { toast } = useToast();
+  const [syncing, setSyncing] = useState(false);
   const { branches, shipTos } = useAbcCatalog(tenantId);
   const [searchTerm, setSearchTerm] = useState('shingle');
   const [debounced, setDebounced] = useState('shingle');
