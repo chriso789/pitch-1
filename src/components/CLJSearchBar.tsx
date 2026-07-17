@@ -436,7 +436,7 @@ export const CLJSearchBar = () => {
                           )}
                           {result.clj_number && (
                             <span className="text-[10px] font-medium text-muted-foreground tabular-nums px-1.5 py-0.5 rounded bg-muted/60">
-                              {result.clj_number}
+                              {formatCljForType(result.clj_number, 'lead')}
                             </span>
                           )}
                           <Badge variant="outline" className={cn("text-xs", config.badgeClass)}>
