@@ -317,6 +317,70 @@ Return JSON only via the tool call.`
 
     console.log("Trace complete:", traceData.roofType, "confidence:", traceData.confidence);
 
+    // ---- Post-processing safety net: reclassify obvious hip/valley/rake confusion ----
+    // On a hip / cross-hip roof with no inside footprint corners, diagonals from ridge endpoints
+    // to outside corners are HIPS, not valleys or rakes. Fix the common misclassification.
+    try {
+      const c = traceData.components || traceData;
+      const roofType = (traceData.roofType || "").toLowerCase();
+      const isHipRoof = roofType.includes("hip") && !roofType.includes("cross") && !roofType.includes("dutch");
+      const ridges = c.ridges || [];
+      const valleys = c.valleys || [];
+      const rakes = c.rakes || [];
+
+      // Helper: does a line endpoint sit near a ridge endpoint (within ~40px)?
+      const nearAnyRidgeEnd = (pt: number[]) => ridges.some((r: any) => {
+        const d1 = Math.hypot(pt[0]-r.start[0], pt[1]-r.start[1]);
+        const d2 = Math.hypot(pt[0]-r.end[0], pt[1]-r.end[1]);
+        return d1 < 40 || d2 < 40;
+      });
+
+      // If a pure hip roof came back with valleys converging on ridge endpoints → they are hips.
+      if (isHipRoof && valleys.length > 0) {
+        const reclassified: any[] = [];
+        const keptValleys: any[] = [];
+        for (const v of valleys) {
+          if (nearAnyRidgeEnd(v.start) || nearAnyRidgeEnd(v.end)) {
+            reclassified.push({ ...v, _reclassified_from: "valley" });
+          } else {
+            keptValleys.push(v);
+          }
+        }
+        if (reclassified.length) {
+          c.hips = [...(c.hips || []), ...reclassified];
+          c.valleys = keptValleys;
+          console.log(`Post-fix: reclassified ${reclassified.length} valleys → hips on hip roof`);
+        }
+      }
+
+      // Similarly: on a hip roof, "rakes" that touch a ridge endpoint are hips.
+      if (isHipRoof && rakes.length > 0) {
+        const reclassified: any[] = [];
+        const keptRakes: any[] = [];
+        for (const r of rakes) {
+          if (nearAnyRidgeEnd(r.start) || nearAnyRidgeEnd(r.end)) {
+            reclassified.push({ ...r, _reclassified_from: "rake" });
+          } else {
+            keptRakes.push(r);
+          }
+        }
+        if (reclassified.length) {
+          c.hips = [...(c.hips || []), ...reclassified];
+          c.rakes = keptRakes;
+          console.log(`Post-fix: reclassified ${reclassified.length} rakes → hips on hip roof`);
+        }
+      }
+
+      traceData._postProcessing = {
+        applied: true,
+        roofTypeDetected: roofType,
+        rules: ["hip_roof_valley_to_hip", "hip_roof_rake_to_hip"],
+      };
+    } catch (postErr) {
+      console.warn("Post-processing safety net failed (non-fatal):", postErr);
+    }
+
+
     return new Response(JSON.stringify({
       success: true,
       data: traceData,
