@@ -77,6 +77,13 @@ interface MeasurementTestResultsProps {
   previousResults?: TestResult[];
 }
 
+const getMeasurementSatelliteUrl = (measurement: any): string | undefined => {
+  const selectedSource = (measurement?.selected_image_source || measurement?.image_source || '').toLowerCase();
+  if (selectedSource.includes('mapbox') && measurement?.mapbox_image_url) return measurement.mapbox_image_url;
+  if (selectedSource.includes('google') && measurement?.google_maps_image_url) return measurement.google_maps_image_url;
+  return measurement?.satellite_overlay_url || measurement?.google_maps_image_url || measurement?.mapbox_image_url || undefined;
+};
+
 export function MeasurementTestResults({ result, previousResults = [] }: MeasurementTestResultsProps) {
   const [showDebug, setShowDebug] = useState(false);
   const [showComparison, setShowComparison] = useState(false);
@@ -341,7 +348,7 @@ export function MeasurementTestResults({ result, previousResults = [] }: Measure
                   measurementId={inlineMeasurement.id}
                   width={880}
                   height={520}
-                  satelliteImageUrl={inlineMeasurement.google_maps_image_url || inlineMeasurement.mapbox_image_url || inlineMeasurement.satellite_overlay_url || undefined}
+                  satelliteImageUrl={getMeasurementSatelliteUrl(inlineMeasurement)}
                   showSatelliteOverlay={true}
                   satelliteOpacity={0.95}
                   showLengthLabels={true}
