@@ -520,12 +520,17 @@ export function SchematicRoofDiagram({
       const classifiedHips: any[] = [];
       const classifiedValleys: any[] = [];
       const dummyGps = { lat: 0, lng: 0 };
+      const suppressDiagnosticBboxInterior =
+        measurement?.footprint_source === 'solar_bbox_fallback' &&
+        measurement?.result_state !== 'customer_report_ready';
+
       const linFeatures = overlayFeatures
         .map((f: any) => {
           const p1 = Array.isArray(f?.p1) ? { x: Number(f.p1[0]), y: Number(f.p1[1]) } : null;
           const p2 = Array.isArray(f?.p2) ? { x: Number(f.p2[0]), y: Number(f.p2[1]) } : null;
           if (!p1 || !p2 || !Number.isFinite(p1.x) || !Number.isFinite(p2.x)) return null;
           const type = String(f.type || 'ridge').toLowerCase();
+          if (suppressDiagnosticBboxInterior && ['ridge', 'hip', 'valley'].includes(type)) return null;
           const points = [toSvgPx(p1), toSvgPx(p2)];
           const length = Number(f.length_ft || 0);
           const segData = { start: points[0], end: points[1], points, length, gpsStart: dummyGps, gpsEnd: dummyGps, gpsPoints: [dummyGps, dummyGps] };
