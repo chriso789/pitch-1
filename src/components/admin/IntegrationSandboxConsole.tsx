@@ -68,10 +68,10 @@ const PRESETS: Record<string, SandboxPreset> = {
       "Calls abc-api-proxy with action:'test_connection' — verifies ABC metadata reachability and the active tenant's OAuth token in the sandbox environment.",
   },
   srs: {
-    edgeFunction: "srs-health-check",
-    bodyTemplate: { sandbox: true },
+    edgeFunction: "srs-api-proxy",
+    bodyTemplate: { action: "validate_connection" },
     description:
-      "Pings the SRS Distribution health route and verifies the active tenant's connection.",
+      "Calls srs-api-proxy with action:'validate_connection' — fetches an SRS access token and validates the active tenant's customer account against SRS SIPS.",
   },
   qxo: {
     edgeFunction: "qxo-api",
