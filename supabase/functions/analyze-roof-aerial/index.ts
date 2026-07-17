@@ -5,6 +5,7 @@ import {
   normalizeDiagramRenderIntentForWrite,
   withDiagramRenderIntentConstraintRetryPayload,
 } from '../_shared/diagram-render-intent.ts'
+import { normalizeResultStateForWrite } from '../_shared/result-state.ts'
 
 // Legacy route provenance — analyze-roof-aerial is NOT the canonical AI measurement route.
 // Canonical route is `start-ai-measurement`. All inserts/updates here are stamped non-canonical.
@@ -17,20 +18,37 @@ const LEGACY_ANALYZE_PROVENANCE = {
 } as const;
 
 function withLegacyDiagramIntent(row: Record<string, unknown>): Record<string, unknown> {
-  const intent = normalizeDiagramRenderIntentForWrite(row.diagram_render_intent ?? 'diagnostic_only', {
-    result_state: row.result_state ?? 'ai_failed_unknown',
-    failure_stage: 'legacy_noncanonical_measurement_path',
-  })
   const geometry = typeof row.geometry_report_json === 'object' && row.geometry_report_json !== null && !Array.isArray(row.geometry_report_json)
     ? { ...(row.geometry_report_json as Record<string, unknown>) }
     : {}
+  const rawResultState = row.result_state ?? 'diagnostic_only'
+  const resultState = normalizeResultStateForWrite(rawResultState, geometry)
+  const intent = normalizeDiagramRenderIntentForWrite(row.diagram_render_intent ?? resultState, {
+    result_state: resultState,
+    hard_fail_reason: row.hard_fail_reason ?? 'legacy_noncanonical_measurement_path',
+    block_customer_report_reason: row.block_customer_report_reason ?? 'legacy_noncanonical_measurement_path',
+    failure_stage: row.failure_stage ?? 'legacy_noncanonical_measurement_path',
+  })
   geometry.route_warning = 'legacy_noncanonical_measurement_path'
   geometry.route_provenance = { ...LEGACY_ANALYZE_PROVENANCE }
+  geometry.result_state = resultState
+  geometry.customer_report_ready = false
+  geometry.report_blocked = true
   geometry.raw_diagram_render_intent = intent.raw
   geometry.normalized_diagram_render_intent = intent.normalized
   geometry.diagram_render_intent = intent.normalized
   if (intent.warning) geometry.diagram_render_intent_normalization_warning = intent.warning
-  return { ...row, diagram_render_intent: intent.normalized, geometry_report_json: geometry }
+  return {
+    ...row,
+    result_state: resultState,
+    hard_fail_reason: row.hard_fail_reason ?? 'legacy_noncanonical_measurement_path',
+    block_customer_report_reason: row.block_customer_report_reason ?? 'legacy_noncanonical_measurement_path',
+    failure_stage: row.failure_stage ?? 'legacy_noncanonical_measurement_path',
+    diagram_render_intent: intent.normalized,
+    customer_report_ready: false,
+    report_blocked: true,
+    geometry_report_json: geometry,
+  }
 }
 
 async function insertRoofMeasurementWithDiagramRetry(supabase: any, row: Record<string, unknown>) {
