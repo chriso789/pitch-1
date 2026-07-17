@@ -64,9 +64,30 @@ interface SandboxPreset {
 const PRESETS: Record<string, SandboxPreset> = {
   abc_supply: {
     edgeFunction: "abc-api-proxy",
-    bodyTemplate: { action: "test_connection", environment: "sandbox" },
+    // Canonical ABC sandbox order dry-run. `validate_payload_only` runs the
+    // full ABC catalog + pricing + order-shape validation used by the real
+    // "Push to ABC" flow, without submitting a live order. This mirrors the
+    // payload structure wired up during O'Brien Contracting sandbox testing
+    // (POST /order/v2/orders body, shipToNumber 2010466-2, branch 1209).
+    bodyTemplate: {
+      action: "validate_payload_only",
+      environment: "sandbox",
+      sandboxDemo: true,
+      shipToNumber: "2010466-2",
+      branchNumber: "1209",
+      itemNumber: "02OCTDUMP",
+      itemDescription: "Sandbox Demo Item 02OCTDUMP",
+      uom: "EA",
+      quantity: 1,
+      jobsiteContact: {
+        name: "Pitch Sandbox Tester",
+        email: "sandbox@pitch-crm.ai",
+        phone: "555-010-0000",
+      },
+      priceOverride: null,
+    },
     description:
-      "Calls abc-api-proxy with action:'test_connection' — verifies ABC metadata reachability and the active tenant's OAuth token in the sandbox environment.",
+      "Calls abc-api-proxy with action:'validate_payload_only' — runs the full ABC catalog + pricing + order-shape validation against the sandbox WAF using the O'Brien-verified ship-to / branch / demo item. Does NOT submit a live order. Switch to action:'submit_test_order' to actually POST to /order/v2/orders in sandbox.",
   },
   srs: {
     edgeFunction: "srs-api-proxy",
