@@ -42,6 +42,7 @@ interface AbcItem {
 
 interface AbcPrice {
   unitPrice: number | null;
+  listPrice: number | null;
   uom: string | null;
   currency: string;
   statusCode?: string | null;
