@@ -204,6 +204,7 @@ async function handleServerCallback(reqUrl: URL): Promise<Response> {
         headers: {
           Authorization: `Bearer ${tokens.access_token}`,
           Accept: "application/json",
+          "User-Agent": QBO_USER_AGENT,
         },
       },
     );
