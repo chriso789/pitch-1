@@ -39,17 +39,13 @@ const FEATURES = [
   { key: 'dialer', name: 'Power Dialer', icon: Phone, description: 'Click-to-call & call tracking' },
   { key: 'smart_docs', name: 'Smart Docs', icon: FileText, description: 'Document templates & e-signatures' },
   { key: 'measurements', name: 'AI Measurements', icon: Ruler, description: 'Satellite roof measurements' },
-  { key: 'projects', name: 'Projects', icon: Building2, description: 'Project management & tracking' },
   { key: 'storm_canvass', name: 'Storm Canvass', icon: Target, description: 'Canvassing & territory management' },
-  { key: 'territory', name: 'Territory Mapping', icon: MapPin, description: 'GPS tracking & route planning' },
-  { key: 'photos', name: 'Photo Management', icon: Camera, description: 'Job photos & documentation' },
-  { key: 'payments', name: 'Payments', icon: CreditCard, description: 'Payment processing & invoicing' },
 ];
 
 const PRESETS = {
   full: { name: 'Full Access', features: FEATURES.map(f => f.key), color: 'bg-green-500' },
-  starter: { name: 'Starter', features: ['pipeline', 'estimates', 'photos'], color: 'bg-blue-500' },
-  professional: { name: 'Professional', features: ['pipeline', 'estimates', 'dialer', 'smart_docs', 'photos', 'projects'], color: 'bg-purple-500' },
+  starter: { name: 'Starter', features: ['pipeline', 'estimates'], color: 'bg-blue-500' },
+  professional: { name: 'Professional', features: ['pipeline', 'estimates', 'dialer', 'smart_docs'], color: 'bg-purple-500' },
   enterprise: { name: 'Enterprise', features: FEATURES.map(f => f.key), color: 'bg-amber-500' },
 };
 

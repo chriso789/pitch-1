@@ -45,11 +45,7 @@ export const GATED_FEATURE_KEYS: ReadonlySet<string> = new Set([
   'dialer',
   'smart_docs',
   'measurements',
-  'projects',
   'storm_canvass',
-  'territory',
-  'photos',
-  'payments',
 ]);
 
 /**
