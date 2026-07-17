@@ -751,6 +751,15 @@ export function SchematicRoofDiagram({
     const isBboxFallback = measurement?.footprint_source === 'solar_bbox_fallback' || 
                            measurement?.detection_method === 'solar_bbox_fallback' ||
                            (perimCoords.length === 4 && measurement?.footprint_confidence && measurement.footprint_confidence < 0.5);
+    const isDiagnosticBboxTrace = isBboxFallback && (
+      measurement?.result_state !== 'customer_report_ready' ||
+      measurement?.geometry_report_json?.route_warning === 'legacy_noncanonical_measurement_path'
+    );
+    if (isDiagnosticBboxTrace && linearFeaturesData.some(f => f.type === 'ridge' || f.type === 'hip' || f.type === 'valley')) {
+      linearFeaturesData = linearFeaturesData.filter(f => f.type === 'eave' || f.type === 'rake');
+      geometrySource = 'perimeter';
+      console.warn('⚠️ Diagnostic solar_bbox_fallback row: hiding interior ridge/hip/valley lines because they are synthetic, not AI-verified roof topology');
+    }
     
     if (linearFeaturesData.length === 0 && perimCoords.length >= 4 && !isBboxFallback) {
       console.log('🔄 No WKT features found, using client-side reconstruction');
@@ -1450,6 +1459,14 @@ export function SchematicRoofDiagram({
           <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 text-xs">
             <AlertTriangle className="w-3 h-3 mr-1" />
             Edges approximate
+          </Badge>
+        </div>
+      )}
+      {measurement?.footprint_source === 'solar_bbox_fallback' && measurement?.result_state !== 'customer_report_ready' && (
+        <div className="absolute left-1/2 top-2 z-20 -translate-x-1/2 max-w-[70%]">
+          <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300 text-xs whitespace-normal justify-center text-center">
+            <ShieldAlert className="w-3 h-3 mr-1 shrink-0" />
+            Footprint not updated — Solar rectangle only; interior roof lines hidden until full AI trace passes
           </Badge>
         </div>
       )}

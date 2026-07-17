@@ -57,6 +57,10 @@ interface TestResult {
     images: {
       selected: string;
     };
+    footprint?: {
+      source?: string;
+      requiresReview?: boolean;
+    };
   };
   qualityAssessment?: {
     shadow_risk: 'low' | 'medium' | 'high';
@@ -144,6 +148,12 @@ export function MeasurementTestResults({ result, previousResults = [] }: Measure
 
   const { data, timing, qualityAssessment } = result;
   const measurements = data?.measurements;
+  const responseFootprintSource = data?.footprint?.source;
+  const diagnosticBboxTrace = (
+    inlineMeasurement?.footprint_source === 'solar_bbox_fallback' ||
+    responseFootprintSource === 'solar_bbox_fallback'
+  ) && inlineMeasurement?.result_state !== 'customer_report_ready';
+  const displayedLinear = diagnosticBboxTrace ? null : measurements?.linear;
   const analysis = data?.aiAnalysis;
   const confidence = data?.confidence;
   const solarApi = data?.solarApiData;
@@ -239,25 +249,30 @@ export function MeasurementTestResults({ result, previousResults = [] }: Measure
           {measurements?.linear && (
             <div className="grid grid-cols-5 gap-2 text-center text-sm">
               <div className="p-2 bg-background rounded border">
-                <div className="font-medium tabular-nums">{measurements.linear.ridge?.toFixed(0) || '—'}</div>
+                <div className="font-medium tabular-nums">{displayedLinear?.ridge?.toFixed(0) || '—'}</div>
                 <div className="text-xs text-muted-foreground">Ridge</div>
               </div>
               <div className="p-2 bg-background rounded border">
-                <div className="font-medium tabular-nums">{measurements.linear.hip?.toFixed(0) || '—'}</div>
+                <div className="font-medium tabular-nums">{displayedLinear?.hip?.toFixed(0) || '—'}</div>
                 <div className="text-xs text-muted-foreground">Hip</div>
               </div>
               <div className="p-2 bg-background rounded border">
-                <div className="font-medium tabular-nums">{measurements.linear.valley?.toFixed(0) || '—'}</div>
+                <div className="font-medium tabular-nums">{displayedLinear?.valley?.toFixed(0) || '—'}</div>
                 <div className="text-xs text-muted-foreground">Valley</div>
               </div>
               <div className="p-2 bg-background rounded border">
-                <div className="font-medium tabular-nums">{measurements.linear.eave?.toFixed(0) || '—'}</div>
+                <div className="font-medium tabular-nums">{displayedLinear?.eave?.toFixed(0) || '—'}</div>
                 <div className="text-xs text-muted-foreground">Eave</div>
               </div>
               <div className="p-2 bg-background rounded border">
-                <div className="font-medium tabular-nums">{measurements.linear.rake?.toFixed(0) || '—'}</div>
+                <div className="font-medium tabular-nums">{displayedLinear?.rake?.toFixed(0) || '—'}</div>
                 <div className="text-xs text-muted-foreground">Rake</div>
               </div>
+            </div>
+          )}
+          {diagnosticBboxTrace && (
+            <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+              The last run only produced a Solar rectangle, so ridge/hip/valley/eave/rake measurements are hidden until the full AI trace produces verified roof lines.
             </div>
           )}
 

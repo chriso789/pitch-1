@@ -5,6 +5,7 @@ import {
   normalizeDiagramRenderIntentForWrite,
   withDiagramRenderIntentConstraintRetryPayload,
 } from '../_shared/diagram-render-intent.ts'
+import { normalizeResultStateForWrite } from '../_shared/result-state.ts'
 
 // Legacy route provenance — analyze-roof-aerial is NOT the canonical AI measurement route.
 // Canonical route is `start-ai-measurement`. All inserts/updates here are stamped non-canonical.
@@ -17,20 +18,37 @@ const LEGACY_ANALYZE_PROVENANCE = {
 } as const;
 
 function withLegacyDiagramIntent(row: Record<string, unknown>): Record<string, unknown> {
-  const intent = normalizeDiagramRenderIntentForWrite(row.diagram_render_intent ?? 'diagnostic_only', {
-    result_state: row.result_state ?? 'ai_failed_unknown',
-    failure_stage: 'legacy_noncanonical_measurement_path',
-  })
   const geometry = typeof row.geometry_report_json === 'object' && row.geometry_report_json !== null && !Array.isArray(row.geometry_report_json)
     ? { ...(row.geometry_report_json as Record<string, unknown>) }
     : {}
+  const rawResultState = row.result_state ?? 'diagnostic_only'
+  const resultState = normalizeResultStateForWrite(rawResultState, geometry)
+  const intent = normalizeDiagramRenderIntentForWrite(row.diagram_render_intent ?? resultState, {
+    result_state: resultState,
+    hard_fail_reason: row.hard_fail_reason ?? 'legacy_noncanonical_measurement_path',
+    block_customer_report_reason: row.block_customer_report_reason ?? 'legacy_noncanonical_measurement_path',
+    failure_stage: row.failure_stage ?? 'legacy_noncanonical_measurement_path',
+  })
   geometry.route_warning = 'legacy_noncanonical_measurement_path'
   geometry.route_provenance = { ...LEGACY_ANALYZE_PROVENANCE }
+  geometry.result_state = resultState
+  geometry.customer_report_ready = false
+  geometry.report_blocked = true
   geometry.raw_diagram_render_intent = intent.raw
   geometry.normalized_diagram_render_intent = intent.normalized
   geometry.diagram_render_intent = intent.normalized
   if (intent.warning) geometry.diagram_render_intent_normalization_warning = intent.warning
-  return { ...row, diagram_render_intent: intent.normalized, geometry_report_json: geometry }
+  return {
+    ...row,
+    result_state: resultState,
+    hard_fail_reason: row.hard_fail_reason ?? 'legacy_noncanonical_measurement_path',
+    block_customer_report_reason: row.block_customer_report_reason ?? 'legacy_noncanonical_measurement_path',
+    failure_stage: row.failure_stage ?? 'legacy_noncanonical_measurement_path',
+    diagram_render_intent: intent.normalized,
+    customer_report_ready: false,
+    report_blocked: true,
+    geometry_report_json: geometry,
+  }
 }
 
 async function insertRoofMeasurementWithDiagramRetry(supabase: any, row: Record<string, unknown>) {
@@ -640,7 +658,7 @@ Deno.serve(async (req) => {
     let perimeterResult: any;
     let footprintCheck: any;
     
-    if (authoritativeFootprint && authoritativeFootprint.vertices.length >= 4) {
+    if (authoritativeFootprint && authoritativeFootprint.source !== 'solar_bbox_fallback' && authoritativeFootprint.vertices.length >= 4) {
       // FAST PATH: Convert authoritative footprint vertices to pixel coordinates
       console.log(`🚀 SKIPPING SLOW AI PASSES: Using ${authoritativeFootprint.source} footprint with ${authoritativeFootprint.vertices.length} vertices`);
       
@@ -878,7 +896,7 @@ Deno.serve(async (req) => {
       IMAGE_ZOOM,
       solarData,
       address,
-      authoritativeFootprint?.source // NEW: Pass footprint source for authority check
+      authoritativeFootprint?.source === 'solar_bbox_fallback' ? undefined : authoritativeFootprint?.source // NEW: Pass footprint source for authority check
     )
     console.log(`📐 Validated area from perimeter: ${actualAreaSqft.toFixed(0)} sqft (source: ${authoritativeFootprint?.source || 'ai_detection'})`)
     
@@ -1013,7 +1031,7 @@ Deno.serve(async (req) => {
       footprintValidation: footprintCheck,
       metadata: measurementMetadata,
       shadowRisk: shadowRiskAssessment,
-      authoritativeFootprint, // NEW: Pass footprint data for database storage
+      authoritativeFootprint: authoritativeFootprint?.source === 'solar_bbox_fallback' ? null : authoritativeFootprint, // NEW: Pass footprint data for database storage
     })
     
     // Save vertices and edges to dedicated tables
@@ -1188,11 +1206,11 @@ Deno.serve(async (req) => {
         },
         // NEW: Footprint tracking for frontend badge display
         footprint: {
-          source: authoritativeFootprint?.source || 'ai_detection',
-          confidence: authoritativeFootprint?.confidence || 0.5,
-          vertexCount: authoritativeFootprint?.vertices?.length || perimeterResult.vertices.length,
+          source: authoritativeFootprint?.source === 'solar_bbox_fallback' ? 'ai_detection' : (authoritativeFootprint?.source || 'ai_detection'),
+          confidence: authoritativeFootprint?.source === 'solar_bbox_fallback' ? 0.5 : (authoritativeFootprint?.confidence || 0.5),
+          vertexCount: authoritativeFootprint?.source === 'solar_bbox_fallback' ? perimeterResult.vertices.length : (authoritativeFootprint?.vertices?.length || perimeterResult.vertices.length),
           dsmAvailable: false,
-          requiresReview: !authoritativeFootprint
+          requiresReview: !authoritativeFootprint || authoritativeFootprint?.source === 'solar_bbox_fallback'
         },
         // NEW: Performance metrics for transparency
         performance: {
@@ -1207,7 +1225,7 @@ Deno.serve(async (req) => {
             skeleton_generation: 0,
             total: totalTime
           },
-          footprint_source: authoritativeFootprint?.source || 'ai_detection'
+          footprint_source: authoritativeFootprint?.source === 'solar_bbox_fallback' ? 'ai_detection' : (authoritativeFootprint?.source || 'ai_detection')
         }
       }
     }), {
@@ -5181,12 +5199,21 @@ async function processSolarFastPath(
     return { success: false, reason: 'Could not build valid perimeter' }
   }
   
+  const segmentCount = solarData.roofSegments.length
+  const fastPathBlockedByBbox = footprintSource === 'solar_bbox_fallback' && segmentCount >= 4
+  if (fastPathBlockedByBbox) {
+    console.warn(`🚫 Solar Fast Path blocked: ${segmentCount} Solar segments on a solar_bbox_fallback perimeter would reuse synthetic hips/ridges/valleys. Falling back to full AI trace.`)
+    return {
+      success: false,
+      reason: 'complex roof requires full AI trace; solar_bbox_fallback is diagnostic-only'
+    }
+  }
+  
   // ═══════════════════════════════════════════════════════════════════════════
   // 🏠 L-SHAPE CROSS-VALIDATION: Check if Solar segments suggest complex roof
   // but footprint is simplified (4-5 vertices = rectangle)
   // If mismatch detected, trigger AI Vision to capture true L-shape footprint
   // ═══════════════════════════════════════════════════════════════════════════
-  const segmentCount = solarData.roofSegments.length
   const directions = solarData.roofSegments.map((s: any) => {
     const az = s.azimuthDegrees || 0
     if (az >= 315 || az < 45) return 'N'
