@@ -80,10 +80,10 @@ const PRESETS: Record<string, SandboxPreset> = {
       "Calls qxo-api /health — verifies QXO/Beacon credentials & scopes for the active tenant.",
   },
   quickbooks: {
-    edgeFunction: "qbo-health-check",
-    bodyTemplate: { sandbox: true },
+    edgeFunction: "qbo-oauth-connect",
+    bodyTemplate: { action: "verify" },
     description:
-      "Verifies the QuickBooks Online OAuth token and company connection.",
+      "Calls qbo-oauth-connect with action:'verify' — checks the active tenant's QuickBooks OAuth connection, refresh-token window, and legal acceptance status. Uses Intuit's OpenID discovery document at runtime for OAuth endpoints.",
   },
   centz: {
     edgeFunction: "payment-api",
