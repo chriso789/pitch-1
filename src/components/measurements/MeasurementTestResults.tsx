@@ -256,6 +256,28 @@ export function MeasurementTestResults({ result, previousResults = [] }: Measure
             </Badge>
           </div>
 
+          {/* Open Full Report — surfaces all current geometry buildouts:
+              perimeter overlay, phase gates, roof lines, DSM overlays,
+              visual QA, layer toggles, manual verification, etc. */}
+          <Button
+            onClick={openFullReport}
+            disabled={reportLoading || !result.measurementId}
+            className="w-full"
+            variant="default"
+          >
+            {reportLoading ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Loading full report...
+              </>
+            ) : (
+              <>
+                <FileText className="h-4 w-4 mr-2" />
+                Open Full Measurement Report
+              </>
+            )}
+          </Button>
+
           {/* Debug Panel */}
           <Collapsible open={showDebug} onOpenChange={setShowDebug}>
             <CollapsibleTrigger asChild>
