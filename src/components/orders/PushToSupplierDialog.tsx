@@ -684,6 +684,11 @@ export function PushToSupplierDialog({
           product_description: i.color_specs
             ? `${i.description || i.item_name} — Color: ${i.color_specs}`
             : (i.description || i.item_name),
+          // SRS needs the color/variant on each line under orderLineItemDetails.option.
+          // Persist it explicitly so the proxy doesn't have to scrape it from
+          // free-text description or fall through to variants[0] (wrong color).
+          product_option: i.color_specs ? i.color_specs.trim() : null,
+          product_color: i.color_specs ? i.color_specs.trim() : null,
           quantity: Number(i.quantity),
           uom: (i.unit || 'EA').toUpperCase(),
           unit_price: Number(i.unit_cost || 0),
