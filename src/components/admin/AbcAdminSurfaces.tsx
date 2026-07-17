@@ -19,12 +19,12 @@ import { AbcDiagnosticsPanel } from "@/components/settings/AbcDiagnosticsPanel";
 import { AbcWebhookPanel } from "@/components/settings/abc/AbcWebhookPanel";
 import { AbcCatalogBrowser } from "@/components/orders/AbcCatalogBrowser";
 import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
-import { useAbcConnection } from "@/lib/abc/useAbcConnection";
+import { useAbcConnectionStatus } from "@/hooks/useAbcConnectionStatus";
 
 export function AbcAdminSurfaces() {
   const tenantId = useEffectiveTenantId();
-  const { connection } = useAbcConnection();
-  const environment = (connection?.environment as "sandbox" | "production") ?? "sandbox";
+  const { environment: connEnv } = useAbcConnectionStatus();
+  const environment: "sandbox" | "production" = connEnv === "production" ? "production" : "sandbox";
 
   return (
     <div className="space-y-6">
