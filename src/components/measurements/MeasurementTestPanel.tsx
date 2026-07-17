@@ -109,17 +109,85 @@ export function MeasurementTestPanel() {
       const { data: authData } = await supabase.auth.getUser();
       const currentUserId = authData?.user?.id ?? null;
 
-      const { data: measurementData, error: measurementError } = await supabase.functions.invoke('analyze-roof-aerial', {
-        body: {
-          address: runAddress,
-          coordinates,
-          customerId: null, // Test mode - no customer
-          userId: currentUserId,
-        }
-      });
+      const requestStart = new Date();
+      let measurementData: any = null;
+      let measurementError: any = null;
+      try {
+        const invoked = await supabase.functions.invoke('analyze-roof-aerial', {
+          body: {
+            address: runAddress,
+            coordinates,
+            customerId: null, // Test mode - no customer
+            userId: currentUserId,
+          }
+        });
+        measurementData = invoked.data;
+        measurementError = invoked.error;
+      } catch (e: any) {
+        measurementError = e;
+      }
 
-      if (measurementError) {
-        throw new Error(measurementError.message || 'Measurement failed');
+      // The edge function frequently runs 120–160s and hits the Supabase
+      // gateway timeout even though it successfully persisted the row.
+      // If invoke errored OR returned no data, poll roof_measurements for
+      // a row that was created after we kicked the request off.
+      if (measurementError || !measurementData) {
+        console.warn('[MeasurementTestPanel] invoke did not return; polling roof_measurements for the persisted row', measurementError);
+        setProgressMessage('Response timed out — checking if the run saved…');
+        const deadline = Date.now() + 45_000;
+        let persisted: any = null;
+        while (Date.now() < deadline && !persisted) {
+          const { data: rows } = await supabase
+            .from('roof_measurements')
+            .select('id, created_at, result_state, footprint_source, property_address, geometry_report_json')
+            .eq('property_address', runAddress)
+            .gte('created_at', requestStart.toISOString())
+            .order('created_at', { ascending: false })
+            .limit(1);
+          if (rows && rows.length > 0) {
+            persisted = rows[0];
+            break;
+          }
+          await new Promise((r) => setTimeout(r, 3000));
+        }
+        if (persisted) {
+          measurementData = {
+            measurementId: persisted.id,
+            timing: { totalMs: Math.max(0, Date.now() - requestStart.getTime()) },
+            data: {
+              address: runAddress,
+              coordinates,
+              measurements: {
+                totalAreaSqft: persisted.geometry_report_json?.measurements?.totalAreaSqft ?? 0,
+                totalSquares: persisted.geometry_report_json?.measurements?.totalSquares ?? 0,
+                predominantPitch: persisted.geometry_report_json?.measurements?.predominantPitch ?? 'unknown',
+                linear: persisted.geometry_report_json?.measurements?.linear ?? {},
+              },
+              aiAnalysis: {
+                roofType: persisted.geometry_report_json?.aiAnalysis?.roofType ?? 'unknown',
+                complexity: persisted.geometry_report_json?.aiAnalysis?.complexity ?? 'unknown',
+                facetCount: persisted.geometry_report_json?.aiAnalysis?.facetCount ?? 0,
+              },
+              confidence: {
+                score: persisted.geometry_report_json?.confidence?.score ?? 0,
+                factors: [
+                  `Recovered from gateway timeout — row ${persisted.id.slice(0, 8)}… persisted`,
+                  `result_state: ${persisted.result_state}`,
+                  `footprint_source: ${persisted.footprint_source}`,
+                ],
+              },
+              solarApiData: { available: false, buildingFootprint: 0 },
+              images: { selected: '' },
+            },
+            recoveredFromTimeout: true,
+          };
+          toast({
+            title: 'Run persisted despite timeout',
+            description: `Row ${persisted.id.slice(0, 8)}… saved. Opening it now.`,
+          });
+        } else {
+          throw new Error(measurementError?.message || 'Edge function timed out and no persisted row was found for this address.');
+        }
       }
 
       setProgress(80);
