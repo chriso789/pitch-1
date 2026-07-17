@@ -94,7 +94,7 @@ export function MeasurementTestResults({ result, previousResults = [] }: Measure
       if (rmErr) throw rmErr;
 
       // Also resolve the ai_measurement_jobs id (for diagrams + overlays)
-      const { data: job } = await supabase
+      const { data: job } = await (supabase as any)
         .from('ai_measurement_jobs')
         .select('id')
         .eq('roof_measurement_id', result.measurementId)
