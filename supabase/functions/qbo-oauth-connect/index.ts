@@ -491,7 +491,8 @@ Deno.serve(async (req) => {
       }
 
       const scope = "com.intuit.quickbooks.accounting openid email profile";
-      const authUrl = `${QBO_AUTH_URL}?` + new URLSearchParams({
+      const initiateEndpoints = await getQboOAuthEndpoints(ctx.mode);
+      const authUrl = `${initiateEndpoints.authorization_endpoint}?` + new URLSearchParams({
         client_id: ctx.clientId,
         redirect_uri: ctx.redirectUri,
         response_type: "code",
