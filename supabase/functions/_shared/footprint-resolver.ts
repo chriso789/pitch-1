@@ -565,13 +565,14 @@ export async function resolveFootprint(options: FootprintResolverOptions): Promi
       tryMapboxVector(options),
       tryMicrosoftBuildings(options),
       tryOSMBuildings(options),
+      tryUsParcelArcgis(options), // Nationwide US: USA_Structures + USA_Parcels (free)
       // Also try Regrid if key is available (it's fast)
       (options.regridApiKey || Deno.env.get('REGRID_API_KEY')) ? tryRegridParcel(options) : Promise.resolve(null),
     ]),
     new Promise<PromiseSettledResult<any>[]>(resolve => setTimeout(() => resolve([]), 8000))
   ]);
   
-  const sourceNames = ['Mapbox Vector', 'Microsoft Buildings', 'OSM Buildings', 'Regrid Parcel'];
+  const sourceNames = ['Mapbox Vector', 'Microsoft Buildings', 'OSM Buildings', 'US ArcGIS (Structures/Parcels)', 'Regrid Parcel'];
   results.forEach((r, i) => {
     if (r.status === 'fulfilled' && r.value) {
       console.log(`✓ ${sourceNames[i]}: ${r.value.vertices.length} vertices, ${(r.value.confidence * 100).toFixed(0)}% confidence`);
