@@ -8,6 +8,8 @@ export type FootprintSource =
   | 'mapbox_vector'
   | 'microsoft_buildings'
   | 'osm_buildings'
+  | 'usa_structures'
+  | 'usa_parcels'
   | 'regrid_parcel'
   | 'solar_bbox_fallback'
   | 'ai_detected';
@@ -487,6 +489,29 @@ async function tryOSMBuildings(options: FootprintResolverOptions): Promise<{
   return null;
 }
 
+// Try nationwide US ArcGIS layers (USA_Structures buildings, then USA_Parcels).
+// Free, no key, covers most US counties. Good coverage for states beyond FL.
+async function tryUsParcelArcgis(options: FootprintResolverOptions): Promise<{
+  vertices: FootprintVertex[];
+  source: FootprintSource;
+  confidence: number;
+} | null> {
+  try {
+    const { fetchUsParcelOrStructure } = await import('./us-parcel-extractor.ts');
+    const result = await fetchUsParcelOrStructure(options.lat, options.lng, { timeoutMs: 6000 });
+    if (result && result.vertices.length >= 4) {
+      return {
+        vertices: expandFootprintForOverhang(result.vertices, options.eaveOverhangFt || 0.5),
+        source: result.source,
+        confidence: result.confidence,
+      };
+    }
+  } catch (err) {
+    console.warn('US ArcGIS parcel/structure fetch failed:', err);
+  }
+  return null;
+}
+
 // Try fetching from Regrid (paid)
 async function tryRegridParcel(options: FootprintResolverOptions): Promise<{
   vertices: FootprintVertex[];
@@ -540,13 +565,14 @@ export async function resolveFootprint(options: FootprintResolverOptions): Promi
       tryMapboxVector(options),
       tryMicrosoftBuildings(options),
       tryOSMBuildings(options),
+      tryUsParcelArcgis(options), // Nationwide US: USA_Structures + USA_Parcels (free)
       // Also try Regrid if key is available (it's fast)
       (options.regridApiKey || Deno.env.get('REGRID_API_KEY')) ? tryRegridParcel(options) : Promise.resolve(null),
     ]),
     new Promise<PromiseSettledResult<any>[]>(resolve => setTimeout(() => resolve([]), 8000))
   ]);
   
-  const sourceNames = ['Mapbox Vector', 'Microsoft Buildings', 'OSM Buildings', 'Regrid Parcel'];
+  const sourceNames = ['Mapbox Vector', 'Microsoft Buildings', 'OSM Buildings', 'US ArcGIS (Structures/Parcels)', 'Regrid Parcel'];
   results.forEach((r, i) => {
     if (r.status === 'fulfilled' && r.value) {
       console.log(`✓ ${sourceNames[i]}: ${r.value.vertices.length} vertices, ${(r.value.confidence * 100).toFixed(0)}% confidence`);
