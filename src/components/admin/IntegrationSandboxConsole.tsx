@@ -62,10 +62,10 @@ interface SandboxPreset {
 // Bodies are intentionally safe sandbox calls (list / ping / dry-run).
 const PRESETS: Record<string, SandboxPreset> = {
   abc_supply: {
-    edgeFunction: "abc-health-check",
-    bodyTemplate: { sandbox: true },
+    edgeFunction: "abc-api-proxy",
+    bodyTemplate: { action: "test_connection", environment: "sandbox" },
     description:
-      "Pings the ABC Supply OAuth/health endpoint and returns token + branch reachability.",
+      "Calls abc-api-proxy with action:'test_connection' — verifies ABC metadata reachability and the active tenant's OAuth token in the sandbox environment.",
   },
   srs: {
     edgeFunction: "srs-health-check",
