@@ -26,8 +26,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    const requestedMapSize = Number(mapSize) || 512;
-    const staticMapSize = Math.max(320, Math.min(640, requestedMapSize));
+    const requestedMapSize = Number(mapSize) || 640;
+    const staticMapSize = Math.max(480, Math.min(640, requestedMapSize));
     const zoomLevel = Math.max(21, Math.min(22, Number(zoom) || 22));
     const imgSize = staticMapSize * 2;
 
@@ -35,42 +35,76 @@ Deno.serve(async (req) => {
     let satImageUrl = imageUrl;
     const GOOGLE_MAPS_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY") || Deno.env.get("GOOGLE_SOLAR_API_KEY");
     if (!satImageUrl) {
-      // Zoom 22 + scale=2 + smaller map size gives a tight crop centered on just the target roof.
       satImageUrl = `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=${zoomLevel}&size=${staticMapSize}x${staticMapSize}&scale=2&maptype=satellite&key=${GOOGLE_MAPS_API_KEY}`;
     }
 
     console.log("Tracing roof at", lat, lng, "using image:", satImageUrl.substring(0, 80));
 
-    const systemPrompt = `You are an expert roof measurement analyst. You will be shown a high-zoom satellite image tightly centered on a SINGLE property.
+    const cx = Math.round(imgSize/2);
+    const cy = Math.round(imgSize/2);
 
-CRITICAL FOCUS RULE: The target roof is the ONE roof directly under the absolute center crosshair of the image (pixel ${Math.round(imgSize/2)}, ${Math.round(imgSize/2)}). 
-- ONLY trace the roof of THIS center building. 
-- COMPLETELY IGNORE every other building, shed, pool, tree, driveway, fence, or structure in the image — even if it is visible or connected visually by shadows.
-- If multiple buildings are near the center, pick the LARGEST residential building closest to the center point.
-- If a roof/object does not touch or enclose the center target roof footprint, do not trace it.
+    const systemPrompt = `You are a senior roof estimator with 20 years of field experience reading aerial imagery. You will be shown a high-zoom satellite image tightly centered on ONE property. Your job is to produce a COMPLETE and CORRECTLY-CLASSIFIED wireframe of that roof — matching the accuracy of an EagleView/Hover report.
 
-The image is ${imgSize}x${imgSize} pixels. Provide all coordinates as pixel positions where (0,0) is top-left and (${imgSize},${imgSize}) is bottom-right.
+===========================================
+STEP 1 — CENTER TARGET ONLY
+===========================================
+The target roof is the building directly under the center pixel (${cx}, ${cy}) of this ${imgSize}x${imgSize} image.
+- Trace ONLY this roof. Ignore every neighbor, shed, garage-detached-from-house, pool cage, tree, driveway.
+- INCLUDE every attached section of the target roof: main house, attached garage, front porch, back lanai/patio cover, dormers, bay windows, wings. Attached lower roofs are part of the target — do NOT drop them.
 
-For each roof component, provide the start [x,y] and end [x,y] pixel coordinates.
+===========================================
+STEP 2 — CLASSIFY THE ROOF TYPE FIRST
+===========================================
+Before drawing lines, identify the overall roof type by looking at the SHADING and RIDGE LAYOUT:
+- **Gable**: two sloped planes meeting at one long ridge; triangular gable walls at both ends. Side edges = rakes.
+- **Hip**: four sloped planes, ridge shorter than footprint, all sides slope down to eaves. NO gable walls. Corner edges = HIPS.
+- **Cross-hip / Cross-gable**: two hip or gable sections meeting at right angles → produces VALLEYS at the inside corners where the two sections join.
+- **Dutch hip / Hip-and-gable combo**: hip with a small gable at ridge end.
+- **Complex**: multiple wings, dormers, porch add-ons.
 
-Component types to identify:
-- **ridges**: Peak lines where two roof planes meet at the top (horizontal or near-horizontal)
-- **hips**: Sloped lines from ridge ends down to eave corners (exterior angles)
-- **valleys**: Lines where two roof planes meet forming an interior angle (going downward)
-- **eaves**: Bottom horizontal edges of the roof (the lowest edges, drip line)
-- **rakes**: Sloped gable edges (side edges on gable ends)
-- **step_flashing**: Where roof meets a vertical wall
+State the roof type in the "roofType" field and USE IT to constrain classification below.
 
-GEOMETRY RULES:
-1. Trace the ACTUAL roof edges you can SEE — do not guess or hallucinate edges hidden by trees.
-2. Every line endpoint must connect precisely to an adjacent line's endpoint (shared vertices). The traced lines must form a CLOSED, connected wireframe of the roof.
-3. Ridges run along the top. Hips slope downward from ridge endpoints to eave corners.
-4. All eave lines together should roughly form the perimeter footprint of the roof.
-5. Include dormers, extensions, and all sub-sections of THIS ONE roof.
-6. Do NOT include any lines that trace parts of neighboring buildings.
-7. Keep every returned coordinate inside the visible center roof area. Avoid long lines extending into yards, trees, streets, or neighboring lots.
+===========================================
+STEP 3 — LINE CLASSIFICATION (this is where the AI usually fails — read carefully)
+===========================================
 
-Return your response as a JSON object with this exact structure:
+**RIDGE** — HIGHEST line on the roof. Two planes meet and slope DOWN AWAY from it on both sides. Ridges are typically horizontal in the aerial view (perpendicular to building's long axis is common but not required). A hip roof has ONE short ridge; a gable roof has ONE long ridge; complex roofs have multiple ridges (one per section/wing).
+
+**HIP** — Sloped line running from a RIDGE ENDPOINT down to an OUTSIDE CORNER of the eave (exterior/convex corner of the footprint). Both planes on either side slope DOWNWARD AND AWAY from the hip line. If you see an X pattern on a rectangular hip roof, the four diagonal lines from the central ridge to the four building corners are HIPS, NOT valleys.
+   → **Common mistake to AVOID**: On a simple hip roof, do NOT label the four diagonals as "valleys". Those are HIPS. Valleys only appear where two roof SECTIONS meet (L-shape, T-shape, cross-hip, porch attaching to main house).
+
+**VALLEY** — Sloped line at an INTERIOR/CONCAVE corner where two roof sections meet and water would drain into the line. Both planes slope DOWN TOWARD the valley line. Valleys only exist when the footprint has an inside corner (L, T, U, cross shapes) or where a lower attached roof (porch, wing, dormer) meets a higher roof plane.
+   → If the footprint is a simple rectangle with no wings/porches, there are ZERO valleys.
+
+**EAVE** — HORIZONTAL bottom edge of a roof plane (the drip line, gutter line). Eaves follow the footprint perimeter on the low side of every sloped plane. On a hip roof, ALL four perimeter edges are eaves. On a gable roof, only the two long sides are eaves.
+
+**RAKE** — SLOPED perimeter edge on a GABLE END (the diagonal edge of the triangular gable wall going from eave corner up to ridge peak). Rakes ONLY exist on gable ends. A pure hip roof has ZERO rakes. If you're labeling a rake, you must also be able to point to the gable wall it belongs to.
+   → **Common mistake to AVOID**: Do NOT label hip lines as rakes. Rakes are on the perimeter of a gable end; hips are diagonal interior-of-footprint edges going to outside corners.
+
+**STEP_FLASHING** — Where a sloped roof plane butts into a vertical wall (e.g., where a porch roof meets the two-story house wall).
+
+===========================================
+STEP 4 — COMPLETENESS CHECKLIST (do all before returning)
+===========================================
+1. Trace EVERY visible ridge — main house ridge, garage ridge, porch ridge, dormer ridges, lanai ridge. Missing a ridge = missing hips/valleys.
+2. For EVERY ridge endpoint on a hip section: draw a hip line to the nearest outside eave corner.
+3. For EVERY inside footprint corner (L/T/cross): draw a valley from that corner up to where the two ridges meet.
+4. Every eave corner must be the endpoint of at least one perimeter edge on each adjacent side.
+5. Perimeter edges (eaves + rakes) must form a CLOSED polygon matching the footprint.
+6. Include lower attached roofs (porch, lanai, garage add-on). Where a lower roof meets a higher wall of the main house, that intersection line is either a step_flashing edge or, if the two roofs share a plane, a valley.
+7. Every line endpoint must SHARE coordinates with adjacent line endpoints (snap to shared vertices — tolerance ~5 px).
+
+===========================================
+STEP 5 — SELF-CHECK BEFORE RETURNING
+===========================================
+Run these validations mentally:
+- roofType = "hip" or "cross-hip"? → valleys.length should be 0 UNLESS there are wings/porches. hips.length should be >= 4 (one per outside corner).
+- roofType = "gable"? → hips.length should be 0. rakes should be present (2 per gable end).
+- If you produced 4 "valleys" forming an X on a rectangular building with no wings → RECLASSIFY them as HIPS.
+- Every ridge must connect to either two hips (hip end) or two rakes (gable end) at each endpoint.
+- Facet count should equal: (# ridges × 2) roughly + porch/wing facets. A simple hip = 4 facets. A T-shape hip = 6-8 facets.
+
+Return JSON with this exact structure:
 {
   "roofType": "hip|gable|cross-hip|complex|dutch-hip|etc",
   "components": {
