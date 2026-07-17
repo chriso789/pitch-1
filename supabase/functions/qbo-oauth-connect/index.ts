@@ -26,15 +26,16 @@ import {
 } from "../_shared/qbo-context.ts";
 import { getIntuitTid } from "../_shared/qbo-intuit-tid.ts";
 import { writeQboApiLog } from "../_shared/qbo-api.ts";
+import { getQboOAuthEndpoints } from "../_shared/qbo-discovery.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const QBO_AUTH_URL = "https://appcenter.intuit.com/connect/oauth2";
-const QBO_TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer";
-const QBO_REVOKE_URL = "https://developer.api.intuit.com/v2/oauth2/tokens/revoke";
+// Intuit publishing requirement: OAuth 2.0 endpoints come from the OpenID
+// discovery document at runtime (see qbo-discovery.ts). These constants are
+// only used if the discovery fetch fails — see FALLBACK_ENDPOINTS there.
 
 const APP_BASE_URL = Deno.env.get("QBO_APP_BASE_URL") ?? "https://pitch-crm.ai";
 const SETTINGS_RETURN_PATH = "/settings/integrations";
@@ -137,8 +138,9 @@ async function handleServerCallback(reqUrl: URL): Promise<Response> {
     return redirectToSettings({ status: "exchange_failed", reason: "credentials_missing" });
   }
 
-  // 5. Exchange code for tokens.
-  const tokenResp = await fetch(QBO_TOKEN_URL, {
+  // 5. Exchange code for tokens (endpoint from Intuit discovery doc).
+  const endpoints = await getQboOAuthEndpoints(ctx.mode);
+  const tokenResp = await fetch(endpoints.token_endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -489,7 +491,8 @@ Deno.serve(async (req) => {
       }
 
       const scope = "com.intuit.quickbooks.accounting openid email profile";
-      const authUrl = `${QBO_AUTH_URL}?` + new URLSearchParams({
+      const initiateEndpoints = await getQboOAuthEndpoints(ctx.mode);
+      const authUrl = `${initiateEndpoints.authorization_endpoint}?` + new URLSearchParams({
         client_id: ctx.clientId,
         redirect_uri: ctx.redirectUri,
         response_type: "code",
@@ -521,7 +524,8 @@ Deno.serve(async (req) => {
         );
       }
 
-      const tokenResp = await fetch(QBO_TOKEN_URL, {
+      const refreshEndpoints = await getQboOAuthEndpoints(ctx.mode);
+      const tokenResp = await fetch(refreshEndpoints.token_endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
@@ -628,7 +632,8 @@ Deno.serve(async (req) => {
       if (connection) {
         try {
           const ctx = getQboContextForConnection(connection);
-          const revokeResp = await fetch(QBO_REVOKE_URL, {
+          const revokeEndpoints = await getQboOAuthEndpoints(ctx.mode);
+          const revokeResp = await fetch(revokeEndpoints.revocation_endpoint, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",

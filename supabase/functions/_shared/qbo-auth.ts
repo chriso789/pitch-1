@@ -18,7 +18,13 @@ import {
   type QboContext,
 } from "./qbo-context.ts";
 import { getIntuitTid } from "./qbo-intuit-tid.ts";
+import { getQboOAuthEndpoints } from "./qbo-discovery.ts";
 
+// Historical constants — retained as fallbacks and re-exported for legacy
+// callers. The runtime OAuth 2.0 endpoints are resolved from Intuit's OpenID
+// discovery document (see qbo-discovery.ts) per Intuit's publishing
+// requirements ("Use the discovery document to get the latest endpoints for
+// the OAuth2.0 flow.").
 export const QBO_AUTH_URL = "https://appcenter.intuit.com/connect/oauth2";
 export const QBO_TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer";
 export const QBO_REVOKE_URL = "https://developer.api.intuit.com/v2/oauth2/tokens/revoke";
@@ -69,12 +75,13 @@ function basicAuthHeader(clientId: string, clientSecret: string) {
   return `Basic ${btoa(`${clientId}:${clientSecret}`)}`;
 }
 
-export function buildAuthorizeUrl(opts: {
+export async function buildAuthorizeUrl(opts: {
   state: string;
   scopes?: string;
 }) {
-  const { clientId, redirectUri } = getQboEnv();
-  const url = new URL(QBO_AUTH_URL);
+  const { clientId, redirectUri, environment } = getQboEnv();
+  const endpoints = await getQboOAuthEndpoints(environment);
+  const url = new URL(endpoints.authorization_endpoint);
   url.searchParams.set("client_id", clientId);
   url.searchParams.set("redirect_uri", redirectUri);
   url.searchParams.set("response_type", "code");
@@ -88,7 +95,8 @@ export async function exchangeAuthorizationCode(
   ctx?: QboContext,
 ): Promise<QboTokenResponse> {
   const c = ctx ?? getQboContextForMode(getDefaultQboMode());
-  const res = await fetch(QBO_TOKEN_URL, {
+  const endpoints = await getQboOAuthEndpoints(c.mode);
+  const res = await fetch(endpoints.token_endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -123,7 +131,8 @@ export async function refreshAccessToken(
   ctx?: QboContext,
 ): Promise<QboTokenResponse> {
   const c = ctx ?? getQboContextForMode(getDefaultQboMode());
-  const res = await fetch(QBO_TOKEN_URL, {
+  const endpoints = await getQboOAuthEndpoints(c.mode);
+  const res = await fetch(endpoints.token_endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -294,7 +303,8 @@ export async function revokeConnection(service: SupabaseClient, tenant_id: strin
 
   try {
     const ctx = getQboContextForConnection(conn);
-    const revokeRes = await fetch(QBO_REVOKE_URL, {
+    const endpoints = await getQboOAuthEndpoints(ctx.mode);
+    const revokeRes = await fetch(endpoints.revocation_endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
