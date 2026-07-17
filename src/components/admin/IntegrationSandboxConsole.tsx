@@ -34,6 +34,7 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   ChevronDown,
+  ExternalLink,
   FlaskConical,
   Loader2,
   RefreshCw,
