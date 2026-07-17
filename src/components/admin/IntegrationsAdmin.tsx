@@ -56,6 +56,7 @@ import {
 } from "lucide-react";
 import { CentzConnectionsAdmin } from "@/components/admin/CentzConnectionsAdmin";
 import { IntegrationSandboxConsole } from "@/components/admin/IntegrationSandboxConsole";
+import { AbcAdminSurfaces } from "@/components/admin/AbcAdminSurfaces";
 
 interface PlatformIntegration {
   id: string;
@@ -453,7 +454,9 @@ export function IntegrationsAdmin() {
               />
             )}
 
-            {currentOpen?.slug === "centz" ? (
+            {currentOpen?.slug === "abc_supply" ? (
+              <AbcAdminSurfaces />
+            ) : currentOpen?.slug === "centz" ? (
               <CentzConnectionsAdmin />
             ) : currentOpen ? (
               <Card>
