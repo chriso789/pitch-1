@@ -263,7 +263,7 @@ export function MeasurementTestPanel() {
           {/* Run Button */}
           <Button 
             onClick={runMeasurement} 
-            disabled={isRunning || (!address && (!lat || !lng))}
+            disabled={isRunning || (!hasVerifiedAddress && !hasManualCoords)}
             className="w-full"
           >
             {isRunning ? (
