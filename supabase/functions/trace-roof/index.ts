@@ -128,6 +128,7 @@ Return JSON with this exact structure:
       },
       body: JSON.stringify({
         model: "google/gemini-2.5-pro",
+        temperature: 0.1,
         messages: [
           { role: "system", content: systemPrompt },
           {
@@ -135,7 +136,16 @@ Return JSON with this exact structure:
             content: [
               {
                 type: "text",
-                text: `Analyze this satellite image of a roof at coordinates ${lat}, ${lng}. Trace ONLY the roof of the building at the CENTER of this ${imgSize}x${imgSize} image. Return all component pixel coordinates. Return JSON only.`
+                text: `Analyze this ${imgSize}x${imgSize} satellite image at ${lat}, ${lng}. Trace ONLY the roof at the CENTER.
+
+Work through the 5 steps in order:
+1) Identify the center target roof (main house + attached porch/garage/lanai).
+2) Classify the overall roof type from shading and ridge layout.
+3) Draw each line and CLASSIFY IT USING THE STRICT RULES — pay special attention: diagonal lines from ridge ends to outside corners are HIPS (not valleys, not rakes). Valleys ONLY exist at inside corners where two roof sections meet.
+4) Run the completeness checklist — do not omit attached porch/lanai ridges, hips, or eaves.
+5) Run the self-check — if you produced an X of "valleys" on a rectangular hip roof with no wings, reclassify them as hips before returning.
+
+Return JSON only via the tool call.`
               },
               {
                 type: "image_url",
