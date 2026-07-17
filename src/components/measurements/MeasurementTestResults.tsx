@@ -1,10 +1,14 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { CheckCircle2, AlertTriangle, Clock, MapPin, Layers, ChevronDown, Bug, ArrowUpRight, ArrowDownRight, Minus } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Clock, MapPin, Layers, ChevronDown, Bug, ArrowUpRight, ArrowDownRight, Minus, FileText, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import { ImageQualityBadge } from './ImageQualityBadge';
 import { MeasurementComparisonTool } from './MeasurementComparisonTool';
+import MeasurementReportDialog from './MeasurementReportDialog';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
 interface TestResult {
@@ -71,6 +75,47 @@ interface MeasurementTestResultsProps {
 export function MeasurementTestResults({ result, previousResults = [] }: MeasurementTestResultsProps) {
   const [showDebug, setShowDebug] = useState(false);
   const [showComparison, setShowComparison] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportMeasurement, setReportMeasurement] = useState<any | null>(null);
+  const [reportJobId, setReportJobId] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  const openFullReport = async () => {
+    if (!result.measurementId) return;
+    setReportLoading(true);
+    try {
+      // Load canonical roof_measurements row with all geometry buildouts
+      const { data: rm, error: rmErr } = await supabase
+        .from('roof_measurements')
+        .select('*')
+        .eq('id', result.measurementId)
+        .maybeSingle();
+      if (rmErr) throw rmErr;
+
+      // Also resolve the ai_measurement_jobs id (for diagrams + overlays)
+      const { data: job } = await (supabase as any)
+        .from('ai_measurement_jobs')
+        .select('id')
+        .eq('roof_measurement_id', result.measurementId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      setReportMeasurement(rm);
+      setReportJobId(job?.id ?? null);
+      setReportOpen(true);
+    } catch (e: any) {
+      toast({
+        title: 'Could not load full report',
+        description: e?.message || String(e),
+        variant: 'destructive',
+      });
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
 
   const { data, timing, qualityAssessment } = result;
   const measurements = data?.measurements;
@@ -211,6 +256,28 @@ export function MeasurementTestResults({ result, previousResults = [] }: Measure
             </Badge>
           </div>
 
+          {/* Open Full Report — surfaces all current geometry buildouts:
+              perimeter overlay, phase gates, roof lines, DSM overlays,
+              visual QA, layer toggles, manual verification, etc. */}
+          <Button
+            onClick={openFullReport}
+            disabled={reportLoading || !result.measurementId}
+            className="w-full"
+            variant="default"
+          >
+            {reportLoading ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Loading full report...
+              </>
+            ) : (
+              <>
+                <FileText className="h-4 w-4 mr-2" />
+                Open Full Measurement Report
+              </>
+            )}
+          </Button>
+
           {/* Debug Panel */}
           <Collapsible open={showDebug} onOpenChange={setShowDebug}>
             <CollapsibleTrigger asChild>
@@ -323,6 +390,17 @@ export function MeasurementTestResults({ result, previousResults = [] }: Measure
             />
           </CollapsibleContent>
         </Collapsible>
+      )}
+
+      {/* Full report dialog — renders every current geometry/buildout layer */}
+      {reportMeasurement && (
+        <MeasurementReportDialog
+          open={reportOpen}
+          onOpenChange={setReportOpen}
+          measurement={reportMeasurement}
+          address={data?.address}
+          aiMeasurementJobId={reportJobId}
+        />
       )}
     </div>
   );
