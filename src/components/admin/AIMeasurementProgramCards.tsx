@@ -1,112 +1,159 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { CheckCircle2, Clock, XCircle, ClipboardCheck } from "lucide-react";
+import type { ReactNode } from "react";
+
+type Status = "shipped" | "in_progress" | "not_built";
+
+interface ChecklistItem {
+  label: ReactNode;
+  status: Status;
+  verify?: string; // What to look for in the UI after a test run to confirm this is accurate
+}
+
+const STATUS_META: Record<Status, { icon: ReactNode; label: string; className: string }> = {
+  shipped: {
+    icon: <CheckCircle2 className="h-4 w-4 text-green-600" />,
+    label: "Shipped",
+    className: "bg-green-500/10 text-green-700 border-green-500/30",
+  },
+  in_progress: {
+    icon: <Clock className="h-4 w-4 text-amber-600" />,
+    label: "In progress",
+    className: "bg-amber-500/10 text-amber-700 border-amber-500/30",
+  },
+  not_built: {
+    icon: <XCircle className="h-4 w-4 text-muted-foreground" />,
+    label: "Not built",
+    className: "bg-muted text-muted-foreground border-border",
+  },
+};
+
+function Section({ title, items }: { title: string; items: ChecklistItem[] }) {
+  return (
+    <div>
+      <h4 className="font-semibold text-foreground mb-2">{title}</h4>
+      <ul className="space-y-2">
+        {items.map((item, i) => {
+          const meta = STATUS_META[item.status];
+          return (
+            <li
+              key={i}
+              className="flex items-start gap-3 p-3 rounded-md border bg-card/50"
+            >
+              <div className="mt-0.5">{meta.icon}</div>
+              <div className="flex-1 min-w-0 space-y-1">
+                <div className="flex items-start justify-between gap-2 flex-wrap">
+                  <div className="text-sm text-foreground">{item.label}</div>
+                  <Badge variant="outline" className={`text-[10px] ${meta.className}`}>
+                    {meta.label}
+                  </Badge>
+                </div>
+                {item.verify && (
+                  <p className="text-xs text-muted-foreground">
+                    <span className="font-medium">UI check:</span> {item.verify}
+                  </p>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
 
 export function AIMeasurementProgramCards() {
+  const canonicalWorkflow: ChecklistItem[] = [
+    { label: <>Confirmed roof target (user PIN placement, Rule 1)</>, status: "shipped", verify: "Test panel requires Google-verified address before Run enables." },
+    { label: <>Source acquisition — Google Solar DSM/mask/RGB, Microsoft Footprints, OSM, parcel fallback</>, status: "shipped", verify: "Debug Details lists evidence_sources_used + footprint_source_tier." },
+    { label: <>Target roof mask isolation (component-scoped, not global mask)</>, status: "shipped", verify: "Full report overlay shows target mask fill, not global building bbox." },
+    { label: <>Layer 1 — true outer roof perimeter with eave/rake classification</>, status: "shipped", verify: "Eave and Rake linear feet populated (not 0) in results card." },
+    { label: <>Conservative refinement + region-based tree/patio/shadow exclusion</>, status: "shipped", verify: "Overlay shows raw (gray) vs refined (green) perimeters distinctly." },
+    { label: <>DSM/Solar structural evidence preservation (deferred candidates)</>, status: "shipped", verify: "deferred_structural_candidates present in geometry_report_json." },
+    { label: <>Backbone-first topology — ridges → valleys → local hips</>, status: "in_progress", verify: "Fonsica: ridge_lf > 0 AND valley_lf > 0 on complex hip. Currently valley=0." },
+    { label: <>Typed roof_lines emission (only source of totals)</>, status: "shipped", verify: "Totals in report match sum of typed roof_lines by attribute." },
+    { label: <>Pitch validation with Solar fallback when topology is weak</>, status: "shipped", verify: "pitch_source displayed in debug when Solar fallback engages." },
+    { label: <>Vendor benchmark + 6-contract gate → customer_report_ready</>, status: "shipped", verify: "customer_report_ready=false while facets/ridge deltas exceed thresholds." },
+  ];
+
+  const contracts: ChecklistItem[] = [
+    { label: <>Authoritative footprint (source tier logged)</>, status: "shipped", verify: "footprint_source_tier appears in Debug Details." },
+    { label: <>Coordinate-space truth — solver in DSM px, persists geometry_dsm_px + geometry_geo</>, status: "shipped" },
+    { label: <>Shared edges, no dangling vertices</>, status: "shipped" },
+    { label: <>Area conservation 0.95–1.05 vs footprint</>, status: "shipped", verify: "Fonsica delta banner shows Solar footprint delta ≤ 5%." },
+    { label: <>Overlay registration rms≤4px, max_error≤8px, IoU≥0.85, coverage≥0.85</>, status: "shipped" },
+    { label: <>Debug metrics + phase provenance persisted every run</>, status: "shipped", verify: "phase3_5 / phase3C / phase3D / phase3E blocks populated in report." },
+  ];
+
+  const shipped: ChecklistItem[] = [
+    { label: <>Canonical entrypoint: <code>start-ai-measurement</code> with Rule 1 (HTTP 412 unconfirmed)</>, status: "shipped" },
+    { label: <>Vendor-free evidence cascade OSM → MS Footprints → Parcel → Solar/UNet</>, status: "shipped" },
+    { label: <>Footprint-DSM coordinate gate + sanity gates (&gt;8000 sqft / &gt;35% tile / &gt;2.5× solar rejected)</>, status: "shipped" },
+    { label: <>Pre-masked DSM edge detection (v8) constrained to footprint mask</>, status: "shipped" },
+    { label: <>Structural hierarchy clustering (v11) — primary/secondary/tertiary tiers</>, status: "shipped" },
+    { label: <>Evidence-driven topology refinement (v15)</>, status: "shipped" },
+    { label: <>Perimeter-first contract (Phase 0) — eave/rake independent of ridge</>, status: "shipped" },
+    { label: <>Backbone-first topology v18 + cross-roof diagonal suppression</>, status: "shipped" },
+    { label: <>Constraint roof solver v19 (reverse-solve from Solar priors)</>, status: "shipped" },
+    { label: <>Ridge vs hip classifier via along-edge elevation gradient</>, status: "shipped" },
+    { label: <>Vendor benchmark comparison gate (offline-audit only)</>, status: "shipped" },
+    { label: <>Result-state normalizer + <code>assertCustomerReportReady()</code> guard</>, status: "shipped" },
+    { label: <>Perimeter debug overlay renders in place of blank reports on failure</>, status: "shipped" },
+    { label: <>Manual perimeter editor with snap-to-aerial-edge + canonical rerun</>, status: "shipped" },
+    { label: <>Regression harness — Fonsica, Montelluna, Palm Harbor baselines</>, status: "shipped" },
+    { label: <>Google Places autocomplete address verification in test panel</>, status: "shipped", verify: '"Verified via Google" banner appears before Run enables.' },
+    { label: <>Open Full Measurement Report from test results (aerial + overlays)</>, status: "shipped", verify: "Blue button opens dialog showing aerial + perimeter overlay layers." },
+  ];
+
+  const inProgress: ChecklistItem[] = [
+    { label: <>Closing Fonsica topology fidelity gap (target 14 facets, ridge/valley LF within 25%)</>, status: "in_progress", verify: "Currently ~10 facets, valley=0. Target ≥12 facets and valley_lf &gt; 0." },
+    { label: <>Patent Rules 2–5 override write-back via <code>recalculate-measurement-from-overrides</code></>, status: "in_progress" },
+    { label: <>Report PDF diagram parity — aerial-first overlay export</>, status: "in_progress" },
+    { label: <>Per-tenant enablement wiring off <em>measurements</em> feature flag</>, status: "in_progress" },
+  ];
+
+  const notBuilt: ChecklistItem[] = [
+    { label: <>RoofNetV3 UNet — no trained model or inference server</>, status: "not_built" },
+    { label: <>Vendor-report ingestion at runtime (EagleView/Roofr/Hover are offline-audit only)</>, status: "not_built" },
+    { label: <>Internal Python compute-plane worker (real point-cloud → roof geometry)</>, status: "not_built" },
+  ];
+
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>PITCH AI Measurement — Full Program</CardTitle>
-          <CardDescription>
-            End-to-end vision of the measurement product replacing EagleView / Hover / Roofr for PITCH tenants.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4 text-sm">
-          <div>
-            <h4 className="font-semibold text-foreground mb-1">Mission</h4>
-            <p className="text-muted-foreground">
-              Produce a customer-ready roof measurement report (area, perimeter, ridges, hips, valleys, eaves,
-              rakes, pitch, facet count, waste factor, 3D preview) directly from an aerial + DSM pipeline — at
-              98%+ agreement with EagleView / Roofr baselines — with zero vendor cost per report at runtime.
-            </p>
-          </div>
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <ClipboardCheck className="h-5 w-5" />
+          AI Measurement Program — Verification Checklist
+        </CardTitle>
+        <CardDescription>
+          Run the test above, then use this checklist to confirm the report and overlays reflect every shipped contract.
+          Any row that fails its <span className="font-medium">UI check</span> is a regression to log with the developers.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6 text-sm">
+        <div>
+          <h4 className="font-semibold text-foreground mb-1">Mission</h4>
+          <p className="text-muted-foreground">
+            Produce a customer-ready roof measurement report (area, perimeter, ridges, hips, valleys, eaves,
+            rakes, pitch, facet count, waste factor, 3D preview) directly from an aerial + DSM pipeline — at
+            98%+ agreement with EagleView / Roofr baselines — with zero vendor cost per report at runtime.
+          </p>
+        </div>
 
-          <div>
-            <h4 className="font-semibold text-foreground mb-1">Canonical workflow</h4>
-            <ol className="list-decimal ml-5 space-y-1 text-muted-foreground">
-              <li>Confirmed roof target (user PIN placement, Rule 1).</li>
-              <li>Source acquisition — Google Solar DSM/mask/RGB, Microsoft Footprints, OSM, parcel fallback.</li>
-              <li>Target roof mask isolation (component-scoped, not global mask).</li>
-              <li>Layer 1 — true outer roof perimeter with eave/rake classification.</li>
-              <li>Conservative refinement + region-based tree/patio/shadow exclusion.</li>
-              <li>DSM/Solar structural evidence preservation (deferred candidates).</li>
-              <li>Backbone-first topology — ridges → valleys → local hips.</li>
-              <li>Typed <code>roof_lines</code> emission (only source of totals).</li>
-              <li>Pitch validation with Solar fallback when topology is weak.</li>
-              <li>Vendor benchmark + 6-contract gate → <code>customer_report_ready</code>.</li>
-            </ol>
-          </div>
+        <Section title="Canonical workflow (10 steps)" items={canonicalWorkflow} />
+        <Section title="Hard architectural contracts (6 gates)" items={contracts} />
+        <Section title="Shipped production paths" items={shipped} />
+        <Section title="In progress" items={inProgress} />
+        <Section title="Not built / do not enable" items={notBuilt} />
 
-          <div>
-            <h4 className="font-semibold text-foreground mb-1">Hard architectural contracts</h4>
-            <ul className="list-disc ml-5 space-y-1 text-muted-foreground">
-              <li>Authoritative footprint (source tier logged).</li>
-              <li>Coordinate-space truth — solver runs in DSM px, persists both <code>geometry_dsm_px</code> and <code>geometry_geo</code>.</li>
-              <li>Shared edges, no dangling vertices.</li>
-              <li>Area conservation 0.95–1.05 vs footprint.</li>
-              <li>Overlay registration: rms≤4px, max_error≤8px, IoU≥0.85, coverage≥0.85.</li>
-              <li>Debug metrics + phase provenance persisted on every run (never null without <code>skipped_reason</code>).</li>
-            </ul>
-          </div>
-
-          <div>
-            <h4 className="font-semibold text-foreground mb-1">Failure model</h4>
-            <p className="text-muted-foreground">
-              Every failed run persists a diagnostic overlay and a stage-specific <code>hard_fail_reason</code>.{" "}
-              <code>result_state</code> is one of 10 canonical buckets normalized through{" "}
-              <code>normalizeResultStateForWrite()</code>. No customer report is ever rendered for a failed
-              pipeline — the perimeter debug overlay is shown in its place.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Current AI Measurement Buildout</CardTitle>
-          <CardDescription>What is shipped today vs. what is next on the roadmap.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4 text-sm">
-          <div>
-            <h4 className="font-semibold text-foreground mb-1">Shipped (production paths)</h4>
-            <ul className="list-disc ml-5 space-y-1 text-muted-foreground">
-              <li>Canonical entrypoint: <code>start-ai-measurement</code> edge function with Rule 1 target confirmation (HTTP 412 on unconfirmed).</li>
-              <li>Vendor-free evidence cascade: OSM → MS Footprints → Parcel → Solar/UNet, with <code>evidence_sources_used</code> + <code>footprint_source_tier</code> logged.</li>
-              <li>Footprint-DSM coordinate gate + footprint sanity gates (&gt;8000 sqft / &gt;35% tile / &gt;2.5× solar rejected).</li>
-              <li>Pre-masked DSM edge detection (v8) constrained to footprint mask before topology.</li>
-              <li>Structural hierarchy clustering (v11) — primary/secondary/tertiary edge tiers.</li>
-              <li>Evidence-driven topology refinement (v15) — second pass reintroducing lost DSM edges.</li>
-              <li>Perimeter-first contract (Phase 0) — eave/rake classification independent of ridge success.</li>
-              <li>Backbone-first topology v18 — ridge/valley chains → local assemblies → derived hips; cross-roof diagonal suppression.</li>
-              <li>Constraint roof solver v19 — reverse-solve from Solar priors when autonomous score &lt; 0.60.</li>
-              <li>Ridge vs hip classifier using along-edge elevation gradient.</li>
-              <li>Vendor benchmark comparison gate blocking <code>customer_report_ready</code> on &gt;25% facet / &gt;1-pitch / &gt;25% ridge-hip-valley deltas.</li>
-              <li>Six architectural contracts enforced by <code>dsm-geometry-contract.ts</code>.</li>
-              <li>Result-state normalizer + <code>assertCustomerReportReady()</code> guard.</li>
-              <li>Perimeter debug overlay renders in place of blank reports on failure.</li>
-              <li>Manual perimeter editor with snap-to-aerial-edge and canonical rerun.</li>
-              <li>Regression harness — Fonsica, Montelluna, Palm Harbor baselines.</li>
-            </ul>
-          </div>
-
-          <div>
-            <h4 className="font-semibold text-foreground mb-1">In progress</h4>
-            <ul className="list-disc ml-5 space-y-1 text-muted-foreground">
-              <li>Closing the Fonsica topology fidelity gap (target 14 facets, ridge/valley LF within 25%).</li>
-              <li>Patent Rules 2–5 override write-back via <code>recalculate-measurement-from-overrides</code>.</li>
-              <li>Report PDF diagram parity — aerial-first overlay export.</li>
-              <li>Per-tenant enablement wiring off the <em>measurements</em> feature flag.</li>
-            </ul>
-          </div>
-
-          <div>
-            <h4 className="font-semibold text-foreground mb-1">Not built / do not enable</h4>
-            <ul className="list-disc ml-5 space-y-1 text-muted-foreground">
-              <li>RoofNetV3 UNet has no trained model or inference server — geometry engine is the only active system.</li>
-              <li>No vendor-report ingestion at runtime (EagleView/Roofr/Hover are offline-audit only).</li>
-            </ul>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+        <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">Failure model:</span> Every failed run persists a diagnostic
+          overlay and a stage-specific <code>hard_fail_reason</code>. <code>result_state</code> is one of 10 canonical
+          buckets normalized through <code>normalizeResultStateForWrite()</code>. No customer report is ever rendered
+          for a failed pipeline — the perimeter debug overlay is shown in its place.
+        </div>
+      </CardContent>
+    </Card>
   );
 }
