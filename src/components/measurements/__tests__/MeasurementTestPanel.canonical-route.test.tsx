@@ -113,6 +113,18 @@ describe('MeasurementTestPanel canonical route', () => {
   beforeEach(() => {
     invokeMock.mockReset();
     invokeMock.mockImplementation(async (functionName: string) => {
+      if (functionName === 'vision-trace-roof') {
+        return {
+          data: {
+            image: { url: 'https://example.test/trace.png', width: 640, height: 640, zoom: 21, source: 'google_solar_centered_static_maps' },
+            segments: [{ type: 'eave', points: [[100, 100], [300, 100]], confidence: 0.9 }],
+            count: 1,
+            durationMs: 10,
+            model: 'test-model',
+          },
+          error: null,
+        };
+      }
       if (functionName === 'start-ai-measurement') {
         return {
           data: {
@@ -146,6 +158,21 @@ describe('MeasurementTestPanel canonical route', () => {
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith(
+        'vision-trace-roof',
+        expect.objectContaining({
+          body: expect.objectContaining({
+            lat: 27.9501,
+            lng: -82.2423,
+            zoom: 21,
+            size: 640,
+            prefer_roof_center: true,
+          }),
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
         'start-ai-measurement',
         expect.objectContaining({
           body: expect.objectContaining({
@@ -161,6 +188,11 @@ describe('MeasurementTestPanel canonical route', () => {
         }),
       );
     });
+
+    const traceCallIndex = invokeMock.mock.calls.findIndex((call) => call[0] === 'vision-trace-roof');
+    const startCallIndex = invokeMock.mock.calls.findIndex((call) => call[0] === 'start-ai-measurement');
+    expect(traceCallIndex).toBeGreaterThanOrEqual(0);
+    expect(startCallIndex).toBeGreaterThan(traceCallIndex);
 
     expect(invokeMock).not.toHaveBeenCalledWith(
       'analyze-roof-aerial',
