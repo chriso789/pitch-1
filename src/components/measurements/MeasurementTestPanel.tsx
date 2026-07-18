@@ -218,7 +218,8 @@ export function MeasurementTestPanel() {
         body: {
           lat: coordinates.lat,
           lng: coordinates.lng,
-          zoom: 21,
+          // Omit zoom so the edge function auto-picks it from the Solar building bbox
+          // (roof fills ~60% of the tile regardless of house size).
           size: 640,
           address: runAddress,
           prefer_roof_center: true,
