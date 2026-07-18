@@ -100,7 +100,7 @@ export function MeasurementTestResults({ result, previousResults = [] }: Measure
   const [reportMeasurement, setReportMeasurement] = useState<any | null>(null);
   const [reportJobId, setReportJobId] = useState<string | null>(null);
   const [inlineMeasurement, setInlineMeasurement] = useState<any | null>(null);
-  const [inlineLoading, setInlineLoading] = useState(false);
+  const [inlineLoading, setInlineLoading] = useState(Boolean(result.measurementId));
   const { toast } = useToast();
 
   // Auto-load the persisted roof_measurements row so we can render the
@@ -347,7 +347,7 @@ export function MeasurementTestResults({ result, previousResults = [] }: Measure
           {/* Quick vision trace first on blocked runs: this gives the tester the
               visible roof outline immediately instead of forcing them to stare
               at a failed georeferencing/report card. Pixel-space only. */}
-          {Number.isFinite(traceLat) && Number.isFinite(traceLng) && (
+          {!inlineLoading && Number.isFinite(traceLat) && Number.isFinite(traceLng) && (
             <VisionTracePanel
               lat={traceLat}
               lng={traceLng}
