@@ -83,7 +83,7 @@ describe('MeasurementTestResults quick trace fallback', () => {
 
     render(<MeasurementTestResults result={blockedFonsicaResult as any} />);
 
-    expect(screen.getByText('Quick roof trace')).toBeTruthy();
+    expect(await screen.findByText('Quick roof trace')).toBeTruthy();
     expect(screen.getByText(/Measurement Blocked/i)).toBeTruthy();
 
     await waitFor(() => {
