@@ -15,6 +15,7 @@
 // }
 
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
+import { parseSegments } from "./segment-parser.ts";
 
 const GOOGLE_MAPS_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY") || "";
 const GOOGLE_SOLAR_API_KEY = Deno.env.get("GOOGLE_SOLAR_API_KEY") || GOOGLE_MAPS_API_KEY;
@@ -312,41 +313,6 @@ async function fetchImageAsDataUrl(url: string, fallbackSize: number): Promise<{
   return { dataUrl: `data:${mime};base64,${b64}`, width: decoded.width, height: decoded.height };
 }
 
-function parseSegments(text: string): Segment[] {
-  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const raw = fence ? fence[1] : text;
-  let parsed: any;
-  try {
-    parsed = JSON.parse(raw.trim());
-  } catch {
-    // try to extract first {...} block
-    const m = raw.match(/\{[\s\S]*\}/);
-    if (!m) return [];
-    try { parsed = JSON.parse(m[0]); } catch { return []; }
-  }
-  const segs = Array.isArray(parsed?.segments) ? parsed.segments : [];
-  const allowed = new Set(["eave", "rake", "ridge", "hip", "valley"]);
-  const out: Segment[] = [];
-  for (const s of segs) {
-    if (!allowed.has(s?.type)) continue;
-    const pts = Array.isArray(s?.points) ? s.points : [];
-    const norm: Array<[number, number]> = [];
-    for (const p of pts) {
-      if (Array.isArray(p) && p.length >= 2 && Number.isFinite(p[0]) && Number.isFinite(p[1])) {
-        norm.push([Number(p[0]), Number(p[1])]);
-      }
-    }
-    if (norm.length >= 2) {
-      out.push({
-        type: s.type,
-        points: norm,
-        confidence: Number.isFinite(s?.confidence) ? Number(s.confidence) : undefined,
-      });
-    }
-  }
-  return out;
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -431,6 +397,7 @@ Deno.serve(async (req) => {
           ],
           temperature: 0.1,
           max_tokens: 4000,
+          response_format: { type: "json_object" },
         }),
       });
       if (!gwRes.ok) {
