@@ -277,13 +277,21 @@ const AI_MEASUREMENT_CPU_TIMEOUT_REASON = "ai_measurement_cpu_timeout";
 const AI_MEASUREMENT_CPU_TIMEOUT_STAGE =
   "phase3_5_topology_cpu_budget_exceeded";
 // Fonsica-class complex hips routinely finish Phase 0 at ~155–165s. The old
-// 75s guard was tripping mid-pipeline and terminating successful runs as
-// `ai_measurement_cpu_timeout` even after the work was done. Raise the
-// default to 240s (well under Supabase edge wall-clock max) and let the env
-// var still override.
-const AI_MEASUREMENT_CPU_BUDGET_MS = Number(
-  Deno.env.get("AI_MEASUREMENT_CPU_BUDGET_MS") || 240_000,
+// 75s guard was still present as a deployed env override, so do not allow any
+// runtime configuration below the safe floor.
+const MIN_AI_MEASUREMENT_CPU_BUDGET_MS = 240_000;
+const CONFIGURED_AI_MEASUREMENT_CPU_BUDGET_MS = Number(
+  Deno.env.get("AI_MEASUREMENT_CPU_BUDGET_MS") ||
+    MIN_AI_MEASUREMENT_CPU_BUDGET_MS,
 );
+const AI_MEASUREMENT_CPU_BUDGET_MS = Number.isFinite(
+    CONFIGURED_AI_MEASUREMENT_CPU_BUDGET_MS,
+  )
+  ? Math.max(
+    CONFIGURED_AI_MEASUREMENT_CPU_BUDGET_MS,
+    MIN_AI_MEASUREMENT_CPU_BUDGET_MS,
+  )
+  : MIN_AI_MEASUREMENT_CPU_BUDGET_MS;
 const AI_MEASUREMENT_CPU_TERMINAL_WRITE_RESERVE_MS = Number(
   Deno.env.get("AI_MEASUREMENT_CPU_TERMINAL_WRITE_RESERVE_MS") || 20_000,
 );
@@ -291,7 +299,7 @@ const AI_MEASUREMENT_CPU_TERMINAL_WRITE_RESERVE_MS = Number(
 // Push the preempt point further away from the hard budget so the terminal
 // persistence path always has headroom and we never overshoot at 83s+.
 // Effective preempt = BUDGET - TERMINAL_RESERVE - SAFETY_MARGIN.
-// Default Fonsica policy: 75_000 - 15_000 - 10_000 = 50_000ms.
+// Default Fonsica policy: 240_000 - 20_000 - 10_000 = 210_000ms.
 const AI_MEASUREMENT_CPU_CHECKPOINT_SAFETY_MARGIN_MS = Number(
   Deno.env.get("AI_MEASUREMENT_CPU_CHECKPOINT_SAFETY_MARGIN_MS") || 10_000,
 );

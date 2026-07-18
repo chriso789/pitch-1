@@ -13,14 +13,16 @@ import {
 import {
   buildCpuBudgetTerminalDebugPayload,
   preserveEstimatedWorkUnits,
-} from "../../_shared/pre-topology-debug-bag.ts";
+} from "../../../../supabase/functions/_shared/pre-topology-debug-bag.ts";
 
-// Mirror live constants.
-const CPU_BUDGET_MS = 75_000;
-const TERMINAL_RESERVE_MS = 15_000;
+// Mirror live constants. A stale 75s env override caused Fonsica runs to fail
+// after ~210s, so the production helper clamps to this minimum.
+const MIN_CPU_BUDGET_MS = 240_000;
+const TERMINAL_RESERVE_MS = 20_000;
 const SAFETY_MARGIN_MS = 10_000;
+const CPU_BUDGET_MS = Math.max(75_000, MIN_CPU_BUDGET_MS);
 const EFFECTIVE_PREEMPT_MS = CPU_BUDGET_MS - TERMINAL_RESERVE_MS -
-  SAFETY_MARGIN_MS; // 50_000
+  SAFETY_MARGIN_MS; // 210_000
 const POLICY_VERSION = "cpu-preempt-v2-early-reserve";
 const TOPOLOGY_PIXEL_LIMIT = 950_000;
 
@@ -57,39 +59,44 @@ function shouldPreempt(elapsedMs: number, workUnits = 0) {
   return { ...base, preempt: false, reason: null };
 }
 
-Deno.test("v2: elapsed=49000ms → preempt=false (under early-reserve threshold)", () => {
-  const ckpt = shouldPreempt(49_000);
+Deno.test("v2: stale 75s env override is clamped to the 240s Fonsica floor", () => {
+  assertEquals(CPU_BUDGET_MS, 240_000);
+  assertEquals(EFFECTIVE_PREEMPT_MS, 210_000);
+});
+
+Deno.test("v2: elapsed=209000ms → preempt=false (under early-reserve threshold)", () => {
+  const ckpt = shouldPreempt(209_000);
   assertEquals(ckpt.preempt, false);
-  assertEquals(ckpt.effective_preempt_ms, 50_000);
+  assertEquals(ckpt.effective_preempt_ms, 210_000);
   assertEquals(ckpt.safety_margin_ms, 10_000);
   assertEquals(ckpt.policy_version, POLICY_VERSION);
 });
 
-Deno.test("v2: elapsed=51000ms → preempt=true with early_reserve_safety_margin reason", () => {
-  const ckpt = shouldPreempt(51_000);
+Deno.test("v2: elapsed=211000ms → preempt=true with early_reserve_safety_margin reason", () => {
+  const ckpt = shouldPreempt(211_000);
   assertEquals(ckpt.preempt, true);
   assertEquals(ckpt.reason, "early_reserve_safety_margin");
-  assertEquals(ckpt.effective_preempt_ms, 50_000);
+  assertEquals(ckpt.effective_preempt_ms, 210_000);
   assertEquals(ckpt.safety_margin_ms, 10_000);
   assertEquals(ckpt.policy_version, POLICY_VERSION);
 });
 
-Deno.test("v2: refineTrueOuterRoofPerimeter NOT called at 51000ms", () => {
+Deno.test("v2: refineTrueOuterRoofPerimeter NOT called at 211000ms", () => {
   const refineSpy = { called: false };
-  const ckpt = shouldPreempt(51_000);
+  const ckpt = shouldPreempt(211_000);
   if (!ckpt.preempt) refineSpy.called = true; // would invoke refine
   assertEquals(refineSpy.called, false);
 });
 
-Deno.test("v2: autonomous topology solver NOT called at 51000ms", () => {
+Deno.test("v2: autonomous topology solver NOT called at 211000ms", () => {
   const solverSpy = { called: false };
-  const ckpt = shouldPreempt(51_000);
+  const ckpt = shouldPreempt(211_000);
   if (!ckpt.preempt) solverSpy.called = true; // would invoke solver
   assertEquals(solverSpy.called, false);
 });
 
 Deno.test("v2: terminal payload contract — headroom + policy fields", () => {
-  const ckpt = shouldPreempt(51_000);
+  const ckpt = shouldPreempt(211_000);
   // Caller of buildCpuBudgetTerminalDebugPayload writes the payload from a
   // budget snapshot taken AT the checkpoint. The harness in
   // persistCpuBudgetTerminalFailure then forces the v2 fields onto dp.
@@ -122,7 +129,7 @@ Deno.test("v2: terminal payload contract — headroom + policy fields", () => {
   assert(dp.cpu_budget_remaining_ms > 0);
   assertEquals(dp.late_cpu_preempt, false);
   assertEquals(dp.cpu_preempt_policy_version, POLICY_VERSION);
-  assertEquals(dp.cpu_effective_preempt_ms, 50_000);
+  assertEquals(dp.cpu_effective_preempt_ms, 210_000);
   assertEquals(dp.cpu_preempt_safety_margin_ms, 10_000);
   assertEquals(dp.cpu_checkpoint_stage, "pre_refine_true_outer_roof_perimeter");
 });
