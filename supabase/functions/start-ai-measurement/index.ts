@@ -2061,6 +2061,9 @@ function prepareRoofMeasurementPayload(
   });
   const runtimeStateWins = resolvedDiagnosticState.final_state_source ===
     "runtime_cpu_budget_guard";
+  const dsmRegistrationUnavailableWins = resolvedDiagnosticState.final_state_source ===
+    "dsm_registration_unavailable_guard";
+  const diagnosticStateWins = runtimeStateWins || dsmRegistrationUnavailableWins;
 
   // v2.3 precedence: prefer the honest gate-level failure
   // (coordinate_registration_failed) over the conflict label. Conflicts are
@@ -2070,7 +2073,7 @@ function prepareRoofMeasurementPayload(
   if (conflicts.length > 0) {
     (geometry as any).registration_field_conflicts = conflicts;
   }
-  if (dominantReason && !runtimeStateWins) {
+  if (dominantReason && !diagnosticStateWins) {
     regFailureReasonForPrecedence = dominantReason as any;
     const hard = dominantReason === "registration_field_conflict"
       ? "registration_field_conflict"
@@ -2107,7 +2110,7 @@ function prepareRoofMeasurementPayload(
     }
   }
 
-  if (regFailureReasonForPrecedence && !runtimeStateWins) {
+  if (regFailureReasonForPrecedence && !diagnosticStateWins) {
     // v2.3: quarantine stale perimeter / topology / refinement payloads under
     // `stale_debug_payload` so a blocked-by-registration row cannot accidentally
     // render eave/rake/perimeter totals from a prior successful pass.
@@ -2153,14 +2156,14 @@ function prepareRoofMeasurementPayload(
   (geometry as any).registration_precedence_version =
     REGISTRATION_PRECEDENCE_VERSION;
   (geometry as any).registration_precedence_applied =
-    !!regFailureReasonForPrecedence && !runtimeStateWins;
-  (geometry as any).registration_precedence_reason = runtimeStateWins
+    !!regFailureReasonForPrecedence && !diagnosticStateWins;
+  (geometry as any).registration_precedence_reason = diagnosticStateWins
     ? null
     : regFailureReasonForPrecedence;
   (geometry as any).registration_gate_version = regVersionForPrecedence ??
     (geometry as any).registration_gate_version ?? null;
 
-  if (runtimeStateWins) {
+  if (diagnosticStateWins) {
     (geometry as any).result_state = resolvedDiagnosticState.result_state;
     (geometry as any).hard_fail_reason =
       resolvedDiagnosticState.hard_fail_reason;
@@ -2174,6 +2177,11 @@ function prepareRoofMeasurementPayload(
     (geometry as any).customer_report_ready = false;
     (geometry as any).report_blocked = true;
     (geometry as any).needs_review = true;
+    if (dsmRegistrationUnavailableWins) {
+      (geometry as any).dsm_registration_status =
+        (geometry as any).dsm_registration_status ??
+          "unavailable_but_aerial_perimeter_editable";
+    }
     (geometry as any).final_state_source =
       resolvedDiagnosticState.final_state_source;
     (geometry as any).final_state_resolved_at = new Date().toISOString();
@@ -2190,7 +2198,9 @@ function prepareRoofMeasurementPayload(
     (next as any).customer_report_ready = false;
     (next as any).report_blocked = true;
     (next as any).needs_review = true;
-    (next as any).validation_status = "needs_internal_review";
+    (next as any).validation_status = dsmRegistrationUnavailableWins
+      ? "needs_review"
+      : "needs_internal_review";
   }
 
   // ─── diagram_render_intent normalization (DB-safe) ───
@@ -2204,7 +2214,7 @@ function prepareRoofMeasurementPayload(
     result_state: (next as any).result_state,
     hard_fail_reason: (next as any).hard_fail_reason,
     block_customer_report_reason: (next as any).block_customer_report_reason,
-    registration_precedence_reason: runtimeStateWins
+    registration_precedence_reason: diagnosticStateWins
       ? null
       : regFailureReasonForPrecedence,
     failure_stage: (next as any).failure_stage,
