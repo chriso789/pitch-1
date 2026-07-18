@@ -316,23 +316,28 @@ export async function approveSession(ctx: Ctx, sessionId: string) {
 
 function extractOuterPerimeter(segments: any[]): Pt[] {
   const eaveKinds = new Set(["eave", "rake", "perimeter", "outer"]);
-  const pts: Pt[] = [];
-  for (const seg of segments) {
-    const kind = String(seg?.kind ?? seg?.type ?? "").toLowerCase();
-    if (!eaveKinds.has(kind)) continue;
+  const pushPts = (seg: any, sink: Pt[]) => {
+    // vision-trace shape: { type, points: [[x,y], ...] }
+    if (Array.isArray(seg?.points)) {
+      for (const p of seg.points) {
+        if (Array.isArray(p) && p.length >= 2) sink.push([Number(p[0]), Number(p[1])]);
+      }
+      return;
+    }
+    // legacy shape: { a: [x,y], b: [x,y] }
     const a = seg?.a ?? seg?.start ?? seg?.from;
     const b = seg?.b ?? seg?.end ?? seg?.to;
-    if (Array.isArray(a) && a.length >= 2) pts.push([Number(a[0]), Number(a[1])]);
-    if (Array.isArray(b) && b.length >= 2) pts.push([Number(b[0]), Number(b[1])]);
+    if (Array.isArray(a) && a.length >= 2) sink.push([Number(a[0]), Number(a[1])]);
+    if (Array.isArray(b) && b.length >= 2) sink.push([Number(b[0]), Number(b[1])]);
+  };
+  const pts: Pt[] = [];
+  for (const seg of segments) {
+    const kind = String(seg?.type ?? seg?.kind ?? "").toLowerCase();
+    if (!eaveKinds.has(kind)) continue;
+    pushPts(seg, pts);
   }
-  // Fallback: use all endpoints
   if (pts.length < 3) {
-    for (const seg of segments) {
-      const a = seg?.a ?? seg?.start ?? seg?.from;
-      const b = seg?.b ?? seg?.end ?? seg?.to;
-      if (Array.isArray(a) && a.length >= 2) pts.push([Number(a[0]), Number(a[1])]);
-      if (Array.isArray(b) && b.length >= 2) pts.push([Number(b[0]), Number(b[1])]);
-    }
+    for (const seg of segments) pushPts(seg, pts);
   }
   if (pts.length < 3) return [];
   return convexHull(pts);
