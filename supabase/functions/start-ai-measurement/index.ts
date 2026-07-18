@@ -2200,9 +2200,7 @@ function prepareRoofMeasurementPayload(
     (next as any).customer_report_ready = false;
     (next as any).report_blocked = true;
     (next as any).needs_review = true;
-    (next as any).validation_status = dsmRegistrationUnavailableWins
-      ? "needs_review"
-      : "needs_internal_review";
+    (next as any).validation_status = "needs_internal_review";
   }
 
   // ─── diagram_render_intent normalization (DB-safe) ───
@@ -16508,7 +16506,7 @@ async function insertFailedPreliminaryMeasurement(
      *   - result_state lands as `perimeter_only` (already in debug)
      *   - hard_fail_reason = null   (no hard fail — DSM validation only)
      *   - block_customer_report_reason = opts.dsmValidationReason
-     *   - validation_status = "needs_review"
+     *   - validation_status = "needs_internal_review"
      *   - last_failure_reason = null
      * Customer-ready gate is NOT relaxed.
      */
@@ -16572,7 +16570,9 @@ async function insertFailedPreliminaryMeasurement(
   // status messages), fall back to the dsm-validation reason during downgrade.
   const persistedNoteReason = persistedFailureReason ??
     (opts?.dsmValidationReason || "dsm_validation_unavailable");
-  const persistedValidationStatus = aerialDowngrade ? "needs_review" : "failed";
+  const persistedValidationStatus = aerialDowngrade
+    ? "needs_internal_review"
+    : "failed";
   const aiDetectionData = {
     topology_source: phase3Debug?.topology_source || REQUIRED_TOPOLOGY_SOURCE,
     solver_version: phase3Debug?.solver_version ||
