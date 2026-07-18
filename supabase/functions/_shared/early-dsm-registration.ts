@@ -310,9 +310,9 @@ export function runEarlyDerivedDsmRegistration(
       success: true,
       callsite: EARLY_DSM_REGISTRATION_CALLSITE,
       fields: {
-        dsm_bounds_derived: true,
-        dsm_tile_bounds_source: "derived_from_raster_bounds",
-        dsm_bounds_source: "derived_from_raster_bounds",
+        dsm_bounds_derived: _acceptedBoundsSource === "derived_from_raster_bounds",
+        dsm_tile_bounds_source: _acceptedBoundsSource,
+        dsm_bounds_source: _acceptedBoundsSource,
         dsm_tile_bounds_lat_lng: dsmReg.dsm_tile_bounds_lat_lng,
         dsm_size_px: dsmReg.dsm_size_px,
         dsm_meters_per_pixel: dsmReg.dsm_meters_per_pixel,
