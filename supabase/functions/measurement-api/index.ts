@@ -8,6 +8,7 @@ import { runMeasurementSkill, getMeasurementSkillPipeline } from "../_shared/msk
 import { computeRequestHash } from "../_shared/mskill/artifacts.ts";
 import { MSKILL_REGISTRY } from "../_shared/mskill/registry.ts";
 import { bridgeSkillReportToRoofMeasurements } from "../_shared/mskill/bridge.ts";
+import { createSession as rtCreateSession, getSession as rtGetSession, runPerimeter as rtRunPerimeter, approveSession as rtApproveSession } from "../_shared/roof-trace/handlers.ts";
 
 const app = createRouter("measurement-api");
 
