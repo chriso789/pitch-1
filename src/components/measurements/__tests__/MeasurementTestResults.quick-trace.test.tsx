@@ -74,6 +74,7 @@ describe('MeasurementTestResults quick trace fallback', () => {
           target_lat: 27.08965,
           target_lng: -82.17824,
           analysis_zoom: 20,
+          analysis_image_size: { width: 1280, height: 1280, logicalWidth: 640, logicalHeight: 640, rasterScale: 2 },
           google_maps_image_url: 'https://example.test/fonsica.png',
           footprint_source: 'google_maps_imagery',
         },
@@ -94,6 +95,7 @@ describe('MeasurementTestResults quick trace fallback', () => {
           zoom: 20,
           size: 640,
           image_url: 'https://example.test/fonsica.png',
+          image_size: expect.objectContaining({ width: 1280, height: 1280 }),
         }),
       });
     });

@@ -43,10 +43,11 @@ interface VisionTracePanelProps {
   address?: string;
   zoom?: number;
   initialImageUrl?: string;
+  imageSize?: { width?: number; height?: number } | null;
   autoRun?: boolean;
 }
 
-export function VisionTracePanel({ lat, lng, address, zoom = 20, initialImageUrl, autoRun = false }: VisionTracePanelProps) {
+export function VisionTracePanel({ lat, lng, address, zoom = 20, initialImageUrl, imageSize, autoRun = false }: VisionTracePanelProps) {
   const [loading, setLoading] = useState(false);
   const [trace, setTrace] = useState<TraceResponse | null>(null);
   const autoRunKeyRef = useRef<string | null>(null);
@@ -63,7 +64,7 @@ export function VisionTracePanel({ lat, lng, address, zoom = 20, initialImageUrl
     setLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke('vision-trace-roof', {
-        body: { lat, lng, zoom, size: 640, image_url: initialImageUrl },
+        body: { lat, lng, zoom, size: 640, image_url: initialImageUrl, image_size: imageSize },
       });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
@@ -73,15 +74,15 @@ export function VisionTracePanel({ lat, lng, address, zoom = 20, initialImageUrl
     } finally {
       setLoading(false);
     }
-  }, [initialImageUrl, lat, lng, toast, zoom]);
+  }, [imageSize, initialImageUrl, lat, lng, toast, zoom]);
 
   useEffect(() => {
     if (!autoRun || loading || trace || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
-    const key = `${lat.toFixed(7)}:${lng.toFixed(7)}:${zoom}:${initialImageUrl || 'static'}`;
+    const key = `${lat.toFixed(7)}:${lng.toFixed(7)}:${zoom}:${initialImageUrl || 'static'}:${imageSize?.width || 'auto'}x${imageSize?.height || 'auto'}`;
     if (autoRunKeyRef.current === key) return;
     autoRunKeyRef.current = key;
     void runTrace();
-  }, [autoRun, initialImageUrl, lat, lng, loading, runTrace, trace, zoom]);
+  }, [autoRun, imageSize?.height, imageSize?.width, initialImageUrl, lat, lng, loading, runTrace, trace, zoom]);
 
   const counts = (trace?.segments || []).reduce<Record<string, number>>((acc, s) => {
     acc[s.type] = (acc[s.type] || 0) + 1;
