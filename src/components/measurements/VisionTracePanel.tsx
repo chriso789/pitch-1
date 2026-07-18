@@ -98,7 +98,7 @@ export function VisionTracePanel({ lat, lng, address, zoom = 20, initialImageUrl
     } finally {
       setLoading(false);
     }
-  }, [imageSize, initialImageUrl, lat, lng, toast, zoom]);
+  }, [address, imageSize, initialImageUrl, lat, lng, toast, zoom]);
 
   useEffect(() => {
     if (!autoRun || loading || trace || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
