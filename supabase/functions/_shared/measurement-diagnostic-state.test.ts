@@ -109,6 +109,7 @@ Deno.test("DSM registration unavailable outranks stale dsm_bounds_missing when a
   assertEquals(resolved.diagram_render_intent, "perimeter_only");
   assertEquals(resolved.final_state_source, "dsm_registration_unavailable_guard");
   assertEquals(resolved.customer_report_ready, false);
+  assertEquals(resolved.needs_review, true);
 });
 
 Deno.test("derived DSM bounds evidence prevents stale dsm_bounds_missing from being final state", () => {
