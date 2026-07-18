@@ -100,7 +100,7 @@ export function MeasurementTestResults({ result, previousResults = [] }: Measure
   const [reportMeasurement, setReportMeasurement] = useState<any | null>(null);
   const [reportJobId, setReportJobId] = useState<string | null>(null);
   const [inlineMeasurement, setInlineMeasurement] = useState<any | null>(null);
-  const [inlineLoading, setInlineLoading] = useState(false);
+  const [inlineLoading, setInlineLoading] = useState(Boolean(result.measurementId));
   const { toast } = useToast();
 
   // Auto-load the persisted roof_measurements row so we can render the
@@ -178,6 +178,12 @@ export function MeasurementTestResults({ result, previousResults = [] }: Measure
   const analysis = data?.aiAnalysis;
   const confidence = data?.confidence;
   const solarApi = data?.solarApiData;
+  const traceLat = Number(inlineMeasurement?.target_lat ?? inlineMeasurement?.gps_coordinates?.lat ?? data?.coordinates?.lat);
+  const traceLng = Number(inlineMeasurement?.target_lng ?? inlineMeasurement?.gps_coordinates?.lng ?? data?.coordinates?.lng);
+  const traceImageUrl = inlineMeasurement?.google_maps_image_url
+    || inlineMeasurement?.mapbox_image_url
+    || inlineMeasurement?.satellite_overlay_url;
+  const traceZoom = Number(inlineMeasurement?.analysis_zoom ?? 20);
 
   // Calculate variance with Solar API
   const solarVariance = solarApi?.available && solarApi.buildingFootprint && measurements?.totalAreaSqft
@@ -338,6 +344,20 @@ export function MeasurementTestResults({ result, previousResults = [] }: Measure
             </Badge>
           </div>
 
+          {/* Quick vision trace first on blocked runs: this gives the tester the
+              visible roof outline immediately instead of forcing them to stare
+              at a failed georeferencing/report card. Pixel-space only. */}
+          {!inlineLoading && Number.isFinite(traceLat) && Number.isFinite(traceLng) && (
+            <VisionTracePanel
+              lat={traceLat}
+              lng={traceLng}
+              address={data.address}
+              zoom={Number.isFinite(traceZoom) ? traceZoom : 20}
+              initialImageUrl={traceImageUrl}
+              autoRun={isBlockedResult}
+            />
+          )}
+
           {/* Inline aerial + roof-tracing preview — always visible after test.
               Renders the persisted roof_measurements row (google satellite tile
               + perimeter + linear features from linear_features_wkt) so the
@@ -405,27 +425,6 @@ export function MeasurementTestResults({ result, previousResults = [] }: Measure
               </div>
             )}
           </div>
-
-          {/* Vision-prior trace — fast multimodal trace from the aerial.
-              Pixel-space only; not a georeferenced measurement. Renders even
-              when the measurement pipeline blocks so the user can visually
-              confirm the roof shape. */}
-          {Number.isFinite(data?.coordinates?.lat) && Number.isFinite(data?.coordinates?.lng) && (
-            <VisionTracePanel
-              lat={data.coordinates.lat}
-              lng={data.coordinates.lng}
-              address={data.address}
-              zoom={20}
-              initialImageUrl={
-                inlineMeasurement?.google_maps_image_url
-                || inlineMeasurement?.mapbox_image_url
-                || inlineMeasurement?.satellite_overlay_url
-              }
-            />
-          )}
-
-
-
 
           {/* Open Full Report — surfaces all current geometry buildouts:
               perimeter overlay, phase gates, roof lines, DSM overlays,
