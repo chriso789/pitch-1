@@ -235,7 +235,7 @@ export function buildDsmRegistration(input: DsmRegistrationInput): DsmRegistrati
   const fromMetadata = asLL(input.effectiveDSM?.bounds ?? null) ?? asLL(input.roofMask?.bounds ?? null);
   if (fromMetadata) {
     dsm_tile_bounds_lat_lng = fromMetadata;
-    dsm_bounds_source = "google_solar_metadata";
+    dsm_bounds_source = input.effectiveDSM?.bounds_provenance ?? "google_solar_metadata";
     dsm_bounds_confidence = 1.0;
   }
 
