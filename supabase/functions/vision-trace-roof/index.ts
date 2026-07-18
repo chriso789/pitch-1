@@ -114,6 +114,33 @@ function bboxCenter(bb: any): { lat: number; lng: number } | null {
   };
 }
 
+/**
+ * Pick a Google Static Maps zoom so the Solar building bbox fills ~fillFraction
+ * of the tile's shorter side. Clamped to [19, 21] — Google satellite tiles are
+ * unreliable above 21 and too coarse below 19 for roof tracing.
+ */
+function pickZoomForSolarBox(
+  bb: any,
+  lat: number,
+  size: number,
+  fillFraction = 0.6,
+): number | null {
+  const box = readLatLngBox(bb);
+  if (!box || !Number.isFinite(lat)) return null;
+  const cosLat = Math.cos((lat * Math.PI) / 180);
+  const widthMeters = Math.abs(box.ne.lng - box.sw.lng) * 111320 * cosLat;
+  const heightMeters = Math.abs(box.ne.lat - box.sw.lat) * 111320;
+  const diagonalMeters = Math.max(widthMeters, heightMeters);
+  if (!(diagonalMeters > 0)) return null;
+  const targetPx = Math.max(64, Math.min(size, size) * fillFraction);
+  const metersPerPixel = diagonalMeters / targetPx;
+  if (!(metersPerPixel > 0)) return null;
+  // metersPerPixel = 156543.03 * cos(lat) / 2^z  ⇒  z = log2(156543.03*cos/mpp)
+  const z = Math.log2((156543.03392 * cosLat) / metersPerPixel);
+  if (!Number.isFinite(z)) return null;
+  return clamp(Math.round(z), 19, 21);
+}
+
 async function fetchSolarTarget(lat: number, lng: number): Promise<SolarTarget | null> {
   if (!GOOGLE_SOLAR_API_KEY || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   try {
@@ -323,7 +350,7 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const lat = Number(body?.lat);
     const lng = Number(body?.lng);
-    const zoom = Number.isFinite(Number(body?.zoom)) ? Number(body.zoom) : 21;
+    const explicitZoom = Number.isFinite(Number(body?.zoom)) ? Number(body.zoom) : null;
     const size = Number.isFinite(Number(body?.size)) ? Number(body.size) : 640;
     let imageUrl: string | undefined = typeof body?.image_url === "string" ? body.image_url : undefined;
     const preferRoofCenter = body?.prefer_roof_center !== false;
@@ -332,6 +359,13 @@ Deno.serve(async (req) => {
       ? await fetchSolarTarget(lat, lng)
       : null;
     const roofCenter = solarTarget?.center && !imageUrl ? solarTarget.center : { lat, lng };
+
+    // Auto-pick zoom so the Solar building box fills ~60% of the tile.
+    // Falls back to 21 when Solar bbox is unavailable or the caller pinned zoom.
+    const autoZoom = !imageUrl && explicitZoom === null
+      ? pickZoomForSolarBox(solarTarget?.boundingBox, roofCenter.lat, Math.min(640, size), 0.6)
+      : null;
+    const zoom = explicitZoom ?? autoZoom ?? 21;
 
     if (!imageUrl) {
       if (!GOOGLE_MAPS_API_KEY) {
