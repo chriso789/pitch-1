@@ -22,6 +22,9 @@ export type DsmBoundsSource =
   | "derived_from_dsm_bbox_and_static_mpp"
   | "derived_from_raster_bounds"
   | "derived_rejected_consistency_failure"
+  | "opentopography_usgs_3dep_1m"
+  | "opentopography_usgs_3dep_10m"
+  | "opentopography_srtm_gl1"
   | "missing";
 
 /** Operator-facing policy tag emitted when bounds are derived from raster footprint. */
