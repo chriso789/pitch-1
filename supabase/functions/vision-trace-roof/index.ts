@@ -21,7 +21,7 @@ const GOOGLE_SOLAR_API_KEY = Deno.env.get("GOOGLE_SOLAR_API_KEY") || GOOGLE_MAPS
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY") || "";
 
 const MODEL = "google/gemini-3.5-flash";
-const AI_TRACE_TIMEOUT_MS = 25_000;
+const AI_TRACE_TIMEOUT_MS = 18_000;
 
 type Segment = {
   type: "eave" | "rake" | "ridge" | "hip" | "valley";
@@ -88,7 +88,7 @@ Rules:
 function buildStaticMapsUrl(lat: number, lng: number, zoom: number, size: number): string {
   const s = Math.min(640, size);
   return `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}` +
-    `&zoom=${zoom}&size=${s}x${s}&scale=2&maptype=satellite&key=${GOOGLE_MAPS_API_KEY}`;
+    `&zoom=${zoom}&size=${s}x${s}&scale=1&maptype=satellite&key=${GOOGLE_MAPS_API_KEY}`;
 }
 
 function clamp(n: number, min: number, max: number): number {
