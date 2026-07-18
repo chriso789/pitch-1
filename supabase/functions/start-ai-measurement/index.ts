@@ -6257,6 +6257,74 @@ async function processJob(input: any) {
           googleSolarMaskStageDebug.dsm_fetch_duration_ms = Date.now() -
             dsmFetchStarted;
           googleSolarMaskStageDebug.dsm_loaded = !!dsmGrid;
+
+          // ── OpenTopography (USGS 3DEP / SRTM) fallback ────────────────
+          // When Google Solar returns pixels but no bounds, or returns nothing,
+          // fetch a bounds-anchored DSM from OpenTopography so downstream
+          // topology can proceed.
+          const googleBoundsValid =
+            !!dsmGrid?.bounds &&
+            Number.isFinite(dsmGrid.bounds.minLat) &&
+            Number.isFinite(dsmGrid.bounds.maxLat) &&
+            Number.isFinite(dsmGrid.bounds.minLng) &&
+            Number.isFinite(dsmGrid.bounds.maxLng) &&
+            dsmGrid.bounds.maxLat > dsmGrid.bounds.minLat &&
+            dsmGrid.bounds.maxLng > dsmGrid.bounds.minLng;
+          if (!googleBoundsValid) {
+            try {
+              const { fetchUsgs3DepDsm } = await import(
+                "../_shared/opentopo-dsm-source.ts"
+              );
+              const otStarted = Date.now();
+              const { result: otResult, attempts: otAttempts } =
+                await fetchUsgs3DepDsm({
+                  lat: coords.lat,
+                  lng: coords.lng,
+                  radiusMeters: 90,
+                  timeoutMs: 25_000,
+                });
+              googleSolarMaskStageDebug.opentopography_fallback = {
+                attempted_at: nowIso(),
+                duration_ms: Date.now() - otStarted,
+                attempts: otAttempts,
+                accepted_source: otResult?.source ?? null,
+              };
+              if (otResult) {
+                dsmGrid = {
+                  data: otResult.data,
+                  bounds: otResult.bounds,
+                  resolution: otResult.resolution,
+                  width: otResult.width,
+                  height: otResult.height,
+                  noDataValue: otResult.noDataValue,
+                  bounds_provenance:
+                    otResult.source === "usgs_3dep_1m"
+                      ? "opentopography_usgs_3dep_1m"
+                      : otResult.source === "usgs_3dep_10m"
+                      ? "opentopography_usgs_3dep_10m"
+                      : "opentopography_srtm_gl1",
+                };
+                googleSolarMaskStageDebug.dsm_loaded = true;
+                googleSolarMaskStageDebug.dsm_source_override =
+                  otResult.source;
+                console.log(
+                  `[OPENTOPO_FALLBACK] Recovered DSM via ${otResult.source} (${otResult.width}x${otResult.height})`,
+                );
+              } else {
+                console.warn(
+                  "[OPENTOPO_FALLBACK] No DSM recovered; attempts:",
+                  JSON.stringify(otAttempts),
+                );
+              }
+            } catch (otErr) {
+              googleSolarMaskStageDebug.opentopography_fallback_error =
+                (otErr as Error).message;
+              console.warn(
+                "[OPENTOPO_FALLBACK] Fallback threw:",
+                (otErr as Error).message,
+              );
+            }
+          }
           if (roofMaskForContour) {
             roofMask = roofMaskForContour;
           } else {
