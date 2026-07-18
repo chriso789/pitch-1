@@ -60,6 +60,13 @@ export function resolveMeasurementDiagnosticState(
   const registration = asRecord(
     geometry.registration ?? geometry.registration_gate,
   );
+  const dsmCoordinateMatch = asRecord(
+    geometry.dsm_coordinate_match ??
+      registration.dsm_coordinate_match ??
+      overlayDebug.dsm_coordinate_match ??
+      dpgd.dsm_coordinate_match,
+  );
+  const dsmBbox = asRecord(dsmCoordinateMatch.dsm_bbox);
   const dsmStopGuard = asRecord(
     geometry.dsm_stop_guard ??
       dpgd.dsm_stop_guard ??
@@ -180,11 +187,21 @@ export function resolveMeasurementDiagnosticState(
     Array.isArray(geometry.footprint_px) ||
     Array.isArray(geometry.true_outer_roof_perimeter_px) ||
     Array.isArray(geometry.selected_perimeter_after_refinement);
+  const hasDsmBoundsEvidence = hasObjectEvidence(
+      registration.dsm_tile_bounds_lat_lng,
+    ) ||
+    hasObjectEvidence(geometry.dsm_tile_bounds_lat_lng) ||
+    hasObjectEvidence(geometry.dsm_bounds) ||
+    hasObjectEvidence(dsmBbox.bounds) ||
+    hasObjectEvidence(dsmBbox.bounds_lat_lng) ||
+    hasObjectEvidence(dsmCoordinateMatch.bounds) ||
+    hasObjectEvidence(dsmCoordinateMatch.dsm_bounds);
 
   if (
     aerialPerimeterEditable &&
     (dsmRegistrationStatus === "unavailable_but_aerial_perimeter_editable" ||
-      dsmRegistrationReason === DSM_REGISTRATION_UNAVAILABLE_REASON)
+      dsmRegistrationReason === DSM_REGISTRATION_UNAVAILABLE_REASON ||
+      (dsmRegistrationReason === "dsm_bounds_missing" && hasDsmBoundsEvidence))
   ) {
     return {
       result_state: "perimeter_only",
