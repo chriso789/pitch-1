@@ -16,8 +16,13 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
-const AI_MEASUREMENT_CPU_BUDGET_MS = 75_000;
-const AI_MEASUREMENT_CPU_TERMINAL_WRITE_RESERVE_MS = 15_000;
+const MIN_AI_MEASUREMENT_CPU_BUDGET_MS = 240_000;
+const CONFIGURED_AI_MEASUREMENT_CPU_BUDGET_MS = 75_000;
+const AI_MEASUREMENT_CPU_BUDGET_MS = Math.max(
+  CONFIGURED_AI_MEASUREMENT_CPU_BUDGET_MS,
+  MIN_AI_MEASUREMENT_CPU_BUDGET_MS,
+);
+const AI_MEASUREMENT_CPU_TERMINAL_WRITE_RESERVE_MS = 20_000;
 const AI_MEASUREMENT_TOPOLOGY_PIXEL_LIMIT = 1_000_000;
 
 function shouldPreemptForCpuBudget(
@@ -54,21 +59,25 @@ function shouldPreemptForCpuBudget(
   };
 }
 
+Deno.test("stale 75s configured budget is clamped to 240s minimum", () => {
+  assertEquals(AI_MEASUREMENT_CPU_BUDGET_MS, 240_000);
+});
+
 Deno.test("preempt fires at effective budget boundary with reason wall_clock_reserve_threshold", () => {
-  const r = shouldPreemptForCpuBudget(60_000, 0);
+  const r = shouldPreemptForCpuBudget(220_000, 0);
   assertEquals(r.preempt, true);
   assertEquals(r.reason, "wall_clock_reserve_threshold");
   assert(r.elapsed_ms < AI_MEASUREMENT_CPU_BUDGET_MS);
 });
 
 Deno.test("preempt still fires when estimated work units are unknown (0)", () => {
-  const r = shouldPreemptForCpuBudget(70_000, 0);
+  const r = shouldPreemptForCpuBudget(230_000, 0);
   assertEquals(r.preempt, true);
   assertEquals(r.reason, "wall_clock_reserve_threshold");
 });
 
 Deno.test("no preempt while elapsed is comfortably under effective budget", () => {
-  const r = shouldPreemptForCpuBudget(30_000, 0);
+  const r = shouldPreemptForCpuBudget(120_000, 0);
   assertEquals(r.preempt, false);
   assertEquals(r.reason, null);
 });
