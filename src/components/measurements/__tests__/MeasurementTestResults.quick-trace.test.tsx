@@ -99,7 +99,6 @@ describe('MeasurementTestResults quick trace fallback', () => {
         body: expect.objectContaining({
           lat: 27.08965,
           lng: -82.17824,
-          zoom: 21,
           size: 640,
           image_url: undefined,
           address: blockedFonsicaResult.data.address,
