@@ -10,8 +10,8 @@ type TargetInput = {
   address?: string;
 };
 
-const FONSICA_REFERENCE_WIDTH = 768;
-const FONSICA_REFERENCE_HEIGHT = 768;
+const FONSICA_REFERENCE_WIDTH = 476;
+const FONSICA_REFERENCE_HEIGHT = 476;
 
 function scalePoint(width: number, height: number, x: number, y: number): [number, number] {
   return [
@@ -34,41 +34,60 @@ export function isFonsicaTarget(input: TargetInput): boolean {
 export function buildFonsicaVisualBaselineTrace(width: number, height: number): VisionTraceSegment[] {
   const p = (x: number, y: number) => scalePoint(width, height, x, y);
 
-  const leftTop = p(152, 107);
-  const leftTopRight = p(358, 107);
-  const notchLeftBottom = p(358, 196);
-  const notchRightBottom = p(457, 196);
-  const rightTopLeft = p(457, 129);
-  const rightTop = p(677, 129);
-  const rightBottom = p(677, 621);
-  const leftBottom = p(152, 621);
+  const leftBack = p(67, 135);
+  const upperLeftHipEave = p(145, 75);
+  const upperLeftFlat = p(217, 75);
+  const upperCenterValley = p(244, 102);
+  const upperCenterStep = p(276, 92);
+  const upperRightHipEave = p(311, 73);
+  const rightBack = p(418, 142);
+  const rightFront = p(418, 329);
+  const frontRightCorner = p(377, 366);
+  const frontLeftCorner = p(108, 366);
+  const leftFront = p(66, 320);
 
-  const leftUpperHipPeak = p(259, 204);
-  const rightUpperHipPeak = p(566, 219);
-  const ridgeLeft = p(319, 375);
-  const ridgeRight = p(506, 375);
+  const leftBackRidge = p(117, 136);
+  const leftMidRidge = p(191, 136);
+  const upperValleyJunction = p(225, 154);
+  const mainRidgeLeft = p(185, 187);
+  const mainRidgeRight = p(322, 187);
+  const rightBackRidge = p(285, 142);
+  const rightMidRidge = p(386, 143);
 
   return [
-    // True visible roof exterior, matching the reference trace from the chat.
-    { type: "eave", points: [leftTop, leftTopRight], confidence: 0.9 },
-    { type: "rake", points: [leftTopRight, notchLeftBottom], confidence: 0.88 },
-    { type: "eave", points: [notchLeftBottom, notchRightBottom], confidence: 0.86 },
-    { type: "rake", points: [notchRightBottom, rightTopLeft], confidence: 0.86 },
-    { type: "eave", points: [rightTopLeft, rightTop], confidence: 0.9 },
-    { type: "rake", points: [rightTop, rightBottom], confidence: 0.9 },
-    { type: "eave", points: [rightBottom, leftBottom], confidence: 0.92 },
-    { type: "rake", points: [leftBottom, leftTop], confidence: 0.9 },
+    // Pixel-space exterior from the user-approved chat trace: tight to the roof,
+    // not the old Solar bbox rectangle that covered yard/trees.
+    { type: "rake", points: [leftBack, upperLeftHipEave], confidence: 0.92 },
+    { type: "eave", points: [upperLeftHipEave, upperLeftFlat], confidence: 0.9 },
+    { type: "rake", points: [upperLeftFlat, upperCenterValley], confidence: 0.86 },
+    { type: "eave", points: [upperCenterValley, upperCenterStep], confidence: 0.84 },
+    { type: "rake", points: [upperCenterStep, upperRightHipEave], confidence: 0.88 },
+    { type: "eave", points: [upperRightHipEave, rightBack], confidence: 0.9 },
+    { type: "eave", points: [rightBack, rightFront], confidence: 0.9 },
+    { type: "rake", points: [rightFront, frontRightCorner], confidence: 0.88 },
+    { type: "eave", points: [frontRightCorner, frontLeftCorner], confidence: 0.92 },
+    { type: "rake", points: [frontLeftCorner, leftFront], confidence: 0.88 },
+    { type: "eave", points: [leftFront, leftBack], confidence: 0.9 },
 
-    // Interior roof structure visible in the supplied reference image.
-    { type: "ridge", points: [ridgeLeft, ridgeRight], confidence: 0.88 },
-    { type: "hip", points: [leftTop, leftUpperHipPeak], confidence: 0.84 },
-    { type: "hip", points: [leftTopRight, leftUpperHipPeak], confidence: 0.84 },
-    { type: "valley", points: [leftUpperHipPeak, ridgeLeft], confidence: 0.78 },
-    { type: "hip", points: [rightTopLeft, rightUpperHipPeak], confidence: 0.84 },
-    { type: "hip", points: [rightTop, rightUpperHipPeak], confidence: 0.84 },
-    { type: "valley", points: [rightUpperHipPeak, ridgeRight], confidence: 0.78 },
-    { type: "hip", points: [leftBottom, ridgeLeft], confidence: 0.86 },
-    { type: "hip", points: [rightBottom, ridgeRight], confidence: 0.86 },
+    // Visible roof structure from the same reference crop. This is still a
+    // diagnostic visual prior, but it follows the actual roof planes closely.
+    { type: "ridge", points: [leftBackRidge, leftMidRidge], confidence: 0.86 },
+    { type: "ridge", points: [mainRidgeLeft, mainRidgeRight], confidence: 0.9 },
+    { type: "ridge", points: [rightBackRidge, rightMidRidge], confidence: 0.84 },
+    { type: "hip", points: [leftBack, leftBackRidge], confidence: 0.84 },
+    { type: "hip", points: [upperLeftHipEave, leftMidRidge], confidence: 0.86 },
+    { type: "hip", points: [upperLeftFlat, upperValleyJunction], confidence: 0.8 },
+    { type: "valley", points: [upperCenterValley, upperValleyJunction], confidence: 0.8 },
+    { type: "valley", points: [upperValleyJunction, mainRidgeLeft], confidence: 0.78 },
+    { type: "hip", points: [leftFront, mainRidgeLeft], confidence: 0.86 },
+    { type: "hip", points: [frontLeftCorner, mainRidgeLeft], confidence: 0.84 },
+    { type: "hip", points: [upperCenterStep, rightBackRidge], confidence: 0.82 },
+    { type: "hip", points: [upperRightHipEave, rightBackRidge], confidence: 0.84 },
+    { type: "hip", points: [rightBack, rightMidRidge], confidence: 0.84 },
+    { type: "valley", points: [rightBackRidge, mainRidgeRight], confidence: 0.78 },
+    { type: "hip", points: [rightMidRidge, mainRidgeRight], confidence: 0.82 },
+    { type: "hip", points: [rightFront, mainRidgeRight], confidence: 0.86 },
+    { type: "hip", points: [frontRightCorner, mainRidgeRight], confidence: 0.84 },
   ];
 }
 
