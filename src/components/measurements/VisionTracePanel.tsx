@@ -1,0 +1,181 @@
+import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Loader2, Wand2, Eye, EyeOff } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
+
+type Segment = {
+  type: 'eave' | 'rake' | 'ridge' | 'hip' | 'valley';
+  points: Array<[number, number]>;
+  confidence?: number;
+};
+
+type TraceResponse = {
+  image: { url: string; width: number; height: number; zoom: number; source: string };
+  segments: Segment[];
+  count: number;
+  raw?: string;
+  model?: string;
+  durationMs?: number;
+};
+
+const COLORS: Record<Segment['type'], string> = {
+  eave: '#22c55e',    // green
+  rake: '#84cc16',    // lime
+  ridge: '#ef4444',   // red
+  hip: '#eab308',     // yellow
+  valley: '#06b6d4',  // cyan
+};
+
+const LABELS: Record<Segment['type'], string> = {
+  eave: 'Eaves',
+  rake: 'Rakes',
+  ridge: 'Ridges',
+  hip: 'Hips',
+  valley: 'Valleys',
+};
+
+interface VisionTracePanelProps {
+  lat: number;
+  lng: number;
+  address?: string;
+  zoom?: number;
+  initialImageUrl?: string;
+}
+
+export function VisionTracePanel({ lat, lng, address, zoom = 20, initialImageUrl }: VisionTracePanelProps) {
+  const [loading, setLoading] = useState(false);
+  const [trace, setTrace] = useState<TraceResponse | null>(null);
+  const [visible, setVisible] = useState<Record<Segment['type'], boolean>>({
+    eave: true, rake: true, ridge: true, hip: true, valley: true,
+  });
+  const { toast } = useToast();
+
+  const runTrace = async () => {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      toast({ title: 'No coordinates', description: 'Confirm an address first.', variant: 'destructive' });
+      return;
+    }
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('vision-trace-roof', {
+        body: { lat, lng, zoom, size: 640, image_url: initialImageUrl },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      setTrace(data as TraceResponse);
+    } catch (e: any) {
+      toast({ title: 'Vision trace failed', description: e?.message || String(e), variant: 'destructive' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const counts = (trace?.segments || []).reduce<Record<string, number>>((acc, s) => {
+    acc[s.type] = (acc[s.type] || 0) + 1;
+    return acc;
+  }, {});
+
+  return (
+    <div className="rounded-lg border bg-card overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/40">
+        <div className="flex items-center gap-2 text-sm font-medium">
+          <Wand2 className="h-4 w-4" />
+          Vision trace (fast prior — not measured)
+        </div>
+        <div className="flex items-center gap-2">
+          {trace && (
+            <Badge variant="outline" className="text-[10px]">
+              {trace.count} segments · {trace.durationMs}ms
+            </Badge>
+          )}
+          <Button size="sm" variant="outline" onClick={runTrace} disabled={loading}>
+            {loading ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Wand2 className="h-3 w-3 mr-1" />}
+            {trace ? 'Retrace' : 'Run quick trace'}
+          </Button>
+        </div>
+      </div>
+
+      {!trace && !loading && (
+        <div className="p-6 text-center text-xs text-muted-foreground">
+          Uses a multimodal model to trace the roof polylines from the aerial. Pixel-space only —
+          this is a visual prior for confirming the shape before the measurement pipeline finishes.
+        </div>
+      )}
+
+      {loading && (
+        <div className="p-8 flex items-center justify-center text-xs text-muted-foreground">
+          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          Tracing roof from aerial…
+        </div>
+      )}
+
+      {trace && (
+        <>
+          <div className="flex flex-wrap gap-2 px-3 py-2 border-b bg-muted/20">
+            {(Object.keys(COLORS) as Segment['type'][]).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setVisible((v) => ({ ...v, [t]: !v[t] }))}
+                className={cn(
+                  'inline-flex items-center gap-1.5 px-2 py-1 rounded border text-[11px] transition',
+                  visible[t] ? 'bg-background' : 'bg-muted/40 opacity-50',
+                )}
+              >
+                {visible[t] ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+                <span
+                  className="inline-block w-3 h-1 rounded-sm"
+                  style={{ backgroundColor: COLORS[t] }}
+                />
+                {LABELS[t]}
+                <span className="text-muted-foreground">({counts[t] || 0})</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="relative bg-black">
+            <svg
+              viewBox={`0 0 ${trace.image.width} ${trace.image.height}`}
+              className="w-full h-auto block"
+              preserveAspectRatio="xMidYMid meet"
+            >
+              <image
+                href={trace.image.url}
+                x={0}
+                y={0}
+                width={trace.image.width}
+                height={trace.image.height}
+              />
+              {trace.segments.map((s, i) => {
+                if (!visible[s.type]) return null;
+                const d = s.points.map((p, idx) => `${idx === 0 ? 'M' : 'L'}${p[0]},${p[1]}`).join(' ');
+                return (
+                  <path
+                    key={i}
+                    d={d}
+                    stroke={COLORS[s.type]}
+                    strokeWidth={4}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    fill="none"
+                    opacity={0.95}
+                  />
+                );
+              })}
+            </svg>
+          </div>
+
+          <div className="px-3 py-2 text-[11px] text-muted-foreground border-t bg-muted/20">
+            Model: <code>{trace.model}</code> · zoom {trace.image.zoom} · {trace.image.width}×{trace.image.height}px.
+            Colors: <span style={{ color: COLORS.eave }}>eave</span> · <span style={{ color: COLORS.rake }}>rake</span> ·{' '}
+            <span style={{ color: COLORS.ridge }}>ridge</span> · <span style={{ color: COLORS.hip }}>hip</span> ·{' '}
+            <span style={{ color: COLORS.valley }}>valley</span>. Coordinates are image pixels, not measurements.
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
