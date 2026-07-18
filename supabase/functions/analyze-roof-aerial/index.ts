@@ -637,8 +637,10 @@ Deno.serve(async (req) => {
         const usResult = await fetchUsParcelOrStructure(coordinates.lat, coordinates.lng, { timeoutMs: 6000 });
 
         if (usResult?.vertices?.length >= 4) {
-          const overhangFt = usResult.source === 'usa_structures' ? 0.5 : 0.25;
-          const expandedVertices = expandFootprintForOverhang(usResult.vertices, overhangFt);
+          if (usResult.source === 'usa_parcels') {
+            console.log('⚠️ US ArcGIS returned parcel geometry only; parcel polygons are lot boundaries, not roof footprints. Skipping as authoritative perimeter.');
+          } else {
+          const expandedVertices = expandFootprintForOverhang(usResult.vertices, 0.5);
           const validation = validateGeometry(expandedVertices, usResult.source as FootprintSource);
 
           if (validation.valid) {
@@ -652,6 +654,7 @@ Deno.serve(async (req) => {
             console.log(`✅ US ArcGIS ${usResult.source}: ${validation.metrics.areaSqFt.toFixed(0)} sqft, ${usResult.vertices.length} vertices, ${(authoritativeFootprint.confidence * 100).toFixed(0)}% confidence`);
           } else {
             console.log(`⚠️ US ArcGIS ${usResult.source} footprint failed validation: ${validation.errors.join(', ')}`);
+          }
           }
         } else {
           console.log('⚠️ US ArcGIS returned no usable structure/parcel footprint');
