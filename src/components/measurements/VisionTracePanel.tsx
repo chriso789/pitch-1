@@ -87,7 +87,9 @@ export function VisionTracePanel({ lat, lng, address, zoom = 20, initialImageUrl
         body: {
           lat,
           lng,
-          zoom,
+          // Only forward zoom when caller pinned a positive value; otherwise let
+          // the edge function auto-pick zoom from the Solar building bbox.
+          ...(zoom && zoom > 0 ? { zoom } : {}),
           size: 640,
           image_url: initialImageUrl,
           image_size: normalizedImageSize,
