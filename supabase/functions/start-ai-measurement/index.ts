@@ -2326,7 +2326,7 @@ Deno.serve(async (req) => {
 
     // Normalize: accept both new and legacy field names.
     const measurement_test_run_id: string | null = body.measurement_test_run_id ??
-      body.measurementTestRunId ?? null;
+      body.measurementTestRunId ?? body.test_run_id ?? body.testRunId ?? null;
     const is_measurement_test_run = Boolean(measurement_test_run_id);
     const lead_id: string | null = body.lead_id ?? body.pipelineEntryId ??
       body.pipeline_entry_id ?? null;
@@ -2400,7 +2400,7 @@ Deno.serve(async (req) => {
     const marker_offset_ft: number | null = body.marker_offset_ft ??
       body.markerOffsetFt ?? null;
 
-    if (!lead_id && !project_id && !measurement_test_run_id) {
+    if (!lead_id && !project_id && !is_measurement_test_run) {
       return json({
         error:
           "lead_id (or pipelineEntryId), project_id, or measurement_test_run_id is required.",
@@ -2450,9 +2450,9 @@ Deno.serve(async (req) => {
       ? "project"
       : "measurement_test";
     const source_record_id = lead_id || project_id || measurement_test_run_id;
-    // pipeline_entry_id is a FK to pipeline_entries; must be null for developer
-    // test runs (measurement_test_run_id is a client-generated uuid with no row).
-    const legacy_pipeline_entry_id = lead_id || null;
+    // Legacy UI polling still requires measurement_jobs.pipeline_entry_id to be
+    // non-null, even for developer test runs that do not have a real lead row.
+    const legacy_pipeline_entry_id = lead_id || measurement_test_run_id || null;
 
     if (!tenant_id) {
       return json(
