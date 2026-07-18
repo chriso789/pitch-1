@@ -231,6 +231,9 @@ export function buildDsmRegistration(input: DsmRegistrationInput): DsmRegistrati
   if (isNum(input.effectiveDSM?.resolution ?? NaN)) {
     dsm_meters_per_pixel = input.effectiveDSM!.resolution!;
     dsm_mpp_source = "decoded_dsm_grid";
+  } else if (isNum(input.dsmCoordinateMatchDebug?.dsm_bbox?.resolution ?? NaN)) {
+    dsm_meters_per_pixel = input.dsmCoordinateMatchDebug!.dsm_bbox!.resolution!;
+    dsm_mpp_source = "decoded_dsm_grid";
   } else if (isNum(input.rasterMetersPerPixel ?? NaN)) {
     dsm_meters_per_pixel = input.rasterMetersPerPixel!;
     dsm_mpp_source = "derived_from_static_raster";
