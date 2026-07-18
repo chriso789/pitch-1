@@ -5550,7 +5550,6 @@ async function processJob(input: any) {
           params.solarCentroid
             ? [params.solarCentroid.x, params.solarCentroid.y]
             : null,
-          [fpCentroid.x, fpCentroid.y],
         ],
         require_anchor_support: true,
       });
