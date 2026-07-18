@@ -249,7 +249,8 @@ export function selectPhase3A5TargetMaskComponent(input: {
       )
       : 0.5;
     const missingRequiredAnchor = requireAnchorSupport && !anchorSupported;
-    const centroidTooFar = centroidOffset > centroidThreshold && !anchorSupported;
+    const centroidTooFar = centroidOffset > centroidThreshold &&
+      !(anchors.length > 0 && anchorSupported);
     const rejectionReason = missingRequiredAnchor
       ? "component_missing_confirmed_roof_anchor"
       : centroidTooFar
