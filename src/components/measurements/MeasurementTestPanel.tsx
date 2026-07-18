@@ -469,6 +469,19 @@ export function MeasurementTestPanel() {
             </CollapsibleContent>
           </Collapsible>
 
+          {/* Quick vision trace — kicks off immediately when Run is pressed.
+              Renders the roof outline in seconds using Gemini vision so the
+              user sees a real trace while the full measurement pipeline runs. */}
+          {quickTraceCoords && (
+            <VisionTracePanel
+              lat={quickTraceCoords.lat}
+              lng={quickTraceCoords.lng}
+              address={verifiedAddress?.formatted_address || address}
+              zoom={20}
+              autoRun
+            />
+          )}
+
           {/* Progress Bar */}
           {isRunning && (
             <div className="space-y-2">
