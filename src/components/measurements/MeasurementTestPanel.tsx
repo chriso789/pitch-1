@@ -11,7 +11,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { MeasurementTestResults } from './MeasurementTestResults';
 import { ImageQualityBadge } from './ImageQualityBadge';
-import { VisionTracePanel } from './VisionTracePanel';
+import { VisionTracePanel, type TraceResponse } from './VisionTracePanel';
 import { AddressAutocomplete, type AddressComponents } from '@/components/AddressAutocomplete';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 
@@ -169,6 +169,7 @@ export function MeasurementTestPanel() {
   const [previousResults, setPreviousResults] = useState<TestResult[]>([]);
   const [showDebug, setShowDebug] = useState(false);
   const [quickTraceCoords, setQuickTraceCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [quickTraceResult, setQuickTraceResult] = useState<TraceResponse | null>(null);
 
   const hasVerifiedAddress = !!verifiedAddress?.latitude && !!verifiedAddress?.longitude;
   const hasManualCoords = !!lat && !!lng;
@@ -196,6 +197,7 @@ export function MeasurementTestPanel() {
     setProgress(5);
     setProgressMessage('Starting quick AI roof trace...');
     setResult(null);
+    setQuickTraceResult(null);
 
     try {
       // Prefer the verified Google Places address; otherwise manual lat/lng.
@@ -210,13 +212,28 @@ export function MeasurementTestPanel() {
         setLng(coordinates.lng.toString());
       }
 
-      // Kick off the quick vision trace immediately — this renders the roof
-      // outline in seconds so the user sees something real while the full
-      // measurement pipeline runs.
       setQuickTraceCoords({ lat: coordinates.lat, lng: coordinates.lng });
 
+      const { data: traceData, error: traceError } = await supabase.functions.invoke('vision-trace-roof', {
+        body: {
+          lat: coordinates.lat,
+          lng: coordinates.lng,
+          zoom: 21,
+          size: 640,
+          address: runAddress,
+          prefer_roof_center: true,
+        },
+      });
+
+      if (traceError) throw traceError;
+      if ((traceData as any)?.error) throw new Error((traceData as any).error);
+      if (!traceData || Number((traceData as any).count || 0) <= 0) {
+        throw new Error('Quick AI roof trace returned 0 roof segments; full measurement was not started.');
+      }
+      setQuickTraceResult(traceData as TraceResponse);
+
       setProgress(40);
-      setProgressMessage('Quick trace running — starting full measurement...');
+      setProgressMessage('Quick trace complete — starting full measurement...');
 
       setProgress(60);
       setProgressMessage('Starting canonical AI measurement job...');
@@ -478,7 +495,7 @@ export function MeasurementTestPanel() {
               lng={quickTraceCoords.lng}
               address={verifiedAddress?.formatted_address || address}
               zoom={21}
-              autoRun
+              initialTrace={quickTraceResult}
             />
           )}
 
