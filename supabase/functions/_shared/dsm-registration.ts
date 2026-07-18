@@ -51,6 +51,8 @@ export interface DsmRegistrationInput {
     resolution?: number | null;
     /** Optional reason the GeoTIFF decoder could not derive bounds. */
     bounds_failure?: string | null;
+    /** Explicit provenance override for `dsm_bounds_source` (e.g. OpenTopography fallback). */
+    bounds_provenance?: DsmBoundsSource | null;
   } | null;
   /** Roof mask grid (RoofMask shape). */
   roofMask?: {
