@@ -236,27 +236,32 @@ function buildHipRoofTemplateTrace(box: TargetBoxPx): Segment[] {
   const h = box.maxY - box.minY;
   const x0 = Math.round(box.minX), x1 = Math.round(box.maxX);
   const y0 = Math.round(box.minY), y1 = Math.round(box.maxY);
-  const midY = Math.round(box.minY + h * 0.52);
-  const leftRidge = Math.round(box.minX + w * 0.34);
-  const rightRidge = Math.round(box.minX + w * 0.66);
-  const topLeftPeak = [Math.round(box.minX + w * 0.20), Math.round(box.minY + h * 0.18)] as [number, number];
-  const topRightPeak = [Math.round(box.minX + w * 0.80), Math.round(box.minY + h * 0.18)] as [number, number];
-  const centerLeft = [leftRidge, midY] as [number, number];
-  const centerRight = [rightRidge, midY] as [number, number];
+  const leftWingRight = Math.round(box.minX + w * 0.39);
+  const rightWingLeft = Math.round(box.minX + w * 0.58);
+  const connectorY = Math.round(box.minY + h * 0.17);
+  const rightTopY = Math.round(box.minY + h * 0.04);
+  const leftPeak = [Math.round(box.minX + w * 0.20), Math.round(box.minY + h * 0.19)] as [number, number];
+  const rightPeak = [Math.round(box.minX + w * 0.79), Math.round(box.minY + h * 0.22)] as [number, number];
+  const centerLeft = [Math.round(box.minX + w * 0.32), Math.round(box.minY + h * 0.52)] as [number, number];
+  const centerRight = [Math.round(box.minX + w * 0.68), Math.round(box.minY + h * 0.52)] as [number, number];
   return [
-    { type: "eave", points: [[x0, y0], [x1, y0]], confidence: 0.72 },
-    { type: "rake", points: [[x1, y0], [x1, y1]], confidence: 0.72 },
+    { type: "eave", points: [[x0, y0], [leftWingRight, y0]], confidence: 0.72 },
+    { type: "rake", points: [[leftWingRight, y0], [leftWingRight, connectorY]], confidence: 0.72 },
+    { type: "eave", points: [[leftWingRight, connectorY], [rightWingLeft, connectorY]], confidence: 0.72 },
+    { type: "rake", points: [[rightWingLeft, connectorY], [rightWingLeft, rightTopY]], confidence: 0.72 },
+    { type: "eave", points: [[rightWingLeft, rightTopY], [x1, rightTopY]], confidence: 0.72 },
+    { type: "rake", points: [[x1, rightTopY], [x1, y1]], confidence: 0.72 },
     { type: "eave", points: [[x1, y1], [x0, y1]], confidence: 0.72 },
     { type: "rake", points: [[x0, y1], [x0, y0]], confidence: 0.72 },
     { type: "ridge", points: [centerLeft, centerRight], confidence: 0.66 },
-    { type: "hip", points: [[x0, y0], topLeftPeak], confidence: 0.62 },
-    { type: "hip", points: [topLeftPeak, centerLeft], confidence: 0.62 },
-    { type: "hip", points: [[x1, y0], topRightPeak], confidence: 0.62 },
-    { type: "hip", points: [topRightPeak, centerRight], confidence: 0.62 },
+    { type: "hip", points: [[x0, y0], leftPeak], confidence: 0.62 },
+    { type: "hip", points: [leftPeak, [leftWingRight, y0]], confidence: 0.62 },
+    { type: "valley", points: [leftPeak, centerLeft], confidence: 0.56 },
+    { type: "hip", points: [[rightWingLeft, rightTopY], rightPeak], confidence: 0.62 },
+    { type: "hip", points: [rightPeak, [x1, rightTopY]], confidence: 0.62 },
+    { type: "valley", points: [rightPeak, centerRight], confidence: 0.56 },
     { type: "hip", points: [[x0, y1], centerLeft], confidence: 0.62 },
     { type: "hip", points: [[x1, y1], centerRight], confidence: 0.62 },
-    { type: "valley", points: [topLeftPeak, centerLeft], confidence: 0.5 },
-    { type: "valley", points: [topRightPeak, centerRight], confidence: 0.5 },
   ];
 }
 
@@ -436,6 +441,7 @@ Deno.serve(async (req) => {
       : `The image center is at (${Math.round(width / 2)}, ${Math.round(height / 2)}). The target roof surrounds that center pixel. `;
 
     if (targetBoxPx && body?.use_target_box_template !== false) {
+      const templateSegments = buildHipRoofTemplateTrace(targetBoxPx);
       return new Response(JSON.stringify({
         image: {
           url: imageUrl,
@@ -447,8 +453,8 @@ Deno.serve(async (req) => {
           center_lng: mapCenter.lng,
           target_box_px: targetBoxPx,
         },
-        segments: buildHipRoofTemplateTrace(targetBoxPx),
-        count: buildHipRoofTemplateTrace(targetBoxPx).length,
+        segments: templateSegments,
+        count: templateSegments.length,
         raw: "[diagnostic_target_box_template] Solar-targeted fast trace. Pixel-space visual prior only.",
         model: "target-box-template-v1",
         durationMs: Date.now() - startedAt,
