@@ -415,9 +415,18 @@ export function buildDsmRegistration(input: DsmRegistrationInput): DsmRegistrati
     };
   }
 
+  const registrationSource: DsmRegistrationResult["dsm_registration_source"] =
+    dsm_bounds_source === "opentopography_usgs_3dep_1m"
+      ? "opentopography_usgs_3dep_1m"
+      : dsm_bounds_source === "opentopography_usgs_3dep_10m"
+      ? "opentopography_usgs_3dep_10m"
+      : dsm_bounds_source === "opentopography_srtm_gl1"
+      ? "opentopography_srtm_gl1"
+      : "google_solar_data_layers";
+
   return {
     dsm_registration_version: DSM_REGISTRATION_VERSION,
-    dsm_registration_source: "google_solar_data_layers",
+    dsm_registration_source: registrationSource,
     dsm_stage_attempted: attempted,
     dsm_stage_pending: false,
     dsm_size_px,
