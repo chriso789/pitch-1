@@ -6526,12 +6526,36 @@ async function processJob(input: any) {
               maxY: Math.round(fpDsmBbox.maxY),
             }
             : null,
-          dsm_bbox: { width: dsmW, height: dsmH },
+          dsm_bbox: {
+            width: dsmW,
+            height: dsmH,
+            // Persist parsed DSM lat/lng bounds so the downstream
+            // registration hoist (which only sees geometry_report_json,
+            // not the in-memory dsmGrid) can consume them instead of
+            // emitting `dsm_bounds_missing`.
+            bounds: (dsmGrid?.bounds &&
+                Number.isFinite(dsmGrid.bounds.minLat) &&
+                Number.isFinite(dsmGrid.bounds.maxLat) &&
+                Number.isFinite(dsmGrid.bounds.minLng) &&
+                Number.isFinite(dsmGrid.bounds.maxLng))
+              ? {
+                minLat: dsmGrid.bounds.minLat,
+                maxLat: dsmGrid.bounds.maxLat,
+                minLng: dsmGrid.bounds.minLng,
+                maxLng: dsmGrid.bounds.maxLng,
+              }
+              : null,
+            bounds_provenance: (dsmGrid as any)?.bounds_provenance ?? null,
+            resolution: Number.isFinite(Number(dsmGrid?.resolution))
+              ? Number(dsmGrid.resolution)
+              : null,
+          },
           overlap_ratio: Number(overlapRatio.toFixed(3)),
           inside_x: insideX,
           inside_y: insideY,
           match: dsmCoordinateMatch,
         };
+
         console.log(
           "[DSM_COORDINATE_MATCH]",
           JSON.stringify(dsmCoordinateMatchDebug),
