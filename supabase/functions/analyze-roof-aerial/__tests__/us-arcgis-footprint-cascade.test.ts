@@ -1,5 +1,9 @@
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { validateGeometry } from "../../_shared/geometry-validator.ts";
+import {
+  evaluateRoofFootprintCandidate,
+  pickBestRoofFootprintCandidate,
+} from "../../_shared/roof-footprint-candidate.ts";
 
 Deno.test("legacy admin test route includes nationwide US ArcGIS before Regrid/Solar fallback", async () => {
   const source = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
@@ -15,7 +19,8 @@ Deno.test("legacy admin test route includes nationwide US ArcGIS before Regrid/S
   assert(usArcgisIndex < solarIndex, "US ArcGIS must run before solar_bbox_fallback");
   assert(source.includes("fetchUsParcelOrStructure"), "legacy route must call the shared national extractor");
   assert(source.includes("'usa_structures', 'usa_parcels'"), "US ArcGIS sources must be treated as vector footprints in the UI-visible row");
-  assert(source.includes("US ArcGIS ${usResult.source} candidate"), "solar fast path must collect US ArcGIS as a candidate before falling back to a rectangle");
+  assert(source.includes("US ArcGIS ${usResult.source} candidate"), "solar fast path must collect US ArcGIS structures as a candidate before falling back to a rectangle");
+  assert(source.includes("US ArcGIS ${usResult.source} skipped: parcel polygon is not the exterior roof footprint"), "solar fast path must not treat parcel geometry as the roof perimeter");
 });
 
 Deno.test("solar fast path refuses to complete complex roofs from solar bbox fallback", async () => {
@@ -63,4 +68,32 @@ Deno.test("geometry validator accepts nationwide US ArcGIS footprint source toke
 
   assertEquals(validateGeometry(rectangle, "usa_structures").valid, true);
   assertEquals(validateGeometry(rectangle, "usa_parcels").valid, true);
+});
+
+Deno.test("roof footprint selector rejects parcel and solar bbox candidates even when they have more vertices", () => {
+  const parcel = {
+    source: "usa_parcels",
+    coordinates: [[0, 0], [0, 10], [10, 10], [12, 6], [10, 0], [0, 0]] as [number, number][],
+    confidence: 0.92,
+    vertexCount: 6,
+    areaSqft: 9000,
+  };
+  const solarBbox = {
+    source: "solar_bbox_fallback",
+    coordinates: [[0, 0], [0, 4], [4, 4], [4, 0]] as [number, number][],
+    confidence: 0.55,
+    vertexCount: 4,
+    areaSqft: 3200,
+  };
+  const structure = {
+    source: "usa_structures",
+    coordinates: [[1, 1], [1, 4], [3, 4], [3.5, 2.5], [3, 1], [1, 1]] as [number, number][],
+    confidence: 0.9,
+    vertexCount: 6,
+    areaSqft: 3100,
+  };
+
+  assertEquals(evaluateRoofFootprintCandidate(parcel, 3077).accepted, false);
+  assertEquals(evaluateRoofFootprintCandidate(solarBbox, 3077).accepted, false);
+  assertEquals(pickBestRoofFootprintCandidate([parcel, solarBbox, structure], 3077)?.candidate.source, "usa_structures");
 });
