@@ -430,7 +430,7 @@ Deno.serve(async (req) => {
             },
           ],
           temperature: 0.1,
-          max_tokens: 1800,
+          max_tokens: 4000,
         }),
       });
       if (!gwRes.ok) {
