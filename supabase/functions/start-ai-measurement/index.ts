@@ -1272,7 +1272,9 @@ function ensureRegistrationProofBeforeWrite(
     geometry_report_json: geometry,
   });
   if (
-    resolvedDiagnosticState.final_state_source === "runtime_cpu_budget_guard"
+    resolvedDiagnosticState.final_state_source === "runtime_cpu_budget_guard" ||
+    resolvedDiagnosticState.final_state_source ===
+      "dsm_registration_unavailable_guard"
   ) {
     (geometry as any).registration = fallback;
     (geometry as any).registration_gate = fallback;
