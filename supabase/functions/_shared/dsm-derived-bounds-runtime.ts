@@ -227,14 +227,17 @@ export function gatherDerivedBoundsGateInputs(
 }
 
 export function isDerivedBoundsAllowed(inp: DerivedBoundsGateInputs): boolean {
+  // DSM bounds are an image-registration fact, not a target-mask-quality fact.
+  // A low target-mask overlap should block customer-ready topology later, but it
+  // must not relabel an otherwise registered raster as `dsm_bounds_missing`.
+  // Fonsica regression: a bad/partial mask produced overlap < 0.9 even though
+  // the static raster bounds, size, mpp, and frame registration were valid.
   return Boolean(
     inp.dsm_loaded &&
       inp.raster_bounds_lat_lng &&
       inp.raster_size_px &&
       isNum(inp.raster_meters_per_pixel ?? NaN) &&
-      inp.frame_mismatch_ok &&
-      isNum(inp.target_mask_overlap ?? NaN) &&
-      (inp.target_mask_overlap as number) >= 0.9,
+      inp.frame_mismatch_ok,
   );
 }
 
@@ -449,15 +452,16 @@ const _pointNearPolygon = (
  *   2. Raster bounds present and valid (sw < ne).
  *   3. `geo_to_raster_transform` present.
  *   4. Selected candidate polygon present AND in raster_px frame.
- *   5. `target_mask_overlap_with_perimeter >= 0.95`.
- *   6. Confirmed roof center px present AND inside or within 24 px of the
+ *   5. Confirmed roof center px present AND inside or within 24 px of the
  *      selected raster polygon's bbox.
  *
  * On success, the DSM bounds are copied from the registered raster bounds
  * (the safest possible derivation — both rasters cover the same geographic
  * footprint when the static map and Solar tile are co-registered). Confidence
- * is scaled linearly from 0.70 (overlap=0.95) to 0.85 (overlap=1.00) so
- * downstream gates can decide whether to trust DSM-backed topology.
+ * is scaled by target-mask overlap when available. Low overlap is explicitly
+ * marked lower-confidence, but still derives bounds so downstream diagnostics
+ * report the real blocker (perimeter/topology) instead of stale
+ * `dsm_bounds_missing`.
  */
 export function tryDeriveDsmRegistrationFromRaster(
   input: DeriveDsmRegistrationInput,
@@ -484,10 +488,6 @@ export function tryDeriveDsmRegistrationFromRaster(
   if ((input.candidate_coordinate_space ?? "raster_px") !== "raster_px") {
     return { status: "unavailable_but_aerial_perimeter_editable", reason: "candidate_not_in_raster_px" };
   }
-  const overlap = input.target_mask_overlap_with_perimeter;
-  if (!isNum(overlap) || (overlap as number) < 0.95) {
-    return { status: "unavailable_but_aerial_perimeter_editable", reason: "target_mask_overlap_below_0_95" };
-  }
   const center = input.confirmed_roof_center_px;
   if (!center || !isNum(center[0]) || !isNum(center[1])) {
     return { status: "unavailable_but_aerial_perimeter_editable", reason: "confirmed_roof_center_px_missing" };
@@ -498,8 +498,12 @@ export function tryDeriveDsmRegistrationFromRaster(
     return { status: "unavailable_but_aerial_perimeter_editable", reason: "confirmed_center_outside_candidate_raster" };
   }
 
-  // All guards passed. Confidence: lerp 0.70 (overlap=0.95) → 0.85 (overlap=1.00).
-  const conf = Math.max(0.70, Math.min(0.85, 0.70 + (((overlap as number) - 0.95) / 0.05) * 0.15));
+  const overlap = input.target_mask_overlap_with_perimeter;
+  // All guards passed. Confidence: 0.55 when overlap is missing/low; linearly
+  // increases to 0.85 as the target mask agrees. This preserves bounds while
+  // still preventing low-overlap DSM topology from being trusted as final.
+  const overlapForConfidence = isNum(overlap) ? Math.max(0, Math.min(1, overlap as number)) : 0;
+  const conf = Math.max(0.55, Math.min(0.85, 0.55 + overlapForConfidence * 0.30));
 
   return {
     status: "derived_from_registered_raster",

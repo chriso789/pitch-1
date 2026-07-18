@@ -4313,11 +4313,40 @@ async function processJob(input: any) {
               "roof_mask_component_extraction",
             );
             googleSolarMaskStageDebug.mask_component_count = components.length;
-            const confirmedCenterPxForComponents = (input as any)
-              .confirmed_roof_center_px as
-                | [number, number]
-                | null
-                | undefined;
+            const confirmedCenterPxForComponents = (() => {
+              const fromInput = (input as any).confirmed_roof_center_px;
+              const fromPreflight = (input as any)._registration_preflight
+                ?.confirmed_roof_center_px;
+              const candidate = Array.isArray(fromInput) && fromInput.length === 2
+                ? fromInput
+                : Array.isArray(fromPreflight) && fromPreflight.length === 2
+                ? fromPreflight
+                : null;
+              if (
+                candidate &&
+                Number.isFinite(Number(candidate[0])) &&
+                Number.isFinite(Number(candidate[1]))
+              ) {
+                return [Number(candidate[0]), Number(candidate[1])] as [
+                  number,
+                  number,
+                ];
+              }
+              // Source acquisition is re-centered on the confirmed roof target.
+              // If the client did not send a pixel anchor, the raster center is
+              // the confirmed target pixel. Do not fail open and let a tree or
+              // fused yard component win component selection.
+              if (
+                Boolean((input as any).user_confirmed_roof_target) ||
+                Boolean((input as any).roof_target_admin_override)
+              ) {
+                return [raster.width / 2, raster.height / 2] as [
+                  number,
+                  number,
+                ];
+              }
+              return null;
+            })();
             if (components.length > 0) {
               (globalThis as any).__maskComponentsRaw = components.map((c) => ({
                 component_id: c.component_id,
@@ -4828,10 +4857,30 @@ async function processJob(input: any) {
     // Registration Gate C (v2): per-candidate confirmed-roof-center containment.
     // A footprint whose polygon does NOT contain the user-confirmed roof center
     // is the wrong house (Fonsica failure mode). Reject before validity ranking.
-    const confirmedCenterPxForGateC = (input as any).confirmed_roof_center_px as
-      | [number, number]
-      | null
-      | undefined;
+    const confirmedCenterPxForGateC = (() => {
+      const fromInput = (input as any).confirmed_roof_center_px;
+      const fromPreflight = (input as any)._registration_preflight
+        ?.confirmed_roof_center_px;
+      const candidate = Array.isArray(fromInput) && fromInput.length === 2
+        ? fromInput
+        : Array.isArray(fromPreflight) && fromPreflight.length === 2
+        ? fromPreflight
+        : null;
+      if (
+        candidate &&
+        Number.isFinite(Number(candidate[0])) &&
+        Number.isFinite(Number(candidate[1]))
+      ) {
+        return [Number(candidate[0]), Number(candidate[1])] as [number, number];
+      }
+      if (
+        Boolean((input as any).user_confirmed_roof_target) ||
+        Boolean((input as any).roof_target_admin_override)
+      ) {
+        return [raster.width / 2, raster.height / 2] as [number, number];
+      }
+      return null;
+    })();
     if (
       confirmedCenterPxForGateC &&
       Array.isArray(confirmedCenterPxForGateC) &&
