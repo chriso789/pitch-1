@@ -132,10 +132,10 @@ Deno.test("evaluateCandidate — accepts and computes centroid offset", () => {
 
 Deno.test("evaluateCandidateAgainstTarget — rejects Fonsica-style fused/tree candidate by target diagonal", () => {
   const fusedCandidate: Array<[number, number]> = [
-    [50, 50],
-    [1220, 50],
+    [300, 300],
+    [1220, 300],
     [1220, 1220],
-    [50, 1220],
+    [300, 1220],
   ];
   const confirmedRoofCenter: [number, number] = [640, 640];
   const targetRoofComponentDiagonalPx = 260;
