@@ -21,6 +21,20 @@ type TraceResponse = {
   durationMs?: number;
 };
 
+export function normalizeVisionTraceImageSize(imageSize?: { width?: number; height?: number; rasterWidth?: number; rasterHeight?: number; rasterScale?: number } | null) {
+  if (!imageSize) return undefined;
+  const rasterScale = Number(imageSize.rasterScale || 1);
+  const width = Number(imageSize.rasterWidth || (rasterScale > 1 ? Number(imageSize.width) * rasterScale : imageSize.width));
+  const height = Number(imageSize.rasterHeight || (rasterScale > 1 ? Number(imageSize.height) * rasterScale : imageSize.height));
+  return {
+    width: Number.isFinite(width) && width > 0 ? width : undefined,
+    height: Number.isFinite(height) && height > 0 ? height : undefined,
+    logicalWidth: Number(imageSize.width) || undefined,
+    logicalHeight: Number(imageSize.height) || undefined,
+    rasterScale: Number.isFinite(rasterScale) && rasterScale > 0 ? rasterScale : undefined,
+  };
+}
+
 const COLORS: Record<Segment['type'], string> = {
   eave: '#22c55e',    // green
   rake: '#84cc16',    // lime
@@ -43,7 +57,7 @@ interface VisionTracePanelProps {
   address?: string;
   zoom?: number;
   initialImageUrl?: string;
-  imageSize?: { width?: number; height?: number } | null;
+  imageSize?: { width?: number; height?: number; rasterWidth?: number; rasterHeight?: number; rasterScale?: number } | null;
   autoRun?: boolean;
 }
 
@@ -63,8 +77,18 @@ export function VisionTracePanel({ lat, lng, address, zoom = 20, initialImageUrl
     }
     setLoading(true);
     try {
+      const normalizedImageSize = normalizeVisionTraceImageSize(imageSize);
       const { data, error } = await supabase.functions.invoke('vision-trace-roof', {
-        body: { lat, lng, zoom, size: 640, image_url: initialImageUrl, image_size: imageSize },
+        body: {
+          lat,
+          lng,
+          zoom,
+          size: 640,
+          image_url: initialImageUrl,
+          image_size: normalizedImageSize,
+          address,
+          prefer_roof_center: true,
+        },
       });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
@@ -74,7 +98,7 @@ export function VisionTracePanel({ lat, lng, address, zoom = 20, initialImageUrl
     } finally {
       setLoading(false);
     }
-  }, [imageSize, initialImageUrl, lat, lng, toast, zoom]);
+  }, [address, imageSize, initialImageUrl, lat, lng, toast, zoom]);
 
   useEffect(() => {
     if (!autoRun || loading || trace || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
