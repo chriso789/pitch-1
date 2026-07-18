@@ -75,3 +75,66 @@ Deno.test("CPU preemption marks Phase 0 incomplete due to runtime preemption", (
   assertEquals(resolved.phase0_incomplete_reason, "runtime_preemption");
   assertEquals(resolved.hard_fail_reason, "ai_measurement_cpu_timeout");
 });
+
+Deno.test("DSM registration unavailable outranks stale dsm_bounds_missing when aerial perimeter is editable", () => {
+  const resolved = resolveMeasurementDiagnosticState({
+    result_state: "ai_failed_source_acquisition",
+    hard_fail_reason: "dsm_bounds_missing",
+    geometry_report_json: {
+      result_state: "ai_failed_source_acquisition",
+      hard_fail_reason: "dsm_bounds_missing",
+      block_customer_report_reason: "dsm_bounds_missing",
+      failure_stage: "source_registration",
+      dsm_loaded: true,
+      mask_loaded: true,
+      dsm_registration_status: "unavailable_but_aerial_perimeter_editable",
+      raster_candidate_check_passed: true,
+      footprint_px: [[100, 100], [500, 100], [500, 500], [100, 500]],
+      dsm_stop_guard: {
+        reason: "dsm_registration_unavailable",
+        hard_fail_reason: "dsm_registration_unavailable",
+        dsm_registration_status: "unavailable_but_aerial_perimeter_editable",
+        diagnostics: {
+          raster_candidate_check_passed: true,
+          aerial_perimeter_editable: true,
+        },
+      },
+    },
+  });
+
+  assertEquals(resolved.result_state, "perimeter_only");
+  assertEquals(resolved.hard_fail_reason, "dsm_registration_unavailable");
+  assertEquals(resolved.block_customer_report_reason, "dsm_registration_unavailable");
+  assertEquals(resolved.failure_stage, "dsm_registration");
+  assertEquals(resolved.diagram_render_intent, "perimeter_only");
+  assertEquals(resolved.final_state_source, "dsm_registration_unavailable_guard");
+  assertEquals(resolved.customer_report_ready, false);
+});
+
+Deno.test("derived DSM bounds evidence prevents stale dsm_bounds_missing from being final state", () => {
+  const resolved = resolveMeasurementDiagnosticState({
+    result_state: "ai_failed_source_acquisition",
+    hard_fail_reason: "dsm_bounds_missing",
+    geometry_report_json: {
+      hard_fail_reason: "dsm_bounds_missing",
+      block_customer_report_reason: "dsm_bounds_missing",
+      dsm_loaded: true,
+      mask_loaded: true,
+      raster_candidate_check_passed: true,
+      footprint_px: [[100, 100], [500, 100], [500, 500], [100, 500]],
+      dsm_coordinate_match: {
+        dsm_bbox: {
+          bounds: {
+            sw: { lat: 27.081, lng: -82.197 },
+            ne: { lat: 27.083, lng: -82.195 },
+          },
+          resolution: 0.1,
+        },
+      },
+    },
+  });
+
+  assertEquals(resolved.result_state, "perimeter_only");
+  assertEquals(resolved.hard_fail_reason, "dsm_registration_unavailable");
+  assertEquals(resolved.final_state_source, "dsm_registration_unavailable_guard");
+});
