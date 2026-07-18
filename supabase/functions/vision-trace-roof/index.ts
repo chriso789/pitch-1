@@ -21,7 +21,7 @@ const GOOGLE_SOLAR_API_KEY = Deno.env.get("GOOGLE_SOLAR_API_KEY") || GOOGLE_MAPS
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY") || "";
 
 const MODEL = "google/gemini-3.5-flash";
-const AI_TRACE_TIMEOUT_MS = 15_000;
+const AI_TRACE_TIMEOUT_MS = 28_000;
 
 type Segment = {
   type: "eave" | "rake" | "ridge" | "hip" | "valley";
@@ -430,6 +430,7 @@ Deno.serve(async (req) => {
             },
           ],
           temperature: 0.1,
+          max_tokens: 1800,
         }),
       });
       if (!gwRes.ok) {
