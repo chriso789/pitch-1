@@ -477,7 +477,7 @@ export function MeasurementTestPanel() {
               lat={quickTraceCoords.lat}
               lng={quickTraceCoords.lng}
               address={verifiedAddress?.formatted_address || address}
-              zoom={20}
+              zoom={21}
               autoRun
             />
           )}

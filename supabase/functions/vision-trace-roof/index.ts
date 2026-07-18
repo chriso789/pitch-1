@@ -29,14 +29,22 @@ type Segment = {
 
 const SYSTEM_PROMPT = `You are a roofing measurement vision assistant. You look at
 an aerial (top-down satellite) image of a single house and trace the roof edges
-of the CENTER house only. Ignore neighboring houses, trees, driveways, pools,
-patios, sidewalks and vehicles.
+of the CENTER house only. The target house is the large roof structure at the
+center of the image (near the image center pixel). Ignore neighboring houses,
+trees, driveways, pools, patios, screen enclosures, sidewalks, and vehicles.
 
 You must return polyline coordinates in image pixel space (origin top-left,
-+x right, +y down). Coordinates are in the SAME pixel space as the image you
-were given. All coordinates must be inside the image bounds.
++x right, +y down). Coordinates MUST be inside the image bounds and MUST lie
+on the actual roof pixels of the center house — not floating in the yard, not
+on a neighbor's roof, not on trees.
 
-You must classify every polyline as exactly one of:
+Scale check before returning: the target roof should span a large fraction
+(typically 40-70%) of the image width. If your traced perimeter covers less
+than 20% of the image width or is offset from the image center by more than
+30% of the image size, you are tracing the wrong object — re-locate the
+center house and retrace.
+
+Classify every polyline as exactly one of:
 - "eave"   : horizontal exterior roof edge along a gutter line (bottom of a slope)
 - "rake"   : sloped exterior roof edge along a gable end
 - "ridge"  : level horizontal peak where two upslope planes meet
@@ -58,7 +66,7 @@ Rules:
 - Each polyline is a straight run of the same type — break at corners/junctions.
 - Prefer 2-point straight segments; use more points only when the edge curves.
 - Do NOT invent structure you cannot see.
-- Do NOT include any segment that lies outside the target house.`;
+- Do NOT include any segment that lies outside the target house footprint.`;
 
 function buildStaticMapsUrl(lat: number, lng: number, zoom: number, size: number): string {
   const s = Math.min(640, size);
@@ -130,7 +138,7 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const lat = Number(body?.lat);
     const lng = Number(body?.lng);
-    const zoom = Number.isFinite(Number(body?.zoom)) ? Number(body.zoom) : 20;
+    const zoom = Number.isFinite(Number(body?.zoom)) ? Number(body.zoom) : 21;
     const size = Number.isFinite(Number(body?.size)) ? Number(body.size) : 640;
     let imageUrl: string | undefined = typeof body?.image_url === "string" ? body.image_url : undefined;
 
@@ -148,50 +156,75 @@ Deno.serve(async (req) => {
       imageUrl = buildStaticMapsUrl(lat, lng, zoom, size);
     }
 
-    // Fetch aerial and inline as data URL so the model always sees the same pixels.
     const { dataUrl } = await fetchImageAsDataUrl(imageUrl);
-    // Google static maps @scale=2 returns 2*size px. That's the pixel space the model traces in.
     const width = Math.min(640, size) * 2;
     const height = width;
 
-    const gwRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${LOVABLE_API_KEY}` },
-      body: JSON.stringify({
-        model: MODEL,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: `Trace the roof of the center house. Image is ${width}x${height} pixels. ` +
-                      `Return JSON only.`,
-              },
-              { type: "image_url", image_url: { url: dataUrl } },
-            ],
-          },
-        ],
-        temperature: 0.1,
-      }),
-    });
-
-    if (!gwRes.ok) {
-      const t = await gwRes.text().catch(() => "");
-      return new Response(JSON.stringify({ error: "ai_gateway_error", status: gwRes.status, body: t.slice(0, 500) }), {
-        status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    async function runOnce(promptExtra = ""): Promise<Segment[]> {
+      const gwRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${LOVABLE_API_KEY}` },
+        body: JSON.stringify({
+          model: MODEL,
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: `Trace the roof of the center house. Image is ${width}x${height} pixels. ` +
+                        `The image center is at (${Math.round(width / 2)}, ${Math.round(height / 2)}). ` +
+                        `The target roof surrounds that center pixel. ${promptExtra} Return JSON only.`,
+                },
+                { type: "image_url", image_url: { url: dataUrl } },
+              ],
+            },
+          ],
+          temperature: 0.1,
+        }),
       });
+      if (!gwRes.ok) {
+        const t = await gwRes.text().catch(() => "");
+        throw new Error(`ai_gateway_error status=${gwRes.status} ${t.slice(0, 300)}`);
+      }
+      const json: any = await gwRes.json();
+      const text: string = json?.choices?.[0]?.message?.content ?? "";
+      lastRawText = text;
+      return parseSegments(text);
     }
-    const json: any = await gwRes.json();
-    const text: string = json?.choices?.[0]?.message?.content ?? "";
-    const segments = parseSegments(text);
+
+    // Sanity: computed bbox of segments must include the image center and
+    // span at least 20% of image width; otherwise the trace is not on the
+    // target roof and we retry with a corrective hint.
+    function traceOnTarget(segs: Segment[]): boolean {
+      if (segs.length === 0) return false;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const s of segs) for (const [x, y] of s.points) {
+        if (x < minX) minX = x; if (y < minY) minY = y;
+        if (x > maxX) maxX = x; if (y > maxY) maxY = y;
+      }
+      const cx = width / 2, cy = height / 2;
+      const spanX = maxX - minX, spanY = maxY - minY;
+      const containsCenter = cx >= minX && cx <= maxX && cy >= minY && cy <= maxY;
+      const bigEnough = spanX >= width * 0.20 && spanY >= height * 0.20;
+      return containsCenter && bigEnough;
+    }
+
+    let lastRawText = "";
+    let segments = await runOnce();
+    if (!traceOnTarget(segments)) {
+      segments = await runOnce(
+        "Your previous trace was off-target or too small. The correct roof is the LARGE structure " +
+        "directly under the image center pixel and must span at least 40% of the image width. Retrace it.",
+      );
+    }
 
     return new Response(JSON.stringify({
       image: { url: imageUrl, width, height, zoom, source: "google_static_maps" },
       segments,
       count: segments.length,
-      raw: text,
+      raw: lastRawText,
       model: MODEL,
       durationMs: Date.now() - startedAt,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
