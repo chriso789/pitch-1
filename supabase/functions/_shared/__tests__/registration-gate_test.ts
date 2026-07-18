@@ -7,6 +7,7 @@ import {
   evaluateRegistrationGate,
   evaluateTargetConfirmation,
   evaluateCandidate,
+  evaluateCandidateAgainstTarget,
   canApproveManualPerimeter,
   polygonContainsPoint,
 } from "../registration-gate.ts";
@@ -127,6 +128,42 @@ Deno.test("evaluateCandidate — accepts and computes centroid offset", () => {
   assertEquals(r.rejected, false);
   assert(r.candidate_centroid_offset_from_confirmed_center_px != null);
   assert(r.candidate_centroid_offset_from_confirmed_center_px! < 30);
+});
+
+Deno.test("evaluateCandidateAgainstTarget — rejects Fonsica-style fused/tree candidate by target diagonal", () => {
+  const fusedCandidate: Array<[number, number]> = [
+    [300, 300],
+    [1220, 300],
+    [1220, 1220],
+    [300, 1220],
+  ];
+  const confirmedRoofCenter: [number, number] = [640, 640];
+  const targetRoofComponentDiagonalPx = 260;
+  const r = evaluateCandidateAgainstTarget(
+    fusedCandidate,
+    confirmedRoofCenter,
+    targetRoofComponentDiagonalPx,
+  );
+  assertEquals(r.rejected, true);
+  assertEquals(r.rejection_reason, "centroid_offset_exceeds_target");
+  assert(r.candidate_centroid_offset_threshold_px < 160);
+});
+
+Deno.test("evaluateCandidateAgainstTarget — rejects front-yard component that does not contain roof anchor", () => {
+  const treeOrFrontYardComponent: Array<[number, number]> = [
+    [410, 720],
+    [520, 720],
+    [520, 840],
+    [410, 840],
+  ];
+  const confirmedRoofCenter: [number, number] = [640, 640];
+  const r = evaluateCandidateAgainstTarget(
+    treeOrFrontYardComponent,
+    confirmedRoofCenter,
+    170,
+  );
+  assertEquals(r.rejected, true);
+  assertEquals(r.rejection_reason, "candidate_does_not_contain_confirmed_roof_center");
 });
 
 Deno.test("canApproveManualPerimeter — requires all 5 flags", () => {

@@ -3,7 +3,7 @@
 // Run with: deno test supabase/functions/_shared/__tests__/dsm-derived-bounds-runtime.test.ts
 
 import { assertEquals, assert } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { tryDeriveDsmRegistrationFromRaster } from "../dsm-derived-bounds-runtime.ts";
+import { isDerivedBoundsAllowed, tryDeriveDsmRegistrationFromRaster } from "../dsm-derived-bounds-runtime.ts";
 import fonsica from "../__fixtures__/fonsica-dsm-missing.json" with { type: "json" };
 
 const fonsicaInput = () => ({
@@ -32,13 +32,32 @@ Deno.test("derives DSM registration from Fonsica raster fixture", () => {
   assertEquals(res.dsm_size_px.height, 998);
 });
 
-Deno.test("refuses to derive when target_mask_overlap < 0.95", () => {
+Deno.test("derives bounds even when target mask overlap is low but raster registration is valid", () => {
   const inp = { ...fonsicaInput(), target_mask_overlap_with_perimeter: 0.6 };
   const res = tryDeriveDsmRegistrationFromRaster(inp);
-  assertEquals(res.status, "unavailable_but_aerial_perimeter_editable");
-  if (res.status === "unavailable_but_aerial_perimeter_editable") {
-    assertEquals(res.reason, "target_mask_overlap_below_0_95");
-  }
+  assertEquals(res.status, "derived_from_registered_raster");
+  if (res.status !== "derived_from_registered_raster") return;
+  assertEquals(res.dsm_bounds_source, "derived_from_registered_raster");
+  assert(res.dsm_bounds_confidence >= 0.55 && res.dsm_bounds_confidence < 0.75);
+});
+
+Deno.test("allows derived bounds with valid raster registration even when target overlap is low", () => {
+  assertEquals(isDerivedBoundsAllowed({
+    dsm_loaded: true,
+    mask_loaded: true,
+    raster_bounds_lat_lng: fonsica.raster_bounds_lat_lng as any,
+    raster_size_px: fonsica.raster_size_px as any,
+    raster_meters_per_pixel: 0.118,
+    geo_to_raster_transform: fonsica.geo_to_raster_transform as any,
+    frame_mismatch_ok: true,
+    frame_mismatch_source: "registered_raster",
+    frame_mismatch_raw: null,
+    raster_registration_evidence: { source_raster_px: fonsica.raster_size_px },
+    target_mask_overlap: 0.42,
+    confirmed_roof_center_lat_lng: null,
+    confirmed_roof_center_px: fonsica.confirmed_roof_center_px as any,
+    dsm_size_px: fonsica.dsm_size_px as any,
+  }), true);
 });
 
 Deno.test("refuses to derive when DSM size missing", () => {

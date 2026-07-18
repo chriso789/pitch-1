@@ -21,6 +21,8 @@ export type ResolvedMeasurementDiagnosticState = {
 const PRECEDENCE_VERSION = "measurement-state-precedence-v2";
 const CPU_TIMEOUT_REASON = "ai_measurement_cpu_timeout";
 const CPU_TIMEOUT_STAGE = "phase3_5_topology_cpu_budget_exceeded";
+const DSM_REGISTRATION_UNAVAILABLE_REASON = "dsm_registration_unavailable";
+const DSM_REGISTRATION_UNAVAILABLE_SOURCE = "dsm_registration_unavailable_guard";
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -58,6 +60,21 @@ export function resolveMeasurementDiagnosticState(
   const registration = asRecord(
     geometry.registration ?? geometry.registration_gate,
   );
+  const dsmCoordinateMatch = asRecord(
+    geometry.dsm_coordinate_match ??
+      registration.dsm_coordinate_match ??
+      overlayDebug.dsm_coordinate_match ??
+      dpgd.dsm_coordinate_match,
+  );
+  const dsmBbox = asRecord(dsmCoordinateMatch.dsm_bbox);
+  const dsmStopGuard = asRecord(
+    geometry.dsm_stop_guard ??
+      dpgd.dsm_stop_guard ??
+      overlayDebug.dsm_stop_guard ??
+      sourceContext.dsm_stop_guard ??
+      sourceContextDebug.dsm_stop_guard,
+  );
+  const dsmStopGuardDiagnostics = asRecord(dsmStopGuard.diagnostics);
   const targetMask = asRecord(
     geometry.target_mask_isolation ??
       geometry.perimeter_inner_trace ??
@@ -137,6 +154,80 @@ export function resolveMeasurementDiagnosticState(
         dpgd.google_solar_status,
         overlayDebug.google_solar_status,
       ) != null;
+
+  const dsmRegistrationStatus = readString(
+    geometry.dsm_registration_status,
+    row.dsm_registration_status,
+    registration.dsm_registration_status,
+    dsmStopGuard.dsm_registration_status,
+    sourceContext.dsm_registration_status,
+    sourceContextDebug.dsm_registration_status,
+  );
+  const dsmRegistrationReason = readString(
+    geometry.hard_fail_reason,
+    geometry.block_customer_report_reason,
+    row.hard_fail_reason,
+    row.gate_reason,
+    nestedHardFail,
+    dsmStopGuard.hard_fail_reason,
+    dsmStopGuard.block_customer_report_reason,
+    dsmStopGuard.reason,
+  );
+  const aerialPerimeterEditable =
+    dsmRegistrationStatus === "unavailable_but_aerial_perimeter_editable" ||
+    readBool(
+      geometry.aerial_perimeter_editable,
+      registration.aerial_perimeter_editable,
+      dsmStopGuard.aerial_perimeter_editable,
+      dsmStopGuardDiagnostics.aerial_perimeter_editable,
+      dsmStopGuardDiagnostics.raster_candidate_check_passed,
+      geometry.raster_candidate_check_passed,
+    ) ||
+    hasObjectEvidence(targetMask) ||
+    Array.isArray(geometry.footprint_px) ||
+    Array.isArray(geometry.true_outer_roof_perimeter_px) ||
+    Array.isArray(geometry.selected_perimeter_after_refinement);
+  const hasDsmBoundsEvidence = hasObjectEvidence(
+      registration.dsm_tile_bounds_lat_lng,
+    ) ||
+    hasObjectEvidence(geometry.dsm_tile_bounds_lat_lng) ||
+    hasObjectEvidence(geometry.dsm_bounds) ||
+    hasObjectEvidence(dsmBbox.bounds) ||
+    hasObjectEvidence(dsmBbox.bounds_lat_lng) ||
+    hasObjectEvidence(dsmCoordinateMatch.bounds) ||
+    hasObjectEvidence(dsmCoordinateMatch.dsm_bounds);
+
+  if (
+    aerialPerimeterEditable &&
+    (dsmRegistrationStatus === "unavailable_but_aerial_perimeter_editable" ||
+      dsmRegistrationReason === DSM_REGISTRATION_UNAVAILABLE_REASON ||
+      (dsmRegistrationReason === "dsm_bounds_missing" && hasDsmBoundsEvidence))
+  ) {
+    return {
+      result_state: "perimeter_only",
+      hard_fail_reason: DSM_REGISTRATION_UNAVAILABLE_REASON,
+      block_customer_report_reason: DSM_REGISTRATION_UNAVAILABLE_REASON,
+      failure_stage: "dsm_registration",
+      diagram_render_intent: "perimeter_only",
+      footprint_source: readString(
+        geometry.footprint_source,
+        dpgd.footprint_source,
+        overlayDebug.footprint_source,
+        "google_solar_roof_mask",
+      ),
+      customer_report_ready: false,
+      report_blocked: true,
+      needs_review: true,
+      final_state_source: DSM_REGISTRATION_UNAVAILABLE_SOURCE,
+      final_state_precedence_version: PRECEDENCE_VERSION,
+      source_acquisition_completed: true,
+      target_confirmation_passed: targetConfirmed,
+      dsm_loaded: dsmLoaded,
+      mask_loaded: maskLoaded,
+      target_mask_isolation_checked: targetMaskChecked,
+      phase0_incomplete_reason: DSM_REGISTRATION_UNAVAILABLE_REASON,
+    };
+  }
 
   if (runtimeEvidence && (dsmLoaded || maskLoaded || targetMaskChecked)) {
     return {

@@ -899,6 +899,9 @@ function withPhase3Visibility(
   const resolvedDiagnosticState = resolveMeasurementDiagnosticState(payload);
   const runtimeStateWins = resolvedDiagnosticState.final_state_source ===
     "runtime_cpu_budget_guard";
+  const dsmRegistrationUnavailableWins = resolvedDiagnosticState.final_state_source ===
+    "dsm_registration_unavailable_guard";
+  const diagnosticStateWins = runtimeStateWins || dsmRegistrationUnavailableWins;
   // ─── Registration failure dominates hard_fail_reason / failure_stage ───
   const reg =
     (payload.registration ?? payload.registration_gate ?? null) as any;
@@ -910,12 +913,12 @@ function withPhase3Visibility(
     (payload.mask_loaded === true ||
       payload.phase3A_5?.target_mask_bbox_px != null);
   const rawRegFailureReason = deriveRegistrationFailureReason(reg);
-  const regFailureReason = runtimeStateWins || phase3A5RanWithSources
+  const regFailureReason = diagnosticStateWins || phase3A5RanWithSources
     ? null
     : rawRegFailureReason;
   const hardFailReason = regFailureReason
     ? regFailureReason
-    : (runtimeStateWins
+    : (diagnosticStateWins
       ? resolvedDiagnosticState.hard_fail_reason
       : (phase3A.perimeter_classification_invalid
         ? "perimeter_classification_invalid"
@@ -923,7 +926,7 @@ function withPhase3Visibility(
           payload.failure_reason ?? null)));
   const failureStage = regFailureReason
     ? registrationFailureStage(regFailureReason)
-    : (runtimeStateWins
+    : (diagnosticStateWins
       ? resolvedDiagnosticState.failure_stage
       : (payload.failure_stage ??
         (String(resultState).includes("perimeter")
@@ -953,6 +956,34 @@ function withPhase3Visibility(
     phase3E = buildRegistrationBlockedPhaseBlock(phase3E);
   }
 
+  if (dsmRegistrationUnavailableWins) {
+    phase3_5 = {
+      ...phase3_5,
+      executed: false,
+      skipped_reason: "dsm_registration_unavailable",
+    };
+    phase3A_5 = {
+      ...phase3A_5,
+      executed: false,
+      skipped_reason: "dsm_registration_unavailable",
+    };
+    phase3C = {
+      ...phase3C,
+      executed: false,
+      skipped_reason: "dsm_registration_unavailable",
+    };
+    phase3D = {
+      ...phase3D,
+      executed: false,
+      skipped_reason: "dsm_registration_unavailable",
+    };
+    phase3E = {
+      ...phase3E,
+      executed: false,
+      skipped_reason: "dsm_registration_unavailable",
+    };
+  }
+
   return {
     ...payload,
     ...PHASE3_VERSION_BLOCK,
@@ -964,13 +995,13 @@ function withPhase3Visibility(
     phase3C,
     phase3D,
     phase3E,
-    result_state: runtimeStateWins
+    result_state: diagnosticStateWins
       ? resolvedDiagnosticState.result_state
       : normalizeResultStateForWrite(resultState, payload),
     hard_fail_reason: hardFailReason,
     block_customer_report_reason: regFailureReason
       ? hardFailReason
-      : (runtimeStateWins
+      : (diagnosticStateWins
         ? resolvedDiagnosticState.block_customer_report_reason
         : (payload.block_customer_report_reason ?? hardFailReason ?? null)),
     failure_stage: failureStage,
@@ -978,7 +1009,7 @@ function withPhase3Visibility(
       ? (resultState === "ai_failed_target_unconfirmed"
         ? "target_confirmation_required"
         : "coordinate_registration_debug_only")
-      : runtimeStateWins
+      : diagnosticStateWins
       ? resolvedDiagnosticState.diagram_render_intent
       : (payload.diagram_render_intent ??
         (String(resultState).startsWith("ai_failed_")
@@ -989,7 +1020,9 @@ function withPhase3Visibility(
           ))),
     customer_report_ready: runtimeStateWins
       ? false
-      : resultState === "customer_report_ready" && !regFailureReason,
+      : (dsmRegistrationUnavailableWins
+        ? false
+        : resultState === "customer_report_ready" && !regFailureReason),
     final_state_source: resolvedDiagnosticState.final_state_source,
     final_state_resolved_at: new Date().toISOString(),
     final_state_precedence_version:
@@ -1239,7 +1272,9 @@ function ensureRegistrationProofBeforeWrite(
     geometry_report_json: geometry,
   });
   if (
-    resolvedDiagnosticState.final_state_source === "runtime_cpu_budget_guard"
+    resolvedDiagnosticState.final_state_source === "runtime_cpu_budget_guard" ||
+    resolvedDiagnosticState.final_state_source ===
+      "dsm_registration_unavailable_guard"
   ) {
     (geometry as any).registration = fallback;
     (geometry as any).registration_gate = fallback;
@@ -2028,6 +2063,9 @@ function prepareRoofMeasurementPayload(
   });
   const runtimeStateWins = resolvedDiagnosticState.final_state_source ===
     "runtime_cpu_budget_guard";
+  const dsmRegistrationUnavailableWins = resolvedDiagnosticState.final_state_source ===
+    "dsm_registration_unavailable_guard";
+  const diagnosticStateWins = runtimeStateWins || dsmRegistrationUnavailableWins;
 
   // v2.3 precedence: prefer the honest gate-level failure
   // (coordinate_registration_failed) over the conflict label. Conflicts are
@@ -2037,7 +2075,7 @@ function prepareRoofMeasurementPayload(
   if (conflicts.length > 0) {
     (geometry as any).registration_field_conflicts = conflicts;
   }
-  if (dominantReason && !runtimeStateWins) {
+  if (dominantReason && !diagnosticStateWins) {
     regFailureReasonForPrecedence = dominantReason as any;
     const hard = dominantReason === "registration_field_conflict"
       ? "registration_field_conflict"
@@ -2074,7 +2112,7 @@ function prepareRoofMeasurementPayload(
     }
   }
 
-  if (regFailureReasonForPrecedence && !runtimeStateWins) {
+  if (regFailureReasonForPrecedence && !diagnosticStateWins) {
     // v2.3: quarantine stale perimeter / topology / refinement payloads under
     // `stale_debug_payload` so a blocked-by-registration row cannot accidentally
     // render eave/rake/perimeter totals from a prior successful pass.
@@ -2120,14 +2158,14 @@ function prepareRoofMeasurementPayload(
   (geometry as any).registration_precedence_version =
     REGISTRATION_PRECEDENCE_VERSION;
   (geometry as any).registration_precedence_applied =
-    !!regFailureReasonForPrecedence && !runtimeStateWins;
-  (geometry as any).registration_precedence_reason = runtimeStateWins
+    !!regFailureReasonForPrecedence && !diagnosticStateWins;
+  (geometry as any).registration_precedence_reason = diagnosticStateWins
     ? null
     : regFailureReasonForPrecedence;
   (geometry as any).registration_gate_version = regVersionForPrecedence ??
     (geometry as any).registration_gate_version ?? null;
 
-  if (runtimeStateWins) {
+  if (diagnosticStateWins) {
     (geometry as any).result_state = resolvedDiagnosticState.result_state;
     (geometry as any).hard_fail_reason =
       resolvedDiagnosticState.hard_fail_reason;
@@ -2141,6 +2179,11 @@ function prepareRoofMeasurementPayload(
     (geometry as any).customer_report_ready = false;
     (geometry as any).report_blocked = true;
     (geometry as any).needs_review = true;
+    if (dsmRegistrationUnavailableWins) {
+      (geometry as any).dsm_registration_status =
+        (geometry as any).dsm_registration_status ??
+          "unavailable_but_aerial_perimeter_editable";
+    }
     (geometry as any).final_state_source =
       resolvedDiagnosticState.final_state_source;
     (geometry as any).final_state_resolved_at = new Date().toISOString();
@@ -2171,7 +2214,7 @@ function prepareRoofMeasurementPayload(
     result_state: (next as any).result_state,
     hard_fail_reason: (next as any).hard_fail_reason,
     block_customer_report_reason: (next as any).block_customer_report_reason,
-    registration_precedence_reason: runtimeStateWins
+    registration_precedence_reason: diagnosticStateWins
       ? null
       : regFailureReasonForPrecedence,
     failure_stage: (next as any).failure_stage,
@@ -4270,11 +4313,40 @@ async function processJob(input: any) {
               "roof_mask_component_extraction",
             );
             googleSolarMaskStageDebug.mask_component_count = components.length;
-            const confirmedCenterPxForComponents = (input as any)
-              .confirmed_roof_center_px as
-                | [number, number]
-                | null
-                | undefined;
+            const confirmedCenterPxForComponents = (() => {
+              const fromInput = (input as any).confirmed_roof_center_px;
+              const fromPreflight = (input as any)._registration_preflight
+                ?.confirmed_roof_center_px;
+              const candidate = Array.isArray(fromInput) && fromInput.length === 2
+                ? fromInput
+                : Array.isArray(fromPreflight) && fromPreflight.length === 2
+                ? fromPreflight
+                : null;
+              if (
+                candidate &&
+                Number.isFinite(Number(candidate[0])) &&
+                Number.isFinite(Number(candidate[1]))
+              ) {
+                return [Number(candidate[0]), Number(candidate[1])] as [
+                  number,
+                  number,
+                ];
+              }
+              // Source acquisition is re-centered on the confirmed roof target.
+              // If the client did not send a pixel anchor, the raster center is
+              // the confirmed target pixel. Do not fail open and let a tree or
+              // fused yard component win component selection.
+              if (
+                Boolean((input as any).user_confirmed_roof_target) ||
+                Boolean((input as any).roof_target_admin_override)
+              ) {
+                return [raster.width / 2, raster.height / 2] as [
+                  number,
+                  number,
+                ];
+              }
+              return null;
+            })();
             if (components.length > 0) {
               (globalThis as any).__maskComponentsRaw = components.map((c) => ({
                 component_id: c.component_id,
@@ -4785,10 +4857,30 @@ async function processJob(input: any) {
     // Registration Gate C (v2): per-candidate confirmed-roof-center containment.
     // A footprint whose polygon does NOT contain the user-confirmed roof center
     // is the wrong house (Fonsica failure mode). Reject before validity ranking.
-    const confirmedCenterPxForGateC = (input as any).confirmed_roof_center_px as
-      | [number, number]
-      | null
-      | undefined;
+    const confirmedCenterPxForGateC = (() => {
+      const fromInput = (input as any).confirmed_roof_center_px;
+      const fromPreflight = (input as any)._registration_preflight
+        ?.confirmed_roof_center_px;
+      const candidate = Array.isArray(fromInput) && fromInput.length === 2
+        ? fromInput
+        : Array.isArray(fromPreflight) && fromPreflight.length === 2
+        ? fromPreflight
+        : null;
+      if (
+        candidate &&
+        Number.isFinite(Number(candidate[0])) &&
+        Number.isFinite(Number(candidate[1]))
+      ) {
+        return [Number(candidate[0]), Number(candidate[1])] as [number, number];
+      }
+      if (
+        Boolean((input as any).user_confirmed_roof_target) ||
+        Boolean((input as any).roof_target_admin_override)
+      ) {
+        return [raster.width / 2, raster.height / 2] as [number, number];
+      }
+      return null;
+    })();
     if (
       confirmedCenterPxForGateC &&
       Array.isArray(confirmedCenterPxForGateC) &&
@@ -16463,7 +16555,7 @@ async function insertFailedPreliminaryMeasurement(
      *   - result_state lands as `perimeter_only` (already in debug)
      *   - hard_fail_reason = null   (no hard fail — DSM validation only)
      *   - block_customer_report_reason = opts.dsmValidationReason
-     *   - validation_status = "needs_review"
+     *   - validation_status = "needs_internal_review"
      *   - last_failure_reason = null
      * Customer-ready gate is NOT relaxed.
      */
@@ -16527,7 +16619,9 @@ async function insertFailedPreliminaryMeasurement(
   // status messages), fall back to the dsm-validation reason during downgrade.
   const persistedNoteReason = persistedFailureReason ??
     (opts?.dsmValidationReason || "dsm_validation_unavailable");
-  const persistedValidationStatus = aerialDowngrade ? "needs_review" : "failed";
+  const persistedValidationStatus = aerialDowngrade
+    ? "needs_internal_review"
+    : "failed";
   const aiDetectionData = {
     topology_source: phase3Debug?.topology_source || REQUIRED_TOPOLOGY_SOURCE,
     solver_version: phase3Debug?.solver_version ||
