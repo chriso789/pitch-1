@@ -2450,9 +2450,9 @@ Deno.serve(async (req) => {
       ? "project"
       : "measurement_test";
     const source_record_id = lead_id || project_id || measurement_test_run_id;
-    // pipeline_entry_id is a FK to pipeline_entries; must be null for developer
-    // test runs (measurement_test_run_id is a client-generated uuid with no row).
-    const legacy_pipeline_entry_id = lead_id || null;
+    // Legacy UI polling still requires measurement_jobs.pipeline_entry_id to be
+    // non-null, even for developer test runs that do not have a real lead row.
+    const legacy_pipeline_entry_id = lead_id || measurement_test_run_id || null;
 
     if (!tenant_id) {
       return json(
