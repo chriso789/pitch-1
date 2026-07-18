@@ -433,6 +433,21 @@ Deno.test("runtime CPU budget guard preempts Phase 3A.5/topology before stuck ru
   assert(source.includes("AI_MEASUREMENT_TOPOLOGY_PIXEL_LIMIT"));
 });
 
+Deno.test("Phase 3A.5 aerial tracing is not blocked by topology workload cutoff", async () => {
+  const source = await Deno.readTextFile(
+    new URL("../index.ts", import.meta.url),
+  );
+  assert(source.includes("const phase3A5WorkUnits = dsmW * dsmH;"));
+  assert(
+    source.includes("const phase3A5Budget = shouldPreemptForCpuBudget(input, 0);"),
+    "Phase 3A.5 should use wall-clock-only preempt so Fonsica-class 998×998 DSM can still complete aerial tracing",
+  );
+  assert(
+    source.includes("const ckpt = shouldPreemptForCpuBudget(input, 0);"),
+    "pre-refinement call checkpoint should not pass phase3A5WorkUnits into the topology workload cutoff",
+  );
+});
+
 Deno.test("diagnostic state precedence keeps CPU timeout above stale registration fields", async () => {
   const source = await Deno.readTextFile(
     new URL("../index.ts", import.meta.url),
