@@ -1,47 +1,58 @@
-# OpenTopography DSM Fallback
-
 ## Goal
-Stop `dsm_bounds_missing` hard-fails (like the Fonsica run) by using USGS 3DEP 1m DSM from OpenTopography whenever Google Solar returns a raster without a usable georeference.
+Make the **Run Measurement Test** button in the AI Measurement admin tab drive the new **RoofTrace AI** perimeter-first workflow instead of (or in addition to) the legacy `start-ai-measurement` + `vision-trace-roof` path.
 
-## What ships
+## Scope
+Only the Developer Testing Area on `/admin/companies` → AI Measurement tab. No changes to production Measure Lab or customer report pipeline yet.
 
-### 1. New shared module: `supabase/functions/_shared/opentopo-dsm-source.ts`
-- `fetchUsgs3DepDsm({ lat, lng, radiusMeters })` — calls OpenTopography `globaldem` API with `demtype=USGS1m` (US, best resolution), falls back to `USGS10m`, then `SRTMGL1` outside US.
-- Requests GeoTIFF with explicit bbox → response ALWAYS has valid bounds (we send them, they echo back in the raster).
-- Returns `{ tiff: ArrayBuffer, bounds: {sw,ne}, mpp: number, source: 'usgs_3dep_1m' | 'usgs_3dep_10m' | 'srtm_gl1', tileSize: {w,h} }`.
-- Uses `Deno.env.get('OPENTOPOGRAPHY_API_KEY')`.
-- All failures return `{ error, http_status, latency_ms }` for the evidence log — never throws.
+## 1. Database (one migration)
+Create the four RoofTrace AI tables per skill schema, tenant-scoped RLS + GRANTs:
 
-### 2. Wire into DSM registration cascade
-In `supabase/functions/_shared/early-dsm-registration.ts` (and the acquisition step it calls):
-- After Google Solar DSM is fetched, if `dsm_bounds_source === 'missing'` AND raster-bounds derivation also fails, call `fetchUsgs3DepDsm` with the confirmed lat/lng and a radius derived from the Solar tile size (fallback: 80m).
-- Feed the returned bounds + tiff into the same registration path — `dsm_bounds_source` becomes `usgs_3dep_1m` (new enum value in `DsmBoundsSource`).
-- Persist `dsm_registration_source` on the row so we can audit which runs used the fallback.
+- `roof_trace_sessions` — session per address/job, holds source + calibration + current perimeter_status + result_state
+- `roof_trace_revisions` — immutable versioned geometry payloads (`draft|approved|superseded`), unique(session_id, revision)
+- `roof_trace_jobs` — async worker jobs (`acquire|calibrate|perimeter|topology|pitch|report`)
+- `measurement_drafts` — approved output (`ready|applied|superseded`); never touches estimates
 
-### 3. Evidence log entry
-Push one attempt into `evidence_acquisition_log`:
-```
-{ layer: 'dsm', source: 'opentopography_usgs1m', status: 'ok'|'empty'|'error', latency_ms, http_status }
-```
-So the EvidenceSourcesPanel shows exactly what happened.
+Enums: `perimeter_status`, `result_state` as defined in skill.
 
-### 4. Gating — customer-report readiness
-Per your earlier question: when `dsm_registration_source === 'usgs_3dep_1m'`, allow the same `customer_report_ready` states as Google Solar-registered runs (3DEP 1m is equal or better resolution than Solar's ~0.13 m/px effective sampling for a house-sized AOI, and it carries authoritative georef). No perimeter-only gate. If it drops to `usgs_3dep_10m` or `srtm_gl1`, hard-cap at `perimeter_only` — 10m/30m is too coarse for facet-level topology.
+## 2. Edge function (grouped, per architecture guard)
+Add routes to existing `measurement-api` (or create if not present following the `*-api` grouping rule) — **not** a new standalone function:
 
-### 5. Tests
-- Unit test in `tests/edge-functions/opentopo-dsm-source.test.ts`: mock fetch, assert bbox math, assert graceful failure path, assert `usgs_3dep_1m → usgs_3dep_10m → srtm_gl1` cascade.
-- Add a route audit assertion that `dsm_bounds_source` may equal `usgs_3dep_1m` and still be canonical.
+- `POST /roof-trace/sessions` — create session from `{ address, lat, lng, job_id? }`
+- `POST /roof-trace/sessions/:id/run` — enqueue `roof_trace_jobs` for `{ stages: ['acquire','calibrate','perimeter'] }`
+- `GET  /roof-trace/sessions/:id` — session + latest revision + open jobs
+- `POST /roof-trace/sessions/:id/approve` — validate gates (closed non-self-intersecting perimeter, scale conf ≥ 0.85), write approved revision, upsert `measurement_drafts`
 
-## Non-goals (this pass)
-- No LidarExplorer direct integration — OpenTopography already fronts USGS 3DEP and is one auth surface.
-- No reprocessing of past failed runs; user can rerun Fonsica manually to confirm.
+Worker execution stays inside the existing measurement worker function; add a `roof-trace` route that:
+1. Fetches Google tile centered on confirmed lat/lng at auto-picked zoom (Solar bbox → zoom 19–21)
+2. Calls Gemini via Lovable AI Gateway with perimeter-only prompt (reuse `vision-trace-roof` prompt but constrained to outer eave polygon)
+3. Computes `perimeter_gate_metrics` (closure, self-intersect, coverage vs Solar bbox)
+4. Writes revision as `draft` with `perimeter_status='proposed'`
 
-## Files touched
-- **new** `supabase/functions/_shared/opentopo-dsm-source.ts`
-- **edit** `supabase/functions/_shared/dsm-registration.ts` (add `usgs_3dep_1m|usgs_3dep_10m|srtm_gl1` to `DsmBoundsSource`, accept these as valid non-derived bounds)
-- **edit** `supabase/functions/_shared/early-dsm-registration.ts` (invoke fallback when Solar bounds missing)
-- **edit** `supabase/functions/start-ai-measurement/index.ts` (evidence log push + gating for 10m/30m tiers)
-- **edit** `supabase/functions/_shared/result-state.ts` (map `srtm_only`/`usgs_10m_only` to `perimeter_only`)
-- **new** `tests/edge-functions/opentopo-dsm-source.test.ts`
+## 3. Frontend
+Replace/augment `MeasurementTestPanel.tsx`:
 
-Ship it?
+- Keep address autocomplete + Run button
+- On Run: call `POST /roof-trace/sessions` then `.../run`
+- Poll `roof_trace_jobs` via existing polling helper until perimeter job completes
+- Render the returned outer perimeter + tile in a new `RoofTraceWorkbenchPreview` component (read-only view of the workbench canvas — cyan proposed, orange needs review, green accepted)
+- Show `perimeter_gate_metrics` inline (closure ✓/✗, coverage %, self-intersect ✓/✗)
+- **Approve perimeter** button → calls `.../approve`, then shows `measurement_drafts` row id
+
+Legacy `start-ai-measurement` test path stays available under a "Legacy pipeline" collapsible so we can still compare.
+
+## 4. Out of scope (this PR)
+- Full workbench editing UI (drawing tools, layer toggles, right-panel props) — preview only for now
+- Topology / pitch / report stages
+- Measure Lab entry point in Job page
+
+## Technical notes
+- All tables get `tenant_id uuid not null` + RLS `USING (tenant_id = get_current_tenant_id())`
+- GRANTs: `authenticated` = full CRUD, `service_role` = ALL, no anon
+- Frontend uses `edgeApi("measurement-api", "/roof-trace/...", payload)` per architecture guard
+- No changes to `roof_measurements` or `ai_measurement_jobs` — RoofTrace AI is fully additive
+
+## Acceptance
+- Clicking Run creates a `roof_trace_sessions` row and a `perimeter` job
+- Within ~30s the panel renders an AI-proposed cyan perimeter over the Google tile
+- Approve button writes a `roof_trace_revisions` row (revision=1, state=approved) and a `measurement_drafts` row
+- No `estimates`, `estimate_line_items`, or `roof_measurements` rows are touched

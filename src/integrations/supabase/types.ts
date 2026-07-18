@@ -28322,6 +28322,75 @@ export type Database = {
           },
         ]
       }
+      measurement_drafts: {
+        Row: {
+          applied_at: string | null
+          approved_at: string
+          approved_by: string
+          created_at: string
+          facets: Json
+          id: string
+          job_id: string | null
+          linear_totals: Json
+          revision_id: string
+          session_id: string
+          status: Database["public"]["Enums"]["measurement_draft_status"]
+          tenant_id: string
+          totals: Json
+          updated_at: string
+          warnings: Json
+        }
+        Insert: {
+          applied_at?: string | null
+          approved_at?: string
+          approved_by: string
+          created_at?: string
+          facets?: Json
+          id?: string
+          job_id?: string | null
+          linear_totals?: Json
+          revision_id: string
+          session_id: string
+          status?: Database["public"]["Enums"]["measurement_draft_status"]
+          tenant_id: string
+          totals?: Json
+          updated_at?: string
+          warnings?: Json
+        }
+        Update: {
+          applied_at?: string | null
+          approved_at?: string
+          approved_by?: string
+          created_at?: string
+          facets?: Json
+          id?: string
+          job_id?: string | null
+          linear_totals?: Json
+          revision_id?: string
+          session_id?: string
+          status?: Database["public"]["Enums"]["measurement_draft_status"]
+          tenant_id?: string
+          totals?: Json
+          updated_at?: string
+          warnings?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "measurement_drafts_revision_id_fkey"
+            columns: ["revision_id"]
+            isOneToOne: false
+            referencedRelation: "roof_trace_revisions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "measurement_drafts_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "roof_trace_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       measurement_elevation_data: {
         Row: {
           acquisition_date: string | null
@@ -45845,6 +45914,172 @@ export type Database = {
         }
         Relationships: []
       }
+      roof_trace_jobs: {
+        Row: {
+          created_at: string
+          error: string | null
+          finished_at: string | null
+          id: string
+          input: Json
+          output: Json
+          session_id: string
+          started_at: string | null
+          status: Database["public"]["Enums"]["roof_trace_job_status"]
+          tenant_id: string
+          type: Database["public"]["Enums"]["roof_trace_job_type"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          input?: Json
+          output?: Json
+          session_id: string
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["roof_trace_job_status"]
+          tenant_id: string
+          type: Database["public"]["Enums"]["roof_trace_job_type"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          input?: Json
+          output?: Json
+          session_id?: string
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["roof_trace_job_status"]
+          tenant_id?: string
+          type?: Database["public"]["Enums"]["roof_trace_job_type"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "roof_trace_jobs_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "roof_trace_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      roof_trace_revisions: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          author_id: string
+          created_at: string
+          geometry: Json
+          id: string
+          perimeter_gate_metrics: Json
+          revision: number
+          session_id: string
+          state: Database["public"]["Enums"]["roof_trace_revision_state"]
+          tenant_id: string
+          totals: Json
+          warnings: Json
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          author_id: string
+          created_at?: string
+          geometry: Json
+          id?: string
+          perimeter_gate_metrics?: Json
+          revision: number
+          session_id: string
+          state?: Database["public"]["Enums"]["roof_trace_revision_state"]
+          tenant_id: string
+          totals?: Json
+          warnings?: Json
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          author_id?: string
+          created_at?: string
+          geometry?: Json
+          id?: string
+          perimeter_gate_metrics?: Json
+          revision?: number
+          session_id?: string
+          state?: Database["public"]["Enums"]["roof_trace_revision_state"]
+          tenant_id?: string
+          totals?: Json
+          warnings?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "roof_trace_revisions_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "roof_trace_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      roof_trace_sessions: {
+        Row: {
+          address: string | null
+          approved_revision: number | null
+          calibration: Json
+          created_at: string
+          created_by: string
+          current_revision: number
+          id: string
+          job_id: string | null
+          lat: number | null
+          lng: number | null
+          notes: string | null
+          perimeter_status: Database["public"]["Enums"]["roof_trace_perimeter_status"]
+          result_state: Database["public"]["Enums"]["roof_trace_result_state"]
+          source: Json
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          approved_revision?: number | null
+          calibration?: Json
+          created_at?: string
+          created_by: string
+          current_revision?: number
+          id?: string
+          job_id?: string | null
+          lat?: number | null
+          lng?: number | null
+          notes?: string | null
+          perimeter_status?: Database["public"]["Enums"]["roof_trace_perimeter_status"]
+          result_state?: Database["public"]["Enums"]["roof_trace_result_state"]
+          source?: Json
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          approved_revision?: number | null
+          calibration?: Json
+          created_at?: string
+          created_by?: string
+          current_revision?: number
+          id?: string
+          job_id?: string | null
+          lat?: number | null
+          lng?: number | null
+          notes?: string | null
+          perimeter_status?: Database["public"]["Enums"]["roof_trace_perimeter_status"]
+          result_state?: Database["public"]["Enums"]["roof_trace_result_state"]
+          source?: Json
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       roof_training_annotations: {
         Row: {
           annotation_type: string | null
@@ -62481,6 +62716,7 @@ export type Database = {
         | "advertisement"
         | "social_media"
         | "other"
+      measurement_draft_status: "ready" | "applied" | "superseded"
       outbox_status:
         | "pending"
         | "processing"
@@ -62623,6 +62859,35 @@ export type Database = {
         | "claimed"
         | "failed"
       reward_type: "cash" | "gift_card" | "physical" | "points" | "badge"
+      roof_trace_job_status:
+        | "queued"
+        | "running"
+        | "succeeded"
+        | "failed"
+        | "cancelled"
+      roof_trace_job_type:
+        | "acquire"
+        | "calibrate"
+        | "perimeter"
+        | "topology"
+        | "pitch"
+        | "report"
+      roof_trace_perimeter_status:
+        | "pending"
+        | "proposed"
+        | "needs_review"
+        | "accepted"
+        | "rejected"
+      roof_trace_result_state:
+        | "queued"
+        | "acquiring"
+        | "calibrating"
+        | "tracing_perimeter"
+        | "tracing_topology"
+        | "needs_review"
+        | "ready"
+        | "failed"
+      roof_trace_revision_state: "draft" | "approved" | "superseded"
       roof_type:
         | "shingle"
         | "metal"
@@ -62886,6 +63151,7 @@ export const Constants = {
         "social_media",
         "other",
       ],
+      measurement_draft_status: ["ready", "applied", "superseded"],
       outbox_status: [
         "pending",
         "processing",
@@ -63042,6 +63308,39 @@ export const Constants = {
         "failed",
       ],
       reward_type: ["cash", "gift_card", "physical", "points", "badge"],
+      roof_trace_job_status: [
+        "queued",
+        "running",
+        "succeeded",
+        "failed",
+        "cancelled",
+      ],
+      roof_trace_job_type: [
+        "acquire",
+        "calibrate",
+        "perimeter",
+        "topology",
+        "pitch",
+        "report",
+      ],
+      roof_trace_perimeter_status: [
+        "pending",
+        "proposed",
+        "needs_review",
+        "accepted",
+        "rejected",
+      ],
+      roof_trace_result_state: [
+        "queued",
+        "acquiring",
+        "calibrating",
+        "tracing_perimeter",
+        "tracing_topology",
+        "needs_review",
+        "ready",
+        "failed",
+      ],
+      roof_trace_revision_state: ["draft", "approved", "superseded"],
       roof_type: [
         "shingle",
         "metal",
