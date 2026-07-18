@@ -2325,6 +2325,9 @@ Deno.serve(async (req) => {
     const body = await req.json();
 
     // Normalize: accept both new and legacy field names.
+    const measurement_test_run_id: string | null = body.measurement_test_run_id ??
+      body.measurementTestRunId ?? null;
+    const is_measurement_test_run = Boolean(measurement_test_run_id);
     const lead_id: string | null = body.lead_id ?? body.pipelineEntryId ??
       body.pipeline_entry_id ?? null;
     const project_id: string | null = body.project_id ?? null;
@@ -2397,9 +2400,10 @@ Deno.serve(async (req) => {
     const marker_offset_ft: number | null = body.marker_offset_ft ??
       body.markerOffsetFt ?? null;
 
-    if (!lead_id && !project_id) {
+    if (!lead_id && !project_id && !measurement_test_run_id) {
       return json({
-        error: "lead_id (or pipelineEntryId) or project_id is required.",
+        error:
+          "lead_id (or pipelineEntryId), project_id, or measurement_test_run_id is required.",
       }, 400);
     }
     if (!property_address && (latitude == null || longitude == null)) {
@@ -2440,6 +2444,13 @@ Deno.serve(async (req) => {
     const company_id: string | null = sourceRecord?.company_id ?? null;
     const resolved_address: string | null = property_address ||
       sourceRecord?.address || sourceRecord?.property_address || null;
+    const source_record_type = lead_id
+      ? "lead"
+      : project_id
+      ? "project"
+      : "measurement_test";
+    const source_record_id = lead_id || project_id || measurement_test_run_id;
+    const legacy_pipeline_entry_id = lead_id || measurement_test_run_id;
 
     if (!tenant_id) {
       return json(
@@ -2501,7 +2512,7 @@ Deno.serve(async (req) => {
 
     const primaryCandidate = addressGateCandidates[0];
     const fallbackCandidates = addressGateCandidates.slice(1);
-    const addressGateResult = primaryCandidate
+    const addressGateResult = primaryCandidate && !is_measurement_test_run
       ? await requireProductionReadyAddress({
         client: supabase,
         tenantId: tenant_id,
@@ -2528,11 +2539,11 @@ Deno.serve(async (req) => {
       .insert({
         tenant_id,
         user_id,
-        pipeline_entry_id: lead_id, // legacy column required by existing UI poll
+        pipeline_entry_id: legacy_pipeline_entry_id, // legacy column required by existing UI poll
         lead_id,
         project_id,
-        source_record_type: lead_id ? "lead" : "project",
-        source_record_id: lead_id || project_id,
+        source_record_type,
+        source_record_id,
         source_button,
         status: "queued",
         progress_message: "Queued for AI measurement",
@@ -2566,8 +2577,8 @@ Deno.serve(async (req) => {
         user_id,
         lead_id,
         project_id,
-        source_record_type: lead_id ? "lead" : "project",
-        source_record_id: lead_id || project_id,
+        source_record_type,
+        source_record_id,
         source_button,
         property_address: resolved_address ?? "Unknown Address",
         latitude,
@@ -2694,8 +2705,8 @@ Deno.serve(async (req) => {
           tenant_id,
           company_id,
           property_address: resolved_address ?? "Unknown Address",
-          source_record_type: lead_id ? "lead" : "project",
-          source_record_id: lead_id || project_id,
+          source_record_type,
+          source_record_id,
           source_button,
           logical_image_width,
           logical_image_height,
@@ -2786,8 +2797,8 @@ Deno.serve(async (req) => {
       property_address: resolved_address ?? "Unknown Address",
       latitude: effective_latitude,
       longitude: effective_longitude,
-      source_record_type: lead_id ? "lead" : "project",
-      source_record_id: lead_id || project_id,
+      source_record_type,
+      source_record_id,
       source_button,
       pitch_override,
       waste_factor_percent,

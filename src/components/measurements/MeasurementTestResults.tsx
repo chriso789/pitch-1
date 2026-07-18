@@ -14,6 +14,8 @@ import { cn } from '@/lib/utils';
 
 interface TestResult {
   measurementId: string;
+  canonicalJobId?: string;
+  aiMeasurementJobId?: string;
   timing: { totalMs: number };
   data: {
     address: string;
@@ -129,17 +131,10 @@ export function MeasurementTestResults({ result, previousResults = [] }: Measure
         .maybeSingle();
       if (rmErr) throw rmErr;
 
-      // Also resolve the ai_measurement_jobs id (for diagrams + overlays)
-      const { data: job } = await (supabase as any)
-        .from('ai_measurement_jobs')
-        .select('id')
-        .eq('roof_measurement_id', result.measurementId)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const resolvedJobId = result.aiMeasurementJobId ?? rm?.ai_measurement_job_id ?? null;
 
       setReportMeasurement(rm);
-      setReportJobId(job?.id ?? null);
+      setReportJobId(resolvedJobId);
       setReportOpen(true);
     } catch (e: any) {
       toast({
@@ -409,6 +404,18 @@ export function MeasurementTestResults({ result, previousResults = [] }: Measure
                   <span className="text-muted-foreground">Measurement ID:</span>{' '}
                   <span className="select-all">{result.measurementId}</span>
                 </div>
+                {result.canonicalJobId && (
+                  <div>
+                    <span className="text-muted-foreground">Canonical Job:</span>{' '}
+                    <span className="select-all">{result.canonicalJobId}</span>
+                  </div>
+                )}
+                {result.aiMeasurementJobId && (
+                  <div>
+                    <span className="text-muted-foreground">AI Job:</span>{' '}
+                    <span className="select-all">{result.aiMeasurementJobId}</span>
+                  </div>
+                )}
                 <div>
                   <span className="text-muted-foreground">Coordinates:</span>{' '}
                   {data?.coordinates?.lat?.toFixed(6)}, {data?.coordinates?.lng?.toFixed(6)}

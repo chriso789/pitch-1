@@ -12,9 +12,12 @@ import { useToast } from '@/hooks/use-toast';
 import { MeasurementTestResults } from './MeasurementTestResults';
 import { ImageQualityBadge } from './ImageQualityBadge';
 import { AddressAutocomplete, type AddressComponents } from '@/components/AddressAutocomplete';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 
 interface TestResult {
   measurementId: string;
+  canonicalJobId?: string;
+  aiMeasurementJobId?: string;
   timing: { totalMs: number };
   data: {
     address: string;
@@ -40,6 +43,12 @@ interface TestResult {
     };
     images: {
       selected: string;
+      google?: string;
+      mapbox?: string;
+    };
+    footprint?: {
+      source?: string;
+      requiresReview?: boolean;
     };
   };
   qualityAssessment?: {
@@ -49,8 +58,95 @@ interface TestResult {
   };
 }
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function numberOrZero(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function confidencePercent(...values: unknown[]): number {
+  for (const value of values) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) continue;
+    return Math.round(n <= 1 ? n * 100 : n);
+  }
+  return 0;
+}
+
+function buildResultFromRoofMeasurement(
+  measurement: any,
+  fallback: {
+    address: string;
+    coordinates: { lat: number; lng: number };
+    startedAt: Date;
+    canonicalJobId?: string;
+    aiMeasurementJobId?: string;
+  },
+): TestResult {
+  const report = measurement?.geometry_report_json ?? {};
+  const aiData = measurement?.ai_detection_data ?? measurement?.ai_analysis ?? {};
+  const measurements = report?.measurements ?? aiData?.measurements ?? {};
+  const analysis = report?.aiAnalysis ?? aiData?.aiAnalysis ?? aiData ?? {};
+  const confidenceFactors = [
+    `created_by_function: ${measurement?.created_by_function ?? report?.route_provenance?.created_by_function ?? 'start-ai-measurement'}`,
+    `canonical_measurement_route: ${measurement?.canonical_measurement_route ?? report?.route_provenance?.canonical_measurement_route ?? true}`,
+    `result_state: ${measurement?.result_state ?? report?.result_state ?? '—'}`,
+    `footprint_source: ${measurement?.footprint_source ?? '—'}`,
+  ];
+
+  return {
+    measurementId: measurement.id,
+    canonicalJobId: fallback.canonicalJobId,
+    aiMeasurementJobId: fallback.aiMeasurementJobId ?? measurement.ai_measurement_job_id,
+    timing: { totalMs: Math.max(0, Date.now() - fallback.startedAt.getTime()) },
+    data: {
+      address: measurement?.property_address || fallback.address,
+      coordinates: {
+        lat: numberOrZero(measurement?.target_lat ?? measurement?.gps_coordinates?.lat ?? fallback.coordinates.lat),
+        lng: numberOrZero(measurement?.target_lng ?? measurement?.gps_coordinates?.lng ?? fallback.coordinates.lng),
+      },
+      measurements: {
+        totalAreaSqft: numberOrZero(measurement?.total_area_adjusted_sqft ?? measurement?.total_area_flat_sqft ?? measurements?.totalAreaSqft),
+        totalSquares: numberOrZero(measurement?.total_squares ?? measurements?.totalSquares),
+        predominantPitch: measurement?.predominant_pitch ?? measurements?.predominantPitch ?? 'unknown',
+        linear: {
+          ridge: numberOrZero(measurement?.total_ridge_length ?? measurements?.linear?.ridge),
+          hip: numberOrZero(measurement?.total_hip_length ?? measurements?.linear?.hip),
+          valley: numberOrZero(measurement?.total_valley_length ?? measurements?.linear?.valley),
+          eave: numberOrZero(measurement?.total_eave_length ?? measurements?.linear?.eave),
+          rake: numberOrZero(measurement?.total_rake_length ?? measurements?.linear?.rake),
+        },
+      },
+      aiAnalysis: {
+        roofType: analysis?.roofType ?? analysis?.roof_type ?? 'unknown',
+        complexity: analysis?.complexity ?? report?.complexity ?? 'unknown',
+        facetCount: numberOrZero(measurement?.facet_count ?? analysis?.facetCount ?? analysis?.facet_count),
+      },
+      confidence: {
+        score: confidencePercent(measurement?.measurement_confidence, measurement?.detection_confidence),
+        factors: confidenceFactors,
+      },
+      solarApiData: {
+        available: Boolean(measurement?.solar_building_footprint_sqft),
+        buildingFootprint: numberOrZero(measurement?.solar_building_footprint_sqft),
+      },
+      images: {
+        selected: measurement?.selected_image_source || measurement?.image_source || 'canonical',
+        google: measurement?.google_maps_image_url,
+        mapbox: measurement?.mapbox_image_url,
+      },
+      footprint: {
+        source: measurement?.footprint_source,
+        requiresReview: Boolean(measurement?.requires_manual_review),
+      },
+    },
+  };
+}
+
 export function MeasurementTestPanel() {
   const { toast } = useToast();
+  const effectiveTenantId = useEffectiveTenantId();
   const [address, setAddress] = useState('');
   const [verifiedAddress, setVerifiedAddress] = useState<AddressComponents | null>(null);
   const [lat, setLat] = useState('');
@@ -70,6 +166,15 @@ export function MeasurementTestPanel() {
       toast({
         title: 'Verified address required',
         description: 'Pick an address from the Google suggestions, or enter lat/lng in Advanced Options.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    if (!effectiveTenantId) {
+      toast({
+        title: 'Company context required',
+        description: 'Select or load an active company before running the measurement test.',
         variant: 'destructive'
       });
       return;
@@ -97,9 +202,8 @@ export function MeasurementTestPanel() {
       setProgress(40);
       setProgressMessage('Fetching satellite imagery...');
 
-      // Run measurement
       setProgress(60);
-      setProgressMessage('Analyzing roof with AI...');
+      setProgressMessage('Starting canonical AI measurement job...');
 
       // Stamp the current signed-in user so RLS (`measured_by = auth.uid()`)
       // lets the browser read the persisted `roof_measurements` row that
@@ -110,85 +214,99 @@ export function MeasurementTestPanel() {
       const currentUserId = authData?.user?.id ?? null;
 
       const requestStart = new Date();
-      let measurementData: any = null;
-      let measurementError: any = null;
-      try {
-        const invoked = await supabase.functions.invoke('analyze-roof-aerial', {
-          body: {
-            address: runAddress,
-            coordinates,
-            customerId: null, // Test mode - no customer
-            userId: currentUserId,
-          }
-        });
-        measurementData = invoked.data;
-        measurementError = invoked.error;
-      } catch (e: any) {
-        measurementError = e;
+      const measurementTestRunId = crypto.randomUUID();
+      const { data: startData, error: startError } = await supabase.functions.invoke('start-ai-measurement', {
+        body: {
+          measurement_test_run_id: measurementTestRunId,
+          tenant_id: effectiveTenantId,
+          property_address: runAddress,
+          latitude: coordinates.lat,
+          longitude: coordinates.lng,
+          original_geocode_lat: coordinates.lat,
+          original_geocode_lng: coordinates.lng,
+          confirmed_roof_center_lat: coordinates.lat,
+          confirmed_roof_center_lng: coordinates.lng,
+          user_confirmed_roof_target: true,
+          source_button: 'AI Measurement Developer Test',
+          user_id: currentUserId,
+          zoom: 20,
+          logical_image_width: 640,
+          logical_image_height: 640,
+          raster_scale: 2,
+        }
+      });
+
+      if (startError) throw startError;
+      if (startData?.success === false) {
+        throw new Error(startData?.message || startData?.error || 'Canonical measurement job failed to start.');
       }
 
-      // The edge function frequently runs 120–160s and hits the Supabase
-      // gateway timeout even though it successfully persisted the row.
-      // If invoke errored OR returned no data, poll roof_measurements for
-      // a row that was created after we kicked the request off.
-      if (measurementError || !measurementData) {
-        console.warn('[MeasurementTestPanel] invoke did not return; polling roof_measurements for the persisted row', measurementError);
-        setProgressMessage('Response timed out — checking if the run saved…');
-        const deadline = Date.now() + 45_000;
-        let persisted: any = null;
-        while (Date.now() < deadline && !persisted) {
+      const canonicalJobId = startData?.jobId || startData?.job_id;
+      const aiMeasurementJobId = startData?.aiMeasurementJobId || startData?.ai_measurement_job_id;
+      if (!canonicalJobId) throw new Error('Canonical measurement job did not return a job id.');
+
+      setProgress(70);
+      setProgressMessage('Canonical job running — waiting for persisted report...');
+
+      const deadline = Date.now() + 9 * 60_000;
+      let persistedMeasurement: any = null;
+      let terminalError: string | null = null;
+
+      while (Date.now() < deadline && !persistedMeasurement && !terminalError) {
+        const { data: job } = await supabase
+          .from('measurement_jobs')
+          .select('id, status, progress_message, measurement_id, error, ai_measurement_job_id, created_at, completed_at')
+          .eq('id', canonicalJobId)
+          .maybeSingle();
+
+        if (job?.progress_message) setProgressMessage(job.progress_message);
+
+        const linkedMeasurementId = job?.measurement_id || startData?.measurementId;
+        if (linkedMeasurementId) {
+          const { data: measurement } = await supabase
+            .from('roof_measurements')
+            .select('*')
+            .eq('id', linkedMeasurementId)
+            .maybeSingle();
+          if (measurement) {
+            persistedMeasurement = measurement;
+            break;
+          }
+        }
+
+        const linkedAiJobId = job?.ai_measurement_job_id || aiMeasurementJobId;
+        if (linkedAiJobId) {
           const { data: rows } = await supabase
             .from('roof_measurements')
-            .select('id, created_at, result_state, footprint_source, property_address, geometry_report_json')
-            .eq('property_address', runAddress)
-            .gte('created_at', requestStart.toISOString())
+            .select('*')
+            .eq('ai_measurement_job_id', linkedAiJobId)
             .order('created_at', { ascending: false })
             .limit(1);
           if (rows && rows.length > 0) {
-            persisted = rows[0];
+            persistedMeasurement = rows[0];
             break;
           }
-          await new Promise((r) => setTimeout(r, 3000));
         }
-        if (persisted) {
-          measurementData = {
-            measurementId: persisted.id,
-            timing: { totalMs: Math.max(0, Date.now() - requestStart.getTime()) },
-            data: {
-              address: runAddress,
-              coordinates,
-              measurements: {
-                totalAreaSqft: persisted.geometry_report_json?.measurements?.totalAreaSqft ?? 0,
-                totalSquares: persisted.geometry_report_json?.measurements?.totalSquares ?? 0,
-                predominantPitch: persisted.geometry_report_json?.measurements?.predominantPitch ?? 'unknown',
-                linear: persisted.geometry_report_json?.measurements?.linear ?? {},
-              },
-              aiAnalysis: {
-                roofType: persisted.geometry_report_json?.aiAnalysis?.roofType ?? 'unknown',
-                complexity: persisted.geometry_report_json?.aiAnalysis?.complexity ?? 'unknown',
-                facetCount: persisted.geometry_report_json?.aiAnalysis?.facetCount ?? 0,
-              },
-              confidence: {
-                score: persisted.geometry_report_json?.confidence?.score ?? 0,
-                factors: [
-                  `Recovered from gateway timeout — row ${persisted.id.slice(0, 8)}… persisted`,
-                  `result_state: ${persisted.result_state}`,
-                  `footprint_source: ${persisted.footprint_source}`,
-                ],
-              },
-              solarApiData: { available: false, buildingFootprint: 0 },
-              images: { selected: '' },
-            },
-            recoveredFromTimeout: true,
-          };
-          toast({
-            title: 'Run persisted despite timeout',
-            description: `Row ${persisted.id.slice(0, 8)}… saved. Opening it now.`,
-          });
-        } else {
-          throw new Error(measurementError?.message || 'Edge function timed out and no persisted row was found for this address.');
+
+        if (job?.status === 'failed') {
+          terminalError = job.error || job.progress_message || 'Canonical measurement job failed before a report row was saved.';
+          break;
         }
+
+        await sleep(3000);
       }
+
+      if (!persistedMeasurement) {
+        throw new Error(terminalError || 'Canonical measurement job timed out before a report row was visible.');
+      }
+
+      const measurementData = buildResultFromRoofMeasurement(persistedMeasurement, {
+        address: runAddress,
+        coordinates,
+        startedAt: requestStart,
+        canonicalJobId,
+        aiMeasurementJobId,
+      });
 
       setProgress(80);
       setProgressMessage('Analyzing image quality...');
@@ -226,7 +344,7 @@ export function MeasurementTestPanel() {
 
       toast({
         title: 'Measurement complete',
-        description: `${measurementData.data?.measurements?.totalAreaSqft?.toLocaleString() || 0} sqft detected in ${measurementData.timing?.totalMs}ms`,
+        description: `Canonical job ${canonicalJobId.slice(0, 8)}… saved report ${measurementData.measurementId.slice(0, 8)}…`,
       });
 
     } catch (error) {
