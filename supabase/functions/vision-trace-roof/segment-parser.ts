@@ -85,9 +85,30 @@ function salvageSegmentObjects(raw: string): VisionTraceSegment[] {
   return out;
 }
 
+function salvageCompactArrays(raw: string): VisionTraceSegment[] {
+  const out: VisionTraceSegment[] = [];
+  const seen = new Set<string>();
+  const compactPattern = /\[\s*"(?:e|ra|r|h|v|eave|rake|ridge|hip|valley)"\s*,\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?(?:\s*,\s*\d+(?:\.\d+)?)?\s*\]/gi;
+  for (const match of raw.matchAll(compactPattern)) {
+    try {
+      const normalized = normalizeSegment(JSON.parse(match[0]));
+      if (!normalized) continue;
+      const key = `${normalized.type}:${JSON.stringify(normalized.points)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(normalized);
+    } catch {
+      // ignore malformed trailing array
+    }
+  }
+  return out;
+}
+
 export function parseSegments(text: string): VisionTraceSegment[] {
   const raw = stripMarkdownAndDiagnostics(text);
   const parsed = parseCompleteJsonObject(raw);
   if (parsed.length > 0) return parsed;
+  const compact = salvageCompactArrays(raw);
+  if (compact.length > 0) return compact;
   return salvageSegmentObjects(raw);
 }
