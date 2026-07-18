@@ -385,6 +385,7 @@ Deno.serve(async (req) => {
     }
 
     const { dataUrl, width: detectedWidth, height: detectedHeight } = await fetchImageAsDataUrl(imageUrl, size);
+    const modelImageUrl = /^https?:\/\//i.test(imageUrl) ? imageUrl : dataUrl;
     const hintedSize = body?.image_size && typeof body.image_size === "object"
       ? {
         width: Number(body.image_size.width),
@@ -424,7 +425,7 @@ Deno.serve(async (req) => {
                         `${body?.address ? `Address: ${String(body.address).slice(0, 160)}. ` : ""}` +
                         `${targetDirective}${promptExtra} Return JSON only.`,
                 },
-                { type: "image_url", image_url: { url: dataUrl } },
+                { type: "image_url", image_url: { url: modelImageUrl } },
               ],
             },
           ],
