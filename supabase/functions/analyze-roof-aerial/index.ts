@@ -117,6 +117,12 @@ import {
   type OSMFootprintResult 
 } from '../_shared/osm-footprint-extractor.ts'
 import { fetchUsParcelOrStructure } from '../_shared/us-parcel-extractor.ts'
+import {
+  evaluateRoofFootprintCandidate,
+  isParcelLikeFootprintSource,
+  pickBestRoofFootprintCandidate,
+  type RoofFootprintCandidate,
+} from '../_shared/roof-footprint-candidate.ts'
 import { 
   validateGeometry, 
   calculateAreaSqFt, 
