@@ -638,6 +638,84 @@ app.post("/mskill/providers/test", async (c) => {
   }
 });
 
+// ============================================================================
+// RoofTrace AI — perimeter-first tracing workflow
+// ============================================================================
+
+app.post("/roof-trace/sessions", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const userId = c.get("userId")!;
+  const requestId = c.get("requestId")!;
+  const body = await c.req.json().catch(() => ({}));
+  try {
+    const session = await rtCreateSession(
+      { tenantId, userId, requestId },
+      {
+        address: body.address,
+        lat: typeof body.lat === "number" ? body.lat : Number(body.lat),
+        lng: typeof body.lng === "number" ? body.lng : Number(body.lng),
+        job_id: body.job_id ?? null,
+      },
+    );
+    return jsonOk(c, { session });
+  } catch (e: any) {
+    return jsonErr(c, "roof_trace_create_failed", String(e?.message ?? e), 400);
+  }
+});
+
+app.get("/roof-trace/sessions/:id", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const userId = c.get("userId")!;
+  const requestId = c.get("requestId")!;
+  const id = c.req.param("id");
+  try {
+    const result = await rtGetSession({ tenantId, userId, requestId }, id);
+    return jsonOk(c, result);
+  } catch (e: any) {
+    return jsonErr(c, "roof_trace_get_failed", String(e?.message ?? e), 404);
+  }
+});
+
+// Body-routed variant (edgeApi with __route uses POST /)
+app.post("/roof-trace/sessions/get", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const userId = c.get("userId")!;
+  const requestId = c.get("requestId")!;
+  const { session_id } = await c.req.json().catch(() => ({}));
+  try {
+    const result = await rtGetSession({ tenantId, userId, requestId }, session_id);
+    return jsonOk(c, result);
+  } catch (e: any) {
+    return jsonErr(c, "roof_trace_get_failed", String(e?.message ?? e), 404);
+  }
+});
+
+app.post("/roof-trace/sessions/run", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const userId = c.get("userId")!;
+  const requestId = c.get("requestId")!;
+  const { session_id } = await c.req.json().catch(() => ({}));
+  try {
+    const result = await rtRunPerimeter({ tenantId, userId, requestId }, session_id);
+    return jsonOk(c, result);
+  } catch (e: any) {
+    return jsonErr(c, "roof_trace_run_failed", String(e?.message ?? e), 500);
+  }
+});
+
+app.post("/roof-trace/sessions/approve", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const userId = c.get("userId")!;
+  const requestId = c.get("requestId")!;
+  const { session_id } = await c.req.json().catch(() => ({}));
+  try {
+    const result = await rtApproveSession({ tenantId, userId, requestId }, session_id);
+    return jsonOk(c, result);
+  } catch (e: any) {
+    return jsonErr(c, "roof_trace_approve_failed", String(e?.message ?? e), 400);
+  }
+});
+
 serveRouter(app);
 
 
