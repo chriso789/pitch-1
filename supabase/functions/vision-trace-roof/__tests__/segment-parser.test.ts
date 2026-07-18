@@ -35,3 +35,13 @@ Deno.test("parseSegments reads complete strict JSON normally", () => {
 
   assertEquals(segments, [{ type: "ridge", points: [[210, 240], [375, 240]], confidence: 0.91 }]);
 });
+
+Deno.test("parseSegments reads compact trace JSON to avoid model truncation", () => {
+  const segments = parseSegments('{"s":[["e",190,440,435,440,0.95],["h",435,440,330,225,0.9],["v",250,260,315,330,0.82]]}');
+
+  assertEquals(segments, [
+    { type: "eave", points: [[190, 440], [435, 440]], confidence: 0.95 },
+    { type: "hip", points: [[435, 440], [330, 225]], confidence: 0.9 },
+    { type: "valley", points: [[250, 260], [315, 330]], confidence: 0.82 },
+  ]);
+});

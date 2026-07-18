@@ -69,14 +69,11 @@ Classify every polyline as exactly one of:
 - "hip"    : diagonal edge from a ridge endpoint down to an eave corner
 - "valley" : interior V-shaped edge where two roof planes meet inward
 
-Return STRICT JSON only, no prose, no markdown fences:
+Return STRICT COMPACT JSON only, no prose, no markdown fences. Use this minified schema to avoid truncation:
 
-{
-  "segments": [
-    { "type": "eave",  "points": [[x1,y1],[x2,y2], ...], "confidence": 0.0-1.0 },
-    ...
-  ]
-}
+{"s":[["e",x1,y1,x2,y2,confidence],["ra",x1,y1,x2,y2,confidence],["r",x1,y1,x2,y2,confidence],["h",x1,y1,x2,y2,confidence],["v",x1,y1,x2,y2,confidence]]}
+
+Type codes: e=eave, ra=rake, r=ridge, h=hip, v=valley.
 
 Rules:
 - Trace the FULL perimeter (all eaves + rakes) as a closed loop of connected segments.
@@ -389,7 +386,7 @@ Deno.serve(async (req) => {
                   type: "text",
                   text: `Trace the roof of the target house. Image is ${width}x${height} pixels. ` +
                         `${body?.address ? `Address: ${String(body.address).slice(0, 160)}. ` : ""}` +
-                        `${targetDirective}${promptExtra} Return JSON only.`,
+                        `${targetDirective}${promptExtra} Return minified compact JSON only using the {"s":[[type,x1,y1,x2,y2,confidence]]} schema.`,
                 },
                 { type: "image_url", image_url: { url: modelImageUrl } },
               ],

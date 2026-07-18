@@ -7,6 +7,28 @@ export type VisionTraceSegment = {
 const ALLOWED_SEGMENT_TYPES = new Set(["eave", "rake", "ridge", "hip", "valley"]);
 
 function normalizeSegment(s: any): VisionTraceSegment | null {
+  if (Array.isArray(s)) {
+    const typeMap: Record<string, VisionTraceSegment["type"]> = {
+      e: "eave",
+      ra: "rake",
+      r: "ridge",
+      h: "hip",
+      v: "valley",
+      eave: "eave",
+      rake: "rake",
+      ridge: "ridge",
+      hip: "hip",
+      valley: "valley",
+    };
+    const mappedType = typeMap[String(s[0] ?? "").toLowerCase()];
+    const nums = s.slice(1).map(Number);
+    if (!mappedType || nums.length < 4 || !nums.slice(0, 4).every(Number.isFinite)) return null;
+    return {
+      type: mappedType,
+      points: [[nums[0], nums[1]], [nums[2], nums[3]]],
+      confidence: Number.isFinite(nums[4]) ? nums[4] : undefined,
+    };
+  }
   if (!ALLOWED_SEGMENT_TYPES.has(s?.type)) return null;
   const pts = Array.isArray(s?.points) ? s.points : [];
   const norm: Array<[number, number]> = [];
@@ -40,7 +62,7 @@ function parseCompleteJsonObject(raw: string): VisionTraceSegment[] {
     if (!m) return [];
     try { parsed = JSON.parse(m[0]); } catch { return []; }
   }
-  const segs = Array.isArray(parsed?.segments) ? parsed.segments : [];
+  const segs = Array.isArray(parsed?.segments) ? parsed.segments : Array.isArray(parsed?.s) ? parsed.s : [];
   return segs.map(normalizeSegment).filter(Boolean) as VisionTraceSegment[];
 }
 
