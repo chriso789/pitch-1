@@ -7738,10 +7738,12 @@ async function processJob(input: any) {
             });
             return;
           }
-          const phase3A5Budget = shouldPreemptForCpuBudget(
-            input,
-            phase3A5WorkUnits,
-          );
+          // Phase 3A.5 is the required aerial tracing/refinement stage, not
+          // the autonomous topology solver. Do not apply the topology pixel
+          // workload cutoff here — a 998×998 Fonsica-class DSM is slightly over
+          // the topology limit and was being stopped before the aerial outline
+          // could be completed. Keep only the wall-clock reserve guard.
+          const phase3A5Budget = shouldPreemptForCpuBudget(input, 0);
           if (phase3A5Budget.preempt) {
             const resolvedReg = resolveRegistrationForPreempt({
               input,
@@ -7771,7 +7773,7 @@ async function processJob(input: any) {
               imageUrl,
               mpp: actualMpp,
               stage: "phase3_5_perimeter_refinement",
-              estimatedWorkUnits: phase3A5WorkUnits,
+              estimatedWorkUnits: 0,
               debug: buildPreTopologyDebugBag({
                 stage: "phase3_5_perimeter_refinement",
                 dsmGrid,
@@ -7946,7 +7948,9 @@ async function processJob(input: any) {
           // reserve threshold (≥60s with the 75s/15s config). Without this,
           // a slow Phase 3A.5 call can run for 90s+ unattended.
           {
-            const ckpt = shouldPreemptForCpuBudget(input, phase3A5WorkUnits);
+            // Wall-clock only. The topology workload cutoff is enforced before
+            // solveAutonomousGraph, not before the required aerial trace.
+            const ckpt = shouldPreemptForCpuBudget(input, 0);
             if (ckpt.preempt) {
               const resolvedReg = resolveRegistrationForPreempt({
                 input,
@@ -7968,7 +7972,7 @@ async function processJob(input: any) {
                 imageUrl,
                 mpp: actualMpp,
                 stage: "pre_phase3a5_refinement_call",
-                estimatedWorkUnits: phase3A5WorkUnits,
+                estimatedWorkUnits: 0,
                 debug: buildPreTopologyDebugBag({
                   stage: "pre_phase3a5_refinement_call",
                   dsmGrid,
