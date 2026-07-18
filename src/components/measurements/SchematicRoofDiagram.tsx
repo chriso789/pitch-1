@@ -456,26 +456,44 @@ export function SchematicRoofDiagram({
     // Mapbox raster, so it cannot drift, mirror, or rescale during GPS/WKT
     // round-tripping in the browser.
     const overlaySchema = measurement?.overlay_schema || measurement?.geometry_report_json?.overlay_schema;
-    const overlayPolygon = Array.isArray(overlaySchema?.polygon)
+    const parsePixelRing = (value: any): Array<{ x: number; y: number }> => {
+      if (!Array.isArray(value)) return [];
+      return value
+        .map((p: any) => {
+          if (Array.isArray(p) && p.length >= 2) return { x: Number(p[0]), y: Number(p[1]) };
+          if (p && typeof p === 'object') return { x: Number(p.x ?? p.lng), y: Number(p.y ?? p.lat) };
+          return null;
+        })
+        .filter((p: any): p is { x: number; y: number } => !!p && Number.isFinite(p.x) && Number.isFinite(p.y));
+    };
+    let overlayPolygon = Array.isArray(overlaySchema?.polygon)
       ? overlaySchema.polygon
           .map((p: any) => Array.isArray(p) && p.length >= 2 ? { x: Number(p[0]), y: Number(p[1]) } : null)
           .filter((p: any): p is { x: number; y: number } => !!p && Number.isFinite(p.x) && Number.isFinite(p.y))
       : [];
     const overlayFeatures = Array.isArray(overlaySchema?.features) ? overlaySchema.features : [];
+    if (overlayPolygon.length < 3) {
+      overlayPolygon = parsePixelRing(
+        measurement?.true_outer_roof_perimeter_px
+          ?? measurement?.geometry_report_json?.footprint_px
+          ?? measurement?.geometry_report_json?.overlay_debug?.footprint_px
+          ?? measurement?.ai_detection_data?.debug?.footprint_px
+      );
+    }
 
     // Canonical overlay schema is the single source of truth whenever it
     // exists. Audit fix: if the backend already produced a canonical
     // pixel-space polygon and transform, render it directly — never let
     // the legacy GPS/WKT/auto-fit code recompute a different transform.
     const overlayTransform = overlaySchema?.transform;
-    const hasCanonicalOverlay =
-      overlayPolygon.length >= 3 &&
-      Number.isFinite(Number(overlaySchema?.image?.width || overlayTransform?.imageWidth)) &&
-      Number.isFinite(Number(overlaySchema?.image?.height || overlayTransform?.imageHeight));
+    const fallbackRasterSize = measurement?.geometry_report_json?.raster_size
+      ?? measurement?.geometry_report_json?.overlay_debug?.raster_size
+      ?? measurement?.analysis_image_size;
+    const hasCanonicalOverlay = overlayPolygon.length >= 3;
 
     if (hasCanonicalOverlay) {
-      const srcW = Number(overlaySchema?.image?.width || overlaySchema?.transform?.imageWidth || measurement?.analysis_image_size?.width || 1280);
-      const srcH = Number(overlaySchema?.image?.height || overlaySchema?.transform?.imageHeight || measurement?.analysis_image_size?.height || 1280);
+      const srcW = Number(overlaySchema?.image?.width || overlaySchema?.transform?.imageWidth || fallbackRasterSize?.width || fallbackRasterSize?.logicalWidth || 1280);
+      const srcH = Number(overlaySchema?.image?.height || overlaySchema?.transform?.imageHeight || fallbackRasterSize?.height || fallbackRasterSize?.logicalHeight || 1280);
       let cMinX = Math.min(...overlayPolygon.map(p => p.x));
       let cMaxX = Math.max(...overlayPolygon.map(p => p.x));
       let cMinY = Math.min(...overlayPolygon.map(p => p.y));
