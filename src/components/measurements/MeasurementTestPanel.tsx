@@ -65,6 +65,15 @@ function numberOrZero(value: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+function confidencePercent(...values: unknown[]): number {
+  for (const value of values) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) continue;
+    return Math.round(n <= 1 ? n * 100 : n);
+  }
+  return 0;
+}
+
 function buildResultFromRoofMeasurement(
   measurement: any,
   fallback: {
@@ -115,7 +124,7 @@ function buildResultFromRoofMeasurement(
         facetCount: numberOrZero(measurement?.facet_count ?? analysis?.facetCount ?? analysis?.facet_count),
       },
       confidence: {
-        score: Math.round(numberOrZero(measurement?.measurement_confidence ?? measurement?.detection_confidence * 100)),
+        score: confidencePercent(measurement?.measurement_confidence, measurement?.detection_confidence),
         factors: confidenceFactors,
       },
       solarApiData: {
