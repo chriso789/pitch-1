@@ -193,8 +193,8 @@ export function MeasurementTestPanel() {
     }
 
     setIsRunning(true);
-    setProgress(10);
-    setProgressMessage('Preparing measurement...');
+    setProgress(5);
+    setProgressMessage('Starting quick AI roof trace...');
     setResult(null);
 
     try {
@@ -210,9 +210,13 @@ export function MeasurementTestPanel() {
         setLng(coordinates.lng.toString());
       }
 
+      // Kick off the quick vision trace immediately — this renders the roof
+      // outline in seconds so the user sees something real while the full
+      // measurement pipeline runs.
+      setQuickTraceCoords({ lat: coordinates.lat, lng: coordinates.lng });
 
       setProgress(40);
-      setProgressMessage('Fetching satellite imagery...');
+      setProgressMessage('Quick trace running — starting full measurement...');
 
       setProgress(60);
       setProgressMessage('Starting canonical AI measurement job...');
