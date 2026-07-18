@@ -244,13 +244,13 @@ export function MeasurementTestResults({ result, previousResults = [] }: Measure
           <div className="grid grid-cols-3 gap-4">
             <div className="text-center p-3 bg-muted/50 rounded-lg">
               <div className="text-2xl font-bold tabular-nums">
-                {hasUsableArea ? measurements.totalAreaSqft.toLocaleString() : '—'}
+                {hasUsableArea ? measurements?.totalAreaSqft?.toLocaleString() : '—'}
               </div>
               <div className="text-xs text-muted-foreground">Total Area (sqft)</div>
             </div>
             <div className="text-center p-3 bg-muted/50 rounded-lg">
               <div className="text-2xl font-bold tabular-nums">
-                {hasUsableArea && Number(measurements?.totalSquares) > 0 ? measurements.totalSquares.toFixed(1) : '—'}
+                {hasUsableArea && Number(measurements?.totalSquares) > 0 ? measurements?.totalSquares?.toFixed(1) : '—'}
               </div>
               <div className="text-xs text-muted-foreground">Squares</div>
             </div>
