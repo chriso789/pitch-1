@@ -8,6 +8,7 @@ import { ImageQualityBadge } from './ImageQualityBadge';
 import { MeasurementComparisonTool } from './MeasurementComparisonTool';
 import MeasurementReportDialog from './MeasurementReportDialog';
 import { SchematicRoofDiagram } from './SchematicRoofDiagram';
+import { VisionTracePanel } from './VisionTracePanel';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -404,6 +405,26 @@ export function MeasurementTestResults({ result, previousResults = [] }: Measure
               </div>
             )}
           </div>
+
+          {/* Vision-prior trace — fast multimodal trace from the aerial.
+              Pixel-space only; not a georeferenced measurement. Renders even
+              when the measurement pipeline blocks so the user can visually
+              confirm the roof shape. */}
+          {Number.isFinite(data?.coordinates?.lat) && Number.isFinite(data?.coordinates?.lng) && (
+            <VisionTracePanel
+              lat={data.coordinates.lat}
+              lng={data.coordinates.lng}
+              address={data.address}
+              zoom={20}
+              initialImageUrl={
+                inlineMeasurement?.google_maps_image_url
+                || inlineMeasurement?.mapbox_image_url
+                || inlineMeasurement?.satellite_overlay_url
+              }
+            />
+          )}
+
+
 
 
           {/* Open Full Report — surfaces all current geometry buildouts:
