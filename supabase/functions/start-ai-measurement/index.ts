@@ -276,11 +276,16 @@ const AI_RUNTIME_TIMEOUT_FAILURE_REASON = "ai_measurement_runtime_timeout";
 const AI_MEASUREMENT_CPU_TIMEOUT_REASON = "ai_measurement_cpu_timeout";
 const AI_MEASUREMENT_CPU_TIMEOUT_STAGE =
   "phase3_5_topology_cpu_budget_exceeded";
+// Fonsica-class complex hips routinely finish Phase 0 at ~155–165s. The old
+// 75s guard was tripping mid-pipeline and terminating successful runs as
+// `ai_measurement_cpu_timeout` even after the work was done. Raise the
+// default to 240s (well under Supabase edge wall-clock max) and let the env
+// var still override.
 const AI_MEASUREMENT_CPU_BUDGET_MS = Number(
-  Deno.env.get("AI_MEASUREMENT_CPU_BUDGET_MS") || 75_000,
+  Deno.env.get("AI_MEASUREMENT_CPU_BUDGET_MS") || 240_000,
 );
 const AI_MEASUREMENT_CPU_TERMINAL_WRITE_RESERVE_MS = Number(
-  Deno.env.get("AI_MEASUREMENT_CPU_TERMINAL_WRITE_RESERVE_MS") || 15_000,
+  Deno.env.get("AI_MEASUREMENT_CPU_TERMINAL_WRITE_RESERVE_MS") || 20_000,
 );
 // ── CPU containment v2: early-reserve safety margin ──────────────────────
 // Push the preempt point further away from the hard budget so the terminal
