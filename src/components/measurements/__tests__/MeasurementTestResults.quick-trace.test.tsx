@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { MeasurementTestResults } from '../MeasurementTestResults';
+import { normalizeVisionTraceImageSize } from '../VisionTracePanel';
 
 const { invokeMock, fromMock } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
@@ -49,6 +50,12 @@ const blockedFonsicaResult = {
 } as const;
 
 describe('MeasurementTestResults quick trace fallback', () => {
+  it('normalizes logical static-map metadata to raster pixels before tracing', () => {
+    expect(normalizeVisionTraceImageSize({ width: 640, height: 640, rasterScale: 2 })).toEqual(
+      expect.objectContaining({ width: 1280, height: 1280, logicalWidth: 640, logicalHeight: 640, rasterScale: 2 }),
+    );
+  });
+
   it('auto-runs the quick roof trace on blocked rows and uses persisted target imagery', async () => {
     invokeMock.mockResolvedValue({
       data: {
@@ -95,6 +102,8 @@ describe('MeasurementTestResults quick trace fallback', () => {
           zoom: 20,
           size: 640,
           image_url: 'https://example.test/fonsica.png',
+          address: blockedFonsicaResult.data.address,
+          prefer_roof_center: true,
           image_size: expect.objectContaining({ width: 1280, height: 1280 }),
         }),
       });
