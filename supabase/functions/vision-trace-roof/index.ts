@@ -350,7 +350,7 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const lat = Number(body?.lat);
     const lng = Number(body?.lng);
-    const zoom = Number.isFinite(Number(body?.zoom)) ? Number(body.zoom) : 21;
+    const explicitZoom = Number.isFinite(Number(body?.zoom)) ? Number(body.zoom) : null;
     const size = Number.isFinite(Number(body?.size)) ? Number(body.size) : 640;
     let imageUrl: string | undefined = typeof body?.image_url === "string" ? body.image_url : undefined;
     const preferRoofCenter = body?.prefer_roof_center !== false;
@@ -359,6 +359,13 @@ Deno.serve(async (req) => {
       ? await fetchSolarTarget(lat, lng)
       : null;
     const roofCenter = solarTarget?.center && !imageUrl ? solarTarget.center : { lat, lng };
+
+    // Auto-pick zoom so the Solar building box fills ~60% of the tile.
+    // Falls back to 21 when Solar bbox is unavailable or the caller pinned zoom.
+    const autoZoom = !imageUrl && explicitZoom === null
+      ? pickZoomForSolarBox(solarTarget?.boundingBox, roofCenter.lat, Math.min(640, size), 0.6)
+      : null;
+    const zoom = explicitZoom ?? autoZoom ?? 21;
 
     if (!imageUrl) {
       if (!GOOGLE_MAPS_API_KEY) {
