@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Wand2, Eye, EyeOff } from 'lucide-react';
@@ -43,17 +43,19 @@ interface VisionTracePanelProps {
   address?: string;
   zoom?: number;
   initialImageUrl?: string;
+  autoRun?: boolean;
 }
 
-export function VisionTracePanel({ lat, lng, address, zoom = 20, initialImageUrl }: VisionTracePanelProps) {
+export function VisionTracePanel({ lat, lng, address, zoom = 20, initialImageUrl, autoRun = false }: VisionTracePanelProps) {
   const [loading, setLoading] = useState(false);
   const [trace, setTrace] = useState<TraceResponse | null>(null);
+  const autoRunKeyRef = useRef<string | null>(null);
   const [visible, setVisible] = useState<Record<Segment['type'], boolean>>({
     eave: true, rake: true, ridge: true, hip: true, valley: true,
   });
   const { toast } = useToast();
 
-  const runTrace = async () => {
+  const runTrace = useCallback(async () => {
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
       toast({ title: 'No coordinates', description: 'Confirm an address first.', variant: 'destructive' });
       return;
@@ -71,7 +73,15 @@ export function VisionTracePanel({ lat, lng, address, zoom = 20, initialImageUrl
     } finally {
       setLoading(false);
     }
-  };
+  }, [initialImageUrl, lat, lng, toast, zoom]);
+
+  useEffect(() => {
+    if (!autoRun || loading || trace || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    const key = `${lat.toFixed(7)}:${lng.toFixed(7)}:${zoom}:${initialImageUrl || 'static'}`;
+    if (autoRunKeyRef.current === key) return;
+    autoRunKeyRef.current = key;
+    void runTrace();
+  }, [autoRun, initialImageUrl, lat, lng, loading, runTrace, trace, zoom]);
 
   const counts = (trace?.segments || []).reduce<Record<string, number>>((acc, s) => {
     acc[s.type] = (acc[s.type] || 0) + 1;
@@ -83,7 +93,7 @@ export function VisionTracePanel({ lat, lng, address, zoom = 20, initialImageUrl
       <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/40">
         <div className="flex items-center gap-2 text-sm font-medium">
           <Wand2 className="h-4 w-4" />
-          Vision trace (fast prior — not measured)
+          Quick roof trace
         </div>
         <div className="flex items-center gap-2">
           {trace && (
@@ -93,15 +103,14 @@ export function VisionTracePanel({ lat, lng, address, zoom = 20, initialImageUrl
           )}
           <Button size="sm" variant="outline" onClick={runTrace} disabled={loading}>
             {loading ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Wand2 className="h-3 w-3 mr-1" />}
-            {trace ? 'Retrace' : 'Run quick trace'}
+            {trace ? 'Retrace' : loading ? 'Tracing…' : 'Run quick trace'}
           </Button>
         </div>
       </div>
 
       {!trace && !loading && (
         <div className="p-6 text-center text-xs text-muted-foreground">
-          Uses a multimodal model to trace the roof polylines from the aerial. Pixel-space only —
-          this is a visual prior for confirming the shape before the measurement pipeline finishes.
+          The roof trace will draw here automatically from the aerial. Pixel-space only — confirm the shape first, then verify measurements.
         </div>
       )}
 
