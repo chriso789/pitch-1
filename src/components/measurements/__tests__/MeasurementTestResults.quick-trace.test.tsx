@@ -56,10 +56,10 @@ describe('MeasurementTestResults quick trace fallback', () => {
     );
   });
 
-  it('auto-runs the quick roof trace on blocked rows and uses persisted target imagery', async () => {
+  it('auto-runs the quick roof trace on blocked rows using a fresh roof-centered zoom-21 tile', async () => {
     invokeMock.mockResolvedValue({
       data: {
-        image: { url: 'https://example.test/fonsica.png', width: 1280, height: 1280, zoom: 20, source: 'google_static_maps' },
+        image: { url: 'https://example.test/fresh-fonsica.png', width: 640, height: 640, zoom: 21, source: 'google_solar_centered_static_maps' },
         segments: [{ type: 'eave', points: [[100, 100], [300, 100]], confidence: 0.9 }],
         count: 1,
         model: 'test-vision-model',
@@ -99,12 +99,12 @@ describe('MeasurementTestResults quick trace fallback', () => {
         body: expect.objectContaining({
           lat: 27.08965,
           lng: -82.17824,
-          zoom: 20,
+          zoom: 21,
           size: 640,
-          image_url: 'https://example.test/fonsica.png',
+          image_url: undefined,
           address: blockedFonsicaResult.data.address,
           prefer_roof_center: true,
-          image_size: expect.objectContaining({ width: 1280, height: 1280 }),
+          image_size: undefined,
         }),
       });
     });
