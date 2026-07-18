@@ -13,7 +13,7 @@ import {
 import {
   buildCpuBudgetTerminalDebugPayload,
   preserveEstimatedWorkUnits,
-} from "../../_shared/pre-topology-debug-bag.ts";
+} from "../../../../supabase/functions/_shared/pre-topology-debug-bag.ts";
 
 // Mirror live constants. A stale 75s env override caused Fonsica runs to fail
 // after ~210s, so the production helper clamps to this minimum.
