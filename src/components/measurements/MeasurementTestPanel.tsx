@@ -18,6 +18,11 @@ interface TestResult {
   measurementId: string;
   canonicalJobId?: string;
   aiMeasurementJobId?: string;
+  resultState?: string;
+  hardFailReason?: string | null;
+  blockCustomerReportReason?: string | null;
+  validationStatus?: string | null;
+  customerReportReady?: boolean;
   timing: { totalMs: number };
   data: {
     address: string;
@@ -99,6 +104,11 @@ function buildResultFromRoofMeasurement(
     measurementId: measurement.id,
     canonicalJobId: fallback.canonicalJobId,
     aiMeasurementJobId: fallback.aiMeasurementJobId ?? measurement.ai_measurement_job_id,
+    resultState: measurement?.result_state ?? report?.result_state,
+    hardFailReason: measurement?.hard_fail_reason ?? report?.hard_fail_reason ?? null,
+    blockCustomerReportReason: measurement?.block_customer_report_reason ?? report?.block_customer_report_reason ?? null,
+    validationStatus: measurement?.validation_status ?? null,
+    customerReportReady: Boolean(measurement?.customer_report_ready || measurement?.result_state === 'customer_report_ready'),
     timing: { totalMs: Math.max(0, Date.now() - fallback.startedAt.getTime()) },
     data: {
       address: measurement?.property_address || fallback.address,
@@ -327,8 +337,12 @@ export function MeasurementTestPanel() {
         console.warn('Image quality analysis failed:', e);
       }
 
+      const resultState = persistedMeasurement?.result_state ?? persistedMeasurement?.geometry_report_json?.result_state;
+      const isCustomerReady = persistedMeasurement?.customer_report_ready === true || resultState === 'customer_report_ready';
+      const isPerimeterOnly = resultState === 'perimeter_only';
+
       setProgress(100);
-      setProgressMessage('Complete!');
+      setProgressMessage(isCustomerReady ? 'Complete!' : isPerimeterOnly ? 'Aerial perimeter saved — needs review.' : 'Diagnostic report saved — blocked.');
 
       const testResult: TestResult = {
         ...measurementData,
@@ -343,8 +357,11 @@ export function MeasurementTestPanel() {
       setResult(testResult);
 
       toast({
-        title: 'Measurement complete',
-        description: `Canonical job ${canonicalJobId.slice(0, 8)}… saved report ${measurementData.measurementId.slice(0, 8)}…`,
+        title: isCustomerReady ? 'Measurement complete' : isPerimeterOnly ? 'Measurement needs review' : 'Measurement blocked',
+        description: isCustomerReady
+          ? `Canonical job ${canonicalJobId.slice(0, 8)}… saved report ${measurementData.measurementId.slice(0, 8)}…`
+          : `${resultState || 'not_customer_ready'}: ${persistedMeasurement?.hard_fail_reason || persistedMeasurement?.block_customer_report_reason || 'customer report was not produced'}`,
+        variant: isCustomerReady ? 'default' : 'destructive',
       });
 
     } catch (error) {
