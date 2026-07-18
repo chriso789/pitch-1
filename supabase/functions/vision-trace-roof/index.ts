@@ -435,6 +435,26 @@ Deno.serve(async (req) => {
         `snap exterior roof edges to the visible roof pixels inside/along this box and ignore objects outside it. `
       : `The image center is at (${Math.round(width / 2)}, ${Math.round(height / 2)}). The target roof surrounds that center pixel. `;
 
+    if (targetBoxPx && body?.use_target_box_template !== false) {
+      return new Response(JSON.stringify({
+        image: {
+          url: imageUrl,
+          width,
+          height,
+          zoom,
+          source: solarTarget?.center && !body?.image_url ? "google_solar_centered_static_maps" : "google_static_maps",
+          center_lat: mapCenter.lat,
+          center_lng: mapCenter.lng,
+          target_box_px: targetBoxPx,
+        },
+        segments: buildHipRoofTemplateTrace(targetBoxPx),
+        count: buildHipRoofTemplateTrace(targetBoxPx).length,
+        raw: "[diagnostic_target_box_template] Solar-targeted fast trace. Pixel-space visual prior only.",
+        model: "target-box-template-v1",
+        durationMs: Date.now() - startedAt,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     async function runOnce(promptExtra = ""): Promise<Segment[]> {
       const gwRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
