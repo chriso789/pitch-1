@@ -191,10 +191,13 @@ export async function runPerimeter(ctx: Ctx, sessionId: string) {
       autoRun: true,
     });
 
-    // vision-trace-roof returns { segments, imageUrl, imageWidth, imageHeight, ... }
+    // vision-trace-roof returns { image: { url, width, height, zoom }, segments: [{ type, points }] }
     const segments: any[] = Array.isArray(trace?.segments) ? trace.segments : [];
-    const imageWidth = Number(trace?.imageWidth ?? trace?.width ?? 640);
-    const imageHeight = Number(trace?.imageHeight ?? trace?.height ?? 640);
+    const img = trace?.image ?? {};
+    const imageWidth = Number(img?.width ?? trace?.imageWidth ?? trace?.width ?? 640);
+    const imageHeight = Number(img?.height ?? trace?.imageHeight ?? trace?.height ?? 640);
+    const imageUrl = img?.url ?? trace?.imageUrl ?? trace?.tileUrl ?? null;
+    const zoom = img?.zoom ?? trace?.zoom ?? null;
 
     // Derive an outer perimeter polygon from segments classified as eave/rake/perimeter,
     // falling back to the convex hull of all segment endpoints.
@@ -217,9 +220,9 @@ export async function runPerimeter(ctx: Ctx, sessionId: string) {
           image_height: imageHeight,
           outer_perimeter: outerPts,
           segments,
-          image_url: trace?.imageUrl ?? trace?.tileUrl ?? null,
-          image_bounds: trace?.imageBounds ?? null,
-          zoom: trace?.zoom ?? null,
+          image_url: imageUrl,
+          image_bounds: trace?.imageBounds ?? img?.bounds ?? null,
+          zoom,
         },
         perimeter_gate_metrics: gate,
         warnings: gate.passes ? [] : [{ code: "perimeter_gate_failed", detail: gate }],
@@ -313,23 +316,28 @@ export async function approveSession(ctx: Ctx, sessionId: string) {
 
 function extractOuterPerimeter(segments: any[]): Pt[] {
   const eaveKinds = new Set(["eave", "rake", "perimeter", "outer"]);
-  const pts: Pt[] = [];
-  for (const seg of segments) {
-    const kind = String(seg?.kind ?? seg?.type ?? "").toLowerCase();
-    if (!eaveKinds.has(kind)) continue;
+  const pushPts = (seg: any, sink: Pt[]) => {
+    // vision-trace shape: { type, points: [[x,y], ...] }
+    if (Array.isArray(seg?.points)) {
+      for (const p of seg.points) {
+        if (Array.isArray(p) && p.length >= 2) sink.push([Number(p[0]), Number(p[1])]);
+      }
+      return;
+    }
+    // legacy shape: { a: [x,y], b: [x,y] }
     const a = seg?.a ?? seg?.start ?? seg?.from;
     const b = seg?.b ?? seg?.end ?? seg?.to;
-    if (Array.isArray(a) && a.length >= 2) pts.push([Number(a[0]), Number(a[1])]);
-    if (Array.isArray(b) && b.length >= 2) pts.push([Number(b[0]), Number(b[1])]);
+    if (Array.isArray(a) && a.length >= 2) sink.push([Number(a[0]), Number(a[1])]);
+    if (Array.isArray(b) && b.length >= 2) sink.push([Number(b[0]), Number(b[1])]);
+  };
+  const pts: Pt[] = [];
+  for (const seg of segments) {
+    const kind = String(seg?.type ?? seg?.kind ?? "").toLowerCase();
+    if (!eaveKinds.has(kind)) continue;
+    pushPts(seg, pts);
   }
-  // Fallback: use all endpoints
   if (pts.length < 3) {
-    for (const seg of segments) {
-      const a = seg?.a ?? seg?.start ?? seg?.from;
-      const b = seg?.b ?? seg?.end ?? seg?.to;
-      if (Array.isArray(a) && a.length >= 2) pts.push([Number(a[0]), Number(a[1])]);
-      if (Array.isArray(b) && b.length >= 2) pts.push([Number(b[0]), Number(b[1])]);
-    }
+    for (const seg of segments) pushPts(seg, pts);
   }
   if (pts.length < 3) return [];
   return convexHull(pts);
