@@ -191,10 +191,13 @@ export async function runPerimeter(ctx: Ctx, sessionId: string) {
       autoRun: true,
     });
 
-    // vision-trace-roof returns { segments, imageUrl, imageWidth, imageHeight, ... }
+    // vision-trace-roof returns { image: { url, width, height, zoom }, segments: [{ type, points }] }
     const segments: any[] = Array.isArray(trace?.segments) ? trace.segments : [];
-    const imageWidth = Number(trace?.imageWidth ?? trace?.width ?? 640);
-    const imageHeight = Number(trace?.imageHeight ?? trace?.height ?? 640);
+    const img = trace?.image ?? {};
+    const imageWidth = Number(img?.width ?? trace?.imageWidth ?? trace?.width ?? 640);
+    const imageHeight = Number(img?.height ?? trace?.imageHeight ?? trace?.height ?? 640);
+    const imageUrl = img?.url ?? trace?.imageUrl ?? trace?.tileUrl ?? null;
+    const zoom = img?.zoom ?? trace?.zoom ?? null;
 
     // Derive an outer perimeter polygon from segments classified as eave/rake/perimeter,
     // falling back to the convex hull of all segment endpoints.
@@ -217,9 +220,9 @@ export async function runPerimeter(ctx: Ctx, sessionId: string) {
           image_height: imageHeight,
           outer_perimeter: outerPts,
           segments,
-          image_url: trace?.imageUrl ?? trace?.tileUrl ?? null,
-          image_bounds: trace?.imageBounds ?? null,
-          zoom: trace?.zoom ?? null,
+          image_url: imageUrl,
+          image_bounds: trace?.imageBounds ?? img?.bounds ?? null,
+          zoom,
         },
         perimeter_gate_metrics: gate,
         warnings: gate.passes ? [] : [{ code: "perimeter_gate_failed", detail: gate }],
