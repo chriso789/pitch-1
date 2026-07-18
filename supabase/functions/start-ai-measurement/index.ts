@@ -899,6 +899,9 @@ function withPhase3Visibility(
   const resolvedDiagnosticState = resolveMeasurementDiagnosticState(payload);
   const runtimeStateWins = resolvedDiagnosticState.final_state_source ===
     "runtime_cpu_budget_guard";
+  const dsmRegistrationUnavailableWins = resolvedDiagnosticState.final_state_source ===
+    "dsm_registration_unavailable_guard";
+  const diagnosticStateWins = runtimeStateWins || dsmRegistrationUnavailableWins;
   // ─── Registration failure dominates hard_fail_reason / failure_stage ───
   const reg =
     (payload.registration ?? payload.registration_gate ?? null) as any;
@@ -910,12 +913,12 @@ function withPhase3Visibility(
     (payload.mask_loaded === true ||
       payload.phase3A_5?.target_mask_bbox_px != null);
   const rawRegFailureReason = deriveRegistrationFailureReason(reg);
-  const regFailureReason = runtimeStateWins || phase3A5RanWithSources
+  const regFailureReason = diagnosticStateWins || phase3A5RanWithSources
     ? null
     : rawRegFailureReason;
   const hardFailReason = regFailureReason
     ? regFailureReason
-    : (runtimeStateWins
+    : (diagnosticStateWins
       ? resolvedDiagnosticState.hard_fail_reason
       : (phase3A.perimeter_classification_invalid
         ? "perimeter_classification_invalid"
@@ -923,7 +926,7 @@ function withPhase3Visibility(
           payload.failure_reason ?? null)));
   const failureStage = regFailureReason
     ? registrationFailureStage(regFailureReason)
-    : (runtimeStateWins
+    : (diagnosticStateWins
       ? resolvedDiagnosticState.failure_stage
       : (payload.failure_stage ??
         (String(resultState).includes("perimeter")
@@ -953,6 +956,34 @@ function withPhase3Visibility(
     phase3E = buildRegistrationBlockedPhaseBlock(phase3E);
   }
 
+  if (dsmRegistrationUnavailableWins) {
+    phase3_5 = {
+      ...phase3_5,
+      executed: false,
+      skipped_reason: "dsm_registration_unavailable",
+    };
+    phase3A_5 = {
+      ...phase3A_5,
+      executed: false,
+      skipped_reason: "dsm_registration_unavailable",
+    };
+    phase3C = {
+      ...phase3C,
+      executed: false,
+      skipped_reason: "dsm_registration_unavailable",
+    };
+    phase3D = {
+      ...phase3D,
+      executed: false,
+      skipped_reason: "dsm_registration_unavailable",
+    };
+    phase3E = {
+      ...phase3E,
+      executed: false,
+      skipped_reason: "dsm_registration_unavailable",
+    };
+  }
+
   return {
     ...payload,
     ...PHASE3_VERSION_BLOCK,
@@ -964,13 +995,13 @@ function withPhase3Visibility(
     phase3C,
     phase3D,
     phase3E,
-    result_state: runtimeStateWins
+    result_state: diagnosticStateWins
       ? resolvedDiagnosticState.result_state
       : normalizeResultStateForWrite(resultState, payload),
     hard_fail_reason: hardFailReason,
     block_customer_report_reason: regFailureReason
       ? hardFailReason
-      : (runtimeStateWins
+      : (diagnosticStateWins
         ? resolvedDiagnosticState.block_customer_report_reason
         : (payload.block_customer_report_reason ?? hardFailReason ?? null)),
     failure_stage: failureStage,
@@ -978,7 +1009,7 @@ function withPhase3Visibility(
       ? (resultState === "ai_failed_target_unconfirmed"
         ? "target_confirmation_required"
         : "coordinate_registration_debug_only")
-      : runtimeStateWins
+      : diagnosticStateWins
       ? resolvedDiagnosticState.diagram_render_intent
       : (payload.diagram_render_intent ??
         (String(resultState).startsWith("ai_failed_")
@@ -989,7 +1020,9 @@ function withPhase3Visibility(
           ))),
     customer_report_ready: runtimeStateWins
       ? false
-      : resultState === "customer_report_ready" && !regFailureReason,
+      : (dsmRegistrationUnavailableWins
+        ? false
+        : resultState === "customer_report_ready" && !regFailureReason),
     final_state_source: resolvedDiagnosticState.final_state_source,
     final_state_resolved_at: new Date().toISOString(),
     final_state_precedence_version:
