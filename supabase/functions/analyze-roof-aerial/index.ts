@@ -117,6 +117,12 @@ import {
   type OSMFootprintResult 
 } from '../_shared/osm-footprint-extractor.ts'
 import { fetchUsParcelOrStructure } from '../_shared/us-parcel-extractor.ts'
+import {
+  evaluateRoofFootprintCandidate,
+  isParcelLikeFootprintSource,
+  pickBestRoofFootprintCandidate,
+  type RoofFootprintCandidate,
+} from '../_shared/roof-footprint-candidate.ts'
 import { 
   validateGeometry, 
   calculateAreaSqFt, 
@@ -631,8 +637,10 @@ Deno.serve(async (req) => {
         const usResult = await fetchUsParcelOrStructure(coordinates.lat, coordinates.lng, { timeoutMs: 6000 });
 
         if (usResult?.vertices?.length >= 4) {
-          const overhangFt = usResult.source === 'usa_structures' ? 0.5 : 0.25;
-          const expandedVertices = expandFootprintForOverhang(usResult.vertices, overhangFt);
+          if (usResult.source === 'usa_parcels') {
+            console.log('⚠️ US ArcGIS returned parcel geometry only; parcel polygons are lot boundaries, not roof footprints. Skipping as authoritative perimeter.');
+          } else {
+          const expandedVertices = expandFootprintForOverhang(usResult.vertices, 0.5);
           const validation = validateGeometry(expandedVertices, usResult.source as FootprintSource);
 
           if (validation.valid) {
@@ -646,6 +654,7 @@ Deno.serve(async (req) => {
             console.log(`✅ US ArcGIS ${usResult.source}: ${validation.metrics.areaSqFt.toFixed(0)} sqft, ${usResult.vertices.length} vertices, ${(authoritativeFootprint.confidence * 100).toFixed(0)}% confidence`);
           } else {
             console.log(`⚠️ US ArcGIS ${usResult.source} footprint failed validation: ${validation.errors.join(', ')}`);
+          }
           }
         } else {
           console.log('⚠️ US ArcGIS returned no usable structure/parcel footprint');
@@ -5177,15 +5186,7 @@ async function processSolarFastPath(
   const REGRID_API_KEY = Deno.env.get('REGRID_API_KEY')
   const selectedImage = googleImage.url ? googleImage : mapboxImage
   
-  interface FootprintCandidate {
-    source: string;
-    coordinates: [number, number][];
-    confidence: number;
-    vertexCount: number;
-    areaSqft?: number;
-  }
-  
-  const footprintCandidates: FootprintCandidate[] = []
+  const footprintCandidates: RoofFootprintCandidate[] = []
   const footprintPromises: Promise<void>[] = []
   
   // 1. Mapbox Vector
@@ -5281,8 +5282,12 @@ async function processSolarFastPath(
             const ratio = areaSqft / totalFlatArea
             if (ratio < 0.5 || ratio > 2.0) conf = Math.max(0.55, conf - 0.15)
           }
-          footprintCandidates.push({ source: usResult.source, coordinates: coords, confidence: conf, vertexCount: usResult.vertices.length, areaSqft })
-          console.log(`✅ US ArcGIS ${usResult.source} candidate: ${usResult.vertices.length} vertices, confidence ${(conf * 100).toFixed(0)}%`)
+          if (isParcelLikeFootprintSource(usResult.source)) {
+            console.log(`⚠️ US ArcGIS ${usResult.source} skipped: parcel polygon is not the exterior roof footprint (${Math.round(areaSqft)} sqft)`)
+          } else {
+            footprintCandidates.push({ source: usResult.source, coordinates: coords, confidence: conf, vertexCount: usResult.vertices.length, areaSqft })
+            console.log(`✅ US ArcGIS ${usResult.source} candidate: ${usResult.vertices.length} vertices, confidence ${(conf * 100).toFixed(0)}%`)
+          }
         }
       } catch (err) { console.warn('⚠️ US ArcGIS fetch failed:', err) }
     })()
@@ -5296,24 +5301,26 @@ async function processSolarFastPath(
   
   console.log(`🗺️ Footprint candidates collected: ${footprintCandidates.length} sources responded`)
   
-  // Pick BEST candidate: most vertices (captures kickouts) with reasonable confidence
+  // Pick BEST candidate: roof/building sources only. Parcel polygons and Solar
+  // bounding boxes are diagnostic context, never the exterior roof footprint.
   if (footprintCandidates.length > 0) {
-    footprintCandidates.sort((a, b) => {
-      if (a.vertexCount !== b.vertexCount) return b.vertexCount - a.vertexCount
-      return b.confidence - a.confidence
-    })
-    
     footprintCandidates.forEach((c, i) => {
-      console.log(`  ${i === 0 ? '→' : ' '} ${c.source}: ${c.vertexCount} vertices, confidence ${(c.confidence * 100).toFixed(0)}%${c.areaSqft ? `, ${Math.round(c.areaSqft)} sqft` : ''}`)
+      const decision = evaluateRoofFootprintCandidate(c, totalFlatArea)
+      console.log(`  ${i === 0 ? '→' : ' '} ${c.source}: ${c.vertexCount} vertices, confidence ${(c.confidence * 100).toFixed(0)}%${c.areaSqft ? `, ${Math.round(c.areaSqft)} sqft` : ''}, ${decision.accepted ? `score ${decision.score.toFixed(1)}` : `rejected ${decision.reason}`}`)
     })
     
-    const best = footprintCandidates[0]
-    perimeterXY = best.coordinates
-    footprintSource = best.source as any
-    footprintConfidence = best.confidence
-    footprintVertexCount = best.vertexCount
-    
-    console.log(`🏆 Selected footprint: ${footprintSource} with ${footprintVertexCount} vertices (best of ${footprintCandidates.length} candidates)`)
+    const bestPick = pickBestRoofFootprintCandidate(footprintCandidates, totalFlatArea)
+    const best = bestPick?.candidate
+    if (best) {
+      perimeterXY = best.coordinates
+      footprintSource = best.source as any
+      footprintConfidence = best.confidence
+      footprintVertexCount = best.vertexCount
+      
+      console.log(`🏆 Selected roof footprint: ${footprintSource} with ${footprintVertexCount} vertices (score ${bestPick!.decision.score.toFixed(1)}, best of ${footprintCandidates.length} candidates)`)
+    } else {
+      console.warn('🚫 No roof-footprint candidate passed scoring. Parcel/bbox candidates will not be used as the roof outline.')
+    }
   }
   
   // AI Vision fallback
