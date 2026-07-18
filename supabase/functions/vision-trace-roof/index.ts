@@ -443,10 +443,10 @@ Deno.serve(async (req) => {
       return parseSegments(text);
     }
 
-    // Sanity: computed bbox of segments must include the image center and
-    // span at least 20% of image width; otherwise the trace is not on the
-    // target roof. Quick trace is single-pass by design: no fake template,
-    // no hardcoded address baseline, and no slow retry loop.
+    // Sanity: reject only obviously unusable traces. Do not require a strict
+    // Solar-box IoU match here: this is a visual prior, and the model may trace
+    // the visible eaves wider than the Solar bounding box. The measurement
+    // pipeline still owns customer-ready validation.
     function traceOnTarget(segs: Segment[]): boolean {
       const bounds = segmentBounds(segs);
       if (!bounds) return false;
@@ -458,9 +458,10 @@ Deno.serve(async (req) => {
         const ty = (targetBoxPx.minY + targetBoxPx.maxY) / 2;
         const targetSpanX = targetBoxPx.maxX - targetBoxPx.minX;
         const targetSpanY = targetBoxPx.maxY - targetBoxPx.minY;
-        const containsTargetCenter = tx >= minX && tx <= maxX && ty >= minY && ty <= maxY;
-        const bigEnoughForTarget = spanX >= targetSpanX * 0.45 && spanY >= targetSpanY * 0.45;
-        return containsTargetCenter && bigEnoughForTarget && boxIoU(bounds, targetBoxPx) >= 0.08;
+        const paddedContainsTargetCenter = tx >= minX - targetSpanX * 0.25 && tx <= maxX + targetSpanX * 0.25 && ty >= minY - targetSpanY * 0.25 && ty <= maxY + targetSpanY * 0.25;
+        const bigEnoughForTarget = spanX >= targetSpanX * 0.35 && spanY >= targetSpanY * 0.35;
+        const nearTarget = boxIoU(bounds, targetBoxPx) >= 0.03 || paddedContainsTargetCenter;
+        return bigEnoughForTarget && nearTarget;
       }
       const containsCenter = cx >= minX && cx <= maxX && cy >= minY && cy <= maxY;
       const bigEnough = spanX >= width * 0.20 && spanY >= height * 0.20;
@@ -492,6 +493,7 @@ Deno.serve(async (req) => {
         center_lng: mapCenter.lng,
         target_box_px: targetBoxPx,
       },
+      trace_bounds_px: segmentBounds(segments),
       segments,
       count: segments.length,
       raw: lastRawText,
