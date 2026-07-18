@@ -83,8 +83,8 @@ describe('MeasurementTestResults quick trace fallback', () => {
 
     render(<MeasurementTestResults result={blockedFonsicaResult as any} />);
 
-    expect(screen.getByText('Quick roof trace')).toBeInTheDocument();
-    expect(screen.getByText(/Measurement Blocked/i)).toBeInTheDocument();
+    expect(screen.getByText('Quick roof trace')).toBeTruthy();
+    expect(screen.getByText(/Measurement Blocked/i)).toBeTruthy();
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('vision-trace-roof', {
@@ -99,7 +99,7 @@ describe('MeasurementTestResults quick trace fallback', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText(/1 segments/i)).toBeInTheDocument();
+      expect(screen.getByText(/1 segments/i)).toBeTruthy();
     });
   });
 });
