@@ -180,7 +180,7 @@ export function MeasurementTestResults({ result, previousResults = [] }: Measure
   const solarApi = data?.solarApiData;
   const traceLat = Number(inlineMeasurement?.target_lat ?? inlineMeasurement?.gps_coordinates?.lat ?? data?.coordinates?.lat);
   const traceLng = Number(inlineMeasurement?.target_lng ?? inlineMeasurement?.gps_coordinates?.lng ?? data?.coordinates?.lng);
-  const traceZoom = 21;
+  const traceZoom = 0; // 0 = let vision-trace-roof auto-pick zoom from Solar bbox
 
   // Calculate variance with Solar API
   const solarVariance = solarApi?.available && solarApi.buildingFootprint && measurements?.totalAreaSqft
