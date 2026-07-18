@@ -180,16 +180,7 @@ export function MeasurementTestResults({ result, previousResults = [] }: Measure
   const solarApi = data?.solarApiData;
   const traceLat = Number(inlineMeasurement?.target_lat ?? inlineMeasurement?.gps_coordinates?.lat ?? data?.coordinates?.lat);
   const traceLng = Number(inlineMeasurement?.target_lng ?? inlineMeasurement?.gps_coordinates?.lng ?? data?.coordinates?.lng);
-  const traceImageUrl = inlineMeasurement?.google_maps_image_url
-    || inlineMeasurement?.mapbox_image_url
-    || inlineMeasurement?.satellite_overlay_url;
-  const traceZoom = Number(inlineMeasurement?.analysis_zoom ?? 20);
-  const traceImageSize = inlineMeasurement?.analysis_image_size
-    ? {
-      width: Number(inlineMeasurement.analysis_image_size.width),
-      height: Number(inlineMeasurement.analysis_image_size.height),
-    }
-    : undefined;
+  const traceZoom = 21;
 
   // Calculate variance with Solar API
   const solarVariance = solarApi?.available && solarApi.buildingFootprint && measurements?.totalAreaSqft
@@ -358,9 +349,7 @@ export function MeasurementTestResults({ result, previousResults = [] }: Measure
               lat={traceLat}
               lng={traceLng}
               address={data.address}
-              zoom={Number.isFinite(traceZoom) ? traceZoom : 20}
-              initialImageUrl={traceImageUrl}
-              imageSize={traceImageSize}
+              zoom={traceZoom}
               autoRun={isBlockedResult}
             />
           )}

@@ -15,6 +15,7 @@
 // }
 
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
+import { parseSegments } from "./segment-parser.ts";
 
 const GOOGLE_MAPS_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY") || "";
 const GOOGLE_SOLAR_API_KEY = Deno.env.get("GOOGLE_SOLAR_API_KEY") || GOOGLE_MAPS_API_KEY;
@@ -68,14 +69,11 @@ Classify every polyline as exactly one of:
 - "hip"    : diagonal edge from a ridge endpoint down to an eave corner
 - "valley" : interior V-shaped edge where two roof planes meet inward
 
-Return STRICT JSON only, no prose, no markdown fences:
+Return STRICT COMPACT JSON only, no prose, no markdown fences. Use this minified schema to avoid truncation:
 
-{
-  "segments": [
-    { "type": "eave",  "points": [[x1,y1],[x2,y2], ...], "confidence": 0.0-1.0 },
-    ...
-  ]
-}
+{"s":[["e",x1,y1,x2,y2,confidence],["ra",x1,y1,x2,y2,confidence],["r",x1,y1,x2,y2,confidence],["h",x1,y1,x2,y2,confidence],["v",x1,y1,x2,y2,confidence]]}
+
+Type codes: e=eave, ra=rake, r=ridge, h=hip, v=valley.
 
 Rules:
 - Trace the FULL perimeter (all eaves + rakes) as a closed loop of connected segments.
@@ -312,41 +310,6 @@ async function fetchImageAsDataUrl(url: string, fallbackSize: number): Promise<{
   return { dataUrl: `data:${mime};base64,${b64}`, width: decoded.width, height: decoded.height };
 }
 
-function parseSegments(text: string): Segment[] {
-  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const raw = fence ? fence[1] : text;
-  let parsed: any;
-  try {
-    parsed = JSON.parse(raw.trim());
-  } catch {
-    // try to extract first {...} block
-    const m = raw.match(/\{[\s\S]*\}/);
-    if (!m) return [];
-    try { parsed = JSON.parse(m[0]); } catch { return []; }
-  }
-  const segs = Array.isArray(parsed?.segments) ? parsed.segments : [];
-  const allowed = new Set(["eave", "rake", "ridge", "hip", "valley"]);
-  const out: Segment[] = [];
-  for (const s of segs) {
-    if (!allowed.has(s?.type)) continue;
-    const pts = Array.isArray(s?.points) ? s.points : [];
-    const norm: Array<[number, number]> = [];
-    for (const p of pts) {
-      if (Array.isArray(p) && p.length >= 2 && Number.isFinite(p[0]) && Number.isFinite(p[1])) {
-        norm.push([Number(p[0]), Number(p[1])]);
-      }
-    }
-    if (norm.length >= 2) {
-      out.push({
-        type: s.type,
-        points: norm,
-        confidence: Number.isFinite(s?.confidence) ? Number(s.confidence) : undefined,
-      });
-    }
-  }
-  return out;
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -423,7 +386,7 @@ Deno.serve(async (req) => {
                   type: "text",
                   text: `Trace the roof of the target house. Image is ${width}x${height} pixels. ` +
                         `${body?.address ? `Address: ${String(body.address).slice(0, 160)}. ` : ""}` +
-                        `${targetDirective}${promptExtra} Return JSON only.`,
+                        `${targetDirective}${promptExtra} Return minified compact JSON only using the {"s":[[type,x1,y1,x2,y2,confidence]]} schema.`,
                 },
                 { type: "image_url", image_url: { url: modelImageUrl } },
               ],
@@ -431,6 +394,7 @@ Deno.serve(async (req) => {
           ],
           temperature: 0.1,
           max_tokens: 4000,
+          response_format: { type: "json_object" },
         }),
       });
       if (!gwRes.ok) {
@@ -443,10 +407,10 @@ Deno.serve(async (req) => {
       return parseSegments(text);
     }
 
-    // Sanity: computed bbox of segments must include the image center and
-    // span at least 20% of image width; otherwise the trace is not on the
-    // target roof. Quick trace is single-pass by design: no fake template,
-    // no hardcoded address baseline, and no slow retry loop.
+    // Sanity: reject only obviously unusable traces. Do not require a strict
+    // Solar-box IoU match here: this is a visual prior, and the model may trace
+    // the visible eaves wider than the Solar bounding box. The measurement
+    // pipeline still owns customer-ready validation.
     function traceOnTarget(segs: Segment[]): boolean {
       const bounds = segmentBounds(segs);
       if (!bounds) return false;
@@ -458,9 +422,10 @@ Deno.serve(async (req) => {
         const ty = (targetBoxPx.minY + targetBoxPx.maxY) / 2;
         const targetSpanX = targetBoxPx.maxX - targetBoxPx.minX;
         const targetSpanY = targetBoxPx.maxY - targetBoxPx.minY;
-        const containsTargetCenter = tx >= minX && tx <= maxX && ty >= minY && ty <= maxY;
-        const bigEnoughForTarget = spanX >= targetSpanX * 0.45 && spanY >= targetSpanY * 0.45;
-        return containsTargetCenter && bigEnoughForTarget && boxIoU(bounds, targetBoxPx) >= 0.08;
+        const paddedContainsTargetCenter = tx >= minX - targetSpanX * 0.25 && tx <= maxX + targetSpanX * 0.25 && ty >= minY - targetSpanY * 0.25 && ty <= maxY + targetSpanY * 0.25;
+        const bigEnoughForTarget = spanX >= targetSpanX * 0.35 && spanY >= targetSpanY * 0.35;
+        const nearTarget = boxIoU(bounds, targetBoxPx) >= 0.03 || paddedContainsTargetCenter;
+        return bigEnoughForTarget && nearTarget;
       }
       const containsCenter = cx >= minX && cx <= maxX && cy >= minY && cy <= maxY;
       const bigEnough = spanX >= width * 0.20 && spanY >= height * 0.20;
@@ -492,6 +457,7 @@ Deno.serve(async (req) => {
         center_lng: mapCenter.lng,
         target_box_px: targetBoxPx,
       },
+      trace_bounds_px: segmentBounds(segments),
       segments,
       count: segments.length,
       raw: lastRawText,

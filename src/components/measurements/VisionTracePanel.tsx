@@ -12,7 +12,7 @@ type Segment = {
   confidence?: number;
 };
 
-type TraceResponse = {
+export type TraceResponse = {
   image: { url: string; width: number; height: number; zoom: number; source: string };
   segments: Segment[];
   count: number;
@@ -59,16 +59,21 @@ interface VisionTracePanelProps {
   initialImageUrl?: string;
   imageSize?: { width?: number; height?: number; rasterWidth?: number; rasterHeight?: number; rasterScale?: number } | null;
   autoRun?: boolean;
+  initialTrace?: TraceResponse | null;
 }
 
-export function VisionTracePanel({ lat, lng, address, zoom = 20, initialImageUrl, imageSize, autoRun = false }: VisionTracePanelProps) {
+export function VisionTracePanel({ lat, lng, address, zoom = 20, initialImageUrl, imageSize, autoRun = false, initialTrace = null }: VisionTracePanelProps) {
   const [loading, setLoading] = useState(false);
-  const [trace, setTrace] = useState<TraceResponse | null>(null);
+  const [trace, setTrace] = useState<TraceResponse | null>(initialTrace);
   const autoRunKeyRef = useRef<string | null>(null);
   const [visible, setVisible] = useState<Record<Segment['type'], boolean>>({
     eave: true, rake: true, ridge: true, hip: true, valley: true,
   });
   const { toast } = useToast();
+
+  useEffect(() => {
+    setTrace(initialTrace);
+  }, [initialTrace]);
 
   const runTrace = useCallback(async () => {
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
