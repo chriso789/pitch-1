@@ -161,3 +161,49 @@ Deno.test("D: component selection rejects front-yard tree blob when it misses co
   assertEquals(rejected?.rejection_reason, "component_missing_confirmed_roof_anchor");
   assertEquals(rejected?.anchor_supported, false);
 });
+
+Deno.test("E: Fonsica target selector prefers structurally supported roof over anchor-near tree", () => {
+  const selection = selectPhase3A5TargetMaskComponent({
+    perimeter: [[500, 470], [790, 470], [790, 785], [500, 785]],
+    sqft_per_px2: 0.44,
+    reference_area_sqft: [3077, 3337],
+    // Anchor is intentionally biased toward the front-yard/tree side. This
+    // used to hard-reject the actual roof and select the smaller blob.
+    anchor_points: [[640, 438]],
+    require_anchor_support: true,
+    anchor_radius_px: 32,
+    components: [
+      {
+        id: 10,
+        pixels: 1268,
+        cx: 640,
+        cy: 438,
+        minX: 610,
+        maxX: 675,
+        minY: 410,
+        maxY: 468,
+        insidePerimeterPixels: 40,
+      },
+      {
+        id: 20,
+        pixels: 7000,
+        cx: 645,
+        cy: 628,
+        minX: 500,
+        maxX: 790,
+        minY: 471,
+        maxY: 782,
+        insidePerimeterPixels: 6860,
+      },
+    ],
+  });
+
+  assertEquals(selection.selected_component_id, 20);
+  const selected = selection.rows.find((row) => row.id === 20);
+  assertEquals(selected?.rejection_reason, null);
+  assertEquals(selected?.anchor_supported, false);
+  assert((selected?.structural_fit_score ?? 0) >= 0.74);
+  const tree = selection.rows.find((row) => row.id === 10);
+  assertEquals(tree?.selected, false);
+  assert((tree?.inside_perimeter_ratio ?? 1) < 0.1);
+});
