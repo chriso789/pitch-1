@@ -60,8 +60,20 @@ export interface DsmRegistrationInput {
     height?: number;
     bounds?: { minLat: number; maxLat: number; minLng: number; maxLng: number } | null;
   } | null;
-  /** dsm_coordinate_match debug bag — may carry dsm_bbox dims. */
-  dsmCoordinateMatchDebug?: { dsm_bbox?: { width?: number; height?: number } | null } | null;
+  /**
+   * dsm_coordinate_match debug bag — carries dsm_bbox dims and (post-fix)
+   * the parsed DSM lat/lng bounds so this shared registration can produce
+   * `dsm_tile_bounds_lat_lng` when `effectiveDSM` was not threaded through.
+   */
+  dsmCoordinateMatchDebug?: {
+    dsm_bbox?: {
+      width?: number;
+      height?: number;
+      bounds?: { minLat: number; maxLat: number; minLng: number; maxLng: number } | null;
+      bounds_provenance?: DsmBoundsSource | null;
+      resolution?: number | null;
+    } | null;
+  } | null;
   /** Confirmed roof center used for derivation. */
   confirmedCenterLatLng?: LatLng | null;
   /** Raster (static map) meters-per-pixel — used only as last-resort mpp. */
@@ -219,6 +231,9 @@ export function buildDsmRegistration(input: DsmRegistrationInput): DsmRegistrati
   if (isNum(input.effectiveDSM?.resolution ?? NaN)) {
     dsm_meters_per_pixel = input.effectiveDSM!.resolution!;
     dsm_mpp_source = "decoded_dsm_grid";
+  } else if (isNum(input.dsmCoordinateMatchDebug?.dsm_bbox?.resolution ?? NaN)) {
+    dsm_meters_per_pixel = input.dsmCoordinateMatchDebug!.dsm_bbox!.resolution!;
+    dsm_mpp_source = "decoded_dsm_grid";
   } else if (isNum(input.rasterMetersPerPixel ?? NaN)) {
     dsm_meters_per_pixel = input.rasterMetersPerPixel!;
     dsm_mpp_source = "derived_from_static_raster";
@@ -232,10 +247,16 @@ export function buildDsmRegistration(input: DsmRegistrationInput): DsmRegistrati
   let dsm_bounds_confidence = 0;
 
   const allowDerived = input.allow_derived_bounds === true;
-  const fromMetadata = asLL(input.effectiveDSM?.bounds ?? null) ?? asLL(input.roofMask?.bounds ?? null);
+  const debugBboxBounds = input.dsmCoordinateMatchDebug?.dsm_bbox?.bounds ?? null;
+  const debugBboxProvenance = input.dsmCoordinateMatchDebug?.dsm_bbox?.bounds_provenance ?? null;
+  const fromMetadata = asLL(input.effectiveDSM?.bounds ?? null) ??
+    asLL(input.roofMask?.bounds ?? null) ??
+    asLL(debugBboxBounds);
   if (fromMetadata) {
     dsm_tile_bounds_lat_lng = fromMetadata;
-    dsm_bounds_source = input.effectiveDSM?.bounds_provenance ?? "google_solar_metadata";
+    dsm_bounds_source = input.effectiveDSM?.bounds_provenance ??
+      debugBboxProvenance ??
+      "google_solar_metadata";
     dsm_bounds_confidence = 1.0;
   }
 
