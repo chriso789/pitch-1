@@ -164,15 +164,34 @@ export type Phase3A5ComponentSelectionRow = {
   centroid_offset_threshold_px: number;
   bbox_overlap_ratio: number;
   area_score: number;
+  anchor_supported: boolean;
+  anchor_distance_px: number | null;
+  anchor_radius_px: number | null;
   rejection_reason: string | null;
   bbox_px: Phase3A5Bbox;
 };
+
+function distancePointToBboxPx(
+  point: Phase3A5Point,
+  bbox: Phase3A5Bbox,
+): number {
+  const [x, y] = point;
+  const dx = x < bbox.minX ? bbox.minX - x : x > bbox.maxX ? x - bbox.maxX : 0;
+  const dy = y < bbox.minY ? bbox.minY - y : y > bbox.maxY ? y - bbox.maxY : 0;
+  return Math.hypot(dx, dy);
+}
 
 export function selectPhase3A5TargetMaskComponent(input: {
   components: Phase3A5ComponentCandidate[];
   perimeter: Phase3A5Point[];
   sqft_per_px2: number;
   reference_area_sqft?: Array<number | null | undefined>;
+  /** Confirmed roof center / Solar centroid in the scorer pixel frame. */
+  anchor_points?: Array<Phase3A5Point | null | undefined>;
+  /** Max bbox distance from an anchor before a component is treated as non-target. */
+  anchor_radius_px?: number | null;
+  /** When true, a component must be supported by at least one anchor. */
+  require_anchor_support?: boolean;
 }): {
   selected: Phase3A5ComponentCandidate | null;
   rows: Phase3A5ComponentSelectionRow[];
@@ -182,6 +201,21 @@ export function selectPhase3A5TargetMaskComponent(input: {
   const perimeterCentroid = polygonCentroidPx(input.perimeter);
   const footprintDiag = Math.max(1, bboxDiagonalPx(perimeterBbox));
   const centroidThreshold = 0.5 * footprintDiag;
+  const anchors = (input.anchor_points ?? [])
+    .filter((pt): pt is Phase3A5Point =>
+      Array.isArray(pt) && pt.length === 2 &&
+      Number.isFinite(pt[0]) && Number.isFinite(pt[1])
+    );
+  const anchorRadius = anchors.length
+    ? Math.max(
+      24,
+      Number.isFinite(Number(input.anchor_radius_px))
+        ? Number(input.anchor_radius_px)
+        : Math.min(96, Math.max(36, 0.22 * footprintDiag)),
+    )
+    : null;
+  const requireAnchorSupport = Boolean(input.require_anchor_support) &&
+    anchors.length > 0;
   const refs = (input.reference_area_sqft ?? [])
     .map((v) => Number(v))
     .filter((v) => Number.isFinite(v) && v > 0);
@@ -198,6 +232,15 @@ export function selectPhase3A5TargetMaskComponent(input: {
       ? Math.hypot(c.cx - perimeterCentroid[0], c.cy - perimeterCentroid[1])
       : Infinity;
     const bboxOverlap = bboxOverlapRatio(perimeterBbox, bbox);
+    const nearestAnchorDistance = anchors.length
+      ? Math.min(...anchors.map((pt) => distancePointToBboxPx(pt, bbox)))
+      : null;
+    const anchorSupported = !anchors.length ||
+      (nearestAnchorDistance != null && anchorRadius != null &&
+        nearestAnchorDistance <= anchorRadius);
+    const anchorScore = nearestAnchorDistance == null || anchorRadius == null
+      ? 0.5
+      : Math.max(0, 1 - nearestAnchorDistance / Math.max(1, anchorRadius * 2));
     const areaScore = refs.length
       ? Math.max(
         ...refs.map((ref) =>
@@ -205,15 +248,19 @@ export function selectPhase3A5TargetMaskComponent(input: {
         ),
       )
       : 0.5;
-    const centroidTooFar = centroidOffset > centroidThreshold;
-    const rejectionReason = centroidTooFar
+    const missingRequiredAnchor = requireAnchorSupport && !anchorSupported;
+    const centroidTooFar = centroidOffset > centroidThreshold && !anchorSupported;
+    const rejectionReason = missingRequiredAnchor
+      ? "component_missing_confirmed_roof_anchor"
+      : centroidTooFar
       ? "component_centroid_offset_exceeds_half_footprint_diagonal"
       : null;
     const insideWeight = centroidTooFar ? 0 : 1.3;
     const score = (1 / (1 + centroidOffset / 80)) * 2.2 +
       bboxOverlap * 2.0 +
       areaScore * 1.4 +
-      insideRatio * insideWeight;
+      insideRatio * insideWeight +
+      anchorScore * 3.0;
 
     const row: Phase3A5ComponentSelectionRow = {
       id: c.id,
@@ -226,6 +273,11 @@ export function selectPhase3A5TargetMaskComponent(input: {
       centroid_offset_threshold_px: Number(centroidThreshold.toFixed(2)),
       bbox_overlap_ratio: Number(bboxOverlap.toFixed(3)),
       area_score: Number(areaScore.toFixed(3)),
+      anchor_supported: anchorSupported,
+      anchor_distance_px: nearestAnchorDistance == null
+        ? null
+        : Number(nearestAnchorDistance.toFixed(2)),
+      anchor_radius_px: anchorRadius == null ? null : Number(anchorRadius.toFixed(2)),
       rejection_reason: rejectionReason,
       bbox_px: bbox,
     };
