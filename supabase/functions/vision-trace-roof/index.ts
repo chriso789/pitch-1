@@ -74,7 +74,72 @@ function buildStaticMapsUrl(lat: number, lng: number, zoom: number, size: number
     `&zoom=${zoom}&size=${s}x${s}&scale=2&maptype=satellite&key=${GOOGLE_MAPS_API_KEY}`;
 }
 
-async function fetchImageAsDataUrl(url: string): Promise<{ dataUrl: string; width: number; height: number }> {
+function readImageDimensions(buf: Uint8Array): { width: number; height: number } | null {
+  // PNG: signature + IHDR width/height, big-endian.
+  if (
+    buf.length >= 24 &&
+    buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47 &&
+    buf[12] === 0x49 && buf[13] === 0x48 && buf[14] === 0x44 && buf[15] === 0x52
+  ) {
+    const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+    return { width: view.getUint32(16), height: view.getUint32(20) };
+  }
+
+  // JPEG: scan SOF markers for dimensions.
+  if (buf.length >= 4 && buf[0] === 0xff && buf[1] === 0xd8) {
+    let offset = 2;
+    while (offset + 9 < buf.length) {
+      while (offset < buf.length && buf[offset] !== 0xff) offset++;
+      while (offset < buf.length && buf[offset] === 0xff) offset++;
+      if (offset >= buf.length) break;
+      const marker = buf[offset++];
+      if (marker === 0xd9 || marker === 0xda) break;
+      if (offset + 2 > buf.length) break;
+      const length = (buf[offset] << 8) + buf[offset + 1];
+      if (length < 2 || offset + length > buf.length) break;
+      const isSof =
+        (marker >= 0xc0 && marker <= 0xc3) ||
+        (marker >= 0xc5 && marker <= 0xc7) ||
+        (marker >= 0xc9 && marker <= 0xcb) ||
+        (marker >= 0xcd && marker <= 0xcf);
+      if (isSof && length >= 7) {
+        const height = (buf[offset + 3] << 8) + buf[offset + 4];
+        const width = (buf[offset + 5] << 8) + buf[offset + 6];
+        return { width, height };
+      }
+      offset += length;
+    }
+  }
+
+  return null;
+}
+
+function inferStaticMapDimensions(url: string, fallbackSize: number): { width: number; height: number } {
+  try {
+    const u = new URL(url);
+    const sizeParam = u.searchParams.get("size") || u.pathname.match(/\/(\d+)x(\d+)(?:@2x)?(?:\?|$)/)?.[0]?.replace(/[/?@].*$/g, "");
+    const pathMatch = u.pathname.match(/\/(\d+)x(\d+)(@2x)?$/);
+    let logicalW = Math.min(640, fallbackSize);
+    let logicalH = logicalW;
+    let scale = Number(u.searchParams.get("scale") || 1);
+    if (sizeParam?.includes("x")) {
+      const [w, h] = sizeParam.split("x").map((v) => Number(v.replace(/\D+$/g, "")));
+      if (Number.isFinite(w) && w > 0) logicalW = w;
+      if (Number.isFinite(h) && h > 0) logicalH = h;
+    } else if (pathMatch) {
+      logicalW = Number(pathMatch[1]);
+      logicalH = Number(pathMatch[2]);
+      scale = pathMatch[3] ? 2 : scale;
+    }
+    if (!Number.isFinite(scale) || scale <= 0) scale = 1;
+    return { width: Math.round(logicalW * scale), height: Math.round(logicalH * scale) };
+  } catch {
+    const s = Math.min(640, fallbackSize);
+    return { width: s, height: s };
+  }
+}
+
+async function fetchImageAsDataUrl(url: string, fallbackSize: number): Promise<{ dataUrl: string; width: number; height: number }> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`image_fetch_failed status=${res.status}`);
   const buf = new Uint8Array(await res.arrayBuffer());
@@ -86,8 +151,8 @@ async function fetchImageAsDataUrl(url: string): Promise<{ dataUrl: string; widt
     binary += String.fromCharCode.apply(null, Array.from(buf.subarray(i, i + chunk)) as any);
   }
   const b64 = btoa(binary);
-  // We can't cheaply decode PNG dimensions here; caller sets expected size.
-  return { dataUrl: `data:${mime};base64,${b64}`, width: 0, height: 0 };
+  const decoded = readImageDimensions(buf) ?? inferStaticMapDimensions(url, fallbackSize);
+  return { dataUrl: `data:${mime};base64,${b64}`, width: decoded.width, height: decoded.height };
 }
 
 function parseSegments(text: string): Segment[] {
@@ -156,9 +221,19 @@ Deno.serve(async (req) => {
       imageUrl = buildStaticMapsUrl(lat, lng, zoom, size);
     }
 
-    const { dataUrl } = await fetchImageAsDataUrl(imageUrl);
-    const width = Math.min(640, size) * 2;
-    const height = width;
+    const { dataUrl, width: detectedWidth, height: detectedHeight } = await fetchImageAsDataUrl(imageUrl, size);
+    const hintedSize = body?.image_size && typeof body.image_size === "object"
+      ? {
+        width: Number(body.image_size.width),
+        height: Number(body.image_size.height),
+      }
+      : null;
+    const width = Number.isFinite(hintedSize?.width) && Number(hintedSize?.width) > 0
+      ? Number(hintedSize?.width)
+      : detectedWidth;
+    const height = Number.isFinite(hintedSize?.height) && Number(hintedSize?.height) > 0
+      ? Number(hintedSize?.height)
+      : detectedHeight;
 
     async function runOnce(promptExtra = ""): Promise<Segment[]> {
       const gwRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
