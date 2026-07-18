@@ -20,7 +20,8 @@ const GOOGLE_MAPS_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY") || "";
 const GOOGLE_SOLAR_API_KEY = Deno.env.get("GOOGLE_SOLAR_API_KEY") || GOOGLE_MAPS_API_KEY;
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY") || "";
 
-const MODEL = "google/gemini-3.1-pro-preview";
+const MODEL = "google/gemini-3.5-flash";
+const AI_TRACE_TIMEOUT_MS = 25_000;
 
 type Segment = {
   type: "eave" | "rake" | "ridge" | "hip" | "valley";
@@ -437,6 +438,7 @@ Deno.serve(async (req) => {
     async function runOnce(promptExtra = ""): Promise<Segment[]> {
       const gwRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
+        signal: AbortSignal.timeout(AI_TRACE_TIMEOUT_MS),
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${LOVABLE_API_KEY}` },
         body: JSON.stringify({
           model: MODEL,
@@ -492,14 +494,23 @@ Deno.serve(async (req) => {
     }
 
     let lastRawText = "";
-    let segments = await runOnce();
+    let segments: Segment[] = [];
+    try {
+      segments = await runOnce();
+    } catch (e) {
+      lastRawText = `[ai_trace_first_pass_failed] ${String(e)}`;
+    }
     if (!traceOnTarget(segments)) {
-      segments = await runOnce(
-        "Your previous trace was off-target or too small. The correct roof is the LARGE structure " +
-        (targetBoxPx
-          ? "inside the authoritative target box. Retrace only the roof pixels in that box."
-          : "directly under the image center pixel and must span at least 40% of the image width. Retrace it."),
-      );
+      try {
+        segments = await runOnce(
+          "Your previous trace was off-target or too small. The correct roof is the LARGE structure " +
+          (targetBoxPx
+            ? "inside the authoritative target box. Retrace only the roof pixels in that box."
+            : "directly under the image center pixel and must span at least 40% of the image width. Retrace it."),
+        );
+      } catch (e) {
+        lastRawText = `${lastRawText}\n[ai_trace_retry_failed] ${String(e)}`;
+      }
     }
     if (!traceOnTarget(segments) && targetBoxPx) {
       // Last-resort visual QA prior: never show a tiny random box on a tree/road.
