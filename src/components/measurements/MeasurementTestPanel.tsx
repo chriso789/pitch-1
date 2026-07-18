@@ -168,6 +168,7 @@ export function MeasurementTestPanel() {
   const [result, setResult] = useState<TestResult | null>(null);
   const [previousResults, setPreviousResults] = useState<TestResult[]>([]);
   const [showDebug, setShowDebug] = useState(false);
+  const [quickTraceCoords, setQuickTraceCoords] = useState<{ lat: number; lng: number } | null>(null);
 
   const hasVerifiedAddress = !!verifiedAddress?.latitude && !!verifiedAddress?.longitude;
   const hasManualCoords = !!lat && !!lng;
