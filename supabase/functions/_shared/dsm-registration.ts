@@ -60,8 +60,20 @@ export interface DsmRegistrationInput {
     height?: number;
     bounds?: { minLat: number; maxLat: number; minLng: number; maxLng: number } | null;
   } | null;
-  /** dsm_coordinate_match debug bag — may carry dsm_bbox dims. */
-  dsmCoordinateMatchDebug?: { dsm_bbox?: { width?: number; height?: number } | null } | null;
+  /**
+   * dsm_coordinate_match debug bag — carries dsm_bbox dims and (post-fix)
+   * the parsed DSM lat/lng bounds so this shared registration can produce
+   * `dsm_tile_bounds_lat_lng` when `effectiveDSM` was not threaded through.
+   */
+  dsmCoordinateMatchDebug?: {
+    dsm_bbox?: {
+      width?: number;
+      height?: number;
+      bounds?: { minLat: number; maxLat: number; minLng: number; maxLng: number } | null;
+      bounds_provenance?: DsmBoundsSource | null;
+      resolution?: number | null;
+    } | null;
+  } | null;
   /** Confirmed roof center used for derivation. */
   confirmedCenterLatLng?: LatLng | null;
   /** Raster (static map) meters-per-pixel — used only as last-resort mpp. */
