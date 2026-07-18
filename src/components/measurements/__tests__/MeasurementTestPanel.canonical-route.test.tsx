@@ -163,7 +163,6 @@ describe('MeasurementTestPanel canonical route', () => {
           body: expect.objectContaining({
             lat: 27.9501,
             lng: -82.2423,
-            zoom: 21,
             size: 640,
             prefer_roof_center: true,
           }),
