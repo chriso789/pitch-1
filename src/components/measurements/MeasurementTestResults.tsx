@@ -8,6 +8,7 @@ import { ImageQualityBadge } from './ImageQualityBadge';
 import { MeasurementComparisonTool } from './MeasurementComparisonTool';
 import MeasurementReportDialog from './MeasurementReportDialog';
 import { SchematicRoofDiagram } from './SchematicRoofDiagram';
+import { VisionTracePanel } from './VisionTracePanel';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
