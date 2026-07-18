@@ -21,7 +21,7 @@ const GOOGLE_SOLAR_API_KEY = Deno.env.get("GOOGLE_SOLAR_API_KEY") || GOOGLE_MAPS
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY") || "";
 
 const MODEL = "google/gemini-3.5-flash";
-const AI_TRACE_TIMEOUT_MS = 18_000;
+const AI_TRACE_TIMEOUT_MS = 8_000;
 
 type Segment = {
   type: "eave" | "rake" | "ridge" | "hip" | "valley";
@@ -443,7 +443,8 @@ Deno.serve(async (req) => {
 
     // Sanity: computed bbox of segments must include the image center and
     // span at least 20% of image width; otherwise the trace is not on the
-    // target roof and we retry with a corrective hint.
+    // target roof. Quick trace is single-pass by design: no fake template,
+    // no hardcoded address baseline, and no slow retry loop.
     function traceOnTarget(segs: Segment[]): boolean {
       const bounds = segmentBounds(segs);
       if (!bounds) return false;
@@ -470,18 +471,6 @@ Deno.serve(async (req) => {
       segments = await runOnce();
     } catch (e) {
       lastRawText = `[ai_trace_first_pass_failed] ${String(e)}`;
-    }
-    if (!traceOnTarget(segments)) {
-      try {
-        segments = await runOnce(
-          "Your previous trace was off-target or too small. The correct roof is the LARGE structure " +
-          (targetBoxPx
-            ? "inside the authoritative target box. Retrace only the roof pixels in that box."
-            : "directly under the image center pixel and must span at least 40% of the image width. Retrace it."),
-        );
-      } catch (e) {
-        lastRawText = `${lastRawText}\n[ai_trace_retry_failed] ${String(e)}`;
-      }
     }
     if (!traceOnTarget(segments)) {
       // Do not draw fake geometry. A bad/off-target AI trace is safer as an
