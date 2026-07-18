@@ -4285,6 +4285,11 @@ async function processJob(input: any) {
                 is_largest: c.is_largest,
                 contains_geocode: c.contains_geocode,
               }));
+              const geocodeContainingComponents = components.filter((c) =>
+                c.contains_geocode === true && c.polygon_geo.length >= 4
+              );
+              const requireGeocodeContainingComponent =
+                geocodeContainingComponents.length > 0;
               for (const comp of components) {
                 if (comp.polygon_geo.length < 4) continue;
                 const compPx = comp.polygon_geo.map(([lng, lat]) =>
@@ -4303,6 +4308,13 @@ async function processJob(input: any) {
                 (compCand as any).component_id = comp.component_id;
                 (compCand as any).component_index = comp.component_index;
                 (compCand as any).component_size_px = comp.size_px;
+                (compCand as any).component_contains_geocode =
+                  comp.contains_geocode === true;
+                (compCand as any).component_is_largest = comp.is_largest === true;
+                (compCand as any).component_geocode_gate =
+                  requireGeocodeContainingComponent
+                    ? "geocode_containing_component_required"
+                    : "no_component_contains_geocode_fallback_scoring";
                 // Per-component bbox diagonal (px) — the TARGET anchor for offset gate
                 let minX = Infinity,
                   minY = Infinity,
@@ -4350,13 +4362,32 @@ async function processJob(input: any) {
                       "candidate_does_not_contain_confirmed_roof_center";
                   }
                 }
+                if (
+                  requireGeocodeContainingComponent &&
+                  comp.contains_geocode !== true
+                ) {
+                  compCand.rejected_reason =
+                    "component_does_not_contain_geocode";
+                  compCand.validity_score = Math.min(
+                    compCand.validity_score,
+                    0.05,
+                  );
+                } else if (comp.contains_geocode === true) {
+                  compCand.validity_score = Math.min(
+                    1,
+                    compCand.validity_score + 0.18,
+                  );
+                }
                 candidates.push(compCand);
               }
 
               // Also re-evaluate the legacy fused mask contour against the
               // TARGET component diagonal (the smallest component that contains
               // the confirmed center), not its own (huge) bbox diagonal.
-              if (confirmedCenterPxForComponents && components.length > 1) {
+              if (
+                components.length > 1 &&
+                (confirmedCenterPxForComponents || requireGeocodeContainingComponent)
+              ) {
                 // Mark fused candidate as diagnostic-only when multiple
                 // viable components exist — it is the convex hull of merged
                 // components and is almost always inflated.
