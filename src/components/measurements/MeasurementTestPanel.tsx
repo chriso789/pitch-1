@@ -11,6 +11,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { MeasurementTestResults } from './MeasurementTestResults';
 import { ImageQualityBadge } from './ImageQualityBadge';
+import { VisionTracePanel } from './VisionTracePanel';
 import { AddressAutocomplete, type AddressComponents } from '@/components/AddressAutocomplete';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 
