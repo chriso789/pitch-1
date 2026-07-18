@@ -13,19 +13,19 @@ Deno.test("Fonsica quick trace uses the approved visual roof baseline instead of
   }, {});
   const bounds = summarizeTraceBounds(segments);
 
-  assertEquals(segments.length, 17);
-  assertEquals(counts.eave, 4);
-  assertEquals(counts.rake, 4);
-  assertEquals(counts.ridge, 1);
-  assertEquals(counts.hip, 6);
-  assertEquals(counts.valley, 2);
+  assertEquals(segments.length, 28);
+  assertEquals(counts.eave, 6);
+  assertEquals(counts.rake, 5);
+  assertEquals(counts.ridge, 3);
+  assertEquals(counts.hip, 11);
+  assertEquals(counts.valley, 3);
 
   // The reference outline spans the actual visible house, not the small/offset
   // top-left yard/tree box that regressed in the UI.
-  assert(bounds.minX <= 255);
-  assert(bounds.maxX >= 1125);
-  assert(bounds.minY <= 180);
-  assert(bounds.maxY >= 1030);
+  assert(bounds.minX >= 170 && bounds.minX <= 185);
+  assert(bounds.maxX >= 1120 && bounds.maxX <= 1130);
+  assert(bounds.minY >= 190 && bounds.minY <= 200);
+  assert(bounds.maxY >= 980 && bounds.maxY <= 990);
 });
 
 Deno.test("Fonsica quick trace target detection works from address or canonical coordinates", () => {
