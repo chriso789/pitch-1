@@ -11,6 +11,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { MeasurementTestResults } from './MeasurementTestResults';
 import { ImageQualityBadge } from './ImageQualityBadge';
+import { VisionTracePanel } from './VisionTracePanel';
 import { AddressAutocomplete, type AddressComponents } from '@/components/AddressAutocomplete';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 
@@ -167,6 +168,7 @@ export function MeasurementTestPanel() {
   const [result, setResult] = useState<TestResult | null>(null);
   const [previousResults, setPreviousResults] = useState<TestResult[]>([]);
   const [showDebug, setShowDebug] = useState(false);
+  const [quickTraceCoords, setQuickTraceCoords] = useState<{ lat: number; lng: number } | null>(null);
 
   const hasVerifiedAddress = !!verifiedAddress?.latitude && !!verifiedAddress?.longitude;
   const hasManualCoords = !!lat && !!lng;
@@ -191,8 +193,8 @@ export function MeasurementTestPanel() {
     }
 
     setIsRunning(true);
-    setProgress(10);
-    setProgressMessage('Preparing measurement...');
+    setProgress(5);
+    setProgressMessage('Starting quick AI roof trace...');
     setResult(null);
 
     try {
@@ -208,9 +210,13 @@ export function MeasurementTestPanel() {
         setLng(coordinates.lng.toString());
       }
 
+      // Kick off the quick vision trace immediately — this renders the roof
+      // outline in seconds so the user sees something real while the full
+      // measurement pipeline runs.
+      setQuickTraceCoords({ lat: coordinates.lat, lng: coordinates.lng });
 
       setProgress(40);
-      setProgressMessage('Fetching satellite imagery...');
+      setProgressMessage('Quick trace running — starting full measurement...');
 
       setProgress(60);
       setProgressMessage('Starting canonical AI measurement job...');
@@ -462,6 +468,19 @@ export function MeasurementTestPanel() {
               </div>
             </CollapsibleContent>
           </Collapsible>
+
+          {/* Quick vision trace — kicks off immediately when Run is pressed.
+              Renders the roof outline in seconds using Gemini vision so the
+              user sees a real trace while the full measurement pipeline runs. */}
+          {quickTraceCoords && (
+            <VisionTracePanel
+              lat={quickTraceCoords.lat}
+              lng={quickTraceCoords.lng}
+              address={verifiedAddress?.formatted_address || address}
+              zoom={20}
+              autoRun
+            />
+          )}
 
           {/* Progress Bar */}
           {isRunning && (
