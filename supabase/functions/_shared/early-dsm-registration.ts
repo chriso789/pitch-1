@@ -222,8 +222,21 @@ export function runEarlyDerivedDsmRegistration(
       rasterSizePx: inp.raster_size_px,
     });
 
+    // Accept any authoritative or derived bounds source that produced a valid
+    // tile bounds + size. Historically this early gate only allowed
+    // "derived_from_raster_bounds" which caused runs with actual Google Solar
+    // GeoTIFF metadata OR the new OpenTopography (USGS 3DEP) fallback to be
+    // rejected here and short-circuit into perimeter_only, even though the
+    // bounds are strictly better than the derived fallback.
+    const ACCEPTED_EARLY_BOUNDS_SOURCES = new Set([
+      "derived_from_raster_bounds",
+      "google_solar_metadata",
+      "opentopography_usgs_3dep_1m",
+      "opentopography_usgs_3dep_10m",
+      "opentopography_srtm_gl1",
+    ]);
     if (
-      dsmReg.dsm_bounds_source !== "derived_from_raster_bounds" ||
+      !ACCEPTED_EARLY_BOUNDS_SOURCES.has(dsmReg.dsm_bounds_source as string) ||
       !dsmReg.dsm_tile_bounds_lat_lng ||
       !dsmReg.dsm_size_px
     ) {
@@ -236,6 +249,7 @@ export function runEarlyDerivedDsmRegistration(
         (dsmReg as any).derived_bounds_debug ?? null;
       return r;
     }
+    const _acceptedBoundsSource = dsmReg.dsm_bounds_source as string;
 
     // ── buildRegistrationTransformPackage with derived bounds ────────
     const transformPkg = buildRegistrationTransformPackage({
@@ -296,9 +310,9 @@ export function runEarlyDerivedDsmRegistration(
       success: true,
       callsite: EARLY_DSM_REGISTRATION_CALLSITE,
       fields: {
-        dsm_bounds_derived: true,
-        dsm_tile_bounds_source: "derived_from_raster_bounds",
-        dsm_bounds_source: "derived_from_raster_bounds",
+        dsm_bounds_derived: _acceptedBoundsSource === "derived_from_raster_bounds",
+        dsm_tile_bounds_source: _acceptedBoundsSource,
+        dsm_bounds_source: _acceptedBoundsSource,
         dsm_tile_bounds_lat_lng: dsmReg.dsm_tile_bounds_lat_lng,
         dsm_size_px: dsmReg.dsm_size_px,
         dsm_meters_per_pixel: dsmReg.dsm_meters_per_pixel,
