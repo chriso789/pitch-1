@@ -164,6 +164,8 @@ export type Phase3A5ComponentSelectionRow = {
   centroid_offset_threshold_px: number;
   bbox_overlap_ratio: number;
   area_score: number;
+  structural_fit_score: number;
+  anchor_penalty_applied: boolean;
   anchor_supported: boolean;
   anchor_distance_px: number | null;
   anchor_radius_px: number | null;
@@ -211,7 +213,11 @@ export function selectPhase3A5TargetMaskComponent(input: {
       24,
       Number.isFinite(Number(input.anchor_radius_px))
         ? Number(input.anchor_radius_px)
-        : Math.min(96, Math.max(36, 0.22 * footprintDiag)),
+        // Scale with the actual target footprint. The old 96px cap made the
+        // selector fail closed on Fonsica-class roofs when the address/solar
+        // anchor was near a tree/yard object but the roof component had strong
+        // perimeter + area support.
+        : Math.min(220, Math.max(48, 0.35 * footprintDiag)),
     )
     : null;
   const requireAnchorSupport = Boolean(input.require_anchor_support) &&
@@ -248,20 +254,35 @@ export function selectPhase3A5TargetMaskComponent(input: {
         ),
       )
       : 0.5;
-    const missingRequiredAnchor = requireAnchorSupport && !anchorSupported;
+    const structuralFitScore = (bboxOverlap * 0.42) +
+      (insideRatio * 0.38) +
+      (areaScore * 0.20);
+    const structurallyDominant =
+      structuralFitScore >= 0.74 &&
+      insideRatio >= 0.70 &&
+      bboxOverlap >= 0.62 &&
+      (areaScore >= 0.55 || refs.length === 0);
+    const missingRequiredAnchor = requireAnchorSupport && !anchorSupported &&
+      !structurallyDominant;
     const centroidTooFar = centroidOffset > centroidThreshold &&
-      !(anchors.length > 0 && anchorSupported);
+      !(anchors.length > 0 && anchorSupported) &&
+      !structurallyDominant;
     const rejectionReason = missingRequiredAnchor
       ? "component_missing_confirmed_roof_anchor"
       : centroidTooFar
       ? "component_centroid_offset_exceeds_half_footprint_diagonal"
       : null;
-    const insideWeight = centroidTooFar ? 0 : 1.3;
-    const score = (1 / (1 + centroidOffset / 80)) * 2.2 +
-      bboxOverlap * 2.0 +
-      areaScore * 1.4 +
+    const insideWeight = centroidTooFar ? 0 : 2.8;
+    const anchorPenalty = requireAnchorSupport && !anchorSupported &&
+        !structurallyDominant
+      ? 1.25
+      : 0;
+    const score = (1 / (1 + centroidOffset / 80)) * 1.2 +
+      bboxOverlap * 3.2 +
+      areaScore * 2.1 +
       insideRatio * insideWeight +
-      anchorScore * 3.0;
+      anchorScore * 0.9 -
+      anchorPenalty;
 
     const row: Phase3A5ComponentSelectionRow = {
       id: c.id,
@@ -274,6 +295,8 @@ export function selectPhase3A5TargetMaskComponent(input: {
       centroid_offset_threshold_px: Number(centroidThreshold.toFixed(2)),
       bbox_overlap_ratio: Number(bboxOverlap.toFixed(3)),
       area_score: Number(areaScore.toFixed(3)),
+      structural_fit_score: Number(structuralFitScore.toFixed(3)),
+      anchor_penalty_applied: anchorPenalty > 0,
       anchor_supported: anchorSupported,
       anchor_distance_px: nearestAnchorDistance == null
         ? null
