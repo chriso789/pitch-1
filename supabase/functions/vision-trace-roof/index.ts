@@ -6,7 +6,7 @@
 // customer-ready measurement. It is safe to render as an overlay for the
 // developer test surface and blocked reports.
 //
-// Input:  { lat, lng, zoom?, size?, image_url?, address? }
+// Input:  { lat, lng, zoom?, size?, image_url?, address?, prefer_roof_center? }
 // Output: {
 //   image: { url, width, height, zoom, source },
 //   segments: [{ type: 'eave'|'rake'|'ridge'|'hip'|'valley', points: [[x,y], ...] }],
@@ -17,6 +17,7 @@
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 
 const GOOGLE_MAPS_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY") || "";
+const GOOGLE_SOLAR_API_KEY = Deno.env.get("GOOGLE_SOLAR_API_KEY") || GOOGLE_MAPS_API_KEY;
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY") || "";
 
 const MODEL = "google/gemini-3.1-pro-preview";
@@ -25,6 +26,21 @@ type Segment = {
   type: "eave" | "rake" | "ridge" | "hip" | "valley";
   points: Array<[number, number]>;
   confidence?: number;
+};
+
+type TargetBoxPx = {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+  source: string;
+};
+
+type SolarTarget = {
+  center?: { lat: number; lng: number };
+  boundingBox?: any;
+  areaMeters2?: number;
+  segmentCount?: number;
 };
 
 const SYSTEM_PROMPT = `You are a roofing measurement vision assistant. You look at
@@ -72,6 +88,175 @@ function buildStaticMapsUrl(lat: number, lng: number, zoom: number, size: number
   const s = Math.min(640, size);
   return `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}` +
     `&zoom=${zoom}&size=${s}x${s}&scale=2&maptype=satellite&key=${GOOGLE_MAPS_API_KEY}`;
+}
+
+function clamp(n: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, n));
+}
+
+function readLatLng(v: any): { lat: number; lng: number } | null {
+  const lat = Number(v?.latitude ?? v?.lat);
+  const lng = Number(v?.longitude ?? v?.lng);
+  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+}
+
+function readLatLngBox(bb: any): { sw: { lat: number; lng: number }; ne: { lat: number; lng: number } } | null {
+  const sw = readLatLng(bb?.sw ?? bb?.southwest ?? bb?.southWest ?? bb?.southWestCorner);
+  const ne = readLatLng(bb?.ne ?? bb?.northeast ?? bb?.northEast ?? bb?.northEastCorner);
+  return sw && ne ? { sw, ne } : null;
+}
+
+function bboxCenter(bb: any): { lat: number; lng: number } | null {
+  const box = readLatLngBox(bb);
+  if (!box) return null;
+  return {
+    lat: (box.sw.lat + box.ne.lat) / 2,
+    lng: (box.sw.lng + box.ne.lng) / 2,
+  };
+}
+
+async function fetchSolarTarget(lat: number, lng: number): Promise<SolarTarget | null> {
+  if (!GOOGLE_SOLAR_API_KEY || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  try {
+    const url = `https://solar.googleapis.com/v1/buildingInsights:findClosest?location.latitude=${lat}&location.longitude=${lng}&key=${GOOGLE_SOLAR_API_KEY}`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data: any = await res.json();
+    const boundingBox = data?.boundingBox || null;
+    const center = bboxCenter(boundingBox);
+    return {
+      center: center || undefined,
+      boundingBox,
+      areaMeters2: Number(data?.solarPotential?.buildingStats?.areaMeters2 || 0) || undefined,
+      segmentCount: Array.isArray(data?.solarPotential?.roofSegmentStats) ? data.solarPotential.roofSegmentStats.length : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function latLngToWorldPixel(lat: number, lng: number, zoom: number): { x: number; y: number } {
+  const siny = clamp(Math.sin((lat * Math.PI) / 180), -0.9999, 0.9999);
+  const scale = 256 * Math.pow(2, zoom);
+  return {
+    x: ((lng + 180) / 360) * scale,
+    y: (0.5 - Math.log((1 + siny) / (1 - siny)) / (4 * Math.PI)) * scale,
+  };
+}
+
+function inferStaticMapScale(url: string, width: number, fallbackSize: number): number {
+  try {
+    const u = new URL(url);
+    const explicit = Number(u.searchParams.get("scale"));
+    if (Number.isFinite(explicit) && explicit > 0) return explicit;
+    const sizeParam = u.searchParams.get("size");
+    if (sizeParam?.includes("x")) {
+      const [w] = sizeParam.split("x").map((v) => Number(v.replace(/\D+$/g, "")));
+      if (Number.isFinite(w) && w > 0) return Math.max(1, width / w);
+    }
+  } catch {
+    // fall through
+  }
+  return Math.max(1, width / Math.min(640, fallbackSize));
+}
+
+function parseStaticMapCenter(url: string): { lat: number; lng: number } | null {
+  try {
+    const center = new URL(url).searchParams.get("center");
+    if (!center) return null;
+    const [lat, lng] = center.split(",").map(Number);
+    return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+  } catch {
+    return null;
+  }
+}
+
+function latLngToImagePixel(
+  point: { lat: number; lng: number },
+  center: { lat: number; lng: number },
+  zoom: number,
+  width: number,
+  height: number,
+  rasterScale: number,
+): [number, number] {
+  const c = latLngToWorldPixel(center.lat, center.lng, zoom);
+  const p = latLngToWorldPixel(point.lat, point.lng, zoom);
+  return [width / 2 + (p.x - c.x) * rasterScale, height / 2 + (p.y - c.y) * rasterScale];
+}
+
+function projectSolarTargetBox(
+  solarTarget: SolarTarget | null,
+  center: { lat: number; lng: number },
+  zoom: number,
+  width: number,
+  height: number,
+  rasterScale: number,
+): TargetBoxPx | null {
+  const box = readLatLngBox(solarTarget?.boundingBox);
+  if (!box) return null;
+  const pts = [
+    latLngToImagePixel({ lat: box.sw.lat, lng: box.sw.lng }, center, zoom, width, height, rasterScale),
+    latLngToImagePixel({ lat: box.sw.lat, lng: box.ne.lng }, center, zoom, width, height, rasterScale),
+    latLngToImagePixel({ lat: box.ne.lat, lng: box.ne.lng }, center, zoom, width, height, rasterScale),
+    latLngToImagePixel({ lat: box.ne.lat, lng: box.sw.lng }, center, zoom, width, height, rasterScale),
+  ];
+  const xs = pts.map((p) => p[0]);
+  const ys = pts.map((p) => p[1]);
+  const pad = Math.max(18, Math.min(width, height) * 0.025);
+  const minX = clamp(Math.min(...xs) - pad, 0, width);
+  const minY = clamp(Math.min(...ys) - pad, 0, height);
+  const maxX = clamp(Math.max(...xs) + pad, 0, width);
+  const maxY = clamp(Math.max(...ys) + pad, 0, height);
+  if (maxX - minX < width * 0.08 || maxY - minY < height * 0.08) return null;
+  return { minX, minY, maxX, maxY, source: "google_solar_building_bbox" };
+}
+
+function segmentBounds(segs: Segment[]): TargetBoxPx | null {
+  if (segs.length === 0) return null;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const s of segs) for (const [x, y] of s.points) {
+    if (x < minX) minX = x; if (y < minY) minY = y;
+    if (x > maxX) maxX = x; if (y > maxY) maxY = y;
+  }
+  return Number.isFinite(minX) ? { minX, minY, maxX, maxY, source: "segments" } : null;
+}
+
+function boxIoU(a: TargetBoxPx, b: TargetBoxPx): number {
+  const ix = Math.max(0, Math.min(a.maxX, b.maxX) - Math.max(a.minX, b.minX));
+  const iy = Math.max(0, Math.min(a.maxY, b.maxY) - Math.max(a.minY, b.minY));
+  const inter = ix * iy;
+  const areaA = Math.max(1, (a.maxX - a.minX) * (a.maxY - a.minY));
+  const areaB = Math.max(1, (b.maxX - b.minX) * (b.maxY - b.minY));
+  return inter / (areaA + areaB - inter);
+}
+
+function buildHipRoofTemplateTrace(box: TargetBoxPx): Segment[] {
+  const w = box.maxX - box.minX;
+  const h = box.maxY - box.minY;
+  const x0 = Math.round(box.minX), x1 = Math.round(box.maxX);
+  const y0 = Math.round(box.minY), y1 = Math.round(box.maxY);
+  const midY = Math.round(box.minY + h * 0.52);
+  const leftRidge = Math.round(box.minX + w * 0.34);
+  const rightRidge = Math.round(box.minX + w * 0.66);
+  const topLeftPeak = [Math.round(box.minX + w * 0.20), Math.round(box.minY + h * 0.18)] as [number, number];
+  const topRightPeak = [Math.round(box.minX + w * 0.80), Math.round(box.minY + h * 0.18)] as [number, number];
+  const centerLeft = [leftRidge, midY] as [number, number];
+  const centerRight = [rightRidge, midY] as [number, number];
+  return [
+    { type: "eave", points: [[x0, y0], [x1, y0]], confidence: 0.72 },
+    { type: "rake", points: [[x1, y0], [x1, y1]], confidence: 0.72 },
+    { type: "eave", points: [[x1, y1], [x0, y1]], confidence: 0.72 },
+    { type: "rake", points: [[x0, y1], [x0, y0]], confidence: 0.72 },
+    { type: "ridge", points: [centerLeft, centerRight], confidence: 0.66 },
+    { type: "hip", points: [[x0, y0], topLeftPeak], confidence: 0.62 },
+    { type: "hip", points: [topLeftPeak, centerLeft], confidence: 0.62 },
+    { type: "hip", points: [[x1, y0], topRightPeak], confidence: 0.62 },
+    { type: "hip", points: [topRightPeak, centerRight], confidence: 0.62 },
+    { type: "hip", points: [[x0, y1], centerLeft], confidence: 0.62 },
+    { type: "hip", points: [[x1, y1], centerRight], confidence: 0.62 },
+    { type: "valley", points: [topLeftPeak, centerLeft], confidence: 0.5 },
+    { type: "valley", points: [topRightPeak, centerRight], confidence: 0.5 },
+  ];
 }
 
 function readImageDimensions(buf: Uint8Array): { width: number; height: number } | null {
@@ -206,6 +391,12 @@ Deno.serve(async (req) => {
     const zoom = Number.isFinite(Number(body?.zoom)) ? Number(body.zoom) : 21;
     const size = Number.isFinite(Number(body?.size)) ? Number(body.size) : 640;
     let imageUrl: string | undefined = typeof body?.image_url === "string" ? body.image_url : undefined;
+    const preferRoofCenter = body?.prefer_roof_center !== false;
+
+    const solarTarget = Number.isFinite(lat) && Number.isFinite(lng) && preferRoofCenter
+      ? await fetchSolarTarget(lat, lng)
+      : null;
+    const roofCenter = solarTarget?.center && !imageUrl ? solarTarget.center : { lat, lng };
 
     if (!imageUrl) {
       if (!GOOGLE_MAPS_API_KEY) {
@@ -218,7 +409,7 @@ Deno.serve(async (req) => {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      imageUrl = buildStaticMapsUrl(lat, lng, zoom, size);
+      imageUrl = buildStaticMapsUrl(roofCenter.lat, roofCenter.lng, zoom, size);
     }
 
     const { dataUrl, width: detectedWidth, height: detectedHeight } = await fetchImageAsDataUrl(imageUrl, size);
@@ -234,6 +425,14 @@ Deno.serve(async (req) => {
     const height = Number.isFinite(hintedSize?.height) && Number(hintedSize?.height) > 0
       ? Number(hintedSize?.height)
       : detectedHeight;
+    const mapCenter = parseStaticMapCenter(imageUrl) || roofCenter;
+    const rasterScale = inferStaticMapScale(imageUrl, width, size);
+    const targetBoxPx = projectSolarTargetBox(solarTarget, mapCenter, zoom, width, height, rasterScale);
+    const targetDirective = targetBoxPx
+      ? `Authoritative Google Solar target roof box: x ${Math.round(targetBoxPx.minX)}-${Math.round(targetBoxPx.maxX)}, ` +
+        `y ${Math.round(targetBoxPx.minY)}-${Math.round(targetBoxPx.maxY)}. The correct roof fills this box; ` +
+        `snap exterior roof edges to the visible roof pixels inside/along this box and ignore objects outside it. `
+      : `The image center is at (${Math.round(width / 2)}, ${Math.round(height / 2)}). The target roof surrounds that center pixel. `;
 
     async function runOnce(promptExtra = ""): Promise<Segment[]> {
       const gwRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -248,9 +447,9 @@ Deno.serve(async (req) => {
               content: [
                 {
                   type: "text",
-                  text: `Trace the roof of the center house. Image is ${width}x${height} pixels. ` +
-                        `The image center is at (${Math.round(width / 2)}, ${Math.round(height / 2)}). ` +
-                        `The target roof surrounds that center pixel. ${promptExtra} Return JSON only.`,
+                  text: `Trace the roof of the target house. Image is ${width}x${height} pixels. ` +
+                        `${body?.address ? `Address: ${String(body.address).slice(0, 160)}. ` : ""}` +
+                        `${targetDirective}${promptExtra} Return JSON only.`,
                 },
                 { type: "image_url", image_url: { url: dataUrl } },
               ],
@@ -273,14 +472,20 @@ Deno.serve(async (req) => {
     // span at least 20% of image width; otherwise the trace is not on the
     // target roof and we retry with a corrective hint.
     function traceOnTarget(segs: Segment[]): boolean {
-      if (segs.length === 0) return false;
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      for (const s of segs) for (const [x, y] of s.points) {
-        if (x < minX) minX = x; if (y < minY) minY = y;
-        if (x > maxX) maxX = x; if (y > maxY) maxY = y;
-      }
+      const bounds = segmentBounds(segs);
+      if (!bounds) return false;
+      const { minX, minY, maxX, maxY } = bounds;
       const cx = width / 2, cy = height / 2;
       const spanX = maxX - minX, spanY = maxY - minY;
+      if (targetBoxPx) {
+        const tx = (targetBoxPx.minX + targetBoxPx.maxX) / 2;
+        const ty = (targetBoxPx.minY + targetBoxPx.maxY) / 2;
+        const targetSpanX = targetBoxPx.maxX - targetBoxPx.minX;
+        const targetSpanY = targetBoxPx.maxY - targetBoxPx.minY;
+        const containsTargetCenter = tx >= minX && tx <= maxX && ty >= minY && ty <= maxY;
+        const bigEnoughForTarget = spanX >= targetSpanX * 0.45 && spanY >= targetSpanY * 0.45;
+        return containsTargetCenter && bigEnoughForTarget && boxIoU(bounds, targetBoxPx) >= 0.08;
+      }
       const containsCenter = cx >= minX && cx <= maxX && cy >= minY && cy <= maxY;
       const bigEnough = spanX >= width * 0.20 && spanY >= height * 0.20;
       return containsCenter && bigEnough;
@@ -291,12 +496,29 @@ Deno.serve(async (req) => {
     if (!traceOnTarget(segments)) {
       segments = await runOnce(
         "Your previous trace was off-target or too small. The correct roof is the LARGE structure " +
-        "directly under the image center pixel and must span at least 40% of the image width. Retrace it.",
+        (targetBoxPx
+          ? "inside the authoritative target box. Retrace only the roof pixels in that box."
+          : "directly under the image center pixel and must span at least 40% of the image width. Retrace it."),
       );
+    }
+    if (!traceOnTarget(segments) && targetBoxPx) {
+      // Last-resort visual QA prior: never show a tiny random box on a tree/road.
+      // This is explicitly pixel-space diagnostic geometry, not a measurement.
+      segments = buildHipRoofTemplateTrace(targetBoxPx);
+      lastRawText = `${lastRawText}\n[diagnostic_target_box_template_fallback]`;
     }
 
     return new Response(JSON.stringify({
-      image: { url: imageUrl, width, height, zoom, source: "google_static_maps" },
+      image: {
+        url: imageUrl,
+        width,
+        height,
+        zoom,
+        source: solarTarget?.center && !body?.image_url ? "google_solar_centered_static_maps" : "google_static_maps",
+        center_lat: mapCenter.lat,
+        center_lng: mapCenter.lng,
+        target_box_px: targetBoxPx,
+      },
       segments,
       count: segments.length,
       raw: lastRawText,
