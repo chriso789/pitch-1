@@ -5545,6 +5545,14 @@ async function processJob(input: any) {
         perimeter: perimeter.map((p) => [p.x, p.y] as [number, number]),
         sqft_per_px2: sqftPerPx2,
         reference_area_sqft: refAreas,
+        anchor_points: [
+          [params.geocodePoint.x, params.geocodePoint.y],
+          params.solarCentroid
+            ? [params.solarCentroid.x, params.solarCentroid.y]
+            : null,
+          [fpCentroid.x, fpCentroid.y],
+        ],
+        require_anchor_support: true,
       });
       const target = componentSelection.selected as TargetComp | null;
 
