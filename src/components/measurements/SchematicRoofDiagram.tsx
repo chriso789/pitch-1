@@ -550,7 +550,10 @@ export function SchematicRoofDiagram({
           const p2 = Array.isArray(f?.p2) ? { x: Number(f.p2[0]), y: Number(f.p2[1]) } : null;
           if (!p1 || !p2 || !Number.isFinite(p1.x) || !Number.isFinite(p2.x)) return null;
           const type = String(f.type || 'ridge').toLowerCase();
-          if (suppressDiagnosticBboxInterior && ['ridge', 'hip', 'valley'].includes(type)) return null;
+          // When the footprint is a diagnostic bbox or the run is low confidence,
+          // ALL AI-classified segments (eave, rake, ridge, hip, valley) are unreliable —
+          // they don't correspond to real roof geometry. Only the outer perimeter is trustworthy.
+          if (suppressDiagnosticBboxInterior) return null;
           const points = [toSvgPx(p1), toSvgPx(p2)];
           const length = Number(f.length_ft || 0);
           const segData = { start: points[0], end: points[1], points, length, gpsStart: dummyGps, gpsEnd: dummyGps, gpsPoints: [dummyGps, dummyGps] };
