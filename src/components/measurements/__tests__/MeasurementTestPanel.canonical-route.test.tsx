@@ -3,7 +3,9 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MeasurementTestPanel } from '../MeasurementTestPanel';
 
-const invokeMock = vi.fn();
+const { invokeMock } = vi.hoisted(() => ({
+  invokeMock: vi.fn(),
+}));
 
 function roofMeasurementRow() {
   return {
