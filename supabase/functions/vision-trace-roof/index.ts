@@ -15,17 +15,13 @@
 // }
 
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
-import {
-  buildFonsicaVisualBaselineTrace,
-  isFonsicaTarget,
-} from "./trace-baselines.ts";
 
 const GOOGLE_MAPS_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY") || "";
 const GOOGLE_SOLAR_API_KEY = Deno.env.get("GOOGLE_SOLAR_API_KEY") || GOOGLE_MAPS_API_KEY;
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY") || "";
 
 const MODEL = "google/gemini-3.5-flash";
-const AI_TRACE_TIMEOUT_MS = 25_000;
+const AI_TRACE_TIMEOUT_MS = 28_000;
 
 type Segment = {
   type: "eave" | "rake" | "ridge" | "hip" | "valley";
@@ -92,7 +88,7 @@ Rules:
 function buildStaticMapsUrl(lat: number, lng: number, zoom: number, size: number): string {
   const s = Math.min(640, size);
   return `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}` +
-    `&zoom=${zoom}&size=${s}x${s}&scale=2&maptype=satellite&key=${GOOGLE_MAPS_API_KEY}`;
+    `&zoom=${zoom}&size=${s}x${s}&scale=1&maptype=satellite&key=${GOOGLE_MAPS_API_KEY}`;
 }
 
 function clamp(n: number, min: number, max: number): number {
@@ -233,40 +229,6 @@ function boxIoU(a: TargetBoxPx, b: TargetBoxPx): number {
   const areaA = Math.max(1, (a.maxX - a.minX) * (a.maxY - a.minY));
   const areaB = Math.max(1, (b.maxX - b.minX) * (b.maxY - b.minY));
   return inter / (areaA + areaB - inter);
-}
-
-function buildHipRoofTemplateTrace(box: TargetBoxPx): Segment[] {
-  const w = box.maxX - box.minX;
-  const h = box.maxY - box.minY;
-  const x0 = Math.round(box.minX), x1 = Math.round(box.maxX);
-  const y0 = Math.round(box.minY), y1 = Math.round(box.maxY);
-  const leftWingRight = Math.round(box.minX + w * 0.39);
-  const rightWingLeft = Math.round(box.minX + w * 0.58);
-  const connectorY = Math.round(box.minY + h * 0.17);
-  const rightTopY = Math.round(box.minY + h * 0.04);
-  const leftPeak = [Math.round(box.minX + w * 0.20), Math.round(box.minY + h * 0.19)] as [number, number];
-  const rightPeak = [Math.round(box.minX + w * 0.79), Math.round(box.minY + h * 0.22)] as [number, number];
-  const centerLeft = [Math.round(box.minX + w * 0.32), Math.round(box.minY + h * 0.52)] as [number, number];
-  const centerRight = [Math.round(box.minX + w * 0.68), Math.round(box.minY + h * 0.52)] as [number, number];
-  return [
-    { type: "eave", points: [[x0, y0], [leftWingRight, y0]], confidence: 0.72 },
-    { type: "rake", points: [[leftWingRight, y0], [leftWingRight, connectorY]], confidence: 0.72 },
-    { type: "eave", points: [[leftWingRight, connectorY], [rightWingLeft, connectorY]], confidence: 0.72 },
-    { type: "rake", points: [[rightWingLeft, connectorY], [rightWingLeft, rightTopY]], confidence: 0.72 },
-    { type: "eave", points: [[rightWingLeft, rightTopY], [x1, rightTopY]], confidence: 0.72 },
-    { type: "rake", points: [[x1, rightTopY], [x1, y1]], confidence: 0.72 },
-    { type: "eave", points: [[x1, y1], [x0, y1]], confidence: 0.72 },
-    { type: "rake", points: [[x0, y1], [x0, y0]], confidence: 0.72 },
-    { type: "ridge", points: [centerLeft, centerRight], confidence: 0.66 },
-    { type: "hip", points: [[x0, y0], leftPeak], confidence: 0.62 },
-    { type: "hip", points: [leftPeak, [leftWingRight, y0]], confidence: 0.62 },
-    { type: "valley", points: [leftPeak, centerLeft], confidence: 0.56 },
-    { type: "hip", points: [[rightWingLeft, rightTopY], rightPeak], confidence: 0.62 },
-    { type: "hip", points: [rightPeak, [x1, rightTopY]], confidence: 0.62 },
-    { type: "valley", points: [rightPeak, centerRight], confidence: 0.56 },
-    { type: "hip", points: [[x0, y1], centerLeft], confidence: 0.62 },
-    { type: "hip", points: [[x1, y1], centerRight], confidence: 0.62 },
-  ];
 }
 
 function readImageDimensions(buf: Uint8Array): { width: number; height: number } | null {
@@ -423,6 +385,7 @@ Deno.serve(async (req) => {
     }
 
     const { dataUrl, width: detectedWidth, height: detectedHeight } = await fetchImageAsDataUrl(imageUrl, size);
+    const modelImageUrl = /^https?:\/\//i.test(imageUrl) ? imageUrl : dataUrl;
     const hintedSize = body?.image_size && typeof body.image_size === "object"
       ? {
         width: Number(body.image_size.width),
@@ -438,59 +401,17 @@ Deno.serve(async (req) => {
     const mapCenter = parseStaticMapCenter(imageUrl) || roofCenter;
     const rasterScale = inferStaticMapScale(imageUrl, width, size);
     const targetBoxPx = projectSolarTargetBox(solarTarget, mapCenter, zoom, width, height, rasterScale);
-    if (isFonsicaTarget({ lat, lng, address: body?.address }) && body?.use_fonsica_baseline !== false) {
-      const baselineSegments = buildFonsicaVisualBaselineTrace(width, height);
-      return new Response(JSON.stringify({
-        image: {
-          url: imageUrl,
-          width,
-          height,
-          zoom,
-          source: solarTarget?.center && !body?.image_url ? "google_solar_centered_static_maps" : "google_static_maps",
-          center_lat: mapCenter.lat,
-          center_lng: mapCenter.lng,
-          target_box_px: targetBoxPx,
-        },
-        segments: baselineSegments,
-        count: baselineSegments.length,
-        raw: "[fonsica_visual_baseline] Pixel-space reference trace from the approved visual roof outline. Diagnostic only.",
-        model: "fonsica-visual-baseline-v1",
-        durationMs: Date.now() - startedAt,
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-
     const targetDirective = targetBoxPx
       ? `Authoritative Google Solar target roof box: x ${Math.round(targetBoxPx.minX)}-${Math.round(targetBoxPx.maxX)}, ` +
         `y ${Math.round(targetBoxPx.minY)}-${Math.round(targetBoxPx.maxY)}. The correct roof fills this box; ` +
         `snap exterior roof edges to the visible roof pixels inside/along this box and ignore objects outside it. `
       : `The image center is at (${Math.round(width / 2)}, ${Math.round(height / 2)}). The target roof surrounds that center pixel. `;
 
-    if (targetBoxPx && body?.force_target_box_template === true) {
-      const templateSegments = buildHipRoofTemplateTrace(targetBoxPx);
-      return new Response(JSON.stringify({
-        image: {
-          url: imageUrl,
-          width,
-          height,
-          zoom,
-          source: solarTarget?.center && !body?.image_url ? "google_solar_centered_static_maps" : "google_static_maps",
-          center_lat: mapCenter.lat,
-          center_lng: mapCenter.lng,
-          target_box_px: targetBoxPx,
-        },
-        segments: templateSegments,
-        count: templateSegments.length,
-        raw: "[diagnostic_target_box_template] Solar-targeted fast trace. Pixel-space visual prior only.",
-        model: "target-box-template-v1",
-        durationMs: Date.now() - startedAt,
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-
     async function runOnce(promptExtra = ""): Promise<Segment[]> {
       const gwRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
         signal: AbortSignal.timeout(AI_TRACE_TIMEOUT_MS),
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${LOVABLE_API_KEY}` },
+        headers: { "Content-Type": "application/json", "Lovable-API-Key": LOVABLE_API_KEY },
         body: JSON.stringify({
           model: MODEL,
           messages: [
@@ -504,11 +425,12 @@ Deno.serve(async (req) => {
                         `${body?.address ? `Address: ${String(body.address).slice(0, 160)}. ` : ""}` +
                         `${targetDirective}${promptExtra} Return JSON only.`,
                 },
-                { type: "image_url", image_url: { url: dataUrl } },
+                { type: "image_url", image_url: { url: modelImageUrl } },
               ],
             },
           ],
           temperature: 0.1,
+          max_tokens: 4000,
         }),
       });
       if (!gwRes.ok) {
@@ -523,7 +445,8 @@ Deno.serve(async (req) => {
 
     // Sanity: computed bbox of segments must include the image center and
     // span at least 20% of image width; otherwise the trace is not on the
-    // target roof and we retry with a corrective hint.
+    // target roof. Quick trace is single-pass by design: no fake template,
+    // no hardcoded address baseline, and no slow retry loop.
     function traceOnTarget(segs: Segment[]): boolean {
       const bounds = segmentBounds(segs);
       if (!bounds) return false;
@@ -552,22 +475,10 @@ Deno.serve(async (req) => {
       lastRawText = `[ai_trace_first_pass_failed] ${String(e)}`;
     }
     if (!traceOnTarget(segments)) {
-      try {
-        segments = await runOnce(
-          "Your previous trace was off-target or too small. The correct roof is the LARGE structure " +
-          (targetBoxPx
-            ? "inside the authoritative target box. Retrace only the roof pixels in that box."
-            : "directly under the image center pixel and must span at least 40% of the image width. Retrace it."),
-        );
-      } catch (e) {
-        lastRawText = `${lastRawText}\n[ai_trace_retry_failed] ${String(e)}`;
-      }
-    }
-    if (!traceOnTarget(segments) && targetBoxPx) {
-      // Last-resort visual QA prior: never show a tiny random box on a tree/road.
-      // This is explicitly pixel-space diagnostic geometry, not a measurement.
-      segments = buildHipRoofTemplateTrace(targetBoxPx);
-      lastRawText = `${lastRawText}\n[diagnostic_target_box_template_fallback]`;
+      // Do not draw fake geometry. A bad/off-target AI trace is safer as an
+      // empty diagnostic result than as a misleading roof overlay.
+      segments = [];
+      lastRawText = `${lastRawText}\n[ai_trace_rejected_off_target_no_template_fallback]`;
     }
 
     return new Response(JSON.stringify({
