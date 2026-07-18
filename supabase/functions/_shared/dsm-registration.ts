@@ -22,6 +22,9 @@ export type DsmBoundsSource =
   | "derived_from_dsm_bbox_and_static_mpp"
   | "derived_from_raster_bounds"
   | "derived_rejected_consistency_failure"
+  | "opentopography_usgs_3dep_1m"
+  | "opentopography_usgs_3dep_10m"
+  | "opentopography_srtm_gl1"
   | "missing";
 
 /** Operator-facing policy tag emitted when bounds are derived from raster footprint. */
@@ -48,6 +51,8 @@ export interface DsmRegistrationInput {
     resolution?: number | null;
     /** Optional reason the GeoTIFF decoder could not derive bounds. */
     bounds_failure?: string | null;
+    /** Explicit provenance override for `dsm_bounds_source` (e.g. OpenTopography fallback). */
+    bounds_provenance?: DsmBoundsSource | null;
   } | null;
   /** Roof mask grid (RoofMask shape). */
   roofMask?: {
@@ -114,7 +119,11 @@ export type DerivedBoundsDebug = {
 
 export interface DsmRegistrationResult {
   dsm_registration_version: typeof DSM_REGISTRATION_VERSION;
-  dsm_registration_source: "google_solar_data_layers";
+  dsm_registration_source:
+    | "google_solar_data_layers"
+    | "opentopography_usgs_3dep_1m"
+    | "opentopography_usgs_3dep_10m"
+    | "opentopography_srtm_gl1";
   dsm_stage_attempted: boolean;
   dsm_stage_pending: boolean;
 
@@ -226,7 +235,7 @@ export function buildDsmRegistration(input: DsmRegistrationInput): DsmRegistrati
   const fromMetadata = asLL(input.effectiveDSM?.bounds ?? null) ?? asLL(input.roofMask?.bounds ?? null);
   if (fromMetadata) {
     dsm_tile_bounds_lat_lng = fromMetadata;
-    dsm_bounds_source = "google_solar_metadata";
+    dsm_bounds_source = input.effectiveDSM?.bounds_provenance ?? "google_solar_metadata";
     dsm_bounds_confidence = 1.0;
   }
 
@@ -408,9 +417,18 @@ export function buildDsmRegistration(input: DsmRegistrationInput): DsmRegistrati
     };
   }
 
+  const registrationSource: DsmRegistrationResult["dsm_registration_source"] =
+    dsm_bounds_source === "opentopography_usgs_3dep_1m"
+      ? "opentopography_usgs_3dep_1m"
+      : dsm_bounds_source === "opentopography_usgs_3dep_10m"
+      ? "opentopography_usgs_3dep_10m"
+      : dsm_bounds_source === "opentopography_srtm_gl1"
+      ? "opentopography_srtm_gl1"
+      : "google_solar_data_layers";
+
   return {
     dsm_registration_version: DSM_REGISTRATION_VERSION,
-    dsm_registration_source: "google_solar_data_layers",
+    dsm_registration_source: registrationSource,
     dsm_stage_attempted: attempted,
     dsm_stage_pending: false,
     dsm_size_px,
