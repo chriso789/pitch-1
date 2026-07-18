@@ -7894,11 +7894,20 @@ async function processJob(input: any) {
           const targetMaskAerial = targetMaskIsolation?.target_mask_grid as
             | Uint8Array
             | null;
+          // Aerial-space scoring iterates over W*H pixels per vertex operation.
+          // On 1280×1280 tiles that is ~20× the work of DSM-space (~285×285)
+          // and reliably CPU-times out on Fonsica-class hip roofs. Cap the
+          // aerial scorer to small tiles; otherwise fall back to the DSM
+          // scorer that produced the cleaner traces historically.
+          const AERIAL_SCORER_MAX_PIXELS = 400_000; // ~632×632
+          const aerialTilePixels = (raster?.width ?? 0) * (raster?.height ?? 0);
           const useAerialScorer = !!(
             targetMaskAerial &&
             raster?.data &&
             raster.width &&
             raster.height &&
+            aerialTilePixels > 0 &&
+            aerialTilePixels <= AERIAL_SCORER_MAX_PIXELS &&
             footprint.length >= 4
           );
           const rasterRgba = (() => {
