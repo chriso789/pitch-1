@@ -117,7 +117,11 @@ export type DerivedBoundsDebug = {
 
 export interface DsmRegistrationResult {
   dsm_registration_version: typeof DSM_REGISTRATION_VERSION;
-  dsm_registration_source: "google_solar_data_layers";
+  dsm_registration_source:
+    | "google_solar_data_layers"
+    | "opentopography_usgs_3dep_1m"
+    | "opentopography_usgs_3dep_10m"
+    | "opentopography_srtm_gl1";
   dsm_stage_attempted: boolean;
   dsm_stage_pending: boolean;
 
