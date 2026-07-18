@@ -244,10 +244,16 @@ export function buildDsmRegistration(input: DsmRegistrationInput): DsmRegistrati
   let dsm_bounds_confidence = 0;
 
   const allowDerived = input.allow_derived_bounds === true;
-  const fromMetadata = asLL(input.effectiveDSM?.bounds ?? null) ?? asLL(input.roofMask?.bounds ?? null);
+  const debugBboxBounds = input.dsmCoordinateMatchDebug?.dsm_bbox?.bounds ?? null;
+  const debugBboxProvenance = input.dsmCoordinateMatchDebug?.dsm_bbox?.bounds_provenance ?? null;
+  const fromMetadata = asLL(input.effectiveDSM?.bounds ?? null) ??
+    asLL(input.roofMask?.bounds ?? null) ??
+    asLL(debugBboxBounds);
   if (fromMetadata) {
     dsm_tile_bounds_lat_lng = fromMetadata;
-    dsm_bounds_source = input.effectiveDSM?.bounds_provenance ?? "google_solar_metadata";
+    dsm_bounds_source = input.effectiveDSM?.bounds_provenance ??
+      debugBboxProvenance ??
+      "google_solar_metadata";
     dsm_bounds_confidence = 1.0;
   }
 
