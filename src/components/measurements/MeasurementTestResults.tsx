@@ -16,6 +16,11 @@ interface TestResult {
   measurementId: string;
   canonicalJobId?: string;
   aiMeasurementJobId?: string;
+  resultState?: string;
+  hardFailReason?: string | null;
+  blockCustomerReportReason?: string | null;
+  validationStatus?: string | null;
+  customerReportReady?: boolean;
   timing: { totalMs: number };
   data: {
     address: string;
@@ -151,6 +156,19 @@ export function MeasurementTestResults({ result, previousResults = [] }: Measure
   const { data, timing, qualityAssessment } = result;
   const measurements = data?.measurements;
   const responseFootprintSource = data?.footprint?.source;
+  const resultState = inlineMeasurement?.result_state ?? result.resultState ?? 'unknown';
+  const failureReason = inlineMeasurement?.hard_fail_reason
+    ?? inlineMeasurement?.block_customer_report_reason
+    ?? result.hardFailReason
+    ?? result.blockCustomerReportReason
+    ?? inlineMeasurement?.last_failure_reason
+    ?? null;
+  const isCustomerReady = inlineMeasurement
+    ? inlineMeasurement.customer_report_ready === true || resultState === 'customer_report_ready'
+    : result.customerReportReady === true || resultState === 'customer_report_ready';
+  const isPerimeterOnly = resultState === 'perimeter_only';
+  const isBlockedResult = !isCustomerReady;
+  const hasUsableArea = isCustomerReady && Number(measurements?.totalAreaSqft) > 0;
   const diagnosticBboxTrace = (
     inlineMeasurement?.footprint_source === 'solar_bbox_fallback' ||
     responseFootprintSource === 'solar_bbox_fallback'
@@ -182,8 +200,12 @@ export function MeasurementTestResults({ result, previousResults = [] }: Measure
           <div className="flex items-start justify-between">
             <div>
               <CardTitle className="text-base flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4 text-green-500" />
-                Measurement Complete
+                {isCustomerReady ? (
+                  <CheckCircle2 className="h-4 w-4 text-green-500" />
+                ) : (
+                  <AlertTriangle className="h-4 w-4 text-destructive" />
+                )}
+                {isCustomerReady ? 'Measurement Complete' : isPerimeterOnly ? 'Aerial Perimeter Needs Review' : 'Measurement Blocked'}
               </CardTitle>
               <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                 <MapPin className="h-3 w-3" />
@@ -199,6 +221,9 @@ export function MeasurementTestResults({ result, previousResults = [] }: Measure
                 />
               )}
               <Badge variant="outline" className="text-xs">
+                {resultState}
+              </Badge>
+              <Badge variant="outline" className="text-xs">
                 <Clock className="h-3 w-3 mr-1" />
                 {timing?.totalMs}ms
               </Badge>
@@ -206,23 +231,32 @@ export function MeasurementTestResults({ result, previousResults = [] }: Measure
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
+          {isBlockedResult && (
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <div className="font-medium">This run did not produce a customer-ready measurement report.</div>
+              <div className="mt-1 text-xs">
+                {failureReason || 'The pipeline saved a diagnostic row for review, but the verified geometry gates did not pass.'}
+              </div>
+            </div>
+          )}
+
           {/* Key Metrics */}
           <div className="grid grid-cols-3 gap-4">
             <div className="text-center p-3 bg-muted/50 rounded-lg">
               <div className="text-2xl font-bold tabular-nums">
-                {measurements?.totalAreaSqft?.toLocaleString() || '—'}
+                {hasUsableArea ? measurements?.totalAreaSqft?.toLocaleString() : '—'}
               </div>
               <div className="text-xs text-muted-foreground">Total Area (sqft)</div>
             </div>
             <div className="text-center p-3 bg-muted/50 rounded-lg">
               <div className="text-2xl font-bold tabular-nums">
-                {measurements?.totalSquares?.toFixed(1) || '—'}
+                {hasUsableArea && Number(measurements?.totalSquares) > 0 ? measurements?.totalSquares?.toFixed(1) : '—'}
               </div>
               <div className="text-xs text-muted-foreground">Squares</div>
             </div>
             <div className="text-center p-3 bg-muted/50 rounded-lg">
               <div className="text-2xl font-bold tabular-nums">
-                {measurements?.predominantPitch || '—'}
+                {isCustomerReady && measurements?.predominantPitch && measurements.predominantPitch !== 'unknown' ? measurements.predominantPitch : '—'}
               </div>
               <div className="text-xs text-muted-foreground">Pitch</div>
             </div>
@@ -248,7 +282,7 @@ export function MeasurementTestResults({ result, previousResults = [] }: Measure
           )}
 
           {/* Linear Measurements */}
-          {measurements?.linear && (
+          {measurements?.linear && isCustomerReady && (
             <div className="grid grid-cols-5 gap-2 text-center text-sm">
               <div className="p-2 bg-background rounded border">
                 <div className="font-medium tabular-nums">{displayedLinear?.ridge?.toFixed(0) || '—'}</div>
@@ -270,6 +304,11 @@ export function MeasurementTestResults({ result, previousResults = [] }: Measure
                 <div className="font-medium tabular-nums">{displayedLinear?.rake?.toFixed(0) || '—'}</div>
                 <div className="text-xs text-muted-foreground">Rake</div>
               </div>
+            </div>
+          )}
+          {measurements?.linear && !isCustomerReady && (
+            <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+              Ridge/hip/valley/eave/rake totals are hidden because this run is not customer-report-ready.
             </div>
           )}
           {diagnosticBboxTrace && (
