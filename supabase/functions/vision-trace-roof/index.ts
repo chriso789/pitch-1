@@ -490,12 +490,24 @@ Deno.serve(async (req) => {
     }
 
     const firstCoverage = coverageFraction(segments);
-    const needsRetry = !traceOnTarget(segments) || firstCoverage < (targetBoxPx ? 0.35 : 0.20) || segments.length < 6;
+    // Very aggressive retry: with a Solar target box, the trace must cover
+    // >=70% of the box or we assume the model traced only one wing of an
+    // L-shaped roof and re-ask with an explicit "one house" directive.
+    const coverageFloor = targetBoxPx ? 0.70 : 0.30;
+    const needsRetry = !traceOnTarget(segments) || firstCoverage < coverageFloor || segments.length < 8;
     if (needsRetry) {
       try {
-        const extra = `Your previous attempt only traced part of the roof (coverage=${(firstCoverage * 100).toFixed(1)}%). ` +
-          `The target roof is a single connected structure. Trace ALL exterior eaves and rakes as a fully CLOSED loop around the entire visible roof footprint, plus every visible ridge, hip and valley. ` +
-          `Do not stop after tracing one wing — extend to every corner of the roof.`;
+        const boxHint = targetBoxPx
+          ? `The FULL target roof spans x=${Math.round(targetBoxPx.minX)}..${Math.round(targetBoxPx.maxX)}, y=${Math.round(targetBoxPx.minY)}..${Math.round(targetBoxPx.maxY)}. ` +
+            `Your traced perimeter MUST reach all four sides of this box (±10%). `
+          : "";
+        const extra =
+          `Your previous attempt only covered ${(firstCoverage * 100).toFixed(1)}% of the target roof — you traced only ONE WING of a multi-wing house. ` +
+          `${boxHint}` +
+          `This is a SINGLE connected house even if it is L-shaped, T-shaped, or has multiple hip pyramids joined by ridges/valleys. ` +
+          `Do NOT stop at an internal ridge or valley — those are interior lines, not the outer perimeter. ` +
+          `Trace the COMPLETE outer perimeter (all eaves and rakes forming one closed loop around every attached wing), then every interior ridge, hip, and valley. ` +
+          `Expect 12-30 total polylines for a typical hip-and-valley house.`;
         const retry = await runOnce(extra);
         const retryCoverage = coverageFraction(retry);
         if (traceOnTarget(retry) && (retryCoverage > firstCoverage || segments.length === 0)) {
