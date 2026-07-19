@@ -77,12 +77,14 @@ Return STRICT COMPACT JSON only, no prose, no markdown fences. Use this minified
 Type codes: e=eave, ra=rake, r=ridge, h=hip, v=valley.
 
 Rules:
-- Trace the FULL perimeter (all eaves + rakes) as a closed loop of connected segments.
-- Trace every visible ridge, hip and valley.
+- The target house is a SINGLE connected structure even when the footprint is L-shaped, T-shaped, U-shaped, or made of multiple hip pyramids joined by ridges/valleys. Trace ALL wings — do not stop at an internal ridge or valley.
+- Trace the FULL outer perimeter (every eave + every rake) as one closed loop of connected segments that reaches every corner of the roof.
+- Trace every visible ridge, hip and valley INSIDE that perimeter.
 - Each polyline is a straight run of the same type — break at corners/junctions.
 - Prefer 2-point straight segments; use more points only when the edge curves.
 - Do NOT invent structure you cannot see.
-- Do NOT include any segment that lies outside the target house footprint.`;
+- Do NOT include any segment that lies outside the target house footprint.
+- A typical hip-and-valley house yields 12-30 polylines. Fewer than 8 almost always means you missed a wing.`;
 
 function buildStaticMapsUrl(lat: number, lng: number, zoom: number, size: number): string {
   const s = Math.min(640, size);
