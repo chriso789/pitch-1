@@ -474,6 +474,38 @@ Deno.serve(async (req) => {
     } catch (e) {
       lastRawText = `[ai_trace_first_pass_failed] ${String(e)}`;
     }
+
+    // Coverage guard: if the trace covers < 25% of the target box (or < 15% of the
+    // tile when no target box is available), the model traced only part of the
+    // roof. Retry once with an explicit "trace the FULL perimeter" directive.
+    function coverageFraction(segs: Segment[]): number {
+      const b = segmentBounds(segs);
+      if (!b) return 0;
+      const traceArea = Math.max(0, (b.maxX - b.minX) * (b.maxY - b.minY));
+      if (targetBoxPx) {
+        const targetArea = Math.max(1, (targetBoxPx.maxX - targetBoxPx.minX) * (targetBoxPx.maxY - targetBoxPx.minY));
+        return traceArea / targetArea;
+      }
+      return traceArea / Math.max(1, width * height);
+    }
+
+    const firstCoverage = coverageFraction(segments);
+    const needsRetry = !traceOnTarget(segments) || firstCoverage < (targetBoxPx ? 0.35 : 0.20) || segments.length < 6;
+    if (needsRetry) {
+      try {
+        const extra = `Your previous attempt only traced part of the roof (coverage=${(firstCoverage * 100).toFixed(1)}%). ` +
+          `The target roof is a single connected structure. Trace ALL exterior eaves and rakes as a fully CLOSED loop around the entire visible roof footprint, plus every visible ridge, hip and valley. ` +
+          `Do not stop after tracing one wing — extend to every corner of the roof.`;
+        const retry = await runOnce(extra);
+        const retryCoverage = coverageFraction(retry);
+        if (traceOnTarget(retry) && (retryCoverage > firstCoverage || segments.length === 0)) {
+          segments = retry;
+        }
+      } catch (e) {
+        lastRawText = `${lastRawText}\n[ai_trace_retry_failed] ${String(e)}`;
+      }
+    }
+
     if (!traceOnTarget(segments)) {
       // Do not draw fake geometry. A bad/off-target AI trace is safer as an
       // empty diagnostic result than as a misleading roof overlay.
