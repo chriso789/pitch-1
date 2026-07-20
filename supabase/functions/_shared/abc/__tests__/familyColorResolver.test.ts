@@ -107,10 +107,20 @@ Deno.test("inactive parent does not affect child orderability but is flagged", a
 });
 
 Deno.test("child missing itemNumber / description / uom / branches → not orderable with correct reasons", async () => {
-  const fams = await resolveFixture("child-missing-fields.json");
-  const kids = allChildren(fams);
+  const raw = await load("child-missing-fields.json");
+  // Feed each raw child directly to the item normalizer so the search-level
+  // pipeline (which drops itemless rows) can't hide any evidence.
+  const items: NormalizedAbcCatalogItem[] = (raw[0].familyItems as unknown[]).map((c) =>
+    normalizeAbcCatalogItem(
+      { ...(c as Record<string, unknown>), familyId: raw[0].familyId, familyName: raw[0].familyName, manufacturer: raw[0].manufacturer, parentItemNumber: raw[0].itemNumber },
+      { isFamilyChild: true, parentItemNumber: raw[0].itemNumber },
+    )
+  );
+  const fams = resolveAbcFamilies(items);
+  const kids = fams.flatMap((f) => f.children);
+
   const missingItem = kids.find((c) => c.itemDescription === "Missing item number");
-  assert(missingItem);
+  assert(missingItem, "missing-itemNumber child was dropped");
   assertFalse(missingItem!.isOrderable);
   assert(missingItem!.orderabilityReasons.includes("missing_item_number"));
 
