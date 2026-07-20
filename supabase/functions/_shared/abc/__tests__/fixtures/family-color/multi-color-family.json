@@ -1,0 +1,36 @@
+[
+  {
+    "itemNumber": "GAF-HDZ",
+    "itemDescription": "GAF Timberline HDZ",
+    "familyId": "FAM-HDZ",
+    "familyName": "GAF Timberline HDZ",
+    "manufacturer": "GAF",
+    "isFamilyParent": true,
+    "familyItems": [
+      {
+        "itemNumber": "GAF-HDZ-CHRCL",
+        "itemDescription": "GAF Timberline HDZ - Charcoal",
+        "color": { "name": "Charcoal", "code": "CHRCL" },
+        "uoms": [{ "code": "BDL" }],
+        "branches": [{ "branchNumber": "101" }, { "branchNumber": "102" }],
+        "status": "active"
+      },
+      {
+        "itemNumber": "GAF-HDZ-WW",
+        "itemDescription": "GAF Timberline HDZ - Weathered Wood",
+        "color": { "name": "WeatheredWood", "code": "WW" },
+        "uoms": [{ "code": "BDL" }],
+        "branches": [{ "branchNumber": "101" }],
+        "status": "active"
+      },
+      {
+        "itemNumber": "GAF-HDZ-PWTR",
+        "itemDescription": "GAF Timberline HDZ - Pewter Gray",
+        "color": "pewter grey",
+        "uoms": [{ "code": "BDL" }],
+        "branches": [{ "branchNumber": "103" }],
+        "status": "active"
+      }
+    ]
+  }
+]
