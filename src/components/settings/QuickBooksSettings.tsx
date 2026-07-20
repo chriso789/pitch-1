@@ -86,10 +86,14 @@ export default function QuickBooksSettings() {
       if (uid) {
         const { data: prof } = await supabase
           .from('profiles')
-          .select('tenant_id')
+          .select('tenant_id, active_tenant_id')
           .eq('id', uid)
           .single();
-        setTenantId((prof as any)?.tenant_id ?? null);
+        // Coalesce to match public.get_user_tenant_id() so RLS-scoped writes
+        // (legal_acceptances, integration_consents, qbo_connections) succeed
+        // even when the company switcher has flipped active_tenant_id.
+        const p = prof as { tenant_id: string | null; active_tenant_id: string | null } | null;
+        setTenantId(p?.active_tenant_id ?? p?.tenant_id ?? null);
       }
     })();
   }, []);
