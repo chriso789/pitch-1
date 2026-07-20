@@ -58,6 +58,7 @@ import { CentzConnectionsAdmin } from "@/components/admin/CentzConnectionsAdmin"
 import { IntegrationSandboxConsole } from "@/components/admin/IntegrationSandboxConsole";
 import { AbcAdminSurfaces } from "@/components/admin/AbcAdminSurfaces";
 import { SrsAdminSurfaces } from "@/components/admin/SrsAdminSurfaces";
+import { QuickbooksAdminSurfaces } from "@/components/admin/QuickbooksAdminSurfaces";
 
 interface PlatformIntegration {
   id: string;
@@ -459,6 +460,8 @@ export function IntegrationsAdmin() {
               <AbcAdminSurfaces />
             ) : currentOpen?.slug === "srs" ? (
               <SrsAdminSurfaces />
+            ) : currentOpen?.slug === "quickbooks" ? (
+              <QuickbooksAdminSurfaces />
             ) : currentOpen?.slug === "centz" ? (
               <CentzConnectionsAdmin />
             ) : currentOpen ? (
