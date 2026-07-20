@@ -85,6 +85,10 @@ export function QuickBooksConnectDialog({
       const ua = navigator.userAgent ?? null;
 
       // 1. Persist legal_acceptances (idempotent per (user, key, version)).
+      // These are immutable audit records. A normal upsert uses ON CONFLICT DO UPDATE
+      // when the user has already accepted the same version, which requires UPDATE
+      // RLS on legal_acceptances and blocks the connect button. Insert only missing
+      // rows so repeat connect attempts can continue without mutating the audit log.
       const acceptanceRows = docs.map((d) => ({
         tenant_id: tenantId,
         user_id: userId,
@@ -96,7 +100,10 @@ export function QuickBooksConnectDialog({
       }));
       const { error: accErr } = await supabase
         .from("legal_acceptances" as never)
-        .upsert(acceptanceRows as never, { onConflict: "user_id,document_key,document_version" });
+        .upsert(acceptanceRows as never, {
+          onConflict: "user_id,document_key,document_version",
+          ignoreDuplicates: true,
+        });
       if (accErr) throw accErr;
 
       // 2. Snapshot integration_consents (one per attempt).
