@@ -67,10 +67,17 @@ Deno.test("children never inherit branches from parent", async () => {
   assertEquals(pewter.branches.map((b) => b.branchNumber), ["103"]);
 });
 
-Deno.test("duplicate itemNumbers collapse; the orderable row wins", async () => {
-  const fams = await resolveFixture("duplicate-children.json");
-  const kids = allChildren(fams);
-  const chrcl = kids.filter((c) => c.itemNumber === "GAF-HDZ-CHRCL");
+Deno.test("duplicate itemNumbers collapse to one child", async () => {
+  const raw = await load("duplicate-children.json");
+  // Bypass the search-level dedupe so both duplicate rows reach the resolver.
+  const items: NormalizedAbcCatalogItem[] = (raw[0].familyItems as unknown[]).map((c) =>
+    normalizeAbcCatalogItem(
+      { ...(c as Record<string, unknown>), familyId: raw[0].familyId, familyName: raw[0].familyName, manufacturer: raw[0].manufacturer, parentItemNumber: raw[0].itemNumber },
+      { isFamilyChild: true, parentItemNumber: raw[0].itemNumber },
+    )
+  );
+  const fams = resolveAbcFamilies(items);
+  const chrcl = fams.flatMap((f) => f.children).filter((c) => c.itemNumber === "GAF-HDZ-CHRCL");
   assertEquals(chrcl.length, 1);
   assert(chrcl[0].isOrderable);
   assertEquals(chrcl[0].branches[0].branchNumber, "101");
