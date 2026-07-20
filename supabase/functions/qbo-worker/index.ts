@@ -1023,6 +1023,61 @@ async function opRefreshAr(ctx: Ctx, _args: any): Promise<Response> {
 }
 
 // =============================================================
+// Backend template status (master-only, NOT tenant-scoped)
+// =============================================================
+// Returns Intuit-app secret PRESENCE flags (never the values) and the
+// full tenant-connection roster for the developer admin surface. The
+// per-tenant OAuth / mapping / webhook feed lives in each tenant's own
+// Settings — this op only powers the shared backend-template view.
+async function opBackendTemplateStatus(ctx: Ctx) {
+  const service = svc();
+
+  // Gate to master role. We already have ctx.userId from resolveContext.
+  const { data: isMaster } = await service.rpc("has_role", {
+    _user_id: ctx.userId,
+    _role: "master" as any,
+  });
+  if (!isMaster) {
+    return err("forbidden", "backendTemplateStatus is master-only", ctx.requestId, 403);
+  }
+
+  const secretKeys = [
+    "QBO_CLIENT_ID_PRODUCTION",
+    "QBO_CLIENT_SECRET_PRODUCTION",
+    "QBO_REDIRECT_URI_PRODUCTION",
+    "QBO_CLIENT_ID_SANDBOX",
+    "QBO_CLIENT_SECRET_SANDBOX",
+    "QBO_REDIRECT_URI_SANDBOX",
+    "QBO_WEBHOOK_VERIFIER_TOKEN",
+  ];
+  const secrets: Record<string, boolean> = {};
+  for (const k of secretKeys) {
+    const v = Deno.env.get(k);
+    secrets[k] = !!(v && v.trim().length > 0);
+  }
+
+  // Roster of connected tenants (all environments, active only).
+  const { data: rows } = await service
+    .from("qbo_connections")
+    .select("tenant_id, realm_id, is_sandbox, oauth_app_env, created_at, active_location_id, tenants(name)")
+    .eq("is_active", true)
+    .order("created_at", { ascending: false })
+    .limit(500);
+
+  const connections = (rows ?? []).map((r: any) => ({
+    tenant_id: r.tenant_id,
+    tenant_name: r.tenants?.name ?? null,
+    realm_id: r.realm_id,
+    oauth_app_env: r.oauth_app_env,
+    is_sandbox: r.is_sandbox,
+    connected_at: r.created_at,
+    active_location_id: r.active_location_id,
+  }));
+
+  return ok({ secrets, connections }, ctx.requestId);
+}
+
+// =============================================================
 // Dispatcher
 // =============================================================
 Deno.serve(async (req) => {
