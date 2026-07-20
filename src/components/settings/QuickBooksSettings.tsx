@@ -507,32 +507,14 @@ export default function QuickBooksSettings() {
             })()
           ) : (
             <div className="space-y-3">
-              <div className="space-y-2">
-                <Label htmlFor="qbo-mode">Environment</Label>
-                <Select value={selectedMode} onValueChange={(v) => setSelectedMode(v as 'development' | 'production')}>
-                  <SelectTrigger id="qbo-mode">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="development" disabled={verifyInfo && !verifyInfo.has_development_credentials && !verifyInfo.has_legacy_credentials}>
-                      Sandbox (development)
-                    </SelectItem>
-                    <SelectItem value="production" disabled={verifyInfo && !verifyInfo.has_production_credentials && !verifyInfo.has_legacy_credentials}>
-                      Production
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  Default: <span className="font-mono">{verifyInfo?.qbo_default_environment ?? 'development'}</span>. Production connections require master-level approval until smoke-test cutover is complete.
-                </p>
-              </div>
               <Button
                 onClick={openConnectDialog}
                 disabled={connecting || !userId || !tenantId}
                 className="w-full"
               >
-                Review legal terms & connect to QuickBooks ({selectedMode})
+                Review legal terms & connect to QuickBooks
               </Button>
+
               <p className="text-xs text-muted-foreground">
                 You will be asked to accept the Privacy Policy, Terms of Service, and
                 QuickBooks Integration Consent before being redirected to Intuit.
