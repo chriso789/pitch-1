@@ -38,6 +38,7 @@ interface CompanyInfo {
 
 interface LaborOrderExportProps {
   estimateId: string;
+  pipelineEntryId?: string;
   laborItems: LaborItem[];
   totalAmount: number;
   customerName?: string;
@@ -48,8 +49,33 @@ interface LaborOrderExportProps {
   jobNumber?: string;
 }
 
+// Fetch an image URL and return a data URL + native dims (for aspect-correct placement)
+async function fetchImageAsDataURL(url: string): Promise<{ dataUrl: string; width: number; height: number } | null> {
+  try {
+    const res = await fetch(url, { mode: 'cors' });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    const dataUrl: string = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result as string);
+      r.onerror = reject;
+      r.readAsDataURL(blob);
+    });
+    const dims: { width: number; height: number } = await new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+      img.onerror = () => resolve({ width: 1, height: 1 });
+      img.src = dataUrl;
+    });
+    return { dataUrl, ...dims };
+  } catch {
+    return null;
+  }
+}
+
 export function LaborOrderExport({
   estimateId,
+  pipelineEntryId,
   laborItems,
   customerName,
   projectAddress,
@@ -61,6 +87,7 @@ export function LaborOrderExport({
   const { toast } = useToast();
   const effectiveTenantId = useEffectiveTenantId();
   const [sending, setSending] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [emailInput, setEmailInput] = useState(crewEmail ?? "");
   const [nameInput, setNameInput] = useState(crewName ?? "");
@@ -83,119 +110,216 @@ export function LaborOrderExport({
     };
   }, [effectiveTenantId, estimateId, toast]);
 
-  const buildCrewPDF = () => {
+  const buildCrewPDF = async () => {
     try {
-      const doc = new jsPDF();
+      const doc = new jsPDF({ unit: 'mm', format: 'letter' });
       const pageWidth = doc.internal.pageSize.getWidth();
-      const margin = 20;
-      let yPos = 20;
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 16;
 
-      // Header
-      doc.setFillColor(52, 211, 153);
-      doc.rect(0, 0, pageWidth, 50, 'F');
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(22);
-      doc.text('CREW WORK ORDER', margin, 22);
-      doc.setFontSize(11);
-      doc.text(
-        jobNumber
-          ? `Job #${jobNumber}   |   Ref #${estimateId.slice(-8).toUpperCase()}`
-          : `Ref #${estimateId.slice(-8).toUpperCase()}`,
-        margin,
-        32
-      );
-      doc.text(`Date: ${new Date().toLocaleDateString()}`, margin, 40);
+      // Palette
+      const brand = { r: 15, g: 118, b: 110 }; // teal-700
+      const brandSoft = { r: 240, g: 253, b: 250 }; // teal-50
+      const ink = { r: 17, g: 24, b: 39 }; // gray-900
+      const muted = { r: 107, g: 114, b: 128 }; // gray-500
+      const rule = { r: 229, g: 231, b: 235 }; // gray-200
 
-      // Company info (right side)
-      if (companyInfo?.name) {
-        doc.setFontSize(13);
-        doc.setFont('helvetica', 'bold');
-        doc.text(companyInfo.name, pageWidth - margin, 16, { align: 'right' });
-        doc.setFontSize(9);
-        doc.setFont('helvetica', 'normal');
-        let h = 23;
-        if (companyInfo.phone) { doc.text(`Tel: ${companyInfo.phone}`, pageWidth - margin, h, { align: 'right' }); h += 5; }
-        if (companyInfo.email) { doc.text(companyInfo.email, pageWidth - margin, h, { align: 'right' }); h += 5; }
-        if (companyInfo.license_number) doc.text(`Lic: ${companyInfo.license_number}`, pageWidth - margin, h, { align: 'right' });
-      }
+      // ── Header band
+      const headerH = 34;
+      doc.setFillColor(brand.r, brand.g, brand.b);
+      doc.rect(0, 0, pageWidth, headerH, 'F');
 
-      yPos = 64;
-      doc.setTextColor(0, 0, 0);
-
-      // Job site box
-      if (customerName || projectAddress) {
-        doc.setFillColor(236, 253, 245);
-        doc.rect(margin, yPos - 4, pageWidth - 2 * margin, 22, 'F');
-        doc.setDrawColor(52, 211, 153);
-        doc.rect(margin, yPos - 4, pageWidth - 2 * margin, 22, 'S');
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(6, 95, 70);
-        doc.text('JOB SITE', margin + 4, yPos + 2);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(17, 24, 39);
-        doc.setFontSize(11);
-        if (customerName) doc.text(`Customer: ${customerName}`, margin + 4, yPos + 9);
-        if (projectAddress) doc.text(`Address: ${projectAddress}`, margin + 4, yPos + 15);
-        yPos += 30;
-      }
-
-      // Crew info
-      if (nameInput || emailInput) {
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Assigned Crew:', margin, yPos);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`${nameInput || ''}${emailInput ? `  (${emailInput})` : ''}`, margin + 35, yPos);
-        yPos += 10;
-      }
-
-      // Scope of work table — quantities only, NO pricing
-      doc.setFontSize(13);
-      doc.setFont('helvetica', 'bold');
-      doc.text('Scope of Work', margin, yPos);
-      yPos += 8;
-
-      doc.setFillColor(249, 250, 251);
-      doc.rect(margin, yPos - 5, pageWidth - 2 * margin, 9, 'F');
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'bold');
-      doc.text('#', margin + 2, yPos);
-      doc.text('Item', margin + 14, yPos);
-      doc.text('Qty', pageWidth - 60, yPos, { align: 'right' });
-      doc.text('Unit', pageWidth - 25, yPos, { align: 'right' });
-      yPos += 9;
-
-      doc.setFont('helvetica', 'normal');
-      laborItems.forEach((item, idx) => {
-        if (yPos > 260) { doc.addPage(); yPos = 20; }
-        const desc = item.item_name.length > 60 ? item.item_name.substring(0, 60) + '…' : item.item_name;
-        doc.text(String(idx + 1), margin + 2, yPos);
-        doc.text(desc, margin + 14, yPos);
-        doc.text(Number(item.qty).toFixed(2), pageWidth - 60, yPos, { align: 'right' });
-        doc.text(item.unit || '', pageWidth - 25, yPos, { align: 'right' });
-        yPos += 7;
-        const meta = [item.color_specs, item.notes].filter(Boolean).join(' • ');
-        if (meta) {
-          doc.setFontSize(8);
-          doc.setTextColor(107, 114, 128);
-          doc.text(meta, margin + 14, yPos);
-          doc.setFontSize(10);
-          doc.setTextColor(0, 0, 0);
-          yPos += 6;
+      // Logo (left) — fetch and embed if available
+      let titleX = margin;
+      if (companyInfo?.logo_url) {
+        const img = await fetchImageAsDataURL(companyInfo.logo_url);
+        if (img) {
+          const maxH = 18;
+          const maxW = 44;
+          const ratio = img.width / img.height;
+          let h = maxH;
+          let w = h * ratio;
+          if (w > maxW) { w = maxW; h = w / ratio; }
+          try {
+            doc.addImage(img.dataUrl, 'PNG', margin, (headerH - h) / 2, w, h);
+            titleX = margin + w + 6;
+          } catch {
+            // ignore image failures — fall through to text title
+          }
         }
+      }
+
+      // Title
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(18);
+      doc.text('CREW WORK ORDER', titleX, 17);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      const refLine =
+        jobNumber
+          ? `Job #${jobNumber}   ·   Ref #${estimateId.slice(-8).toUpperCase()}`
+          : `Ref #${estimateId.slice(-8).toUpperCase()}`;
+      doc.text(refLine, titleX, 24);
+      doc.text(`Date: ${new Date().toLocaleDateString()}`, titleX, 29.5);
+
+      // Company contact (right) — NO address per requirement
+      if (companyInfo?.name) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.text(companyInfo.name, pageWidth - margin, 13, { align: 'right' });
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        let ch = 19;
+        if (companyInfo.phone) { doc.text(companyInfo.phone, pageWidth - margin, ch, { align: 'right' }); ch += 4.5; }
+        if (companyInfo.email) { doc.text(companyInfo.email, pageWidth - margin, ch, { align: 'right' }); ch += 4.5; }
+        if (companyInfo.license_number) doc.text(`Lic #${companyInfo.license_number}`, pageWidth - margin, ch, { align: 'right' });
+      }
+
+      let yPos = headerH + 10;
+      doc.setTextColor(ink.r, ink.g, ink.b);
+
+      // ── Job site card
+      if (customerName || projectAddress) {
+        const cardH = 22;
+        doc.setFillColor(brandSoft.r, brandSoft.g, brandSoft.b);
+        doc.roundedRect(margin, yPos, pageWidth - 2 * margin, cardH, 2, 2, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.5);
+        doc.setTextColor(brand.r, brand.g, brand.b);
+        doc.text('JOB SITE', margin + 4, yPos + 6);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10.5);
+        doc.setTextColor(ink.r, ink.g, ink.b);
+        if (customerName) doc.text(customerName, margin + 4, yPos + 12);
+        if (projectAddress) {
+          doc.setTextColor(muted.r, muted.g, muted.b);
+          doc.setFontSize(10);
+          doc.text(projectAddress, margin + 4, yPos + 18);
+          doc.setTextColor(ink.r, ink.g, ink.b);
+        }
+        yPos += cardH + 8;
+      }
+
+      // ── Crew assignment (compact)
+      if (nameInput || emailInput) {
+        doc.setFontSize(9.5);
+        doc.setTextColor(muted.r, muted.g, muted.b);
+        doc.text('ASSIGNED CREW', margin, yPos);
+        doc.setTextColor(ink.r, ink.g, ink.b);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`${nameInput || ''}${emailInput ? `   ${emailInput}` : ''}`, margin + 40, yPos);
+        doc.setFont('helvetica', 'normal');
+        yPos += 8;
+      }
+
+      // ── Scope of work
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text('Scope of Work', margin, yPos);
+      yPos += 5;
+      doc.setDrawColor(brand.r, brand.g, brand.b);
+      doc.setLineWidth(0.6);
+      doc.line(margin, yPos, margin + 28, yPos);
+      doc.setLineWidth(0.2);
+      yPos += 6;
+
+      // Table header row
+      const colX = {
+        num: margin + 2,
+        item: margin + 12,
+        qty: pageWidth - margin - 38,
+        unit: pageWidth - margin - 4,
+      };
+      doc.setFillColor(249, 250, 251);
+      doc.rect(margin, yPos - 5, pageWidth - 2 * margin, 8, 'F');
+      doc.setFontSize(9);
+      doc.setTextColor(muted.r, muted.g, muted.b);
+      doc.setFont('helvetica', 'bold');
+      doc.text('#', colX.num, yPos);
+      doc.text('ITEM', colX.item, yPos);
+      doc.text('QTY', colX.qty, yPos, { align: 'right' });
+      doc.text('UNIT', colX.unit, yPos, { align: 'right' });
+      yPos += 6;
+
+      // Rows
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(ink.r, ink.g, ink.b);
+      doc.setFontSize(10.5);
+      laborItems.forEach((item, idx) => {
+        if (yPos > pageHeight - 30) { doc.addPage(); yPos = 20; }
+
+        // Zebra
+        if (idx % 2 === 1) {
+          doc.setFillColor(252, 252, 253);
+          doc.rect(margin, yPos - 4.5, pageWidth - 2 * margin, 8, 'F');
+        }
+
+        const nameLines = doc.splitTextToSize(item.item_name, colX.qty - colX.item - 4);
+        doc.text(String(idx + 1), colX.num, yPos);
+        doc.text(nameLines[0] || '', colX.item, yPos);
+        doc.text(Number(item.qty).toFixed(2), colX.qty, yPos, { align: 'right' });
+        doc.text(item.unit || '', colX.unit, yPos, { align: 'right' });
+        yPos += 6;
+
+        // Wrapped name overflow lines
+        for (let li = 1; li < nameLines.length; li++) {
+          if (yPos > pageHeight - 30) { doc.addPage(); yPos = 20; }
+          doc.text(nameLines[li], colX.item, yPos);
+          yPos += 5;
+        }
+
+        const meta = [item.color_specs, item.notes].filter(Boolean).join(' · ');
+        if (meta) {
+          if (yPos > pageHeight - 30) { doc.addPage(); yPos = 20; }
+          doc.setFontSize(8.5);
+          doc.setTextColor(muted.r, muted.g, muted.b);
+          const metaLines = doc.splitTextToSize(meta, colX.qty - colX.item - 4);
+          metaLines.forEach((ml: string) => {
+            doc.text(ml, colX.item, yPos);
+            yPos += 4;
+          });
+          doc.setFontSize(10.5);
+          doc.setTextColor(ink.r, ink.g, ink.b);
+          yPos += 1;
+        }
+
+        // Row divider
+        doc.setDrawColor(rule.r, rule.g, rule.b);
+        doc.line(margin, yPos - 1, pageWidth - margin, yPos - 1);
+        yPos += 3;
       });
 
+      // Signature area
+      if (yPos < pageHeight - 55) {
+        yPos = pageHeight - 55;
+        doc.setDrawColor(rule.r, rule.g, rule.b);
+        doc.setFontSize(9);
+        doc.setTextColor(muted.r, muted.g, muted.b);
+
+        const colW = (pageWidth - 2 * margin - 10) / 2;
+        // Crew sig
+        doc.line(margin, yPos, margin + colW, yPos);
+        doc.text('Crew Foreman Signature', margin, yPos + 4);
+        doc.text('Date', margin + colW - 20, yPos + 4);
+        // PM sig
+        doc.line(margin + colW + 10, yPos, pageWidth - margin, yPos);
+        doc.text('Project Manager Signature', margin + colW + 10, yPos + 4);
+        doc.text('Date', pageWidth - margin - 20, yPos + 4);
+      }
+
       // Footer
-      const footerY = doc.internal.pageSize.getHeight() - 20;
-      doc.setDrawColor(229, 231, 235);
+      const footerY = pageHeight - 12;
+      doc.setDrawColor(rule.r, rule.g, rule.b);
       doc.line(margin, footerY - 5, pageWidth - margin, footerY - 5);
       doc.setFontSize(8);
-      doc.setTextColor(107, 114, 128);
-      if (companyInfo?.name) {
-        doc.text(`Issued by: ${companyInfo.name}${companyInfo.phone ? ` • ${companyInfo.phone}` : ''}`, margin, footerY);
-      }
-      doc.text(new Date().toLocaleString(), pageWidth - margin, footerY, { align: 'right' });
+      doc.setTextColor(muted.r, muted.g, muted.b);
+      const footerLeft = companyInfo?.name
+        ? `${companyInfo.name}${companyInfo.phone ? ` · ${companyInfo.phone}` : ''}`
+        : '';
+      if (footerLeft) doc.text(footerLeft, margin, footerY);
+      const pageCount = doc.getNumberOfPages();
+      doc.text(`Generated ${new Date().toLocaleString()}   ·   Page 1 of ${pageCount}`, pageWidth - margin, footerY, { align: 'right' });
 
       return doc;
     } catch (error) {
@@ -205,11 +329,75 @@ export function LaborOrderExport({
     }
   };
 
-  const handleDownloadPDF = () => {
-    const doc = buildCrewPDF();
-    if (doc) {
-      doc.save(`Crew_Work_Order_${estimateId.slice(-8)}_${new Date().toISOString().split('T')[0]}.pdf`);
-      toast({ title: "PDF Downloaded", description: "Crew work order saved (no pricing)." });
+  const uploadToDocuments = async (blob: Blob, filename: string) => {
+    if (!effectiveTenantId || !pipelineEntryId) return;
+    try {
+      const path = `${effectiveTenantId}/${pipelineEntryId}/labor-orders/${estimateId}.pdf`;
+      const { error: upErr } = await supabase.storage
+        .from('documents')
+        .upload(path, blob, { contentType: 'application/pdf', upsert: true });
+      if (upErr) {
+        console.warn('Labor order upload failed:', upErr);
+        return;
+      }
+      const { data: { user } } = await supabase.auth.getUser();
+      // Upsert-like: try to find existing doc for this estimate
+      const { data: existing } = await (supabase as any)
+        .from('documents')
+        .select('id')
+        .eq('tenant_id', effectiveTenantId)
+        .eq('pipeline_entry_id', pipelineEntryId)
+        .eq('document_type', 'labor_order')
+        .eq('file_path', path)
+        .maybeSingle();
+
+      if (existing?.id) {
+        await (supabase as any)
+          .from('documents')
+          .update({
+            filename,
+            file_size: blob.size,
+            mime_type: 'application/pdf',
+            description: `Crew work order for estimate ${estimateId.slice(-8).toUpperCase()}`,
+          })
+          .eq('id', existing.id);
+      } else {
+        await (supabase as any)
+          .from('documents')
+          .insert({
+            tenant_id: effectiveTenantId,
+            pipeline_entry_id: pipelineEntryId,
+            document_type: 'labor_order',
+            filename,
+            file_path: path,
+            file_size: blob.size,
+            mime_type: 'application/pdf',
+            uploaded_by: user?.id,
+            description: `Crew work order for estimate ${estimateId.slice(-8).toUpperCase()}`,
+          });
+      }
+    } catch (err) {
+      console.warn('Labor order documents save failed:', err);
+    }
+  };
+
+  const handleDownloadPDF = async () => {
+    setDownloading(true);
+    try {
+      const doc = await buildCrewPDF();
+      if (!doc) return;
+      const filename = `Crew_Work_Order_${estimateId.slice(-8)}_${new Date().toISOString().split('T')[0]}.pdf`;
+      const blob = doc.output('blob');
+      await uploadToDocuments(blob, filename);
+      doc.save(filename);
+      toast({
+        title: "Work order saved",
+        description: pipelineEntryId
+          ? "Downloaded and saved to the project's Documents tab."
+          : "Downloaded (no pricing shown).",
+      });
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -264,10 +452,10 @@ export function LaborOrderExport({
           size="sm"
           onClick={handleDownloadPDF}
           className="gap-2"
-          disabled={laborItems.length === 0}
+          disabled={laborItems.length === 0 || downloading}
         >
-          <Download className="h-4 w-4" />
-          Export Labor Order
+          {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+          {downloading ? 'Preparing…' : 'Export Labor Order'}
         </Button>
         <Button
           variant="outline"
