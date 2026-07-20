@@ -6,12 +6,12 @@ import {
   assertEquals,
   assertFalse,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { normalizeAbcSearchResponse } from "../productNormalizer.ts";
+import { normalizeAbcCatalogItem, normalizeAbcSearchResponse } from "../productNormalizer.ts";
 import {
   rankFamilyCandidates,
   resolveAbcFamilies,
 } from "../familyColorResolver.ts";
-import type { ResolvedAbcChild } from "../types.ts";
+import type { NormalizedAbcCatalogItem, ResolvedAbcChild } from "../types.ts";
 
 const load = async (name: string) =>
   JSON.parse(
