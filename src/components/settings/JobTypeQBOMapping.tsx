@@ -1,259 +1,321 @@
-import { useState, useEffect } from "react";
+// Job Type → QuickBooks Online item mapping.
+//
+// The previous iteration of this component targeted `job_type_qbo_mapping`,
+// a table that never existed in this project. The authoritative backend
+// (built during O'Brien sandbox setup) is `public.job_type_item_map`, keyed
+// on (tenant_id, realm_id, job_type_code), with optional QBO class linkage.
+//
+// This rewrite:
+//   1. Reads/writes the real `job_type_item_map` table.
+//   2. Uses `useEffectiveTenantId()` so the admin sandbox surface follows the
+//      active tenant (matches the rest of the QBO admin panel).
+//   3. Removes the hard "must connect QBO first" gate. Mappings are stored
+//      per-realm; when no realm is present yet we still show the job-type
+//      grid so admins can see current mappings and pre-plan the surface.
+//   4. Once a QBO connection exists we fetch live QBO service items and let
+//      the user bind each Pitch job type to a specific QBO item.
+
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { toast } from "sonner";
-import { RefreshCw, CheckCircle2, AlertCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
+import { RefreshCw, CheckCircle2, AlertCircle, Link as LinkIcon, PlugZap } from "lucide-react";
+import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
 
 interface QBOItem {
   id: string;
   name: string;
-  description: string;
-  unitPrice: number;
+  description?: string;
+  unitPrice?: number;
 }
 
-interface JobTypeMapping {
-  id: string;
-  job_type: string;
-  qbo_item_id: string;
-  qbo_item_name: string;
-  is_active: boolean;
-}
-
-const JOB_TYPES = [
-  { value: 'roof_repair', label: 'Roof Repair' },
-  { value: 'roof_replacement', label: 'Roof Replacement' },
-  { value: 'gutters', label: 'Gutters' },
-  { value: 'interior_paint', label: 'Interior Paint' },
-  { value: 'exterior_paint', label: 'Exterior Paint' },
-  { value: 'handyman', label: 'Handyman' },
-];
-
-interface QBOConnection {
+interface JobTypeItemMapRow {
   id: string;
   tenant_id: string;
+  realm_id: string;
+  job_type_code: string;
+  qbo_item_id: string;
+  qbo_item_name: string;
+  qbo_class_id: string | null;
+  qbo_class_name: string | null;
   is_active: boolean;
 }
+
+interface QBOConnectionRow {
+  id: string;
+  tenant_id: string;
+  realm_id: string;
+  is_active: boolean;
+  is_sandbox: boolean | null;
+  oauth_app_env: string | null;
+}
+
+// Canonical Pitch job-type catalog. Mirrors the code enum used by
+// `qbo-worker.createInvoiceFromJob` when it looks up a job type mapping.
+const JOB_TYPES: Array<{ code: string; label: string }> = [
+  { code: "roof_repair", label: "Roof Repair" },
+  { code: "roof_replacement", label: "Roof Replacement" },
+  { code: "gutters", label: "Gutters" },
+  { code: "siding", label: "Siding" },
+  { code: "windows", label: "Windows" },
+  { code: "interior_paint", label: "Interior Paint" },
+  { code: "exterior_paint", label: "Exterior Paint" },
+  { code: "handyman", label: "Handyman" },
+  { code: "solar", label: "Solar" },
+  { code: "insurance_supplement", label: "Insurance Supplement" },
+];
 
 export function JobTypeQBOMapping() {
   const queryClient = useQueryClient();
-  const [selectedMappings, setSelectedMappings] = useState<Record<string, string>>({});
+  const tenantId = useEffectiveTenantId();
 
-  // Check if QBO is connected first
-  const { data: qboConnection, isLoading: loadingConnection } = useQuery({
-    queryKey: ['qbo-connection-check'],
+  const { data: connection, isLoading: loadingConnection } = useQuery({
+    queryKey: ["qbo-connection", tenantId],
+    enabled: !!tenantId,
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return null;
-
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('tenant_id, active_tenant_id')
-        .eq('id', user.id)
-        .single();
-
-      const tenantId = profile?.active_tenant_id || profile?.tenant_id;
-      if (!tenantId) return null;
-
       const { data } = await (supabase as any)
-        .from('qbo_connections')
-        .select('id, tenant_id, is_active')
-        .eq('tenant_id', tenantId)
-        .eq('is_active', true)
+        .from("qbo_connections")
+        .select("id, tenant_id, realm_id, is_active, is_sandbox, oauth_app_env")
+        .eq("tenant_id", tenantId)
+        .eq("is_active", true)
         .maybeSingle();
-
-      return data as QBOConnection | null;
+      return (data ?? null) as QBOConnectionRow | null;
     },
   });
 
-  const isQBOConnected = !!qboConnection;
+  const realmId = connection?.realm_id ?? null;
 
-  // Fetch QBO Service Items - only when connected
-  const { data: qboItems, isLoading: loadingItems, refetch: refetchItems } = useQuery({
-    queryKey: ['qbo-items'],
+  // Existing persisted mappings for the active tenant + realm.
+  const { data: mappings, isLoading: loadingMappings } = useQuery({
+    queryKey: ["job-type-item-map", tenantId, realmId],
+    enabled: !!tenantId,
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke('qbo-fetch-items');
+      let q = supabase
+        .from("job_type_item_map" as any)
+        .select("*")
+        .eq("tenant_id", tenantId as string)
+        .eq("is_active", true);
+      if (realmId) q = q.eq("realm_id", realmId);
+      const { data, error } = await q;
       if (error) throw error;
-      return data.items as QBOItem[];
+      return (data ?? []) as unknown as JobTypeItemMapRow[];
+    },
+  });
+
+  // Live QBO service items — only meaningful once a connection exists.
+  const {
+    data: qboItems,
+    isLoading: loadingItems,
+    refetch: refetchItems,
+    isFetching: refetchingItems,
+    error: itemsError,
+  } = useQuery({
+    queryKey: ["qbo-items", tenantId, realmId],
+    enabled: !!connection,
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("qbo-fetch-items");
+      if (error) throw error;
+      return (data?.items ?? []) as QBOItem[];
     },
     retry: 1,
-    enabled: isQBOConnected, // Only fetch when QBO is connected
   });
 
-  // Fetch existing mappings
-  const { data: mappings, isLoading: loadingMappings } = useQuery({
-    queryKey: ['job-type-mappings'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('job_type_qbo_mapping' as any)
-        .select('*')
-        .eq('is_active', true);
-      if (error) throw error;
-      return (data || []) as unknown as JobTypeMapping[];
-    },
-  });
-
-  // Initialize selected mappings from existing data
-  useEffect(() => {
-    if (mappings) {
-      const initialMappings: Record<string, string> = {};
-      mappings.forEach(m => {
-        initialMappings[m.job_type] = m.qbo_item_id;
-      });
-      setSelectedMappings(initialMappings);
-    }
+  const mappingByJobType = useMemo(() => {
+    const m: Record<string, JobTypeItemMapRow> = {};
+    (mappings ?? []).forEach((row) => {
+      m[row.job_type_code] = row;
+    });
+    return m;
   }, [mappings]);
 
-  // Save mapping mutation
-  const saveMappingMutation = useMutation({
+  const [pending, setPending] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const seed: Record<string, string> = {};
+    (mappings ?? []).forEach((row) => {
+      seed[row.job_type_code] = row.qbo_item_id;
+    });
+    setPending(seed);
+  }, [mappings]);
+
+  const saveMutation = useMutation({
     mutationFn: async ({ jobType, qboItemId, qboItemName }: { jobType: string; qboItemId: string; qboItemName: string }) => {
+      if (!tenantId) throw new Error("No active tenant");
+      if (!realmId) throw new Error("Connect QuickBooks before saving mappings — realm_id is required");
       const { error } = await supabase
-        .from('job_type_qbo_mapping' as any)
-        .upsert({
-          job_type: jobType,
-          qbo_item_id: qboItemId,
-          qbo_item_name: qboItemName,
-          is_active: true,
-        }, {
-          onConflict: 'tenant_id,job_type',
-        });
+        .from("job_type_item_map" as any)
+        .upsert(
+          {
+            tenant_id: tenantId,
+            realm_id: realmId,
+            job_type_code: jobType,
+            qbo_item_id: qboItemId,
+            qbo_item_name: qboItemName,
+            is_active: true,
+          },
+          { onConflict: "tenant_id,realm_id,job_type_code" },
+        );
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['job-type-mappings'] });
-      toast.success('Mapping saved successfully');
+      queryClient.invalidateQueries({ queryKey: ["job-type-item-map", tenantId, realmId] });
+      toast.success("Mapping saved");
     },
-    onError: (error) => {
-      toast.error(`Failed to save mapping: ${error.message}`);
+    onError: (e: unknown) => {
+      const err = e as { message?: string; details?: string; hint?: string };
+      toast.error(err?.message || err?.details || err?.hint || "Failed to save mapping");
     },
   });
 
-  const handleMappingChange = (jobType: string, qboItemId: string) => {
-    setSelectedMappings(prev => ({ ...prev, [jobType]: qboItemId }));
-    
-    const qboItem = qboItems?.find(item => item.id === qboItemId);
-    if (qboItem) {
-      saveMappingMutation.mutate({
-        jobType,
-        qboItemId,
-        qboItemName: qboItem.name,
-      });
-    }
+  const handleChange = (jobType: string, qboItemId: string) => {
+    setPending((prev) => ({ ...prev, [jobType]: qboItemId }));
+    const item = qboItems?.find((i) => i.id === qboItemId);
+    if (!item) return;
+    saveMutation.mutate({ jobType, qboItemId, qboItemName: item.name });
   };
 
-  const allMapped = JOB_TYPES.every(jt => selectedMappings[jt.value]);
+  const mappedCount = JOB_TYPES.filter((jt) => !!mappingByJobType[jt.code]).length;
+  const allMapped = mappedCount === JOB_TYPES.length;
 
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <CardTitle>Job Type to QBO Item Mapping</CardTitle>
+            <CardTitle className="text-base">Job Type → QuickBooks item mapping</CardTitle>
             <CardDescription>
-              Map your service types to QuickBooks Service Items for invoice creation
+              Backed by <code>public.job_type_item_map</code> (keyed on{" "}
+              <code>tenant_id, realm_id, job_type_code</code>). Every invoice
+              posted from a Pitch job looks up its line item here.
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
-            {allMapped && (
+            {allMapped ? (
               <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
                 <CheckCircle2 className="h-3 w-3 mr-1" />
-                All Mapped
+                All {JOB_TYPES.length} mapped
               </Badge>
-            )}
-            {!allMapped && (
+            ) : (
               <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
                 <AlertCircle className="h-3 w-3 mr-1" />
-                Incomplete
+                {mappedCount}/{JOB_TYPES.length} mapped
               </Badge>
             )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => refetchItems()}
-              disabled={loadingItems}
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${loadingItems ? 'animate-spin' : ''}`} />
-              Refresh Items
+            <Button variant="outline" size="sm" onClick={() => refetchItems()} disabled={!connection || refetchingItems}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${refetchingItems ? "animate-spin" : ""}`} />
+              Refresh QBO items
             </Button>
           </div>
         </div>
       </CardHeader>
+
       <CardContent className="space-y-4">
-        {loadingConnection ? (
-          <div className="text-center py-8 text-muted-foreground">
-            Checking QuickBooks connection...
-          </div>
-        ) : !isQBOConnected ? (
-          <div className="text-center py-8">
-            <AlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-            <p className="text-muted-foreground mb-4">
-              Connect to QuickBooks first to configure job type mappings.
-            </p>
-            <p className="text-sm text-muted-foreground">
-              Go to Settings → QuickBooks Integration to connect your account.
-            </p>
-          </div>
-        ) : loadingMappings || loadingItems ? (
-          <div className="text-center py-8 text-muted-foreground">
-            Loading mappings...
-          </div>
-        ) : !qboItems || qboItems.length === 0 ? (
-          <div className="text-center py-8">
-            <AlertCircle className="h-12 w-12 mx-auto mb-4 text-amber-500" />
-            <p className="text-muted-foreground mb-4">
-              No QuickBooks Service Items found. Create Service Items in QuickBooks first.
-            </p>
-            <Button variant="outline" onClick={() => refetchItems()}>
-              Retry
-            </Button>
-          </div>
+        {/* Connection status banner — informational, never blocks the surface. */}
+        <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 p-3 text-sm">
+          <PlugZap className="h-4 w-4" />
+          {loadingConnection ? (
+            <span className="text-muted-foreground">Resolving QuickBooks connection…</span>
+          ) : connection ? (
+            <>
+              <Badge variant="secondary">Connected</Badge>
+              <span className="text-muted-foreground">
+                realm <code>{connection.realm_id}</code> ·{" "}
+                {connection.is_sandbox ? "sandbox" : "production"} ·{" "}
+                oauth_app_env <code>{connection.oauth_app_env ?? "—"}</code>
+              </span>
+            </>
+          ) : (
+            <>
+              <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+                Not connected
+              </Badge>
+              <span className="text-muted-foreground">
+                Connect QuickBooks above to load live service items and enable
+                writes. Existing mappings for this tenant are still shown below.
+              </span>
+            </>
+          )}
+        </div>
+
+        {loadingMappings ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">Loading mappings…</p>
         ) : (
-          <div className="space-y-3">
-            {JOB_TYPES.map(jobType => (
-              <div key={jobType.value} className="flex items-center justify-between p-4 border rounded-lg">
-                <div className="flex-1">
-                  <p className="font-medium">{jobType.label}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {selectedMappings[jobType.value] ? (
-                      <span className="text-green-600">
-                        Mapped to: {qboItems.find(i => i.id === selectedMappings[jobType.value])?.name}
-                      </span>
-                    ) : (
-                      <span className="text-amber-600">Not mapped</span>
-                    )}
-                  </p>
-                </div>
-                <Select
-                  value={selectedMappings[jobType.value] || ''}
-                  onValueChange={(value) => handleMappingChange(jobType.value, value)}
+          <div className="space-y-2">
+            {JOB_TYPES.map((jt) => {
+              const existing = mappingByJobType[jt.code];
+              const selected = pending[jt.code] ?? existing?.qbo_item_id ?? "";
+              return (
+                <div
+                  key={jt.code}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3"
                 >
-                  <SelectTrigger className="w-[300px]">
-                    <SelectValue placeholder="Select QBO Service Item" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {qboItems.map(item => (
-                      <SelectItem key={item.id} value={item.id}>
-                        {item.name} {item.description && `- ${item.description}`}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            ))}
+                  <div className="min-w-[180px]">
+                    <p className="font-medium">{jt.label}</p>
+                    <p className="text-xs text-muted-foreground">
+                      <code>{jt.code}</code>
+                    </p>
+                    <p className="text-xs mt-1">
+                      {existing ? (
+                        <span className="text-green-600 inline-flex items-center gap-1">
+                          <LinkIcon className="h-3 w-3" />
+                          {existing.qbo_item_name}
+                        </span>
+                      ) : (
+                        <span className="text-amber-600">Not mapped</span>
+                      )}
+                    </p>
+                  </div>
+
+                  <Select
+                    value={selected}
+                    onValueChange={(v) => handleChange(jt.code, v)}
+                    disabled={!connection || loadingItems || !qboItems?.length}
+                  >
+                    <SelectTrigger className="w-full sm:w-[340px]">
+                      <SelectValue
+                        placeholder={
+                          !connection
+                            ? "Connect QuickBooks to pick an item"
+                            : loadingItems
+                              ? "Loading QBO items…"
+                              : !qboItems?.length
+                                ? "No QBO service items found"
+                                : "Select QBO service item"
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(qboItems ?? []).map((item) => (
+                        <SelectItem key={item.id} value={item.id}>
+                          {item.name}
+                          {item.description ? ` — ${item.description}` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              );
+            })}
           </div>
         )}
-        
-        {!allMapped && (
-          <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
-            <p className="text-sm text-amber-800">
-              <AlertCircle className="h-4 w-4 inline mr-2" />
-              Complete all mappings before creating QuickBooks invoices
-            </p>
+
+        {itemsError ? (
+          <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+            Failed to load QBO items: {(itemsError as Error).message}
           </div>
-        )}
+        ) : null}
+
+        {!allMapped ? (
+          <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            <AlertCircle className="mr-2 inline h-4 w-4" />
+            Complete every job type mapping before invoicing from QuickBooks —
+            unmapped types fall back to a generic line item and can't post to
+            the correct chart-of-accounts bucket.
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );
