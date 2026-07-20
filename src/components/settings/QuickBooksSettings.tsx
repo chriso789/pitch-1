@@ -206,31 +206,11 @@ export default function QuickBooksSettings() {
     }
   };
 
-  const loadMappings = async (tenantId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('job_type_qbo_mapping' as any)
-        .select('*')
-        .eq('tenant_id', tenantId);
-
-      if (error) throw error;
-
-
-
-
-      const mappingsMap: Record<string, JobTypeMapping> = {};
-      (data as any)?.forEach((mapping: any) => {
-        mappingsMap[mapping.job_type] = {
-          job_type: mapping.job_type,
-          qbo_item_id: mapping.qbo_item_id,
-          qbo_item_name: mapping.qbo_item_name,
-        };
-      });
-
-      setMappings(mappingsMap);
-    } catch (error) {
-      console.error('Error loading mappings:', error);
-    }
+  // Job-type mappings live in <JobTypeQBOMapping /> against `job_type_item_map`.
+  // The old `job_type_qbo_mapping` table was removed as part of Sub-plan F
+  // (schema hardening). Kept as a no-op so the render path below stays intact.
+  const loadMappings = async (_tenantId: string) => {
+    setMappings({});
   };
 
   const openConnectDialog = () => {
@@ -345,49 +325,13 @@ export default function QuickBooksSettings() {
   };
 
   const handleSaveMappings = async () => {
-    try {
-      setSavingMappings(true);
-
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('tenant_id, id')
-        .eq('id', (await supabase.auth.getUser()).data.user?.id)
-        .single();
-
-      if (!profile) throw new Error('Profile not found');
-
-      // Save each mapping
-      for (const [jobType, mapping] of Object.entries(mappings)) {
-        if (mapping.qbo_item_id) {
-          const { error } = await supabase
-            .from('job_type_qbo_mapping' as any)
-            .upsert({
-              tenant_id: profile.tenant_id,
-              job_type: jobType,
-              qbo_item_id: mapping.qbo_item_id,
-              qbo_item_name: mapping.qbo_item_name,
-              created_by: profile.id,
-            }, {
-              onConflict: 'tenant_id,job_type',
-            });
-
-          if (error) throw error;
-        }
-      }
-
-      toast({
-        title: "Mappings Saved",
-        description: "Job type mappings have been saved successfully.",
-      });
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setSavingMappings(false);
-    }
+    // Deprecated: mappings are edited inside <JobTypeQBOMapping /> which writes
+    // to `job_type_item_map` via qbo-worker. This handler is retained only so
+    // the legacy render path (if reached) does not crash.
+    toast({
+      title: 'Use the Job Type mapping panel',
+      description: 'Job-type → QuickBooks item mappings are saved from the dedicated panel below.',
+    });
   };
 
   if (loading) {

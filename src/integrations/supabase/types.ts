@@ -24283,7 +24283,7 @@ export type Database = {
           last_qbo_pull_at: string
           pitch_invoice_id: string | null
           project_id: string
-          qbo_connection_id: string | null
+          qbo_connection_id: string
           qbo_invoice_id: string
           qbo_status: string
           realm_id: string | null
@@ -24305,7 +24305,7 @@ export type Database = {
           last_qbo_pull_at?: string
           pitch_invoice_id?: string | null
           project_id: string
-          qbo_connection_id?: string | null
+          qbo_connection_id: string
           qbo_invoice_id: string
           qbo_status?: string
           realm_id?: string | null
@@ -24327,7 +24327,7 @@ export type Database = {
           last_qbo_pull_at?: string
           pitch_invoice_id?: string | null
           project_id?: string
-          qbo_connection_id?: string | null
+          qbo_connection_id?: string
           qbo_invoice_id?: string
           qbo_status?: string
           realm_id?: string | null
@@ -24538,7 +24538,7 @@ export type Database = {
           job_type_code: string
           qbo_class_id: string | null
           qbo_class_name: string | null
-          qbo_connection_id: string | null
+          qbo_connection_id: string
           qbo_item_id: string
           qbo_item_name: string | null
           realm_id: string
@@ -24552,7 +24552,7 @@ export type Database = {
           job_type_code: string
           qbo_class_id?: string | null
           qbo_class_name?: string | null
-          qbo_connection_id?: string | null
+          qbo_connection_id: string
           qbo_item_id: string
           qbo_item_name?: string | null
           realm_id: string
@@ -24566,7 +24566,7 @@ export type Database = {
           job_type_code?: string
           qbo_class_id?: string | null
           qbo_class_name?: string | null
-          qbo_connection_id?: string | null
+          qbo_connection_id?: string
           qbo_item_id?: string
           qbo_item_name?: string | null
           realm_id?: string
@@ -40740,7 +40740,7 @@ export type Database = {
           pitch_entity_id: string | null
           pitch_entity_type: string | null
           pitch_project_number: string | null
-          qbo_connection_id: string | null
+          qbo_connection_id: string
           qbo_doc_number: string | null
           qbo_entity_id: string
           qbo_entity_type: string
@@ -40759,7 +40759,7 @@ export type Database = {
           pitch_entity_id?: string | null
           pitch_entity_type?: string | null
           pitch_project_number?: string | null
-          qbo_connection_id?: string | null
+          qbo_connection_id: string
           qbo_doc_number?: string | null
           qbo_entity_id: string
           qbo_entity_type: string
@@ -40778,7 +40778,7 @@ export type Database = {
           pitch_entity_id?: string | null
           pitch_entity_type?: string | null
           pitch_project_number?: string | null
-          qbo_connection_id?: string | null
+          qbo_connection_id?: string
           qbo_doc_number?: string | null
           qbo_entity_id?: string
           qbo_entity_type?: string
@@ -40855,7 +40855,7 @@ export type Database = {
           id: string
           is_active: boolean
           location_id: string
-          qbo_connection_id: string | null
+          qbo_connection_id: string
           qbo_department_id: string
           realm_id: string
           tenant_id: string
@@ -40867,7 +40867,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           location_id: string
-          qbo_connection_id?: string | null
+          qbo_connection_id: string
           qbo_department_id: string
           realm_id: string
           tenant_id: string
@@ -40879,7 +40879,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           location_id?: string
-          qbo_connection_id?: string | null
+          qbo_connection_id?: string
           qbo_department_id?: string
           realm_id?: string
           tenant_id?: string
@@ -40987,7 +40987,7 @@ export type Database = {
           id: string
           pitch_invoice_id: string | null
           pitch_payment_id: string | null
-          qbo_connection_id: string | null
+          qbo_connection_id: string
           qbo_customer_id: string | null
           qbo_invoice_id: string | null
           qbo_payment_id: string
@@ -41005,7 +41005,7 @@ export type Database = {
           id?: string
           pitch_invoice_id?: string | null
           pitch_payment_id?: string | null
-          qbo_connection_id?: string | null
+          qbo_connection_id: string
           qbo_customer_id?: string | null
           qbo_invoice_id?: string | null
           qbo_payment_id: string
@@ -41023,7 +41023,7 @@ export type Database = {
           id?: string
           pitch_invoice_id?: string | null
           pitch_payment_id?: string | null
-          qbo_connection_id?: string | null
+          qbo_connection_id?: string
           qbo_customer_id?: string | null
           qbo_invoice_id?: string | null
           qbo_payment_id?: string
@@ -55738,7 +55738,7 @@ export type Database = {
           invoice_numbering_mode: string
           metadata: Json
           project_mapping_mode: string
-          qbo_connection_id: string | null
+          qbo_connection_id: string
           realm_id: string
           tenant_id: string
           updated_at: string
@@ -55755,7 +55755,7 @@ export type Database = {
           invoice_numbering_mode?: string
           metadata?: Json
           project_mapping_mode?: string
-          qbo_connection_id?: string | null
+          qbo_connection_id: string
           realm_id: string
           tenant_id: string
           updated_at?: string
@@ -55772,7 +55772,7 @@ export type Database = {
           invoice_numbering_mode?: string
           metadata?: Json
           project_mapping_mode?: string
-          qbo_connection_id?: string | null
+          qbo_connection_id?: string
           realm_id?: string
           tenant_id?: string
           updated_at?: string
