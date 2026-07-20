@@ -105,3 +105,70 @@ export interface CommonProxyRequest {
   priceOverride?: AbcPriceOverride;
   sandboxDemo?: boolean;
 }
+
+// ---------- Product normalization contracts ----------
+//
+// Consumed by supabase/functions/_shared/abc/productNormalizer.ts.
+// Additive to Phase 1A — no handler currently imports these.
+
+/**
+ * Loose shape of a raw ABC catalog item as it appears in wire responses.
+ * ABC returns variants across endpoints (uoms vs unitOfMeasure, color as
+ * object vs string, etc.) — every field is optional and unknown-typed so
+ * the normalizer stays the single source of truth.
+ */
+export interface RawAbcCatalogItem {
+  [key: string]: unknown;
+}
+
+/** Loose shape of a raw ABC search response (varies by endpoint). */
+export type RawAbcSearchResponse = Record<string, unknown> | unknown[];
+
+export interface NormalizeOptions {
+  /** Mark the resulting item as a family child (color SKU under a parent). */
+  isFamilyChild?: boolean;
+  /** Explicit parent item number to stamp onto family children. */
+  parentItemNumber?: string;
+  /** If provided, item is flagged branchVerificationRequired unless the branch is present. */
+  selectedBranchNumber?: string;
+}
+
+export interface NormalizedAbcUom {
+  code: string;
+  description?: string;
+  isDefault?: boolean;
+}
+
+export interface NormalizedAbcBranchRef {
+  branchNumber: string;
+  name?: string;
+  available?: number | null;
+}
+
+export interface NormalizedAbcCatalogItem {
+  itemNumber: string;
+  itemDescription: string | null;
+  familyId: string | null;
+  familyName: string | null;
+  parentItemNumber: string | null;
+  isFamilyItem: boolean;
+  isFamilyChild: boolean;
+  colorName: string | null;
+  colorCode: string | null;
+  uoms: NormalizedAbcUom[];
+  branches: NormalizedAbcBranchRef[];
+  status: string | null;
+  isActive: boolean | null;
+  isDimensional: boolean | null;
+  lengths: string[];
+  /** True when caller MUST re-verify branch availability before ordering. */
+  branchVerificationRequired: boolean;
+  /** Untouched raw payload — normalizer never discards evidence. */
+  raw: RawAbcCatalogItem;
+}
+
+export interface NormalizedAbcSearchResponse {
+  items: NormalizedAbcCatalogItem[];
+  pagination: Record<string, unknown> | null;
+  raw: RawAbcSearchResponse;
+}

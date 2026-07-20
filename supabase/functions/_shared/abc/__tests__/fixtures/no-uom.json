@@ -1,0 +1,5 @@
+{
+  "itemNumber": "NO-UOM-001",
+  "itemDescription": "Item with no UOM data",
+  "branches": [{ "branchNumber": "101" }]
+}

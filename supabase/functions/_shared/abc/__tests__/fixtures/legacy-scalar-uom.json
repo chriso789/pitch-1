@@ -1,0 +1,7 @@
+{
+  "itemNumber": "LEGACY-UOM-001",
+  "itemDescription": "Legacy scalar UOM item",
+  "unitOfMeasure": "BX",
+  "branches": [{ "branchNumber": "101" }],
+  "status": "A"
+}

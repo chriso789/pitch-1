@@ -1,0 +1,30 @@
+{
+  "itemNumber": "FAMILY-PARENT-001",
+  "itemDescription": "Landmark Pro Shingle (Family)",
+  "familyId": "LANDMARK-PRO",
+  "familyName": "Landmark Pro",
+  "isFamilyParent": true,
+  "familyItems": [
+    {
+      "itemNumber": "LP-WW",
+      "itemDescription": "Landmark Pro - Weathered Wood",
+      "color": { "name": "Weathered Wood", "code": "WW" },
+      "uoms": [{ "code": "BDL", "isDefault": true }],
+      "branches": [{ "branchNumber": "101", "available": 120 }],
+      "status": "Active"
+    },
+    {
+      "itemNumber": "LP-CH",
+      "itemDescription": "Landmark Pro - Charcoal",
+      "color": "Charcoal",
+      "uoms": ["BDL"],
+      "status": "Active"
+    },
+    {
+      "itemNumber": "LP-CH",
+      "itemDescription": "Landmark Pro - Charcoal (dup)",
+      "color": "Charcoal",
+      "uoms": ["BDL"]
+    }
+  ]
+}

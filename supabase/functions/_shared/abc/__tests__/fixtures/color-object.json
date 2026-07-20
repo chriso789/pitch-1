@@ -1,0 +1,8 @@
+{
+  "itemNumber": "COLOR-OBJ-001",
+  "itemDescription": "Architectural Shingle - Weathered Wood",
+  "color": { "name": "Weathered Wood", "code": "WW" },
+  "uoms": [{ "code": "BDL" }, { "code": "SQ" }],
+  "branches": [{ "branchNumber": "205" }],
+  "status": "Active"
+}

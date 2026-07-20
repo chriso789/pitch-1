@@ -1,0 +1,9 @@
+{
+  "itemNumber": "DIM-COIL-001",
+  "itemDescription": "Aluminum Coil Stock",
+  "isDimensional": true,
+  "lengths": ["10", "12", "16", "20"],
+  "uoms": [{ "code": "FT" }, { "code": "RL" }],
+  "branches": [{ "branchNumber": "101" }],
+  "status": "Active"
+}
