@@ -207,3 +207,20 @@ Current: **457**. Target: **<150**. Gap: **307**.
 
 Full per-function breakdown: `docs/edge-function-consolidation-audit.csv`.
 Policy: `docs/EDGE_FUNCTION_RULES.md` — **one domain = one edge function with internal routes**.
+
+## 2026-07-20 — QBO Sub-plan E/F migration
+
+Legacy QBO endpoints are now **authenticated shims** that reject body `tenant_id` / `realm_id` and forward to `qbo-worker`:
+
+| Legacy function | Now forwards to | Status |
+|---|---|---|
+| `qbo-customer-sync` | `qbo-worker { op: syncProject }` | SHIM (verify_jwt=true) |
+| `qbo-invoice-create` | `qbo-worker { op: createInvoiceFromEstimates }` | SHIM (verify_jwt=true) |
+| `qbo-sync-payment` | `qbo-worker { op: syncPaymentStatus \| refreshAr }` | SHIM (verify_jwt=true) |
+| `qbo-invoice-send` | `qbo-worker { op: toggleOnlinePayments }` | SHIM (verify_jwt=true) |
+
+Shared helper: `supabase/functions/_shared/qbo-shim.ts`. Every response carries `X-Deprecation` and `X-Rejected-Body-Fields`.
+
+Frontend caller migrated: `src/components/jobs/QuickBooksInvoiceCard.tsx` now invokes `qbo-worker` directly.
+
+Schema hardening (see migration): every QBO mapping/mirror/settings table now carries `qbo_connection_id`, and uniqueness is scoped by `(tenant_id, qbo_connection_id, realm_id, ...)`. `invoice_ar_mirror` is now unique per QBO invoice (not per project). Partial unique index enforces one active QBO connection per tenant.
