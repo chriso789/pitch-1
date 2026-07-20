@@ -24275,40 +24275,64 @@ export type Database = {
         Row: {
           balance: number
           created_at: string
+          deposit_amount: number | null
           doc_number: string
+          due_date: string | null
+          email_status: string | null
           id: string
           last_qbo_pull_at: string
+          pitch_invoice_id: string | null
           project_id: string
           qbo_invoice_id: string
           qbo_status: string
+          realm_id: string | null
+          sync_token: string | null
+          tax_amount: number | null
           tenant_id: string
           total_amount: number
+          txn_date: string | null
           updated_at: string
         }
         Insert: {
           balance?: number
           created_at?: string
+          deposit_amount?: number | null
           doc_number: string
+          due_date?: string | null
+          email_status?: string | null
           id?: string
           last_qbo_pull_at?: string
+          pitch_invoice_id?: string | null
           project_id: string
           qbo_invoice_id: string
           qbo_status?: string
+          realm_id?: string | null
+          sync_token?: string | null
+          tax_amount?: number | null
           tenant_id: string
           total_amount?: number
+          txn_date?: string | null
           updated_at?: string
         }
         Update: {
           balance?: number
           created_at?: string
+          deposit_amount?: number | null
           doc_number?: string
+          due_date?: string | null
+          email_status?: string | null
           id?: string
           last_qbo_pull_at?: string
+          pitch_invoice_id?: string | null
           project_id?: string
           qbo_invoice_id?: string
           qbo_status?: string
+          realm_id?: string | null
+          sync_token?: string | null
+          tax_amount?: number | null
           tenant_id?: string
           total_amount?: number
+          txn_date?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -40690,10 +40714,16 @@ export type Database = {
           entity_id: string
           entity_type: string
           id: string
+          mapping_mode: string | null
           metadata: Json | null
+          pitch_entity_id: string | null
+          pitch_entity_type: string | null
+          pitch_project_number: string | null
+          qbo_doc_number: string | null
           qbo_entity_id: string
           qbo_entity_type: string
           realm_id: string
+          sync_token: string | null
           tenant_id: string
           updated_at: string
         }
@@ -40702,10 +40732,16 @@ export type Database = {
           entity_id: string
           entity_type: string
           id?: string
+          mapping_mode?: string | null
           metadata?: Json | null
+          pitch_entity_id?: string | null
+          pitch_entity_type?: string | null
+          pitch_project_number?: string | null
+          qbo_doc_number?: string | null
           qbo_entity_id: string
           qbo_entity_type: string
           realm_id: string
+          sync_token?: string | null
           tenant_id: string
           updated_at?: string
         }
@@ -40714,10 +40750,16 @@ export type Database = {
           entity_id?: string
           entity_type?: string
           id?: string
+          mapping_mode?: string | null
           metadata?: Json | null
+          pitch_entity_id?: string | null
+          pitch_entity_type?: string | null
+          pitch_project_number?: string | null
+          qbo_doc_number?: string | null
           qbo_entity_id?: string
           qbo_entity_type?: string
           realm_id?: string
+          sync_token?: string | null
           tenant_id?: string
           updated_at?: string
         }
@@ -40895,6 +40937,60 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      qbo_payment_mapping: {
+        Row: {
+          created_at: string
+          id: string
+          pitch_invoice_id: string | null
+          pitch_payment_id: string | null
+          qbo_customer_id: string | null
+          qbo_invoice_id: string | null
+          qbo_payment_id: string
+          raw_payload: Json
+          realm_id: string
+          sync_token: string | null
+          tenant_id: string
+          total_amount: number | null
+          txn_date: string | null
+          unapplied_amount: number | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          pitch_invoice_id?: string | null
+          pitch_payment_id?: string | null
+          qbo_customer_id?: string | null
+          qbo_invoice_id?: string | null
+          qbo_payment_id: string
+          raw_payload?: Json
+          realm_id: string
+          sync_token?: string | null
+          tenant_id: string
+          total_amount?: number | null
+          txn_date?: string | null
+          unapplied_amount?: number | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          pitch_invoice_id?: string | null
+          pitch_payment_id?: string | null
+          qbo_customer_id?: string | null
+          qbo_invoice_id?: string | null
+          qbo_payment_id?: string
+          raw_payload?: Json
+          realm_id?: string
+          sync_token?: string | null
+          tenant_id?: string
+          total_amount?: number | null
+          txn_date?: string | null
+          unapplied_amount?: number | null
+          updated_at?: string
+        }
+        Relationships: []
       }
       qbo_sync_errors: {
         Row: {
@@ -55574,6 +55670,57 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      tenant_qbo_settings: {
+        Row: {
+          created_at: string
+          customer_visible_project_number: boolean
+          default_class_id: string | null
+          default_department_id: string | null
+          default_income_account_id: string | null
+          default_item_id: string | null
+          default_tax_code_id: string | null
+          id: string
+          invoice_numbering_mode: string
+          metadata: Json
+          project_mapping_mode: string
+          realm_id: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          customer_visible_project_number?: boolean
+          default_class_id?: string | null
+          default_department_id?: string | null
+          default_income_account_id?: string | null
+          default_item_id?: string | null
+          default_tax_code_id?: string | null
+          id?: string
+          invoice_numbering_mode?: string
+          metadata?: Json
+          project_mapping_mode?: string
+          realm_id: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          customer_visible_project_number?: boolean
+          default_class_id?: string | null
+          default_department_id?: string | null
+          default_income_account_id?: string | null
+          default_item_id?: string | null
+          default_tax_code_id?: string | null
+          id?: string
+          invoice_numbering_mode?: string
+          metadata?: Json
+          project_mapping_mode?: string
+          realm_id?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       tenant_settings: {
         Row: {
