@@ -92,13 +92,13 @@ export function QuickbooksAdminSurfaces() {
     }
   }, []);
 
+  const [statusError, setStatusError] = useState<string | null>(null);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      // Fetch backend template health via the qbo-worker readiness op.
-      // This returns { secrets: { QBO_CLIENT_ID_PRODUCTION: true, ... },
-      // connections: [...] } without leaking any secret values.
+      setStatusError(null);
       try {
         const { data, error } = await supabase.functions.invoke("qbo-worker", {
           body: { op: "backendTemplateStatus", args: {} },
@@ -109,8 +109,13 @@ export function QuickbooksAdminSurfaces() {
         setSecrets(payload?.secrets ?? null);
         setStats(Array.isArray(payload?.connections) ? payload.connections : []);
       } catch (e: any) {
-        // Non-fatal: the panel still renders the static template surface.
-        console.warn("[qbo backend template] status fetch failed", e?.message);
+        if (!cancelled) {
+          setStatusError(
+            e?.message ??
+              "Backend status check failed (master role required).",
+          );
+          setSecrets(null);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -173,7 +178,14 @@ export function QuickbooksAdminSurfaces() {
             id/secret here.
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
+          {statusError && (
+            <div className="rounded-md border border-amber-500/40 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              Couldn't read live secret status ({statusError}). Rows below show{" "}
+              <span className="font-medium">Unknown</span> instead of Missing —
+              the actual secrets may already be configured in Supabase.
+            </div>
+          )}
           <Table>
             <TableHeader>
               <TableRow>
@@ -185,6 +197,7 @@ export function QuickbooksAdminSurfaces() {
             <TableBody>
               {secretRows.map((row) => {
                 const present = secrets?.[row.key];
+                const unknown = secrets === null;
                 return (
                   <TableRow key={row.key}>
                     <TableCell className="font-medium">{row.label}</TableCell>
@@ -194,6 +207,8 @@ export function QuickbooksAdminSurfaces() {
                     <TableCell>
                       {loading ? (
                         <Badge variant="outline">Checking…</Badge>
+                      ) : unknown ? (
+                        <Badge variant="outline">Unknown</Badge>
                       ) : present ? (
                         <Badge className="gap-1 bg-emerald-600 hover:bg-emerald-600">
                           <CheckCircle2 className="h-3 w-3" /> Set
