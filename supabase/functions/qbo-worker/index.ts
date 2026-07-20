@@ -281,6 +281,7 @@ async function opSetLocation(ctx: Ctx, args: { location_id?: string; qbo_departm
 
   const row = {
     tenant_id: ctx.tenantId,
+    qbo_connection_id: connection.id,
     realm_id: realmId,
     location_id: args.location_id,
     qbo_department_id: args.qbo_department_id ?? null,
@@ -291,7 +292,7 @@ async function opSetLocation(ctx: Ctx, args: { location_id?: string; qbo_departm
 
   const { data, error } = await service
     .from("qbo_location_map")
-    .upsert(row, { onConflict: "tenant_id,realm_id,location_id" })
+    .upsert(row, { onConflict: "tenant_id,qbo_connection_id,realm_id,location_id" })
     .select()
     .maybeSingle();
   if (error) return err("db_error", error.message, ctx.requestId, 500);
@@ -378,6 +379,7 @@ async function upsertQboCustomer(
 
   await service.from("qbo_entity_mapping").upsert({
     tenant_id: ctx.tenantId,
+    qbo_connection_id: connection.id,
     realm_id: realmId,
     pitch_entity_type: "contact",
     pitch_entity_id: contact.id,
@@ -388,7 +390,7 @@ async function upsertQboCustomer(
     sync_token: j.Customer.SyncToken ?? null,
     metadata: { display_name: j.Customer.DisplayName },
     updated_at: new Date().toISOString(),
-  }, { onConflict: "tenant_id,realm_id,pitch_entity_type,pitch_entity_id,qbo_entity_type" });
+  }, { onConflict: "tenant_id,qbo_connection_id,realm_id,pitch_entity_type,pitch_entity_id,qbo_entity_type" });
 
   return qboId;
 }
@@ -479,6 +481,7 @@ async function upsertProjectOrJob(
 
   await service.from("qbo_entity_mapping").upsert({
     tenant_id: ctx.tenantId,
+    qbo_connection_id: connection.id,
     realm_id: realmId,
     pitch_entity_type: "project",
     pitch_entity_id: project.id,
@@ -491,7 +494,7 @@ async function upsertProjectOrJob(
     sync_token: j.Customer.SyncToken ?? null,
     metadata: { display_name: displayName },
     updated_at: new Date().toISOString(),
-  }, { onConflict: "tenant_id,realm_id,pitch_entity_type,pitch_entity_id,qbo_entity_type" });
+  }, { onConflict: "tenant_id,qbo_connection_id,realm_id,pitch_entity_type,pitch_entity_id,qbo_entity_type" });
 
   return { id: qboId, mode: "sub_customer_job", display_name: displayName };
 }
@@ -753,6 +756,7 @@ async function opCreateInvoice(ctx: Ctx, args: any): Promise<Response> {
   // Persist invoice mapping (separate row — no overwrite of Customer/Project mappings)
   await service.from("qbo_entity_mapping").upsert({
     tenant_id: ctx.tenantId,
+    qbo_connection_id: connection.id,
     realm_id: connection.realm_id,
     pitch_entity_type: "project",
     pitch_entity_id: project.id,
@@ -765,11 +769,12 @@ async function opCreateInvoice(ctx: Ctx, args: any): Promise<Response> {
     sync_token: invoice.SyncToken ?? null,
     metadata: { estimate_id: estimate.id },
     updated_at: new Date().toISOString(),
-  }, { onConflict: "tenant_id,realm_id,pitch_entity_type,pitch_entity_id,qbo_entity_type" });
+  }, { onConflict: "tenant_id,qbo_connection_id,realm_id,pitch_entity_type,pitch_entity_id,qbo_entity_type" });
 
-  // AR mirror insert
-  await service.from("invoice_ar_mirror").insert({
+  // AR mirror upsert — one row per QBO invoice (never overwrites project)
+  await service.from("invoice_ar_mirror").upsert({
     tenant_id: ctx.tenantId,
+    qbo_connection_id: connection.id,
     project_id: project.id,
     realm_id: connection.realm_id,
     qbo_invoice_id: invoice.Id,
@@ -783,7 +788,7 @@ async function opCreateInvoice(ctx: Ctx, args: any): Promise<Response> {
     email_status: invoice.EmailStatus ?? "NotSet",
     qbo_status: invoice.EmailStatus ?? "NotSent",
     last_qbo_pull_at: new Date().toISOString(),
-  });
+  }, { onConflict: "tenant_id,qbo_connection_id,realm_id,qbo_invoice_id" });
 
   return ok({
     qbo_invoice_id: invoice.Id,
