@@ -642,66 +642,11 @@ export default function QuickBooksSettings() {
         </Card>
       )}
 
-      {/* Job Type Mappings */}
-      {connection && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Job Type Mappings</CardTitle>
-            <CardDescription>
-              Map your PITCH job types to QuickBooks Service Items for accurate invoicing
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {JOB_TYPES.map((jobType) => (
-                <div key={jobType.key} className="flex items-center gap-4">
-                  <Label className="w-40 flex-shrink-0">{jobType.label}</Label>
-                  <Select
-                    value={mappings[jobType.key]?.qbo_item_id || ''}
-                    onValueChange={(value) => {
-                      const item = qboItems.find(i => i.Id === value);
-                      if (item) {
-                        handleMappingChange(jobType.key, item.Id, item.Name);
-                      }
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select QuickBooks Item" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {qboItems.length === 0 ? (
-                        <SelectItem value="none" disabled>
-                          Create items in QuickBooks first
-                        </SelectItem>
-                      ) : (
-                        qboItems.map((item) => (
-                          <SelectItem key={item.Id} value={item.Id}>
-                            {item.Name}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-              ))}
-              <Button
-                onClick={handleSaveMappings}
-                disabled={savingMappings || Object.keys(mappings).length === 0}
-                className="w-full"
-              >
-                {savingMappings ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  'Save Mappings'
-                )}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {/* Job Type Mappings live in <JobTypeQBOMapping /> (rendered by
+          Settings.tsx directly). The previous inline block here targeted a
+          non-existent `job_type_qbo_mapping` table — removed to prevent
+          duplicate/conflicting UI for tenants. */}
+
 
       {userId && tenantId && (
         <QuickBooksConnectDialog
