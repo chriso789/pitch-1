@@ -1,268 +1,67 @@
-import { createClient } from "npm:@supabase/supabase-js@2.49.1";
-import { qboHost } from "../_shared/qbo-host.ts";
-import { getIntuitTid } from "../_shared/qbo-intuit-tid.ts";
-import { writeQboApiLog } from "../_shared/qbo-api.ts";
+// DEPRECATED SHIM — see supabase/functions/qbo-worker/index.ts
+//
+// This function used to trust `tenant_id` from the request body and write
+// directly into qbo_entity_mapping. That was a cross-tenant write hazard.
+//
+// Behavior now:
+//   1. Require an authenticated Bearer token.
+//   2. Reject any body-supplied tenant_id / realm_id (returns them in an
+//      X-Rejected-Body-Fields response header for observability).
+//   3. Forward to qbo-worker with op = "syncProject" (which upserts the
+//      QBO Customer + Sub-Customer/Project mapping for the caller's tenant).
+//
+// The frontend caller expected `{ qbo_customer_id }`; qbo-worker's
+// syncProject returns `{ qbo_customer_id, ... }` in its data envelope so
+// the response shape is compatible.
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import {
+  corsHeaders,
+  jsonResponse,
+  requireAuthedUser,
+  stripTenantAndRealm,
+  forwardToQboWorker,
+  readJsonBody,
+} from "../_shared/qbo-shim.ts";
 
-interface QBOCustomer {
-  DisplayName: string;
-  GivenName?: string;
-  FamilyName?: string;
-  CompanyName?: string;
-  PrimaryEmailAddr?: { Address: string };
-  PrimaryPhone?: { FreeFormNumber: string };
-  BillAddr?: {
-    Line1?: string;
-    City?: string;
-    CountrySubDivisionCode?: string;
-    PostalCode?: string;
-  };
-}
+const LEGACY_NAME = "qbo-customer-sync";
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
+  const auth = await requireAuthedUser(req);
+  if (!auth.ok) return auth.res;
 
-    const { contact_id, tenant_id } = await req.json();
+  const raw = await readJsonBody(req);
+  const { clean, rejected } = stripTenantAndRealm(raw);
 
-    if (!contact_id || !tenant_id) {
-      return new Response(
-        JSON.stringify({ error: 'Missing contact_id or tenant_id' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+  // Legacy contract: { contact_id, tenant_id }. Contact is looked up server-side
+  // via the project relationship inside qbo-worker.syncProject, so if caller
+  // still hands us a contact_id we ignore it and require a project reference.
+  const projectId =
+    (clean.project_id as string | undefined) ??
+    (clean.projectId as string | undefined) ??
+    (clean.job_id as string | undefined);
 
-    // Get QBO connection
-    const { data: connection } = await supabase
-      .from('qbo_connections')
-      .select('*')
-      .eq('tenant_id', tenant_id)
-      .eq('is_active', true)
-      .single();
-
-    if (!connection) {
-      return new Response(
-        JSON.stringify({ error: 'No active QuickBooks connection' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Get contact details
-    const { data: contact } = await supabase
-      .from('contacts')
-      .select('*, locations(qbo_location_ref)')
-      .eq('id', contact_id)
-      .single();
-
-    if (!contact) {
-      return new Response(
-        JSON.stringify({ error: 'Contact not found' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Check if already mapped
-    const { data: existingMapping } = await supabase
-      .from('qbo_entity_mapping')
-      .select('qbo_id')
-      .eq('tenant_id', tenant_id)
-      .eq('local_entity_type', 'contact')
-      .eq('local_entity_id', contact_id)
-      .single();
-
-    let qboCustomerId = existingMapping?.qbo_id;
-    let operation = 'update';
-
-    // Build QBO Customer object
-    const qboCustomer: QBOCustomer = {
-      DisplayName: contact.company_name || 
-        `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || 
-        'Unknown Customer',
-      GivenName: contact.first_name,
-      FamilyName: contact.last_name,
-      CompanyName: contact.company_name,
-    };
-
-    if (contact.email) {
-      qboCustomer.PrimaryEmailAddr = { Address: contact.email };
-    }
-
-    if (contact.phone) {
-      qboCustomer.PrimaryPhone = { FreeFormNumber: contact.phone };
-    }
-
-    if (contact.address_street) {
-      qboCustomer.BillAddr = {
-        Line1: contact.address_street,
-        City: contact.address_city,
-        CountrySubDivisionCode: contact.address_state,
-        PostalCode: contact.address_zip,
-      };
-    }
-
-    let qboResponse;
-
-    if (qboCustomerId) {
-      // Update existing customer - need to fetch current SyncToken
-      const fetchResponse = await fetch(
-        `${qboHost(connection)}/v3/company/${connection.realm_id}/customer/${qboCustomerId}?minorversion=75`,
-        {
-          headers: {
-            'Authorization': `Bearer ${connection.access_token}`,
-            'Accept': 'application/json',
-          },
-        }
-      );
-
-      const fetchTid = getIntuitTid(fetchResponse);
-      console.log('[qbo-customer-sync] fetch existing', {
-        status: fetchResponse.status,
-        intuit_tid: fetchTid,
-        realm_id: connection.realm_id,
-        qbo_customer_id: qboCustomerId,
-        tenant_id,
-      });
-      void writeQboApiLog(supabase, {
-        action: 'qbo_customer_sync',
-        tenant_id,
-        connection_id: connection.id,
-        realm_id: connection.realm_id,
-        oauth_app_env: connection.oauth_app_env,
-        endpoint: `/v3/company/${connection.realm_id}/customer/${qboCustomerId}`,
-        method: 'GET',
-        http_status: fetchResponse.status,
-        intuit_tid: fetchTid,
-        success: fetchResponse.ok,
-        request_metadata: { op: 'fetch_existing', qbo_entity: 'Customer', qbo_entity_id: qboCustomerId },
-      });
-
-      if (!fetchResponse.ok) {
-        const errBody = await fetchResponse.text();
-        throw new Error(
-          `qbo_customer_sync:fetch failed [status=${fetchResponse.status} intuit_tid=${fetchTid ?? 'none'}]: ${errBody.slice(0, 300)}`,
-        );
-      }
-
-      const currentCustomer = await fetchResponse.json();
-      const updatePayload = {
-        ...currentCustomer.Customer,
-        ...qboCustomer,
-      };
-
-      // Sparse update
-      qboResponse = await fetch(
-        `${qboHost(connection)}/v3/company/${connection.realm_id}/customer?minorversion=75`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${connection.access_token}`,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: JSON.stringify(updatePayload),
-        }
-      );
-    } else {
-      // Create new customer
-      operation = 'create';
-      qboResponse = await fetch(
-        `${qboHost(connection)}/v3/company/${connection.realm_id}/customer?minorversion=75`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${connection.access_token}`,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: JSON.stringify(qboCustomer),
-        }
-      );
-    }
-
-    const intuit_tid = getIntuitTid(qboResponse);
-    console.log('[qbo-customer-sync] upsert response', {
-      operation,
-      status: qboResponse.status,
-      intuit_tid,
-      realm_id: connection.realm_id,
-      tenant_id,
-    });
-    void writeQboApiLog(supabase, {
-      action: 'qbo_customer_sync',
-      tenant_id,
-      connection_id: connection.id,
-      realm_id: connection.realm_id,
-      oauth_app_env: connection.oauth_app_env,
-      endpoint: `/v3/company/${connection.realm_id}/customer`,
-      method: 'POST',
-      http_status: qboResponse.status,
-      intuit_tid,
-      success: qboResponse.ok,
-      request_metadata: { op: operation, qbo_entity: 'Customer', contact_id },
-    });
-
-    if (!qboResponse.ok) {
-      const errorText = await qboResponse.text();
-      return new Response(
-        JSON.stringify({
-          error: 'qbo_customer_sync_failed',
-          message: `QBO API error [status=${qboResponse.status} intuit_tid=${intuit_tid ?? 'none'}]`,
-          intuit_tid,
-          status: qboResponse.status,
-          details: errorText.slice(0, 500),
-        }),
-        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      );
-    }
-
-    const qboData = await qboResponse.json();
-    const customer = qboData.Customer;
-
-    // Store mapping
-    await supabase
-      .from('qbo_entity_mapping')
-      .upsert({
-        tenant_id,
-        local_entity_type: 'contact',
-        local_entity_id: contact_id,
-        qbo_entity_type: 'Customer',
-        qbo_id: customer.Id,
-        last_synced_at: new Date().toISOString(),
-      }, {
-        onConflict: 'tenant_id,local_entity_type,local_entity_id',
-      });
-
-    console.log(`Customer ${operation}: ${customer.Id}`);
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        operation,
-        qbo_customer_id: customer.Id,
-        display_name: customer.DisplayName,
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-
-  } catch (error) {
-    console.error('Error in qbo-customer-sync:', error);
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
+  if (!projectId) {
+    return jsonResponse(
       {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
+        ok: false,
+        error: "bad_request",
+        code: "project_id_required",
+        message:
+          "qbo-customer-sync is deprecated. Call qbo-worker with { op: 'syncProject', args: { project_id } } — tenant is derived server-side from the JWT.",
+        rejected_fields: rejected,
+      },
+      400,
+      { "X-Rejected-Body-Fields": rejected.join(",") || "" },
     );
   }
+
+  return forwardToQboWorker(
+    auth.bearer,
+    "syncProject",
+    { project_id: projectId },
+    LEGACY_NAME,
+    rejected,
+  );
 });

@@ -65,17 +65,20 @@ export function QuickBooksInvoiceCard({ projectId, tenantId }: QuickBooksInvoice
     enabled: !!connection,
   });
 
-  // Create invoice mutation
+  // Create invoice mutation — routed through qbo-worker (tenant derived server-side)
   const createInvoice = useMutation({
     mutationFn: async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Not authenticated');
 
-      const response = await supabase.functions.invoke('qbo-invoice-create', {
-        body: { project_id: projectId, tenant_id: tenantId },
+      const response = await supabase.functions.invoke('qbo-worker', {
+        body: { op: 'createInvoiceFromEstimates', args: { project_id: projectId } },
       });
 
       if (response.error) throw response.error;
+      if (response.data && (response.data as any).ok === false) {
+        throw new Error((response.data as any).error ?? 'qbo-worker returned an error');
+      }
       return response.data;
     },
     onSuccess: () => {
