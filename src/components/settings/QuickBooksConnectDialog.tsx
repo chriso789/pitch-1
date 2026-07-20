@@ -55,11 +55,11 @@ export function QuickBooksConnectDialog({
   const [submitting, setSubmitting] = useState(false);
   const [docs, setDocs] = useState<LegalDoc[]>([]);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
-  const [mode, setMode] = useState<"development" | "production">(defaultMode);
+  const [mode, setMode] = useState<"development" | "production">("production");
 
   useEffect(() => {
     if (!open) return;
-    setMode(defaultMode);
+    setMode("production");
     setChecked({});
     (async () => {
       setLoading(true);
@@ -166,25 +166,7 @@ export function QuickBooksConnectDialog({
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="qbo-env">Environment</Label>
-              <Select value={mode} onValueChange={(v) => setMode(v as "development" | "production")}>
-                <SelectTrigger id="qbo-env">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="development" disabled={!hasDevelopmentCredentials}>
-                    Sandbox (development)
-                  </SelectItem>
-                  <SelectItem value="production" disabled={!hasProductionCredentials}>
-                    Production
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                Production connections require all acceptances below and master-level approval where applicable.
-              </p>
-            </div>
+
 
             <div className="space-y-3">
               {docs.map((d) => (
