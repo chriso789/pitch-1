@@ -178,7 +178,14 @@ export function QuickbooksAdminSurfaces() {
             id/secret here.
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
+          {statusError && (
+            <div className="rounded-md border border-amber-500/40 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              Couldn't read live secret status ({statusError}). Rows below show{" "}
+              <span className="font-medium">Unknown</span> instead of Missing —
+              the actual secrets may already be configured in Supabase.
+            </div>
+          )}
           <Table>
             <TableHeader>
               <TableRow>
@@ -190,6 +197,7 @@ export function QuickbooksAdminSurfaces() {
             <TableBody>
               {secretRows.map((row) => {
                 const present = secrets?.[row.key];
+                const unknown = secrets === null;
                 return (
                   <TableRow key={row.key}>
                     <TableCell className="font-medium">{row.label}</TableCell>
@@ -199,6 +207,8 @@ export function QuickbooksAdminSurfaces() {
                     <TableCell>
                       {loading ? (
                         <Badge variant="outline">Checking…</Badge>
+                      ) : unknown ? (
+                        <Badge variant="outline">Unknown</Badge>
                       ) : present ? (
                         <Badge className="gap-1 bg-emerald-600 hover:bg-emerald-600">
                           <CheckCircle2 className="h-3 w-3" /> Set
