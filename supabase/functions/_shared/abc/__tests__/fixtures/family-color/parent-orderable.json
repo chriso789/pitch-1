@@ -1,0 +1,13 @@
+[
+  {
+    "itemNumber": "STANDALONE-001",
+    "itemDescription": "GAF Deck-Armor Underlayment Roll",
+    "familyId": "FAM-DECKARMOR",
+    "familyName": "GAF Deck-Armor",
+    "manufacturer": "GAF",
+    "color": "Standard",
+    "uoms": [{ "code": "RL" }],
+    "branches": [{ "branchNumber": "101" }],
+    "status": "active"
+  }
+]

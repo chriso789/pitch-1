@@ -1,0 +1,35 @@
+[
+  {
+    "itemNumber": "GAF-HDZ",
+    "familyId": "FAM-HDZ",
+    "familyName": "GAF Timberline HDZ",
+    "manufacturer": "GAF",
+    "isFamilyParent": true,
+    "familyItems": [
+      {
+        "itemDescription": "Missing item number",
+        "color": "Charcoal",
+        "uoms": [{ "code": "BDL" }],
+        "branches": [{ "branchNumber": "101" }]
+      },
+      {
+        "itemNumber": "GAF-HDZ-NODESC",
+        "color": "Charcoal",
+        "uoms": [{ "code": "BDL" }],
+        "branches": [{ "branchNumber": "101" }]
+      },
+      {
+        "itemNumber": "GAF-HDZ-NOUOM",
+        "itemDescription": "GAF Timberline HDZ - No UOM",
+        "color": "Charcoal",
+        "branches": [{ "branchNumber": "101" }]
+      },
+      {
+        "itemNumber": "GAF-HDZ-NOBR",
+        "itemDescription": "GAF Timberline HDZ - No Branches",
+        "color": "Charcoal",
+        "uoms": [{ "code": "BDL" }]
+      }
+    ]
+  }
+]

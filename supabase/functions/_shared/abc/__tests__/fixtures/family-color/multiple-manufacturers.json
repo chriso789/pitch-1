@@ -1,0 +1,32 @@
+[
+  {
+    "itemNumber": "GAF-HDZ-CHRCL",
+    "itemDescription": "GAF Timberline HDZ - Charcoal",
+    "familyName": "GAF Timberline HDZ",
+    "manufacturer": "GAF Materials",
+    "color": "Charcoal",
+    "uoms": [{ "code": "BDL" }],
+    "branches": [{ "branchNumber": "101" }],
+    "status": "active"
+  },
+  {
+    "itemNumber": "CT-LMD-CHRCL",
+    "itemDescription": "CertainTeed Landmark - Charcoal",
+    "familyName": "CertainTeed Landmark",
+    "manufacturer": "CT",
+    "color": "Charcoal Black",
+    "uoms": [{ "code": "BDL" }],
+    "branches": [{ "branchNumber": "101" }],
+    "status": "active"
+  },
+  {
+    "itemNumber": "OC-DUR-DRWD",
+    "itemDescription": "Owens Corning Duration - Driftwood",
+    "familyName": "Owens Corning Duration",
+    "manufacturer": "Owens Corning",
+    "color": "Drifwood",
+    "uoms": [{ "code": "BDL" }],
+    "branches": [{ "branchNumber": "102" }],
+    "status": "active"
+  }
+]

@@ -1,0 +1,13 @@
+[
+  {
+    "itemNumber": "GAF-HDZ-CHRCL",
+    "itemDescription": "GAF Timberline HDZ Shingle Bundle",
+    "familyId": "FAM-HDZ",
+    "familyName": "GAF Timberline HDZ",
+    "manufacturer": "GAF",
+    "color": { "name": "Charcoal", "code": "CHRCL" },
+    "uoms": [{ "code": "BDL", "isDefault": true }],
+    "branches": [{ "branchNumber": "101", "name": "Tampa", "available": 40 }],
+    "status": "active"
+  }
+]

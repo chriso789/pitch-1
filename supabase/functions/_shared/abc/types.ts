@@ -172,3 +172,86 @@ export interface NormalizedAbcSearchResponse {
   pagination: Record<string, unknown> | null;
   raw: RawAbcSearchResponse;
 }
+
+// ---------- Family + color resolution contracts ----------
+//
+// Consumed by supabase/functions/_shared/abc/familyColorResolver.ts.
+// Additive to Phase 1A — no handler currently imports these.
+
+/** Reason codes explaining why a resolved child is (or isn't) orderable. */
+export type ResolvedAbcOrderabilityReason =
+  | "ok"
+  | "inactive"
+  | "missing_item_number"
+  | "missing_description"
+  | "missing_uom"
+  | "missing_branches"
+  | "branch_verification_required"
+  | "parent_not_orderable";
+
+export interface ResolvedAbcColor {
+  /** Canonical display form ("Weathered Wood"). Never invented. */
+  displayName: string | null;
+  /** Untouched raw color name as it appeared on the wire. */
+  rawName: string | null;
+  /** Raw ABC color code, when provided. */
+  code: string | null;
+  /** Manufacturer/family alias that mapped to displayName, if any. */
+  aliasOf: string | null;
+}
+
+export interface ResolvedAbcChild {
+  itemNumber: string;
+  itemDescription: string | null;
+  familyId: string | null;
+  familyName: string | null;
+  manufacturer: string | null;
+  parentItemNumber: string | null;
+  color: ResolvedAbcColor;
+  validUoms: NormalizedAbcUom[];
+  branches: NormalizedAbcBranchRef[];
+  branchVerificationRequired: boolean;
+  status: string | null;
+  isActive: boolean;
+  isOrderable: boolean;
+  orderabilityReasons: ResolvedAbcOrderabilityReason[];
+  /** Reference back to the normalized source row. */
+  source: NormalizedAbcCatalogItem;
+}
+
+export interface ResolvedAbcParent {
+  itemNumber: string | null;
+  itemDescription: string | null;
+  isOrderable: boolean;
+  orderabilityReasons: ResolvedAbcOrderabilityReason[];
+  source: NormalizedAbcCatalogItem | null;
+}
+
+export interface ResolvedAbcFamily {
+  familyId: string | null;
+  familyName: string | null;
+  manufacturer: string | null;
+  parent: ResolvedAbcParent;
+  children: ResolvedAbcChild[];
+}
+
+export interface ResolveFamilyOptions {
+  /** Selected branch — if provided, branch verification is failed unless the child lists it. */
+  selectedBranchNumber?: string;
+  /**
+   * Extra manufacturer-scoped color aliases keyed by manufacturer (upper).
+   * Values map raw color labels (any case / spacing) to the canonical display form.
+   */
+  manufacturerColorAliases?: Record<string, Record<string, string>>;
+  /**
+   * Extra manufacturer aliases keyed by lowercase alias, mapping to the canonical
+   * manufacturer name. Used to collapse "GAF Materials" → "GAF", "CT" → "CertainTeed".
+   */
+  manufacturerAliases?: Record<string, string>;
+}
+
+export interface RankFamilyContext {
+  manufacturer?: string;
+  familyName?: string;
+  colorDisplayName?: string;
+}
