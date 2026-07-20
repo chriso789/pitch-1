@@ -92,13 +92,13 @@ export function QuickbooksAdminSurfaces() {
     }
   }, []);
 
+  const [statusError, setStatusError] = useState<string | null>(null);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      // Fetch backend template health via the qbo-worker readiness op.
-      // This returns { secrets: { QBO_CLIENT_ID_PRODUCTION: true, ... },
-      // connections: [...] } without leaking any secret values.
+      setStatusError(null);
       try {
         const { data, error } = await supabase.functions.invoke("qbo-worker", {
           body: { op: "backendTemplateStatus", args: {} },
@@ -109,8 +109,13 @@ export function QuickbooksAdminSurfaces() {
         setSecrets(payload?.secrets ?? null);
         setStats(Array.isArray(payload?.connections) ? payload.connections : []);
       } catch (e: any) {
-        // Non-fatal: the panel still renders the static template surface.
-        console.warn("[qbo backend template] status fetch failed", e?.message);
+        if (!cancelled) {
+          setStatusError(
+            e?.message ??
+              "Backend status check failed (master role required).",
+          );
+          setSecrets(null);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
