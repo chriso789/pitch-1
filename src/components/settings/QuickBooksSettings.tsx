@@ -206,31 +206,11 @@ export default function QuickBooksSettings() {
     }
   };
 
-  const loadMappings = async (tenantId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('job_type_qbo_mapping' as any)
-        .select('*')
-        .eq('tenant_id', tenantId);
-
-      if (error) throw error;
-
-
-
-
-      const mappingsMap: Record<string, JobTypeMapping> = {};
-      (data as any)?.forEach((mapping: any) => {
-        mappingsMap[mapping.job_type] = {
-          job_type: mapping.job_type,
-          qbo_item_id: mapping.qbo_item_id,
-          qbo_item_name: mapping.qbo_item_name,
-        };
-      });
-
-      setMappings(mappingsMap);
-    } catch (error) {
-      console.error('Error loading mappings:', error);
-    }
+  // Job-type mappings live in <JobTypeQBOMapping /> against `job_type_item_map`.
+  // The old `job_type_qbo_mapping` table was removed as part of Sub-plan F
+  // (schema hardening). Kept as a no-op so the render path below stays intact.
+  const loadMappings = async (_tenantId: string) => {
+    setMappings({});
   };
 
   const openConnectDialog = () => {
