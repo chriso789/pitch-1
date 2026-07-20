@@ -1082,6 +1082,7 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
                 {lineItems.length > 0 && sectionType === 'labor' && existingEstimate?.id && (
                   <LaborOrderExport
                     estimateId={existingEstimate.id}
+                    pipelineEntryId={pipelineEntryId}
                     laborItems={lineItems}
                     totalAmount={sectionTotal}
                     customerName={customerName}
