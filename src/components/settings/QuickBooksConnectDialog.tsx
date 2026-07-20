@@ -59,7 +59,7 @@ export function QuickBooksConnectDialog({
 
   useEffect(() => {
     if (!open) return;
-    setMode(defaultMode);
+    setMode("production");
     setChecked({});
     (async () => {
       setLoading(true);
