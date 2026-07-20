@@ -55,7 +55,7 @@ export function QuickBooksConnectDialog({
   const [submitting, setSubmitting] = useState(false);
   const [docs, setDocs] = useState<LegalDoc[]>([]);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
-  const [mode, setMode] = useState<"development" | "production">(defaultMode);
+  const [mode, setMode] = useState<"development" | "production">("production");
 
   useEffect(() => {
     if (!open) return;
