@@ -86,10 +86,14 @@ export default function QuickBooksSettings() {
       if (uid) {
         const { data: prof } = await supabase
           .from('profiles')
-          .select('tenant_id')
+          .select('tenant_id, active_tenant_id')
           .eq('id', uid)
           .single();
-        setTenantId((prof as any)?.tenant_id ?? null);
+        // Coalesce to match public.get_user_tenant_id() so RLS-scoped writes
+        // (legal_acceptances, integration_consents, qbo_connections) succeed
+        // even when the company switcher has flipped active_tenant_id.
+        const p = prof as { tenant_id: string | null; active_tenant_id: string | null } | null;
+        setTenantId(p?.active_tenant_id ?? p?.tenant_id ?? null);
       }
     })();
   }, []);
@@ -155,16 +159,25 @@ export default function QuickBooksSettings() {
     try {
       const { data: profile } = await supabase
         .from('profiles')
-        .select('tenant_id')
+        .select('tenant_id, active_tenant_id')
         .eq('id', (await supabase.auth.getUser()).data.user?.id)
         .single();
 
       if (!profile) return;
 
+      // Match public.get_user_tenant_id() which coalesces active_tenant_id
+      // first — RLS on qbo_connections / integration_consents / legal_acceptances
+      // enforces `tenant_id = get_user_tenant_id(auth.uid())`. If we used the
+      // home tenant while a company switcher had set active_tenant_id, the
+      // consent insert would silently fail RLS and the connect dialog would
+      // toast "Could not start QuickBooks connection".
+      const effectiveTenantId = (profile as { tenant_id: string; active_tenant_id: string | null })
+        .active_tenant_id ?? (profile as { tenant_id: string }).tenant_id;
+
       const { data, error } = await supabase
         .from('qbo_connections' as any)
         .select('*')
-        .eq('tenant_id', profile.tenant_id)
+        .eq('tenant_id', effectiveTenantId)
         .eq('is_active', true)
         .maybeSingle();
 
@@ -174,7 +187,7 @@ export default function QuickBooksSettings() {
 
       if (data) {
         await loadQBOItems();
-        await loadMappings(profile.tenant_id);
+        await loadMappings(effectiveTenantId);
       }
     } catch (error) {
       console.error('Error loading connection:', error);

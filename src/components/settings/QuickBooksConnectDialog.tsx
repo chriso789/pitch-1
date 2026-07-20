@@ -131,9 +131,20 @@ export function QuickBooksConnectDialog({
 
       // 4. Same-tab redirect — server-side 302 callback brings the user back.
       window.location.href = authUrl;
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      toast({ title: "Could not start QuickBooks connection", description: message, variant: "destructive" });
+    } catch (e: unknown) {
+      // Supabase PostgREST + FunctionsHttpError both carry structured fields
+      // that stringify to "[object Object]". Extract the real reason so the
+      // toast (and the console) surface the actual failure.
+      const err = e as { message?: string; error?: string; details?: string; hint?: string; code?: string; context?: { text?: () => Promise<string> } };
+      let description = err?.message || err?.error || err?.details || err?.hint || err?.code || "";
+      if (!description && err?.context?.text) {
+        try { description = await err.context.text(); } catch { /* noop */ }
+      }
+      if (!description) {
+        try { description = JSON.stringify(e); } catch { description = String(e); }
+      }
+      console.error("[qbo-connect-dialog] initiate failed", { error: e, description });
+      toast({ title: "Could not start QuickBooks connection", description, variant: "destructive" });
       setSubmitting(false);
     }
   };
