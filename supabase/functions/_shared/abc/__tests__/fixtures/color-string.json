@@ -1,0 +1,8 @@
+{
+  "itemNumber": "COLOR-STR-001",
+  "itemDescription": "Ridge Cap - Charcoal",
+  "color": "Charcoal",
+  "uoms": ["BDL"],
+  "branches": ["101", "102"],
+  "status": "Active"
+}

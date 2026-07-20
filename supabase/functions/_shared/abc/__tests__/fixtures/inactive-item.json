@@ -1,0 +1,7 @@
+{
+  "itemNumber": "INACTIVE-001",
+  "itemDescription": "Discontinued item",
+  "uoms": ["EA"],
+  "branches": [],
+  "status": "Inactive"
+}

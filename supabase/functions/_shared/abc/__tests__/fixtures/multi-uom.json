@@ -1,0 +1,11 @@
+{
+  "itemNumber": "MULTI-UOM-001",
+  "itemDescription": "Underlayment Roll",
+  "uoms": [
+    { "code": "RL", "description": "Roll", "isDefault": true },
+    { "code": "EA", "description": "Each" },
+    { "code": "SQ" }
+  ],
+  "branches": [{ "branchNumber": "101" }],
+  "status": "Active"
+}

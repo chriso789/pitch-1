@@ -1,0 +1,11 @@
+{
+  "items": [
+    {
+      "itemNumber": "WRAP-ITEMS-1",
+      "itemDescription": "Response wrapped in items[]",
+      "uoms": ["EA"],
+      "branches": ["101"]
+    }
+  ],
+  "pagination": { "total": 1, "limit": 25, "offset": 0 }
+}

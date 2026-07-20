@@ -1,0 +1,7 @@
+{
+  "itemNumber": "SHNGL-STD-001",
+  "itemDescription": "Standard 3-Tab Shingle Bundle",
+  "uoms": [{ "code": "BDL", "description": "Bundle", "isDefault": true }],
+  "branches": [{ "branchNumber": "101", "name": "Miami", "available": 240 }],
+  "status": "Active"
+}
