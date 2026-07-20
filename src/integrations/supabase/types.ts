@@ -24283,6 +24283,7 @@ export type Database = {
           last_qbo_pull_at: string
           pitch_invoice_id: string | null
           project_id: string
+          qbo_connection_id: string | null
           qbo_invoice_id: string
           qbo_status: string
           realm_id: string | null
@@ -24304,6 +24305,7 @@ export type Database = {
           last_qbo_pull_at?: string
           pitch_invoice_id?: string | null
           project_id: string
+          qbo_connection_id?: string | null
           qbo_invoice_id: string
           qbo_status?: string
           realm_id?: string | null
@@ -24325,6 +24327,7 @@ export type Database = {
           last_qbo_pull_at?: string
           pitch_invoice_id?: string | null
           project_id?: string
+          qbo_connection_id?: string | null
           qbo_invoice_id?: string
           qbo_status?: string
           realm_id?: string | null
@@ -24341,6 +24344,13 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_ar_mirror_qbo_connection_id_fkey"
+            columns: ["qbo_connection_id"]
+            isOneToOne: false
+            referencedRelation: "qbo_connections"
             referencedColumns: ["id"]
           },
         ]
@@ -24528,6 +24538,7 @@ export type Database = {
           job_type_code: string
           qbo_class_id: string | null
           qbo_class_name: string | null
+          qbo_connection_id: string | null
           qbo_item_id: string
           qbo_item_name: string | null
           realm_id: string
@@ -24541,6 +24552,7 @@ export type Database = {
           job_type_code: string
           qbo_class_id?: string | null
           qbo_class_name?: string | null
+          qbo_connection_id?: string | null
           qbo_item_id: string
           qbo_item_name?: string | null
           realm_id: string
@@ -24554,13 +24566,22 @@ export type Database = {
           job_type_code?: string
           qbo_class_id?: string | null
           qbo_class_name?: string | null
+          qbo_connection_id?: string | null
           qbo_item_id?: string
           qbo_item_name?: string | null
           realm_id?: string
           tenant_id?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "job_type_item_map_qbo_connection_id_fkey"
+            columns: ["qbo_connection_id"]
+            isOneToOne: false
+            referencedRelation: "qbo_connections"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       jobs: {
         Row: {
@@ -40719,6 +40740,7 @@ export type Database = {
           pitch_entity_id: string | null
           pitch_entity_type: string | null
           pitch_project_number: string | null
+          qbo_connection_id: string | null
           qbo_doc_number: string | null
           qbo_entity_id: string
           qbo_entity_type: string
@@ -40737,6 +40759,7 @@ export type Database = {
           pitch_entity_id?: string | null
           pitch_entity_type?: string | null
           pitch_project_number?: string | null
+          qbo_connection_id?: string | null
           qbo_doc_number?: string | null
           qbo_entity_id: string
           qbo_entity_type: string
@@ -40755,6 +40778,7 @@ export type Database = {
           pitch_entity_id?: string | null
           pitch_entity_type?: string | null
           pitch_project_number?: string | null
+          qbo_connection_id?: string | null
           qbo_doc_number?: string | null
           qbo_entity_id?: string
           qbo_entity_type?: string
@@ -40763,7 +40787,15 @@ export type Database = {
           tenant_id?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "qbo_entity_mapping_qbo_connection_id_fkey"
+            columns: ["qbo_connection_id"]
+            isOneToOne: false
+            referencedRelation: "qbo_connections"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       qbo_expenses: {
         Row: {
@@ -40823,6 +40855,7 @@ export type Database = {
           id: string
           is_active: boolean
           location_id: string
+          qbo_connection_id: string | null
           qbo_department_id: string
           realm_id: string
           tenant_id: string
@@ -40834,6 +40867,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           location_id: string
+          qbo_connection_id?: string | null
           qbo_department_id: string
           realm_id: string
           tenant_id: string
@@ -40845,12 +40879,21 @@ export type Database = {
           id?: string
           is_active?: boolean
           location_id?: string
+          qbo_connection_id?: string | null
           qbo_department_id?: string
           realm_id?: string
           tenant_id?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "qbo_location_map_qbo_connection_id_fkey"
+            columns: ["qbo_connection_id"]
+            isOneToOne: false
+            referencedRelation: "qbo_connections"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       qbo_oauth_state: {
         Row: {
@@ -40944,6 +40987,7 @@ export type Database = {
           id: string
           pitch_invoice_id: string | null
           pitch_payment_id: string | null
+          qbo_connection_id: string | null
           qbo_customer_id: string | null
           qbo_invoice_id: string | null
           qbo_payment_id: string
@@ -40961,6 +41005,7 @@ export type Database = {
           id?: string
           pitch_invoice_id?: string | null
           pitch_payment_id?: string | null
+          qbo_connection_id?: string | null
           qbo_customer_id?: string | null
           qbo_invoice_id?: string | null
           qbo_payment_id: string
@@ -40978,6 +41023,7 @@ export type Database = {
           id?: string
           pitch_invoice_id?: string | null
           pitch_payment_id?: string | null
+          qbo_connection_id?: string | null
           qbo_customer_id?: string | null
           qbo_invoice_id?: string | null
           qbo_payment_id?: string
@@ -40990,7 +41036,15 @@ export type Database = {
           unapplied_amount?: number | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "qbo_payment_mapping_qbo_connection_id_fkey"
+            columns: ["qbo_connection_id"]
+            isOneToOne: false
+            referencedRelation: "qbo_connections"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       qbo_sync_errors: {
         Row: {
@@ -55684,6 +55738,7 @@ export type Database = {
           invoice_numbering_mode: string
           metadata: Json
           project_mapping_mode: string
+          qbo_connection_id: string | null
           realm_id: string
           tenant_id: string
           updated_at: string
@@ -55700,6 +55755,7 @@ export type Database = {
           invoice_numbering_mode?: string
           metadata?: Json
           project_mapping_mode?: string
+          qbo_connection_id?: string | null
           realm_id: string
           tenant_id: string
           updated_at?: string
@@ -55716,11 +55772,20 @@ export type Database = {
           invoice_numbering_mode?: string
           metadata?: Json
           project_mapping_mode?: string
+          qbo_connection_id?: string | null
           realm_id?: string
           tenant_id?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "tenant_qbo_settings_qbo_connection_id_fkey"
+            columns: ["qbo_connection_id"]
+            isOneToOne: false
+            referencedRelation: "qbo_connections"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       tenant_settings: {
         Row: {
