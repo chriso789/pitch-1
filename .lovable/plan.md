@@ -1,80 +1,98 @@
-# ABC Supply Integration Hardening
 
-Large multi-phase backend + frontend hardening for the ABC Supply integration. Contractor material orders will only reach ABC when the exact color-specific child SKU is verified at the selected branch, priced through Price Items, and shipped in a compliant Place Orders payload. QXO, supplier comparison UI, and estimate-template duplication are explicitly out of scope.
+# QuickBooks Online Production Cutover — Audit + Execution Plan
 
-## Phase 0 — Trace live contract
-- Confirm the active browser route (`/functions/v1/supplier-api/abc/proxy`) and every legacy alias (`abc-api-proxy`, `submit_order`, `place_order`, `submit_test_order`).
-- Map data path: contractor material order → canonical line → approved ABC mapping → Product API verify → Price Items → order payload → `abc_orders` persistence.
-- Enumerate every place an ABC SKU / UOM / description / color / qty / price / Ship-To / branch can currently be guessed. Document in `docs/abc-integration-trace.md`.
+## Phase 1 findings (verified against runtime code + live DB, not docs)
 
-## Phase 1 — Normalized ABC catalog model
-- New shared type `NormalizedAbcCatalogItem` + parser in `supabase/functions/_shared/abc/catalog-normalize.ts`.
-- Preserves itemNumber, itemDescription, color.name/code, familyItems, uoms[], branches[], status, dimensional lengths. No `[object Object]`. No UOM collapse.
-- Fixtures + tests: simple, family parent, family children, multi-UOM, embedded branches, dimensional, inactive.
+### Edge functions (11 QBO functions)
 
-## Phase 2 — Product search returns color-specific items
-- Server action `search_products` uses `POST /product/v1/search/items?familyItems=true` with `embed:["branches","variations"]` and pagination.
-- Response normalized server-side. Each color child is its own selectable result. Child needs exact branch verification unless embedded availability is authoritative.
+| Function | LOC | State | Host resolution | Minor version | Notes |
+|---|---|---|---|---|---|
+| `qbo-worker` | **18** | **501 scaffold** | n/a | n/a | Frontend already calls 5 routes on this. Every call returns 501 today. |
+| `qbo-oauth-connect` | 684 | Live | `getQboContextForMode` / `getQboContextForConnection` | 75 | Correct env split. |
+| `qbo-api` | 24 | Thin | — | — | Router placeholder. |
+| `qbo-customer-sync` | 268 | Live | `qboHost(connection)` → `getQboContextForConnection` | 75 | OK. |
+| `qbo-invoice-create` | 389 | Live | `qboHost(connection)` | 75 | OK. |
+| `qbo-invoice-send` | 252 | Live | `qboHost(connection)` | 75 | OK. |
+| `qbo-fetch-items` | 141 | Live | `getValidAccessToken` | 75 | OK. |
+| `qbo-check-projects-api` | 118 | Live | `qboHost(connection)` | 75 | Preferences probe only. |
+| `qbo-sync-payment` | 158 | Live | — | — | Needs re-verify vs. new mapping model. |
+| `qbo-webhook-handler` | 369 | Live | `qboHost(connection)` | 75 | Verifier per env — OK. |
+| `qbo-webhook` | 17 | Thin | — | — | Placeholder. |
 
-## Phase 3 — Exact child SKU branch verification
-- New action `verify_catalog_item({environment, itemNumber, branchNumber})`.
-- Returns `{verified, item, failures[]}` with codes: `item_not_found | item_inactive | unavailable_at_branch | no_valid_uoms | dimensional_length_required | abc_waf_blocked | abc_upstream_error`.
-- Color-family child is not order-ready until this passes.
+**Hardcoded-host / `USE_SANDBOX` grep:** only remaining occurrences are inside `_shared/qbo-context.ts` (the resolver itself), the test file, and `qbo-worker/README.md`. No runtime code branches on `USE_SANDBOX`. Legacy `QBO_ENVIRONMENT` is still read once as a fallback inside `getDefaultQboMode()` — allowed by design.
 
-## Phase 4 — Supplier mapping model
-- Extend `template_item_supplier_mappings` with ABC fields (supplier_item_number/description, family, color, valid_uoms, selected_uom, branch_number, ship_to_number, verification/approval timestamps, mapping_status, match_confidence, raw payload, stale_at).
-- Statuses: `unmapped | suggested | needs_review | approved | rejected | stale | unavailable_at_branch`.
-- Tenant-scoped RLS + indexes. Branch/Ship-To/itemNumber/UOM/color change invalidates or reverifies.
+**Token/secret logging:** `_shared/qbo-api.ts:129` masks `access_token|refresh_token|authorization|bearer|client_secret|verifier` in the log redactor. No offenders found.
 
-## Phase 5 — Remove unsafe auto-mapping
-- Rewrite `template-supplier-pricing` matcher: ranked candidates using manufacturer + family + type + color + UOM + tokens. No fuzzy auto-approve. Color-bearing items always require review unless prior approved exact canonical mapping.
+### Frontend call sites already targeting `qbo-worker`
 
-## Phase 6 — Material order → ABC mapping resolver
-- Keep contractor lines supplier-neutral. Resolver requires approved mapping, exact child SKU branch verification, valid Product API UOM, explicit approved UOM conversion.
-- `item_name` / `srs_item_code` / unverified typed SKUs can never become ABC itemNumber. Unmapped lines block submission with repair action.
+- `src/features/projects/components/ProjectDetails.tsx:115`
+- `src/components/jobs/QuickBooksInvoiceManager.tsx:109, 147`
+- `src/components/settings/LocationSelector.tsx:85` (`op: "setLocation"`)
+- (plus `QuickBooksInvoiceCard.tsx` still uses `qbo-invoice-create` directly)
 
-## Phase 7 — Pricing hardening
-- `price_items`: reject `abc_product_uom_required`, require approved mapping + itemNumber + Product API UOM + Ship-To + branch + qty + fresh verification.
-- Match response by line id then itemNumber. Line ok only when line-level status successful, numeric price present, identity matches.
-- Persist per-line: id, itemNumber, description, requested/returned UOM, unit/extended price, status, availability, branch, ship-to, raw, checked_at, mapping id.
-- $0 → verify availability, mark `zero_price_available_contact_branch | unavailable_at_branch | zero_price_unresolved`, block order.
-- Continue writing `abc_api_audit`, `supplier_pricing_runs`, `supplier_price_history`. Never mutate signed estimate cost.
+**All five frontend paths currently receive HTTP 501.** This is user-visible today.
 
-## Phase 8 — One safe production order builder
-- Single server-side builder. Hard-disable browser-trusted `body.order` bypass and legacy paths that accept `item_name`/`srs_item_code`/unapproved `abc_item_code`/guessed UOM/optional DC contact.
-- Reload trusted records server-side. Preflight rejects lines with unapproved mapping, stale verification, invalid UOM, missing description, color mismatch, unavailable branch, missing/failing Price Items echo, zero/unresolved price, mismatched pricing identity, missing DC contact, missing Ship-To/branch, invalid address.
-- Payload: idempotent requestId, PO, branch, Ship-To, deliveryService, typeCode, delivery date, currency, address, DC contact (functionCode=DC + name/email/phone). Lines echo exact SKU + description + Product API UOM + Price Items unit price. Place Orders body is an array.
+### Database (verified live)
 
-## Phase 9 — Color UX
-- `AbcCatalogControls` + `PushToSupplierDialog` show canonical name, requested mfr/family/color, selected ABC itemNumber + exact description + color, UOM dropdown, branch verification badge, mapping status, price status, last checks.
-- Buttons: Find ABC Match, Select Exact Color, Verify at Branch, Approve Mapping, Change Mapping, Refresh Price. No comparison grid.
+Tables present: `qbo_connections`, `qbo_entity_mapping`, `qbo_location_map`, `qbo_api_logs`, `qbo_connection_tests`, `qbo_oauth_state`, `qbo_expenses`, `qbo_payment_history`, `qbo_sync_errors`, `qbo_webhook_events`, `qbo_webhook_journal`, `job_type_item_map`, `invoice_ar_mirror`.
 
-## Phase 10 — Account/Ship-To/branch rules
-- Ship-Tos from ABC account sync; empty-branch accounts not selectable; branch must belong to selected Ship-To; connection-wide branch cannot override account relationship; production users cannot free-type Ship-To/branch outside admin repair flow; Ship-To change revalidates.
-- Remove O'Brien sandbox defaults from prod paths. Demo defaults gated by `environment=sandbox && sandboxDemo && tenant authorized`.
+Gaps vs. the spec:
 
-## Phase 11 — Dimensional products
-- Expose valid lengths, require selection, carry into pricing + order line per ABC contract. Tests for missing/valid length.
+- `qbo_entity_mapping` unique key is `(tenant_id, entity_type, entity_id, realm_id)` — collapses Customer/Project/Invoice/Payment into one row per Pitch entity. Needs relaxing so one Pitch project can hold {Customer, Project|SubCustomerJob, Invoice, Payment} rows in parallel. Table currently holds **0 rows**, so migration is safe.
+- No `tenant_qbo_settings` table for `project_mapping_mode`, `invoice_numbering_mode`, `customer_visible_project_number`, default account/item/tax/dept/class.
+- `invoice_ar_mirror` is missing `pitch_invoice_id`, `sync_token`, `tax_amount`, `deposit_amount`, `email_status`, `txn_date`, `due_date`.
+- No `qbo_payment_mapping` or dedicated payment ledger separation from crew payouts.
 
-## Phase 12 — Security + tenant isolation
-- Server-resolved tenant only. Reject `body.tenant_id`. Service-role writes always filter by resolved tenant. Cross-tenant reads blocked across connections/accounts/branches/mappings/pricing/orders/audit. No token/secret/Auth header logging. CORS not widened.
+## Stop-condition status vs. your spec
 
-## Phase 13 — Tests
-- Catalog, mapping, pricing, order, sandbox tests as specified in the brief.
+| Stop condition | Current state |
+|---|---|
+| `qbo-worker` remains 501 | **HIT** — cannot claim complete. |
+| Production credentials absent | Unknown — need `fetch_secrets` check. |
+| Redirect URI mismatch | Only verifiable in Intuit portal — manual step. |
+| Webhook verifier absent | Split verifiers referenced; presence per env not yet asserted. |
+| Project mapping overwrites invoice mapping | **Currently possible** — same-key collision in `qbo_entity_mapping`. |
+| Native Project API assumed w/o entitlement | `qbo-check-projects-api` exists but result not gated in worker. |
+| Required job type has no QBO Item mapping | No block enforced yet. |
+| Sandbox invoice traceable to one Pitch project UUID | Not yet — no `pitch_invoice_id` column on mirror. |
 
-## Phase 14 — Delivery report
-- `docs/abc-hardening-delivery.md` with files changed, migrations, live route map, before/after contracts (catalog, pricing, order), tests + results, ABC doc ambiguities, WAF-blocked items, and a production-readiness matrix (OAuth / Ship-To+branch sync / catalog / color mapping / UOM validation / branch availability / Price Items / zero-price / preflight / Place Orders / tracking / tenant isolation).
+## Execution plan (phased — approve to proceed)
 
-## Stop conditions
-- Do not declare production-ready without proven exact color SKU + UOM + branch availability + Price Items echo.
-- No fabricated evidence when ABC WAF blocks calls.
-- Do not proceed to QXO.
-- Legacy unsafe order submission is replaced by a safe adapter or hard-disabled — not preserved.
+### Sub-plan A — schema (single migration reviewable in isolation)
+- Rebuild `qbo_entity_mapping` unique key to `(tenant_id, realm_id, pitch_entity_type, pitch_entity_id, qbo_entity_type)`. Add `pitch_entity_type`, `pitch_entity_id` columns as aliases, backfill from existing `entity_type`/`entity_id` (empty table → trivial), keep old cols for a shim window. Add `pitch_project_number`, `qbo_doc_number`, `sync_token`, `mapping_mode`.
+- New `tenant_qbo_settings` (one row per tenant×realm): `project_mapping_mode`, `invoice_numbering_mode`, `customer_visible_project_number`, `default_income_account_id`, `default_item_id`, `default_tax_code_id`, `default_department_id`, `default_class_id`. RLS: tenant-scoped read/write.
+- Extend `invoice_ar_mirror`: `pitch_invoice_id uuid`, `sync_token text`, `tax_amount numeric`, `deposit_amount numeric`, `email_status text`, `txn_date date`, `due_date date`.
+- Grants + RLS policies + `NOTIFY pgrst`.
 
-## Technical notes
-- All ABC HTTP work stays in `supabase/functions/supplier-api/abc-proxy-handler.ts` + `_shared/abc/*`. Frontend touches limited to `PushToSupplierDialog.tsx`, `AbcCatalogControls.tsx`, `useAbcCatalog.ts`.
-- Migrations: mapping columns + statuses + indexes + RLS; new pricing history columns if needed; no changes to signed estimates.
-- Existing `abc_api_audit`, `supplier_pricing_runs`, `supplier_price_history`, `abc_orders`, `abc_order_lines` reused.
-- Idempotency via existing `supplier_idempotency_keys` (order requestId).
+### Sub-plan B — `qbo-worker` real routes (replace 18-line scaffold)
+Routes, all `requireAuth` + `requireTenant`, body `tenant_id` ignored:
+- `POST /sync-project` — resolve/create QBO Customer, then native Project (if `ProjectsEnabled` + scope), else SubCustomerJob fallback. Deterministic. Persists mapping mode.
+- `POST /create-invoice` — reads approved Pitch invoice/estimate lines, resolves each via `job_type_item_map`, blocks on unmapped types unless `default_item_id` is set. Writes separate `Invoice` mapping row. Honors `invoice_numbering_mode`.
+- `POST /sync-payment-status` — polls a QBO Invoice, updates AR mirror + Pitch invoice status.
+- `POST /refresh-ar` — pulls balance/status for all mapped invoices for a tenant, tenant-scoped.
+- `POST /set-location` — upserts `qbo_location_map` for active location.
+- `GET /preflight` — redacted readiness report per Phase 9.
+- `GET /__health` — retained.
 
-Given the size, I will land this in reviewable chunks in this order: Phase 0 trace doc → Phase 1 normalizer + tests → Phase 4 migration → Phases 2/3 catalog+verify → Phase 5/6 mapping resolver → Phase 7 pricing → Phase 8 order builder → Phase 9 UX → Phase 10/11 rules + dimensional → Phase 12 security sweep → Phase 13 tests → Phase 14 delivery doc. Each chunk is independently reviewable and does not break the current flow until the safe path replaces it.
+### Sub-plan C — payment resolver
+Rework `qbo-webhook-handler` payment path + `qbo-sync-payment` to (1) fetch Payment, (2) walk `Line[].LinkedTxn`, (3) resolve QBO Invoice → Pitch invoice via new mapping, (4) write `qbo_payment_mapping` row, (5) update AR mirror + Pitch invoice `amount_paid`/`balance_due`/`payment_status`/`last_payment_at`. **Never touch crew payout ledger.**
+
+### Sub-plan D — Settings UI: Job & Item Mapping
+Extend the existing `JobTypeQBOMapping` panel with per-mapping Class, Department, taxable flag, default description, active toggle. Add tenant defaults section (from `tenant_qbo_settings`). Add "Unmapped Types" warning banner. Route "Test Mapping" through `qbo-worker /preflight`.
+
+### Sub-plan E — Frontend migrations
+Retire direct `qbo-invoice-create` invocation in `QuickBooksInvoiceCard.tsx` in favor of `qbo-worker /create-invoice`. Update the three existing `qbo-worker` callers to the real route names.
+
+### Sub-plan F — Tests
+Deno tests per Phase 12. Run `supabase--test_edge_functions` after each sub-plan.
+
+### Sub-plan G — Sandbox evidence + production cutover
+Only after A–F land green. Requires the user to (i) confirm production credentials via `fetch_secrets`, (ii) verify Intuit portal redirect URI + webhook, (iii) run the deterministic $1 test project. I will not flip `QBO_DEFAULT_ENVIRONMENT` to `production` without your explicit go.
+
+## What I need from you to proceed
+
+1. **Approve Sub-plan A** first (schema is the blast-radius foundation and must land before worker logic).
+2. Confirm you want me to proceed sub-plan by sub-plan (safer, each is reviewable) rather than jamming A–F into one turn (which will hit tool-call and review-fatigue limits and violate your own "do not overclaim" rule).
+3. Confirm whether `QBO_CLIENT_ID_PRODUCTION` / `QBO_CLIENT_SECRET_PRODUCTION` / `QBO_REDIRECT_URI_PRODUCTION` / `QBO_WEBHOOK_VERIFIER_PRODUCTION` are already set (I'll verify via `fetch_secrets` before Sub-plan G — no values leave the sandbox).
+
+Reply **"go A"** to start with the schema migration.
