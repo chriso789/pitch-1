@@ -49,11 +49,10 @@ function loose(v: string): string {
 
 const DEFAULT_MANUFACTURER_ALIASES: Record<string, string> = {
   gaf: "GAF",
-  "gaf materials": "GAF",
+  gafmaterials: "GAF",
   certainteed: "CertainTeed",
   ct: "CertainTeed",
   owenscorning: "Owens Corning",
-  "owens corning": "Owens Corning",
   oc: "Owens Corning",
   tamko: "TAMKO",
   iko: "IKO",
