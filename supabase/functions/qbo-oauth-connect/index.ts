@@ -497,12 +497,19 @@ Deno.serve(async (req) => {
 
       const scope = "com.intuit.quickbooks.accounting openid email profile";
       const initiateEndpoints = await getQboOAuthEndpoints(ctx.mode);
+      // `prompt=login` forces Intuit to show the account chooser / sign-in page
+      // every time instead of silently reusing whichever Intuit account the
+      // current browser session is already logged into. Without this, a tenant
+      // (e.g. O'Brien Contracting) sitting in a browser that still has the
+      // Pitch CRM Intuit account authenticated gets auto-connected to the wrong
+      // QuickBooks company.
       const authUrl = `${initiateEndpoints.authorization_endpoint}?` + new URLSearchParams({
         client_id: ctx.clientId,
         redirect_uri: ctx.redirectUri,
         response_type: "code",
         scope,
         state,
+        prompt: "login",
       });
 
       return jsonResponse({ authUrl, state, mode: requestedMode });
