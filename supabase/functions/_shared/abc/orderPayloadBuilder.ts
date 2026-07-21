@@ -743,10 +743,8 @@ export function buildAbcOrderPayload(
     const uom = md.approvedUom as string;
     const price = md.approvedPrice as number;
 
-    const src = md.sourceSnapshots?.normalizedProduct ??
-      md.sourceSnapshots?.resolvedChild ?? null;
-    // deno-lint-ignore no-explicit-any
-    const isDimensional = Boolean((src as any)?.isDimensional);
+    const src = resolvedProductSnapshot(md);
+    const isDimensional = Boolean(src?.isDimensional);
 
     const built: AbcOrderLine = {
       id: trim(line.id),
