@@ -68,7 +68,6 @@ const JOB_TYPES: Array<{ code: string; label: string }> = [
   { code: "exterior_paint", label: "Exterior Paint" },
   { code: "handyman", label: "Handyman" },
   { code: "solar", label: "Solar" },
-  { code: "insurance_supplement", label: "Insurance Supplement" },
 ];
 
 export function JobTypeQBOMapping() {
