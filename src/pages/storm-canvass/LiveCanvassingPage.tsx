@@ -631,7 +631,7 @@ export default function LiveCanvassingPage() {
             refreshKey={markersRefreshKey}
             areaPropertyIds={canvassMode === 'knock' && areaPropertyIds.length > 0 ? areaPropertyIds : undefined}
             areaPolygon={areaPolygon}
-            onMapClick={canvassMode === 'canvas' ? (lat, lng) => setDropPinCoords({ lat, lng }) : undefined}
+            onMapClick={(canvassMode === 'canvas' || dropPinArmed) ? (lat, lng) => { setDropPinCoords({ lat, lng }); setDropPinArmed(false); } : undefined}
             followUser={!userInteractionPaused}
             onUserInteraction={handleUserMapInteraction}
             symbolSettings={symbolSettings}
