@@ -132,7 +132,7 @@ Deno.test("duplicate response id warns and is deterministic", async () => {
   const out = parseAbcPricingResponse(raw, [req()], ctx(), opts);
   assert(out.warnings.some((w) => w.includes("Duplicate returned line id")));
   // First match wins
-  assertEquals(out.lines[0].availability.quantityAvailable, 30);
+  assertEquals(out.lines[0].unitPrice, 45.5);
 });
 
 // 10. duplicate response itemNumber
