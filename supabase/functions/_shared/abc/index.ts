@@ -16,3 +16,4 @@ export * from "./types.ts";
 export * from "./productNormalizer.ts";
 export * from "./branchVerifier.ts";
 export * from "./availabilityParser.ts";
+export * from "./pricingResponseParser.ts";

@@ -1,0 +1,6 @@
+{
+  "lines": [
+    { "id": "L1", "itemNumber": "SHNGL-WW", "unitOfMeasure": "BUNDLE", "quantity": 20, "unitPrice": 45.5, "status": "OK" },
+    { "id": "L2", "itemNumber": "SHNGL-WW", "unitOfMeasure": "BUNDLE", "quantity": 20, "unitPrice": 46.0, "status": "OK" }
+  ]
+}

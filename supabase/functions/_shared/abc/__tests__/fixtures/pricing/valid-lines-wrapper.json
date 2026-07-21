@@ -1,0 +1,14 @@
+{
+  "lines": [
+    {
+      "id": "L1",
+      "itemNumber": "SHNGL-WW",
+      "itemDescription": "Weathered Wood Shingle",
+      "unitOfMeasure": "BUNDLE",
+      "quantity": 20,
+      "unitPrice": { "value": 45.5 },
+      "extendedPrice": { "value": 910 },
+      "status": { "code": "OK", "message": "Priced" }
+    }
+  ]
+}
