@@ -1,0 +1,7 @@
+{
+  "itemNumber": "MIX-01",
+  "validUoms": [
+    { "code": "BDL", "description": "Bundle" },
+    { "code": "REF", "description": "Informational only" }
+  ]
+}

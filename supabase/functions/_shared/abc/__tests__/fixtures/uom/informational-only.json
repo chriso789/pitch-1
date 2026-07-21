@@ -1,0 +1,7 @@
+{
+  "itemNumber": "INFO-ONLY-01",
+  "validUoms": [
+    { "code": "REF", "description": "Reference only" },
+    { "code": "DSP", "description": "Display only" }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "itemNumber": "DUP-01",
+  "validUoms": [
+    { "code": "BDL", "description": "Bundle" },
+    { "code": " bdl ", "description": "Bundle (dup)" },
+    { "code": "BUNDLE", "description": "Bundle (canonical)", "isDefault": true }
+  ]
+}
