@@ -14,112 +14,25 @@ const SRS_PRODUCTION_URL = "https://services.roofhub.pro";
 // Sent on every authenticated SRS call so SRS can attribute traffic to PITCH.
 const SRS_SOURCE_SYSTEM = "PITCH";
 
-/**
- * Build the SRS /orders/v2/submit payload.
- * Spec aligned with the RoofHub sample shared by Jessica Zapata (2026-05-18):
- *  - top-level `notes`, `accountNumber` (string), `shipToSequenceNumber`
- *  - structured `shipTo` { addressLine1/2/3, city, state, zipCode }
- *  - poDetails: { poNumber, reference, jobNumber, orderDate,
- *                 expectedDeliveryDate, expectedDeliveryTime,
- *                 orderType:"WHSE", shippingMethod (label e.g. "Ground Drop") }
- *  - orderLineItemDetails: { productId (number), productName, option,
- *                            quantity, uom, customerItem }
- *      → SRS prices the order from their catalog; we do NOT send `price`.
- *  - customerContactInfo: structured object with nested address +
- *    additionalContactEmails[].
- */
-
-type SrsShipTo = {
-  name?: string;
-  addressLine1?: string; addressLine2?: string; addressLine3?: string;
-  city?: string; state?: string; zipCode?: string;
-};
-
-type SrsCustomerContact = {
-  customerContactName?: string;
-  customerContactPhone?: string;
-  customerContactEmail?: string;
-  customerContactAddress?: {
-    addressLine1?: string; city?: string; state?: string; zipCode?: string;
-  };
-  additionalContactEmails?: string[];
-};
-
-type SrsLineItem = {
-  productId: number | string;
-  productName?: string;
-  option?: string;
-  quantity: number;
-  price?: number;
-  uom: string;
-  customerItem?: string;
-};
-
-export function buildSubmitOrderPayload(args: {
-  sourceSystem: string;
-  customerCode: string;
-  accountNumber?: string | null;          // string form of S046834
-  jobAccountNumber?: number | null;       // numeric (kept for legacy callers)
-  shipToSequenceNumber?: number;          // default 1
-  branchCode: string;
-  poNumber: string;
-  reference?: string | null;
-  jobNumber?: string | null;
-  orderDate?: string | null;              // YYYY-MM-DD
-  expectedDeliveryDate?: string | null;   // YYYY-MM-DD
-  expectedDeliveryTime?: string | null;   // e.g. "Anytime"
-  orderType?: "WHSE" | "WILLCALL";        // defaults to WHSE
-  shippingMethod: string;                 // label e.g. "Ground Drop", "Will Call"
-  shipTo?: SrsShipTo | null;
-  customerContact?: SrsCustomerContact | null;
-  notes?: string | null;
-  items: SrsLineItem[];
-}) {
-  const today = new Date().toISOString().slice(0, 10);
-  const payload: Record<string, unknown> = {
-    sourceSystem: args.sourceSystem,
-    customerCode: args.customerCode,
-    shipToSequenceNumber: args.shipToSequenceNumber ?? 1,
-    branchCode: args.branchCode,
-    accountNumber: String(args.accountNumber ?? args.customerCode ?? "").trim(),
-    transactionID: crypto.randomUUID(),
-    transactionDate: new Date().toISOString(),
-    notes: args.notes ?? "",
-    shipTo: args.shipTo ?? {
-      addressLine1: "", addressLine2: "", addressLine3: "",
-      city: "", state: "", zipCode: "",
-    },
-    poDetails: {
-      poNumber: args.poNumber,
-      reference: args.reference ?? "",
-      jobNumber: args.jobNumber ?? "",
-      orderDate: args.orderDate ?? today,
-      expectedDeliveryDate: args.expectedDeliveryDate ?? today,
-      expectedDeliveryTime: args.expectedDeliveryTime ?? "Anytime",
-      orderType: args.orderType ?? "WHSE",
-      shippingMethod: args.shippingMethod,
-    },
-    // Per SRS spec (Jessica Zapata sample 2026-05-18): submit payload does
-    // NOT include `price` on line items. SRS prices server-side from their
-    // catalog; sending price triggers price-mismatch rejection.
-    orderLineItemDetails: args.items.map((i) => {
-      const numericId = Number(i.productId);
-      return {
-        productId: Number.isFinite(numericId) ? numericId : i.productId,
-        productName: i.productName ?? "",
-        option: i.option ?? "N/A",
-        quantity: Number(i.quantity),
-        uom: normalizeUom(i.uom),
-        customerItem: i.customerItem ?? "",
-      };
-    }),
-
-    customerContactInfo: args.customerContact ?? {},
-  };
-  // NOTE: top-level `jobAccountNumber` removed — not in current SRS spec.
-  // SRS resolves the job account from customerCode + shipToSequenceNumber.
-  return payload;
-}
+// Submit-order payload builder + UOM normalizer are the QA-verified production
+// contract — extracted to a pure shared module and guarded by a snapshot test.
+// See supabase/functions/_shared/srs/__tests__/submit-payload.snapshot.test.ts.
+export {
+  buildSubmitOrderPayload,
+  normalizeUom,
+} from "../_shared/srs/orderPayload.ts";
+import type {
+  SrsShipTo,
+  SrsCustomerContact,
+  SrsLineItem,
+} from "../_shared/srs/orderPayload.ts";
+import {
+  buildSubmitOrderPayload as _buildSubmitOrderPayload,
+  normalizeUom as _normalizeUom,
+} from "../_shared/srs/orderPayload.ts";
+// Local aliases so existing call sites in this file keep working.
+const buildSubmitOrderPayload = _buildSubmitOrderPayload;
+const normalizeUom = _normalizeUom;
 
 /** Map internal delivery_method to SRS orderType. Pickup → WILLCALL, all delivery → WHSE. */
 function srsOrderType(internal: string | null | undefined): "WHSE" | "WILLCALL" {
@@ -151,56 +64,6 @@ function srsShippingMethodLabel(internal: string | null | undefined): string {
   }
 }
 
-/**
- * Normalize free-text UOM values from estimate line items into the codes
- * SRS accepts. SRS's async validator silently drops orders with unknown UOMs
- * (e.g. "EACH" instead of "EA"), so this mapping is required before submit.
- */
-function normalizeUom(raw: string | null | undefined): string {
-  const v = String(raw || "EA").trim().toUpperCase();
-  const map: Record<string, string> = {
-    "EACH": "EA",
-    "EA.": "EA",
-    "PC": "PC",
-    "PCS": "PC",
-    "PIECE": "EA",
-    "PIECES": "EA",
-    "UNIT": "EA",
-    "UNITS": "EA",
-    "BOX": "BX",
-    "BOXES": "BX",
-    "BUNDLE": "BD",
-    "BUNDLES": "BD",
-    "BDLS": "BD",
-    "BDL": "BD",
-    "BD": "BD",
-    "ROLL": "RL",
-    "ROLLS": "RL",
-    "SQUARE": "SQ",
-    "SQUARES": "SQ",
-    "SQS": "SQ",
-    "SHEET": "SHT",
-    "SHEETS": "SHT",
-    "LINEAL FOOT": "LF",
-    "LINEAR FOOT": "LF",
-    "LINEAL FEET": "LF",
-    "LINEAR FEET": "LF",
-    "LFT": "LF",
-    "FT": "LF",
-    "FOOT": "LF",
-    "FEET": "LF",
-    "GAL": "GA",
-    "GALLON": "GA",
-    "GALLONS": "GA",
-    "PAIL": "PL",
-    "PAILS": "PL",
-    "BAG": "BG",
-    "BAGS": "BG",
-    "TUBE": "TB",
-    "TUBES": "TB",
-  };
-  return map[v] || v;
-}
 
 
 function normalizeCustomerBranchLocations(branchData: any): any[] {
