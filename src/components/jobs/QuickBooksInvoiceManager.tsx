@@ -24,6 +24,11 @@ interface InvoiceRow {
   qbo_status: string | null;
   email_status: string | null;
   invoice_link: string | null;
+  invoice_link_status: string | null;
+  invoice_link_source: string | null;
+  invoice_link_verified_at: string | null;
+  online_card_enabled: boolean | null;
+  online_ach_enabled: boolean | null;
   invoice_type: string | null;
   txn_date: string | null;
   due_date: string | null;
