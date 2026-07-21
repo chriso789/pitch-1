@@ -79,7 +79,7 @@ export function QuickBooksInvoiceManager({ projectId, tenantId }: QuickBooksInvo
       if (conn) {
         const { data, error } = await (supabase as any)
           .from("invoice_ar_mirror")
-          .select("id, qbo_invoice_id, doc_number, total_amount, balance, tax_amount, qbo_status, email_status, invoice_link, invoice_type, txn_date, due_date, paid_at, last_synced_at, last_qbo_pull_at, last_sync_error")
+          .select("id, qbo_invoice_id, doc_number, total_amount, balance, tax_amount, qbo_status, email_status, invoice_link, invoice_link_status, invoice_link_source, invoice_link_verified_at, online_card_enabled, online_ach_enabled, invoice_type, txn_date, due_date, paid_at, last_synced_at, last_qbo_pull_at, last_sync_error")
           .eq("tenant_id", tenantId)
           .eq("project_id", projectId)
           .eq("realm_id", conn.realm_id)
