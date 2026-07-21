@@ -312,22 +312,49 @@ export function QuickBooksInvoiceManager({ projectId, tenantId }: QuickBooksInvo
                 </div>
               )}
 
-              {!isPaid && inv.invoice_link ? (
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <Button asChild size="lg" className="flex-1 h-12 text-base">
-                    <a href={inv.invoice_link} target="_blank" rel="noopener noreferrer">
-                      <CreditCard className="h-5 w-5 mr-2" /> Pay Invoice
-                    </a>
-                  </Button>
-                  <Button variant="outline" size="lg" onClick={() => copyLink(inv.invoice_link!)}>
-                    <Copy className="h-4 w-4 mr-2" /> Copy Payment Link
-                  </Button>
-                </div>
-              ) : !isPaid ? (
-                <div className="text-xs text-muted-foreground rounded-md border border-dashed p-3">
-                  Hosted payment link not yet available from QuickBooks. Click <strong>Sync</strong> to refresh, or enable online payments on this invoice inside QuickBooks.
-                </div>
-              ) : null}
+              {!isPaid && (() => {
+                // Phase 1B: strictly capability-driven. Pay Invoice only renders when
+                // the server-side reconciler validated the hosted link AND persisted
+                // invoice_link_status='available'. Presence of a URL alone is not enough.
+                const linkAvailable =
+                  inv.invoice_link_status === "available" &&
+                  !!inv.invoice_link &&
+                  inv.invoice_link.startsWith("https://");
+                if (linkAvailable) {
+                  return (
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <Button asChild size="lg" className="flex-1 h-12 text-base">
+                        <a href={inv.invoice_link!} target="_blank" rel="noopener noreferrer">
+                          <CreditCard className="h-5 w-5 mr-2" /> Pay Invoice
+                        </a>
+                      </Button>
+                      <Button variant="outline" size="lg" onClick={() => copyLink(inv.invoice_link!)}>
+                        <Copy className="h-4 w-4 mr-2" /> Copy Payment Link
+                      </Button>
+                    </div>
+                  );
+                }
+                // Explain WHY the link is not usable, sourced from reconciler state.
+                const reasonByStatus: Record<string, string> = {
+                  pending: "Hosted payment link is pending — QuickBooks has not returned an InvoiceLink yet. Click Sync to re-read.",
+                  unavailable: "Online payments are not enabled on this invoice in QuickBooks (no card or ACH capability). Enable QuickBooks Payments, then click Sync.",
+                  expired: "The hosted link expired. Click Sync to have QuickBooks issue a new one.",
+                  invalid: "The hosted link failed server-side validation and was rejected. Click Sync after fixing the invoice in QuickBooks.",
+                  access_denied: "QuickBooks blocked access to the hosted link for this invoice. Verify online payments are enabled and click Sync.",
+                  unknown: "Link status is unknown. Click Sync to have QuickBooks re-issue the hosted link.",
+                };
+                const reason = reasonByStatus[inv.invoice_link_status ?? "unknown"] ?? reasonByStatus.unknown;
+                return (
+                  <div className="text-xs text-muted-foreground rounded-md border border-dashed p-3 space-y-1">
+                    <p>{reason}</p>
+                    <p className="text-[11px]">
+                      Link status: <span className="font-mono">{inv.invoice_link_status ?? "unknown"}</span>
+                      {inv.online_card_enabled === false && inv.online_ach_enabled === false ? " • No online payment methods enabled in QBO" : ""}
+                      {inv.invoice_link_verified_at ? ` • Last verified ${new Date(inv.invoice_link_verified_at).toLocaleString()}` : ""}
+                    </p>
+                  </div>
+                );
+              })()}
             </CardContent>
           </Card>
         );
