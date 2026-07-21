@@ -727,8 +727,24 @@ export default function LiveCanvassingPage() {
         >
           <Crosshair className="h-5 w-5" />
         </Button>
+        <Button
+          variant={dropPinArmed ? 'default' : 'ghost'}
+          size="icon"
+          className={`h-10 w-10 backdrop-blur-sm shadow-md border rounded-full ${dropPinArmed ? 'bg-primary text-primary-foreground border-primary animate-pulse' : 'bg-background/90 border-border/50'}`}
+          onClick={() => {
+            const next = !dropPinArmed;
+            setDropPinArmed(next);
+            if (next) {
+              toast({ title: 'Drop Pin Mode', description: 'Tap the map on the house to drop a pin.' });
+            }
+          }}
+          title="Drop a pin on a house"
+        >
+          <MapPin className="h-5 w-5" />
+        </Button>
         <CanvassModeToggle mode={canvassMode} onModeChange={setCanvassMode} />
       </div>
+
 
 
       {/* GPS Acquiring Overlay */}
