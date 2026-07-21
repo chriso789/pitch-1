@@ -6,7 +6,7 @@
 // this test only when SRS confirms a new contract.
 
 import { assertEquals, assert } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { buildSubmitOrderPayload } from "../../_shared/srs/orderPayload.ts";
+import { buildSubmitOrderPayload } from "../orderPayload.ts";
 
 const REQUIRED_TOP_LEVEL_FIELDS = [
   "sourceSystem",
