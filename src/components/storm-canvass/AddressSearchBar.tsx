@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
-import { Search, MapPin, Loader2, Navigation } from 'lucide-react';
+import { Search, MapPin, Loader2, Navigation, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { locationService } from '@/services/locationService';
 
@@ -27,72 +26,88 @@ export default function AddressSearchBar({ userLocation, onAddressSelect, dropdo
   const [suggestions, setSuggestions] = useState<PlaceResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [open, setOpen] = useState(false);
-  const debounceTimer = useRef<NodeJS.Timeout | null>(null);
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionTokenRef = useRef<string>(crypto.randomUUID());
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   const dropdownPositionClass =
     dropdownPlacement === 'below'
       ? 'top-full mt-1'
       : dropdownPlacement === 'above'
         ? 'bottom-full mb-1'
-        : 'bottom-full mb-1 md:bottom-auto md:top-full md:mt-1 md:mb-0';
+        : 'top-full mt-1';
 
   useEffect(() => {
-    if (searchQuery.length < 3) {
+    if (searchQuery.trim().length < 3) {
       setSuggestions([]);
+      setOpen(false);
       return;
     }
 
-    // Debounce API calls
-    if (debounceTimer.current) {
-      clearTimeout(debounceTimer.current);
-    }
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
 
     debounceTimer.current = setTimeout(async () => {
       setIsLoading(true);
       try {
+        const params: Record<string, string> = {
+          input: searchQuery,
+          types: 'address',
+          components: 'country:us',
+          sessiontoken: sessionTokenRef.current,
+        };
+        if (userLocation && userLocation.lat !== 0 && userLocation.lng !== 0) {
+          params.location = `${userLocation.lat},${userLocation.lng}`;
+          params.radius = '50000';
+        }
+
         const { data, error } = await supabase.functions.invoke('google-maps-proxy', {
-          body: {
-            endpoint: 'autocomplete',
-            params: {
-              input: searchQuery,
-              types: 'address',
-              components: 'country:us',
-              location: `${userLocation.lat},${userLocation.lng}`,
-              radius: '50000',
-              sessiontoken: sessionTokenRef.current,
-            },
-          },
+          body: { endpoint: 'autocomplete', params },
         });
 
         if (error) throw error;
-        setSuggestions(data?.predictions || []);
-        setOpen(true);
-      } catch (error) {
-        console.error('Autocomplete error:', error);
+        const preds = (data?.predictions || []) as PlaceResult[];
+        setSuggestions(preds);
+        setOpen(preds.length > 0 || searchQuery.length >= 3);
+      } catch (err) {
+        console.error('[AddressSearchBar] autocomplete error:', err);
         setSuggestions([]);
+        setOpen(false);
       } finally {
         setIsLoading(false);
       }
-    }, 300);
+    }, 250);
 
     return () => {
-      if (debounceTimer.current) {
-        clearTimeout(debounceTimer.current);
-      }
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
     };
   }, [searchQuery, userLocation]);
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent | TouchEvent) => {
+      if (!containerRef.current) return;
+      if (!containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    document.addEventListener('touchstart', handler);
+    return () => {
+      document.removeEventListener('mousedown', handler);
+      document.removeEventListener('touchstart', handler);
+    };
+  }, []);
 
   const handleSelectPlace = async (place: PlaceResult) => {
     setIsLoading(true);
     try {
-      // Fetch place details to get coordinates
       const { data, error } = await supabase.functions.invoke('google-maps-proxy', {
         body: {
           endpoint: 'details',
           params: {
             place_id: place.place_id,
             fields: 'geometry,formatted_address',
+            sessiontoken: sessionTokenRef.current,
           },
         },
       });
@@ -109,8 +124,8 @@ export default function AddressSearchBar({ userLocation, onAddressSelect, dropdo
       setOpen(false);
       setSuggestions([]);
       sessionTokenRef.current = crypto.randomUUID();
-    } catch (error) {
-      console.error('Place details error:', error);
+    } catch (err) {
+      console.error('[AddressSearchBar] place details error:', err);
     } finally {
       setIsLoading(false);
     }
@@ -118,6 +133,7 @@ export default function AddressSearchBar({ userLocation, onAddressSelect, dropdo
 
   const calculateDistanceToPlace = (place: PlaceResult) => {
     if (!place.geometry?.location) return null;
+    if (!userLocation || (userLocation.lat === 0 && userLocation.lng === 0)) return null;
     const distance = locationService.calculateDistance(
       userLocation.lat,
       userLocation.lng,
@@ -131,62 +147,77 @@ export default function AddressSearchBar({ userLocation, onAddressSelect, dropdo
   };
 
   return (
-    <Command shouldFilter={false} className="relative rounded-lg border shadow-md bg-background">
-      <div className="flex items-center border-b px-3">
-        <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-        <CommandInput
+    <div ref={containerRef} className="relative w-full">
+      <div className="flex items-center gap-2 rounded-lg border bg-background shadow-md px-3 h-11">
+        <Search className="h-4 w-4 shrink-0 opacity-50" />
+        <input
+          type="text"
+          inputMode="search"
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
           placeholder="Search for an address..."
           value={searchQuery}
-          onValueChange={setSearchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
           onFocus={() => suggestions.length > 0 && setOpen(true)}
-          className="flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
         />
-        {isLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+        {isLoading ? (
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        ) : searchQuery ? (
+          <button
+            type="button"
+            aria-label="Clear"
+            onClick={() => {
+              setSearchQuery('');
+              setSuggestions([]);
+              setOpen(false);
+            }}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        ) : null}
       </div>
 
-      {/*
-        On mobile, render the dropdown ABOVE the input so the iOS keyboard
-        (which docks to the bottom) doesn't cover the suggestions. On md+
-        screens render it below the input as usual.
-      */}
-      {open && suggestions.length > 0 && (
-        <CommandList className={`absolute left-0 right-0 z-[70] max-h-80 overflow-y-auto rounded-md border bg-popover shadow-lg ${dropdownPositionClass}`}>
-          <CommandGroup>
-            {suggestions.map((place) => {
-              const distance = calculateDistanceToPlace(place);
-              return (
-                <CommandItem
-                  key={place.place_id}
-                  onSelect={() => handleSelectPlace(place)}
-                  className="flex items-start gap-3 p-3 cursor-pointer hover:bg-accent"
-                >
-                  <MapPin className="h-5 w-5 text-primary mt-0.5 shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium truncate">{place.structured_formatting.main_text}</div>
-                    <div className="text-xs text-muted-foreground truncate">
-                      {place.structured_formatting.secondary_text}
-                    </div>
-                    {distance && (
-                      <div className="flex items-center gap-1 text-xs text-primary mt-1">
-                        <Navigation className="h-3 w-3" />
-                        <span>{distance} away</span>
+      {open && (
+        <div className={`absolute left-0 right-0 z-[70] max-h-80 overflow-y-auto rounded-md border bg-popover shadow-lg ${dropdownPositionClass}`}>
+          {suggestions.length > 0 ? (
+            <ul className="py-1">
+              {suggestions.map((place) => {
+                const distance = calculateDistanceToPlace(place);
+                return (
+                  <li key={place.place_id}>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => handleSelectPlace(place)}
+                      className="flex w-full items-start gap-3 p-3 text-left hover:bg-accent"
+                    >
+                      <MapPin className="h-5 w-5 text-primary mt-0.5 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium truncate">{place.structured_formatting.main_text}</div>
+                        <div className="text-xs text-muted-foreground truncate">
+                          {place.structured_formatting.secondary_text}
+                        </div>
+                        {distance && (
+                          <div className="flex items-center gap-1 text-xs text-primary mt-1">
+                            <Navigation className="h-3 w-3" />
+                            <span>{distance} away</span>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                </CommandItem>
-              );
-            })}
-          </CommandGroup>
-        </CommandList>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : !isLoading && searchQuery.trim().length >= 3 ? (
+            <div className="p-4 text-sm text-muted-foreground text-center">No results found</div>
+          ) : null}
+        </div>
       )}
-
-      {open && !isLoading && suggestions.length === 0 && searchQuery.length >= 3 && (
-        <CommandList className={`absolute left-0 right-0 z-[70] rounded-md border bg-popover shadow-lg ${dropdownPositionClass}`}>
-          <CommandEmpty className="p-4 text-sm text-muted-foreground text-center">
-            No results found
-          </CommandEmpty>
-        </CommandList>
-      )}
-    </Command>
+    </div>
   );
 }
