@@ -1,0 +1,6 @@
+{
+  "branches": [
+    { "branchNumber": "042", "name": "Tampa", "available": 5, "availabilityStatus": "Limited" },
+    { "branchNumber": "042", "name": "Tampa DUPE", "available": null }
+  ]
+}

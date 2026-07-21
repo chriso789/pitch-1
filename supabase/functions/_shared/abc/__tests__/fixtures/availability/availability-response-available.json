@@ -1,0 +1,6 @@
+{
+  "availability": [
+    { "branchNumber": "042", "quantityAvailable": 18, "availabilityStatus": "Available" },
+    { "branchNumber": "051", "quantityAvailable": 4, "availabilityStatus": "Low stock" }
+  ]
+}
