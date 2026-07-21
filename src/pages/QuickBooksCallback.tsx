@@ -1,11 +1,10 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
-// Phase 1: server-side 302 callback in qbo-oauth-connect handles the token exchange.
-// This page exists only as a transitional shell for the legacy Intuit Redirect URI
-// (https://pitch-crm.ai/quickbooks/callback). It forwards any params to the edge
-// function so the new server-side flow can take over. After the Intuit dashboard
-// Redirect URI is repointed at the edge function URL, this page is no longer hit.
+// Production Intuit OAuth uses this branded public callback because Intuit's
+// dashboard may reject raw Supabase Edge Function URLs. This page immediately
+// forwards token-bearing params to qbo-oauth-connect/callback so the code
+// exchange still happens server-side and tenants land back inside Pitch CRM.
 export default function QuickBooksCallback() {
   const navigate = useNavigate();
 
