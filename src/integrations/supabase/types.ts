@@ -24284,17 +24284,26 @@ export type Database = {
           email_status: string | null
           id: string
           invoice_link: string | null
+          invoice_link_last_error: string | null
+          invoice_link_source: string
+          invoice_link_status: string
+          invoice_link_verified_at: string | null
           invoice_type: string
           last_qbo_pull_at: string
           last_sync_error: string | null
           last_synced_at: string | null
+          online_ach_enabled: boolean
+          online_card_enabled: boolean
           paid_at: string | null
+          paid_at_source: string | null
+          payment_capability_message: string | null
           pitch_invoice_id: string | null
           project_id: string
           qbo_connection_id: string
           qbo_invoice_id: string
           qbo_status: string
           realm_id: string | null
+          reopened_at: string | null
           sync_token: string | null
           tax_amount: number | null
           tenant_id: string
@@ -24314,17 +24323,26 @@ export type Database = {
           email_status?: string | null
           id?: string
           invoice_link?: string | null
+          invoice_link_last_error?: string | null
+          invoice_link_source?: string
+          invoice_link_status?: string
+          invoice_link_verified_at?: string | null
           invoice_type?: string
           last_qbo_pull_at?: string
           last_sync_error?: string | null
           last_synced_at?: string | null
+          online_ach_enabled?: boolean
+          online_card_enabled?: boolean
           paid_at?: string | null
+          paid_at_source?: string | null
+          payment_capability_message?: string | null
           pitch_invoice_id?: string | null
           project_id: string
           qbo_connection_id: string
           qbo_invoice_id: string
           qbo_status?: string
           realm_id?: string | null
+          reopened_at?: string | null
           sync_token?: string | null
           tax_amount?: number | null
           tenant_id: string
@@ -24344,17 +24362,26 @@ export type Database = {
           email_status?: string | null
           id?: string
           invoice_link?: string | null
+          invoice_link_last_error?: string | null
+          invoice_link_source?: string
+          invoice_link_status?: string
+          invoice_link_verified_at?: string | null
           invoice_type?: string
           last_qbo_pull_at?: string
           last_sync_error?: string | null
           last_synced_at?: string | null
+          online_ach_enabled?: boolean
+          online_card_enabled?: boolean
           paid_at?: string | null
+          paid_at_source?: string | null
+          payment_capability_message?: string | null
           pitch_invoice_id?: string | null
           project_id?: string
           qbo_connection_id?: string
           qbo_invoice_id?: string
           qbo_status?: string
           realm_id?: string | null
+          reopened_at?: string | null
           sync_token?: string | null
           tax_amount?: number | null
           tenant_id?: string
@@ -24375,6 +24402,77 @@ export type Database = {
             columns: ["qbo_connection_id"]
             isOneToOne: false
             referencedRelation: "qbo_connections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoice_reconciliation_events: {
+        Row: {
+          amount_applied: number | null
+          authoritative_source: string | null
+          balance_after: number | null
+          balance_before: number | null
+          created_at: string
+          details: Json
+          event_type: string
+          id: string
+          intuit_tid: string | null
+          invoice_ar_mirror_id: string | null
+          pitch_invoice_id: string | null
+          qbo_connection_id: string
+          qbo_invoice_id: string | null
+          qbo_payment_id: string | null
+          realm_id: string | null
+          tenant_id: string
+          total_amount: number | null
+          webhook_event_id: string | null
+        }
+        Insert: {
+          amount_applied?: number | null
+          authoritative_source?: string | null
+          balance_after?: number | null
+          balance_before?: number | null
+          created_at?: string
+          details?: Json
+          event_type: string
+          id?: string
+          intuit_tid?: string | null
+          invoice_ar_mirror_id?: string | null
+          pitch_invoice_id?: string | null
+          qbo_connection_id: string
+          qbo_invoice_id?: string | null
+          qbo_payment_id?: string | null
+          realm_id?: string | null
+          tenant_id: string
+          total_amount?: number | null
+          webhook_event_id?: string | null
+        }
+        Update: {
+          amount_applied?: number | null
+          authoritative_source?: string | null
+          balance_after?: number | null
+          balance_before?: number | null
+          created_at?: string
+          details?: Json
+          event_type?: string
+          id?: string
+          intuit_tid?: string | null
+          invoice_ar_mirror_id?: string | null
+          pitch_invoice_id?: string | null
+          qbo_connection_id?: string
+          qbo_invoice_id?: string | null
+          qbo_payment_id?: string | null
+          realm_id?: string | null
+          tenant_id?: string
+          total_amount?: number | null
+          webhook_event_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_reconciliation_events_invoice_ar_mirror_id_fkey"
+            columns: ["invoice_ar_mirror_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_ar_mirror"
             referencedColumns: ["id"]
           },
         ]
@@ -41120,6 +41218,7 @@ export type Database = {
       }
       qbo_webhook_events: {
         Row: {
+          dedup_key: string | null
           error_code: string | null
           error_message: string | null
           event_count: number
@@ -41132,6 +41231,7 @@ export type Database = {
           tenant_id: string | null
         }
         Insert: {
+          dedup_key?: string | null
           error_code?: string | null
           error_message?: string | null
           event_count?: number
@@ -41144,6 +41244,7 @@ export type Database = {
           tenant_id?: string | null
         }
         Update: {
+          dedup_key?: string | null
           error_code?: string | null
           error_message?: string | null
           event_count?: number
