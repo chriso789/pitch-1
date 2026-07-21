@@ -717,12 +717,12 @@ const JobDetails = () => {
         </TabsContent>
 
         <TabsContent value="quickbooks">
-          <QuickBooksInvoiceManager 
-            jobId={id!} 
+          <QuickBooksInvoiceManager
+            projectId={id!}
             tenantId={job.tenant_id!}
-            contactId={job.contact?.id || ''}
           />
         </TabsContent>
+
 
         <TabsContent value="communication">
           {job.contact ? (
