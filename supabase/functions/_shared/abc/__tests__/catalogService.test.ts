@@ -65,7 +65,7 @@ Deno.test("buildSearchProductsPayload clamps itemsPerPage lower bound", () => {
 Deno.test("searchAbcCatalog posts to correct endpoint and normalizes", async () => {
   let captured: { method: string; url: string; body: unknown } | null = null;
   const callAbc: AbcCallAbc = async (_t, method, url, body) => {
-    captured = { method, url, body };
+    captured = { method, url, body } as { method: string; url: string; body: unknown };
     return okResult({
       items: [
         {
