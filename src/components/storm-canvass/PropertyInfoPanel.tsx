@@ -599,21 +599,36 @@ export default function PropertyInfoPanel({
     }
   };
 
-  const handleAddCustomer = async () => {
+  const handleAddCustomer = async (
+    manual?: { firstName?: string; lastName?: string; phone?: string; email?: string },
+  ) => {
     if (!profile?.tenant_id || !property?.id) return;
 
     try {
       const selectedOwnerData = enrichedOwners.find(o => o.id === selectedOwner) || displayOwners[0];
       const ownerFullName = selectedOwnerData?.name || property?.owner_name || homeowner?.name;
 
+      // Manual entries always take precedence — rep-verified at the door.
+      const firstName = manual?.firstName || parseFirstName(ownerFullName);
+      const lastName = manual?.lastName || parseLastName(ownerFullName);
+
+      const enrichedPhone = (() => {
+        const first = phoneNumbers?.[0];
+        return typeof first === 'string' ? first : first?.number || null;
+      })();
+      const enrichedEmail = (() => {
+        const first = emails?.[0];
+        return typeof first === 'string' ? first : first?.address || first?.email || null;
+      })();
+
       const propData = localProperty?.property_data || {};
       const newContact = {
         tenant_id: profile.tenant_id,
         type: 'homeowner' as const,
-        first_name: parseFirstName(ownerFullName),
-        last_name: parseLastName(ownerFullName),
-        phone: phoneNumbers?.[0] || null,
-        email: emails?.[0] || null,
+        first_name: firstName,
+        last_name: lastName,
+        phone: manual?.phone || enrichedPhone,
+        email: manual?.email || enrichedEmail,
         address_street: address?.street || address?.formatted || fullAddress,
         address_city: address?.city || null,
         address_state: address?.state || null,
@@ -630,6 +645,7 @@ export default function PropertyInfoPanel({
           canvassed_by: profile.id,
           canvassed_by_name: `${profile.first_name || ''} ${profile.last_name || ''}`.trim(),
           canvass_disposition: property.disposition || null,
+          manual_entry: Boolean(manual && (manual.firstName || manual.lastName || manual.phone || manual.email)),
           property_data: {
             parcel_id: propData.parcel_id || null,
             assessed_value: propData.assessed_value || null,
