@@ -1323,9 +1323,21 @@ Deno.serve(async (req) => {
         // until SRS returns a real orderID (i.e. NOT queueID===orderID and
         // message does not look like "Queued"). Every attempt is logged to
         // srs_submit_audit so we can compare what SRS accepted vs dropped.
+        //
+        // QA-only. Blocked in production unless the caller is in debug mode.
+        {
+          const debugEnabled = await isSrsDebugModeEnabled(supabase, tenant_id);
+          if (!debugEnabled) {
+            return new Response(JSON.stringify({
+              error: "submit_order_variances is disabled in production. Enable SRS debug mode (tenant_settings.srs_debug_mode=true, srs_environment='debug', or env SRS_DEBUG_MODE=true) to run payload experiments.",
+              code: "srs_debug_mode_required",
+            }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          }
+        }
         const { order_id, max_attempts } = params as { order_id?: string; max_attempts?: number };
         if (!order_id) throw new Error("order_id required");
         const cap = Math.min(Math.max(Number(max_attempts) || 12, 1), 40);
+
 
         const { data: order } = await supabase
           .from("srs_orders")
