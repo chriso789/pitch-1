@@ -9,7 +9,7 @@ import { chooseDefaultUom, validateAbcUom } from "../uomValidator.ts";
 import type { ResolvedAbcChild } from "../types.ts";
 
 // Minimal ResolvedAbcChild shell — the validator only reads validUoms.
-function child(validUoms: Array<Record<string, unknown>>): ResolvedAbcChild {
+function child(validUoms: unknown): ResolvedAbcChild {
   return {
     itemNumber: "X",
     itemDescription: "X",
@@ -23,13 +23,10 @@ function child(validUoms: Array<Record<string, unknown>>): ResolvedAbcChild {
     branchVerificationRequired: false,
     status: null,
     isActive: true,
-    isDimensional: false,
-    lengths: [],
     isOrderable: true,
     orderabilityReasons: [],
-    priority: 0,
-    raw: {} as ResolvedAbcChild["raw"],
-  } as ResolvedAbcChild;
+    source: null as unknown as ResolvedAbcChild["source"],
+  } as unknown as ResolvedAbcChild;
 }
 
 async function loadFixture(name: string) {
