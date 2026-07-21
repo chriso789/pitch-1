@@ -975,7 +975,12 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
               <Input
                 type="number"
                 value={newItem.qty}
-                onChange={(e) => setNewItem({ ...newItem, qty: parseFloat(e.target.value) || 0 })}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === '' || raw === '-') return;
+                  const n = parseFloat(raw);
+                  setNewItem({ ...newItem, qty: Number.isNaN(n) ? 0 : n });
+                }}
                 className="h-8"
               />
             </div>
@@ -993,7 +998,12 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
                 type="number"
                 step="0.01"
                 value={newItem.unit_cost}
-                onChange={(e) => setNewItem({ ...newItem, unit_cost: parseFloat(e.target.value) || 0 })}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === '' || raw === '-') return;
+                  const n = parseFloat(raw);
+                  setNewItem({ ...newItem, unit_cost: Number.isNaN(n) ? 0 : n });
+                }}
                 className="h-8"
               />
             </div>
