@@ -1104,7 +1104,7 @@ async function opBackendTemplateStatus(ctx: Ctx) {
     active_location_id: r.active_location_id,
   }));
 
-  return ok({ secrets, connections }, ctx.requestId);
+  return ok({ secrets, fallback_in_use: fallbackInUse, connections }, ctx.requestId);
 }
 
 // =============================================================
