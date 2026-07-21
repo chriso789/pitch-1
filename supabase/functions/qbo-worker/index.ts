@@ -1041,20 +1041,50 @@ async function opBackendTemplateStatus(ctx: Ctx) {
     return err("forbidden", "backendTemplateStatus is master-only", ctx.requestId, 403);
   }
 
-  const secretKeys = [
+  // Canonical secret names (matches runtime resolver in _shared/qbo-context.ts).
+  // Legacy single-pair names are reported as fallback flags but never as canonical.
+  const canonicalKeys = [
+    "QBO_CLIENT_ID_DEVELOPMENT",
+    "QBO_CLIENT_SECRET_DEVELOPMENT",
+    "QBO_REDIRECT_URI_DEVELOPMENT",
+    "QBO_WEBHOOK_VERIFIER_DEVELOPMENT",
     "QBO_CLIENT_ID_PRODUCTION",
     "QBO_CLIENT_SECRET_PRODUCTION",
     "QBO_REDIRECT_URI_PRODUCTION",
-    "QBO_CLIENT_ID_SANDBOX",
-    "QBO_CLIENT_SECRET_SANDBOX",
-    "QBO_REDIRECT_URI_SANDBOX",
+    "QBO_WEBHOOK_VERIFIER_PRODUCTION",
+    "QBO_DEFAULT_ENVIRONMENT",
+    "QBO_APP_BASE_URL",
+  ];
+  const legacyKeys = [
+    "QBO_CLIENT_ID",
+    "QBO_CLIENT_SECRET",
+    "QBO_REDIRECT_URI",
     "QBO_WEBHOOK_VERIFIER_TOKEN",
+    "QBO_WEBHOOK_VERIFIER",
+    "QBO_ENVIRONMENT",
   ];
   const secrets: Record<string, boolean> = {};
-  for (const k of secretKeys) {
+  for (const k of [...canonicalKeys, ...legacyKeys]) {
     const v = Deno.env.get(k);
     secrets[k] = !!(v && v.trim().length > 0);
   }
+  // Fallback usage flags: true when canonical is absent AND a legacy fallback covers it.
+  const fallbackInUse = {
+    development_client:
+      (!secrets.QBO_CLIENT_ID_DEVELOPMENT || !secrets.QBO_CLIENT_SECRET_DEVELOPMENT) &&
+      !!(secrets.QBO_CLIENT_ID && secrets.QBO_CLIENT_SECRET),
+    production_client:
+      (!secrets.QBO_CLIENT_ID_PRODUCTION || !secrets.QBO_CLIENT_SECRET_PRODUCTION) &&
+      !!(secrets.QBO_CLIENT_ID && secrets.QBO_CLIENT_SECRET),
+    development_verifier:
+      !secrets.QBO_WEBHOOK_VERIFIER_DEVELOPMENT &&
+      !!(secrets.QBO_WEBHOOK_VERIFIER_TOKEN || secrets.QBO_WEBHOOK_VERIFIER),
+    production_verifier:
+      !secrets.QBO_WEBHOOK_VERIFIER_PRODUCTION &&
+      !!(secrets.QBO_WEBHOOK_VERIFIER_TOKEN || secrets.QBO_WEBHOOK_VERIFIER),
+    default_environment:
+      !secrets.QBO_DEFAULT_ENVIRONMENT && !!secrets.QBO_ENVIRONMENT,
+  };
 
   // Roster of connected tenants (all environments, active only).
   const { data: rows } = await service
