@@ -624,12 +624,9 @@ export function validateAbcOrderInput(
     }
 
     // Dimensions
-    const src = md.sourceSnapshots?.normalizedProduct ??
-      md.sourceSnapshots?.resolvedChild ?? null;
-    // deno-lint-ignore no-explicit-any
-    const isDimensional = Boolean((src as any)?.isDimensional);
-    // deno-lint-ignore no-explicit-any
-    const validLengths: unknown[] = ((src as any)?.validLengths) ?? [];
+    const src = resolvedProductSnapshot(md);
+    const isDimensional = Boolean(src?.isDimensional);
+    const lengths: string[] = Array.isArray(src?.lengths) ? src!.lengths : [];
     if (isDimensional) {
       const dim = line.dimension;
       if (
@@ -646,15 +643,11 @@ export function validateAbcOrderInput(
           lineId,
           canonicalId || null,
         );
-      } else if (validLengths.length > 0) {
-        const match = validLengths.some((v) => {
-          // deno-lint-ignore no-explicit-any
-          const o = v as any;
-          return (
-            Number(o?.lengthValue ?? o?.value) === dim.lengthValue &&
-            upperTrim(o?.lengthUom ?? o?.uom) === upperTrim(dim.lengthUom)
-          );
-        });
+      } else if (lengths.length > 0) {
+        const target = `${dim.lengthValue}${upperTrim(dim.lengthUom)}`;
+        const match = lengths.some((v) =>
+          upperTrim(v).replace(/\s+/g, "") === target
+        );
         if (!match) {
           pushErr(
             errors,
