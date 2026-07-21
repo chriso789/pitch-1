@@ -159,13 +159,14 @@ export function JobTypeQBOMapping() {
         .upsert(
           {
             tenant_id: tenantId,
+            qbo_connection_id: connection?.id,
             realm_id: realmId,
             job_type_code: jobType,
             qbo_item_id: qboItemId,
             qbo_item_name: qboItemName,
             is_active: true,
           },
-          { onConflict: "tenant_id,realm_id,job_type_code" },
+          { onConflict: "tenant_id,qbo_connection_id,realm_id,job_type_code" },
         );
       if (error) throw error;
     },
