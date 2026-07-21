@@ -325,7 +325,7 @@ export default function PropertyInfoPanelMobileBody(props: Props) {
           <QuickAction
             icon={Plus}
             label="Add"
-            onClick={onAddCustomer}
+            onClick={handleAddCustomerClick}
             tone="success"
           />
           <Popover>
