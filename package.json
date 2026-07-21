@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:unit": "vitest run --dir tests --exclude tests/integration/** --exclude e2e/**",
     "test:integration": "vitest run --dir tests/integration",
+    "test:qbo-isolation": "vitest run --dir tests/qbo-isolation",
     "test:e2e": "playwright test"
   },
   "dependencies": {
