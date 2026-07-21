@@ -1280,9 +1280,12 @@ Deno.serve(async (req) => {
           response: orderResult,
         };
 
-        // Auto-sweep: if SRS only queued the order, keep submitting variants
-        // until a real orderID is returned (or the variant matrix is exhausted).
-        if (isQueuedOnly) {
+        // Auto-sweep (payload variance re-submission) is a QA-only tool.
+        // Production orders MUST submit exactly once — never generate multiple
+        // POs. Gated behind SRS debug mode (env SRS_DEBUG_MODE=true OR
+        // tenant_settings.srs_debug_mode=true OR srs_environment='debug').
+        const debugEnabled = await isSrsDebugModeEnabled(supabase, tenant_id);
+        if (isQueuedOnly && debugEnabled) {
           try {
             const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
             const SR_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -1305,9 +1308,14 @@ Deno.serve(async (req) => {
           } catch (e) {
             (result as any).autoSweepError = (e as any)?.message || String(e);
           }
+        } else if (isQueuedOnly) {
+          // Production behavior: rely on srs-order-status-poller + webhook to
+          // promote queued → accepted. Never re-submit automatically.
+          (result as any).autoSweep = { skipped: true, reason: "debug_mode_disabled" };
         }
         break;
       }
+
 
 
       case "submit_order_variances": {
