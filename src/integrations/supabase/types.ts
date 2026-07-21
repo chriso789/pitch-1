@@ -24273,14 +24273,22 @@ export type Database = {
       }
       invoice_ar_mirror: {
         Row: {
+          allow_online_ach: boolean
+          allow_online_cc: boolean
           balance: number
           created_at: string
+          created_by: string | null
           deposit_amount: number | null
           doc_number: string
           due_date: string | null
           email_status: string | null
           id: string
+          invoice_link: string | null
+          invoice_type: string
           last_qbo_pull_at: string
+          last_sync_error: string | null
+          last_synced_at: string | null
+          paid_at: string | null
           pitch_invoice_id: string | null
           project_id: string
           qbo_connection_id: string
@@ -24295,14 +24303,22 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          allow_online_ach?: boolean
+          allow_online_cc?: boolean
           balance?: number
           created_at?: string
+          created_by?: string | null
           deposit_amount?: number | null
           doc_number: string
           due_date?: string | null
           email_status?: string | null
           id?: string
+          invoice_link?: string | null
+          invoice_type?: string
           last_qbo_pull_at?: string
+          last_sync_error?: string | null
+          last_synced_at?: string | null
+          paid_at?: string | null
           pitch_invoice_id?: string | null
           project_id: string
           qbo_connection_id: string
@@ -24317,14 +24333,22 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          allow_online_ach?: boolean
+          allow_online_cc?: boolean
           balance?: number
           created_at?: string
+          created_by?: string | null
           deposit_amount?: number | null
           doc_number?: string
           due_date?: string | null
           email_status?: string | null
           id?: string
+          invoice_link?: string | null
+          invoice_type?: string
           last_qbo_pull_at?: string
+          last_sync_error?: string | null
+          last_synced_at?: string | null
+          paid_at?: string | null
           pitch_invoice_id?: string | null
           project_id?: string
           qbo_connection_id?: string

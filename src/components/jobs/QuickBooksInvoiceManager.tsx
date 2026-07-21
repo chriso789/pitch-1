@@ -1,312 +1,296 @@
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, ExternalLink, DollarSign, CreditCard, Building2 } from "lucide-react";
+import {
+  Loader2, ExternalLink, DollarSign, RefreshCcw, Copy, CheckCircle2, AlertTriangle, CreditCard,
+} from "lucide-react";
 
 interface QuickBooksInvoiceManagerProps {
-  jobId: string;
+  projectId: string;
   tenantId: string;
-  contactId: string;
 }
 
-interface InvoiceARMirror {
+interface InvoiceRow {
   id: string;
   qbo_invoice_id: string;
-  doc_number: string;
+  doc_number: string | null;
   total_amount: number;
   balance: number;
-  qbo_status: string;
-  last_qbo_pull_at: string;
+  tax_amount: number | null;
+  qbo_status: string | null;
+  email_status: string | null;
+  invoice_link: string | null;
+  invoice_type: string | null;
+  txn_date: string | null;
+  due_date: string | null;
+  paid_at: string | null;
+  last_synced_at: string | null;
+  last_qbo_pull_at: string | null;
+  last_sync_error: string | null;
 }
 
 interface QBOConnection {
   realm_id: string;
   is_active: boolean;
-  qbo_company_name: string;
+  qbo_company_name: string | null;
+  is_sandbox: boolean;
 }
 
-export function QuickBooksInvoiceManager({ jobId, tenantId, contactId }: QuickBooksInvoiceManagerProps) {
+const INVOICE_TYPE_OPTIONS = [
+  { value: "deposit", label: "Deposit" },
+  { value: "progress", label: "Progress Draw" },
+  { value: "change_order", label: "Change Order" },
+  { value: "supplement", label: "Supplement" },
+  { value: "final", label: "Final Invoice" },
+  { value: "other", label: "Other" },
+];
+
+const money = (n: number) => `$${(Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+export function QuickBooksInvoiceManager({ projectId, tenantId }: QuickBooksInvoiceManagerProps) {
   const { toast } = useToast();
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
-  const [invoices, setInvoices] = useState<InvoiceARMirror[]>([]);
-  const [qboConnection, setQboConnection] = useState<QBOConnection | null>(null);
-  const [customerRef, setCustomerRef] = useState<string>("");
+  const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [invoiceType, setInvoiceType] = useState<string>("progress");
+  const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
+  const [connection, setConnection] = useState<QBOConnection | null>(null);
 
-  useEffect(() => {
-    loadData();
-  }, [jobId]);
-
-  const loadData = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      // Load QBO connection
       const { data: conn } = await supabase
         .from("qbo_connections")
-        .select("*")
+        .select("realm_id, is_active, qbo_company_name, is_sandbox")
         .eq("tenant_id", tenantId)
         .eq("is_active", true)
-        .single();
+        .maybeSingle();
+      setConnection(conn as QBOConnection | null);
 
       if (conn) {
-        setQboConnection(conn);
-
-        // Load invoices - bypass type inference to avoid deep instantiation error
-        const invoiceQuery = await (supabase as any)
+        const { data, error } = await (supabase as any)
           .from("invoice_ar_mirror")
-          .select("id, qbo_invoice_id, doc_number, total_amount, balance, qbo_status, last_qbo_pull_at")
+          .select("id, qbo_invoice_id, doc_number, total_amount, balance, tax_amount, qbo_status, email_status, invoice_link, invoice_type, txn_date, due_date, paid_at, last_synced_at, last_qbo_pull_at, last_sync_error")
           .eq("tenant_id", tenantId)
+          .eq("project_id", projectId)
           .eq("realm_id", conn.realm_id)
           .order("created_at", { ascending: false });
-
-        if (invoiceQuery.data) {
-          setInvoices(invoiceQuery.data.map((inv: any) => ({
-            id: inv.id,
-            qbo_invoice_id: inv.qbo_invoice_id,
-            doc_number: inv.doc_number,
-            total_amount: Number(inv.total_amount),
-            balance: Number(inv.balance),
-            qbo_status: String(inv.qbo_status || ''),
-            last_qbo_pull_at: String(inv.last_qbo_pull_at || '')
-          })));
-        }
-
-        // Get customer QBO ID from contact
-        const { data: mapping } = await supabase
-          .from("qbo_entity_mapping")
-          .select("qbo_entity_id")
-          .eq("tenant_id", tenantId)
-          .eq("entity_type", "contact")
-          .eq("entity_id", contactId)
-          .single();
-
-        if (mapping) setCustomerRef(mapping.qbo_entity_id);
+        if (error) throw error;
+        setInvoices((data ?? []) as InvoiceRow[]);
+      } else {
+        setInvoices([]);
       }
-    } catch (error) {
-      console.error("Error loading QBO data:", error);
+    } catch (e: any) {
+      console.error("[QBO invoices] load failed", e);
+      toast({ title: "Failed to load invoices", description: e?.message ?? String(e), variant: "destructive" });
     } finally {
       setLoading(false);
     }
-  };
+  }, [projectId, tenantId, toast]);
 
-  const handleCreateInvoice = async () => {
-    if (!qboConnection || !customerRef) {
-      toast({
-        title: "Missing Requirements",
-        description: "Contact must be synced to QuickBooks first",
-        variant: "destructive",
-      });
-      return;
-    }
+  useEffect(() => { void load(); }, [load]);
 
+  const projectTotals = useMemo(() => {
+    const total = invoices.reduce((s, i) => s + Number(i.total_amount || 0), 0);
+    const balance = invoices.reduce((s, i) => s + Number(i.balance || 0), 0);
+    const paid = Math.max(0, total - balance);
+    const allPaid = invoices.length > 0 && balance === 0 && total > 0;
+    return { total, balance, paid, allPaid };
+  }, [invoices]);
+
+  const handleCreate = async () => {
     setCreating(true);
     try {
+      // Note: qbo-worker derives tenant_id + realm_id from JWT + active connection.
+      // Do not send them from the client per Phase 1 tenant boundary rules.
       const { data, error } = await supabase.functions.invoke("qbo-worker", {
         body: {
           op: "createInvoiceFromEstimates",
-          args: {
-            tenant_id: tenantId,
-            realm_id: qboConnection.realm_id,
-            job_id: jobId,
-            customer_ref: customerRef,
-          },
+          args: { project_id: projectId, invoice_type: invoiceType },
         },
       });
-
       if (error) throw error;
+      if (data?.ok === false) throw new Error(data?.message ?? data?.error ?? "QBO invoice create failed");
 
-      if (data?.success) {
-        toast({
-          title: "Invoice Created",
-          description: `Invoice ${data.doc_number} created in QuickBooks`,
-        });
-        loadData();
-      } else {
-        throw new Error(data?.message || "Failed to create invoice");
-      }
-    } catch (error: any) {
       toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
+        title: "Invoice created in QuickBooks",
+        description: data?.doc_number ? `Invoice #${data.doc_number} • ${money(Number(data.total ?? 0))}` : "Ready to send",
       });
+      await load();
+    } catch (e: any) {
+      toast({ title: "Create failed", description: e?.message ?? String(e), variant: "destructive" });
     } finally {
       setCreating(false);
     }
   };
 
-  const handleTogglePayments = async (invoiceId: string, allowCC: boolean, allowACH: boolean, sendEmail: boolean = false) => {
-    if (!qboConnection) return;
-
+  const handleSync = async (qboInvoiceId: string) => {
+    setSyncingId(qboInvoiceId);
     try {
       const { data, error } = await supabase.functions.invoke("qbo-worker", {
-        body: {
-          op: "toggleOnlinePayments",
-          args: {
-            tenant_id: tenantId,
-            realm_id: qboConnection.realm_id,
-            qbo_invoice_id: invoiceId,
-            allow_credit_card: allowCC,
-            allow_ach: allowACH,
-            send_email: sendEmail,
-          },
-        },
+        body: { op: "syncPaymentStatus", args: { qbo_invoice_id: qboInvoiceId } },
       });
-
       if (error) throw error;
+      if (data?.ok === false) throw new Error(data?.message ?? data?.error ?? "Sync failed");
+      toast({ title: "Synced", description: data?.paid ? "Paid in full" : `Balance ${money(Number(data?.balance ?? 0))}` });
+      await load();
+    } catch (e: any) {
+      toast({ title: "Sync failed", description: e?.message ?? String(e), variant: "destructive" });
+    } finally {
+      setSyncingId(null);
+    }
+  };
 
-      if (data?.success) {
-        toast({
-          title: "Updated",
-          description: sendEmail ? "Settings saved and email sent" : "Payment settings updated",
-        });
-        loadData();
-      } else {
-        throw new Error(data?.message || "Failed to update");
-      }
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
+  const copyLink = async (link: string) => {
+    try {
+      await navigator.clipboard.writeText(link);
+      toast({ title: "Payment link copied" });
+    } catch {
+      toast({ title: "Copy failed", variant: "destructive" });
     }
   };
 
   if (loading) {
     return (
-      <Card>
-        <CardContent className="flex items-center justify-center py-8">
-          <Loader2 className="h-6 w-6 animate-spin" />
-        </CardContent>
-      </Card>
+      <Card><CardContent className="flex items-center justify-center py-10"><Loader2 className="h-5 w-5 animate-spin" /></CardContent></Card>
     );
   }
 
-  if (!qboConnection) {
+  if (!connection) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>QuickBooks Integration</CardTitle>
-          <CardDescription>Connect to QuickBooks to create invoices</CardDescription>
+          <CardTitle>QuickBooks not connected</CardTitle>
+          <CardDescription>Connect QuickBooks in Settings → QuickBooks to invoice from this project.</CardDescription>
         </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            Go to Settings → QuickBooks to connect your account
-          </p>
-        </CardContent>
       </Card>
     );
   }
 
   return (
     <div className="space-y-4">
+      {/* Project payment summary */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <span>QuickBooks Invoices</span>
-            <Button onClick={handleCreateInvoice} disabled={creating || !customerRef}>
-              {creating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <DollarSign className="h-4 w-4 mr-2" />}
-              Create Invoice from Estimates
-            </Button>
-          </CardTitle>
-          <CardDescription>
-            Connected to {qboConnection.qbo_company_name}
-          </CardDescription>
+        <CardHeader className="pb-3">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                Invoices
+                {connection.is_sandbox && <Badge variant="outline" className="text-xs">Sandbox</Badge>}
+              </CardTitle>
+              <CardDescription>
+                {connection.qbo_company_name ? `QuickBooks: ${connection.qbo_company_name}` : "Connected to QuickBooks"}
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Select value={invoiceType} onValueChange={setInvoiceType}>
+                <SelectTrigger className="w-[170px] h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {INVOICE_TYPE_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Button onClick={handleCreate} disabled={creating}>
+                {creating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <DollarSign className="h-4 w-4 mr-2" />}
+                Create Invoice
+              </Button>
+            </div>
+          </div>
         </CardHeader>
-        <CardContent className="space-y-4">
-          {invoices.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              No invoices created yet
-            </p>
-          ) : (
-            invoices.map((invoice) => (
-              <Card key={invoice.id}>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle className="text-lg">Invoice #{invoice.doc_number}</CardTitle>
-                      <CardDescription className="flex items-center gap-2 mt-1">
-                        <Badge variant={invoice.balance === 0 ? "default" : "secondary"}>
-                          {invoice.qbo_status}
-                        </Badge>
-                        <span className="text-xs">
-                          Last synced: {new Date(invoice.last_qbo_pull_at).toLocaleDateString()}
-                        </span>
-                      </CardDescription>
-                    </div>
-                    <a
-                      href={`https://app.qbo.intuit.com/app/invoice?txnId=${invoice.qbo_invoice_id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary hover:underline flex items-center gap-1"
-                    >
-                      View in QBO <ExternalLink className="h-3 w-3" />
-                    </a>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-3 gap-4 text-sm">
-                    <div>
-                      <p className="text-muted-foreground">Total</p>
-                      <p className="font-semibold">${invoice.total_amount.toFixed(2)}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Balance</p>
-                      <p className="font-semibold">${invoice.balance.toFixed(2)}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Paid</p>
-                      <p className="font-semibold">${(invoice.total_amount - invoice.balance).toFixed(2)}</p>
-                    </div>
-                  </div>
-
-                  <div className="border-t pt-4">
-                    <p className="text-sm font-medium mb-3">Online Payment Options</p>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <Label htmlFor={`cc-${invoice.id}`} className="flex items-center gap-2">
-                          <CreditCard className="h-4 w-4" />
-                          Allow Credit Card Payments
-                        </Label>
-                        <Switch
-                          id={`cc-${invoice.id}`}
-                          defaultChecked={false}
-                          onCheckedChange={(checked) => handleTogglePayments(invoice.qbo_invoice_id, checked, false)}
-                        />
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <Label htmlFor={`ach-${invoice.id}`} className="flex items-center gap-2">
-                          <Building2 className="h-4 w-4" />
-                          Allow ACH (Bank) Payments
-                        </Label>
-                        <Switch
-                          id={`ach-${invoice.id}`}
-                          defaultChecked={false}
-                          onCheckedChange={(checked) => handleTogglePayments(invoice.qbo_invoice_id, false, checked)}
-                        />
-                      </div>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full mt-4"
-                      onClick={() => handleTogglePayments(invoice.qbo_invoice_id, true, true, true)}
-                    >
-                      Enable Payments & Send Email
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))
+        <CardContent>
+          <div className="grid grid-cols-3 gap-4 text-sm">
+            <div><p className="text-muted-foreground">Invoiced</p><p className="font-semibold text-base">{money(projectTotals.total)}</p></div>
+            <div><p className="text-muted-foreground">Paid</p><p className="font-semibold text-base">{money(projectTotals.paid)}</p></div>
+            <div><p className="text-muted-foreground">Outstanding</p><p className={`font-semibold text-base ${projectTotals.balance > 0 ? "text-orange-600" : ""}`}>{money(projectTotals.balance)}</p></div>
+          </div>
+          {projectTotals.allPaid && (
+            <div className="mt-4 flex items-start gap-2 rounded-md border border-green-500/40 bg-green-500/10 p-3 text-sm">
+              <CheckCircle2 className="h-4 w-4 mt-0.5 text-green-600" />
+              <div>
+                <p className="font-medium">Paid — Ready for Accounting Review</p>
+                <p className="text-muted-foreground text-xs">
+                  All project invoices show a zero balance in QuickBooks. A user with the correct role must open the project and confirm Accounting Complete before closeout unlocks.
+                </p>
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>
+
+      {invoices.length === 0 ? (
+        <Card><CardContent className="py-8 text-center text-sm text-muted-foreground">No invoices for this project yet.</CardContent></Card>
+      ) : invoices.map((inv) => {
+        const paid = Math.max(0, Number(inv.total_amount) - Number(inv.balance));
+        const isPaid = Number(inv.balance) === 0 && Number(inv.total_amount) > 0;
+        return (
+          <Card key={inv.id}>
+            <CardHeader className="pb-3">
+              <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    Invoice {inv.doc_number ? `#${inv.doc_number}` : `(${inv.qbo_invoice_id})`}
+                    <Badge variant="outline" className="capitalize text-xs">{inv.invoice_type ?? "other"}</Badge>
+                    <Badge variant={isPaid ? "default" : "secondary"} className="text-xs">
+                      {isPaid ? "Paid" : (inv.qbo_status ?? "Open")}
+                    </Badge>
+                  </CardTitle>
+                  <CardDescription className="text-xs mt-1">
+                    {inv.txn_date && <>Issued {new Date(inv.txn_date).toLocaleDateString()} • </>}
+                    {inv.due_date && <>Due {new Date(inv.due_date).toLocaleDateString()} • </>}
+                    {inv.last_synced_at && <>Last synced {new Date(inv.last_synced_at).toLocaleString()}</>}
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={() => handleSync(inv.qbo_invoice_id)} disabled={syncingId === inv.qbo_invoice_id}>
+                    {syncingId === inv.qbo_invoice_id ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+                    <span className="ml-1.5">Sync</span>
+                  </Button>
+                  <Button variant="outline" size="sm" asChild>
+                    <a href={`https://app.qbo.intuit.com/app/invoice?txnId=${inv.qbo_invoice_id}`} target="_blank" rel="noopener noreferrer">
+                      Open in QuickBooks <ExternalLink className="h-3 w-3 ml-1" />
+                    </a>
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div><p className="text-muted-foreground">Total</p><p className="font-semibold">{money(inv.total_amount)}</p></div>
+                <div><p className="text-muted-foreground">Paid</p><p className="font-semibold">{money(paid)}</p></div>
+                <div><p className="text-muted-foreground">Balance</p><p className={`font-semibold ${Number(inv.balance) > 0 ? "text-orange-600" : ""}`}>{money(inv.balance)}</p></div>
+                <div><p className="text-muted-foreground">Paid on</p><p className="font-semibold">{inv.paid_at ? new Date(inv.paid_at).toLocaleDateString() : "—"}</p></div>
+              </div>
+
+              {inv.last_sync_error && (
+                <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs">
+                  <AlertTriangle className="h-4 w-4 mt-0.5 text-destructive" />
+                  <span>{inv.last_sync_error}</span>
+                </div>
+              )}
+
+              {!isPaid && inv.invoice_link ? (
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Button asChild size="lg" className="flex-1 h-12 text-base">
+                    <a href={inv.invoice_link} target="_blank" rel="noopener noreferrer">
+                      <CreditCard className="h-5 w-5 mr-2" /> Pay Invoice
+                    </a>
+                  </Button>
+                  <Button variant="outline" size="lg" onClick={() => copyLink(inv.invoice_link!)}>
+                    <Copy className="h-4 w-4 mr-2" /> Copy Payment Link
+                  </Button>
+                </div>
+              ) : !isPaid ? (
+                <div className="text-xs text-muted-foreground rounded-md border border-dashed p-3">
+                  Hosted payment link not yet available from QuickBooks. Click <strong>Sync</strong> to refresh, or enable online payments on this invoice inside QuickBooks.
+                </div>
+              ) : null}
+            </CardContent>
+          </Card>
+        );
+      })}
     </div>
   );
 }

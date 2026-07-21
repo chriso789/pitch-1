@@ -415,6 +415,15 @@ async function updateInvoiceBalance(
     });
     if (!invoiceResponse.ok) {
       const errBody = await invoiceResponse.text();
+      // Record the sync failure on the mirror row so operators can see it.
+      await supabase
+        .from("invoice_ar_mirror")
+        .update({
+          last_sync_error: `fetch_invoice status=${invoiceResponse.status}: ${errBody.slice(0, 240)}`,
+          last_synced_at: new Date().toISOString(),
+        })
+        .eq("tenant_id", tenantId)
+        .eq("qbo_invoice_id", invoiceId);
       throw new Error(
         `qbo_webhook_handler:fetch_invoice failed [status=${invoiceResponse.status} intuit_tid=${invoiceTid ?? "none"}]: ${errBody.slice(0, 300)}`,
       );
@@ -422,14 +431,30 @@ async function updateInvoiceBalance(
 
     const invoiceData = await invoiceResponse.json();
     const invoice = invoiceData.Invoice;
+    const balance = parseFloat(invoice.Balance);
+    const total = parseFloat(invoice.TotalAmt);
+    const nowIso = new Date().toISOString();
+    const isPaid = balance === 0 && total > 0;
+
+    // Preserve any existing paid_at — only stamp it on the first zero-balance event.
+    const { data: existing } = await supabase
+      .from("invoice_ar_mirror")
+      .select("paid_at")
+      .eq("tenant_id", tenantId)
+      .eq("qbo_invoice_id", invoiceId)
+      .maybeSingle();
 
     await supabase
       .from("invoice_ar_mirror")
       .update({
-        balance: parseFloat(invoice.Balance),
-        total_amount: parseFloat(invoice.TotalAmt),
+        balance,
+        total_amount: total,
         qbo_status: invoice.EmailStatus || "Draft",
-        last_qbo_pull_at: new Date().toISOString(),
+        sync_token: invoice.SyncToken ?? null,
+        last_qbo_pull_at: nowIso,
+        last_synced_at: nowIso,
+        last_sync_error: null,
+        paid_at: isPaid ? (existing?.paid_at ?? nowIso) : null,
       })
       .eq("tenant_id", tenantId)
       .eq("qbo_invoice_id", invoiceId);
