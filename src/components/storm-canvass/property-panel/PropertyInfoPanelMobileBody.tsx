@@ -119,7 +119,12 @@ interface Props {
   onCall: (phone: string) => void;
   onEmail: (email: string) => void;
   onNavigate: () => void;
-  onAddCustomer: () => void;
+  onAddCustomer: (manual?: {
+    firstName?: string;
+    lastName?: string;
+    phone?: string;
+    email?: string;
+  }) => void;
   onSkipTrace: () => void;
   onPhoto: () => void;
   onFastEstimate: () => void;
