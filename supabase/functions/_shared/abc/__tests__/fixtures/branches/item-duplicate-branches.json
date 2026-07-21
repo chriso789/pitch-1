@@ -1,0 +1,8 @@
+{
+  "itemNumber": "SHNGL-WW",
+  "branches": [
+    { "branchNumber": "042", "name": "Tampa", "available": 240 },
+    { "branchNumber": "042", "name": "Tampa (dup)", "available": 240 }
+  ],
+  "branchVerificationRequired": false
+}
