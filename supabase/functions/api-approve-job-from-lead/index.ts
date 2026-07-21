@@ -304,6 +304,51 @@ Deno.serve(async (req) => {
       // Don't fail the entire operation
     }
 
+    // Sync the newly converted project to QuickBooks (create Customer + Sub-Customer/Project).
+    // Only runs when the tenant has an active QBO connection; failures are logged but do not
+    // block the conversion — QBO can be re-synced from the project page.
+    let qboSync: any = { attempted: false };
+    try {
+      const { data: activeQbo } = await supabase
+        .from('qbo_connections')
+        .select('id, realm_id, status')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('status', 'active')
+        .maybeSingle();
+
+      if (activeQbo?.id) {
+        qboSync.attempted = true;
+        const workerRes = await fetch(`${supabaseUrl}/functions/v1/qbo-worker`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: authHeader,
+          },
+          body: JSON.stringify({
+            op: 'syncProject',
+            args: { project_id: newProject.id },
+          }),
+        });
+        const workerBody = await workerRes.json().catch(() => ({}));
+        qboSync = {
+          attempted: true,
+          ok: workerRes.ok,
+          status: workerRes.status,
+          qbo_customer_id: workerBody?.data?.qbo_customer_id ?? null,
+          qbo_project_or_job_id: workerBody?.data?.qbo_project_or_job_id ?? null,
+          mapping_mode: workerBody?.data?.mapping_mode ?? null,
+          error: workerRes.ok ? null : (workerBody?.error ?? workerBody?.message ?? 'qbo_sync_failed'),
+        };
+        if (!workerRes.ok) {
+          console.error('[api-approve-job-from-lead] QBO syncProject failed', qboSync);
+        }
+      }
+    } catch (qboError: any) {
+      console.error('[api-approve-job-from-lead] QBO sync threw:', qboError);
+      qboSync = { attempted: true, ok: false, error: qboError?.message ?? String(qboError) };
+    }
+
+
     return new Response(JSON.stringify({ 
       success: true,
       project: newProject,
