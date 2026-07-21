@@ -904,7 +904,12 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
                       <Input
                         type="number"
                         value={item.qty}
-                        onChange={(e) => handleUpdateItem(item.id, 'qty', parseFloat(e.target.value) || 0)}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          if (raw === '' || raw === '-') return; // allow typing negative sign
+                          const n = parseFloat(raw);
+                          handleUpdateItem(item.id, 'qty', Number.isNaN(n) ? 0 : n);
+                        }}
                         onBlur={handleSave}
                         className="h-8 text-right"
                       />
@@ -919,7 +924,12 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
                         type="number"
                         step="0.01"
                         value={item.unit_cost}
-                        onChange={(e) => handleUpdateItem(item.id, 'unit_cost', parseFloat(e.target.value) || 0)}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          if (raw === '' || raw === '-') return;
+                          const n = parseFloat(raw);
+                          handleUpdateItem(item.id, 'unit_cost', Number.isNaN(n) ? 0 : n);
+                        }}
                         onBlur={handleSave}
                         className="h-8 text-right"
                       />
