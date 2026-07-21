@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Crosshair } from 'lucide-react';
+import { ArrowLeft, Crosshair, MapPin } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import GoogleLiveLocationMap from '@/components/storm-canvass/GoogleLiveLocationMap';
 import LiveStatsOverlay from '@/components/storm-canvass/LiveStatsOverlay';
@@ -125,6 +125,7 @@ export default function LiveCanvassingPage() {
   const [showPropertyPanel, setShowPropertyPanel] = useState(false);
   const [canvassMode, setCanvassMode] = useState<'knock' | 'canvas'>('knock');
   const [dropPinCoords, setDropPinCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [dropPinArmed, setDropPinArmed] = useState(false);
   const [symbolSettings, setSymbolSettings] = useState<SymbolSettings>(() => 
     loadSymbolSettings(profile?.tenant_id || '')
   );
@@ -630,7 +631,7 @@ export default function LiveCanvassingPage() {
             refreshKey={markersRefreshKey}
             areaPropertyIds={canvassMode === 'knock' && areaPropertyIds.length > 0 ? areaPropertyIds : undefined}
             areaPolygon={areaPolygon}
-            onMapClick={canvassMode === 'canvas' ? (lat, lng) => setDropPinCoords({ lat, lng }) : undefined}
+            onMapClick={(canvassMode === 'canvas' || dropPinArmed) ? (lat, lng) => { setDropPinCoords({ lat, lng }); setDropPinArmed(false); } : undefined}
             followUser={!userInteractionPaused}
             onUserInteraction={handleUserMapInteraction}
             symbolSettings={symbolSettings}
@@ -726,8 +727,24 @@ export default function LiveCanvassingPage() {
         >
           <Crosshair className="h-5 w-5" />
         </Button>
+        <Button
+          variant={dropPinArmed ? 'default' : 'ghost'}
+          size="icon"
+          className={`h-10 w-10 backdrop-blur-sm shadow-md border rounded-full ${dropPinArmed ? 'bg-primary text-primary-foreground border-primary animate-pulse' : 'bg-background/90 border-border/50'}`}
+          onClick={() => {
+            const next = !dropPinArmed;
+            setDropPinArmed(next);
+            if (next) {
+              toast({ title: 'Drop Pin Mode', description: 'Tap the map on the house to drop a pin.' });
+            }
+          }}
+          title="Drop a pin on a house"
+        >
+          <MapPin className="h-5 w-5" />
+        </Button>
         <CanvassModeToggle mode={canvassMode} onModeChange={setCanvassMode} />
       </div>
+
 
 
       {/* GPS Acquiring Overlay */}
