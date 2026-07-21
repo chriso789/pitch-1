@@ -224,14 +224,37 @@ export function QuickBooksInvoiceManager({ projectId, tenantId }: QuickBooksInvo
             <div><p className="text-muted-foreground">Paid</p><p className="font-semibold text-base">{money(projectTotals.paid)}</p></div>
             <div><p className="text-muted-foreground">Outstanding</p><p className={`font-semibold text-base ${projectTotals.balance > 0 ? "text-orange-600" : ""}`}>{money(projectTotals.balance)}</p></div>
           </div>
-          {projectTotals.allPaid && (
-            <div className="mt-4 flex items-start gap-2 rounded-md border border-green-500/40 bg-green-500/10 p-3 text-sm">
-              <CheckCircle2 className="h-4 w-4 mt-0.5 text-green-600" />
-              <div>
-                <p className="font-medium">Paid — Ready for Accounting Review</p>
-                <p className="text-muted-foreground text-xs">
-                  All project invoices show a zero balance in QuickBooks. A user with the correct role must open the project and confirm Accounting Complete before closeout unlocks.
-                </p>
+          {invoices.length > 0 && (
+            <div className={`mt-4 rounded-md border p-3 text-sm ${reviewGate.ready ? "border-green-500/40 bg-green-500/10" : "border-muted bg-muted/30"}`}>
+              <div className="flex items-start gap-2">
+                {reviewGate.ready
+                  ? <CheckCircle2 className="h-4 w-4 mt-0.5 text-green-600" />
+                  : <AlertTriangle className="h-4 w-4 mt-0.5 text-muted-foreground" />}
+                <div className="flex-1">
+                  <p className="font-medium">
+                    {reviewGate.ready ? "Ready for Accounting Review" : "Not ready for accounting review"}
+                  </p>
+                  <ul className="mt-2 space-y-1 text-xs">
+                    <li className={reviewGate.hasInvoices ? "text-green-700" : "text-muted-foreground"}>
+                      {reviewGate.hasInvoices ? "✓" : "•"} At least one QuickBooks invoice exists
+                    </li>
+                    <li className={reviewGate.allZeroBalance ? "text-green-700" : "text-muted-foreground"}>
+                      {reviewGate.allZeroBalance ? "✓" : "•"} Every invoice balance is $0 in QuickBooks
+                    </li>
+                    <li className={reviewGate.paidRecorded ? "text-green-700" : "text-muted-foreground"}>
+                      {reviewGate.paidRecorded ? "✓" : "•"} A paid-on date is recorded for every invoice
+                    </li>
+                    <li className={reviewGate.noSyncErrors ? "text-green-700" : "text-destructive"}>
+                      {reviewGate.noSyncErrors ? "✓" : "✗"} No unresolved sync errors
+                    </li>
+                    <li className={reviewGate.allRecentlySynced ? "text-green-700" : "text-muted-foreground"}>
+                      {reviewGate.allRecentlySynced ? "✓" : "•"} Each invoice has been re-read from QuickBooks
+                    </li>
+                  </ul>
+                  <p className="text-muted-foreground text-xs mt-2">
+                    Accounting Complete, warranty generation, and project closeout remain manual actions. An accounting-role user must confirm them from the project header.
+                  </p>
+                </div>
               </div>
             </div>
           )}
