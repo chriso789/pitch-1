@@ -41137,43 +41137,78 @@ export type Database = {
         Row: {
           created_at: string
           entities: Json
+          entity_id: string | null
           error_message: string | null
           event_id: string | null
           event_name: string
           event_time: string
           id: string
+          idempotency_key: string | null
+          intuit_tid: string | null
+          oauth_app_env: string | null
+          operation: string | null
+          payload: Json | null
           processed_at: string | null
           processing_status: string | null
+          qbo_connection_id: string | null
           realm_id: string
+          request_correlation_id: string | null
+          signature_environment: string | null
           tenant_id: string
         }
         Insert: {
           created_at?: string
           entities?: Json
+          entity_id?: string | null
           error_message?: string | null
           event_id?: string | null
           event_name: string
           event_time: string
           id?: string
+          idempotency_key?: string | null
+          intuit_tid?: string | null
+          oauth_app_env?: string | null
+          operation?: string | null
+          payload?: Json | null
           processed_at?: string | null
           processing_status?: string | null
+          qbo_connection_id?: string | null
           realm_id: string
+          request_correlation_id?: string | null
+          signature_environment?: string | null
           tenant_id: string
         }
         Update: {
           created_at?: string
           entities?: Json
+          entity_id?: string | null
           error_message?: string | null
           event_id?: string | null
           event_name?: string
           event_time?: string
           id?: string
+          idempotency_key?: string | null
+          intuit_tid?: string | null
+          oauth_app_env?: string | null
+          operation?: string | null
+          payload?: Json | null
           processed_at?: string | null
           processing_status?: string | null
+          qbo_connection_id?: string | null
           realm_id?: string
+          request_correlation_id?: string | null
+          signature_environment?: string | null
           tenant_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "qbo_webhook_journal_qbo_connection_id_fkey"
+            columns: ["qbo_connection_id"]
+            isOneToOne: false
+            referencedRelation: "qbo_connections"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       qc_inspections: {
         Row: {

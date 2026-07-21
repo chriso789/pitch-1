@@ -107,6 +107,7 @@ export function QuickbooksAdminSurfaces() {
         if (error) throw error;
         const payload = (data as any)?.data ?? data;
         setSecrets(payload?.secrets ?? null);
+        setFallbackInUse(payload?.fallback_in_use ?? null);
         setStats(Array.isArray(payload?.connections) ? payload.connections : []);
       } catch (e: any) {
         if (!cancelled) {
@@ -127,16 +128,20 @@ export function QuickbooksAdminSurfaces() {
 
   const secretRows = useMemo(
     () => [
-      { key: "QBO_CLIENT_ID_PRODUCTION", label: "Production client ID" },
-      { key: "QBO_CLIENT_SECRET_PRODUCTION", label: "Production client secret" },
-      { key: "QBO_REDIRECT_URI_PRODUCTION", label: "Production redirect URI" },
-      { key: "QBO_CLIENT_ID_SANDBOX", label: "Sandbox client ID" },
-      { key: "QBO_CLIENT_SECRET_SANDBOX", label: "Sandbox client secret" },
-      { key: "QBO_REDIRECT_URI_SANDBOX", label: "Sandbox redirect URI" },
-      { key: "QBO_WEBHOOK_VERIFIER_TOKEN", label: "Webhook verifier token" },
+      { key: "QBO_CLIENT_ID_DEVELOPMENT", label: "Sandbox / Development client ID", group: "Sandbox / Development" },
+      { key: "QBO_CLIENT_SECRET_DEVELOPMENT", label: "Sandbox / Development client secret", group: "Sandbox / Development" },
+      { key: "QBO_REDIRECT_URI_DEVELOPMENT", label: "Sandbox / Development redirect URI", group: "Sandbox / Development" },
+      { key: "QBO_WEBHOOK_VERIFIER_DEVELOPMENT", label: "Sandbox / Development webhook verifier", group: "Sandbox / Development" },
+      { key: "QBO_CLIENT_ID_PRODUCTION", label: "Production client ID", group: "Production" },
+      { key: "QBO_CLIENT_SECRET_PRODUCTION", label: "Production client secret", group: "Production" },
+      { key: "QBO_REDIRECT_URI_PRODUCTION", label: "Production redirect URI", group: "Production" },
+      { key: "QBO_WEBHOOK_VERIFIER_PRODUCTION", label: "Production webhook verifier", group: "Production" },
+      { key: "QBO_DEFAULT_ENVIRONMENT", label: "Default environment", group: "General" },
+      { key: "QBO_APP_BASE_URL", label: "App base URL", group: "General" },
     ],
     [],
   );
+  const [fallbackInUse, setFallbackInUse] = useState<Record<string, boolean> | null>(null);
 
   const copy = async (value: string, label: string) => {
     try {
@@ -190,17 +195,34 @@ export function QuickbooksAdminSurfaces() {
             <TableHeader>
               <TableRow>
                 <TableHead>Secret</TableHead>
-                <TableHead>Env var</TableHead>
-                <TableHead className="w-[140px]">Status</TableHead>
+                <TableHead>Group</TableHead>
+                <TableHead>Canonical env var</TableHead>
+                <TableHead className="w-[160px]">Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {secretRows.map((row) => {
                 const present = secrets?.[row.key];
                 const unknown = secrets === null;
+                const fallbackKey =
+                  row.key === "QBO_CLIENT_ID_DEVELOPMENT" || row.key === "QBO_CLIENT_SECRET_DEVELOPMENT"
+                    ? "development_client"
+                    : row.key === "QBO_CLIENT_ID_PRODUCTION" || row.key === "QBO_CLIENT_SECRET_PRODUCTION"
+                    ? "production_client"
+                    : row.key === "QBO_WEBHOOK_VERIFIER_DEVELOPMENT"
+                    ? "development_verifier"
+                    : row.key === "QBO_WEBHOOK_VERIFIER_PRODUCTION"
+                    ? "production_verifier"
+                    : row.key === "QBO_DEFAULT_ENVIRONMENT"
+                    ? "default_environment"
+                    : null;
+                const usingFallback = !!(fallbackKey && fallbackInUse?.[fallbackKey]);
                 return (
                   <TableRow key={row.key}>
                     <TableCell className="font-medium">{row.label}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-[10px]">{row.group}</Badge>
+                    </TableCell>
                     <TableCell>
                       <code className="text-xs">{row.key}</code>
                     </TableCell>
@@ -213,6 +235,10 @@ export function QuickbooksAdminSurfaces() {
                         <Badge className="gap-1 bg-emerald-600 hover:bg-emerald-600">
                           <CheckCircle2 className="h-3 w-3" /> Set
                         </Badge>
+                      ) : usingFallback ? (
+                        <Badge variant="outline" className="gap-1 border-amber-500 text-amber-700 dark:text-amber-300">
+                          Legacy fallback
+                        </Badge>
                       ) : (
                         <Badge variant="destructive" className="gap-1">
                           <XCircle className="h-3 w-3" /> Missing
@@ -224,6 +250,13 @@ export function QuickbooksAdminSurfaces() {
               })}
             </TableBody>
           </Table>
+          {fallbackInUse && Object.values(fallbackInUse).some(Boolean) && (
+            <div className="mt-2 rounded border border-amber-500/40 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              Legacy single-pair env vars (QBO_CLIENT_ID / QBO_CLIENT_SECRET / QBO_WEBHOOK_VERIFIER_TOKEN)
+              are still supplying values for at least one environment. Split canonical
+              DEVELOPMENT / PRODUCTION secrets should be configured before production cutover.
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -262,8 +295,9 @@ export function QuickbooksAdminSurfaces() {
           </div>
           <div className="text-xs text-muted-foreground">
             Events subscribed: <code>Invoice</code>, <code>Payment</code>,{" "}
-            <code>Customer</code>, <code>Item</code>. Signature verified with{" "}
-            <code>QBO_WEBHOOK_VERIFIER_TOKEN</code>.
+            <code>Customer</code>, <code>Item</code>. Signature verified per-environment with{" "}
+            <code>QBO_WEBHOOK_VERIFIER_DEVELOPMENT</code> and{" "}
+            <code>QBO_WEBHOOK_VERIFIER_PRODUCTION</code>.
           </div>
         </CardContent>
       </Card>
