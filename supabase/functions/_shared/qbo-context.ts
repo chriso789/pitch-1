@@ -27,7 +27,20 @@ const SANDBOX_HOST = "https://sandbox-quickbooks.api.intuit.com";
 // Must exactly match the Redirect URI currently saved in the Intuit app.
 // Intuit rejects the OAuth flow when the authorize URL's redirect_uri differs
 // from the saved value, even if both URLs ultimately forward to the same place.
-const PRODUCTION_REDIRECT_URI = "https://alxelfrbjzkmtnsulcei.supabase.co/functions/v1/qbo-oauth-connect/callback";
+//
+// Production uses the branded Pitch SaaS domain. That endpoint is a thin
+// server-side proxy (Cloudflare Worker / Supabase Edge Function custom domain
+// / Vercel route) that forwards the request — code, state, realmId, error,
+// error_description preserved verbatim — to the Supabase Edge Function
+// callback below. This keeps a single shared production redirect for all
+// tenants while satisfying Intuit's requirement that production redirect
+// URIs use the app's own SaaS domain rather than raw infra hostnames.
+//
+// If QBO_REDIRECT_URI_PRODUCTION is set, it wins; otherwise we default to
+// the branded URL. The Development environment continues to use the raw
+// Supabase Edge Function URL (Intuit permits infra hostnames there).
+const PRODUCTION_REDIRECT_URI_DEFAULT = "https://api.pitch-crm.ai/qbo/callback";
+
 
 function env(name: string): string | undefined {
   const v = Deno.env.get(name);
