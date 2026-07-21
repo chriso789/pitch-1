@@ -73,23 +73,29 @@ const JOB_TYPES: Array<{ code: string; label: string }> = [
 
 export function JobTypeQBOMapping() {
   const queryClient = useQueryClient();
-  const tenantId = useEffectiveTenantId();
+  const hookTenantId = useEffectiveTenantId();
 
   const { data: connection, isLoading: loadingConnection } = useQuery({
-    queryKey: ["qbo-connection", tenantId],
-    enabled: !!tenantId,
+    queryKey: ["qbo-connection-any"],
     queryFn: async () => {
+      // Rely on RLS to scope this to the caller's tenant. This avoids a
+      // mismatch between the company-switcher's activeCompanyId and the
+      // profile's active_tenant_id/tenant_id used elsewhere on this page,
+      // which was surfacing "Not connected" here while the panel above
+      // showed a live connection.
       const { data } = await (supabase as any)
         .from("qbo_connections")
         .select("id, tenant_id, realm_id, is_active, is_sandbox, oauth_app_env")
-        .eq("tenant_id", tenantId)
         .eq("is_active", true)
+        .order("connected_at", { ascending: false })
+        .limit(1)
         .maybeSingle();
       return (data ?? null) as QBOConnectionRow | null;
     },
   });
 
   const realmId = connection?.realm_id ?? null;
+  const tenantId = connection?.tenant_id ?? hookTenantId;
 
   // Existing persisted mappings for the active tenant + realm.
   const { data: mappings, isLoading: loadingMappings } = useQuery({
@@ -107,6 +113,7 @@ export function JobTypeQBOMapping() {
       return (data ?? []) as unknown as JobTypeItemMapRow[];
     },
   });
+
 
   // Live QBO service items — only meaningful once a connection exists.
   const {
