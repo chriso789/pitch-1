@@ -108,8 +108,8 @@ export function getQboContextForConnection(
  */
 export function getDefaultQboMode(): QboMode {
   const raw =
-    (env("QBO_DEFAULT_ENVIRONMENT") ?? env("QBO_ENVIRONMENT") ?? "development").toLowerCase();
-  return raw === "production" ? "production" : "development";
+    (env("QBO_DEFAULT_ENVIRONMENT") ?? env("QBO_ENVIRONMENT") ?? "production").toLowerCase();
+  return raw === "development" ? "development" : "production";
 }
 
 export function getDefaultQboContext(): QboContext {
