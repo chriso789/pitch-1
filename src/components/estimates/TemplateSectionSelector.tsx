@@ -204,10 +204,12 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
       
       if (rawSectionItems && rawSectionItems.length > 0) {
         // Normalize line items - handle qty_original/unit_cost_original fallbacks
+        // NOTE: negative qty/unit_cost are allowed (backcharges/credits to crew), so
+        // only fall back to *_original when the primary value is missing (null/undefined).
         const normalizedItems: LineItem[] = rawSectionItems.map((item: any) => {
-          const qty = (item.qty > 0 ? item.qty : (item.qty_original ?? 0));
-          const unitCost = (item.unit_cost > 0 ? item.unit_cost : (item.unit_cost_original ?? 0));
-          const lineTotal = (item.line_total > 0 ? item.line_total : (qty * unitCost));
+          const qty = (item.qty ?? item.qty_original ?? 0);
+          const unitCost = (item.unit_cost ?? item.unit_cost_original ?? 0);
+          const lineTotal = (item.line_total ?? (qty * unitCost));
           
           return {
             id: item.id || crypto.randomUUID(),
