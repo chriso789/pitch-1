@@ -107,6 +107,19 @@ export function QuickBooksInvoiceManager({ projectId, tenantId }: QuickBooksInvo
     return { total, balance, paid, allPaid };
   }, [invoices]);
 
+  // Phase 1B gate: Ready for Accounting Review requires ALL of these to be true.
+  // "Accounting Complete" itself remains a separate MANUAL action performed by
+  // an accounting role — this banner only signals the project is eligible.
+  const reviewGate = useMemo(() => {
+    const hasInvoices = invoices.length > 0;
+    const allZeroBalance = hasInvoices && invoices.every(i => Number(i.balance) === 0 && Number(i.total_amount) > 0);
+    const noSyncErrors = invoices.every(i => !i.last_sync_error);
+    const paidRecorded = invoices.every(i => !!i.paid_at);
+    const allRecentlySynced = invoices.every(i => !!i.last_qbo_pull_at);
+    const ready = hasInvoices && allZeroBalance && noSyncErrors && paidRecorded && allRecentlySynced;
+    return { hasInvoices, allZeroBalance, noSyncErrors, paidRecorded, allRecentlySynced, ready };
+  }, [invoices]);
+
   const handleCreate = async () => {
     setCreating(true);
     try {
