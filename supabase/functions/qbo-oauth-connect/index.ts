@@ -497,20 +497,21 @@ Deno.serve(async (req) => {
 
       const scope = "com.intuit.quickbooks.accounting openid email profile";
       const initiateEndpoints = await getQboOAuthEndpoints(ctx.mode);
-      // `prompt=select_account login` forces Intuit to (1) show the account
-      // chooser so the tenant can pick which Intuit login to use, and (2)
-      // require them to re-enter credentials rather than silently reusing an
-      // existing Intuit browser session. Without `select_account`, Intuit will
-      // auto-forward to the currently signed-in Intuit account and skip the
-      // login page entirely — which is what caused O'Brien Contracting to land
-      // inside the Pitch CRM Intuit account instead of their own.
+      // Intuit's OAuth 2.0 authorize endpoint only officially honors
+      // `prompt=login` (and `consent`). Passing `select_account` alongside
+      // `login` caused Intuit to silently ignore the whole `prompt` param on
+      // some flows and SSO the user into whichever Intuit ID their browser
+      // was already signed into — usually their developer.intuit.com session,
+      // which then dropped them on the developer onboarding page instead of
+      // their own QuickBooks company. `prompt=login` alone reliably forces
+      // Intuit to render the QuickBooks sign-in screen every time.
       const authUrl = `${initiateEndpoints.authorization_endpoint}?` + new URLSearchParams({
         client_id: ctx.clientId,
         redirect_uri: ctx.redirectUri,
         response_type: "code",
         scope,
         state,
-        prompt: "select_account login",
+        prompt: "login",
       });
 
       return jsonResponse({ authUrl, state, mode: requestedMode });
