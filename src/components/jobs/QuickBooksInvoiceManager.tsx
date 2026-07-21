@@ -24,6 +24,11 @@ interface InvoiceRow {
   qbo_status: string | null;
   email_status: string | null;
   invoice_link: string | null;
+  invoice_link_status: string | null;
+  invoice_link_source: string | null;
+  invoice_link_verified_at: string | null;
+  online_card_enabled: boolean | null;
+  online_ach_enabled: boolean | null;
   invoice_type: string | null;
   txn_date: string | null;
   due_date: string | null;
@@ -74,7 +79,7 @@ export function QuickBooksInvoiceManager({ projectId, tenantId }: QuickBooksInvo
       if (conn) {
         const { data, error } = await (supabase as any)
           .from("invoice_ar_mirror")
-          .select("id, qbo_invoice_id, doc_number, total_amount, balance, tax_amount, qbo_status, email_status, invoice_link, invoice_type, txn_date, due_date, paid_at, last_synced_at, last_qbo_pull_at, last_sync_error")
+          .select("id, qbo_invoice_id, doc_number, total_amount, balance, tax_amount, qbo_status, email_status, invoice_link, invoice_link_status, invoice_link_source, invoice_link_verified_at, online_card_enabled, online_ach_enabled, invoice_type, txn_date, due_date, paid_at, last_synced_at, last_qbo_pull_at, last_sync_error")
           .eq("tenant_id", tenantId)
           .eq("project_id", projectId)
           .eq("realm_id", conn.realm_id)
@@ -100,6 +105,19 @@ export function QuickBooksInvoiceManager({ projectId, tenantId }: QuickBooksInvo
     const paid = Math.max(0, total - balance);
     const allPaid = invoices.length > 0 && balance === 0 && total > 0;
     return { total, balance, paid, allPaid };
+  }, [invoices]);
+
+  // Phase 1B gate: Ready for Accounting Review requires ALL of these to be true.
+  // "Accounting Complete" itself remains a separate MANUAL action performed by
+  // an accounting role — this banner only signals the project is eligible.
+  const reviewGate = useMemo(() => {
+    const hasInvoices = invoices.length > 0;
+    const allZeroBalance = hasInvoices && invoices.every(i => Number(i.balance) === 0 && Number(i.total_amount) > 0);
+    const noSyncErrors = invoices.every(i => !i.last_sync_error);
+    const paidRecorded = invoices.every(i => !!i.paid_at);
+    const allRecentlySynced = invoices.every(i => !!i.last_qbo_pull_at);
+    const ready = hasInvoices && allZeroBalance && noSyncErrors && paidRecorded && allRecentlySynced;
+    return { hasInvoices, allZeroBalance, noSyncErrors, paidRecorded, allRecentlySynced, ready };
   }, [invoices]);
 
   const handleCreate = async () => {
@@ -206,14 +224,37 @@ export function QuickBooksInvoiceManager({ projectId, tenantId }: QuickBooksInvo
             <div><p className="text-muted-foreground">Paid</p><p className="font-semibold text-base">{money(projectTotals.paid)}</p></div>
             <div><p className="text-muted-foreground">Outstanding</p><p className={`font-semibold text-base ${projectTotals.balance > 0 ? "text-orange-600" : ""}`}>{money(projectTotals.balance)}</p></div>
           </div>
-          {projectTotals.allPaid && (
-            <div className="mt-4 flex items-start gap-2 rounded-md border border-green-500/40 bg-green-500/10 p-3 text-sm">
-              <CheckCircle2 className="h-4 w-4 mt-0.5 text-green-600" />
-              <div>
-                <p className="font-medium">Paid — Ready for Accounting Review</p>
-                <p className="text-muted-foreground text-xs">
-                  All project invoices show a zero balance in QuickBooks. A user with the correct role must open the project and confirm Accounting Complete before closeout unlocks.
-                </p>
+          {invoices.length > 0 && (
+            <div className={`mt-4 rounded-md border p-3 text-sm ${reviewGate.ready ? "border-green-500/40 bg-green-500/10" : "border-muted bg-muted/30"}`}>
+              <div className="flex items-start gap-2">
+                {reviewGate.ready
+                  ? <CheckCircle2 className="h-4 w-4 mt-0.5 text-green-600" />
+                  : <AlertTriangle className="h-4 w-4 mt-0.5 text-muted-foreground" />}
+                <div className="flex-1">
+                  <p className="font-medium">
+                    {reviewGate.ready ? "Ready for Accounting Review" : "Not ready for accounting review"}
+                  </p>
+                  <ul className="mt-2 space-y-1 text-xs">
+                    <li className={reviewGate.hasInvoices ? "text-green-700" : "text-muted-foreground"}>
+                      {reviewGate.hasInvoices ? "✓" : "•"} At least one QuickBooks invoice exists
+                    </li>
+                    <li className={reviewGate.allZeroBalance ? "text-green-700" : "text-muted-foreground"}>
+                      {reviewGate.allZeroBalance ? "✓" : "•"} Every invoice balance is $0 in QuickBooks
+                    </li>
+                    <li className={reviewGate.paidRecorded ? "text-green-700" : "text-muted-foreground"}>
+                      {reviewGate.paidRecorded ? "✓" : "•"} A paid-on date is recorded for every invoice
+                    </li>
+                    <li className={reviewGate.noSyncErrors ? "text-green-700" : "text-destructive"}>
+                      {reviewGate.noSyncErrors ? "✓" : "✗"} No unresolved sync errors
+                    </li>
+                    <li className={reviewGate.allRecentlySynced ? "text-green-700" : "text-muted-foreground"}>
+                      {reviewGate.allRecentlySynced ? "✓" : "•"} Each invoice has been re-read from QuickBooks
+                    </li>
+                  </ul>
+                  <p className="text-muted-foreground text-xs mt-2">
+                    Accounting Complete, warranty generation, and project closeout remain manual actions. An accounting-role user must confirm them from the project header.
+                  </p>
+                </div>
               </div>
             </div>
           )}
@@ -271,22 +312,49 @@ export function QuickBooksInvoiceManager({ projectId, tenantId }: QuickBooksInvo
                 </div>
               )}
 
-              {!isPaid && inv.invoice_link ? (
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <Button asChild size="lg" className="flex-1 h-12 text-base">
-                    <a href={inv.invoice_link} target="_blank" rel="noopener noreferrer">
-                      <CreditCard className="h-5 w-5 mr-2" /> Pay Invoice
-                    </a>
-                  </Button>
-                  <Button variant="outline" size="lg" onClick={() => copyLink(inv.invoice_link!)}>
-                    <Copy className="h-4 w-4 mr-2" /> Copy Payment Link
-                  </Button>
-                </div>
-              ) : !isPaid ? (
-                <div className="text-xs text-muted-foreground rounded-md border border-dashed p-3">
-                  Hosted payment link not yet available from QuickBooks. Click <strong>Sync</strong> to refresh, or enable online payments on this invoice inside QuickBooks.
-                </div>
-              ) : null}
+              {!isPaid && (() => {
+                // Phase 1B: strictly capability-driven. Pay Invoice only renders when
+                // the server-side reconciler validated the hosted link AND persisted
+                // invoice_link_status='available'. Presence of a URL alone is not enough.
+                const linkAvailable =
+                  inv.invoice_link_status === "available" &&
+                  !!inv.invoice_link &&
+                  inv.invoice_link.startsWith("https://");
+                if (linkAvailable) {
+                  return (
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <Button asChild size="lg" className="flex-1 h-12 text-base">
+                        <a href={inv.invoice_link!} target="_blank" rel="noopener noreferrer">
+                          <CreditCard className="h-5 w-5 mr-2" /> Pay Invoice
+                        </a>
+                      </Button>
+                      <Button variant="outline" size="lg" onClick={() => copyLink(inv.invoice_link!)}>
+                        <Copy className="h-4 w-4 mr-2" /> Copy Payment Link
+                      </Button>
+                    </div>
+                  );
+                }
+                // Explain WHY the link is not usable, sourced from reconciler state.
+                const reasonByStatus: Record<string, string> = {
+                  pending: "Hosted payment link is pending — QuickBooks has not returned an InvoiceLink yet. Click Sync to re-read.",
+                  unavailable: "Online payments are not enabled on this invoice in QuickBooks (no card or ACH capability). Enable QuickBooks Payments, then click Sync.",
+                  expired: "The hosted link expired. Click Sync to have QuickBooks issue a new one.",
+                  invalid: "The hosted link failed server-side validation and was rejected. Click Sync after fixing the invoice in QuickBooks.",
+                  access_denied: "QuickBooks blocked access to the hosted link for this invoice. Verify online payments are enabled and click Sync.",
+                  unknown: "Link status is unknown. Click Sync to have QuickBooks re-issue the hosted link.",
+                };
+                const reason = reasonByStatus[inv.invoice_link_status ?? "unknown"] ?? reasonByStatus.unknown;
+                return (
+                  <div className="text-xs text-muted-foreground rounded-md border border-dashed p-3 space-y-1">
+                    <p>{reason}</p>
+                    <p className="text-[11px]">
+                      Link status: <span className="font-mono">{inv.invoice_link_status ?? "unknown"}</span>
+                      {inv.online_card_enabled === false && inv.online_ach_enabled === false ? " • No online payment methods enabled in QBO" : ""}
+                      {inv.invoice_link_verified_at ? ` • Last verified ${new Date(inv.invoice_link_verified_at).toLocaleString()}` : ""}
+                    </p>
+                  </div>
+                );
+              })()}
             </CardContent>
           </Card>
         );
