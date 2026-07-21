@@ -70,6 +70,8 @@ export const PipelineToJobConverter: React.FC<PipelineToJobConverterProps> = ({
   const handleBulkConvert = async () => {
     setLoading(true);
     let successCount = 0;
+    let qboSyncedCount = 0;
+    let qboAttemptedCount = 0;
     
     try {
       for (const entry of convertibleEntries) {
@@ -88,15 +90,22 @@ export const PipelineToJobConverter: React.FC<PipelineToJobConverterProps> = ({
           
           if (error) throw error;
           successCount++;
+          if (data?.qbo_sync?.attempted) {
+            qboAttemptedCount++;
+            if (data.qbo_sync.ok) qboSyncedCount++;
+          }
         } catch (error) {
           console.error(`Failed to convert entry ${entry.id}:`, error);
         }
       }
       
       if (successCount > 0) {
+        const qboMsg = qboAttemptedCount > 0
+          ? ` QuickBooks sync: ${qboSyncedCount}/${qboAttemptedCount}.`
+          : '';
         toast({
           title: "Conversion Complete",
-          description: `${successCount} of ${convertibleEntries.length} pipeline entries converted to jobs successfully.`,
+          description: `${successCount} of ${convertibleEntries.length} pipeline entries converted to jobs.${qboMsg}`,
         });
         onJobCreated();
       } else {
@@ -116,6 +125,7 @@ export const PipelineToJobConverter: React.FC<PipelineToJobConverterProps> = ({
       setLoading(false);
     }
   };
+
 
   if (convertibleEntries.length === 0) {
     return null;
