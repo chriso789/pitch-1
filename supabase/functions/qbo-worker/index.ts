@@ -33,6 +33,8 @@ import {
   qboCredentialAvailability,
   getDefaultQboMode,
 } from "../_shared/qbo-context.ts";
+import { qboFetch, stableInvoiceRequestId } from "../_shared/qbo/retry.ts";
+import { reconcileInvoiceFromQbo, appendReconciliationEvent } from "../_shared/qbo/reconciler.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
