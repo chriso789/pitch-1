@@ -195,17 +195,34 @@ export function QuickbooksAdminSurfaces() {
             <TableHeader>
               <TableRow>
                 <TableHead>Secret</TableHead>
-                <TableHead>Env var</TableHead>
-                <TableHead className="w-[140px]">Status</TableHead>
+                <TableHead>Group</TableHead>
+                <TableHead>Canonical env var</TableHead>
+                <TableHead className="w-[160px]">Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {secretRows.map((row) => {
                 const present = secrets?.[row.key];
                 const unknown = secrets === null;
+                const fallbackKey =
+                  row.key === "QBO_CLIENT_ID_DEVELOPMENT" || row.key === "QBO_CLIENT_SECRET_DEVELOPMENT"
+                    ? "development_client"
+                    : row.key === "QBO_CLIENT_ID_PRODUCTION" || row.key === "QBO_CLIENT_SECRET_PRODUCTION"
+                    ? "production_client"
+                    : row.key === "QBO_WEBHOOK_VERIFIER_DEVELOPMENT"
+                    ? "development_verifier"
+                    : row.key === "QBO_WEBHOOK_VERIFIER_PRODUCTION"
+                    ? "production_verifier"
+                    : row.key === "QBO_DEFAULT_ENVIRONMENT"
+                    ? "default_environment"
+                    : null;
+                const usingFallback = !!(fallbackKey && fallbackInUse?.[fallbackKey]);
                 return (
                   <TableRow key={row.key}>
                     <TableCell className="font-medium">{row.label}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-[10px]">{row.group}</Badge>
+                    </TableCell>
                     <TableCell>
                       <code className="text-xs">{row.key}</code>
                     </TableCell>
@@ -218,6 +235,10 @@ export function QuickbooksAdminSurfaces() {
                         <Badge className="gap-1 bg-emerald-600 hover:bg-emerald-600">
                           <CheckCircle2 className="h-3 w-3" /> Set
                         </Badge>
+                      ) : usingFallback ? (
+                        <Badge variant="outline" className="gap-1 border-amber-500 text-amber-700 dark:text-amber-300">
+                          Legacy fallback
+                        </Badge>
                       ) : (
                         <Badge variant="destructive" className="gap-1">
                           <XCircle className="h-3 w-3" /> Missing
@@ -229,6 +250,13 @@ export function QuickbooksAdminSurfaces() {
               })}
             </TableBody>
           </Table>
+          {fallbackInUse && Object.values(fallbackInUse).some(Boolean) && (
+            <div className="mt-2 rounded border border-amber-500/40 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              Legacy single-pair env vars (QBO_CLIENT_ID / QBO_CLIENT_SECRET / QBO_WEBHOOK_VERIFIER_TOKEN)
+              are still supplying values for at least one environment. Split canonical
+              DEVELOPMENT / PRODUCTION secrets should be configured before production cutover.
+            </div>
+          )}
         </CardContent>
       </Card>
 
