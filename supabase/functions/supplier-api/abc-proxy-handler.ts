@@ -762,65 +762,49 @@ export const handle = async (req) => {
     }
 
     // ---------------- search_products / get_item ----------------
+    // Delegates payload construction + response normalization to the shared
+    // ABC catalog service (Phase 1B Slice 1). Wire contract and audit shape
+    // remain byte-for-byte identical to the pre-refactor handler.
     if (action === "search_products") {
-      // ABC documented body: filters[] + pagination{}.
-      const endpoint = `${cfg.apiBase}/product/v1/search/items`;
-      const filters: Array<Record<string, unknown>> = [];
-      const itemNumber = (body.itemNumber || "").toString().trim();
-      const query = (body.query || "").toString().trim();
-      if (itemNumber) {
-        filters.push({
-          key: "itemNumber",
-          condition: "equals",
-          values: [itemNumber],
-          joinCondition: "and",
-        });
-      } else {
-        filters.push({
-          key: "itemDescription",
-          condition: "contains",
-          values: [query],
-          joinCondition: "and",
-        });
-      }
-      const branchNumber = (body.branchNumber || "").toString().trim();
-      if (branchNumber) {
-        filters.push({
-          key: "branchNumber",
-          condition: "equals",
-          values: [branchNumber],
-          joinCondition: "and",
-        });
-      }
-      const itemsPerPage = Math.min(Math.max(Number(body.itemsPerPage) || 25, 1), 100);
-      const payload = {
-        filters,
-        pagination: { itemsPerPage, pageNumber: 1 },
-      };
-
-      const r = await callAbc(tok.token, "POST", endpoint, payload);
-      const error_code = r.ok ? null : mapAbcError(r.status, r.json);
+      const result = await searchAbcCatalog(
+        { apiBase: cfg.apiBase, token: tok.token, callAbc, mapAbcError },
+        {
+          itemNumber: body.itemNumber,
+          query: body.query,
+          branchNumber: body.branchNumber,
+          itemsPerPage: body.itemsPerPage,
+        },
+      );
       await auditCall(supabase, {
-        tenant_id, environment: env, action, endpoint,
-        request_body_redacted: payload,
-        status_code: r.status, response_body: r.json ?? r.text, error_code,
+        tenant_id, environment: env, action, endpoint: result.endpoint,
+        request_body_redacted: result.request,
+        status_code: result.status, response_body: result.body, error_code: result.error_code,
         duration_ms: Date.now() - startedAt, created_by: userId,
       });
-      return json({ success: r.ok, environment: env, endpoint, request: payload, status: r.status, body: r.json ?? r.text, error_code });
+      return json({
+        success: result.success, environment: env, endpoint: result.endpoint,
+        request: result.request, status: result.status, body: result.body,
+        error_code: result.error_code, normalized: result.normalized,
+      });
     }
 
     if (action === "get_item") {
       const itm = (body.itemNumber || "").toString().trim();
       if (!itm) return json({ success: false, error: "itemNumber required" }, 400);
-      const endpoint = `${cfg.apiBase}/product/v1/items/${encodeURIComponent(itm)}`;
-      const r = await callAbc(tok.token, "GET", endpoint);
-      const error_code = r.ok ? null : mapAbcError(r.status, r.json);
+      const result = await getAbcCatalogItem(
+        { apiBase: cfg.apiBase, token: tok.token, callAbc, mapAbcError },
+        itm,
+      );
       await auditCall(supabase, {
-        tenant_id, environment: env, action, endpoint,
-        status_code: r.status, response_body: r.json ?? r.text, error_code,
+        tenant_id, environment: env, action, endpoint: result.endpoint,
+        status_code: result.status, response_body: result.body, error_code: result.error_code,
         duration_ms: Date.now() - startedAt, created_by: userId,
       });
-      return json({ success: r.ok, environment: env, endpoint, status: r.status, body: r.json ?? r.text, error_code });
+      return json({
+        success: result.success, environment: env, endpoint: result.endpoint,
+        status: result.status, body: result.body,
+        error_code: result.error_code, normalized: result.normalized,
+      });
     }
 
     // ---------------- price_items ----------------
