@@ -1,0 +1,18 @@
+{
+  "description": "Contractor manually overrode SKU + price — resolver must emit review_required.",
+  "canonical": {
+    "id": "L2",
+    "templateItemId": "tpl-2",
+    "estimateLineItemId": "est-2",
+    "description": "Custom SKU entered by rep",
+    "requestedItemNumber": "MANUAL-SKU-1",
+    "requestedColorDisplayName": null,
+    "requestedUom": "BUNDLE",
+    "requestedQuantity": 10,
+    "manualSku": true,
+    "manualUom": false,
+    "manualPrice": true,
+    "manufacturerHint": null,
+    "familyHint": null
+  }
+}

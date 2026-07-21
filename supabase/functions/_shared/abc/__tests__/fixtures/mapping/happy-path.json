@@ -1,0 +1,18 @@
+{
+  "description": "Canonical happy-path contractor material line for the Weathered Wood mapping resolver test.",
+  "canonical": {
+    "id": "L1",
+    "templateItemId": "tpl-1",
+    "estimateLineItemId": "est-1",
+    "description": "GAF Timberline HDZ Weathered Wood",
+    "requestedItemNumber": "SHNGL-WW",
+    "requestedColorDisplayName": "Weathered Wood",
+    "requestedUom": "BUNDLE",
+    "requestedQuantity": 20,
+    "manualSku": false,
+    "manualUom": false,
+    "manualPrice": false,
+    "manufacturerHint": "GAF",
+    "familyHint": "Timberline HDZ"
+  }
+}
