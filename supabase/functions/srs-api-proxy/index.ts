@@ -2,6 +2,8 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { buildSupplierVerifiedInvoice } from "../_shared/supplier-verified-invoice.ts";
 import { verifyAuthAndTenant } from "../_shared/auth-tenant.ts";
+import { isSrsDebugModeEnabled } from "../_shared/srs/debugMode.ts";
+
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
