@@ -55,7 +55,7 @@ type SrsLineItem = {
   customerItem?: string;
 };
 
-function buildSubmitOrderPayload(args: {
+export function buildSubmitOrderPayload(args: {
   sourceSystem: string;
   customerCode: string;
   accountNumber?: string | null;          // string form of S046834
