@@ -84,8 +84,9 @@ Deno.test("searchAbcCatalog posts to correct endpoint and normalizes", async () 
   );
 
   assert(captured);
-  assertEquals(captured!.method, "POST");
-  assertEquals(captured!.url, "https://api.test/api/product/v1/search/items");
+  const cap = captured as unknown as { method: string; url: string; body: unknown };
+  assertEquals(cap.method, "POST");
+  assertEquals(cap.url, "https://api.test/api/product/v1/search/items");
   assertEquals(r.success, true);
   assertEquals(r.status, 200);
   assertEquals(r.error_code, null);
