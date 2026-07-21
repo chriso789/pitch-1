@@ -305,6 +305,7 @@ export function MaterialCatalogManager() {
         <TabsList>
           <TabsTrigger value="materials">Catalog ({filteredMaterials.length})</TabsTrigger>
           <TabsTrigger value="suppliers">Supplier Catalog</TabsTrigger>
+          <TabsTrigger value="supplier-mapping">Supplier Mapping</TabsTrigger>
         </TabsList>
 
         <TabsContent value="materials" className="space-y-4">
