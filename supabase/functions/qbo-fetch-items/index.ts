@@ -120,12 +120,14 @@ Deno.serve(async (req) => {
     const formattedItems = items.map((item: any) => ({
       id: item.Id,
       name: item.Name,
-      description: item.Description || '',
+      description: item.Description || (item.Type ? `[${item.Type}]` : ''),
+      type: item.Type,
       unitPrice: item.UnitPrice || 0,
       incomeAccountRef: item.IncomeAccountRef,
     }));
 
-    console.log(`Fetched ${formattedItems.length} service items from QBO`);
+    console.log(`Fetched ${formattedItems.length} items from QBO (any type)`);
+
 
     return new Response(
       JSON.stringify({ items: formattedItems }),
