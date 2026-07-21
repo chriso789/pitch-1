@@ -721,20 +721,23 @@ async function opCreateInvoice(ctx: Ctx, args: any): Promise<Response> {
   }
   if (departmentRef) invoicePayload.DepartmentRef = { value: departmentRef };
 
-  const { access_token } = await getValidAccessToken(service, ctx.tenantId);
-  const res = await fetch(
-    `${qboHost(connection)}/v3/company/${connection.realm_id}/invoice?minorversion=75`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${access_token}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify(invoicePayload),
-    },
-  );
-  const tid = getIntuitTid(res);
+  // Retry-safe, idempotent create. Passing a stable `requestid` prevents
+  // duplicate QBO invoices even if this handler retries.
+  const requestIdForCreate = stableInvoiceRequestId({
+    tenantId: ctx.tenantId,
+    connectionId: connection.id,
+    projectId: project.id,
+    estimateId: estimate.id,
+  });
+
+  const createResult = await qboFetch({
+    method: "POST",
+    url: `${qboHost(connection)}/v3/company/${connection.realm_id}/invoice?minorversion=75`,
+    body: invoicePayload,
+    requestId: requestIdForCreate,
+    getAccessToken: async () => (await getValidAccessToken(service, ctx.tenantId)).access_token,
+  });
+
   void writeQboApiLog(service, {
     action: "qbo_worker",
     tenant_id: ctx.tenantId,
@@ -743,36 +746,34 @@ async function opCreateInvoice(ctx: Ctx, args: any): Promise<Response> {
     oauth_app_env: connection.oauth_app_env,
     endpoint: `/v3/company/${connection.realm_id}/invoice`,
     method: "POST",
-    http_status: res.status,
-    intuit_tid: tid,
-    success: res.ok,
-    request_metadata: { op: "createInvoiceFromEstimates", pitch_project_id: project.id, project_number: projectNumber },
+    http_status: createResult.status,
+    intuit_tid: createResult.intuitTid,
+    success: createResult.ok,
+    request_metadata: {
+      op: "createInvoiceFromEstimates",
+      pitch_project_id: project.id,
+      project_number: projectNumber,
+      qbo_request_id: requestIdForCreate,
+      attempts: createResult.attempts,
+    },
   });
-  if (!res.ok) {
-    const body = await res.text();
-    return err("qbo_invoice_create_failed", `QBO error [status=${res.status} tid=${tid ?? "none"}]: ${body.slice(0, 400)}`, ctx.requestId, 502, { intuit_tid: tid });
-  }
-  const j = await res.json();
-  let invoice = j.Invoice;
 
-  // Re-fetch with include=invoiceLink to capture the hosted payment URL.
-  // QBO only returns InvoiceLink on the enriched read, not the create response.
-  let invoiceLink: string | null = null;
-  try {
-    const linkRes = await fetch(
-      `${qboHost(connection)}/v3/company/${connection.realm_id}/invoice/${invoice.Id}?minorversion=75&include=invoiceLink`,
-      { headers: { Authorization: `Bearer ${access_token}`, Accept: "application/json" } },
+  if (!createResult.ok) {
+    return err(
+      "qbo_invoice_create_failed",
+      `QBO error [status=${createResult.status} tid=${createResult.intuitTid ?? "none"} class=${createResult.classification}]: ${createResult.bodyText.slice(0, 400)}`,
+      ctx.requestId, 502,
+      { intuit_tid: createResult.intuitTid, classification: createResult.classification },
     );
-    if (linkRes.ok) {
-      const linkJson = await linkRes.json();
-      if (linkJson?.Invoice) invoice = linkJson.Invoice;
-      invoiceLink = invoice?.InvoiceLink ?? null;
-    }
-  } catch (_e) { /* non-fatal — link is best-effort */ }
+  }
 
+  const invoice = (createResult.json as any)?.Invoice;
+  if (!invoice?.Id) {
+    return err("qbo_invoice_create_malformed", "QBO create response missing Invoice.Id", ctx.requestId, 502);
+  }
   const invoiceType: string = (args?.invoice_type as string | undefined) ?? "other";
 
-  // Persist invoice mapping (separate row — no overwrite of Customer/Project mappings)
+  // Persist invoice mapping (single source of truth for reconciler resolution).
   await service.from("qbo_entity_mapping").upsert({
     tenant_id: ctx.tenantId,
     qbo_connection_id: connection.id,
@@ -786,13 +787,12 @@ async function opCreateInvoice(ctx: Ctx, args: any): Promise<Response> {
     qbo_doc_number: invoice.DocNumber ?? null,
     pitch_project_number: String(projectNumber ?? ""),
     sync_token: invoice.SyncToken ?? null,
-    metadata: { estimate_id: estimate.id, invoice_link: invoiceLink },
+    metadata: { estimate_id: estimate.id, qbo_request_id: requestIdForCreate },
     updated_at: new Date().toISOString(),
   }, { onConflict: "tenant_id,qbo_connection_id,realm_id,pitch_entity_type,pitch_entity_id,qbo_entity_type" });
 
-  // AR mirror upsert — one row per QBO invoice (never overwrites project)
-  const nowIso = new Date().toISOString();
-  const isPaid = Number(invoice.Balance ?? 0) === 0 && Number(invoice.TotalAmt ?? 0) > 0;
+  // Seed the mirror row so the reconciler can update in place.
+  const seedNow = new Date().toISOString();
   await service.from("invoice_ar_mirror").upsert({
     tenant_id: ctx.tenantId,
     qbo_connection_id: connection.id,
@@ -808,27 +808,55 @@ async function opCreateInvoice(ctx: Ctx, args: any): Promise<Response> {
     due_date: invoice.DueDate ?? null,
     email_status: invoice.EmailStatus ?? "NotSet",
     qbo_status: invoice.EmailStatus ?? "NotSent",
-    invoice_link: invoiceLink,
     invoice_type: invoiceType,
     allow_online_cc: true,
     allow_online_ach: true,
-    last_qbo_pull_at: nowIso,
-    last_synced_at: nowIso,
+    // Capability defaults; reconciler will overwrite on the enriched read below.
+    invoice_link_status: "pending",
+    invoice_link_source: "unavailable",
+    last_qbo_pull_at: seedNow,
+    last_synced_at: seedNow,
     last_sync_error: null,
-    paid_at: isPaid ? nowIso : null,
     created_by: ctx.userId ?? null,
   }, { onConflict: "tenant_id,qbo_connection_id,realm_id,qbo_invoice_id" });
+
+  await appendReconciliationEvent(service, {
+    tenant_id: ctx.tenantId,
+    qbo_connection_id: connection.id,
+    realm_id: connection.realm_id,
+    qbo_invoice_id: invoice.Id,
+    event_type: "invoice_pushed",
+    total_amount: Number(invoice.TotalAmt ?? 0),
+    balance_after: Number(invoice.Balance ?? 0),
+    authoritative_source: "qbo_read",
+    intuit_tid: createResult.intuitTid,
+    details: { qbo_request_id: requestIdForCreate, doc_number: invoice.DocNumber ?? null },
+  });
+
+  // Enriched re-fetch drives capability persistence + link validation.
+  const recon = await reconcileInvoiceFromQbo({
+    service,
+    tenantId: ctx.tenantId,
+    connection,
+    qboInvoiceId: invoice.Id,
+    trigger: "worker_create",
+    logAction: "qbo_worker",
+  });
 
   return ok({
     qbo_invoice_id: invoice.Id,
     doc_number: invoice.DocNumber,
-    total: invoice.TotalAmt,
-    balance: invoice.Balance,
-    invoice_link: invoiceLink,
+    total: recon.total ?? Number(invoice.TotalAmt ?? 0),
+    balance: recon.balance ?? Number(invoice.Balance ?? 0),
+    invoice_link: recon.invoiceLink ?? null,
+    invoice_link_status: recon.invoiceLinkStatus ?? "unknown",
+    invoice_link_source: recon.invoiceLinkSource ?? "unavailable",
     invoice_type: invoiceType,
     mapping_mode: "sub_customer_job",
     project_number: projectNumber,
     unmapped_job_type_codes: unmapped,
+    intuit_tid: createResult.intuitTid,
+    qbo_request_id: requestIdForCreate,
   }, ctx.requestId);
 }
 
