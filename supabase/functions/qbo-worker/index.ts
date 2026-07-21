@@ -963,7 +963,7 @@ async function opSyncPaymentStatus(ctx: Ctx, args: any): Promise<Response> {
 
   const { access_token } = await getValidAccessToken(service, ctx.tenantId);
   const res = await fetch(
-    `${qboHost(connection)}/v3/company/${connection.realm_id}/invoice/${invoiceId}?minorversion=75`,
+    `${qboHost(connection)}/v3/company/${connection.realm_id}/invoice/${invoiceId}?minorversion=75&include=invoiceLink`,
     { headers: { Authorization: `Bearer ${access_token}`, Accept: "application/json" } },
   );
   const tid = getIntuitTid(res);
@@ -982,24 +982,41 @@ async function opSyncPaymentStatus(ctx: Ctx, args: any): Promise<Response> {
   });
   if (!res.ok) {
     const b = await res.text();
+    await service.from("invoice_ar_mirror")
+      .update({ last_sync_error: `sync status=${res.status}: ${b.slice(0, 240)}`, last_synced_at: new Date().toISOString() })
+      .eq("tenant_id", ctx.tenantId).eq("realm_id", connection.realm_id).eq("qbo_invoice_id", invoiceId);
     return err("qbo_invoice_fetch_failed", b.slice(0, 300), ctx.requestId, 502);
   }
   const inv = (await res.json()).Invoice;
+  const balance = Number(inv.Balance ?? 0);
+  const total = Number(inv.TotalAmt ?? 0);
+  const nowIso = new Date().toISOString();
+  const isPaid = balance === 0 && total > 0;
+
+  const { data: existing } = await service
+    .from("invoice_ar_mirror")
+    .select("paid_at")
+    .eq("tenant_id", ctx.tenantId).eq("realm_id", connection.realm_id).eq("qbo_invoice_id", invoiceId)
+    .maybeSingle();
 
   await service.from("invoice_ar_mirror")
     .update({
-      total_amount: Number(inv.TotalAmt ?? 0),
-      balance: Number(inv.Balance ?? 0),
+      total_amount: total,
+      balance,
       sync_token: inv.SyncToken ?? null,
       email_status: inv.EmailStatus ?? null,
-      qbo_status: inv.Balance > 0 ? "Open" : "Paid",
-      last_qbo_pull_at: new Date().toISOString(),
+      qbo_status: balance > 0 ? "Open" : "Paid",
+      invoice_link: inv.InvoiceLink ?? undefined,
+      last_qbo_pull_at: nowIso,
+      last_synced_at: nowIso,
+      last_sync_error: null,
+      paid_at: isPaid ? (existing?.paid_at ?? nowIso) : null,
     })
     .eq("tenant_id", ctx.tenantId)
     .eq("realm_id", connection.realm_id)
     .eq("qbo_invoice_id", invoiceId);
 
-  return ok({ qbo_invoice_id: invoiceId, total: inv.TotalAmt, balance: inv.Balance, paid: Number(inv.Balance ?? 0) === 0 }, ctx.requestId);
+  return ok({ qbo_invoice_id: invoiceId, total, balance, paid: isPaid, invoice_link: inv.InvoiceLink ?? null }, ctx.requestId);
 }
 
 // =============================================================
