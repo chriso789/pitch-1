@@ -47,6 +47,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
@@ -119,7 +120,12 @@ interface Props {
   onCall: (phone: string) => void;
   onEmail: (email: string) => void;
   onNavigate: () => void;
-  onAddCustomer: () => void;
+  onAddCustomer: (manual?: {
+    firstName?: string;
+    lastName?: string;
+    phone?: string;
+    email?: string;
+  }) => void;
   onSkipTrace: () => void;
   onPhoto: () => void;
   onFastEstimate: () => void;
@@ -167,6 +173,27 @@ export default function PropertyInfoPanelMobileBody(props: Props) {
 
   const [showAllContact, setShowAllContact] = useState(false);
   const [showFullStrategy, setShowFullStrategy] = useState(false);
+  const [manualFirstName, setManualFirstName] = useState("");
+  const [manualLastName, setManualLastName] = useState("");
+  const [manualPhone, setManualPhone] = useState("");
+  const [manualEmail, setManualEmail] = useState("");
+
+  const hasManualEntry = Boolean(
+    manualFirstName.trim() || manualLastName.trim() || manualPhone.trim() || manualEmail.trim(),
+  );
+
+  const handleAddCustomerClick = () => {
+    if (hasManualEntry) {
+      onAddCustomer({
+        firstName: manualFirstName.trim() || undefined,
+        lastName: manualLastName.trim() || undefined,
+        phone: manualPhone.trim() || undefined,
+        email: manualEmail.trim() || undefined,
+      });
+    } else {
+      onAddCustomer();
+    }
+  };
 
   const propData = localProperty?.property_data || {};
   const confidence: number | undefined = propData.confidence_score;
@@ -298,7 +325,7 @@ export default function PropertyInfoPanelMobileBody(props: Props) {
           <QuickAction
             icon={Plus}
             label="Add"
-            onClick={onAddCustomer}
+            onClick={handleAddCustomerClick}
             tone="success"
           />
           <Popover>
@@ -443,30 +470,77 @@ export default function PropertyInfoPanelMobileBody(props: Props) {
               );
             })}
           </div>
-        ) : !publicLookupLoading ? (
-          <div className="mb-4 rounded-lg border-2 border-dashed border-primary/40 bg-primary/5 p-4 text-center">
-            <Phone className="h-5 w-5 mx-auto text-primary/60 mb-1.5" />
-            <p className="text-xs text-muted-foreground mb-2">
-              Phone & email require a skip-trace lookup
-            </p>
+        ) : null}
+
+        {/* Manual homeowner entry — always available so reps can capture at the door */}
+        {!hasContact && !publicLookupLoading && (
+          <div className="mb-4 rounded-lg border bg-card p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] font-medium text-muted-foreground">
+                Enter homeowner info
+              </p>
+              <button
+                type="button"
+                onClick={onSkipTrace}
+                disabled={enriching}
+                className="flex items-center gap-1 text-[11px] text-primary disabled:opacity-50"
+              >
+                {enriching ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Sparkles className="h-3 w-3" />
+                )}
+                {enriching ? "Looking up…" : "Skip-trace"}
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                value={manualFirstName}
+                onChange={(e) => setManualFirstName(e.target.value)}
+                placeholder="First name"
+                autoComplete="given-name"
+                className="h-10 text-sm"
+              />
+              <Input
+                value={manualLastName}
+                onChange={(e) => setManualLastName(e.target.value)}
+                placeholder="Last name"
+                autoComplete="family-name"
+                className="h-10 text-sm"
+              />
+            </div>
+            <Input
+              type="tel"
+              inputMode="tel"
+              value={manualPhone}
+              onChange={(e) => setManualPhone(e.target.value)}
+              placeholder="Phone"
+              autoComplete="tel"
+              className="h-10 text-sm"
+            />
+            <Input
+              type="email"
+              inputMode="email"
+              value={manualEmail}
+              onChange={(e) => setManualEmail(e.target.value)}
+              placeholder="Email"
+              autoComplete="email"
+              className="h-10 text-sm"
+            />
             <Button
               size="sm"
-              className="gap-1.5 h-10"
-              onClick={onSkipTrace}
-              disabled={enriching}
+              className="w-full h-10 gap-1.5 bg-green-600 hover:bg-green-700 text-white"
+              onClick={handleAddCustomerClick}
+              disabled={!hasManualEntry && !property.disposition}
             >
-              {enriching ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Sparkles className="h-4 w-4" />
-              )}
-              {enriching ? "Looking up…" : "Get Contact Info"}
+              <Plus className="h-4 w-4" />
+              Save to CRM
             </Button>
             {skipTraceError && (
-              <p className="text-[10px] text-destructive mt-2">{skipTraceError}</p>
+              <p className="text-[10px] text-destructive">{skipTraceError}</p>
             )}
           </div>
-        ) : null}
+        )}
 
         {skipTraceError && hasContact === false && !enriching && (
           <Alert variant="destructive" className="mb-4 py-2">
