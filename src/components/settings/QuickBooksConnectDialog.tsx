@@ -136,8 +136,18 @@ export function QuickBooksConnectDialog({
       const authUrl = (initiate as { authUrl?: string })?.authUrl;
       if (!authUrl) throw new Error("Authorize URL missing from response");
 
-      // 4. Same-tab redirect — server-side 302 callback brings the user back.
-      window.location.href = authUrl;
+      // 4. Redirect to Intuit. Break out of any iframe (Lovable preview, embeds)
+      // because accounts.intuit.com refuses to load inside an iframe (X-Frame-Options).
+      try {
+        if (window.top && window.top !== window.self) {
+          window.top.location.href = authUrl;
+        } else {
+          window.location.href = authUrl;
+        }
+      } catch {
+        // Cross-origin frame — fall back to opening a new tab.
+        window.open(authUrl, "_blank", "noopener,noreferrer");
+      }
     } catch (e: unknown) {
       // Supabase PostgREST + FunctionsHttpError both carry structured fields
       // that stringify to "[object Object]". Extract the real reason so the
