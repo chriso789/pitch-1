@@ -1,0 +1,5 @@
+{
+  "branches": [
+    { "branchNumber": "042", "name": "Tampa", "available": 40, "availabilityStatus": "Allocated" }
+  ]
+}

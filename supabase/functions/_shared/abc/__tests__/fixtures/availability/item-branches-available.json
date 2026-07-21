@@ -1,0 +1,6 @@
+{
+  "branches": [
+    { "branchNumber": "042", "name": "Tampa", "available": 24 },
+    { "branchNumber": "051", "name": "Orlando", "available": 12 }
+  ]
+}
