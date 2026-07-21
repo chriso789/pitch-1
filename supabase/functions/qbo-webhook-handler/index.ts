@@ -212,8 +212,9 @@ Deno.serve(async (req) => {
 
       let entityError: { code: string; message: string } | null = null;
       for (const entity of notification.dataChangeEvent.entities) {
-        // Idempotency key from stable event fields.
-        const idempotencyKey = [
+        // Dedup key: same realm + entity + operation + lastUpdated always maps to the
+        // same row. The unique index on qbo_webhook_events.dedup_key rejects retries.
+        const dedupKey = [
           connection.id,
           entity.name,
           entity.id,
@@ -221,45 +222,101 @@ Deno.serve(async (req) => {
           entity.lastUpdated ?? "",
         ].join(":");
 
-        const { error: logError } = await supabase
-          .from("qbo_webhook_journal")
+        const { data: dedupInsert, error: dedupErr } = await supabase
+          .from("qbo_webhook_events")
           .insert({
             tenant_id: connection.tenant_id,
-            qbo_connection_id: connection.id,
             realm_id: realmId,
             oauth_app_env: connMode,
-            signature_environment: webhookMode,
-            event_name: entity.name,
-            event_time: entity.lastUpdated ? new Date(entity.lastUpdated).toISOString() : new Date().toISOString(),
-            event_id: entity.id,
-            entity_id: entity.id,
-            operation: entity.operation,
-            entities: [entity],
-            payload: entity,
-            idempotency_key: idempotencyKey,
-            request_correlation_id: correlationId,
-            processing_status: "pending",
-          });
-        if (logError) {
-          // Duplicate delivery (unique_violation on idempotency_key) is expected — skip mutation.
-          const code = (logError as { code?: string }).code;
+            signature_valid: true,
+            event_count: 1,
+            dedup_key: dedupKey,
+          })
+          .select("id")
+          .maybeSingle();
+
+        if (dedupErr) {
+          const code = (dedupErr as { code?: string }).code;
           if (code === "23505") {
-            console.log("qbo_webhook_duplicate_skipped", { idempotency_key: idempotencyKey });
+            // Duplicate delivery — never re-run reconciliation.
+            console.log("qbo_webhook_dedup_skipped", { dedup_key: dedupKey });
+            await appendReconciliationEvent(supabase, {
+              tenant_id: connection.tenant_id,
+              qbo_connection_id: connection.id,
+              realm_id: realmId,
+              qbo_invoice_id: entity.name === "Invoice" ? entity.id : null,
+              qbo_payment_id: entity.name === "Payment" ? entity.id : null,
+              event_type: "webhook_dedup_skipped",
+              authoritative_source: "webhook_payload",
+              details: { entity: entity.name, operation: entity.operation, dedup_key: dedupKey },
+            });
             continue;
           }
-          console.error("qbo_webhook_journal_insert_failed", logError);
-          entityError = { code: "journal_insert_failed", message: logError.message };
+          console.error("qbo_webhook_dedup_insert_failed", dedupErr);
+          entityError = { code: "dedup_insert_failed", message: dedupErr.message };
         }
 
-        if (entity.name === "Payment" && (entity.operation === "Create" || entity.operation === "Update")) {
-          try {
-            await processPaymentEvent(supabase, connection.tenant_id, realmId, entity.id);
-          } catch (e) {
-            entityError = {
-              code: "payment_processing_failed",
-              message: e instanceof Error ? e.message : String(e),
-            };
+        // Best-effort journal row for backward compatibility with existing dashboards.
+        await supabase.from("qbo_webhook_journal").insert({
+          tenant_id: connection.tenant_id,
+          qbo_connection_id: connection.id,
+          realm_id: realmId,
+          oauth_app_env: connMode,
+          signature_environment: webhookMode,
+          event_name: entity.name,
+          event_time: entity.lastUpdated ? new Date(entity.lastUpdated).toISOString() : new Date().toISOString(),
+          event_id: entity.id,
+          entity_id: entity.id,
+          operation: entity.operation,
+          entities: [entity],
+          payload: entity,
+          idempotency_key: dedupKey,
+          request_correlation_id: correlationId,
+          processing_status: "pending",
+        }).then(() => {}, () => {});
+
+        const webhookEventId = dedupInsert?.id ?? null;
+
+        try {
+          if (entity.name === "Invoice") {
+            // Never trust the webhook payload's balance — re-read the authoritative invoice.
+            await reconcileInvoiceFromQbo({
+              service: supabase,
+              tenantId: connection.tenant_id,
+              connection: {
+                id: connection.id,
+                tenant_id: connection.tenant_id,
+                realm_id: realmId,
+                is_sandbox: connection.is_sandbox ?? null,
+                oauth_app_env: connMode,
+              },
+              qboInvoiceId: entity.id,
+              trigger: "webhook_invoice",
+              webhookEventId,
+              logAction: "qbo_webhook_handler",
+            });
+          } else if (entity.name === "Payment") {
+            // LinkedTxn drives which invoices to re-reconcile.
+            await reconcilePaymentFromQbo({
+              service: supabase,
+              tenantId: connection.tenant_id,
+              connection: {
+                id: connection.id,
+                tenant_id: connection.tenant_id,
+                realm_id: realmId,
+                is_sandbox: connection.is_sandbox ?? null,
+                oauth_app_env: connMode,
+              },
+              qboPaymentId: entity.id,
+              operation: entity.operation,
+              webhookEventId,
+            });
           }
+        } catch (e) {
+          entityError = {
+            code: `${entity.name.toLowerCase()}_reconcile_failed`,
+            message: e instanceof Error ? e.message : String(e),
+          };
         }
       }
 
