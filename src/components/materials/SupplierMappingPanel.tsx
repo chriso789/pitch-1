@@ -184,7 +184,7 @@ function SupplierMappingTable({ supplier }: { supplier: SupplierKind }) {
           purpose: "estimating",
           items: [{ item_number: edited.sku, uom: edited.uom || undefined }],
         });
-        const line = resp?.items?.[0] as any;
+        const line = (resp as any)?.data?.items?.[0] ?? (resp as any)?.items?.[0];
         state = toSupplierPriceState({
           unit_price: line?.unit_price ?? null,
           uom: line?.uom ?? edited.uom ?? null,
