@@ -204,10 +204,12 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
       
       if (rawSectionItems && rawSectionItems.length > 0) {
         // Normalize line items - handle qty_original/unit_cost_original fallbacks
+        // NOTE: negative qty/unit_cost are allowed (backcharges/credits to crew), so
+        // only fall back to *_original when the primary value is missing (null/undefined).
         const normalizedItems: LineItem[] = rawSectionItems.map((item: any) => {
-          const qty = (item.qty > 0 ? item.qty : (item.qty_original ?? 0));
-          const unitCost = (item.unit_cost > 0 ? item.unit_cost : (item.unit_cost_original ?? 0));
-          const lineTotal = (item.line_total > 0 ? item.line_total : (qty * unitCost));
+          const qty = (item.qty ?? item.qty_original ?? 0);
+          const unitCost = (item.unit_cost ?? item.unit_cost_original ?? 0);
+          const lineTotal = (item.line_total ?? (qty * unitCost));
           
           return {
             id: item.id || crypto.randomUUID(),
@@ -902,7 +904,12 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
                       <Input
                         type="number"
                         value={item.qty}
-                        onChange={(e) => handleUpdateItem(item.id, 'qty', parseFloat(e.target.value) || 0)}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          if (raw === '' || raw === '-') return; // allow typing negative sign
+                          const n = parseFloat(raw);
+                          handleUpdateItem(item.id, 'qty', Number.isNaN(n) ? 0 : n);
+                        }}
                         onBlur={handleSave}
                         className="h-8 text-right"
                       />
@@ -917,7 +924,12 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
                         type="number"
                         step="0.01"
                         value={item.unit_cost}
-                        onChange={(e) => handleUpdateItem(item.id, 'unit_cost', parseFloat(e.target.value) || 0)}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          if (raw === '' || raw === '-') return;
+                          const n = parseFloat(raw);
+                          handleUpdateItem(item.id, 'unit_cost', Number.isNaN(n) ? 0 : n);
+                        }}
                         onBlur={handleSave}
                         className="h-8 text-right"
                       />
@@ -963,7 +975,12 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
               <Input
                 type="number"
                 value={newItem.qty}
-                onChange={(e) => setNewItem({ ...newItem, qty: parseFloat(e.target.value) || 0 })}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === '' || raw === '-') return;
+                  const n = parseFloat(raw);
+                  setNewItem({ ...newItem, qty: Number.isNaN(n) ? 0 : n });
+                }}
                 className="h-8"
               />
             </div>
@@ -981,7 +998,12 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
                 type="number"
                 step="0.01"
                 value={newItem.unit_cost}
-                onChange={(e) => setNewItem({ ...newItem, unit_cost: parseFloat(e.target.value) || 0 })}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === '' || raw === '-') return;
+                  const n = parseFloat(raw);
+                  setNewItem({ ...newItem, unit_cost: Number.isNaN(n) ? 0 : n });
+                }}
                 className="h-8"
               />
             </div>
