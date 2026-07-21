@@ -980,73 +980,46 @@ async function opSyncPaymentStatus(ctx: Ctx, args: any): Promise<Response> {
   if (!connection) return err("no_active_connection", "No active QuickBooks connection", ctx.requestId, 400);
   requireRealmMatches(connection, args?.realm_id ?? null);
 
-  // Confirm mapping ownership
+  // Ownership check — reconciler also enforces this, but reject early for clean errors.
   const { data: mapping } = await service
     .from("qbo_entity_mapping")
     .select("pitch_entity_id")
     .eq("tenant_id", ctx.tenantId)
+    .eq("qbo_connection_id", connection.id)
     .eq("realm_id", connection.realm_id)
     .eq("qbo_entity_type", "Invoice")
     .eq("qbo_entity_id", invoiceId)
     .maybeSingle();
   if (!mapping) return err("not_found", "Invoice not mapped to this tenant", ctx.requestId, 404);
 
-  const { access_token } = await getValidAccessToken(service, ctx.tenantId);
-  const res = await fetch(
-    `${qboHost(connection)}/v3/company/${connection.realm_id}/invoice/${invoiceId}?minorversion=75&include=invoiceLink`,
-    { headers: { Authorization: `Bearer ${access_token}`, Accept: "application/json" } },
-  );
-  const tid = getIntuitTid(res);
-  void writeQboApiLog(service, {
-    action: "qbo_worker",
-    tenant_id: ctx.tenantId,
-    connection_id: connection.id,
-    realm_id: connection.realm_id,
-    oauth_app_env: connection.oauth_app_env,
-    endpoint: `/v3/company/${connection.realm_id}/invoice/${invoiceId}`,
-    method: "GET",
-    http_status: res.status,
-    intuit_tid: tid,
-    success: res.ok,
-    request_metadata: { op: "syncPaymentStatus", invoice_id: invoiceId },
+  const recon = await reconcileInvoiceFromQbo({
+    service,
+    tenantId: ctx.tenantId,
+    connection,
+    qboInvoiceId: invoiceId,
+    trigger: "worker_sync",
+    logAction: "qbo_worker",
   });
-  if (!res.ok) {
-    const b = await res.text();
-    await service.from("invoice_ar_mirror")
-      .update({ last_sync_error: `sync status=${res.status}: ${b.slice(0, 240)}`, last_synced_at: new Date().toISOString() })
-      .eq("tenant_id", ctx.tenantId).eq("realm_id", connection.realm_id).eq("qbo_invoice_id", invoiceId);
-    return err("qbo_invoice_fetch_failed", b.slice(0, 300), ctx.requestId, 502);
+
+  if (!recon.ok) {
+    return err(
+      recon.error ?? "qbo_invoice_fetch_failed",
+      `status=${recon.status} tid=${recon.intuitTid ?? "none"} class=${recon.errorClassification ?? "?"}`,
+      ctx.requestId, 502,
+      { intuit_tid: recon.intuitTid, classification: recon.errorClassification },
+    );
   }
-  const inv = (await res.json()).Invoice;
-  const balance = Number(inv.Balance ?? 0);
-  const total = Number(inv.TotalAmt ?? 0);
-  const nowIso = new Date().toISOString();
-  const isPaid = balance === 0 && total > 0;
 
-  const { data: existing } = await service
-    .from("invoice_ar_mirror")
-    .select("paid_at")
-    .eq("tenant_id", ctx.tenantId).eq("realm_id", connection.realm_id).eq("qbo_invoice_id", invoiceId)
-    .maybeSingle();
-
-  await service.from("invoice_ar_mirror")
-    .update({
-      total_amount: total,
-      balance,
-      sync_token: inv.SyncToken ?? null,
-      email_status: inv.EmailStatus ?? null,
-      qbo_status: balance > 0 ? "Open" : "Paid",
-      invoice_link: inv.InvoiceLink ?? undefined,
-      last_qbo_pull_at: nowIso,
-      last_synced_at: nowIso,
-      last_sync_error: null,
-      paid_at: isPaid ? (existing?.paid_at ?? nowIso) : null,
-    })
-    .eq("tenant_id", ctx.tenantId)
-    .eq("realm_id", connection.realm_id)
-    .eq("qbo_invoice_id", invoiceId);
-
-  return ok({ qbo_invoice_id: invoiceId, total, balance, paid: isPaid, invoice_link: inv.InvoiceLink ?? null }, ctx.requestId);
+  return ok({
+    qbo_invoice_id: invoiceId,
+    total: recon.total ?? 0,
+    balance: recon.balance ?? 0,
+    paid: !!recon.isPaid,
+    invoice_link: recon.invoiceLink ?? null,
+    invoice_link_status: recon.invoiceLinkStatus ?? "unknown",
+    invoice_link_source: recon.invoiceLinkSource ?? "unavailable",
+    intuit_tid: recon.intuitTid,
+  }, ctx.requestId);
 }
 
 // =============================================================
@@ -1059,41 +1032,32 @@ async function opRefreshAr(ctx: Ctx, _args: any): Promise<Response> {
 
   const { data: mappings } = await service
     .from("qbo_entity_mapping")
-    .select("qbo_entity_id, pitch_entity_id")
+    .select("qbo_entity_id")
     .eq("tenant_id", ctx.tenantId)
+    .eq("qbo_connection_id", connection.id)
     .eq("realm_id", connection.realm_id)
     .eq("qbo_entity_type", "Invoice")
     .limit(50);
 
-  const { access_token } = await getValidAccessToken(service, ctx.tenantId);
   const results: any[] = [];
   for (const m of mappings ?? []) {
-    try {
-      const res = await fetch(
-        `${qboHost(connection)}/v3/company/${connection.realm_id}/invoice/${m.qbo_entity_id}?minorversion=75`,
-        { headers: { Authorization: `Bearer ${access_token}`, Accept: "application/json" } },
-      );
-      if (!res.ok) {
-        results.push({ qbo_invoice_id: m.qbo_entity_id, ok: false, status: res.status });
-        continue;
-      }
-      const inv = (await res.json()).Invoice;
-      await service.from("invoice_ar_mirror")
-        .update({
-          total_amount: Number(inv.TotalAmt ?? 0),
-          balance: Number(inv.Balance ?? 0),
-          sync_token: inv.SyncToken ?? null,
-          email_status: inv.EmailStatus ?? null,
-          qbo_status: inv.Balance > 0 ? "Open" : "Paid",
-          last_qbo_pull_at: new Date().toISOString(),
-        })
-        .eq("tenant_id", ctx.tenantId)
-        .eq("realm_id", connection.realm_id)
-        .eq("qbo_invoice_id", m.qbo_entity_id);
-      results.push({ qbo_invoice_id: m.qbo_entity_id, ok: true, total: inv.TotalAmt, balance: inv.Balance });
-    } catch (e) {
-      results.push({ qbo_invoice_id: m.qbo_entity_id, ok: false, error: e instanceof Error ? e.message : String(e) });
-    }
+    const recon = await reconcileInvoiceFromQbo({
+      service,
+      tenantId: ctx.tenantId,
+      connection,
+      qboInvoiceId: m.qbo_entity_id as string,
+      trigger: "worker_refresh",
+      logAction: "qbo_worker",
+    });
+    results.push({
+      qbo_invoice_id: m.qbo_entity_id,
+      ok: recon.ok,
+      status: recon.status,
+      total: recon.total ?? null,
+      balance: recon.balance ?? null,
+      paid: !!recon.isPaid,
+      invoice_link_status: recon.invoiceLinkStatus ?? "unknown",
+    });
   }
   return ok({ refreshed: results.length, results }, ctx.requestId);
 }
