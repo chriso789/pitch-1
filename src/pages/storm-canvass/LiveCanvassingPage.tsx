@@ -674,6 +674,7 @@ export default function LiveCanvassingPage() {
           <AddressSearchBar
             userLocation={userLocation || NEUTRAL_FALLBACK}
             onAddressSelect={handleAddressSelect}
+            dropdownPlacement="below"
           />
         </div>
 

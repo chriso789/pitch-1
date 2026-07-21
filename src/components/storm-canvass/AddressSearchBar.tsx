@@ -7,6 +7,7 @@ import { locationService } from '@/services/locationService';
 interface AddressSearchBarProps {
   userLocation: { lat: number; lng: number };
   onAddressSelect: (place: PlaceResult) => void;
+  dropdownPlacement?: 'auto' | 'above' | 'below';
 }
 
 interface PlaceResult {
@@ -21,12 +22,20 @@ interface PlaceResult {
   };
 }
 
-export default function AddressSearchBar({ userLocation, onAddressSelect }: AddressSearchBarProps) {
+export default function AddressSearchBar({ userLocation, onAddressSelect, dropdownPlacement = 'auto' }: AddressSearchBarProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [suggestions, setSuggestions] = useState<PlaceResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const debounceTimer = useRef<NodeJS.Timeout | null>(null);
+  const sessionTokenRef = useRef<string>(crypto.randomUUID());
+
+  const dropdownPositionClass =
+    dropdownPlacement === 'below'
+      ? 'top-full mt-1'
+      : dropdownPlacement === 'above'
+        ? 'bottom-full mb-1'
+        : 'bottom-full mb-1 md:bottom-auto md:top-full md:mt-1 md:mb-0';
 
   useEffect(() => {
     if (searchQuery.length < 3) {
@@ -49,6 +58,9 @@ export default function AddressSearchBar({ userLocation, onAddressSelect }: Addr
               input: searchQuery,
               types: 'address',
               components: 'country:us',
+              location: `${userLocation.lat},${userLocation.lng}`,
+              radius: '50000',
+              sessiontoken: sessionTokenRef.current,
             },
           },
         });
@@ -96,6 +108,7 @@ export default function AddressSearchBar({ userLocation, onAddressSelect }: Addr
       setSearchQuery(place.structured_formatting.main_text);
       setOpen(false);
       setSuggestions([]);
+      sessionTokenRef.current = crypto.randomUUID();
     } catch (error) {
       console.error('Place details error:', error);
     } finally {
@@ -137,7 +150,7 @@ export default function AddressSearchBar({ userLocation, onAddressSelect }: Addr
         screens render it below the input as usual.
       */}
       {open && suggestions.length > 0 && (
-        <CommandList className="absolute left-0 right-0 z-50 max-h-80 overflow-y-auto rounded-md border bg-popover shadow-lg bottom-full mb-1 md:bottom-auto md:top-full md:mt-1 md:mb-0">
+        <CommandList className={`absolute left-0 right-0 z-[70] max-h-80 overflow-y-auto rounded-md border bg-popover shadow-lg ${dropdownPositionClass}`}>
           <CommandGroup>
             {suggestions.map((place) => {
               const distance = calculateDistanceToPlace(place);
@@ -168,7 +181,7 @@ export default function AddressSearchBar({ userLocation, onAddressSelect }: Addr
       )}
 
       {open && !isLoading && suggestions.length === 0 && searchQuery.length >= 3 && (
-        <CommandList className="absolute left-0 right-0 z-50 rounded-md border bg-popover shadow-lg bottom-full mb-1 md:bottom-auto md:top-full md:mt-1 md:mb-0">
+        <CommandList className={`absolute left-0 right-0 z-[70] rounded-md border bg-popover shadow-lg ${dropdownPositionClass}`}>
           <CommandEmpty className="p-4 text-sm text-muted-foreground text-center">
             No results found
           </CommandEmpty>
