@@ -55799,6 +55799,8 @@ export type Database = {
           portal_show_documents: boolean | null
           portal_show_messages: boolean | null
           portal_show_photos: boolean | null
+          srs_debug_mode: boolean
+          srs_environment: string
           tenant_id: string | null
           updated_at: string | null
           zelle_display_name: string | null
@@ -55818,6 +55820,8 @@ export type Database = {
           portal_show_documents?: boolean | null
           portal_show_messages?: boolean | null
           portal_show_photos?: boolean | null
+          srs_debug_mode?: boolean
+          srs_environment?: string
           tenant_id?: string | null
           updated_at?: string | null
           zelle_display_name?: string | null
@@ -55837,6 +55841,8 @@ export type Database = {
           portal_show_documents?: boolean | null
           portal_show_messages?: boolean | null
           portal_show_photos?: boolean | null
+          srs_debug_mode?: boolean
+          srs_environment?: string
           tenant_id?: string | null
           updated_at?: string | null
           zelle_display_name?: string | null
