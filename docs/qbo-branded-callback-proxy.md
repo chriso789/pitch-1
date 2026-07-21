@@ -21,51 +21,45 @@ https://alxelfrbjzkmtnsulcei.supabase.co/functions/v1/qbo-oauth-connect/callback
 - After the edge function finishes, it redirects the browser to
   `https://pitch-crm.ai/settings/integrations?provider=qbo&status=...`.
 
-## Option A — Cloudflare Worker (recommended)
+## Current status
 
-DNS:
+- Intuit dashboard → **Production → Redirect URIs** should contain exactly:
+  `https://api.pitch-crm.ai/qbo/callback`
+- The Pitch edge function (`qbo-oauth-connect`) already defaults to this branded URI for production.
+- The missing piece is making `api.pitch-crm.ai/qbo/callback` reachable on the public internet.
 
-1. Add an `A`/`AAAA` or `CNAME` record for `api.pitch-crm.ai` pointing at Cloudflare (orange-cloud proxied).
-2. In the Cloudflare dashboard: **Workers & Pages → Create Worker → Deploy** using the script below.
-3. **Triggers → Custom Domains** → add `api.pitch-crm.ai`.
+## How to make the proxy live
 
-Worker script (`workers/qbo-callback.js`):
+### Option A — Cloudflare Worker (recommended)
 
-```js
-const UPSTREAM = "https://alxelfrbjzkmtnsulcei.supabase.co/functions/v1/qbo-oauth-connect/callback";
+You need two things: DNS for `api.pitch-crm.ai` and a Worker that forwards to Supabase.
 
-export default {
-  async fetch(request) {
-    const url = new URL(request.url);
-    if (url.pathname !== "/qbo/callback") {
-      return new Response("Not Found", { status: 404 });
-    }
+1. **DNS**
+   - In your DNS host (usually Cloudflare if `pitch-crm.ai` is orange-cloud), add a record for `api.pitch-crm.ai`.
+   - If using Cloudflare: create a `CNAME` from `api` to `cloudflareworkers.com` (or your Cloudflare account target) and keep the proxy enabled (orange cloud).
+   - If your DNS is elsewhere: point `api.pitch-crm.ai` to Cloudflare nameservers first, or create an `A`/`AAAA` record to the Worker once the custom domain is assigned.
 
-    // Preserve the full query string verbatim.
-    const upstream = new URL(UPSTREAM);
-    upstream.search = url.search;
+2. **Worker**
+   - Go to **Cloudflare dashboard → Workers & Pages → Create a Service / Worker**.
+   - Paste the contents of `workers/qbo-callback.js` from this repo.
+   - Deploy.
 
-    // Server-side forward. `redirect: "manual"` lets the edge function's
-    // final 302 to /settings/integrations reach the browser unchanged.
-    const upstreamResp = await fetch(upstream.toString(), {
-      method: request.method,
-      headers: request.headers,
-      redirect: "manual",
-    });
+3. **Custom domain trigger**
+   - In the Worker, go to **Triggers → Custom Domains**.
+   - Add `api.pitch-crm.ai`.
+   - Cloudflare will issue a certificate; wait until the domain shows **Active**.
 
-    return new Response(upstreamResp.body, {
-      status: upstreamResp.status,
-      headers: upstreamResp.headers,
-    });
-  },
-};
-```
+4. **Verify**
+   ```bash
+   curl -I "https://api.pitch-crm.ai/qbo/callback?code=test&state=test&realmId=test"
+   ```
+   You should get **HTTP 401** (the Supabase edge function rejects the fake state) — not a DNS error, not a 404 from Cloudflare, and not a browser HTML page.
 
-## Option B — Supabase Edge Functions Custom Domain
+### Option B — Supabase Edge Functions Custom Domain
 
 If you're on Supabase Pro+, you can map a custom domain (`api.pitch-crm.ai`) directly to the Edge Functions router and route `/qbo/callback` to the existing function via a rewrite. See <https://supabase.com/docs/guides/functions/custom-domains>. No Worker required, but you lose the ability to add other Pitch API routes on the same host later without more config.
 
-## Option C — Vercel / Next.js route
+### Option C — Vercel / Next.js route
 
 If you already host a marketing site at `pitch-crm.ai` on Vercel, add:
 
@@ -81,9 +75,11 @@ export async function GET(req: Request) {
 }
 ```
 
-Then either point `api.pitch-crm.ai` at Vercel, or save the Intuit Production Redirect URI as `https://pitch-crm.ai/api/qbo/callback` and update `QBO_REDIRECT_URI_PRODUCTION` to match exactly.
+Then either point `api.pitch-crm.ai` at Vercel, or change the Intuit Production Redirect URI to `https://pitch-crm.ai/api/qbo/callback` and update `QBO_REDIRECT_URI_PRODUCTION` to match.
 
 ## Backend secrets
+
+Set these in your Supabase project secrets (Edge Function settings):
 
 ```
 QBO_REDIRECT_URI_PRODUCTION = https://api.pitch-crm.ai/qbo/callback
@@ -94,7 +90,7 @@ The Pitch code defaults to the branded URL in production even if the secret is u
 
 ## Verification checklist
 
-- [ ] `curl -I https://api.pitch-crm.ai/qbo/callback?code=x&state=y&realmId=z` returns a 2xx or a 302 from the upstream edge function (not a 404 / 5xx from Cloudflare).
+- [ ] `curl -I "https://api.pitch-crm.ai/qbo/callback?code=x&state=y&realmId=z"` returns **HTTP 401** from the upstream edge function (not DNS error, not 404, not HTML).
 - [ ] The proxy does **not** rewrite the query string.
 - [ ] Intuit dashboard → **Production → Redirect URIs** shows `https://api.pitch-crm.ai/qbo/callback` exactly (no trailing slash).
 - [ ] A tenant OAuth run lands on `https://pitch-crm.ai/settings/integrations?provider=qbo&status=connected` and a row appears in `qbo_connections` for the initiating `tenant_id`.
