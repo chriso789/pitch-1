@@ -751,7 +751,24 @@ async function opCreateInvoice(ctx: Ctx, args: any): Promise<Response> {
     return err("qbo_invoice_create_failed", `QBO error [status=${res.status} tid=${tid ?? "none"}]: ${body.slice(0, 400)}`, ctx.requestId, 502, { intuit_tid: tid });
   }
   const j = await res.json();
-  const invoice = j.Invoice;
+  let invoice = j.Invoice;
+
+  // Re-fetch with include=invoiceLink to capture the hosted payment URL.
+  // QBO only returns InvoiceLink on the enriched read, not the create response.
+  let invoiceLink: string | null = null;
+  try {
+    const linkRes = await fetch(
+      `${qboHost(connection)}/v3/company/${connection.realm_id}/invoice/${invoice.Id}?minorversion=75&include=invoiceLink`,
+      { headers: { Authorization: `Bearer ${access_token}`, Accept: "application/json" } },
+    );
+    if (linkRes.ok) {
+      const linkJson = await linkRes.json();
+      if (linkJson?.Invoice) invoice = linkJson.Invoice;
+      invoiceLink = invoice?.InvoiceLink ?? null;
+    }
+  } catch (_e) { /* non-fatal — link is best-effort */ }
+
+  const invoiceType: string = (args?.invoice_type as string | undefined) ?? "other";
 
   // Persist invoice mapping (separate row — no overwrite of Customer/Project mappings)
   await service.from("qbo_entity_mapping").upsert({
@@ -767,11 +784,13 @@ async function opCreateInvoice(ctx: Ctx, args: any): Promise<Response> {
     qbo_doc_number: invoice.DocNumber ?? null,
     pitch_project_number: String(projectNumber ?? ""),
     sync_token: invoice.SyncToken ?? null,
-    metadata: { estimate_id: estimate.id },
+    metadata: { estimate_id: estimate.id, invoice_link: invoiceLink },
     updated_at: new Date().toISOString(),
   }, { onConflict: "tenant_id,qbo_connection_id,realm_id,pitch_entity_type,pitch_entity_id,qbo_entity_type" });
 
   // AR mirror upsert — one row per QBO invoice (never overwrites project)
+  const nowIso = new Date().toISOString();
+  const isPaid = Number(invoice.Balance ?? 0) === 0 && Number(invoice.TotalAmt ?? 0) > 0;
   await service.from("invoice_ar_mirror").upsert({
     tenant_id: ctx.tenantId,
     qbo_connection_id: connection.id,
@@ -787,7 +806,15 @@ async function opCreateInvoice(ctx: Ctx, args: any): Promise<Response> {
     due_date: invoice.DueDate ?? null,
     email_status: invoice.EmailStatus ?? "NotSet",
     qbo_status: invoice.EmailStatus ?? "NotSent",
-    last_qbo_pull_at: new Date().toISOString(),
+    invoice_link: invoiceLink,
+    invoice_type: invoiceType,
+    allow_online_cc: true,
+    allow_online_ach: true,
+    last_qbo_pull_at: nowIso,
+    last_synced_at: nowIso,
+    last_sync_error: null,
+    paid_at: isPaid ? nowIso : null,
+    created_by: ctx.userId ?? null,
   }, { onConflict: "tenant_id,qbo_connection_id,realm_id,qbo_invoice_id" });
 
   return ok({
@@ -795,6 +822,8 @@ async function opCreateInvoice(ctx: Ctx, args: any): Promise<Response> {
     doc_number: invoice.DocNumber,
     total: invoice.TotalAmt,
     balance: invoice.Balance,
+    invoice_link: invoiceLink,
+    invoice_type: invoiceType,
     mapping_mode: "sub_customer_job",
     project_number: projectNumber,
     unmapped_job_type_codes: unmapped,
