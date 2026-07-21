@@ -84,7 +84,9 @@ export function QuickbooksAdminSurfaces() {
   const [stats, setStats] = useState<TenantConnectionStat[]>([]);
   const [loading, setLoading] = useState(true);
   const [webhookUrl, setWebhookUrl] = useState<string>("");
-  const productionRedirectUri = "https://alxelfrbjzkmtnsulcei.supabase.co/functions/v1/qbo-oauth-connect/callback";
+  const productionRedirectUri = "https://api.pitch-crm.ai/qbo/callback";
+  const developmentRedirectUri = "https://alxelfrbjzkmtnsulcei.supabase.co/functions/v1/qbo-oauth-connect/callback";
+
 
   useEffect(() => {
     const projectRef = (import.meta as any).env?.VITE_SUPABASE_PROJECT_ID ?? "";
@@ -186,16 +188,32 @@ export function QuickbooksAdminSurfaces() {
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-3 text-sm">
-            <div className="font-medium">Intuit Production Redirect URI</div>
+            <div className="font-medium">Intuit Redirect URIs</div>
             <div className="mt-1 text-xs text-muted-foreground">
-              Save this exact URL under Intuit <span className="font-medium">Settings → Redirect URIs → Production</span>.
-              Do not add it again under Development; Intuit may show a generic “Failed to save” error there if the URL is
-              already present, duplicated, or being saved in the wrong environment.
+              Save these exact URLs in the Intuit app under{" "}
+              <span className="font-medium">Settings → Redirect URIs</span>.
+              Production must use the branded Pitch SaaS domain (Intuit rejects raw
+              infra hosts like <code>*.supabase.co</code> for production). The
+              branded URL is a thin server-side proxy that forwards to the
+              Supabase Edge Function.
             </div>
-            <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
-              <code className="flex-1 rounded border bg-background px-2 py-1 text-xs">{productionRedirectUri}</code>
-              <Button size="sm" variant="outline" onClick={() => copy(productionRedirectUri, "Production redirect URI")}>Copy</Button>
+            <div className="mt-3 space-y-2">
+              <div className="text-xs font-medium">Production</div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <code className="flex-1 rounded border bg-background px-2 py-1 text-xs">{productionRedirectUri}</code>
+                <Button size="sm" variant="outline" onClick={() => copy(productionRedirectUri, "Production redirect URI")}>Copy</Button>
+              </div>
+              <div className="text-xs font-medium pt-2">Development / Sandbox</div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <code className="flex-1 rounded border bg-background px-2 py-1 text-xs">{developmentRedirectUri}</code>
+                <Button size="sm" variant="outline" onClick={() => copy(developmentRedirectUri, "Development redirect URI")}>Copy</Button>
+              </div>
             </div>
+            <div className="mt-3 rounded border border-amber-500/40 bg-amber-50/50 px-2 py-1.5 text-[11px] text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              <span className="font-medium">Proxy required for production:</span>{" "}
+              <code>api.pitch-crm.ai/qbo/callback</code> must be live before saving in Intuit. It must preserve <code>code</code>, <code>state</code>, <code>realmId</code>, <code>error</code>, <code>error_description</code> exactly and forward server-side (no browser redirect) to <code>{developmentRedirectUri.replace("callback", "callback")}</code>.
+            </div>
+
           </div>
           {statusError && (
             <div className="rounded-md border border-amber-500/40 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
