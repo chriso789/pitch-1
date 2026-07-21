@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Papa from "papaparse";
 import { MaterialImportAuditDialog } from "@/components/materials/MaterialImportAuditDialog";
+import { SupplierMappingPanel } from "@/components/materials/SupplierMappingPanel";
 
 interface Material {
   id: string;
