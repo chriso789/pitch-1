@@ -66,7 +66,6 @@ const JOB_TYPE_TEMPLATE: Array<{ code: string; label: string; description: strin
   { code: "exterior_paint", label: "Exterior Paint", description: "Exterior painting work" },
   { code: "handyman", label: "Handyman", description: "General handyman services" },
   { code: "solar", label: "Solar", description: "Solar install and service" },
-  { code: "insurance_supplement", label: "Insurance Supplement", description: "Supplement billing to carriers" },
 ];
 
 interface TenantConnectionStat {
