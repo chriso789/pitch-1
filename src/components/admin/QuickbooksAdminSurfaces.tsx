@@ -127,16 +127,20 @@ export function QuickbooksAdminSurfaces() {
 
   const secretRows = useMemo(
     () => [
-      { key: "QBO_CLIENT_ID_PRODUCTION", label: "Production client ID" },
-      { key: "QBO_CLIENT_SECRET_PRODUCTION", label: "Production client secret" },
-      { key: "QBO_REDIRECT_URI_PRODUCTION", label: "Production redirect URI" },
-      { key: "QBO_CLIENT_ID_SANDBOX", label: "Sandbox client ID" },
-      { key: "QBO_CLIENT_SECRET_SANDBOX", label: "Sandbox client secret" },
-      { key: "QBO_REDIRECT_URI_SANDBOX", label: "Sandbox redirect URI" },
-      { key: "QBO_WEBHOOK_VERIFIER_TOKEN", label: "Webhook verifier token" },
+      { key: "QBO_CLIENT_ID_DEVELOPMENT", label: "Sandbox / Development client ID", group: "Sandbox / Development" },
+      { key: "QBO_CLIENT_SECRET_DEVELOPMENT", label: "Sandbox / Development client secret", group: "Sandbox / Development" },
+      { key: "QBO_REDIRECT_URI_DEVELOPMENT", label: "Sandbox / Development redirect URI", group: "Sandbox / Development" },
+      { key: "QBO_WEBHOOK_VERIFIER_DEVELOPMENT", label: "Sandbox / Development webhook verifier", group: "Sandbox / Development" },
+      { key: "QBO_CLIENT_ID_PRODUCTION", label: "Production client ID", group: "Production" },
+      { key: "QBO_CLIENT_SECRET_PRODUCTION", label: "Production client secret", group: "Production" },
+      { key: "QBO_REDIRECT_URI_PRODUCTION", label: "Production redirect URI", group: "Production" },
+      { key: "QBO_WEBHOOK_VERIFIER_PRODUCTION", label: "Production webhook verifier", group: "Production" },
+      { key: "QBO_DEFAULT_ENVIRONMENT", label: "Default environment", group: "General" },
+      { key: "QBO_APP_BASE_URL", label: "App base URL", group: "General" },
     ],
     [],
   );
+  const [fallbackInUse, setFallbackInUse] = useState<Record<string, boolean> | null>(null);
 
   const copy = async (value: string, label: string) => {
     try {
