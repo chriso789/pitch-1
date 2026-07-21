@@ -107,6 +107,7 @@ export function QuickbooksAdminSurfaces() {
         if (error) throw error;
         const payload = (data as any)?.data ?? data;
         setSecrets(payload?.secrets ?? null);
+        setFallbackInUse(payload?.fallback_in_use ?? null);
         setStats(Array.isArray(payload?.connections) ? payload.connections : []);
       } catch (e: any) {
         if (!cancelled) {
