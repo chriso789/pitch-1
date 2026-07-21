@@ -75,11 +75,12 @@ export function getQboContextForMode(mode: QboMode): QboContext {
   const webhookVerifier = splitVerifier ?? legacyVerifier ?? "";
   const configuredRedirectUri = splitRedirect ?? legacyRedirect;
   // Production OAuth must use the exact callback saved in the Intuit dashboard.
-  // The saved production redirect is currently the Supabase Edge Function
-  // callback, so do not substitute the branded SPA/static callback here.
+  // Prefer the explicitly configured secret; otherwise fall back to the
+  // branded Pitch production callback (see PRODUCTION_REDIRECT_URI_DEFAULT).
   const redirectUri = mode === "production"
-    ? PRODUCTION_REDIRECT_URI
+    ? (configuredRedirectUri ?? PRODUCTION_REDIRECT_URI_DEFAULT)
     : configuredRedirectUri;
+
 
   const usedLegacyFallback =
     (!splitClientId && !!legacyClientId) ||
