@@ -354,8 +354,12 @@ Deno.serve(async (req) => {
       project: newProject,
       project_id: newProject.id,
       project_job_number: newProject.project_number,
+      qbo_sync: qboSync,
       message: `Successfully converted lead to project ${newProject.project_number}`
     }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
