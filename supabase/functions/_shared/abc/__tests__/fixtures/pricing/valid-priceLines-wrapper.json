@@ -1,0 +1,5 @@
+{
+  "priceLines": [
+    { "id": "L1", "itemNumber": "SHNGL-WW", "unitOfMeasure": "BUNDLE", "quantity": 20, "price": 45.5, "code": "OK" }
+  ]
+}
