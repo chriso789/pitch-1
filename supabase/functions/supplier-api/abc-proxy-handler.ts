@@ -17,6 +17,10 @@ import {
   type PriceHistoryLineInput,
   type PricingRunStatus,
 } from "../_shared/supplier-pricing-history.ts";
+import {
+  searchAbcCatalog,
+  getAbcCatalogItem,
+} from "../_shared/abc/catalogService.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
