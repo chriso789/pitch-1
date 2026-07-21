@@ -84,6 +84,7 @@ export function QuickbooksAdminSurfaces() {
   const [stats, setStats] = useState<TenantConnectionStat[]>([]);
   const [loading, setLoading] = useState(true);
   const [webhookUrl, setWebhookUrl] = useState<string>("");
+  const productionRedirectUri = "https://pitch-crm.ai/quickbooks-callback.html";
 
   useEffect(() => {
     const projectRef = (import.meta as any).env?.VITE_SUPABASE_PROJECT_ID ?? "";
@@ -184,6 +185,17 @@ export function QuickbooksAdminSurfaces() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
+          <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-3 text-sm">
+            <div className="font-medium">Intuit Production Redirect URI</div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              Save this exact static callback file in the Intuit Production Redirect URLs. Do not use the SPA route
+              <code className="mx-1 rounded bg-muted px-1">/quickbooks/callback</code> or the raw Supabase function URL.
+            </div>
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+              <code className="flex-1 rounded border bg-background px-2 py-1 text-xs">{productionRedirectUri}</code>
+              <Button size="sm" variant="outline" onClick={() => copy(productionRedirectUri, "Production redirect URI")}>Copy</Button>
+            </div>
+          </div>
           {statusError && (
             <div className="rounded-md border border-amber-500/40 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
               Couldn't read live secret status ({statusError}). Rows below show{" "}

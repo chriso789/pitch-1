@@ -24,11 +24,7 @@ export interface QboContext {
 
 const PROD_HOST = "https://quickbooks.api.intuit.com";
 const SANDBOX_HOST = "https://sandbox-quickbooks.api.intuit.com";
-const PRODUCTION_BRANDED_CALLBACK = "https://pitch-crm.ai/quickbooks/callback";
-
-function isEdgeFunctionCallback(uri: string | undefined): boolean {
-  return !!uri && /supabase\.co\/functions\/v1\/qbo-oauth-connect\/callback/i.test(uri);
-}
+const PRODUCTION_BRANDED_CALLBACK = "https://pitch-crm.ai/quickbooks-callback.html";
 
 function env(name: string): string | undefined {
   const v = Deno.env.get(name);
@@ -62,11 +58,12 @@ export function getQboContextForMode(mode: QboMode): QboContext {
   const clientSecret = splitClientSecret ?? legacyClientSecret;
   const webhookVerifier = splitVerifier ?? legacyVerifier ?? "";
   const configuredRedirectUri = splitRedirect ?? legacyRedirect;
-  // Intuit's production app settings can reject the raw Supabase Edge Function
-  // URL. For production OAuth, advertise the branded public callback that is
-  // registered with Intuit; the React callback page forwards the returned code
-  // to qbo-oauth-connect/callback so the token exchange still happens server-side.
-  const redirectUri = mode === "production" && isEdgeFunctionCallback(configuredRedirectUri)
+  // Intuit's production app settings can reject raw Supabase Edge Function URLs
+  // and has also been flaky with SPA fallback-only routes. For production OAuth,
+  // advertise the real static callback file registered with Intuit; that page
+  // forwards the returned code to qbo-oauth-connect/callback so the exchange
+  // still happens server-side with the same redirect_uri value.
+  const redirectUri = mode === "production"
     ? PRODUCTION_BRANDED_CALLBACK
     : configuredRedirectUri;
 
