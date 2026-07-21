@@ -315,6 +315,21 @@ function colorLabel(c: ApprovedMappingColor | null): string | null {
   return c.displayName ?? c.rawName ?? c.code ?? null;
 }
 
+/**
+ * Extract the approved catalog snapshot from a mapping decision. We prefer
+ * the normalized parent (which carries `isDimensional`/`lengths`); fall back
+ * to the resolved child's source when only the child snapshot is present.
+ */
+function resolvedProductSnapshot(
+  md: ResolvedAbcMappingDecision,
+): { isDimensional?: boolean | null; lengths?: string[] } | null {
+  const snap = md.sourceSnapshots;
+  if (!snap) return null;
+  if (snap.normalizedProduct) return snap.normalizedProduct;
+  if (snap.resolvedChild?.source) return snap.resolvedChild.source;
+  return null;
+}
+
 // ---------- Preflight ----------
 
 export function validateAbcOrderInput(
