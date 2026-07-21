@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Papa from "papaparse";
 import { MaterialImportAuditDialog } from "@/components/materials/MaterialImportAuditDialog";
+import { SupplierMappingPanel } from "@/components/materials/SupplierMappingPanel";
 
 interface Material {
   id: string;
@@ -305,6 +306,7 @@ export function MaterialCatalogManager() {
         <TabsList>
           <TabsTrigger value="materials">Catalog ({filteredMaterials.length})</TabsTrigger>
           <TabsTrigger value="suppliers">Supplier Catalog</TabsTrigger>
+          <TabsTrigger value="supplier-mapping">Supplier Mapping</TabsTrigger>
         </TabsList>
 
         <TabsContent value="materials" className="space-y-4">
@@ -468,6 +470,10 @@ export function MaterialCatalogManager() {
 
         <TabsContent value="suppliers" className="space-y-4">
           <SupplierCatalog />
+        </TabsContent>
+
+        <TabsContent value="supplier-mapping" className="space-y-4">
+          <SupplierMappingPanel />
         </TabsContent>
       </Tabs>
     </div>
