@@ -71,10 +71,7 @@ export function getQboContextForMode(mode: QboMode): QboContext {
   // advertise the real static callback file registered with Intuit; that page
   // forwards the returned code to qbo-oauth-connect/callback so the exchange
   // still happens server-side with the same redirect_uri value.
-  const redirectUri = mode === "production" && (
-    isEdgeFunctionCallback(configuredRedirectUri) ||
-    isDeprecatedBrandedCallback(configuredRedirectUri)
-  )
+  const redirectUri = mode === "production"
     ? PRODUCTION_BRANDED_CALLBACK
     : configuredRedirectUri;
 
