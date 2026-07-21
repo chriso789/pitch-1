@@ -8,10 +8,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { createHmac } from "https://deno.land/std@0.177.0/node/crypto.ts";
-import { qboHost } from "../_shared/qbo-host.ts";
 import { qboWebhookVerifiers, type QboMode } from "../_shared/qbo-context.ts";
-import { getIntuitTid } from "../_shared/qbo-intuit-tid.ts";
-import { writeQboApiLog } from "../_shared/qbo-api.ts";
 import { reconcileInvoiceFromQbo, reconcilePaymentFromQbo, appendReconciliationEvent } from "../_shared/qbo/reconciler.ts";
 
 const corsHeaders = {
