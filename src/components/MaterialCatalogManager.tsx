@@ -470,6 +470,10 @@ export function MaterialCatalogManager() {
         <TabsContent value="suppliers" className="space-y-4">
           <SupplierCatalog />
         </TabsContent>
+
+        <TabsContent value="supplier-mapping" className="space-y-4">
+          <SupplierMappingPanel />
+        </TabsContent>
       </Tabs>
     </div>
   );
