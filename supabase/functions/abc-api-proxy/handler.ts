@@ -10,6 +10,10 @@
 //   POST {apiBase}/product/v1/search/items          - product search
 //   GET  {apiBase}/product/v1/items/{itemNumber}    - get item
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
+import {
+  searchAbcCatalog,
+  getAbcCatalogItem,
+} from "../_shared/abc/catalogService.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
