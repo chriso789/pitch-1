@@ -24,7 +24,10 @@ export interface QboContext {
 
 const PROD_HOST = "https://quickbooks.api.intuit.com";
 const SANDBOX_HOST = "https://sandbox-quickbooks.api.intuit.com";
-const PRODUCTION_BRANDED_CALLBACK = "https://pitch-crm.ai/quickbooks-callback.html";
+// Must exactly match the Redirect URI currently saved in the Intuit app.
+// Intuit rejects the OAuth flow when the authorize URL's redirect_uri differs
+// from the saved value, even if both URLs ultimately forward to the same place.
+const PRODUCTION_REDIRECT_URI = "https://alxelfrbjzkmtnsulcei.supabase.co/functions/v1/qbo-oauth-connect/callback";
 
 function env(name: string): string | undefined {
   const v = Deno.env.get(name);
@@ -58,13 +61,11 @@ export function getQboContextForMode(mode: QboMode): QboContext {
   const clientSecret = splitClientSecret ?? legacyClientSecret;
   const webhookVerifier = splitVerifier ?? legacyVerifier ?? "";
   const configuredRedirectUri = splitRedirect ?? legacyRedirect;
-  // Intuit's production app settings can reject raw Supabase Edge Function URLs
-  // and has also been flaky with SPA fallback-only routes. For production OAuth,
-  // advertise the real static callback file registered with Intuit; that page
-  // forwards the returned code to qbo-oauth-connect/callback so the exchange
-  // still happens server-side with the same redirect_uri value.
+  // Production OAuth must use the exact callback saved in the Intuit dashboard.
+  // The saved production redirect is currently the Supabase Edge Function
+  // callback, so do not substitute the branded SPA/static callback here.
   const redirectUri = mode === "production"
-    ? PRODUCTION_BRANDED_CALLBACK
+    ? PRODUCTION_REDIRECT_URI
     : configuredRedirectUri;
 
   const usedLegacyFallback =

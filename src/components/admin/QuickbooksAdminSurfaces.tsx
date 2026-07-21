@@ -84,7 +84,7 @@ export function QuickbooksAdminSurfaces() {
   const [stats, setStats] = useState<TenantConnectionStat[]>([]);
   const [loading, setLoading] = useState(true);
   const [webhookUrl, setWebhookUrl] = useState<string>("");
-  const productionRedirectUri = "https://pitch-crm.ai/quickbooks-callback.html";
+  const productionRedirectUri = "https://alxelfrbjzkmtnsulcei.supabase.co/functions/v1/qbo-oauth-connect/callback";
 
   useEffect(() => {
     const projectRef = (import.meta as any).env?.VITE_SUPABASE_PROJECT_ID ?? "";

@@ -39,9 +39,10 @@ Deno.test("getQboContextForMode resolves split production credentials", () => {
   assertEquals(ctx.mode, "production");
   assertEquals(ctx.accountingBaseUrl, "https://quickbooks.api.intuit.com");
   assertEquals(ctx.clientId, "prod_id");
+  assertEquals(ctx.redirectUri, "https://alxelfrbjzkmtnsulcei.supabase.co/functions/v1/qbo-oauth-connect/callback");
 });
 
-Deno.test("production Supabase function redirect is replaced with branded callback", () => {
+Deno.test("production uses the saved Supabase function redirect", () => {
   clearAll();
   Deno.env.set("QBO_CLIENT_ID_PRODUCTION", "prod_id");
   Deno.env.set("QBO_CLIENT_SECRET_PRODUCTION", "prod_secret");
@@ -51,27 +52,27 @@ Deno.test("production Supabase function redirect is replaced with branded callba
   );
 
   const ctx = getQboContextForMode("production");
-  assertEquals(ctx.redirectUri, "https://pitch-crm.ai/quickbooks-callback.html");
+  assertEquals(ctx.redirectUri, "https://alxelfrbjzkmtnsulcei.supabase.co/functions/v1/qbo-oauth-connect/callback");
 });
 
-Deno.test("production SPA fallback redirect is replaced with static callback", () => {
+Deno.test("production ignores stale SPA fallback redirect secret", () => {
   clearAll();
   Deno.env.set("QBO_CLIENT_ID_PRODUCTION", "prod_id");
   Deno.env.set("QBO_CLIENT_SECRET_PRODUCTION", "prod_secret");
   Deno.env.set("QBO_REDIRECT_URI_PRODUCTION", "https://pitch-crm.ai/quickbooks/callback");
 
   const ctx = getQboContextForMode("production");
-  assertEquals(ctx.redirectUri, "https://pitch-crm.ai/quickbooks-callback.html");
+  assertEquals(ctx.redirectUri, "https://alxelfrbjzkmtnsulcei.supabase.co/functions/v1/qbo-oauth-connect/callback");
 });
 
-Deno.test("production redirect is static even when configured secret is stale", () => {
+Deno.test("production redirect matches Intuit saved callback even when configured secret is stale", () => {
   clearAll();
   Deno.env.set("QBO_CLIENT_ID_PRODUCTION", "prod_id");
   Deno.env.set("QBO_CLIENT_SECRET_PRODUCTION", "prod_secret");
   Deno.env.set("QBO_REDIRECT_URI_PRODUCTION", "https://old.example.com/callback");
 
   const ctx = getQboContextForMode("production");
-  assertEquals(ctx.redirectUri, "https://pitch-crm.ai/quickbooks-callback.html");
+  assertEquals(ctx.redirectUri, "https://alxelfrbjzkmtnsulcei.supabase.co/functions/v1/qbo-oauth-connect/callback");
 });
 
 Deno.test("falls back to legacy single-pair env vars when split missing", () => {
