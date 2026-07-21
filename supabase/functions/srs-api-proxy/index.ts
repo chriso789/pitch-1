@@ -483,9 +483,9 @@ Deno.serve(async (req) => {
         throw new Error("Missing client_id or client_secret in saved SRS connection. Re-enter and save credentials.");
       }
 
-      // SRS SIPS /authentication/token. Try JSON first, fall back to
-      // form-encoded if SRS rejects the JSON payload (some tenants/environments
-      // accept only application/x-www-form-urlencoded for the OAuth token call).
+      // SRS SIPS /authentication/token — form-urlencoded per SRS QA-verified
+      // contract (Task 3 of production hardening). JSON kept only as a legacy
+      // fallback in case a specific tenant/environment requires it.
       const jsonBody = JSON.stringify({
         client_id: clientId,
         client_secret: clientSecret,
@@ -501,20 +501,20 @@ Deno.serve(async (req) => {
 
       let tokenResp = await fetch(`${getBaseUrl()}/authentication/token`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: jsonBody,
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+        },
+        body: formBody,
       });
 
       if (!tokenResp.ok) {
         const firstErr = await tokenResp.text();
-        console.warn(`SRS token JSON attempt failed [${tokenResp.status}]: ${firstErr}. Retrying as form-encoded.`);
+        console.warn(`SRS token form-encoded attempt failed [${tokenResp.status}]: ${firstErr}. Retrying as JSON (legacy fallback).`);
         tokenResp = await fetch(`${getBaseUrl()}/authentication/token`, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-            Accept: "application/json",
-          },
-          body: formBody,
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: jsonBody,
         });
 
         if (!tokenResp.ok) {
@@ -522,6 +522,7 @@ Deno.serve(async (req) => {
           throw new Error(`Auth failed [${tokenResp.status}]: ${errText}. Confirm the selected environment matches these SRS credentials.`);
         }
       }
+
 
       const tokenData = await tokenResp.json();
       const newToken = tokenData.access_token;
