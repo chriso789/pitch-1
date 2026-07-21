@@ -49,8 +49,14 @@ Deno.serve(async (req) => {
     // On invalid_grant this will mark the connection inactive and throw QboReauthRequiredError.
     const { access_token, realm_id, connection } = await getValidAccessToken(admin, tenantId);
 
+    // Include Service, Inventory, NonInventory, and Category items. Filtering
+    // to Service-only left the picker empty for tenants whose QBO chart of
+    // items uses NonInventory (typical for contractor/service accounts that
+    // migrated from Desktop). URL-encode the query — unencoded spaces caused
+    // some Intuit edges to return an empty QueryResponse.
+    const qboQuery = `SELECT Id, Name, Description, Type, UnitPrice, IncomeAccountRef FROM Item WHERE Active=true MAXRESULTS 1000`;
     const qboResponse = await fetch(
-      `${qboHost(connection)}/v3/company/${realm_id}/query?query=SELECT * FROM Item WHERE Type='Service' AND Active=true MAXRESULTS 1000`,
+      `${qboHost(connection)}/v3/company/${realm_id}/query?query=${encodeURIComponent(qboQuery)}&minorversion=73`,
       {
         headers: {
           'Authorization': `Bearer ${access_token}`,
@@ -58,6 +64,7 @@ Deno.serve(async (req) => {
         },
       }
     );
+
 
     const intuit_tid = getIntuitTid(qboResponse);
     console.log('[qbo-fetch-items] response', {
@@ -113,12 +120,14 @@ Deno.serve(async (req) => {
     const formattedItems = items.map((item: any) => ({
       id: item.Id,
       name: item.Name,
-      description: item.Description || '',
+      description: item.Description || (item.Type ? `[${item.Type}]` : ''),
+      type: item.Type,
       unitPrice: item.UnitPrice || 0,
       incomeAccountRef: item.IncomeAccountRef,
     }));
 
-    console.log(`Fetched ${formattedItems.length} service items from QBO`);
+    console.log(`Fetched ${formattedItems.length} items from QBO (any type)`);
+
 
     return new Response(
       JSON.stringify({ items: formattedItems }),
