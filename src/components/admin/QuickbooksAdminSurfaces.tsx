@@ -295,8 +295,9 @@ export function QuickbooksAdminSurfaces() {
           </div>
           <div className="text-xs text-muted-foreground">
             Events subscribed: <code>Invoice</code>, <code>Payment</code>,{" "}
-            <code>Customer</code>, <code>Item</code>. Signature verified with{" "}
-            <code>QBO_WEBHOOK_VERIFIER_TOKEN</code>.
+            <code>Customer</code>, <code>Item</code>. Signature verified per-environment with{" "}
+            <code>QBO_WEBHOOK_VERIFIER_DEVELOPMENT</code> and{" "}
+            <code>QBO_WEBHOOK_VERIFIER_PRODUCTION</code>.
           </div>
         </CardContent>
       </Card>
