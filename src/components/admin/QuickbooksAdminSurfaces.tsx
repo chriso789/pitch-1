@@ -84,7 +84,9 @@ export function QuickbooksAdminSurfaces() {
   const [stats, setStats] = useState<TenantConnectionStat[]>([]);
   const [loading, setLoading] = useState(true);
   const [webhookUrl, setWebhookUrl] = useState<string>("");
-  const productionRedirectUri = "https://alxelfrbjzkmtnsulcei.supabase.co/functions/v1/qbo-oauth-connect/callback";
+  const productionRedirectUri = "https://api.pitch-crm.ai/qbo/callback";
+  const developmentRedirectUri = "https://alxelfrbjzkmtnsulcei.supabase.co/functions/v1/qbo-oauth-connect/callback";
+
 
   useEffect(() => {
     const projectRef = (import.meta as any).env?.VITE_SUPABASE_PROJECT_ID ?? "";
