@@ -100,7 +100,7 @@ function SupplierMappingTable({ supplier }: { supplier: SupplierKind }) {
         .eq("active", true)
         .order("code");
       if (error) throw error;
-      return (data || []) as MaterialRow[];
+      return ((data || []) as unknown) as MaterialRow[];
     },
     staleTime: 60_000,
   });
