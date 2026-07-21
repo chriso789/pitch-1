@@ -173,6 +173,27 @@ export default function PropertyInfoPanelMobileBody(props: Props) {
 
   const [showAllContact, setShowAllContact] = useState(false);
   const [showFullStrategy, setShowFullStrategy] = useState(false);
+  const [manualFirstName, setManualFirstName] = useState("");
+  const [manualLastName, setManualLastName] = useState("");
+  const [manualPhone, setManualPhone] = useState("");
+  const [manualEmail, setManualEmail] = useState("");
+
+  const hasManualEntry = Boolean(
+    manualFirstName.trim() || manualLastName.trim() || manualPhone.trim() || manualEmail.trim(),
+  );
+
+  const handleAddCustomerClick = () => {
+    if (hasManualEntry) {
+      onAddCustomer({
+        firstName: manualFirstName.trim() || undefined,
+        lastName: manualLastName.trim() || undefined,
+        phone: manualPhone.trim() || undefined,
+        email: manualEmail.trim() || undefined,
+      });
+    } else {
+      onAddCustomer();
+    }
+  };
 
   const propData = localProperty?.property_data || {};
   const confidence: number | undefined = propData.confidence_score;
