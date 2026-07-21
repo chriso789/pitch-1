@@ -8,10 +8,8 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { createHmac } from "https://deno.land/std@0.177.0/node/crypto.ts";
-import { qboHost } from "../_shared/qbo-host.ts";
 import { qboWebhookVerifiers, type QboMode } from "../_shared/qbo-context.ts";
-import { getIntuitTid } from "../_shared/qbo-intuit-tid.ts";
-import { writeQboApiLog } from "../_shared/qbo-api.ts";
+import { reconcileInvoiceFromQbo, reconcilePaymentFromQbo, appendReconciliationEvent } from "../_shared/qbo/reconciler.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -211,8 +209,9 @@ Deno.serve(async (req) => {
 
       let entityError: { code: string; message: string } | null = null;
       for (const entity of notification.dataChangeEvent.entities) {
-        // Idempotency key from stable event fields.
-        const idempotencyKey = [
+        // Dedup key: same realm + entity + operation + lastUpdated always maps to the
+        // same row. The unique index on qbo_webhook_events.dedup_key rejects retries.
+        const dedupKey = [
           connection.id,
           entity.name,
           entity.id,
@@ -220,45 +219,101 @@ Deno.serve(async (req) => {
           entity.lastUpdated ?? "",
         ].join(":");
 
-        const { error: logError } = await supabase
-          .from("qbo_webhook_journal")
+        const { data: dedupInsert, error: dedupErr } = await supabase
+          .from("qbo_webhook_events")
           .insert({
             tenant_id: connection.tenant_id,
-            qbo_connection_id: connection.id,
             realm_id: realmId,
             oauth_app_env: connMode,
-            signature_environment: webhookMode,
-            event_name: entity.name,
-            event_time: entity.lastUpdated ? new Date(entity.lastUpdated).toISOString() : new Date().toISOString(),
-            event_id: entity.id,
-            entity_id: entity.id,
-            operation: entity.operation,
-            entities: [entity],
-            payload: entity,
-            idempotency_key: idempotencyKey,
-            request_correlation_id: correlationId,
-            processing_status: "pending",
-          });
-        if (logError) {
-          // Duplicate delivery (unique_violation on idempotency_key) is expected — skip mutation.
-          const code = (logError as { code?: string }).code;
+            signature_valid: true,
+            event_count: 1,
+            dedup_key: dedupKey,
+          })
+          .select("id")
+          .maybeSingle();
+
+        if (dedupErr) {
+          const code = (dedupErr as { code?: string }).code;
           if (code === "23505") {
-            console.log("qbo_webhook_duplicate_skipped", { idempotency_key: idempotencyKey });
+            // Duplicate delivery — never re-run reconciliation.
+            console.log("qbo_webhook_dedup_skipped", { dedup_key: dedupKey });
+            await appendReconciliationEvent(supabase, {
+              tenant_id: connection.tenant_id,
+              qbo_connection_id: connection.id,
+              realm_id: realmId,
+              qbo_invoice_id: entity.name === "Invoice" ? entity.id : null,
+              qbo_payment_id: entity.name === "Payment" ? entity.id : null,
+              event_type: "webhook_dedup_skipped",
+              authoritative_source: "webhook_payload",
+              details: { entity: entity.name, operation: entity.operation, dedup_key: dedupKey },
+            });
             continue;
           }
-          console.error("qbo_webhook_journal_insert_failed", logError);
-          entityError = { code: "journal_insert_failed", message: logError.message };
+          console.error("qbo_webhook_dedup_insert_failed", dedupErr);
+          entityError = { code: "dedup_insert_failed", message: dedupErr.message };
         }
 
-        if (entity.name === "Payment" && (entity.operation === "Create" || entity.operation === "Update")) {
-          try {
-            await processPaymentEvent(supabase, connection.tenant_id, realmId, entity.id);
-          } catch (e) {
-            entityError = {
-              code: "payment_processing_failed",
-              message: e instanceof Error ? e.message : String(e),
-            };
+        // Best-effort journal row for backward compatibility with existing dashboards.
+        await supabase.from("qbo_webhook_journal").insert({
+          tenant_id: connection.tenant_id,
+          qbo_connection_id: connection.id,
+          realm_id: realmId,
+          oauth_app_env: connMode,
+          signature_environment: webhookMode,
+          event_name: entity.name,
+          event_time: entity.lastUpdated ? new Date(entity.lastUpdated).toISOString() : new Date().toISOString(),
+          event_id: entity.id,
+          entity_id: entity.id,
+          operation: entity.operation,
+          entities: [entity],
+          payload: entity,
+          idempotency_key: dedupKey,
+          request_correlation_id: correlationId,
+          processing_status: "pending",
+        }).then(() => {}, () => {});
+
+        const webhookEventId = dedupInsert?.id ?? null;
+
+        try {
+          if (entity.name === "Invoice") {
+            // Never trust the webhook payload's balance — re-read the authoritative invoice.
+            await reconcileInvoiceFromQbo({
+              service: supabase,
+              tenantId: connection.tenant_id,
+              connection: {
+                id: connection.id,
+                tenant_id: connection.tenant_id,
+                realm_id: realmId,
+                is_sandbox: connection.is_sandbox ?? null,
+                oauth_app_env: connMode,
+              },
+              qboInvoiceId: entity.id,
+              trigger: "webhook_invoice",
+              webhookEventId,
+              logAction: "qbo_webhook_handler",
+            });
+          } else if (entity.name === "Payment") {
+            // LinkedTxn drives which invoices to re-reconcile.
+            await reconcilePaymentFromQbo({
+              service: supabase,
+              tenantId: connection.tenant_id,
+              connection: {
+                id: connection.id,
+                tenant_id: connection.tenant_id,
+                realm_id: realmId,
+                is_sandbox: connection.is_sandbox ?? null,
+                oauth_app_env: connMode,
+              },
+              qboPaymentId: entity.id,
+              operation: entity.operation,
+              webhookEventId,
+            });
           }
+        } catch (e) {
+          entityError = {
+            code: `${entity.name.toLowerCase()}_reconcile_failed`,
+            message: e instanceof Error ? e.message : String(e),
+          };
         }
       }
 
@@ -286,180 +341,12 @@ Deno.serve(async (req) => {
   }
 });
 
-async function processPaymentEvent(
-  supabase: any,
-  tenantId: string,
-  realmId: string,
-  paymentId: string,
-) {
-  try {
-    const { data: connection } = await supabase
-      .from("qbo_connections")
-      .select("access_token, realm_id, is_sandbox, oauth_app_env")
-      .eq("tenant_id", tenantId)
-      .eq("is_active", true)
-      .single();
-
-    if (!connection) throw new Error("No active QBO connection");
-
-    const paymentResponse = await fetch(
-      `${qboHost(connection)}/v3/company/${realmId}/payment/${paymentId}?minorversion=75`,
-      {
-        headers: {
-          Authorization: `Bearer ${connection.access_token}`,
-          Accept: "application/json",
-        },
-      },
-    );
-
-    const paymentTid = getIntuitTid(paymentResponse);
-    console.log("[qbo-webhook-handler] fetch payment", {
-      status: paymentResponse.status,
-      intuit_tid: paymentTid,
-      realm_id: realmId,
-      tenant_id: tenantId,
-      qbo_payment_id: paymentId,
-    });
-    void writeQboApiLog(supabase, {
-      action: "qbo_webhook_handler",
-      tenant_id: tenantId,
-      connection_id: (connection as { id?: string }).id ?? null,
-      realm_id: realmId,
-      oauth_app_env: connection.oauth_app_env,
-      endpoint: `/v3/company/${realmId}/payment/${paymentId}`,
-      method: "GET",
-      http_status: paymentResponse.status,
-      intuit_tid: paymentTid,
-      success: paymentResponse.ok,
-      request_metadata: { op: "fetch_payment", qbo_entity: "Payment", qbo_entity_id: paymentId },
-    });
-
-    if (!paymentResponse.ok) {
-      const errBody = await paymentResponse.text();
-      throw new Error(
-        `qbo_webhook_handler:fetch_payment failed [status=${paymentResponse.status} intuit_tid=${paymentTid ?? "none"}]: ${errBody.slice(0, 300)}`,
-      );
-    }
-
-    const paymentData = await paymentResponse.json();
-    const payment = paymentData.Payment;
-
-    if (payment.Line) {
-      for (const line of payment.Line) {
-        if (line.LinkedTxn && line.LinkedTxn.some((txn: any) => txn.TxnType === "Invoice")) {
-          for (const linkedTxn of line.LinkedTxn) {
-            if (linkedTxn.TxnType === "Invoice") {
-              await updateInvoiceBalance(
-                supabase,
-                tenantId,
-                realmId,
-                linkedTxn.TxnId,
-                connection.access_token,
-                connection,
-              );
-            }
-          }
-        }
-      }
-    }
-
-    await supabase
-      .from("qbo_webhook_journal")
-      .update({ processed: true, processed_at: new Date().toISOString() })
-      .eq("tenant_id", tenantId)
-      .eq("entity_id", paymentId)
-      .eq("event_type", "Payment");
-  } catch (error) {
-    console.error("Error processing payment event:", error);
-    throw error;
-  }
-}
-
-async function updateInvoiceBalance(
-  supabase: any,
-  tenantId: string,
-  realmId: string,
-  invoiceId: string,
-  accessToken: string,
-  connection: { is_sandbox?: boolean | null; oauth_app_env?: string | null },
-) {
-  try {
-    const invoiceResponse = await fetch(
-      `${qboHost(connection)}/v3/company/${realmId}/invoice/${invoiceId}?minorversion=75`,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          Accept: "application/json",
-        },
-      },
-    );
-    const invoiceTid = getIntuitTid(invoiceResponse);
-    console.log("[qbo-webhook-handler] fetch invoice", {
-      status: invoiceResponse.status,
-      intuit_tid: invoiceTid,
-      realm_id: realmId,
-      tenant_id: tenantId,
-      qbo_invoice_id: invoiceId,
-    });
-    void writeQboApiLog(supabase, {
-      action: "qbo_webhook_handler",
-      tenant_id: tenantId,
-      realm_id: realmId,
-      oauth_app_env: connection.oauth_app_env,
-      endpoint: `/v3/company/${realmId}/invoice/${invoiceId}`,
-      method: "GET",
-      http_status: invoiceResponse.status,
-      intuit_tid: invoiceTid,
-      success: invoiceResponse.ok,
-      request_metadata: { op: "fetch_invoice", qbo_entity: "Invoice", qbo_entity_id: invoiceId },
-    });
-    if (!invoiceResponse.ok) {
-      const errBody = await invoiceResponse.text();
-      // Record the sync failure on the mirror row so operators can see it.
-      await supabase
-        .from("invoice_ar_mirror")
-        .update({
-          last_sync_error: `fetch_invoice status=${invoiceResponse.status}: ${errBody.slice(0, 240)}`,
-          last_synced_at: new Date().toISOString(),
-        })
-        .eq("tenant_id", tenantId)
-        .eq("qbo_invoice_id", invoiceId);
-      throw new Error(
-        `qbo_webhook_handler:fetch_invoice failed [status=${invoiceResponse.status} intuit_tid=${invoiceTid ?? "none"}]: ${errBody.slice(0, 300)}`,
-      );
-    }
-
-    const invoiceData = await invoiceResponse.json();
-    const invoice = invoiceData.Invoice;
-    const balance = parseFloat(invoice.Balance);
-    const total = parseFloat(invoice.TotalAmt);
-    const nowIso = new Date().toISOString();
-    const isPaid = balance === 0 && total > 0;
-
-    // Preserve any existing paid_at — only stamp it on the first zero-balance event.
-    const { data: existing } = await supabase
-      .from("invoice_ar_mirror")
-      .select("paid_at")
-      .eq("tenant_id", tenantId)
-      .eq("qbo_invoice_id", invoiceId)
-      .maybeSingle();
-
-    await supabase
-      .from("invoice_ar_mirror")
-      .update({
-        balance,
-        total_amount: total,
-        qbo_status: invoice.EmailStatus || "Draft",
-        sync_token: invoice.SyncToken ?? null,
-        last_qbo_pull_at: nowIso,
-        last_synced_at: nowIso,
-        last_sync_error: null,
-        paid_at: isPaid ? (existing?.paid_at ?? nowIso) : null,
-      })
-      .eq("tenant_id", tenantId)
-      .eq("qbo_invoice_id", invoiceId);
-  } catch (error) {
-    console.error("Error updating invoice balance:", error);
-    throw error;
-  }
-}
+// NOTE: Legacy processPaymentEvent/updateInvoiceBalance helpers were removed
+// in Phase 1B. Payment and Invoice notifications now flow exclusively through
+// reconcileInvoiceFromQbo / reconcilePaymentFromQbo in _shared/qbo/reconciler.ts,
+// which:
+//   - Re-fetches the authoritative QBO record (never trusts webhook balances).
+//   - Traverses Payment.Line[].LinkedTxn to identify every affected invoice.
+//   - Validates hosted InvoiceLink via _shared/qbo/invoiceLinkValidator.ts.
+//   - Emits invoice_reconciliation_events rows for every material transition.
+//   - Preserves paid_at across reversal, appending payment_reversed/invoice_reopened.
