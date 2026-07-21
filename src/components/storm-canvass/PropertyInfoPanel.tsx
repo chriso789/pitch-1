@@ -1210,7 +1210,7 @@ export default function PropertyInfoPanel({
 
           {/* Add Customer Button */}
           <Button 
-            onClick={handleAddCustomer}
+            onClick={() => handleAddCustomer()}
             className="w-full mb-4 bg-primary hover:bg-primary/90"
           >
             <Plus className="h-4 w-4 mr-2" />
