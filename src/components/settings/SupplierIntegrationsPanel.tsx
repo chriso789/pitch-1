@@ -305,31 +305,30 @@ export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
         {cards.map(({ key, meta, status }) => {
           const Icon = meta.icon;
           return (
-            <Card key={key} className="flex flex-col">
-              <CardHeader>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${meta.color}`}>
-                      <Icon className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0">
-                      <CardTitle className="text-base">{meta.name}</CardTitle>
-                      <CardDescription className="text-xs line-clamp-2">{meta.description}</CardDescription>
-                    </div>
+            <Card key={key} className="flex flex-col overflow-hidden">
+              <CardHeader className="space-y-3 pb-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className={`h-10 w-10 shrink-0 rounded-lg flex items-center justify-center ${meta.color}`}>
+                    <Icon className="h-5 w-5" />
                   </div>
                   {loading ? (
-                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" />
                   ) : status.connected ? (
-                    <Badge variant="default" className="gap-1 bg-emerald-600 text-white hover:bg-emerald-600">
+                    <Badge variant="default" className="gap-1 bg-emerald-600 text-white hover:bg-emerald-600 whitespace-nowrap shrink-0">
                       <CheckCircle2 className="h-3 w-3" /> Connected
                     </Badge>
                   ) : (
-                    <Badge variant="secondary" className="gap-1">
+                    <Badge variant="secondary" className="gap-1 whitespace-nowrap shrink-0">
                       <XCircle className="h-3 w-3" /> Not connected
                     </Badge>
                   )}
                 </div>
+                <div className="min-w-0">
+                  <CardTitle className="text-base truncate">{meta.name}</CardTitle>
+                  <CardDescription className="text-xs line-clamp-2 mt-0.5">{meta.description}</CardDescription>
+                </div>
               </CardHeader>
+
               <CardContent className="flex-1 flex flex-col gap-2 text-xs">
                 {key === 'srs' && status.connected ? (
                   <>
