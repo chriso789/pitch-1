@@ -188,8 +188,9 @@ export function QuickbooksAdminSurfaces() {
           <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-3 text-sm">
             <div className="font-medium">Intuit Production Redirect URI</div>
             <div className="mt-1 text-xs text-muted-foreground">
-              Save this exact static callback file in the Intuit Production Redirect URLs. Do not use the SPA route
-              <code className="mx-1 rounded bg-muted px-1">/quickbooks/callback</code> or the raw Supabase function URL.
+              Save this exact URL under Intuit <span className="font-medium">Settings → Redirect URIs → Production</span>.
+              Do not add it again under Development; Intuit may show a generic “Failed to save” error there if the URL is
+              already present, duplicated, or being saved in the wrong environment.
             </div>
             <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
               <code className="flex-1 rounded border bg-background px-2 py-1 text-xs">{productionRedirectUri}</code>
