@@ -24,10 +24,14 @@ export interface QboContext {
 
 const PROD_HOST = "https://quickbooks.api.intuit.com";
 const SANDBOX_HOST = "https://sandbox-quickbooks.api.intuit.com";
-const PRODUCTION_BRANDED_CALLBACK = "https://pitch-crm.ai/quickbooks/callback";
+const PRODUCTION_BRANDED_CALLBACK = "https://pitch-crm.ai/quickbooks-callback.html";
 
 function isEdgeFunctionCallback(uri: string | undefined): boolean {
   return !!uri && /supabase\.co\/functions\/v1\/qbo-oauth-connect\/callback/i.test(uri);
+}
+
+function isDeprecatedBrandedCallback(uri: string | undefined): boolean {
+  return !!uri && /^https:\/\/(www\.)?pitch-crm\.ai\/quickbooks\/callback\/?$/i.test(uri);
 }
 
 function env(name: string): string | undefined {
@@ -62,11 +66,15 @@ export function getQboContextForMode(mode: QboMode): QboContext {
   const clientSecret = splitClientSecret ?? legacyClientSecret;
   const webhookVerifier = splitVerifier ?? legacyVerifier ?? "";
   const configuredRedirectUri = splitRedirect ?? legacyRedirect;
-  // Intuit's production app settings can reject the raw Supabase Edge Function
-  // URL. For production OAuth, advertise the branded public callback that is
-  // registered with Intuit; the React callback page forwards the returned code
-  // to qbo-oauth-connect/callback so the token exchange still happens server-side.
-  const redirectUri = mode === "production" && isEdgeFunctionCallback(configuredRedirectUri)
+  // Intuit's production app settings can reject raw Supabase Edge Function URLs
+  // and has also been flaky with SPA fallback-only routes. For production OAuth,
+  // advertise the real static callback file registered with Intuit; that page
+  // forwards the returned code to qbo-oauth-connect/callback so the exchange
+  // still happens server-side with the same redirect_uri value.
+  const redirectUri = mode === "production" && (
+    isEdgeFunctionCallback(configuredRedirectUri) ||
+    isDeprecatedBrandedCallback(configuredRedirectUri)
+  )
     ? PRODUCTION_BRANDED_CALLBACK
     : configuredRedirectUri;
 

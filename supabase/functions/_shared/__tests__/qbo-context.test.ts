@@ -18,7 +18,7 @@ Deno.test("getQboContextForMode resolves split development credentials", () => {
   clearAll();
   Deno.env.set("QBO_CLIENT_ID_DEVELOPMENT", "dev_id");
   Deno.env.set("QBO_CLIENT_SECRET_DEVELOPMENT", "dev_secret");
-  Deno.env.set("QBO_REDIRECT_URI_DEVELOPMENT", "https://pitch-crm.ai/quickbooks/callback");
+  Deno.env.set("QBO_REDIRECT_URI_DEVELOPMENT", "https://pitch-crm.ai/quickbooks-callback.html");
   Deno.env.set("QBO_WEBHOOK_VERIFIER_DEVELOPMENT", "dev_verifier");
 
   const ctx = getQboContextForMode("development");
@@ -33,7 +33,7 @@ Deno.test("getQboContextForMode resolves split production credentials", () => {
   clearAll();
   Deno.env.set("QBO_CLIENT_ID_PRODUCTION", "prod_id");
   Deno.env.set("QBO_CLIENT_SECRET_PRODUCTION", "prod_secret");
-  Deno.env.set("QBO_REDIRECT_URI_PRODUCTION", "https://pitch-crm.ai/quickbooks/callback");
+  Deno.env.set("QBO_REDIRECT_URI_PRODUCTION", "https://pitch-crm.ai/quickbooks-callback.html");
 
   const ctx = getQboContextForMode("production");
   assertEquals(ctx.mode, "production");
@@ -51,14 +51,24 @@ Deno.test("production Supabase function redirect is replaced with branded callba
   );
 
   const ctx = getQboContextForMode("production");
-  assertEquals(ctx.redirectUri, "https://pitch-crm.ai/quickbooks/callback");
+  assertEquals(ctx.redirectUri, "https://pitch-crm.ai/quickbooks-callback.html");
+});
+
+Deno.test("production SPA fallback redirect is replaced with static callback", () => {
+  clearAll();
+  Deno.env.set("QBO_CLIENT_ID_PRODUCTION", "prod_id");
+  Deno.env.set("QBO_CLIENT_SECRET_PRODUCTION", "prod_secret");
+  Deno.env.set("QBO_REDIRECT_URI_PRODUCTION", "https://pitch-crm.ai/quickbooks/callback");
+
+  const ctx = getQboContextForMode("production");
+  assertEquals(ctx.redirectUri, "https://pitch-crm.ai/quickbooks-callback.html");
 });
 
 Deno.test("falls back to legacy single-pair env vars when split missing", () => {
   clearAll();
   Deno.env.set("QBO_CLIENT_ID", "legacy_id");
   Deno.env.set("QBO_CLIENT_SECRET", "legacy_secret");
-  Deno.env.set("QBO_REDIRECT_URI", "https://pitch-crm.ai/quickbooks/callback");
+  Deno.env.set("QBO_REDIRECT_URI", "https://pitch-crm.ai/quickbooks-callback.html");
 
   const ctx = getQboContextForMode("production");
   assertEquals(ctx.clientId, "legacy_id");
