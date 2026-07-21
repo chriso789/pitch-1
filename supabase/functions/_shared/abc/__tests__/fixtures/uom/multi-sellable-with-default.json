@@ -1,0 +1,8 @@
+{
+  "itemNumber": "SHINGLE-MULTI-01",
+  "validUoms": [
+    { "code": "BDL", "description": "Bundle" },
+    { "code": "SQ", "description": "Square", "isDefault": true },
+    { "code": "PLT", "description": "Pallet" }
+  ]
+}

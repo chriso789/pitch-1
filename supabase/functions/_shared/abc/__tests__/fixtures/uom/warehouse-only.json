@@ -1,0 +1,6 @@
+{
+  "itemNumber": "WH-ONLY-01",
+  "validUoms": [
+    { "code": "WH", "description": "Warehouse only" }
+  ]
+}

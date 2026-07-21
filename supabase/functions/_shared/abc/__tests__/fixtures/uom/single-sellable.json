@@ -1,0 +1,6 @@
+{
+  "itemNumber": "SHINGLE-BND-01",
+  "validUoms": [
+    { "code": "BDL", "description": "Bundle" }
+  ]
+}

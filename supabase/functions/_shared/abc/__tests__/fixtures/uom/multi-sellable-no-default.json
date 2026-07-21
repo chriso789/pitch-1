@@ -1,0 +1,7 @@
+{
+  "itemNumber": "SHINGLE-MULTI-02",
+  "validUoms": [
+    { "code": "BDL", "description": "Bundle" },
+    { "code": "SQ", "description": "Square" }
+  ]
+}
