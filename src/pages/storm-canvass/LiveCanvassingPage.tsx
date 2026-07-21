@@ -540,8 +540,8 @@ export default function LiveCanvassingPage() {
       setUserLocation({ lat, lng });
       // Force marker refresh so pins load for the new viewport
       setMarkersRefreshKey(prev => prev + 1);
-      // Also calculate route
-      calculateRoute({ lat, lng, address });
+      // Note: intentionally do NOT auto-calculate a route on address select —
+      // just pan to the house. Routing happens via explicit "Navigate" actions.
     };
 
     if (!place.geometry?.location) {
