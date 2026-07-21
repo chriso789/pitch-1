@@ -12,6 +12,7 @@ import { qboHost } from "../_shared/qbo-host.ts";
 import { qboWebhookVerifiers, type QboMode } from "../_shared/qbo-context.ts";
 import { getIntuitTid } from "../_shared/qbo-intuit-tid.ts";
 import { writeQboApiLog } from "../_shared/qbo-api.ts";
+import { reconcileInvoiceFromQbo, reconcilePaymentFromQbo, appendReconciliationEvent } from "../_shared/qbo/reconciler.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
