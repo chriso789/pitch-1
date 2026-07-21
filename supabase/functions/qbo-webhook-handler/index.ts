@@ -116,65 +116,136 @@ Deno.serve(async (req) => {
       const realmId = notification.realmId;
       const entityCount = notification.dataChangeEvent?.entities?.length ?? 0;
 
-      const { data: connection } = await supabase
+      // Scope connection lookup by BOTH realm_id AND verified environment.
+      // Never resolve by realm_id alone — sandbox and production realms can collide.
+      const { data: connMatches, error: connErr } = await supabase
         .from("qbo_connections")
-        .select("tenant_id, is_sandbox, oauth_app_env")
+        .select("id, tenant_id, is_sandbox, oauth_app_env")
         .eq("realm_id", realmId)
-        .eq("is_active", true)
-        .maybeSingle();
+        .eq("oauth_app_env", webhookMode)
+        .eq("is_active", true);
 
-      if (!connection) {
-        console.warn("qbo_webhook_no_connection", { realm_id: realmId });
+      if (connErr) {
+        console.error("qbo_webhook_connection_lookup_failed", connErr);
         await auditEvent({
           realm_id: realmId,
           oauth_app_env: webhookMode,
           signature_valid: true,
           event_count: entityCount,
-          error_code: "no_active_connection",
+          error_code: "connection_lookup_failed",
+          error_message: connErr.message,
         });
         continue;
       }
 
-      const connMode: QboMode =
-        connection.oauth_app_env === "development" || connection.oauth_app_env === "production"
-          ? (connection.oauth_app_env as QboMode)
-          : connection.is_sandbox
-            ? "development"
-            : "production";
-
-      if (connMode !== webhookMode) {
-        console.warn("qbo_webhook_realm_mode_mismatch", {
+      if (!connMatches || connMatches.length === 0) {
+        console.warn("qbo_webhook_unmatched_realm_environment", {
           realm_id: realmId,
           webhook_mode: webhookMode,
-          connection_mode: connMode,
         });
         await auditEvent({
-          tenant_id: connection.tenant_id,
           realm_id: realmId,
-          oauth_app_env: connMode,
+          oauth_app_env: webhookMode,
           signature_valid: true,
           event_count: entityCount,
-          error_code: "realm_mode_mismatch",
-          error_message: `webhook_mode=${webhookMode} connection_mode=${connMode}`,
+          error_code: "unmatched_realm_environment",
         });
+        // Quarantine: journal the whole notification without applying any tenant mutation.
+        for (const entity of notification.dataChangeEvent?.entities ?? []) {
+          await supabase.from("qbo_webhook_journal").insert({
+            tenant_id: "00000000-0000-0000-0000-000000000000",
+            realm_id: realmId,
+            oauth_app_env: null,
+            signature_environment: webhookMode,
+            event_name: entity.name,
+            event_time: entity.lastUpdated ? new Date(entity.lastUpdated).toISOString() : new Date().toISOString(),
+            event_id: entity.id,
+            entity_id: entity.id,
+            operation: entity.operation,
+            entities: [entity],
+            payload: entity,
+            processing_status: "quarantined_unmatched_realm_environment",
+          });
+        }
         continue;
       }
+
+      if (connMatches.length > 1) {
+        console.error("qbo_webhook_ambiguous_connection", {
+          realm_id: realmId,
+          webhook_mode: webhookMode,
+          match_count: connMatches.length,
+        });
+        await auditEvent({
+          realm_id: realmId,
+          oauth_app_env: webhookMode,
+          signature_valid: true,
+          event_count: entityCount,
+          error_code: "ambiguous_connection",
+          error_message: `matched ${connMatches.length} active connections`,
+        });
+        for (const entity of notification.dataChangeEvent?.entities ?? []) {
+          await supabase.from("qbo_webhook_journal").insert({
+            tenant_id: "00000000-0000-0000-0000-000000000000",
+            realm_id: realmId,
+            oauth_app_env: null,
+            signature_environment: webhookMode,
+            event_name: entity.name,
+            event_time: entity.lastUpdated ? new Date(entity.lastUpdated).toISOString() : new Date().toISOString(),
+            event_id: entity.id,
+            entity_id: entity.id,
+            operation: entity.operation,
+            entities: [entity],
+            payload: entity,
+            processing_status: "quarantined_ambiguous_connection",
+          });
+        }
+        continue;
+      }
+
+      const connection = connMatches[0];
+      const connMode: QboMode = (connection.oauth_app_env as QboMode);
+
+      // Correlation id per notification for observability.
+      const correlationId = crypto.randomUUID();
 
       let entityError: { code: string; message: string } | null = null;
       for (const entity of notification.dataChangeEvent.entities) {
+        // Idempotency key from stable event fields.
+        const idempotencyKey = [
+          connection.id,
+          entity.name,
+          entity.id,
+          entity.operation,
+          entity.lastUpdated ?? "",
+        ].join(":");
+
         const { error: logError } = await supabase
           .from("qbo_webhook_journal")
           .insert({
             tenant_id: connection.tenant_id,
+            qbo_connection_id: connection.id,
             realm_id: realmId,
-            event_type: entity.name,
-            operation: entity.operation,
+            oauth_app_env: connMode,
+            signature_environment: webhookMode,
+            event_name: entity.name,
+            event_time: entity.lastUpdated ? new Date(entity.lastUpdated).toISOString() : new Date().toISOString(),
+            event_id: entity.id,
             entity_id: entity.id,
+            operation: entity.operation,
+            entities: [entity],
             payload: entity,
-            signature_verified: true,
-            processed: false,
+            idempotency_key: idempotencyKey,
+            request_correlation_id: correlationId,
+            processing_status: "pending",
           });
         if (logError) {
+          // Duplicate delivery (unique_violation on idempotency_key) is expected — skip mutation.
+          const code = (logError as { code?: string }).code;
+          if (code === "23505") {
+            console.log("qbo_webhook_duplicate_skipped", { idempotency_key: idempotencyKey });
+            continue;
+          }
           console.error("qbo_webhook_journal_insert_failed", logError);
           entityError = { code: "journal_insert_failed", message: logError.message };
         }
