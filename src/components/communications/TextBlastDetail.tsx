@@ -139,8 +139,11 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
     sent: allItems.filter((i: any) => ['sent', 'delivered', 'replied'].includes(i.status)).length,
     delivered: allItems.filter((i: any) => ['delivered', 'replied'].includes(i.status)).length,
     replied: allItems.filter((i: any) => i.status === 'replied').length,
+    // Failed excludes quarantined so unsupported-destination rows never
+    // masquerade as delivery failures.
     failed: allItems.filter((i: any) => ['failed', 'cancelled', 'skipped_cooldown', 'skipped_duplicate', 'skipped_missing_address', 'skipped_opt_out'].includes(i.status)).length,
     opted: allItems.filter((i: any) => i.status === 'opted_out').length,
+    quarantined: allItems.filter((i: any) => i.status === 'quarantined').length,
   };
   const nonResponders = allItems.filter((i: any) =>
     ['sent', 'delivered', 'failed'].includes(i.status)
