@@ -274,7 +274,7 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
       {/* Stats — live-derived from items so replies/STOPs landing via the
           inbound webhook show up immediately, not only after the next
           processor run. */}
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-3 shrink-0">
+      <div className="grid grid-cols-2 md:grid-cols-7 gap-3 shrink-0">
         <Card>
           <CardContent className="py-3 text-center">
             <p className="text-2xl font-bold">{counts.total}</p>
@@ -309,6 +309,14 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
           <CardContent className="py-3 text-center">
             <p className="text-2xl font-bold text-amber-500">{counts.opted}</p>
             <p className="text-xs text-muted-foreground">Opted Out</p>
+          </CardContent>
+        </Card>
+        <Card
+          title="Carrier permanently blocked these destinations (unsupported country). They will not be retried and are excluded from failure rate."
+        >
+          <CardContent className="py-3 text-center">
+            <p className="text-2xl font-bold text-slate-500">{counts.quarantined}</p>
+            <p className="text-xs text-muted-foreground">Quarantined</p>
           </CardContent>
         </Card>
       </div>
