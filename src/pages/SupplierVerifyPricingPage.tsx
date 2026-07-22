@@ -28,6 +28,7 @@ import {
   type AbcRowStateInfo,
 } from '@/lib/abc/mappingState';
 import FindAbcMatchDialog from '@/components/supplier-verify/abc/FindAbcMatchDialog';
+import AbcCatalogBrowserCard from '@/components/supplier-verify/abc/AbcCatalogBrowserCard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
