@@ -1,8 +1,7 @@
-// Shared source of truth for ABC connection state across the supplier UI.
-// `ABCConnectionSettings`, `AbcDiagnosticsPanel`, and `PushToSupplierDialog`
-// must all read connection status from this hook so the project modal never
-// disagrees with the settings page (which is what caused the false
-// "ABC Supply not connected" toast for O'Brien's sandbox row).
+// Shared source of truth for tenant ABC account state across the supplier UI.
+// Developer portal/API setup rows live in abc_integrations / abc_connections,
+// but those are NOT tenant supplier-account connections. A tenant is connected
+// only when it has a connected abc_user_connections row from a real ABC login.
 //
 // Key invariants:
 //   * One row per (tenant_id, environment) — but a tenant may legitimately
@@ -29,10 +28,11 @@ export type AbcConnectionState =
 
 export interface AbcConnectionRow {
   id: string | null;
-  default_branch_code: string | null;
-  account_number: string | null;
+  user_id: string | null;
+  okta_subject: string | null;
+  token_expires_at: string | null;
+  status: string | null;
   environment: string | null;
-  connection_status: string | null;
   updated_at: string | null;
 }
 
@@ -66,7 +66,7 @@ export function normalizeAbcEnvironment(
 
 function deriveState(row: AbcConnectionRow | null): AbcConnectionState {
   if (!row) return 'disconnected';
-  const s = (row.connection_status || '').toLowerCase();
+  const s = (row.status || '').toLowerCase();
   if (s === 'connected') return 'connected';
   if (s === 'pending' || s === '') return 'pending';
   if (s === 'expired') return 'expired';
@@ -87,11 +87,12 @@ export function useAbcConnectionStatus(): AbcConnectionStatus {
     }
     setLoading(true);
     const { data } = await supabase
-      .from('abc_connections')
+      .from('abc_user_connections')
       .select(
-        'id, default_branch_code, account_number, environment, connection_status, updated_at',
+        'id, user_id, okta_subject, token_expires_at, status, environment, updated_at',
       )
       .eq('tenant_id', tenantId as any)
+      .eq('status', 'connected')
       .order('updated_at', { ascending: false });
     setRows((data || []) as AbcConnectionRow[]);
     setLoading(false);
@@ -104,7 +105,7 @@ export function useAbcConnectionStatus(): AbcConnectionStatus {
 
   return useMemo<AbcConnectionStatus>(() => {
     const connectedRows = rows.filter(
-      (r) => (r.connection_status || '').toLowerCase() === 'connected',
+      (r) => (r.status || '').toLowerCase() === 'connected',
     );
     const connected =
       connectedRows.find((r) => normalizeAbcEnvironment(r.environment) === 'production') ||
@@ -117,7 +118,7 @@ export function useAbcConnectionStatus(): AbcConnectionStatus {
       isConnected: state === 'connected',
       row: preferred,
       environment: preferred ? normalizeAbcEnvironment(preferred.environment) : null,
-      defaultBranchCode: preferred?.default_branch_code ?? null,
+      defaultBranchCode: null,
       rows,
       loading,
       refresh: load,
