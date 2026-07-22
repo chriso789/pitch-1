@@ -59,7 +59,7 @@ export interface AssembleProductionOrderError {
 
 export interface AssembleProductionOrderSuccess {
   ok: true;
-  orderRequest: BuiltOrderResult extends { valid: true } ? unknown : never;
+  orderRequest: unknown;
   built: Extract<BuiltOrderResult, { valid: true }>;
   snapshot: {
     branchNumber: string;
