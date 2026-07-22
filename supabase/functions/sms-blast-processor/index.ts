@@ -774,6 +774,45 @@ async function processBlast(
           } else {
             ownershipConflicts++;
           }
+        } else if (norm?.category === 'destination_not_permitted') {
+          // Repair #3: Permanent destination rejection (e.g. Canadian NANP on
+          // a US-only messaging profile). Quarantine immediately; never retry,
+          // never increment attempt_count again, never count as "failed" for
+          // reporting purposes.
+          const country =
+            extractCountryFromErrorText(norm?.provider_error_message || errMsg) ||
+            deriveCountryFromE164(toE164 || item.phone);
+          const reason = `permanent_destination_rejection: ${errMsg}`;
+          await supabase
+            .from('sms_blast_items')
+            .update({
+              status: 'quarantined',
+              quarantine_reason: reason,
+              country_code: country,
+              quarantined_at: new Date().toISOString(),
+              last_error: reason,
+              error_message: reason,
+              from_number: loc.telnyx_phone_number,
+              provider_error_code: norm?.provider_error_code || null,
+              provider_request_id: norm?.provider_request_id || null,
+            })
+            .eq('id', item.id);
+          await supabase.from('sms_item_quarantine_events').insert({
+            tenant_id: (item as any).tenant_id || blast.tenant_id,
+            blast_id: blast.id,
+            item_id: item.id,
+            phone: toE164 || item.phone || null,
+            country_code: country,
+            reason,
+            provider_error_code: norm?.provider_error_code || null,
+            provider_request_id: norm?.provider_request_id || null,
+            provider_status: typeof res.status === 'number' ? res.status : null,
+            processor_run_id: processorRunId,
+          });
+          quarantined++;
+          if (country) {
+            quarantineCountryBreakdown.set(country, (quarantineCountryBreakdown.get(country) || 0) + 1);
+          }
         } else {
           // Permanent — record and let existing behaviour flag as failed.
           await supabase
