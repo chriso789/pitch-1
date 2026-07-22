@@ -938,6 +938,7 @@ async function processBlast(
       opted_out_count: optedTotal,
       delivered_count: deliveredTotal,
       replied_count: repliedTotal,
+      quarantined_count: quarantinedTotal,
       failure_rate: failureRate,
       delivery_rate: deliveryRate,
       reply_rate: replyRate,
@@ -949,6 +950,8 @@ async function processBlast(
 
   const requeuedTotal = rateLimited; // rate-limit releases + retryable transients
   const avgRetryDelayMs = rateLimited > 0 ? Math.round(retryDelaySumMs / rateLimited) : 0;
+  const quarantineByCountry: Record<string, number> = {};
+  for (const [k, v] of quarantineCountryBreakdown) quarantineByCountry[k] = v;
 
   return {
     blast_id: blast.id,
