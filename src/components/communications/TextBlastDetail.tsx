@@ -152,7 +152,19 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
     ? Math.round(((counts.sent + counts.failed + counts.opted + counts.quarantined) / counts.total) * 100)
     : 0;
   const skippedCount = allItems.filter((item: any) => ['skipped_cooldown', 'skipped_duplicate'].includes(item.status)).length;
-  const noTextsSent = blast.status === 'completed' && counts.sent === 0 && skippedCount > 0;
+  const isTerminal = ['completed', 'completed_with_warnings', 'cancelled', 'failed'].includes(blast.status);
+  const noTextsSent = isTerminal && counts.sent === 0 && skippedCount > 0;
+  const startedAt = (blast as any).started_at ? new Date((blast as any).started_at) : null;
+  const completedAt = (blast as any).completed_at ? new Date((blast as any).completed_at) : null;
+  const elapsedMs = startedAt && completedAt ? completedAt.getTime() - startedAt.getTime() : null;
+  const formatElapsed = (ms: number | null) => {
+    if (ms == null || ms < 0) return '—';
+    const s = Math.floor(ms / 1000);
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    return h > 0 ? `${h}h ${m}m ${sec}s` : m > 0 ? `${m}m ${sec}s` : `${sec}s`;
+  };
 
   const handleResendToNonResponders = async () => {
     if (!nonResponders.length) {
@@ -229,8 +241,27 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
             Back
           </Button>
           <h2 className="text-lg font-semibold">{blast.name}</h2>
-          <Badge variant={blast.status === 'sending' ? 'default' : 'secondary'}>
-            {noTextsSent ? 'no texts sent' : blast.status}
+          <Badge
+            variant={
+              blast.status === 'sending' ? 'default'
+              : blast.status === 'completed_with_warnings' ? 'outline'
+              : 'secondary'
+            }
+            className={
+              blast.status === 'completed_with_warnings'
+                ? 'border-amber-500/60 text-amber-700 bg-amber-500/10'
+                : blast.status === 'completed'
+                ? 'bg-green-500/10 text-green-700 border-green-500/40'
+                : undefined
+            }
+          >
+            {noTextsSent
+              ? 'no texts sent'
+              : blast.status === 'completed_with_warnings'
+              ? 'Completed with Warnings'
+              : blast.status === 'completed'
+              ? 'Completed'
+              : blast.status}
           </Badge>
           {blast.is_test_mode && <Badge variant="outline">test mode</Badge>}
           {(blast as any).parent_blast_id && <Badge variant="outline">resend round</Badge>}
@@ -254,7 +285,7 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
               Cancel Blast
             </Button>
           )}
-          {['completed', 'cancelled', 'failed'].includes(blast.status) && nonResponders.length > 0 && (
+          {['completed', 'completed_with_warnings', 'cancelled', 'failed'].includes(blast.status) && nonResponders.length > 0 && (
             <Button variant="outline" size="sm" onClick={handleResendToNonResponders}>
               <Send className="h-4 w-4 mr-2" />
               Resend to {nonResponders.length} Non-Responders
@@ -262,6 +293,59 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
           )}
         </div>
       </div>
+
+      {isTerminal && (
+        <Card
+          className={
+            blast.status === 'completed_with_warnings'
+              ? 'border-amber-500/40 bg-amber-500/5 shrink-0'
+              : 'border-green-500/40 bg-green-500/5 shrink-0'
+          }
+        >
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <CheckCircle
+                className={
+                  blast.status === 'completed_with_warnings'
+                    ? 'h-4 w-4 text-amber-600'
+                    : 'h-4 w-4 text-green-600'
+                }
+              />
+              {blast.status === 'completed_with_warnings'
+                ? 'Completed with Warnings'
+                : blast.status === 'completed'
+                ? 'Completed'
+                : blast.status === 'cancelled'
+                ? 'Cancelled'
+                : 'Failed'}
+              {(blast as any).completion_reason && (
+                <span className="text-xs font-normal text-muted-foreground">
+                  · {(blast as any).completion_reason.replace(/_/g, ' ')}
+                </span>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-3 md:grid-cols-6 gap-3 text-xs">
+            <div><p className="text-lg font-semibold">{counts.total}</p><p className="text-muted-foreground">Total</p></div>
+            <div><p className="text-lg font-semibold text-green-600">{counts.delivered}</p><p className="text-muted-foreground">Delivered</p></div>
+            <div><p className="text-lg font-semibold">{counts.sent}</p><p className="text-muted-foreground">Sent</p></div>
+            <div><p className="text-lg font-semibold text-violet-600">{counts.replied}</p><p className="text-muted-foreground">Replies</p></div>
+            <div><p className="text-lg font-semibold text-destructive">{counts.failed}</p><p className="text-muted-foreground">Failed</p></div>
+            <div><p className="text-lg font-semibold text-slate-500">{counts.quarantined}</p><p className="text-muted-foreground">Quarantined</p></div>
+            <div><p className="text-lg font-semibold text-amber-500">{counts.opted}</p><p className="text-muted-foreground">Opted Out</p></div>
+            <div><p className="text-lg font-semibold">{(blast as any).cancelled_count ?? 0}</p><p className="text-muted-foreground">Cancelled</p></div>
+            <div><p className="text-lg font-semibold">{(blast as any).retry_exhausted_count ?? 0}</p><p className="text-muted-foreground">Retry Exhausted</p></div>
+            <div className="col-span-1">
+              <p className="text-lg font-semibold">{completedAt ? completedAt.toLocaleString() : '—'}</p>
+              <p className="text-muted-foreground">Completion Time</p>
+            </div>
+            <div className="col-span-1">
+              <p className="text-lg font-semibold">{formatElapsed(elapsedMs)}</p>
+              <p className="text-muted-foreground">Elapsed</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {noTextsSent && (
         <Card className="border-amber-500/40 bg-amber-500/10 shrink-0">

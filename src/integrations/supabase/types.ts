@@ -49956,6 +49956,50 @@ export type Database = {
         }
         Relationships: []
       }
+      sms_blast_completion_events: {
+        Row: {
+          blast_id: string
+          completion_reason: string
+          created_at: string
+          id: string
+          new_status: string
+          previous_status: string
+          processor_run_id: string | null
+          summary_counts: Json
+          tenant_id: string | null
+        }
+        Insert: {
+          blast_id: string
+          completion_reason: string
+          created_at?: string
+          id?: string
+          new_status: string
+          previous_status: string
+          processor_run_id?: string | null
+          summary_counts?: Json
+          tenant_id?: string | null
+        }
+        Update: {
+          blast_id?: string
+          completion_reason?: string
+          created_at?: string
+          id?: string
+          new_status?: string
+          previous_status?: string
+          processor_run_id?: string | null
+          summary_counts?: Json
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_blast_completion_events_blast_id_fkey"
+            columns: ["blast_id"]
+            isOneToOne: false
+            referencedRelation: "sms_blasts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sms_blast_items: {
         Row: {
           address_city_snapshot: string | null
@@ -50109,7 +50153,9 @@ export type Database = {
           ai_followup_enabled: boolean
           cancel_reason: string | null
           cancelled_at: string | null
+          cancelled_count: number
           completed_at: string | null
+          completion_reason: string | null
           created_at: string
           created_by: string | null
           daily_send_limit: number | null
@@ -50133,6 +50179,7 @@ export type Database = {
           replied_count: number | null
           reply_rate: number | null
           required_messages_per_second: number | null
+          retry_exhausted_count: number
           script: string
           send_window_end: string
           send_window_start: string
@@ -50152,7 +50199,9 @@ export type Database = {
           ai_followup_enabled?: boolean
           cancel_reason?: string | null
           cancelled_at?: string | null
+          cancelled_count?: number
           completed_at?: string | null
+          completion_reason?: string | null
           created_at?: string
           created_by?: string | null
           daily_send_limit?: number | null
@@ -50176,6 +50225,7 @@ export type Database = {
           replied_count?: number | null
           reply_rate?: number | null
           required_messages_per_second?: number | null
+          retry_exhausted_count?: number
           script: string
           send_window_end?: string
           send_window_start?: string
@@ -50195,7 +50245,9 @@ export type Database = {
           ai_followup_enabled?: boolean
           cancel_reason?: string | null
           cancelled_at?: string | null
+          cancelled_count?: number
           completed_at?: string | null
+          completion_reason?: string | null
           created_at?: string
           created_by?: string | null
           daily_send_limit?: number | null
@@ -50219,6 +50271,7 @@ export type Database = {
           replied_count?: number | null
           reply_rate?: number | null
           required_messages_per_second?: number | null
+          retry_exhausted_count?: number
           script?: string
           send_window_end?: string
           send_window_start?: string
@@ -61633,6 +61686,14 @@ export type Database = {
       complete_presentation_session: {
         Args: { p_session_id: string; p_signature_data?: Json }
         Returns: undefined
+      }
+      complete_sms_blast_if_done: {
+        Args: { p_blast_id: string; p_processor_run_id?: string }
+        Returns: {
+          completion_reason: string
+          new_status: string
+          transitioned: boolean
+        }[]
       }
       compute_co_totals_from_line_items: {
         Args: { p_line_items: Json }
