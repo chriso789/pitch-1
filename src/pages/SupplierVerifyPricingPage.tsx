@@ -19,6 +19,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { useAbcSetup } from '@/hooks/useAbcSetup';
+import { useAbcConnectionStatus } from '@/hooks/useAbcConnectionStatus';
+import { useAbcAccounts } from '@/lib/abc/useAbcConnection';
 import {
   abcApproveMapping,
   abcPriceItems,
@@ -32,17 +34,19 @@ import {
   type AbcRowStateInfo,
 } from '@/lib/abc/mappingState';
 import FindAbcMatchDialog from '@/components/supplier-verify/abc/FindAbcMatchDialog';
+import AbcSetupWizard from '@/components/supplier-pricing/AbcSetupWizard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { ArrowLeft, RefreshCcw, Search, Loader2, ExternalLink, CheckCircle2 } from 'lucide-react';
+import { AlertCircle, ArrowLeft, RefreshCcw, Search, Loader2, ExternalLink, CheckCircle2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import { formatCurrency } from '@/lib/utils';
@@ -70,6 +74,17 @@ interface PricingBadge {
   unitPrice?: number | null;
   returnedUom?: string | null;
   checkedAt?: string | null;
+}
+
+interface AbcSyncAccountsResponse {
+  success?: boolean;
+  ship_to_count?: number;
+  branch_count?: number;
+  ship_to_total_returned?: number;
+  ship_to_skipped_no_branches?: number;
+  error?: string;
+  error_code?: string;
+  stage?: string;
 }
 
 interface NormalizedSupplierOrder {
@@ -165,6 +180,8 @@ export default function SupplierVerifyPricingPage() {
   const supplierKey = (['abc', 'srs', 'qxo'].includes(supplier ?? '') ? supplier : 'abc') as SupplierKind;
   const meta = SUPPLIER_META[supplierKey];
   const abcSetup = useAbcSetup();
+  const abcStatus = useAbcConnectionStatus();
+  const abcAccounts = useAbcAccounts();
 
   const [orders, setOrders] = useState<NormalizedSupplierOrder[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
@@ -178,6 +195,8 @@ export default function SupplierVerifyPricingPage() {
   const [catalogPriceBusy, setCatalogPriceBusy] = useState(false);
   const [selectedInternalByCatalog, setSelectedInternalByCatalog] = useState<Record<string, string>>({});
   const [mappingBusy, setMappingBusy] = useState<Record<string, boolean>>({});
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [syncingAccounts, setSyncingAccounts] = useState(false);
 
   const loadOrders = useCallback(async () => {
     if (!tenantId) return;
@@ -324,6 +343,10 @@ export default function SupplierVerifyPricingPage() {
 
   const loadCatalog = useCallback(async (searchTerm?: string, toastOnEmpty = true) => {
     if (supplierKey !== 'abc') return;
+    if (!abcSetup.branchNumber) {
+      toast.error('Select an ABC Ship-To and Branch before loading branch catalog pricing.');
+      return;
+    }
     const term = (searchTerm ?? catalogQuery).trim();
     if (!term) return;
     setCatalogLoading(true);
@@ -346,6 +369,41 @@ export default function SupplierVerifyPricingPage() {
       setCatalogLoading(false);
     }
   }, [abcSetup.branchNumber, catalogQuery, priceCatalogItems, supplierKey]);
+
+  const syncAbcAccounts = useCallback(async () => {
+    if (!tenantId) return;
+    setSyncingAccounts(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
+        body: {
+          action: 'sync_accounts',
+          tenant_id: tenantId,
+        },
+      });
+      if (error) throw error;
+      const result = (data || {}) as AbcSyncAccountsResponse;
+      if (result.success === false) {
+        throw new Error(result.error_code || result.error || result.stage || 'ABC account sync failed');
+      }
+      await Promise.all([
+        abcAccounts.refetch(),
+        abcSetup.refetch(),
+        abcStatus.refresh(),
+      ]);
+      const shipToCount = result.ship_to_count ?? 0;
+      const branchCount = result.branch_count ?? 0;
+      if (shipToCount > 0 && branchCount > 0) {
+        toast.success(`ABC accounts synced: ${shipToCount} Ship-To account${shipToCount === 1 ? '' : 's'}, ${branchCount} branch${branchCount === 1 ? '' : 'es'}.`);
+        setSetupOpen(true);
+      } else {
+        toast.warning('ABC login is connected, but ABC did not return any Ship-To accounts with branches for pricing.');
+      }
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'ABC account sync failed'));
+    } finally {
+      setSyncingAccounts(false);
+    }
+  }, [abcAccounts, abcSetup, abcStatus, tenantId]);
 
   useEffect(() => {
     if (supplierKey !== 'abc' || !abcSetup.branchNumber) return;
@@ -419,6 +477,10 @@ export default function SupplierVerifyPricingPage() {
       setMappingBusy((prev) => ({ ...prev, [catalogItem.itemNumber]: false }));
     }
   };
+
+  const abcPricingReady = supplierKey !== 'abc' || abcSetup.ready;
+  const abcConnectedButNotReady = supplierKey === 'abc' && abcStatus.isConnected && !abcSetup.ready;
+  const abcAccountCount = abcAccounts.data?.length ?? 0;
 
   return (
     <div className="container mx-auto max-w-6xl py-6 space-y-6">
