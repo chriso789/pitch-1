@@ -81,9 +81,93 @@ Deno.serve(async (req) => {
     const { data: rows, error } = await q;
     if (error) return json({ ok: false, error: error.message }, 500);
 
+    let merged: any[] = (rows ?? []).map((r) => ({
+      id: r.id,
+      created_at: r.created_at,
+      supplier: r.supplier,
+      action: r.action,
+      result: r.result,
+      tenant_id: r.tenant_id,
+      request_id: r.request_id,
+      metadata: r.metadata,
+      user_id: r.user_id,
+      source: "supplier_audit_log",
+    }));
+
+    // For QBO, also surface webhook + reconciliation trails which live in
+    // dedicated tables (qbo_webhook_events, invoice_reconciliation_events).
+    if (supplier === "qbo") {
+      let wq = admin
+        .from("qbo_webhook_events")
+        .select("id, tenant_id, realm_id, oauth_app_env, signature_valid, event_count, received_at, processed_at, error_code, error_message, dedup_key")
+        .order("received_at", { ascending: false })
+        .limit(limit);
+      if (tenantId) wq = wq.eq("tenant_id", tenantId);
+      const { data: webhookRows } = await wq;
+
+      let rq = admin
+        .from("invoice_reconciliation_events")
+        .select("id, tenant_id, realm_id, event_type, authoritative_source, qbo_invoice_id, qbo_payment_id, balance_before, balance_after, total_amount, amount_applied, intuit_tid, details, created_at")
+        .order("created_at", { ascending: false })
+        .limit(limit);
+      if (tenantId) rq = rq.eq("tenant_id", tenantId);
+      const { data: reconRows } = await rq;
+
+      for (const w of webhookRows ?? []) {
+        merged.push({
+          id: w.id,
+          created_at: w.received_at,
+          supplier: "qbo",
+          action: `webhook:${w.signature_valid ? "verified" : "rejected"}${w.processed_at ? ":processed" : ""}`,
+          result: w.error_code ? "error" : (w.processed_at ? "ok" : "received"),
+          tenant_id: w.tenant_id,
+          request_id: w.dedup_key,
+          metadata: {
+            realm_id: w.realm_id,
+            oauth_app_env: w.oauth_app_env,
+            event_count: w.event_count,
+            error_code: w.error_code,
+            error_message: w.error_message,
+          },
+          user_id: null,
+          source: "qbo_webhook_events",
+        });
+      }
+      for (const r of reconRows ?? []) {
+        merged.push({
+          id: r.id,
+          created_at: r.created_at,
+          supplier: "qbo",
+          action: `reconcile:${r.event_type}`,
+          result: r.authoritative_source ?? "ok",
+          tenant_id: r.tenant_id,
+          request_id: r.intuit_tid,
+          metadata: {
+            realm_id: r.realm_id,
+            qbo_invoice_id: r.qbo_invoice_id,
+            qbo_payment_id: r.qbo_payment_id,
+            balance_before: r.balance_before,
+            balance_after: r.balance_after,
+            total_amount: r.total_amount,
+            amount_applied: r.amount_applied,
+            details: r.details,
+          },
+          user_id: null,
+          source: "invoice_reconciliation_events",
+        });
+      }
+
+      if (actionFilter) {
+        const needle = actionFilter.toLowerCase();
+        merged = merged.filter((m) => (m.action ?? "").toLowerCase().includes(needle));
+      }
+      merged.sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
+      merged = merged.slice(0, limit);
+    }
+
     // Resolve tenant names
     const tenantIds = Array.from(
-      new Set((rows ?? []).map((r) => r.tenant_id).filter(Boolean)),
+      new Set(merged.map((r) => r.tenant_id).filter(Boolean)),
     );
     let tenantMap: Record<string, string> = {};
     if (tenantIds.length) {
@@ -96,7 +180,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const enriched = (rows ?? []).map((r) => ({
+    const enriched = merged.map((r) => ({
       ...r,
       tenant_name: tenantMap[r.tenant_id] ?? null,
     }));
