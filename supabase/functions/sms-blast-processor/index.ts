@@ -366,15 +366,19 @@ async function processBlast(
     console.warn('[blast-worker] reap exception (non-fatal)', e);
   }
 
-  // 2. Atomic claim
+  // Each processor tick owns a claim token. Any row we claim gets stamped with
+  // this token so only THIS worker can later release it back to pending (e.g.
+  // when Telnyx rate-limits us). An expired/parallel worker cannot overwrite a
+  // row we've reclaimed.
+  const processorRunId = crypto.randomUUID();
+  const claimToken = processorRunId;
+
+  // 2. Atomic claim (honors next_attempt_at from prior rate-limit releases)
   const { data: claimed, error: claimError } = await supabase.rpc('claim_sms_blast_items', {
     p_blast_id: blast.id,
     p_limit: minuteCapacity,
+    p_claim_token: claimToken,
   });
-  if (claimError) {
-    console.error('[blast-worker] claim error', claimError);
-    return { blast_id: blast.id, error: claimError.message };
-  }
   if (claimError) {
     console.error('[blast-worker] claim error', claimError);
     return { blast_id: blast.id, error: claimError.message };
