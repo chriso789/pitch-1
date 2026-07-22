@@ -176,20 +176,30 @@ export default function SupplierVerifyPricingPage() {
     try {
       let state: SupplierPriceState = { kind: 'pending' };
       if (supplierKey === 'abc') {
-        const resp = await getAbcPrice({
-          purpose: 'estimating',
-          ship_to_number: abcSetup.shipToNumber || undefined,
-          branch_number: abcSetup.branchNumber || undefined,
-          items: [{ item_number: map.sku, uom: map.uom || undefined }],
-        });
-        const line = (resp as any)?.data?.items?.[0] ?? (resp as any)?.items?.[0];
-        state = toSupplierPriceState({
-          unit_price: line?.unit_price ?? null,
-          uom: line?.uom ?? map.uom ?? null,
-          currency: line?.currency ?? 'USD',
-          price_pending: line?.price_pending ?? false,
-          reason: line?.reason ?? null,
-        });
+        if (!abcSetup.shipToNumber || !abcSetup.branchNumber) {
+          state = { kind: 'pending', reason: 'ABC setup incomplete — select ship-to & branch first' };
+        } else {
+          const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
+            body: {
+              action: 'price_items',
+              purpose: 'estimating',
+              shipToNumber: abcSetup.shipToNumber,
+              branchNumber: abcSetup.branchNumber,
+              lines: [{ itemNumber: map.sku, quantity: 1, unitOfMeasure: map.uom || row.uom || 'EA' }],
+            },
+          });
+          if (error) throw error;
+          const parsedLine = (data as any)?.parsed?.lines?.[0];
+          const price = parsedLine?.unitPrice;
+          const pending = !(typeof price === 'number' && price > 0);
+          state = toSupplierPriceState({
+            unit_price: typeof price === 'number' ? price : null,
+            uom: parsedLine?.returnedUom ?? map.uom ?? null,
+            currency: 'USD',
+            price_pending: pending,
+            reason: pending ? (parsedLine?.lineStatusMessage ?? (data as any)?.parsed?.errorSummary ?? (data as any)?.error_code ?? 'No price returned') : null,
+          });
+        }
       } else if (supplierKey === 'srs') {
         const { data, error } = await supabase.functions.invoke('srs-pricing', {
           body: { items: [{ sku: map.sku, uom: map.uom || undefined }] },
