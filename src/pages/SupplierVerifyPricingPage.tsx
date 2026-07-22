@@ -402,7 +402,7 @@ export default function SupplierVerifyPricingPage() {
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => { loadOrders(); loadRows(); }}>
+          <Button variant="outline" size="sm" onClick={() => { loadOrders(); loadRows(); if (supplierKey === 'abc') loadCatalog(undefined, false); }}>
             <RefreshCcw className="h-4 w-4 mr-1" /> Reload
           </Button>
           <Button variant="outline" size="sm" onClick={() => navigate('/supplier-orders')}>
@@ -501,7 +501,7 @@ export default function SupplierVerifyPricingPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[140px]">ABC Item</TableHead>
+                  <TableHead className="w-[260px]">ABC Item</TableHead>
                   <TableHead className="w-[120px]">Color</TableHead>
                   <TableHead className="w-[70px]">UOM</TableHead>
                   <TableHead className="w-[140px]">Live Price</TableHead>
@@ -529,7 +529,8 @@ export default function SupplierVerifyPricingPage() {
                   return (
                     <TableRow key={catalogItem.itemNumber}>
                       <TableCell className="font-mono text-xs">
-                        {catalogItem.itemNumber}
+                        <div>{catalogItem.itemNumber}</div>
+                        <div className="mt-1 font-sans text-xs font-medium text-foreground">{catalogItem.description || 'No ABC description returned'}</div>
                         {catalogItem.familyName && <div className="mt-1 font-sans text-[10px] text-muted-foreground">{catalogItem.familyName}</div>}
                       </TableCell>
                       <TableCell className="text-xs">{catalogItem.colorName || <span className="text-muted-foreground">—</span>}</TableCell>
