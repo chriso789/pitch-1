@@ -1,131 +1,71 @@
+# Phase 1B — Slice 3B: Production Order Unification
 
-# SRS Production Hardening Plan
+Goal: every production ABC order (`place_order`, `submit_order`) in **both** `abc-api-proxy` and `supplier-api/abc-proxy-handler` flows through
+`mappingResolver → orderService.buildAbcOrderPayload → orderPayloadBuilder`. No inline ABC payload construction, no client-trusted supplier identity, no unresolved-price fallbacks, no `body.order` bypass on the tenant path.
 
-The QA end-to-end run (OAuth → validate → submit → real Order ID → webhook → status → audit) is now the **production contract**. This plan hardens around that contract without redesigning it.
+## In-scope files
 
-## Guiding rules
+- `supabase/functions/_shared/abc/orderService.ts` — new exported helper `assembleProductionAbcOrder(ctx)` that does the trusted server-side reload + `resolveAbcMapping` per line + calls `buildAbcOrderPayload`. Returns `{ valid, orderRequest, payloadHash, idempotencyKey, lineProofs, warnings, errors }`.
+- `supabase/functions/_shared/abc/orderIdempotency.ts` — new small helper: `findExistingAbcOrder(supabase, tenant_id, env, payloadHash|idempotencyKey)` returns prior `abc_orders` row when hash matches.
+- `supabase/functions/_shared/abc/pricingFreshness.ts` — new: `loadFreshPricingForLine(...)` reads latest `abc_price_cache` / `supplier_price_history` entry for the (tenant, env, branch, shipTo, itemNumber, uom); rejects with `pricing_expired` when older than the configured TTL (default 24h, overridable via `ABC_PRICING_MAX_AGE_MINUTES`).
+- `supabase/functions/abc-api-proxy/handler.ts` — replace the entire `place_order|submit_order` block (lines ~1614–1845) with a thin caller of `assembleProductionAbcOrder` + `callAbc` + persistence.
+- `supabase/functions/supplier-api/abc-proxy-handler.ts` — same replacement (lines ~1720–1940).
+- `supabase/functions/_shared/abc/__tests__/orderProductionEquivalence.test.ts` — new equivalence tests running the same trusted-reload fixture through both handler modules and asserting identical `orderRequest`, `payloadHash`, `idempotencyKey`, and persistence input.
 
-- **Do not** change any field in the successful Submit Order payload.
-- **Do not** refactor the webhook processor — only verify.
-- Anything experimental (variance submits, payload mutation, multi-submit) must be gated behind `SRS_DEBUG_MODE=true` **or** an explicit Platform Admin toggle.
-- Open contract questions are **documented only**, not coded.
+## Migration (persistence extension only — no schema redesign)
 
----
+```sql
+ALTER TABLE public.abc_orders
+  ADD COLUMN IF NOT EXISTS payload_hash TEXT,
+  ADD COLUMN IF NOT EXISTS idempotency_key TEXT,
+  ADD COLUMN IF NOT EXISTS pricing_run_id TEXT,
+  ADD COLUMN IF NOT EXISTS mapping_snapshot JSONB DEFAULT '{}'::jsonb;
 
-## Work items
+CREATE UNIQUE INDEX IF NOT EXISTS abc_orders_tenant_env_idempotency_uniq
+  ON public.abc_orders (tenant_id, environment, idempotency_key)
+  WHERE idempotency_key IS NOT NULL;
 
-### 1. Freeze the Submit Order payload
-- Lock the current builder in `supabase/functions/_shared/srs/orderPayloadBuilder.ts` (and any call sites in `srs-api-proxy` / `srs-order-submit`).
-- Add a snapshot test that pins the exact field set: `sourceSystem, customerCode, accountNumber, branchCode, shipToSequenceNumber, transactionID, transactionDate, shipTo, poDetails, orderLineItemDetails, customerContactInfo`.
-- Assert line items **omit** `price` and top-level `jobAccountNumber` stays absent.
-- Any future change to this shape must delete/replace the snapshot deliberately.
+ALTER TABLE public.abc_order_lines
+  ADD COLUMN IF NOT EXISTS approved_mapping_id TEXT,
+  ADD COLUMN IF NOT EXISTS approved_pricing_run_id TEXT,
+  ADD COLUMN IF NOT EXISTS line_proof JSONB DEFAULT '{}'::jsonb;
 
-### 2. Remove QA retry/variance logic from production
-- Audit `srs-api-proxy`, `srs-order-submit`, and `_shared/srs/*` for:
-  - Automatic payload mutation after queue responses
-  - Automatic variance re-submits
-  - Multi-submit fallbacks
-- Wrap each behind `isSrsDebugModeEnabled(tenantId)` which is `true` only when:
-  - `Deno.env.get("SRS_DEBUG_MODE") === "true"`, **or**
-  - A Platform Admin has flipped `tenant_settings.srs_debug_mode` (new boolean, defaults `false`).
-- Production path: single submit, no mutation. Queue responses go to the existing poller/webhook path unchanged.
+NOTIFY pgrst, 'reload schema';
+```
 
-### 3. OAuth request encoding
-- In `_shared/srs/oauthClient.ts`: send token requests as `application/x-www-form-urlencoded` **first**.
-- Keep JSON as a fallback only if SRS returns a `415`/`400` indicating encoding issue.
-- Preserve current token cache, expiry handling, and `srs_credential_audit` logging.
+RLS: unchanged — new columns inherit existing `abc_orders` / `abc_order_lines` tenant policies.
 
-### 4. Transaction ID management
-- Persist `transactionID`, `queueID`, `orderID` on `srs_orders` (already present — verify columns and backfill nullable ones).
-- Transport-level retries (network timeouts, 5xx) reuse the **same** `transactionID`.
-- Business retries (user-initiated resubmit) require an explicit UI confirmation and generate a new `transactionID` with an audit link back to the original.
+## Behaviour changes (production `place_order` / `submit_order`)
 
-### 5. Pre-submit validation layer
-- Add `_shared/srs/preSubmitValidator.ts` that verifies before any SRS call:
-  - Customer, branch, job account resolved and active
-  - Product IDs exist in `abc_catalog_items`/SRS catalog cache
-  - Catalog membership for the branch
-  - Shipping method, UOM, delivery method
-  - Contact + shipping address complete
-  - Expected delivery date present and in the future
-- Reject with a structured `422` error envelope before touching SRS. Log rejections to `srs_submit_audit`.
+1. **`body.order` bypass removed.** If `body.order` is present and the caller is not the master-only sandbox debug route, respond `400 { error: "pre_shaped_order_forbidden" }`. The sandbox `submit_test_order` action keeps its existing single-item shared-builder path (already migrated in Slice 3A).
+2. **Trusted server-side reload.** Handler ignores `body.shipToNumber`, `body.branchNumber`, `body.unit_cost`, `body.delivery_address`, `body.customer_name`, `body.jobsite_contact` when building the payload. Everything is reloaded from `abc_connections` (branch, ship-to), `projects` / `contacts` (address, jobsite contact), `template_item_supplier_mappings` (approved ABC mapping), and `abc_price_cache` / `supplier_price_history` (pricing).
+3. **Validated address gate.** Reject with `order_address_not_validated` if the reloaded project/property address is missing a validated `validated_addresses` row (or is missing line1/city/state/postal). Sandbox `submit_test_order` retains its fixed demo address.
+4. **Approved-mapping gate per line.** For each `body.items[i]`, resolve mapping via `resolveAbcMapping`. Refuse the whole order if any line is not `state === "approved" && canOrder === true` — response `{ error: "line_mapping_not_approved", lineId, reason }`.
+5. **Pricing freshness gate.** For each approved line, load latest pricing row from persistence. If the row is older than `ABC_PRICING_MAX_AGE_MINUTES` (default 1440), reject with `pricing_expired` (no silent refresh). If no row exists, `unresolved_sku_pricing`.
+6. **No unsafe identifier fallbacks.** `item_name` and `srs_item_code` may not become an ABC `itemNumber` — only `approvedItemNumber` from the resolver. Default `EA` UOM removed; UOM must come from the approved mapping/child.
+7. **Multi-line support.** All lines pass through `buildAbcOrderPayload` in one payload. One invalid line blocks the whole order. No partial submissions.
+8. **Idempotency.** Before the HTTP call, look up `abc_orders` by `(tenant_id, environment, idempotency_key)`. Return the existing order row (200 with `duplicate: true, existingOrder`) instead of re-submitting.
+9. **Persistence.** Extend the existing `abc_orders` insert to write `payload_hash`, `idempotency_key`, `pricing_run_id` (from line proofs when consistent, else null), `mapping_snapshot` (compact snapshot of approved mappings used). Extend `abc_order_lines` insert to write `approved_mapping_id`, `approved_pricing_run_id`, `line_proof` from `lineProofs[i]`.
+10. **Equivalence.** Both handlers call `assembleProductionAbcOrder` with the same reload result and produce byte-identical `orderRequest`, `payloadHash`, `idempotencyKey`, and identical persistence input objects.
 
-### 6. Webhook — verify only, no changes
-- Read-only audit of `srs-webhook` / `roofhub-webhook`. Confirm:
-  - Duplicate detection + idempotency keys
-  - Transaction/order/PO matching
-  - Status history writes
-  - Attachment + delivery document import
-  - Invoice creation
-  - Raw payload storage
-- Produce a checklist in `docs/srs-webhook-verification.md`. No code changes.
+## Not in this slice (per brief)
 
-### 7. Price API — TODO only
-- Add a TODO in `docs/srs-open-questions.md`:
-  - Confirm whether `/products/v2/price` should key on `productId` + `productName` + `productOptions` instead of `productNumber`.
-- **No code changes** to pricing until SRS confirms.
+- No frontend changes.
+- No route cutover.
+- No `abc-api-proxy` shim.
+- No sandbox helpers removed.
+- No pricing/catalog logic changes.
 
-### 8. Environment separation
-- Introduce `SRS_ENVIRONMENT` = `production | qa | debug` (env + `tenant_settings.srs_environment`).
-- Only `debug` unlocks payload experimentation, submit variances, and automatic retries.
-- `qa` uses QA base URL + credentials; `production` uses prod URL + creds and locks experimental paths.
+## Deliverables (in the response after execution)
 
-### 9. Documentation refresh
-- Update `docs/srs-sips-integration-audit.md` and README sections:
-  - Mark OAuth, Submit Order, Order ID, Webhook, Status Updates, Audit Logging as **VERIFIED via QA end-to-end**.
-  - Remove stale "webhook TODO / missing callback" notes.
+1. Files changed.
+2. Legacy code deleted (line ranges).
+3. Shared builder integration diff summary.
+4. `body.order` removal proof (grep result).
+5. Multi-line handling summary.
+6. Idempotency implementation summary.
+7. Persistence changes summary.
+8. Equivalence test results (`deno test`).
+9. Any remaining duplicated code with justification.
 
-### 10. Integration Health Dashboard
-- New master-admin surface `src/components/admin/SrsHealthDashboard.tsx` (mounted inside the existing SRS admin tab — **no new route/page**).
-- Reads from a new `srs-api / GET /health` route inside the existing `srs-api` grouped function (no new edge function folder).
-- Shows per-tenant status: Authentication, Customer, Branch, Job Account, Catalog, Price, Submit, Queue, Order ID, Webhook, Delivery, Invoice, Last Success, Last Error, Environment.
-
-### 11. Production Readiness Report
-- Add `docs/srs-production-readiness.md` covering all 17 sections listed in the brief plus the Outstanding Questions block.
-- Add an in-app export button on the health dashboard that renders the same report as PDF.
-
----
-
-## Outstanding questions (documented, not coded)
-
-Recorded in `docs/srs-open-questions.md`:
-
-1. `/products/v2/price` request contract — `productId` vs `productNumber`.
-2. Non-color products: `option: "N/A"` vs empty string.
-3. `transactionID` idempotency + recommended retry behavior.
-4. Production webhook registration — global to `PITCH` SourceSystem or per-customer.
-5. Confirm the QA-approved Submit Order payload (with `shipToSequenceNumber`, no top-level `jobAccountNumber`, no line-item price) is the authoritative PITCH contract.
-
----
-
-## Technical notes
-
-**Files to add**
-- `supabase/functions/_shared/srs/preSubmitValidator.ts`
-- `supabase/functions/_shared/srs/debugMode.ts`
-- `supabase/functions/_shared/srs/__tests__/orderPayload.snapshot.test.ts`
-- `src/components/admin/SrsHealthDashboard.tsx`
-- `docs/srs-open-questions.md`
-- `docs/srs-production-readiness.md`
-- `docs/srs-webhook-verification.md`
-
-**Files to edit**
-- `supabase/functions/_shared/srs/oauthClient.ts` — form-urlencoded first.
-- `supabase/functions/_shared/srs/orderPayloadBuilder.ts` — freeze + snapshot hook.
-- `supabase/functions/srs-api/*` — add `/health` route, gate variance behavior.
-- `supabase/functions/_shared/srs/submitOrder.ts` (or equivalent) — remove auto-variance from prod path.
-- `docs/srs-sips-integration-audit.md` — mark VERIFIED.
-- `src/components/admin/SrsAdminSurfaces.tsx` — mount health dashboard tab.
-
-**Migration**
-- `tenant_settings`: add `srs_environment text default 'production'`, `srs_debug_mode boolean default false`. Both master-admin-only writable (RLS via existing `has_role(auth.uid(),'master')` policy pattern).
-
-**Architecture-guard compliance**
-- No new standalone edge functions. Health endpoint lives inside existing `srs-api`.
-- All new routes declare auth mode: authenticated tenant route (`requireAuth` + `requireTenant`) for health, master-only for debug toggles.
-- Server resolves tenant from JWT; never trusts client body.
-
-**Zero-change guarantees**
-- Submit payload byte-for-byte identical to the QA-verified run.
-- Webhook processor untouched.
-- Pricing endpoint untouched until SRS answers Q1.
+Approve and I'll execute in this order: migration → shared helpers (`assembleProductionAbcOrder`, `orderIdempotency`, `pricingFreshness`) → handler swaps (abc-api-proxy first, then supplier-api) → equivalence tests → run tests.
