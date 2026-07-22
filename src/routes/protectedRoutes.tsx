@@ -52,6 +52,7 @@ const MaterialCalculations = React.lazy(() => import("@/pages/MaterialCalculatio
 const MaterialOrders = React.lazy(() => import("@/pages/MaterialOrders"));
 const MaterialOrderDetail = React.lazy(() => import("@/pages/MaterialOrderDetail"));
 const SupplierOrderHistory = React.lazy(() => import("@/pages/SupplierOrderHistory"));
+const SupplierVerifyPricingPage = React.lazy(() => import("@/pages/SupplierVerifyPricingPage"));
 const ApprovalRules = React.lazy(() => import("@/pages/ApprovalRules"));
 const PendingApprovals = React.lazy(() => import("@/pages/PendingApprovals"));
 const ManagerApprovalQueue = React.lazy(() => import("@/pages/ManagerApprovalQueue"));
