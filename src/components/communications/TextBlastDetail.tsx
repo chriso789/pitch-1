@@ -206,6 +206,7 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
     cancelled: Ban,
     skipped_cooldown: Clock,
     skipped_duplicate: Ban,
+    quarantined: ShieldOff,
   };
 
   const statusColors: Record<string, string> = {
@@ -216,6 +217,7 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
     cancelled: 'text-muted-foreground',
     skipped_cooldown: 'text-amber-500',
     skipped_duplicate: 'text-muted-foreground',
+    quarantined: 'text-slate-500',
   };
 
   return (
