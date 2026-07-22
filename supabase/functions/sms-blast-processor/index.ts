@@ -11,7 +11,12 @@
 //   6. mark blast 'completed' when nothing remains
 import { createClient } from 'npm:@supabase/supabase-js@2.49.1';
 import { trackUsage, checkUsageLimit } from '../_shared/track-usage.ts';
-import { classifyTelnyxResponse, computeNextAttemptAt } from '../_shared/telnyx/rateLimit.ts';
+import {
+  classifyTelnyxResponse,
+  computeNextAttemptAt,
+  deriveCountryFromE164,
+  extractCountryFromErrorText,
+} from '../_shared/telnyx/rateLimit.ts';
 
 // Repair #2: hard ceiling for rate-limited retryable provider attempts before
 // the row is moved to failed. Distinct from the general processor claim retries.
