@@ -885,7 +885,7 @@ async function processBlast(
       .eq('status', status);
     return count ?? 0;
   };
-  const [sentTotal, failedTotal, optedTotal, deliveredTotal, repliedTotal, pendingTotal, claimedTotal, cooldownTotal, duplicateTotal] =
+  const [sentTotal, failedTotal, optedTotal, deliveredTotal, repliedTotal, pendingTotal, claimedTotal, cooldownTotal, duplicateTotal, quarantinedTotal] =
     await Promise.all([
       countBy('sent'),
       countBy('failed'),
@@ -896,12 +896,17 @@ async function processBlast(
       countBy('claimed'),
       countBy('skipped_cooldown'),
       countBy('skipped_duplicate'),
+      countBy('quarantined'),
     ]);
 
   const skippedTotal = cooldownTotal + duplicateTotal;
   const successfulTotal = sentTotal + deliveredTotal + repliedTotal;
-  const attempted = successfulTotal + failedTotal + skippedTotal;
-  const failureRate = attempted > 0 ? (failedTotal + skippedTotal) / attempted : 0;
+  // Repair #3: quarantined rows are terminal but must NOT inflate failure_rate.
+  // Include them in `attempted` so the blast can auto-complete, and exclude
+  // them from both numerator and denominator of the failure calculation.
+  const attempted = successfulTotal + failedTotal + skippedTotal + quarantinedTotal;
+  const failureDenominator = attempted - quarantinedTotal;
+  const failureRate = failureDenominator > 0 ? (failedTotal + skippedTotal) / failureDenominator : 0;
   const deliveryRate = attempted > 0 ? (deliveredTotal + repliedTotal) / attempted : 0;
   const replyRate = attempted > 0 ? repliedTotal / attempted : 0;
   const remaining = pendingTotal + claimedTotal;
