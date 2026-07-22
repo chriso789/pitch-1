@@ -43,6 +43,16 @@ export function useAbcSetup(): AbcSetup {
     enabled: !!tenantId,
     staleTime: 30_000,
     queryFn: async (): Promise<AbcSetupRow | null> => {
+      const { data: userRows, error: userErr } = await (supabase as any)
+        .from('abc_user_connections')
+        .select('environment')
+        .eq('tenant_id', tenantId as any)
+        .eq('status', 'connected');
+      if (userErr) throw userErr;
+      const connectedEnvironments = new Set(
+        ((userRows || []) as Array<{ environment: string | null }>).map((r) => normalizeAbcSetupEnvironment(r.environment)),
+      );
+      if (connectedEnvironments.size === 0) return null;
       const { data, error } = await supabase
         .from('abc_connections')
         .select(
@@ -55,16 +65,6 @@ export function useAbcSetup(): AbcSetup {
       const rows = (data || []) as AbcSetupRow[];
       if (rows.length === 0) return null;
 
-      const { data: userRows, error: userErr } = await (supabase as any)
-        .from('abc_user_connections')
-        .select('environment')
-        .eq('tenant_id', tenantId as any)
-        .eq('status', 'connected');
-      if (userErr) throw userErr;
-      const connectedEnvironments = new Set(
-        ((userRows || []) as Array<{ environment: string | null }>).map((r) => normalizeAbcSetupEnvironment(r.environment)),
-      );
-      if (connectedEnvironments.size === 0) return null;
       const accountRows = rows.filter((r) => connectedEnvironments.has(normalizeAbcSetupEnvironment(r.environment)));
       const connectedRows = rows.filter(
         (r) => (r.connection_status || '').toLowerCase() === 'connected',

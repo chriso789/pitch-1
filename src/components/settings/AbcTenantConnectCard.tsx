@@ -131,15 +131,17 @@ export function AbcTenantConnectCard() {
     if (!confirm('Disconnect ABC Supply? You will need to log in again to reconnect.')) return;
     setDisconnecting(true);
     try {
-      const { error } = await (supabase as any)
-        .from('abc_connections')
-        .update({
-          connection_status: 'disconnected',
-          client_secret_encrypted: null,
-          client_secret_last_four: null,
-        })
-        .eq('tenant_id', tenantId);
+      const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
+        body: {
+          action: 'disconnect',
+          tenant_id: tenantId,
+          environment: status.environment || 'production',
+        },
+      });
       if (error) throw error;
+      if ((data as any)?.success === false) {
+        throw new Error((data as any)?.human_message || (data as any)?.error || 'Disconnect failed');
+      }
       toast({ title: 'ABC Supply disconnected' });
       await status.refresh();
       await accountsQuery.refetch();
