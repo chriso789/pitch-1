@@ -390,28 +390,18 @@ async function processBlast(
   }
 
   if (!claimed || claimed.length === 0) {
-    // Nothing to do — if no sendable items remain, mark completed.
-    // Skipped terminal states are intentionally excluded so cooldown/duplicate
-    // guards do not leave the parent blast stuck in "sending".
-    const { count } = await supabase
-      .from('sms_blast_items')
-      .select('id', { count: 'exact', head: true })
-      .eq('blast_id', blast.id)
-      .in('status', ['pending', 'claimed']);
-    if ((count ?? 0) === 0 && blast.status === 'sending') {
-      await supabase
-        .from('sms_blasts')
-        .update({
-          status: 'completed',
-          completed_at: new Date().toISOString(),
-          last_processor_run_at: new Date().toISOString(),
-        })
-        .eq('id', blast.id);
-    } else {
-      await supabase
-        .from('sms_blasts')
-        .update({ last_processor_run_at: new Date().toISOString() })
-        .eq('id', blast.id);
+    // Nothing to claim this tick. Stamp the run and delegate completion to
+    // the Blast Completion Engine — it atomically transitions the blast to
+    // `completed` or `completed_with_warnings` if no actionable work remains.
+    await supabase
+      .from('sms_blasts')
+      .update({ last_processor_run_at: new Date().toISOString() })
+      .eq('id', blast.id);
+    if (blast.status === 'sending') {
+      await supabase.rpc('complete_sms_blast_if_done', {
+        p_blast_id: blast.id,
+        p_processor_run_id: processorRunId,
+      });
     }
     return { blast_id: blast.id, claimed: 0 };
   }
@@ -922,11 +912,6 @@ async function processBlast(
       .update({ status: 'cancelled' })
       .eq('blast_id', blast.id)
       .in('status', ['pending', 'claimed']);
-  } else if (remaining === 0 && blast.status === 'sending') {
-    newStatus = successfulTotal > 0 || attempted === 0 ? 'completed' : 'failed';
-    extra = successfulTotal > 0 || attempted === 0
-      ? { completed_at: new Date().toISOString() }
-      : { cancel_reason: 'No text messages were sent; all recipients were blocked or failed.', cancelled_at: new Date().toISOString() };
   }
 
   await supabase
@@ -947,6 +932,17 @@ async function processBlast(
       ...extra,
     })
     .eq('id', blast.id);
+
+  // Blast Completion Engine (Repair #4). Atomically transitions the blast to
+  // `completed` or `completed_with_warnings` when no actionable work remains
+  // (no pending/claimed rows). Idempotent — a completed blast is never
+  // reopened. Skipped when the circuit breaker already forced `failed`.
+  if (newStatus === 'sending') {
+    await supabase.rpc('complete_sms_blast_if_done', {
+      p_blast_id: blast.id,
+      p_processor_run_id: processorRunId,
+    });
+  }
 
   const requeuedTotal = rateLimited; // rate-limit releases + retryable transients
   const avgRetryDelayMs = rateLimited > 0 ? Math.round(retryDelaySumMs / rateLimited) : 0;
