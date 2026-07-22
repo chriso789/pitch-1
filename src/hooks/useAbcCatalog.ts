@@ -26,7 +26,10 @@ export interface AbcShipTo {
  * DB only — no manual entry of branch number / ship-to required for normal
  * tenants.
  */
-export function useAbcCatalog(tenantId: string | null | undefined, connectionId?: string | null) {
+export function useAbcCatalog(
+  tenantId: string | null | undefined,
+  environment?: 'sandbox' | 'production' | null,
+) {
   const [branches, setBranches] = useState<AbcBranch[]>([]);
   const [shipTos, setShipTos] = useState<AbcShipTo[]>([]);
   const [loading, setLoading] = useState(false);
@@ -43,13 +46,31 @@ export function useAbcCatalog(tenantId: string | null | undefined, connectionId?
       setLoading(true);
       setError(null);
       try {
+        let connectionIds: string[] = [];
+        if (environment) {
+          const c = await (supabase as any)
+            .from('abc_user_connections')
+            .select('id')
+            .eq('tenant_id', tenantId)
+            .eq('environment', environment)
+            .eq('status', 'connected');
+          connectionIds = ((c?.data || []) as Array<{ id: string }>).map((row) => row.id);
+        }
+
         let shipToQuery = (supabase as any)
           .from('abc_ship_to_accounts')
           .select('id, ship_to_number, name, address_line1, city, state, postal_code, is_default')
           .eq('tenant_id', tenantId)
           .order('is_default', { ascending: false })
           .order('ship_to_number');
-        if (connectionId) shipToQuery = shipToQuery.eq('connection_id', connectionId);
+        if (environment) {
+          if (connectionIds.length === 0) {
+            setBranches([]);
+            setShipTos([]);
+            return;
+          }
+          shipToQuery = shipToQuery.in('connection_id', connectionIds);
+        }
 
         const s1 = await shipToQuery;
         if (cancelled) return;
@@ -70,7 +91,7 @@ export function useAbcCatalog(tenantId: string | null | undefined, connectionId?
         }
 
         let wideRows: AbcBranch[] = [];
-        if (!connectionId && accountRows.length === 0) {
+        if (!environment && accountRows.length === 0) {
           const b2 = await (supabase as any)
             .from('abc_branches')
             .select('branch_number, name, city, state')
@@ -98,7 +119,7 @@ export function useAbcCatalog(tenantId: string | null | undefined, connectionId?
     return () => {
       cancelled = true;
     };
-  }, [tenantId, connectionId]);
+  }, [tenantId, environment]);
 
   return { branches, shipTos, loading, error };
 }
