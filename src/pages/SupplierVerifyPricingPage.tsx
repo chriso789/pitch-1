@@ -284,11 +284,11 @@ export default function SupplierVerifyPricingPage() {
             </div>
             <div>
               <div className="text-muted-foreground text-xs">Setup</div>
-              <div>{abcSetup.setupCompletedAt ? formatDistanceToNow(new Date(abcSetup.setupCompletedAt), { addSuffix: true }) : 'Not completed'}</div>
+              <div>{abcSetup.connection?.setup_completed_at ? formatDistanceToNow(new Date(abcSetup.connection.setup_completed_at), { addSuffix: true }) : 'Not completed'}</div>
             </div>
             <div>
               <div className="text-muted-foreground text-xs">Status</div>
-              <div>{abcSetup.connectionStatus || 'unknown'}</div>
+              <div>{abcSetup.connection?.connection_status || 'unknown'}</div>
             </div>
           </CardContent>
         </Card>
