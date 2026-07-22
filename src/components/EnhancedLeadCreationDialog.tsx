@@ -432,8 +432,9 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
       });
 
       if (error) {
-        console.error('Edge function error:', error);
-        throw new Error(error.message || 'Failed to create lead');
+        const described = describeEdgeFunctionError('create-lead-with-contact', error, data);
+        console.error('[create-lead-with-contact] Edge function error:', described, error);
+        throw new Error(described.toastMessage);
       }
 
       // Handle duplicate warning
