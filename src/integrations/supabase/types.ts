@@ -50233,6 +50233,48 @@ export type Database = {
           },
         ]
       }
+      sms_claim_reap_events: {
+        Row: {
+          blast_id: string
+          created_at: string
+          id: string
+          item_id: string
+          new_status: string
+          previous_claimed_at: string | null
+          previous_status: string
+          reaped_at: string
+          reason: string
+          run_id: string
+          tenant_id: string | null
+        }
+        Insert: {
+          blast_id: string
+          created_at?: string
+          id?: string
+          item_id: string
+          new_status: string
+          previous_claimed_at?: string | null
+          previous_status: string
+          reaped_at?: string
+          reason: string
+          run_id: string
+          tenant_id?: string | null
+        }
+        Update: {
+          blast_id?: string
+          created_at?: string
+          id?: string
+          item_id?: string
+          new_status?: string
+          previous_claimed_at?: string | null
+          previous_status?: string
+          reaped_at?: string
+          reason?: string
+          run_id?: string
+          tenant_id?: string | null
+        }
+        Relationships: []
+      }
       sms_messages: {
         Row: {
           ai_generated: boolean
@@ -62320,6 +62362,17 @@ export type Database = {
         Returns: string
       }
       prune_log_tables: { Args: never; Returns: undefined }
+      reap_stale_sms_claims: {
+        Args: {
+          batch_limit?: number
+          max_age_minutes?: number
+          run_id?: string
+        }
+        Returns: {
+          blast_id: string
+          reaped_count: number
+        }[]
+      }
       recalc_sms_blast_counts: {
         Args: { p_blast_id: string }
         Returns: undefined
