@@ -526,6 +526,8 @@ async function processBlast(
   let rateLimited = 0;         // Repair #2: releases back to pending
   let rateLimitExhausted = 0;  // Repair #2: hit ceiling → failed
   let ownershipConflicts = 0;  // Repair #2: another worker owns the row
+  let quarantined = 0;         // Repair #3: permanent destination rejections
+  const quarantineCountryBreakdown = new Map<string, number>();
   let retryDelaySumMs = 0;
   let retryDelayMaxMs = 0;
 
