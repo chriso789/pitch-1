@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, CheckCircle2, XCircle, Truck, Building2, Package, FileText, CreditCard, ExternalLink } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Truck, Building2, Package, FileText, CreditCard, ExternalLink, DollarSign } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { useAbcConnectionStatus } from '@/hooks/useAbcConnectionStatus';
