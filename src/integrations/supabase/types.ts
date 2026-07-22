@@ -49968,6 +49968,7 @@ export type Database = {
           claimed_by: string | null
           contact_id: string | null
           contact_name: string | null
+          country_code: string | null
           delivered_at: string | null
           error_message: string | null
           from_number: string | null
@@ -49978,6 +49979,8 @@ export type Database = {
           phone: string
           provider_error_code: string | null
           provider_request_id: string | null
+          quarantine_reason: string | null
+          quarantined_at: string | null
           replied_at: string | null
           routed_contact_id: string | null
           routing_confidence: string | null
@@ -50001,6 +50004,7 @@ export type Database = {
           claimed_by?: string | null
           contact_id?: string | null
           contact_name?: string | null
+          country_code?: string | null
           delivered_at?: string | null
           error_message?: string | null
           from_number?: string | null
@@ -50011,6 +50015,8 @@ export type Database = {
           phone: string
           provider_error_code?: string | null
           provider_request_id?: string | null
+          quarantine_reason?: string | null
+          quarantined_at?: string | null
           replied_at?: string | null
           routed_contact_id?: string | null
           routing_confidence?: string | null
@@ -50034,6 +50040,7 @@ export type Database = {
           claimed_by?: string | null
           contact_id?: string | null
           contact_name?: string | null
+          country_code?: string | null
           delivered_at?: string | null
           error_message?: string | null
           from_number?: string | null
@@ -50044,6 +50051,8 @@ export type Database = {
           phone?: string
           provider_error_code?: string | null
           provider_request_id?: string | null
+          quarantine_reason?: string | null
+          quarantined_at?: string | null
           replied_at?: string | null
           routed_contact_id?: string | null
           routing_confidence?: string | null
@@ -50120,6 +50129,7 @@ export type Database = {
           name: string
           opted_out_count: number
           parent_blast_id: string | null
+          quarantined_count: number
           replied_count: number | null
           reply_rate: number | null
           required_messages_per_second: number | null
@@ -50162,6 +50172,7 @@ export type Database = {
           name: string
           opted_out_count?: number
           parent_blast_id?: string | null
+          quarantined_count?: number
           replied_count?: number | null
           reply_rate?: number | null
           required_messages_per_second?: number | null
@@ -50204,6 +50215,7 @@ export type Database = {
           name?: string
           opted_out_count?: number
           parent_blast_id?: string | null
+          quarantined_count?: number
           replied_count?: number | null
           reply_rate?: number | null
           required_messages_per_second?: number | null
@@ -50284,6 +50296,51 @@ export type Database = {
           reason?: string
           run_id?: string
           tenant_id?: string | null
+        }
+        Relationships: []
+      }
+      sms_item_quarantine_events: {
+        Row: {
+          blast_id: string
+          country_code: string | null
+          created_at: string
+          id: string
+          item_id: string
+          phone: string | null
+          processor_run_id: string | null
+          provider_error_code: string | null
+          provider_request_id: string | null
+          provider_status: number | null
+          reason: string
+          tenant_id: string
+        }
+        Insert: {
+          blast_id: string
+          country_code?: string | null
+          created_at?: string
+          id?: string
+          item_id: string
+          phone?: string | null
+          processor_run_id?: string | null
+          provider_error_code?: string | null
+          provider_request_id?: string | null
+          provider_status?: number | null
+          reason: string
+          tenant_id: string
+        }
+        Update: {
+          blast_id?: string
+          country_code?: string | null
+          created_at?: string
+          id?: string
+          item_id?: string
+          phone?: string | null
+          processor_run_id?: string | null
+          provider_error_code?: string | null
+          provider_request_id?: string | null
+          provider_status?: number | null
+          reason?: string
+          tenant_id?: string
         }
         Relationships: []
       }
@@ -61539,6 +61596,7 @@ export type Database = {
           claimed_by: string | null
           contact_id: string | null
           contact_name: string | null
+          country_code: string | null
           delivered_at: string | null
           error_message: string | null
           from_number: string | null
@@ -61549,6 +61607,8 @@ export type Database = {
           phone: string
           provider_error_code: string | null
           provider_request_id: string | null
+          quarantine_reason: string | null
+          quarantined_at: string | null
           replied_at: string | null
           routed_contact_id: string | null
           routing_confidence: string | null

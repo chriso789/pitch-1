@@ -11,7 +11,12 @@
 //   6. mark blast 'completed' when nothing remains
 import { createClient } from 'npm:@supabase/supabase-js@2.49.1';
 import { trackUsage, checkUsageLimit } from '../_shared/track-usage.ts';
-import { classifyTelnyxResponse, computeNextAttemptAt } from '../_shared/telnyx/rateLimit.ts';
+import {
+  classifyTelnyxResponse,
+  computeNextAttemptAt,
+  deriveCountryFromE164,
+  extractCountryFromErrorText,
+} from '../_shared/telnyx/rateLimit.ts';
 
 // Repair #2: hard ceiling for rate-limited retryable provider attempts before
 // the row is moved to failed. Distinct from the general processor claim retries.
@@ -521,6 +526,8 @@ async function processBlast(
   let rateLimited = 0;         // Repair #2: releases back to pending
   let rateLimitExhausted = 0;  // Repair #2: hit ceiling → failed
   let ownershipConflicts = 0;  // Repair #2: another worker owns the row
+  let quarantined = 0;         // Repair #3: permanent destination rejections
+  const quarantineCountryBreakdown = new Map<string, number>();
   let retryDelaySumMs = 0;
   let retryDelayMaxMs = 0;
 
@@ -767,6 +774,45 @@ async function processBlast(
           } else {
             ownershipConflicts++;
           }
+        } else if (norm?.category === 'destination_not_permitted') {
+          // Repair #3: Permanent destination rejection (e.g. Canadian NANP on
+          // a US-only messaging profile). Quarantine immediately; never retry,
+          // never increment attempt_count again, never count as "failed" for
+          // reporting purposes.
+          const country =
+            extractCountryFromErrorText(norm?.provider_error_message || errMsg) ||
+            deriveCountryFromE164(toE164 || item.phone);
+          const reason = `permanent_destination_rejection: ${errMsg}`;
+          await supabase
+            .from('sms_blast_items')
+            .update({
+              status: 'quarantined',
+              quarantine_reason: reason,
+              country_code: country,
+              quarantined_at: new Date().toISOString(),
+              last_error: reason,
+              error_message: reason,
+              from_number: loc.telnyx_phone_number,
+              provider_error_code: norm?.provider_error_code || null,
+              provider_request_id: norm?.provider_request_id || null,
+            })
+            .eq('id', item.id);
+          await supabase.from('sms_item_quarantine_events').insert({
+            tenant_id: (item as any).tenant_id || blast.tenant_id,
+            blast_id: blast.id,
+            item_id: item.id,
+            phone: toE164 || item.phone || null,
+            country_code: country,
+            reason,
+            provider_error_code: norm?.provider_error_code || null,
+            provider_request_id: norm?.provider_request_id || null,
+            provider_status: typeof res.status === 'number' ? res.status : null,
+            processor_run_id: processorRunId,
+          });
+          quarantined++;
+          if (country) {
+            quarantineCountryBreakdown.set(country, (quarantineCountryBreakdown.get(country) || 0) + 1);
+          }
         } else {
           // Permanent — record and let existing behaviour flag as failed.
           await supabase
@@ -839,7 +885,7 @@ async function processBlast(
       .eq('status', status);
     return count ?? 0;
   };
-  const [sentTotal, failedTotal, optedTotal, deliveredTotal, repliedTotal, pendingTotal, claimedTotal, cooldownTotal, duplicateTotal] =
+  const [sentTotal, failedTotal, optedTotal, deliveredTotal, repliedTotal, pendingTotal, claimedTotal, cooldownTotal, duplicateTotal, quarantinedTotal] =
     await Promise.all([
       countBy('sent'),
       countBy('failed'),
@@ -850,12 +896,17 @@ async function processBlast(
       countBy('claimed'),
       countBy('skipped_cooldown'),
       countBy('skipped_duplicate'),
+      countBy('quarantined'),
     ]);
 
   const skippedTotal = cooldownTotal + duplicateTotal;
   const successfulTotal = sentTotal + deliveredTotal + repliedTotal;
-  const attempted = successfulTotal + failedTotal + skippedTotal;
-  const failureRate = attempted > 0 ? (failedTotal + skippedTotal) / attempted : 0;
+  // Repair #3: quarantined rows are terminal but must NOT inflate failure_rate.
+  // Include them in `attempted` so the blast can auto-complete, and exclude
+  // them from both numerator and denominator of the failure calculation.
+  const attempted = successfulTotal + failedTotal + skippedTotal + quarantinedTotal;
+  const failureDenominator = attempted - quarantinedTotal;
+  const failureRate = failureDenominator > 0 ? (failedTotal + skippedTotal) / failureDenominator : 0;
   const deliveryRate = attempted > 0 ? (deliveredTotal + repliedTotal) / attempted : 0;
   const replyRate = attempted > 0 ? repliedTotal / attempted : 0;
   const remaining = pendingTotal + claimedTotal;
@@ -887,6 +938,7 @@ async function processBlast(
       opted_out_count: optedTotal,
       delivered_count: deliveredTotal,
       replied_count: repliedTotal,
+      quarantined_count: quarantinedTotal,
       failure_rate: failureRate,
       delivery_rate: deliveryRate,
       reply_rate: replyRate,
@@ -898,6 +950,8 @@ async function processBlast(
 
   const requeuedTotal = rateLimited; // rate-limit releases + retryable transients
   const avgRetryDelayMs = rateLimited > 0 ? Math.round(retryDelaySumMs / rateLimited) : 0;
+  const quarantineByCountry: Record<string, number> = {};
+  for (const [k, v] of quarantineCountryBreakdown) quarantineByCountry[k] = v;
 
   return {
     blast_id: blast.id,
@@ -907,6 +961,10 @@ async function processBlast(
     rate_limited: rateLimited,
     rate_limit_exhausted: rateLimitExhausted,
     ownership_conflicts: ownershipConflicts,
+    // Repair #3 observability
+    quarantined,
+    quarantined_total: quarantinedTotal,
+    quarantine_by_country: quarantineByCountry,
     requeued: requeuedTotal,
     avg_retry_delay_ms: avgRetryDelayMs,
     max_retry_delay_ms: retryDelayMaxMs,

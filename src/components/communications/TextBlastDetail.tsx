@@ -139,14 +139,17 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
     sent: allItems.filter((i: any) => ['sent', 'delivered', 'replied'].includes(i.status)).length,
     delivered: allItems.filter((i: any) => ['delivered', 'replied'].includes(i.status)).length,
     replied: allItems.filter((i: any) => i.status === 'replied').length,
+    // Failed excludes quarantined so unsupported-destination rows never
+    // masquerade as delivery failures.
     failed: allItems.filter((i: any) => ['failed', 'cancelled', 'skipped_cooldown', 'skipped_duplicate', 'skipped_missing_address', 'skipped_opt_out'].includes(i.status)).length,
     opted: allItems.filter((i: any) => i.status === 'opted_out').length,
+    quarantined: allItems.filter((i: any) => i.status === 'quarantined').length,
   };
   const nonResponders = allItems.filter((i: any) =>
     ['sent', 'delivered', 'failed'].includes(i.status)
   );
   const progress = counts.total > 0
-    ? Math.round(((counts.sent + counts.failed + counts.opted) / counts.total) * 100)
+    ? Math.round(((counts.sent + counts.failed + counts.opted + counts.quarantined) / counts.total) * 100)
     : 0;
   const skippedCount = allItems.filter((item: any) => ['skipped_cooldown', 'skipped_duplicate'].includes(item.status)).length;
   const noTextsSent = blast.status === 'completed' && counts.sent === 0 && skippedCount > 0;
@@ -203,6 +206,7 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
     cancelled: Ban,
     skipped_cooldown: Clock,
     skipped_duplicate: Ban,
+    quarantined: ShieldOff,
   };
 
   const statusColors: Record<string, string> = {
@@ -213,6 +217,7 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
     cancelled: 'text-muted-foreground',
     skipped_cooldown: 'text-amber-500',
     skipped_duplicate: 'text-muted-foreground',
+    quarantined: 'text-slate-500',
   };
 
   return (
@@ -271,7 +276,7 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
       {/* Stats — live-derived from items so replies/STOPs landing via the
           inbound webhook show up immediately, not only after the next
           processor run. */}
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-3 shrink-0">
+      <div className="grid grid-cols-2 md:grid-cols-7 gap-3 shrink-0">
         <Card>
           <CardContent className="py-3 text-center">
             <p className="text-2xl font-bold">{counts.total}</p>
@@ -306,6 +311,14 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
           <CardContent className="py-3 text-center">
             <p className="text-2xl font-bold text-amber-500">{counts.opted}</p>
             <p className="text-xs text-muted-foreground">Opted Out</p>
+          </CardContent>
+        </Card>
+        <Card
+          title="Carrier permanently blocked these destinations (unsupported country). They will not be retried and are excluded from failure rate."
+        >
+          <CardContent className="py-3 text-center">
+            <p className="text-2xl font-bold text-slate-500">{counts.quarantined}</p>
+            <p className="text-xs text-muted-foreground">Quarantined</p>
           </CardContent>
         </Card>
       </div>

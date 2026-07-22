@@ -335,3 +335,49 @@ export function computeNextAttemptAt(
     delayMs,
   };
 }
+
+// ---------- Repair #3: Destination country helpers ----------
+//
+// Telnyx returns permanent-destination rejections (e.g. Canadian NANP numbers
+// on a US-only messaging profile) that must never be retried. We derive a
+// coarse ISO country code from the E.164 recipient so the processor can
+// tag quarantined rows for reporting.
+
+// Non-exhaustive list of Canadian NANP area codes (as of 2025). If a `+1`
+// number matches this set we treat it as CA. Everything else defaults to US.
+const CA_AREA_CODES = new Set<string>([
+  '204','226','236','249','250','263','289','306','343','354','365','367','368',
+  '382','387','403','416','418','428','431','437','438','450','468','474','506',
+  '514','519','548','579','581','584','587','604','613','639','647','672','683',
+  '705','709','742','753','778','780','782','807','819','825','867','873','879',
+  '902','905',
+]);
+
+export function deriveCountryFromE164(phone: string | null | undefined): string | null {
+  if (!phone) return null;
+  const p = String(phone).trim();
+  if (!p.startsWith('+')) return null;
+  const digits = p.slice(1).replace(/\D/g, '');
+  if (!digits) return null;
+  // NANP (+1)
+  if (digits.startsWith('1') && digits.length >= 4) {
+    const area = digits.slice(1, 4);
+    return CA_AREA_CODES.has(area) ? 'CA' : 'US';
+  }
+  // Fallback: return the calling code as pseudo-ISO so we still record something.
+  // Most single-digit / two-digit CCs map to a single country; the operator will
+  // enrich in reporting if needed.
+  const cc = digits.slice(0, 3);
+  return `+${cc}`;
+}
+
+// Try to pull an explicit country hint out of a provider error message when
+// the classifier tagged it as `destination_not_permitted`.
+export function extractCountryFromErrorText(text: string | null | undefined): string | null {
+  if (!text) return null;
+  const t = text.toLowerCase();
+  if (/canad(a|ian)/.test(t)) return 'CA';
+  if (/mexic(o|an)/.test(t)) return 'MX';
+  if (/united kingdom|\bu\.?k\.?\b/.test(t)) return 'GB';
+  return null;
+}
