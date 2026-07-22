@@ -961,6 +961,10 @@ async function processBlast(
     rate_limited: rateLimited,
     rate_limit_exhausted: rateLimitExhausted,
     ownership_conflicts: ownershipConflicts,
+    // Repair #3 observability
+    quarantined,
+    quarantined_total: quarantinedTotal,
+    quarantine_by_country: quarantineByCountry,
     requeued: requeuedTotal,
     avg_retry_delay_ms: avgRetryDelayMs,
     max_retry_delay_ms: retryDelayMaxMs,
