@@ -31,6 +31,11 @@ import {
   type BuildOrderInput,
   type OrderLineProof,
 } from "../_shared/abc/orderService.ts";
+import {
+  assembleProductionAbcOrder,
+  createSupabaseDataSource,
+  persistAbcProductionOrder,
+} from "../_shared/abc/orderProduction.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1717,145 +1722,82 @@ export const handle = async (req) => {
 
 
 
-    // ---------------- place_order / submit_order (legacy) ----------------
+    // ---------------- place_order / submit_order (unified — Slice 3B) ----------------
     if (action === "place_order" || action === "submit_order") {
       const endpoint = `${cfg.apiBase}/order/v2/orders`;
 
-      let payload: any[];
-
+      // Body-supplied ABC payloads are no longer accepted from tenants.
+      // All production orders MUST be assembled by the shared production
+      // module using trusted server-side records (approved mapping,
+      // fresh price cache, validated address). This closes the client
+      // identity / pricing / UOM / address spoofing paths that existed
+      // before Slice 3B.
       if (body.order) {
-        // Caller supplied a pre-shaped ABC order object (or array).
-        payload = Array.isArray(body.order) ? body.order : [body.order];
-      } else {
-        // Legacy item-based shape — build an ABC order from items[].
-        const items = (body.items || []).filter(
-          (i) => Number(i.quantity) > 0 && (i.abc_item_code || i.srs_item_code || i.item_name),
-        );
-        if (!items.length) {
-          return json({ success: false, error: "no_items", interpretation: "No items to submit." }, 400);
-        }
-
-        // UOM gate — branches reject invalid UOMs. Reject early.
-        const missingUom = items.find((i: any) => !String(i.unit || "").trim());
-        if (missingUom) {
-          return json({
-            success: false,
-            error: "missing_item_uom",
-            interpretation: `Item "${(missingUom as any).item_name || (missingUom as any).abc_item_code}" is missing a UOM. Pull the UOM from the Product API for the selected item and resubmit.`,
-          }, 400);
-        }
-
-        const { data: conn } = await supabase
-          .from("abc_connections")
-          .select("account_number,default_branch_code")
-          .eq("tenant_id", tenant_id)
-          .eq("environment", env)
-          .maybeSingle();
-        const shipToNumber =
-          body.shipToNumber ||
-          (conn as any)?.account_number ||
-          Deno.env.get("ABC_ACCOUNT_NUMBER") ||
-          "";
-        const branchNumber =
-          (body.branchNumber || body.branch_code || (conn as any)?.default_branch_code || "")
-            .toString().trim();
-
-        // Price echo — resolve any missing unit_cost from /pricing/v2/prices
-        const ts = Date.now();
-        const priceMap = new Map<string, number>();
-        const needsPrice = items.filter((i: any) => !(Number(i.unit_cost) > 0));
-        if (needsPrice.length && shipToNumber && branchNumber) {
-          try {
-            const priceEndpoint = `${cfg.apiBase}/pricing/v2/prices`;
-            const pricePayload = {
-              requestId: `PITCH-PRICE-${ts}`,
-              shipToNumber,
-              branchNumber,
-              purpose: "ordering",
-              lines: needsPrice.map((i: any, idx: number) => ({
-                id: String(idx + 1),
-                itemNumber: (i.abc_item_code || i.srs_item_code || i.item_name).toString(),
-                quantity: Number(i.quantity) || 1,
-                uom: String(i.unit).toUpperCase(),
-              })),
-            };
-            const pr = await callAbc(tok.token, "POST", priceEndpoint, pricePayload);
-            const pj: any = pr.json;
-            const respLines = Array.isArray(pj?.lines)
-              ? pj.lines
-              : Array.isArray(pj)
-                ? (pj[0]?.lines ?? [])
-                : [];
-            for (const rl of respLines) {
-              const itemNum = String(rl?.itemNumber ?? "").trim();
-              const price = Number(rl?.unitPrice?.value ?? rl?.unitPrice ?? rl?.netPrice ?? rl?.price);
-              if (itemNum && Number.isFinite(price) && price > 0) priceMap.set(itemNum, price);
-            }
-          } catch (_e) { /* non-fatal */ }
-        }
-
-        const deliveryService =
-          body.delivery_method === "pickup" ? "CPU"
-            : body.delivery_method === "ground_drop" ? "OTG"
-              : body.delivery_method === "roof_load" ? "OTR"
-                : "CPU";
-
-        const parseAddr = (raw?: string) => {
-          if (!raw) return { line1: "", city: "", state: "", postal: "", country: "USA" };
-          const m = raw.match(/^(.*?),\s*(.*?),\s*([A-Z]{2})\s*(\d{5})/i);
-          return m
-            ? { line1: m[1].trim(), city: m[2].trim(), state: m[3].toUpperCase(), postal: m[4], country: "USA" }
-            : { line1: raw.trim(), city: "", state: "", postal: "", country: "USA" };
-        };
-
-        // Jobsite contact (DC) for branch driver
-        const jc = body.jobsite_contact || {};
-        const jobsiteContacts: Array<Record<string, unknown>> = [];
-        if (jc.name || jc.phone || jc.email) {
-          const phoneDigits = String(jc.phone || "").replace(/\D/g, "");
-          jobsiteContacts.push({
-            functionCode: "DC",
-            name: String(jc.name || body.customer_name || "Jobsite Contact").slice(0, 60),
-            email: jc.email ? String(jc.email).slice(0, 80) : "",
-            phones: phoneDigits ? [{ number: phoneDigits, type: "WORK", ext: "" }] : [],
-          });
-        }
-
-        const poNumber = `PITCH-${body.job_number || "JOB"}-${ts}`;
-        payload = [{
-          requestId: poNumber,
-          purchaseOrder: poNumber,
-          branchNumber,
-          deliveryService,
-          typeCode: "SO",
-          dates: body.delivery_date ? { deliveryRequestedFor: body.delivery_date } : undefined,
-          currency: "USD",
-          shipTo: {
-            name: body.customer_name || "",
-            number: shipToNumber,
-            address: parseAddr(body.delivery_address),
-            ...(jobsiteContacts.length ? { contacts: jobsiteContacts } : {}),
-          },
-          orderComments: body.notes
-            ? [{ code: "H", description: String(body.notes).slice(0, 500) }]
-            : [],
-          lines: items.map((i: any, idx: number) => {
-            const itemNumber = (i.abc_item_code || i.srs_item_code || i.item_name).toString();
-            const uom = String(i.unit).toUpperCase();
-            const resolvedPrice = Number(i.unit_cost) > 0
-              ? Number(i.unit_cost)
-              : (priceMap.get(itemNumber) ?? 0);
-            return {
-              id: idx + 1,
-              itemNumber,
-              itemDescription: i.description || i.item_name,
-              orderedQty: { value: Number(i.quantity), uom },
-              unitPrice: { value: resolvedPrice, uom },
-            };
-          }),
-        }];
+        return json({
+          success: false,
+          error: "pre_shaped_order_forbidden",
+          interpretation:
+            "Pre-shaped ABC order payloads are no longer accepted. Submit template_item_id + quantity per line; the server rebuilds the payload from approved mappings and validated pricing.",
+        }, 400);
       }
 
+      const rawItems = Array.isArray(body.items) ? body.items : [];
+      const items = rawItems
+        .map((i: any) => ({
+          template_item_id: String(i.template_item_id ?? i.material_id ?? i.id ?? "").trim(),
+          quantity: Number(i.quantity),
+          instructions: i.instructions ?? null,
+        }))
+        .filter((i) => i.template_item_id && i.quantity > 0);
+
+      const projectId = String((body as any).project_id ?? "").trim();
+      const ds = createSupabaseDataSource(supabase);
+      const assembled = await assembleProductionAbcOrder(ds, {
+        tenant_id,
+        environment: env,
+        project_id: projectId,
+        items,
+        delivery_method: (body as any).delivery_method,
+        delivery_date: (body as any).delivery_date ?? null,
+        notes: (body as any).notes ?? null,
+        purchase_order: (body as any).purchase_order ?? null,
+      });
+
+      if (!assembled.ok) {
+        return json({
+          success: false,
+          error: assembled.code,
+          interpretation: assembled.message,
+          field: assembled.field,
+          details: assembled.details,
+        }, 400);
+      }
+
+      // Idempotency guard — a retried submission with an identical
+      // payload hash must return the existing order, not create a
+      // duplicate at ABC.
+      const existing = await ds.findExistingOrderByIdempotency(
+        tenant_id, env, assembled.built.idempotencyKey,
+      );
+      if (existing) {
+        return json({
+          success: true,
+          environment: env,
+          endpoint,
+          orderRequest: assembled.orderRequest,
+          orderResponse: {
+            status: 200,
+            body: existing.raw_payload ?? { orderNumber: existing.order_number },
+          },
+          idempotent_replay: true,
+          existing_order_id: existing.id,
+          payload_hash: assembled.built.payloadHash,
+          idempotency_key: assembled.built.idempotencyKey,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      const payload = assembled.orderRequest as any[];
       const r = await callAbc(tok.token, "POST", endpoint, payload);
       const error_code = r.ok ? null : mapAbcError(r.status, r.json);
 
@@ -1866,66 +1808,19 @@ export const handle = async (req) => {
         duration_ms: Date.now() - startedAt, created_by: userId,
       });
 
-      // Persist on success (legacy shape only)
-      if (r.ok && !body.order && body.items?.length) {
-        try {
-          const respFirst = Array.isArray(r.json) ? r.json[0] : r.json;
-          const orderObj = payload[0];
-          const orderNumber = respFirst?.orderNumber || respFirst?.order_number || orderObj.purchaseOrder;
-          const confirmation = respFirst?.confirmationNumber || respFirst?.confirmation_number || null;
-          const totalAmount =
-            Number(respFirst?.totalAmount || respFirst?.total_amount || 0) ||
-            body.items!.reduce((s, i) => s + Number(i.quantity || 0) * Number(i.unit_cost || 0), 0);
-
-          const { data: orderRow } = await supabase
-            .from("abc_orders")
-            .insert({
-              tenant_id,
-              order_number: orderNumber,
-              purchase_order: orderObj.purchaseOrder,
-              confirmation_number: confirmation,
-              order_status: respFirst?.status || "submitted",
-              branch_number: orderObj.branchNumber || null,
-              sold_to_number: orderObj.shipTo?.number || null,
-              ship_to_number: orderObj.shipTo?.number || null,
-              ordered_on: new Date().toISOString().slice(0, 10),
-              delivery_requested_for: body.delivery_date || null,
-              total_amount: totalAmount,
-              currency: "USD",
-              source: "pitch",
-              raw_payload: { request: payload, response: r.json ?? r.text },
-            })
-            .select("id")
-            .single();
-
-          if (orderRow?.id) {
-            await supabase.from("abc_order_lines").insert(
-              body.items!.map((i, idx) => ({
-                order_id: orderRow.id,
-                tenant_id,
-                line_id: String(idx + 1),
-                item_number: (i.abc_item_code || i.srs_item_code || i.item_name).toString(),
-                item_description: i.description || i.item_name,
-                ordered_qty: Number(i.quantity),
-                ordered_uom: (i.unit || "EA").toUpperCase(),
-                unit_price: Number(i.unit_cost || 0),
-                amount: Number(i.quantity || 0) * Number(i.unit_cost || 0),
-                raw_payload: i,
-              })),
-            );
-            if (body.project_id) {
-              await supabase.from("abc_order_job_links").insert({
-                tenant_id,
-                order_id: orderRow.id,
-                job_id: body.project_id,
-                estimate_id: body.estimate_id || null,
-              });
-            }
-          }
-        } catch (persistErr) {
-          console.error("abc place_order persist error", persistErr);
-        }
-      }
+      await persistAbcProductionOrder(supabase, {
+        tenant_id,
+        environment: env,
+        project_id: projectId,
+        estimate_id: (body as any).estimate_id ?? null,
+        purchaseOrder: assembled.purchaseOrder,
+        deliveryDate: assembled.deliveryDate,
+        jobsiteContact: assembled.jobsiteContact,
+        built: assembled.built,
+        snapshot: assembled.snapshot,
+        response: { ok: r.ok, status: r.status, body: r.json ?? r.text },
+        lineInputs: items,
+      });
 
       return json({
         success: r.ok,
@@ -1934,9 +1829,14 @@ export const handle = async (req) => {
         orderRequest: payload,
         orderResponse: { status: r.status, body: r.json ?? r.text },
         error_code,
+        payload_hash: assembled.built.payloadHash,
+        idempotency_key: assembled.built.idempotencyKey,
+        line_proofs: assembled.built.lineProofs,
+        pricing_run_id: assembled.snapshot.pricingRunId,
         timestamp: new Date().toISOString(),
       });
     }
+
 
     // ---------------- register_webhook ----------------
     if (action === "register_webhook") {
