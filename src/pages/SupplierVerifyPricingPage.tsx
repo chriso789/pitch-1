@@ -175,7 +175,7 @@ export default function SupplierVerifyPricingPage() {
       mappings = mrows || [];
     }
     const byItem = new Map(mappings.map((m) => [m.template_item_id, m as AbcMappingRow]));
-    const built: AbcRow[] = (items || []).map((it: any) => ({
+    const built: AbcRow[] = items.map((it: any) => ({
       templateItemId: it.id,
       internalCode: it.id.slice(0, 8),
       materialName: it.item_name || it.description || '(unnamed)',
