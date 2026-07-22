@@ -624,6 +624,33 @@ export const handle = async (req) => {
       });
     }
 
+    // ---------------- revoke_connection ----------------
+    // Clears stored ABC OAuth tokens + selected ship-to/branch for this tenant+env.
+    // Safe to call even if nothing is stored. Does not attempt remote token revoke.
+    if (action === "revoke_connection" || action === "disconnect") {
+      if (!tenant_id) return json({ success: false, error: "no_tenant" }, 400);
+      try {
+        await supabase
+          .from("abc_connections")
+          .delete()
+          .eq("tenant_id", tenant_id)
+          .eq("environment", env);
+        await supabase
+          .from("abc_ship_to_accounts")
+          .delete()
+          .eq("tenant_id", tenant_id);
+        await supabase
+          .from("abc_account_branches")
+          .delete()
+          .eq("tenant_id", tenant_id);
+      } catch (e) {
+        console.error("abc-api-proxy revoke_connection cleanup error", e);
+      }
+      return json({ success: true, disconnected: true, environment: env });
+    }
+
+
+
 
     // ---------------- sandbox_test_login_status ----------------
     // Reports whether ABC sandbox OAuth test credentials are configured as
