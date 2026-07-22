@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/select";
 import { Plus, MapPin, Check, AlertCircle, Loader2, User, Briefcase, Link2, CheckCircle2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { describeEdgeFunctionError } from "@/lib/describeEdgeError";
 import { useToast } from "@/hooks/use-toast";
 import { ContactSearchSelect } from "@/components/ContactSearchSelect";
 import { useLocation } from "@/contexts/LocationContext";
