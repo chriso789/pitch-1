@@ -198,6 +198,7 @@ export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
         body: {
           action: 'start_oauth',
           tenant_id: tenantId,
+          environment: 'production',
           return_origin: window.location.origin,
         },
       });

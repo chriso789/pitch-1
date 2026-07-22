@@ -72,7 +72,8 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "https://alxelfrbjzkmtnsulc
 const CANONICAL_REDIRECT_URI = `${SUPABASE_URL}/functions/v1/abc-oauth-callback`;
 
 function normalizeEnv(env?: string): Env {
-  return env === "production" ? "production" : "sandbox";
+  // Default to production so tenant myABCsupply logins don't get routed to sandbox Okta.
+  return env === "sandbox" ? "sandbox" : "production";
 }
 
 function b64url(buf: ArrayBuffer | Uint8Array): string {
