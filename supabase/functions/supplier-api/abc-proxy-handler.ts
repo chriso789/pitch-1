@@ -428,9 +428,11 @@ export const handle = async (req) => {
     const cfg = ABC[env];
 
     // ── Tenant resolution + anti-spoof gate ──────────────────────────
-    // Never trust body.tenant_id as source of truth. Always resolve from JWT.
+    // Never trust body.tenant_id as source of truth. Resolve from JWT first.
     // If body supplied a tenant_id that disagrees with the resolved tenant,
-    // reject 403 unless caller is a verified master / platform admin.
+    // allow it only when the caller is master/platform admin OR has explicit
+    // user_company_access to that tenant. This supports the effective-tenant
+    // switcher without allowing arbitrary cross-tenant writes.
     let tenant_id: string | undefined = undefined;
     let userId: string | null = null;
     let callerIsMaster = false;
@@ -468,22 +470,33 @@ export const handle = async (req) => {
 
     // Spoof guard: applies to every ABC action.
     if (bodyTenantId && bodyTenantId !== tenant_id) {
-      if (!callerIsMaster) {
+      let callerHasRequestedTenantAccess = false;
+      if (userId) {
+        const { data: access } = await supabase
+          .from("user_company_access")
+          .select("tenant_id")
+          .eq("user_id", userId)
+          .eq("tenant_id", bodyTenantId)
+          .maybeSingle();
+        callerHasRequestedTenantAccess = !!access?.tenant_id;
+      }
+
+      if (!callerIsMaster && !callerHasRequestedTenantAccess) {
         return new Response(
           JSON.stringify({
             success: false,
             error: "tenant_spoof_forbidden",
             interpretation:
-              "Request body tenant_id does not match the authenticated user's tenant. Master role required to override.",
+              "Request body tenant_id does not match the authenticated user's tenant and no company access was found.",
             resolved_tenant_id: tenant_id ?? null,
             body_tenant_id: bodyTenantId,
           }),
           { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
-      // Master override: honor body.tenant_id, log it.
-      console.warn("[supplier-api abc] master tenant override", {
-        userId, from: tenant_id, to: bodyTenantId, action: body.action,
+      // Authorized override: honor body.tenant_id, log it.
+      console.warn("[supplier-api abc] authorized tenant override", {
+        userId, from: tenant_id, to: bodyTenantId, action: body.action, callerIsMaster, callerHasRequestedTenantAccess,
       });
       tenant_id = bodyTenantId;
     }
