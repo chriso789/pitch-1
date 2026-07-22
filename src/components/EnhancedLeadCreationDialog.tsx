@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/select";
 import { Plus, MapPin, Check, AlertCircle, Loader2, User, Briefcase, Link2, CheckCircle2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { describeEdgeFunctionError } from "@/lib/describeEdgeError";
 import { useToast } from "@/hooks/use-toast";
 import { ContactSearchSelect } from "@/components/ContactSearchSelect";
 import { useLocation } from "@/contexts/LocationContext";
@@ -431,8 +432,9 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
       });
 
       if (error) {
-        console.error('Edge function error:', error);
-        throw new Error(error.message || 'Failed to create lead');
+        const described = describeEdgeFunctionError('create-lead-with-contact', error, data);
+        console.error('[create-lead-with-contact] Edge function error:', described, error);
+        throw new Error(described.toastMessage);
       }
 
       // Handle duplicate warning
@@ -483,8 +485,8 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
     } catch (error: any) {
       console.error('Error creating lead:', error);
       toast({
-        title: "Error",
-        description: error.message || "Failed to create lead. Please try again.",
+        title: "Couldn't create lead",
+        description: error?.message || "Unknown error. Check the browser console for the correlation id.",
         variant: "destructive",
       });
     } finally {
