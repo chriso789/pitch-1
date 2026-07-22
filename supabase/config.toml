@@ -1,5 +1,9 @@
 project_id = "alxelfrbjzkmtnsulcei"
 
+[functions.portal-invoice]
+verify_jwt = false
+
+
 [functions.ai-measurement]
 verify_jwt = false
 
