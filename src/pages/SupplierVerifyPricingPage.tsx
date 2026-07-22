@@ -6,10 +6,9 @@
 //   • Each row shows a specific state (Needs ABC Match / Needs Color /
 //     Needs UOM / Needs Branch Verification / Ready to Price / Priced /
 //     Zero Price / Unavailable / WAF Blocked / Error) — never generic "Pending".
-//   • "Get Live Price" is gated behind an approved mapping backed by a real
-//     ABC Product API catalog snapshot.
-//   • "Refresh All Prices" only submits rows where canPrice === true and
-//     returns a summary of what was priced vs skipped and why.
+//   • The mapping grid is ABC-catalog-first: catalog item + color + UOM + live
+//     price on the left, tenant internal material match on the right.
+//   • "Refresh catalog prices" only submits real ABC Product API itemNumbers.
 //   • Every price call goes through `abc-api-proxy` → `price_items` (the
 //     production route), never the `abc-api` stub.
 //
@@ -33,7 +32,6 @@ import {
   type AbcRowStateInfo,
 } from '@/lib/abc/mappingState';
 import FindAbcMatchDialog from '@/components/supplier-verify/abc/FindAbcMatchDialog';
-import AbcCatalogBrowserCard from '@/components/supplier-verify/abc/AbcCatalogBrowserCard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -139,10 +137,6 @@ export default function SupplierVerifyPricingPage() {
   const [ordersLoading, setOrdersLoading] = useState(true);
   const [rows, setRows] = useState<AbcRow[]>([]);
   const [rowsLoading, setRowsLoading] = useState(true);
-  const [prices, setPrices] = useState<Record<string, PricingBadge>>({});
-  const [rowBusy, setRowBusy] = useState<Record<string, boolean>>({});
-  const [bulkBusy, setBulkBusy] = useState(false);
-  const [query, setQuery] = useState('');
   const [findFor, setFindFor] = useState<AbcRow | null>(null);
   const [catalogQuery, setCatalogQuery] = useState('shingle');
   const [catalogRows, setCatalogRows] = useState<AbcCatalogSearchResultChild[]>([]);
@@ -206,16 +200,6 @@ export default function SupplierVerifyPricingPage() {
 
   useEffect(() => { loadOrders(); loadRows(); }, [loadOrders, loadRows]);
 
-  const filteredRows = useMemo(() => {
-    if (!query) return rows;
-    const q = query.toLowerCase();
-    return rows.filter((r) =>
-      r.materialName.toLowerCase().includes(q) ||
-      r.internalCode.toLowerCase().includes(q) ||
-      (r.mapping?.supplier_item_number || '').toLowerCase().includes(q)
-    );
-  }, [rows, query]);
-
   const mappedRowsByAbcNumber = useMemo(() => {
     const map = new Map<string, AbcRow[]>();
     for (const row of rows) {
@@ -235,51 +219,6 @@ export default function SupplierVerifyPricingPage() {
       familyLikelyHasColors: /shingle|siding|paint|trim/i.test(r.materialName),
     });
   }, [abcSetup.branchNumber]);
-
-  const priceOne = async (r: AbcRow) => {
-    const state = computeState(r);
-    if (!state.canPrice) {
-      toast.error(`Cannot price: ${state.reason}`);
-      return;
-    }
-    if (!abcSetup.shipToNumber || !abcSetup.branchNumber || !r.mapping) return;
-    setRowBusy((b) => ({ ...b, [r.templateItemId]: true }));
-    setPrices((p) => ({ ...p, [r.templateItemId]: { info: { ...state, state: 'pricing', label: 'Pricing…', tone: 'muted', canPrice: true, reason: 'Contacting ABC' } } }));
-    try {
-      const res = await abcPriceItems({
-        shipToNumber: abcSetup.shipToNumber,
-        branchNumber: abcSetup.branchNumber,
-        purpose: 'estimating',
-        lines: [{
-          id: r.templateItemId,
-          itemNumber: r.mapping.supplier_item_number as string,
-          quantity: 1,
-          uom: r.mapping.default_uom as string,
-        }],
-      });
-      const line = res.lines[0] || null;
-      const info = res.wafBlocked
-        ? statesForPricingResult({ errorCode: 'waf_blocked' })
-        : statesForPricingResult({
-          errorSummary: res.errorSummary || undefined,
-          unitPrice: line?.unitPrice ?? null,
-          lineStatus: line?.lineStatus,
-          lineStatusMessage: line?.lineStatusMessage,
-        });
-      setPrices((p) => ({ ...p, [r.templateItemId]: {
-        info,
-        unitPrice: line?.unitPrice ?? null,
-        returnedUom: line?.returnedUom ?? null,
-        checkedAt: new Date().toISOString(),
-      } }));
-    } catch (e: any) {
-      setPrices((p) => ({ ...p, [r.templateItemId]: {
-        info: { state: 'error', label: 'Error', reason: e?.message || 'Lookup failed', tone: 'danger', canPrice: false },
-      } }));
-    } finally {
-      setRowBusy((b) => ({ ...b, [r.templateItemId]: false }));
-    }
-  };
 
   const priceCatalogItems = useCallback(async (items: AbcCatalogSearchResultChild[]) => {
     if (!abcSetup.shipToNumber || !abcSetup.branchNumber) return;
@@ -445,42 +384,6 @@ export default function SupplierVerifyPricingPage() {
       toast.error(e?.message || 'Failed to save ABC mapping');
     } finally {
       setMappingBusy((prev) => ({ ...prev, [catalogItem.itemNumber]: false }));
-    }
-  };
-
-  const refreshAll = async () => {
-    setBulkBusy(true);
-    const summary = { requested: 0, priced: 0, skipped: 0, failed: 0, skippedReasons: {} as Record<string, number> };
-    try {
-      const priceable: AbcRow[] = [];
-      for (const r of filteredRows) {
-        const s = computeState(r);
-        summary.requested += 1;
-        if (s.canPrice) priceable.push(r);
-        else {
-          summary.skipped += 1;
-          summary.skippedReasons[s.label] = (summary.skippedReasons[s.label] || 0) + 1;
-        }
-      }
-      const queue = [...priceable];
-      const worker = async () => {
-        while (queue.length) {
-          const next = queue.shift()!;
-          await priceOne(next);
-          const info = prices[next.templateItemId]?.info;
-          if (info?.state === 'priced') summary.priced += 1; else summary.failed += 1;
-        }
-      };
-      await Promise.all([worker(), worker(), worker()]);
-      const bits = [
-        `${summary.requested} total`,
-        `${summary.priced} priced`,
-        `${summary.skipped} skipped`,
-        ...Object.entries(summary.skippedReasons).map(([k, v]) => `${v} ${k.toLowerCase()}`),
-      ];
-      toast.success(bits.join(' · '));
-    } finally {
-      setBulkBusy(false);
     }
   };
 
