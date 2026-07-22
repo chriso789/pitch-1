@@ -14,6 +14,11 @@ import {
   searchAbcCatalog,
   getAbcCatalogItem,
 } from "../_shared/abc/catalogService.ts";
+import {
+  priceItems as priceItemsService,
+  validatePricingRequest,
+  type AbcPricingServiceRequest,
+} from "../_shared/abc/pricingService.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
