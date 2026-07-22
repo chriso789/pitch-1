@@ -24,10 +24,9 @@ import { useAbcCatalog } from '@/hooks/useAbcCatalog';
  * batch-fetches contract prices for the visible rows via `price_items`
  * (ABC `/pricing/v2/prices`).
  *
- * Pricing requires `shipToNumber` + `branchNumber`. We prefer the tenant's
- * connected ship-to/branch (from `useAbcCatalog`), and fall back to the
- * Sandy-approved sandbox defaults so the developer surface always shows
- * real numbers in QA.
+ * Pricing requires `shipToNumber` + `branchNumber`. Production connections
+ * must use the tenant's synced ABC ship-to/branch; the sandbox demo fallback
+ * is only allowed when the active ABC connection is explicitly sandbox.
  */
 
 interface AbcItem {
@@ -149,10 +148,11 @@ function fmtPrice(p?: AbcPrice): string {
 
 export const AbcCatalogBrowser: React.FC = () => {
   const tenantId = useEffectiveTenantId();
-  const { defaultBranchCode, isConnected, environment } = useAbcConnectionStatus();
+  const { defaultBranchCode, isConnected, environment, row: connectionRow } = useAbcConnectionStatus();
   const { toast } = useToast();
   const [syncing, setSyncing] = useState(false);
-  const { branches, shipTos } = useAbcCatalog(tenantId);
+  const effectiveEnvironment = environment || 'production';
+  const { branches, shipTos } = useAbcCatalog(tenantId, connectionRow?.id ?? null);
   const [searchTerm, setSearchTerm] = useState('shingle');
   const [debounced, setDebounced] = useState('shingle');
   const [items, setItems] = useState<AbcItem[]>([]);
@@ -162,10 +162,11 @@ export const AbcCatalogBrowser: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [priceError, setPriceError] = useState<string | null>(null);
 
-  // Resolve ship-to / branch (connected account → sandbox fallback).
-  const shipToNumber = shipTos[0]?.ship_to_number || SANDBOX_SHIP_TO;
+  const allowSandboxFallback = effectiveEnvironment === 'sandbox';
+  // Resolve ship-to / branch (connected account → sandbox fallback only in sandbox).
+  const shipToNumber = shipTos[0]?.ship_to_number || (allowSandboxFallback ? SANDBOX_SHIP_TO : '');
   const branchNumber =
-    defaultBranchCode || branches[0]?.branch_number || SANDBOX_BRANCH;
+    defaultBranchCode || branches[0]?.branch_number || (allowSandboxFallback ? SANDBOX_BRANCH : '');
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(searchTerm.trim()), 350);
@@ -191,6 +192,7 @@ export const AbcCatalogBrowser: React.FC = () => {
             body: {
               action: 'search_products',
               tenant_id: tenantId,
+              environment: effectiveEnvironment,
               query: debounced,
               branchNumber: branchNumber || undefined,
             },
@@ -216,7 +218,7 @@ export const AbcCatalogBrowser: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [tenantId, debounced, branchNumber]);
+  }, [tenantId, debounced, branchNumber, effectiveEnvironment]);
 
   // Batch price fetch for the visible items.
   useEffect(() => {
@@ -240,6 +242,7 @@ export const AbcCatalogBrowser: React.FC = () => {
             body: {
               action: 'price_items',
               tenant_id: tenantId,
+              environment: effectiveEnvironment,
               shipToNumber,
               branchNumber,
               purpose: 'estimating',
@@ -267,7 +270,7 @@ export const AbcCatalogBrowser: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [tenantId, items, shipToNumber, branchNumber]);
+  }, [tenantId, items, shipToNumber, branchNumber, effectiveEnvironment]);
 
   const subtitle = useMemo(() => {
     const parts: string[] = [];
@@ -278,7 +281,10 @@ export const AbcCatalogBrowser: React.FC = () => {
   }, [branchNumber, shipToNumber]);
 
   const usingSandboxFallback =
-    shipToNumber === SANDBOX_SHIP_TO && !shipTos.length;
+    allowSandboxFallback && shipToNumber === SANDBOX_SHIP_TO && !shipTos.length;
+
+  const needsProductionAccountSync =
+    isConnected && effectiveEnvironment === 'production' && (!shipToNumber || !branchNumber);
 
   const syncAccounts = async () => {
     if (!tenantId) return;
@@ -288,7 +294,7 @@ export const AbcCatalogBrowser: React.FC = () => {
         body: {
           action: 'sync_accounts',
           tenant_id: tenantId,
-          environment: environment || 'sandbox',
+          environment: effectiveEnvironment,
         },
       });
       if (error) throw new Error(error.message);
@@ -332,7 +338,7 @@ export const AbcCatalogBrowser: React.FC = () => {
                   Connected{environment ? ` · ${environment}` : ''}
                 </Badge>
               )}
-              {isConnected && usingSandboxFallback && (
+              {isConnected && (usingSandboxFallback || needsProductionAccountSync) && (
                 <Button
                   size="sm"
                   variant="outline"
@@ -353,7 +359,7 @@ export const AbcCatalogBrowser: React.FC = () => {
             </div>
           </div>
 
-          {isConnected && usingSandboxFallback && (
+              {isConnected && usingSandboxFallback && (
             <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
               You're connected to ABC, but no ship-tos have been pulled for your
               account yet — that's why pricing is quoting against the generic
@@ -361,6 +367,14 @@ export const AbcCatalogBrowser: React.FC = () => {
               (which has no contract for these SKUs, so ABC replies "Call for
               pricing"). Click <b>Sync my ABC accounts</b> to hydrate your real
               ship-to numbers and get live contract pricing.
+            </div>
+          )}
+
+          {needsProductionAccountSync && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              You're connected to ABC production, but this tenant has not synced a production
+              Ship-To and Branch yet. Click <b>Sync my ABC accounts</b> so pricing can use the
+              production account instead of the sandbox demo account.
             </div>
           )}
 
@@ -388,13 +402,16 @@ export const AbcCatalogBrowser: React.FC = () => {
                 Pricing unavailable: {priceError}
               </div>
             )}
-            <div className="text-xs text-muted-foreground mb-2">
-              Prices are quoted against ABC ship-to <span className="font-mono">{shipToNumber}</span>{' '}
-              on branch <span className="font-mono">{branchNumber}</span>. Items that are not on
-              this ship-to's negotiated contract are returned by ABC as{' '}
-              <em>"Call for pricing"</em> and cannot be quoted through the API — this is ABC's
-              documented behavior in both sandbox and production.
-            </div>
+            {shipToNumber && branchNumber ? (
+              <div className="text-xs text-muted-foreground mb-2">
+                Prices are quoted against ABC {effectiveEnvironment} ship-to <span className="font-mono">{shipToNumber}</span>{' '}
+                on branch <span className="font-mono">{branchNumber}</span>.
+              </div>
+            ) : (
+              <div className="text-xs text-amber-700 mb-2">
+                Sync and select a production Ship-To + Branch before pricing can be displayed.
+              </div>
+            )}
             <div className="rounded-md border">
               <Table>
                 <TableHeader>

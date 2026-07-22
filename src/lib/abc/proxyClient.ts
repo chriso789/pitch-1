@@ -68,6 +68,7 @@ export async function abcSearchProducts(params: {
   query?: string;
   itemNumber?: string;
   branchNumber?: string | null;
+  environment?: 'sandbox' | 'production' | null;
   itemsPerPage?: number;
 }): Promise<AbcCatalogSearchResult> {
   const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
@@ -76,6 +77,7 @@ export async function abcSearchProducts(params: {
       query: params.query || undefined,
       itemNumber: params.itemNumber || undefined,
       branchNumber: params.branchNumber || undefined,
+      environment: params.environment || undefined,
       itemsPerPage: params.itemsPerPage ?? 25,
     },
   });
@@ -133,12 +135,14 @@ export interface AbcPriceItemsResult {
 export async function abcPriceItems(params: {
   shipToNumber: string;
   branchNumber: string;
+  environment?: 'sandbox' | 'production' | null;
   purpose: 'estimating' | 'quoting' | 'ordering';
   lines: Array<{ id?: string; itemNumber: string; quantity: number; uom: string }>;
 }): Promise<AbcPriceItemsResult> {
   const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
     body: {
       action: 'price_items',
+      environment: params.environment || undefined,
       purpose: params.purpose,
       shipToNumber: params.shipToNumber,
       branchNumber: params.branchNumber,
