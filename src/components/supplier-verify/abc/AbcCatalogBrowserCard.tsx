@@ -131,7 +131,7 @@ export default function AbcCatalogBrowserCard({ shipToNumber, branchNumber }: Pr
                 className="pl-9 w-96 h-9"
               />
             </div>
-            <Button size="sm" onClick={runSearch} disabled={searching || !query.trim()}>
+            <Button size="sm" onClick={() => runSearch()} disabled={searching || !query.trim()}>
               {searching ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Search className="h-4 w-4 mr-1" />}
               Search
             </Button>
