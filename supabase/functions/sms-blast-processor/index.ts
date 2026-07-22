@@ -518,6 +518,11 @@ async function processBlast(
   let blockedByGuard = 0;
   let blockedByCooldown = 0;
   let blockedByDedupe = 0;
+  let rateLimited = 0;         // Repair #2: releases back to pending
+  let rateLimitExhausted = 0;  // Repair #2: hit ceiling → failed
+  let ownershipConflicts = 0;  // Repair #2: another worker owns the row
+  let retryDelaySumMs = 0;
+  let retryDelayMaxMs = 0;
 
   // Safe pacing window — 800–1500ms between messages regardless of MPS capacity.
   const sleepMs = Math.max(
