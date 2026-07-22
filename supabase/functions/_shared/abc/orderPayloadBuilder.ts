@@ -237,7 +237,7 @@ function isValidYyyyMmDd(v: string): boolean {
   );
 }
 
-function stableStringify(v: unknown): string {
+export function stableStringify(v: unknown): string {
   if (v === null || typeof v !== "object") return JSON.stringify(v);
   if (Array.isArray(v)) {
     return "[" + v.map((x) => stableStringify(x)).join(",") + "]";
@@ -281,7 +281,7 @@ async function sha256Hex(input: string): Promise<string> {
  * only needs to be deterministic + collision-resistant enough to key
  * idempotency — not a cryptographic authenticator.
  */
-function fnv1aHex(input: string): string {
+export function fnv1aHex(input: string): string {
   let h1 = 0x811c9dc5;
   let h2 = 0xdeadbeef;
   for (let i = 0; i < input.length; i++) {

@@ -26,6 +26,11 @@ import {
   validatePricingRequest,
   type AbcPricingServiceRequest,
 } from "../_shared/abc/pricingService.ts";
+import {
+  buildAbcOrderPayload as buildSharedAbcOrder,
+  type BuildOrderInput,
+  type OrderLineProof,
+} from "../_shared/abc/orderService.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1241,43 +1246,50 @@ export const handle = async (req) => {
       delivery.setUTCDate(delivery.getUTCDate() + 1);
       const deliveryRequestedFor = delivery.toISOString().slice(0, 10);
 
-      const orderObj = {
-        requestId,
-        purchaseOrder,
-        branchNumber,
+      // Phase 1B — Slice 3: shared orderService is the single source of truth.
+      const validateComment =
+        "PITCH integration validate_payload_only - payload validation only, NOT sent to ABC" +
+        (sandboxDemo ? " [SANDBOX DEMO]" : "");
+
+      const sharedInput: BuildOrderInput = {
+        variant: "validate_only",
+        requestId, purchaseOrder, branchNumber, shipToNumber,
         deliveryService: "CPU",
-        typeCode: "SO",
-        dates: { deliveryRequestedFor },
+        deliveryRequestedFor,
         currency: "USD",
-        shipTo: {
-          name: jcName.slice(0, 60),
-          number: shipToNumber,
-          address: {
-            line1: "123 Test Street", line2: "", line3: "",
-            city: "North Port", state: "FL", postal: "34286", country: "USA",
-          },
-          contacts: [{
-            functionCode: "DC",
-            name: jcName.slice(0, 60),
-            email: jcEmail.slice(0, 80),
-            phones: [{ number: jcPhoneDigits, type: "MOBILE", ext: "" }],
-          }],
+        shipToName: jcName,
+        address: {
+          line1: "123 Test Street", line2: "", line3: "",
+          city: "North Port", state: "FL", postal: "34286", country: "USA",
         },
-        orderComments: [{
-          code: "H",
-          description:
-            "PITCH integration validate_payload_only - payload validation only, NOT sent to ABC" +
-            (sandboxDemo ? " [SANDBOX DEMO]" : ""),
-        }],
+        jobsiteContact: {
+          name: jcName, email: jcEmail, phone: jcPhoneDigits, phoneType: "MOBILE",
+        },
+        comments: [{ code: "H", description: validateComment }],
         lines: [{
           id: "1",
           itemNumber,
           itemDescription,
-          orderedQty: { value: quantity, uom: requestedUom },
-          unitPrice: { value: finalUnitPrice, uom: requestedUom, instructions: "PITCH validate-only" },
+          uom: requestedUom,
+          quantity,
+          unitPrice: finalUnitPrice,
+          instructions: "PITCH validate-only",
+          priceSource,
         }],
       };
-      const payload = [orderObj];
+      const built = buildSharedAbcOrder(sharedInput);
+      if (!built.valid) {
+        return json({
+          success: false,
+          validation: "FAIL",
+          error: "order_preflight_failed",
+          errors: built.errors,
+          interpretation:
+            `Shared ABC order preflight rejected: ${built.errors.map((e) => e.code).join(", ")}.`,
+        }, 422);
+      }
+      const payload = built.orderRequest;
+      const orderObj: any = payload[0];
 
       const sandboxWarning = sandboxDemo
         ? "ABC sandbox validate-only path. Payload was NOT sent to ABC. payloadProof reflects shape only — ABC acceptance is unproven until live submit succeeds."
@@ -1295,6 +1307,9 @@ export const handle = async (req) => {
         sandboxDemoFallback: sandboxDemo,
         catalogSource,
         sandboxWarning,
+        payloadHash: built.payloadHash,
+        idempotencyKey: built.idempotencyKey,
+        lineProofs: built.lineProofs,
       };
 
       await auditCall(supabase, {
@@ -1493,52 +1508,52 @@ export const handle = async (req) => {
         }, 422);
       }
 
-      // ----- Build the ABC order payload -----
-      const orderObj = body.order ?? {
-        requestId,
-        purchaseOrder,
-        branchNumber,
+      // ----- Build the ABC order payload via shared orderService -----
+      const submitComment =
+        "PITCH integration sandbox test order - non-production QA" +
+        (sandboxDemo ? " [SANDBOX DEMO FALLBACK ship-to/branch]" : "");
+
+      const sharedInput: BuildOrderInput = {
+        variant: "sandbox_test",
+        requestId, purchaseOrder, branchNumber, shipToNumber,
         deliveryService: "CPU",
-        typeCode: "SO",
-        dates: { deliveryRequestedFor },
+        deliveryRequestedFor,
         currency: "USD",
-        shipTo: {
-          name: jcName.slice(0, 60),
-          number: shipToNumber,
-          address: {
-            line1: "123 Test Street",
-            line2: "",
-            line3: "",
-            city: "North Port",
-            state: "FL",
-            postal: "34286",
-            country: "USA",
-          },
-          contacts: [{
-            functionCode: "DC",
-            name: jcName.slice(0, 60),
-            email: jcEmail.slice(0, 80),
-            phones: [{ number: jcPhoneDigits, type: "MOBILE", ext: "" }],
-          }],
+        shipToName: jcName,
+        address: {
+          line1: "123 Test Street", line2: "", line3: "",
+          city: "North Port", state: "FL", postal: "34286", country: "USA",
         },
-        orderComments: [
-          {
-            code: "H",
-            description:
-              "PITCH integration sandbox test order - non-production QA" +
-              (sandboxDemo ? " [SANDBOX DEMO FALLBACK ship-to/branch]" : ""),
-          },
-        ],
+        jobsiteContact: {
+          name: jcName, email: jcEmail, phone: jcPhoneDigits, phoneType: "MOBILE",
+        },
+        comments: [{ code: "H", description: submitComment }],
         lines: [{
           id: "1",
           itemNumber,
           itemDescription,
-          orderedQty: { value: quantity, uom: requestedUom },
-          unitPrice: { value: finalUnitPrice, uom: requestedUom, instructions: "PITCH sandbox test" },
+          uom: requestedUom,
+          quantity,
+          unitPrice: finalUnitPrice,
+          instructions: "PITCH sandbox test",
+          priceSource: override ? "override" : "price_items",
         }],
       };
-
-      const payload = [orderObj];
+      const built = body.order ? null : buildSharedAbcOrder(sharedInput);
+      if (built && !built.valid) {
+        return json({
+          success: false,
+          error: "order_preflight_failed",
+          errors: built.errors,
+          interpretation:
+            `Shared ABC order preflight rejected: ${built.errors.map((e) => e.code).join(", ")}.`,
+        }, 422);
+      }
+      const payload: any[] = body.order ? [body.order] : (built as any).orderRequest;
+      const orderObj: any = payload[0];
+      const lineProofsBuilt: OrderLineProof[] = built?.lineProofs ?? [];
+      const payloadHashBuilt = built?.payloadHash ?? null;
+      const idempotencyKeyBuilt = built?.idempotencyKey ?? null;
       const r = await callAbc(tok.token, "POST", endpoint, payload);
       const error_code = r.ok ? null : mapAbcError(r.status, r.json);
       await auditCall(supabase, {

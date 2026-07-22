@@ -19,6 +19,11 @@ import {
   validatePricingRequest,
   type AbcPricingServiceRequest,
 } from "../_shared/abc/pricingService.ts";
+import {
+  buildAbcOrderPayload as buildSharedAbcOrder,
+  type BuildOrderInput,
+  type OrderLineProof,
+} from "../_shared/abc/orderService.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1342,46 +1347,56 @@ export const handle = async (req) => {
           ? "ABC sandbox call was WAF-blocked. This demo uses a manually confirmed sandbox override and should not be used for production."
           : null;
 
-      const orderObj = body.order ?? {
-        requestId,
-        purchaseOrder,
-        branchNumber,
+      // Phase 1B — Slice 3: all order construction routed through the shared
+      // orderService. Handlers no longer build the ABC order object inline.
+      const orderComment =
+        "PITCH integration sandbox test order - non-production QA" +
+        (sandboxDemo ? " [SANDBOX DEMO FALLBACK ship-to/branch]" : "") +
+        (catalogSource === "sandbox_demo_fallback_waf_blocked" ? " [CATALOG WAF FALLBACK]" : "") +
+        (priceSource === "sandbox_demo_override_waf_blocked" ? " [PRICE WAF FALLBACK + OVERRIDE]" : "");
+
+      const sharedInput: BuildOrderInput = {
+        variant: validateOnly ? "validate_only" : "sandbox_test",
+        requestId, purchaseOrder, branchNumber, shipToNumber,
         deliveryService: "CPU",
-        typeCode: "SO",
-        dates: { deliveryRequestedFor },
+        deliveryRequestedFor,
         currency: "USD",
-        shipTo: {
-          name: jcName.slice(0, 60),
-          number: shipToNumber,
-          address: {
-            line1: "123 Test Street", line2: "", line3: "",
-            city: "North Port", state: "FL", postal: "34286", country: "USA",
-          },
-          contacts: [{
-            functionCode: "DC",
-            name: jcName.slice(0, 60),
-            email: jcEmail.slice(0, 80),
-            phones: [{ number: jcPhoneDigits, type: "MOBILE", ext: "" }],
-          }],
+        shipToName: jcName,
+        address: {
+          line1: "123 Test Street", line2: "", line3: "",
+          city: "North Port", state: "FL", postal: "34286", country: "USA",
         },
-        orderComments: [{
-          code: "H",
-          description:
-            "PITCH integration sandbox test order - non-production QA" +
-            (sandboxDemo ? " [SANDBOX DEMO FALLBACK ship-to/branch]" : "") +
-            (catalogSource === "sandbox_demo_fallback_waf_blocked" ? " [CATALOG WAF FALLBACK]" : "") +
-            (priceSource === "sandbox_demo_override_waf_blocked" ? " [PRICE WAF FALLBACK + OVERRIDE]" : ""),
-        }],
+        jobsiteContact: {
+          name: jcName, email: jcEmail, phone: jcPhoneDigits, phoneType: "MOBILE",
+        },
+        comments: [{ code: "H", description: orderComment }],
         lines: [{
           id: "1",
           itemNumber,
           itemDescription,
-          orderedQty: { value: quantity, uom: requestedUom },
-          unitPrice: { value: finalUnitPrice, uom: requestedUom, instructions: "PITCH sandbox test" },
+          uom: requestedUom,
+          quantity,
+          unitPrice: finalUnitPrice,
+          instructions: "PITCH sandbox test",
+          priceSource,
         }],
       };
-
-      const payload = [orderObj];
+      const built = body.order ? null : buildSharedAbcOrder(sharedInput);
+      if (built && !built.valid) {
+        return json({
+          success: false,
+          validation: "FAIL",
+          error: "order_preflight_failed",
+          errors: built.errors,
+          interpretation:
+            `Shared ABC order preflight rejected: ${built.errors.map((e) => e.code).join(", ")}.`,
+        }, 422);
+      }
+      const payload: any[] = body.order ? [body.order] : (built as any).orderRequest;
+      const orderObj: any = payload[0];
+      const lineProofs: OrderLineProof[] = built?.lineProofs ?? [];
+      const payloadHash = built?.payloadHash ?? null;
+      const idempotencyKey = built?.idempotencyKey ?? null;
 
       const payloadProof = {
         shipToNumber,
@@ -1397,6 +1412,9 @@ export const handle = async (req) => {
         priceWafBlocked,
         catalogWafBlocked,
         sandboxWarning,
+        payloadHash,
+        idempotencyKey,
+        lineProofs,
       };
 
       // ── validate_payload_only short-circuit ──────────────────────────
