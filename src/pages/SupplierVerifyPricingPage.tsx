@@ -88,6 +88,8 @@ interface TemplateItemRecord {
   description: string | null;
 }
 
+type AbcMappingRecord = AbcMappingRow & { template_item_id: string };
+
 type UnknownRecord = Record<string, unknown>;
 
 function stringValue(value: unknown): string | null {
@@ -207,7 +209,7 @@ export default function SupplierVerifyPricingPage() {
     const items = rawItems || [];
 
     const ids = (items as TemplateItemRecord[]).map((r) => r.id);
-    let mappings: AbcMappingRow[] = [];
+    let mappings: AbcMappingRecord[] = [];
     if (ids.length > 0) {
       const { data: mrows } = await supabase
         .from('template_item_supplier_mappings' as never)
@@ -215,7 +217,7 @@ export default function SupplierVerifyPricingPage() {
         .eq('tenant_id', tenantId)
         .eq('supplier', 'abc')
         .in('template_item_id', ids);
-      mappings = ((mrows || []) as unknown) as AbcMappingRow[];
+      mappings = ((mrows || []) as unknown) as AbcMappingRecord[];
     }
     const byItem = new Map(mappings.map((m) => [m.template_item_id, m]));
     const built: AbcRow[] = (items as TemplateItemRecord[]).map((it) => ({
