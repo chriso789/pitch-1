@@ -79,6 +79,7 @@ interface Props {
  * tooling — those belong in the Advanced (Developer) tab.
  */
 export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
+  const navigate = useNavigate();
   const tenantId = useEffectiveTenantId();
   const { toast } = useToast();
   const abcStatus = useAbcConnectionStatus();
