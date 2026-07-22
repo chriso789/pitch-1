@@ -670,16 +670,20 @@ export const handle = async (req) => {
     // ---------------- get_status ----------------
     if (action === "get_status") {
       if (!tenant_id) return json({ connected: false, error: "no_tenant" });
-      const { data: conn } = await supabase
-        .from("abc_connections")
-        .select("connection_status,expires_at,last_refreshed_at,last_validated_at,last_error,scope,environment")
+      const { data: userConn } = await supabase
+        .from("abc_user_connections")
+        .select("status,token_expires_at,last_refresh_at,last_error,environment")
         .eq("tenant_id", tenant_id)
         .eq("environment", env)
+        .eq("status", "connected")
         .maybeSingle();
       return json({
-        connected: conn?.connection_status === "connected",
+        connected: userConn?.status === "connected",
         environment: env,
-        ...conn,
+        status: userConn?.status ?? "disconnected",
+        token_expires_at: userConn?.token_expires_at ?? null,
+        last_refresh_at: userConn?.last_refresh_at ?? null,
+        last_error: userConn?.last_error ?? null,
       });
     }
 
@@ -697,11 +701,6 @@ export const handle = async (req) => {
           .eq("environment", env);
         await supabase
           .from("abc_connections")
-          .delete()
-          .eq("tenant_id", tenant_id)
-          .eq("environment", env);
-        await supabase
-          .from("abc_integrations")
           .delete()
           .eq("tenant_id", tenant_id)
           .eq("environment", env);
