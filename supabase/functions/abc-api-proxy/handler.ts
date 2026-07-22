@@ -644,8 +644,14 @@ export const handle = async (req) => {
           .delete()
           .eq("tenant_id", tenant_id)
           .eq("environment", env);
+        await supabase
+          .from("abc_integrations")
+          .delete()
+          .eq("tenant_id", tenant_id)
+          .eq("environment", env);
       } catch (e) {
         console.error("abc-api-proxy revoke_connection cleanup error", e);
+        return json({ success: false, error: e instanceof Error ? e.message : String(e) }, 500);
       }
       return json({ success: true, disconnected: true, environment: env });
     }
