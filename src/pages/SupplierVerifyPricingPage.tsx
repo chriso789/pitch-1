@@ -72,37 +72,68 @@ interface PricingBadge {
   checkedAt?: string | null;
 }
 
-function normalizeOrder(supplier: SupplierKind, row: any) {
+interface NormalizedSupplierOrder {
+  id: string;
+  reference: string;
+  po: string | null;
+  status: string | null;
+  total: number | string | null;
+  branch: string | null;
+  when: string | null;
+}
+
+interface TemplateItemRecord {
+  id: string;
+  item_name: string | null;
+  description: string | null;
+}
+
+type UnknownRecord = Record<string, unknown>;
+
+function stringValue(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  return String(value);
+}
+
+function numberOrStringValue(value: unknown): number | string | null {
+  return typeof value === 'number' || typeof value === 'string' ? value : null;
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
+function normalizeOrder(supplier: SupplierKind, row: UnknownRecord): NormalizedSupplierOrder {
   if (supplier === 'abc') {
     return {
-      id: row.id,
-      reference: row.order_number ?? row.confirmation_number ?? '—',
-      po: row.purchase_order ?? null,
-      status: row.order_status ?? null,
-      total: row.total_amount ?? null,
-      branch: row.branch_number ?? null,
-      when: row.ordered_on ?? row.created_at ?? null,
+      id: stringValue(row.id) || `${supplier}-${stringValue(row.order_number) || stringValue(row.confirmation_number) || 'order'}`,
+      reference: stringValue(row.order_number ?? row.confirmation_number) || '—',
+      po: stringValue(row.purchase_order),
+      status: stringValue(row.order_status),
+      total: numberOrStringValue(row.total_amount),
+      branch: stringValue(row.branch_number),
+      when: stringValue(row.ordered_on ?? row.created_at),
     };
   }
   if (supplier === 'srs') {
     return {
-      id: row.id,
-      reference: row.srs_order_id ?? row.order_number ?? '—',
-      po: row.order_number ?? null,
-      status: row.status ?? null,
-      total: row.total_amount ?? null,
-      branch: row.branch_id ?? row.branch_number ?? null,
-      when: row.submitted_at ?? row.created_at ?? null,
+      id: stringValue(row.id) || `${supplier}-${stringValue(row.srs_order_id) || stringValue(row.order_number) || 'order'}`,
+      reference: stringValue(row.srs_order_id ?? row.order_number) || '—',
+      po: stringValue(row.order_number),
+      status: stringValue(row.status),
+      total: numberOrStringValue(row.total_amount),
+      branch: stringValue(row.branch_id ?? row.branch_number),
+      when: stringValue(row.submitted_at ?? row.created_at),
     };
   }
   return {
-    id: row.id,
-    reference: row.beacon_order_id ?? row.job_number ?? '—',
-    po: row.po_number ?? null,
-    status: row.status_value ?? row.status_code ?? null,
-    total: row.total ?? null,
-    branch: row.branch_id ?? null,
-    when: row.order_placed_date ?? row.created_at ?? null,
+    id: stringValue(row.id) || `${supplier}-${stringValue(row.beacon_order_id) || stringValue(row.job_number) || 'order'}`,
+    reference: stringValue(row.beacon_order_id ?? row.job_number) || '—',
+    po: stringValue(row.po_number),
+    status: stringValue(row.status_value ?? row.status_code),
+    total: numberOrStringValue(row.total),
+    branch: stringValue(row.branch_id),
+    when: stringValue(row.order_placed_date ?? row.created_at),
   };
 }
 
@@ -133,7 +164,7 @@ export default function SupplierVerifyPricingPage() {
   const meta = SUPPLIER_META[supplierKey];
   const abcSetup = useAbcSetup();
 
-  const [orders, setOrders] = useState<any[]>([]);
+  const [orders, setOrders] = useState<NormalizedSupplierOrder[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
   const [rows, setRows] = useState<AbcRow[]>([]);
   const [rowsLoading, setRowsLoading] = useState(true);
@@ -156,7 +187,7 @@ export default function SupplierVerifyPricingPage() {
       .order('updated_at', { ascending: false })
       .limit(100);
     if (error) toast.error(`Couldn't load orders: ${error.message}`);
-    setOrders((data || []).map((r: any) => normalizeOrder(supplierKey, r)));
+    setOrders(((data || []) as UnknownRecord[]).map((r) => normalizeOrder(supplierKey, r)));
     setOrdersLoading(false);
   }, [tenantId, meta.ordersTable, supplierKey]);
 
@@ -168,26 +199,26 @@ export default function SupplierVerifyPricingPage() {
     // integration team wants to see so they can be matched.
     // template_items are tenant-scoped via templates.tenant_id
     const { data: rawItems, error: itemsErr } = await supabase
-      .from('template_items' as any)
+      .from('template_items' as never)
       .select('id, item_name, description, item_type, templates!inner(tenant_id)')
       .eq('templates.tenant_id', tenantId)
       .order('item_name');
     if (itemsErr) toast.error(`Couldn't load template items: ${itemsErr.message}`);
     const items = rawItems || [];
 
-    const ids = items.map((r: any) => r.id);
-    let mappings: any[] = [];
+    const ids = (items as TemplateItemRecord[]).map((r) => r.id);
+    let mappings: AbcMappingRow[] = [];
     if (ids.length > 0) {
       const { data: mrows } = await supabase
-        .from('template_item_supplier_mappings' as any)
+        .from('template_item_supplier_mappings' as never)
         .select('template_item_id, id, supplier, supplier_item_number, supplier_item_description, color_name, default_uom, valid_uoms, branch_scope, ship_to_scope, mapping_status, review_state, approved_at, last_checked_at, raw_catalog_payload')
         .eq('tenant_id', tenantId)
         .eq('supplier', 'abc')
         .in('template_item_id', ids);
-      mappings = mrows || [];
+      mappings = ((mrows || []) as unknown) as AbcMappingRow[];
     }
-    const byItem = new Map(mappings.map((m) => [m.template_item_id, m as AbcMappingRow]));
-    const built: AbcRow[] = items.map((it: any) => ({
+    const byItem = new Map(mappings.map((m) => [m.template_item_id, m]));
+    const built: AbcRow[] = (items as TemplateItemRecord[]).map((it) => ({
       templateItemId: it.id,
       internalCode: it.id.slice(0, 8),
       materialName: it.item_name || it.description || '(unnamed)',
@@ -273,17 +304,17 @@ export default function SupplierVerifyPricingPage() {
         }
         return next;
       });
-    } catch (e: any) {
+    } catch (e: unknown) {
       setCatalogPrices((prev) => {
         const next = { ...prev };
         for (const { item } of priceable) {
           next[item.itemNumber] = {
-            info: { state: 'error', label: 'Error', reason: e?.message || 'Lookup failed', tone: 'danger', canPrice: false },
+            info: { state: 'error', label: 'Error', reason: getErrorMessage(e, 'Lookup failed'), tone: 'danger', canPrice: false },
           };
         }
         return next;
       });
-      toast.error(e?.message || 'ABC catalog pricing failed');
+      toast.error(getErrorMessage(e, 'ABC catalog pricing failed'));
     } finally {
       setCatalogPriceBusy(false);
     }
@@ -307,8 +338,8 @@ export default function SupplierVerifyPricingPage() {
       } else if (res.children.length > 0) {
         await priceCatalogItems(res.children);
       }
-    } catch (e: any) {
-      toast.error(e?.message || 'ABC catalog search failed');
+    } catch (e: unknown) {
+      toast.error(getErrorMessage(e, 'ABC catalog search failed'));
     } finally {
       setCatalogLoading(false);
     }
@@ -332,8 +363,8 @@ export default function SupplierVerifyPricingPage() {
           }
         }
         if (!cancelled) setCatalogRows([]);
-      } catch (e: any) {
-        if (!cancelled) toast.error(e?.message || 'ABC catalog search failed');
+      } catch (e: unknown) {
+        if (!cancelled) toast.error(getErrorMessage(e, 'ABC catalog search failed'));
       } finally {
         if (!cancelled) setCatalogLoading(false);
       }
@@ -380,8 +411,8 @@ export default function SupplierVerifyPricingPage() {
       if (error) throw error;
       toast.success(`Matched ABC ${catalogItem.itemNumber} to ${selectedInternal.materialName}`);
       await loadRows();
-    } catch (e: any) {
-      toast.error(e?.message || 'Failed to save ABC mapping');
+    } catch (e: unknown) {
+      toast.error(getErrorMessage(e, 'Failed to save ABC mapping'));
     } finally {
       setMappingBusy((prev) => ({ ...prev, [catalogItem.itemNumber]: false }));
     }
