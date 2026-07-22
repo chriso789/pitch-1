@@ -509,16 +509,56 @@ export default function SupplierVerifyPricingPage() {
       {supplierKey === 'abc' && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Active ABC account</CardTitle>
-            <CardDescription>Pricing is pulled against the selected ship-to + branch.</CardDescription>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <CardTitle className="text-base">Active ABC account</CardTitle>
+                <CardDescription>Connected means OAuth is valid. Pricing requires a selected Ship-To and Branch.</CardDescription>
+              </div>
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button variant="outline" size="sm" onClick={syncAbcAccounts} disabled={syncingAccounts || !tenantId || !abcStatus.isConnected}>
+                  {syncingAccounts ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCcw className="h-4 w-4 mr-1" />}
+                  Sync ABC accounts
+                </Button>
+                <Button size="sm" onClick={() => setSetupOpen(true)} disabled={abcAccountCount === 0}>
+                  Choose Ship-To / Branch
+                </Button>
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
             <div><div className="text-muted-foreground text-xs">Ship-To</div><div className="font-mono">{abcSetup.shipToNumber || '—'}</div></div>
             <div><div className="text-muted-foreground text-xs">Branch</div><div className="font-mono">{abcSetup.branchNumber || '—'}</div></div>
             <div><div className="text-muted-foreground text-xs">Setup</div><div>{abcSetup.connection?.setup_completed_at ? formatDistanceToNow(new Date(abcSetup.connection.setup_completed_at), { addSuffix: true }) : 'Not completed'}</div></div>
-            <div><div className="text-muted-foreground text-xs">Status</div><div>{abcSetup.connection?.connection_status || 'unknown'}</div></div>
+            <div><div className="text-muted-foreground text-xs">Status</div><div>{abcSetup.ready ? 'ready for pricing' : abcSetup.connection?.connection_status || 'unknown'}</div></div>
           </CardContent>
         </Card>
+      )}
+
+      {abcConnectedButNotReady && (
+        <Alert className="border-amber-500/40 bg-amber-500/5">
+          <AlertCircle className="h-4 w-4 text-amber-600" />
+          <AlertTitle>ABC is connected, but pricing is not ready yet</AlertTitle>
+          <AlertDescription className="space-y-3">
+            <p>
+              The ABC OAuth login succeeded, but this tenant does not have a selected Ship-To and Branch. ABC Price Items calls need both values, so the catalog and prices are locked until setup is completed.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {abcAccountCount === 0 ? (
+                <Button size="sm" onClick={syncAbcAccounts} disabled={syncingAccounts || !tenantId}>
+                  {syncingAccounts ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCcw className="h-4 w-4 mr-1" />}
+                  Pull Ship-To / Branch from ABC
+                </Button>
+              ) : (
+                <Button size="sm" onClick={() => setSetupOpen(true)}>
+                  Choose Ship-To / Branch
+                </Button>
+              )}
+              <Button variant="outline" size="sm" onClick={() => navigate('/settings?tab=integrations')}>
+                Open connection settings
+              </Button>
+            </div>
+          </AlertDescription>
+        </Alert>
       )}
 
       <Card>
@@ -578,9 +618,10 @@ export default function SupplierVerifyPricingPage() {
                   onKeyDown={(e) => { if (e.key === 'Enter') loadCatalog(); }}
                   placeholder="Search ABC catalog…"
                   className="pl-9 w-72 h-9"
+                  disabled={!abcPricingReady}
                 />
               </div>
-              <Button size="sm" variant="outline" onClick={() => loadCatalog()} disabled={catalogLoading || !catalogQuery.trim()}>
+              <Button size="sm" variant="outline" onClick={() => loadCatalog()} disabled={catalogLoading || !catalogQuery.trim() || !abcPricingReady}>
                 {catalogLoading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Search className="h-4 w-4 mr-1" />}
                 Search ABC
               </Button>
@@ -609,6 +650,8 @@ export default function SupplierVerifyPricingPage() {
               <TableBody>
                 {catalogLoading || rowsLoading ? (
                   <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Loading ABC catalog for this branch…</TableCell></TableRow>
+                ) : !abcPricingReady ? (
+                  <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Select an ABC Ship-To and Branch before loading branch catalog items and pricing.</TableCell></TableRow>
                 ) : catalogRows.length === 0 ? (
                   <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No ABC catalog items returned for branch {abcSetup.branchNumber || '—'}.</TableCell></TableRow>
                 ) : catalogRows.map((catalogItem) => {
@@ -705,6 +748,15 @@ export default function SupplierVerifyPricingPage() {
           onApproved={() => { setFindFor(null); loadRows(); }}
         />
       )}
+
+      <AbcSetupWizard
+        open={setupOpen}
+        onOpenChange={setSetupOpen}
+        onComplete={() => {
+          void abcSetup.refetch();
+          void loadCatalog(undefined, false);
+        }}
+      />
     </div>
   );
 }
