@@ -173,6 +173,8 @@ export default function ProtectedRoutes() {
         <Route path="/material-calculations/:id" element={<ProtectedRoute><MaterialCalculations /></ProtectedRoute>} />
         <Route path="/material-orders/:id" element={<ProtectedRoute><MaterialOrderDetail /></ProtectedRoute>} />
         <Route path="/supplier-orders" element={<ProtectedRoute><SupplierOrderHistory /></ProtectedRoute>} />
+        <Route path="/supplier-verify/:supplier" element={<ProtectedRoute><SupplierVerifyPricingPage /></ProtectedRoute>} />
+
         <Route path="/material-orders/:id" element={<ProtectedRoute><MaterialOrderDetail /></ProtectedRoute>} />
         <Route path="/material-audit" element={<ProtectedRoute><MaterialAuditPage /></ProtectedRoute>} />
         <Route path="/approval-rules" element={<ProtectedRoute><ApprovalRules /></ProtectedRoute>} />
