@@ -896,9 +896,20 @@ async function processBlast(
     })
     .eq('id', blast.id);
 
+  const requeuedTotal = rateLimited; // rate-limit releases + retryable transients
+  const avgRetryDelayMs = rateLimited > 0 ? Math.round(retryDelaySumMs / rateLimited) : 0;
+
   return {
     blast_id: blast.id,
+    processor_run_id: processorRunId,
     sent, failed, opted, blockedByGuard, blockedByCooldown, blockedByDedupe,
+    // Repair #2 observability
+    rate_limited: rateLimited,
+    rate_limit_exhausted: rateLimitExhausted,
+    ownership_conflicts: ownershipConflicts,
+    requeued: requeuedTotal,
+    avg_retry_delay_ms: avgRetryDelayMs,
+    max_retry_delay_ms: retryDelayMaxMs,
     claimed: claimed.length, totalMps, minuteCapacity, remaining,
     partial: remaining > 0,
     message: remaining > 0 ? 'Batch processed. Run processor again for remaining rendered items.' : undefined,
