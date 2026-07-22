@@ -485,8 +485,8 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
     } catch (error: any) {
       console.error('Error creating lead:', error);
       toast({
-        title: "Error",
-        description: error.message || "Failed to create lead. Please try again.",
+        title: "Couldn't create lead",
+        description: error?.message || "Unknown error. Check the browser console for the correlation id.",
         variant: "destructive",
       });
     } finally {
