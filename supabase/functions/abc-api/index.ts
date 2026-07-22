@@ -44,13 +44,12 @@ function ctx(c: Context<RouterEnv>) {
 // /accounts — list discovered ship-tos + branches for this tenant
 // ============================================================
 app.get("/accounts", async (c) => {
-  const { tenantId, userId, svc } = ctx(c);
+  const { tenantId, svc } = ctx(c);
 
   const { data: userConnections, error: ucErr } = await svc
     .from("abc_user_connections")
     .select("id, environment, status, updated_at")
     .eq("tenant_id", tenantId)
-    .eq("user_id", userId)
     .eq("status", "connected")
     .order("updated_at", { ascending: false });
   if (ucErr) return jsonErr(c, "user_connections_query_failed", ucErr.message, 500);
@@ -167,7 +166,6 @@ app.post("/setup/select", async (c) => {
     .from("abc_user_connections")
     .select("id, environment, status, updated_at")
     .eq("tenant_id", tenantId)
-    .eq("user_id", userId)
     .eq("status", "connected")
     .order("updated_at", { ascending: false });
   if (ucErr) return jsonErr(c, "user_connections_query_failed", ucErr.message, 500);
