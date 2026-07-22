@@ -28,6 +28,7 @@ export type AbcConnectionState =
   | 'unknown';
 
 export interface AbcConnectionRow {
+  id: string | null;
   default_branch_code: string | null;
   account_number: string | null;
   environment: string | null;
@@ -88,7 +89,7 @@ export function useAbcConnectionStatus(): AbcConnectionStatus {
     const { data } = await supabase
       .from('abc_connections')
       .select(
-        'default_branch_code, account_number, environment, connection_status, updated_at',
+        'id, default_branch_code, account_number, environment, connection_status, updated_at',
       )
       .eq('tenant_id', tenantId as any)
       .order('updated_at', { ascending: false });
@@ -102,8 +103,13 @@ export function useAbcConnectionStatus(): AbcConnectionStatus {
   }, [tenantId]);
 
   return useMemo<AbcConnectionStatus>(() => {
+    const connectedRows = rows.filter(
+      (r) => (r.connection_status || '').toLowerCase() === 'connected',
+    );
     const connected =
-      rows.find((r) => (r.connection_status || '').toLowerCase() === 'connected') || null;
+      connectedRows.find((r) => normalizeAbcEnvironment(r.environment) === 'production') ||
+      connectedRows[0] ||
+      null;
     const preferred = connected || rows[0] || null;
     const state = loading ? 'unknown' : deriveState(preferred);
     return {

@@ -46,12 +46,30 @@ function ctx(c: Context<RouterEnv>) {
 app.get("/accounts", async (c) => {
   const { tenantId, svc } = ctx(c);
 
+  const { data: userConnections, error: ucErr } = await svc
+    .from("abc_user_connections")
+    .select("id, environment, status, updated_at")
+    .eq("tenant_id", tenantId)
+    .eq("status", "connected")
+    .order("updated_at", { ascending: false });
+  if (ucErr) return jsonErr(c, "user_connections_query_failed", ucErr.message, 500);
+
+  const connected = userConnections ?? [];
+  const production = connected.filter((r: any) => r.environment === "production");
+  const selectedConnections = production.length > 0 ? production : connected;
+  const connectionIds = selectedConnections.map((r: any) => r.id).filter(Boolean);
+
+  if (connectionIds.length === 0) {
+    return jsonOk(c, { accounts: [], count: 0 });
+  }
+
   const { data: shipTos, error: stErr } = await svc
     .from("abc_ship_to_accounts")
     .select(
       "id, ship_to_number, name, address_line1, city, state, postal_code, is_default",
     )
     .eq("tenant_id", tenantId)
+    .in("connection_id", connectionIds)
     .order("is_default", { ascending: false })
     .order("name", { ascending: true });
   if (stErr) return jsonErr(c, "accounts_query_failed", stErr.message, 500);
@@ -100,10 +118,14 @@ app.get("/setup/status", async (c) => {
     .order("updated_at", { ascending: false });
   if (error) return jsonErr(c, "setup_status_failed", error.message, 500);
   const rows = data ?? [];
-  const connected = rows.find(
+  const connectedRows = rows.filter(
     (r: any) => (r.connection_status || "").toLowerCase() === "connected",
   );
-  const preferred = connected || rows[0] || null;
+  const preferred =
+    connectedRows.find((r: any) => r.environment === "production") ||
+    connectedRows[0] ||
+    rows[0] ||
+    null;
   const ready = !!(
     preferred?.setup_completed_at &&
     preferred?.selected_ship_to_number &&
@@ -140,13 +162,30 @@ app.post("/setup/select", async (c) => {
     );
   }
 
-  // 1) Verify the ship-to exists for this tenant.
+  const { data: userConnections, error: ucErr } = await svc
+    .from("abc_user_connections")
+    .select("id, environment, status, updated_at")
+    .eq("tenant_id", tenantId)
+    .eq("status", "connected")
+    .order("updated_at", { ascending: false });
+  if (ucErr) return jsonErr(c, "user_connections_query_failed", ucErr.message, 500);
+  const connected = userConnections ?? [];
+  const production = connected.filter((r: any) => r.environment === "production");
+  const selectedConnections = production.length > 0 ? production : connected;
+  const selectedEnvironment = selectedConnections[0]?.environment ?? null;
+  const connectionIds = selectedConnections.map((r: any) => r.id).filter(Boolean);
+  if (connectionIds.length === 0) {
+    return jsonErr(c, "abc_not_connected", "ABC is not connected for this user.", 409);
+  }
+
+  // 1) Verify the ship-to exists for this tenant and active environment.
   const { data: shipTo, error: stErr } = await svc
     .from("abc_ship_to_accounts")
     .select(
       "id, ship_to_number, name, address_line1, city, state, postal_code",
     )
     .eq("tenant_id", tenantId)
+    .in("connection_id", connectionIds)
     .eq("ship_to_number", shipToNumber)
     .maybeSingle();
   if (stErr) return jsonErr(c, "ship_to_lookup_failed", stErr.message, 500);
@@ -182,8 +221,9 @@ app.post("/setup/select", async (c) => {
   // 3) Persist on the connection row (prefer connected, else most recent).
   const { data: connRows, error: connErr } = await svc
     .from("abc_connections")
-    .select("id, connection_status, updated_at")
+    .select("id, environment, connection_status, updated_at")
     .eq("tenant_id", tenantId)
+    .eq("environment", selectedEnvironment)
     .order("updated_at", { ascending: false });
   if (connErr) return jsonErr(c, "connection_lookup_failed", connErr.message, 500);
   const target =

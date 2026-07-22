@@ -182,6 +182,7 @@ export default function SupplierVerifyPricingPage() {
   const abcSetup = useAbcSetup();
   const abcStatus = useAbcConnectionStatus();
   const abcAccounts = useAbcAccounts();
+  const abcEnvironment = abcSetup.environment || abcStatus.environment || 'production';
 
   const [orders, setOrders] = useState<NormalizedSupplierOrder[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
@@ -295,6 +296,7 @@ export default function SupplierVerifyPricingPage() {
       const res = await abcPriceItems({
         shipToNumber: abcSetup.shipToNumber,
         branchNumber: abcSetup.branchNumber,
+        environment: abcEnvironment,
         purpose: 'estimating',
         lines: priceable.map(({ item, uom }) => ({
           id: item.itemNumber,
@@ -339,7 +341,7 @@ export default function SupplierVerifyPricingPage() {
     } finally {
       setCatalogPriceBusy(false);
     }
-  }, [abcSetup.branchNumber, abcSetup.shipToNumber]);
+  }, [abcEnvironment, abcSetup.branchNumber, abcSetup.shipToNumber]);
 
   const loadCatalog = useCallback(async (searchTerm?: string, toastOnEmpty = true) => {
     if (supplierKey !== 'abc') return;
@@ -351,7 +353,7 @@ export default function SupplierVerifyPricingPage() {
     if (!term) return;
     setCatalogLoading(true);
     try {
-      const res = await abcSearchProducts({ query: term, branchNumber: abcSetup.branchNumber, itemsPerPage: 75 });
+      const res = await abcSearchProducts({ query: term, branchNumber: abcSetup.branchNumber, environment: abcEnvironment, itemsPerPage: 75 });
       setCatalogRows(res.children);
       setCatalogQuery(term);
       if (res.wafBlocked) {
@@ -368,7 +370,7 @@ export default function SupplierVerifyPricingPage() {
     } finally {
       setCatalogLoading(false);
     }
-  }, [abcSetup.branchNumber, catalogQuery, priceCatalogItems, supplierKey]);
+  }, [abcEnvironment, abcSetup.branchNumber, catalogQuery, priceCatalogItems, supplierKey]);
 
   const syncAbcAccounts = useCallback(async () => {
     if (!tenantId) return;
@@ -378,6 +380,7 @@ export default function SupplierVerifyPricingPage() {
         body: {
           action: 'sync_accounts',
           tenant_id: tenantId,
+          environment: abcEnvironment,
         },
       });
       if (error) throw error;
@@ -403,7 +406,7 @@ export default function SupplierVerifyPricingPage() {
     } finally {
       setSyncingAccounts(false);
     }
-  }, [abcAccounts, abcSetup, abcStatus, tenantId]);
+  }, [abcAccounts, abcEnvironment, abcSetup, abcStatus, tenantId]);
 
   useEffect(() => {
     if (supplierKey !== 'abc' || !abcSetup.branchNumber) return;
@@ -413,7 +416,7 @@ export default function SupplierVerifyPricingPage() {
       try {
         for (const term of DEFAULT_ABC_CATALOG_QUERIES) {
           if (cancelled) return;
-          const res = await abcSearchProducts({ query: term, branchNumber: abcSetup.branchNumber, itemsPerPage: 75 });
+          const res = await abcSearchProducts({ query: term, branchNumber: abcSetup.branchNumber, environment: abcEnvironment, itemsPerPage: 75 });
           if (res.children.length > 0) {
             if (cancelled) return;
             setCatalogRows(res.children);
@@ -430,7 +433,7 @@ export default function SupplierVerifyPricingPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, [abcSetup.branchNumber, priceCatalogItems, supplierKey]);
+  }, [abcEnvironment, abcSetup.branchNumber, priceCatalogItems, supplierKey]);
 
   const matchCatalogItem = async (catalogItem: AbcCatalogSearchResultChild) => {
     const templateItemId = selectedInternalByCatalog[catalogItem.itemNumber];

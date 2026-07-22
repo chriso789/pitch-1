@@ -274,6 +274,7 @@ Deno.serve(async (req) => {
         expires_at: expiresAt,
         refresh_expires_at: null,
         connection_status: "connected",
+        connected_by: stateRow.created_by,
         last_validated_at: new Date().toISOString(),
         last_refreshed_at: new Date().toISOString(),
         last_error: null,
@@ -308,6 +309,7 @@ Deno.serve(async (req) => {
           action: "sync_accounts",
           environment,
           tenant_id: integration.tenant_id,
+          user_id: stateRow.created_by,
         }),
       })
         .then(async (r) => {

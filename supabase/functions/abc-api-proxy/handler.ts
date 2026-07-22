@@ -372,6 +372,7 @@ interface ProxyRequest {
   jobsiteContact?: { name?: string; email?: string; phone?: string };
   priceOverride?: { value: number; reason: string };
   sandboxDemo?: boolean;
+  user_id?: string;
 }
 
 const ABC_SANDBOX_DEMO_FALLBACK = { shipToNumber: "2010466-2", branchNumber: "1209" } as const;
@@ -630,19 +631,19 @@ export const handle = async (req) => {
     if (action === "revoke_connection" || action === "disconnect") {
       if (!tenant_id) return json({ success: false, error: "no_tenant" }, 400);
       try {
+        // Ship-To/accounts cascade from abc_user_connections. Do not issue a
+        // tenant-wide delete here or disconnecting production will wipe sandbox
+        // account rows for the same tenant.
+        await supabase
+          .from("abc_user_connections")
+          .delete()
+          .eq("tenant_id", tenant_id)
+          .eq("environment", env);
         await supabase
           .from("abc_connections")
           .delete()
           .eq("tenant_id", tenant_id)
           .eq("environment", env);
-        await supabase
-          .from("abc_ship_to_accounts")
-          .delete()
-          .eq("tenant_id", tenant_id);
-        await supabase
-          .from("abc_account_branches")
-          .delete()
-          .eq("tenant_id", tenant_id);
       } catch (e) {
         console.error("abc-api-proxy revoke_connection cleanup error", e);
       }
@@ -739,11 +740,58 @@ export const handle = async (req) => {
     if (action === "sync_accounts") {
       const { data: conn } = await supabase
         .from("abc_connections")
-        .select("id")
+        .select("id, connected_by")
         .eq("tenant_id", tenant_id)
         .eq("environment", env)
         .maybeSingle();
-      const connectionId = (conn as any)?.id ?? null;
+      const effectiveUserId = userId || body.user_id || (conn as any)?.connected_by || null;
+
+      if (!effectiveUserId) {
+        await supabase
+          .from("abc_connections")
+          .update({ last_error: "sync_accounts_missing_user_context" })
+          .eq("tenant_id", tenant_id)
+          .eq("environment", env);
+        return json({
+          success: false,
+          stage: "resolve_user_connection",
+          error: "missing_user_context",
+          error_code: "missing_user_context",
+          environment: env,
+        }, 400);
+      }
+
+      const { data: userConn, error: userConnErr } = await supabase
+        .from("abc_user_connections")
+        .upsert({
+          tenant_id,
+          user_id: effectiveUserId,
+          environment: env,
+          token_expires_at: tok.expires_at ?? null,
+          scopes: tok.scope ? String(tok.scope).split(/\s+/).filter(Boolean) : [],
+          status: "connected",
+          last_refresh_at: new Date().toISOString(),
+          last_error: null,
+        }, { onConflict: "tenant_id,user_id,environment" })
+        .select("id")
+        .single();
+
+      if (userConnErr || !(userConn as any)?.id) {
+        await supabase
+          .from("abc_connections")
+          .update({ last_error: `sync_accounts.user_connection ${userConnErr?.message || "missing_id"}`.slice(0, 500) })
+          .eq("tenant_id", tenant_id)
+          .eq("environment", env);
+        return json({
+          success: false,
+          stage: "user_connection",
+          error: userConnErr?.message || "missing_user_connection_id",
+          error_code: "user_connection_upsert_failed",
+          environment: env,
+        }, 500);
+      }
+
+      const connectionId = (userConn as any).id;
 
       const accountSearchPath = Deno.env.get("ABC_ACCOUNT_SEARCH_PATH") || "/account/v1/search/accounts";
       const shipToPath = Deno.env.get("ABC_SHIPTO_PATH") || "/account/v1/shiptos"; // GET {path}/{shipToNumber}
@@ -864,7 +912,7 @@ export const handle = async (req) => {
           return {
             connection_id: connectionId,
             tenant_id,
-            user_id: userId,
+            user_id: effectiveUserId,
             ship_to_number,
             name: st?.name ?? st?.shipToName ?? null,
             address_line1: addr?.line1 ?? addr?.addressLine1 ?? null,
@@ -899,7 +947,7 @@ export const handle = async (req) => {
             return {
               ship_to_id,
               tenant_id,
-              user_id: userId,
+              user_id: effectiveUserId,
               branch_number: String(branch.branchNumber),
               name: branch?.name ?? null,
               address_line1: addr?.line1 ?? addr?.addressLine1 ?? null,
