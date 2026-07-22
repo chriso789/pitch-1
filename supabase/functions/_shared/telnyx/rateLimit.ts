@@ -135,16 +135,17 @@ function extractFromBody(body: unknown): {
   // Structured retry hints Telnyx has been observed to return.
   let retry_after_ms: number | null = null;
   const meta = first.meta && typeof first.meta === 'object' ? first.meta : null;
-  const candidates = [
-    b.retry_after_ms, b.retryAfterMs, b.retry_after,
-    meta?.retry_after_ms, meta?.retryAfterMs, meta?.retry_after,
-    first.retry_after_ms, first.retryAfterMs, first.retry_after,
+  // [value, unit] — unit tells us whether a numeric value is already ms or seconds.
+  const candidates: Array<[unknown, 'ms' | 'sec' | 'auto']> = [
+    [b.retry_after_ms, 'ms'], [b.retryAfterMs, 'ms'], [b.retry_after, 'auto'],
+    [meta?.retry_after_ms, 'ms'], [meta?.retryAfterMs, 'ms'], [meta?.retry_after, 'auto'],
+    [first.retry_after_ms, 'ms'], [first.retryAfterMs, 'ms'], [first.retry_after, 'auto'],
   ];
-  for (const c of candidates) {
+  for (const [c, unit] of candidates) {
     if (typeof c === 'number' && Number.isFinite(c) && c >= 0) {
-      // If the value looks like seconds (< 1000) and the key ended in
-      // just "retry_after", treat as seconds. Otherwise assume ms.
-      retry_after_ms = c < 1000 ? Math.round(c * 1000) : Math.round(c);
+      if (unit === 'ms') retry_after_ms = Math.round(c);
+      else if (unit === 'sec') retry_after_ms = Math.round(c * 1000);
+      else retry_after_ms = c < 1000 ? Math.round(c * 1000) : Math.round(c); // auto
       break;
     }
     if (typeof c === 'string') {
