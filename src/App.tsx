@@ -204,6 +204,8 @@ const AppContent = () => {
 
         <Route path="/v/:token" element={<Suspense fallback={<PageLoader />}><PublicDocumentView /></Suspense>} />
         <Route path="/pay/:token" element={<Suspense fallback={<PageLoader />}><ZellePaymentPage /></Suspense>} />
+        <Route path="/portal/i/:token" element={<Suspense fallback={<PageLoader />}>{React.createElement(React.lazy(() => import("@/pages/portal/CustomerInvoicePortalPage")))}</Suspense>} />
+
         <Route path="/unsubscribe" element={<Suspense fallback={<PageLoader />}><Unsubscribe /></Suspense>} />
         <Route path="/co/:token" element={<Suspense fallback={<PageLoader />}><PublicChangeOrderView /></Suspense>} />
         <Route path="/ref/:referralCode/reward" element={<Suspense fallback={<PageLoader />}><PublicReferralReward /></Suspense>} />
