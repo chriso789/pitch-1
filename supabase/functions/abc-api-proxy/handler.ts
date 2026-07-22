@@ -631,6 +631,9 @@ export const handle = async (req) => {
     if (action === "revoke_connection" || action === "disconnect") {
       if (!tenant_id) return json({ success: false, error: "no_tenant" }, 400);
       try {
+        // Ship-To/accounts cascade from abc_user_connections. Do not issue a
+        // tenant-wide delete here or disconnecting production will wipe sandbox
+        // account rows for the same tenant.
         await supabase
           .from("abc_user_connections")
           .delete()
@@ -641,14 +644,6 @@ export const handle = async (req) => {
           .delete()
           .eq("tenant_id", tenant_id)
           .eq("environment", env);
-        await supabase
-          .from("abc_ship_to_accounts")
-          .delete()
-          .eq("tenant_id", tenant_id);
-        await supabase
-          .from("abc_account_branches")
-          .delete()
-          .eq("tenant_id", tenant_id);
       } catch (e) {
         console.error("abc-api-proxy revoke_connection cleanup error", e);
       }
