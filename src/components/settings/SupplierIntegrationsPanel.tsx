@@ -466,7 +466,7 @@ export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => navigate(`/settings?tab=materials&supplier=${key}#supplier-mapping`)}
+                        onClick={() => navigate(`/supplier-verify/${key}`)}
                         title={`Verify ${meta.name} item mappings and pull live pricing`}
                       >
                         <DollarSign className="h-3 w-3 mr-1" />

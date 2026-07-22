@@ -52,6 +52,7 @@ const MaterialCalculations = React.lazy(() => import("@/pages/MaterialCalculatio
 const MaterialOrders = React.lazy(() => import("@/pages/MaterialOrders"));
 const MaterialOrderDetail = React.lazy(() => import("@/pages/MaterialOrderDetail"));
 const SupplierOrderHistory = React.lazy(() => import("@/pages/SupplierOrderHistory"));
+const SupplierVerifyPricingPage = React.lazy(() => import("@/pages/SupplierVerifyPricingPage"));
 const ApprovalRules = React.lazy(() => import("@/pages/ApprovalRules"));
 const PendingApprovals = React.lazy(() => import("@/pages/PendingApprovals"));
 const ManagerApprovalQueue = React.lazy(() => import("@/pages/ManagerApprovalQueue"));
@@ -172,6 +173,8 @@ export default function ProtectedRoutes() {
         <Route path="/material-calculations/:id" element={<ProtectedRoute><MaterialCalculations /></ProtectedRoute>} />
         <Route path="/material-orders/:id" element={<ProtectedRoute><MaterialOrderDetail /></ProtectedRoute>} />
         <Route path="/supplier-orders" element={<ProtectedRoute><SupplierOrderHistory /></ProtectedRoute>} />
+        <Route path="/supplier-verify/:supplier" element={<ProtectedRoute><SupplierVerifyPricingPage /></ProtectedRoute>} />
+
         <Route path="/material-orders/:id" element={<ProtectedRoute><MaterialOrderDetail /></ProtectedRoute>} />
         <Route path="/material-audit" element={<ProtectedRoute><MaterialAuditPage /></ProtectedRoute>} />
         <Route path="/approval-rules" element={<ProtectedRoute><ApprovalRules /></ProtectedRoute>} />
