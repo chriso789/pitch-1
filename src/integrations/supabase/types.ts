@@ -13574,6 +13574,68 @@ export type Database = {
           },
         ]
       }
+      customer_invoice_events: {
+        Row: {
+          actor_type: string
+          actor_user_id: string | null
+          contact_id: string | null
+          created_at: string
+          delivery_provider: string | null
+          delivery_provider_message_id: string | null
+          event_timestamp: string
+          event_type: string
+          id: string
+          metadata: Json
+          pitch_invoice_id: string
+          portal_token_id: string | null
+          project_id: string | null
+          request_correlation_id: string | null
+          tenant_id: string
+        }
+        Insert: {
+          actor_type?: string
+          actor_user_id?: string | null
+          contact_id?: string | null
+          created_at?: string
+          delivery_provider?: string | null
+          delivery_provider_message_id?: string | null
+          event_timestamp?: string
+          event_type: string
+          id?: string
+          metadata?: Json
+          pitch_invoice_id: string
+          portal_token_id?: string | null
+          project_id?: string | null
+          request_correlation_id?: string | null
+          tenant_id: string
+        }
+        Update: {
+          actor_type?: string
+          actor_user_id?: string | null
+          contact_id?: string | null
+          created_at?: string
+          delivery_provider?: string | null
+          delivery_provider_message_id?: string | null
+          event_timestamp?: string
+          event_type?: string
+          id?: string
+          metadata?: Json
+          pitch_invoice_id?: string
+          portal_token_id?: string | null
+          project_id?: string | null
+          request_correlation_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_invoice_events_portal_token_id_fkey"
+            columns: ["portal_token_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_portal_tokens"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customer_job_milestones: {
         Row: {
           completed_at: string | null
@@ -24405,6 +24467,66 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      invoice_portal_tokens: {
+        Row: {
+          contact_id: string | null
+          created_at: string
+          created_by: string | null
+          expires_at: string
+          first_opened_at: string | null
+          id: string
+          last_ip_hash: string | null
+          last_opened_at: string | null
+          last_user_agent_summary: string | null
+          open_count: number
+          pitch_invoice_id: string
+          project_id: string | null
+          revoked_at: string | null
+          revoked_by: string | null
+          tenant_id: string
+          token_hash: string
+          updated_at: string
+        }
+        Insert: {
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          expires_at: string
+          first_opened_at?: string | null
+          id?: string
+          last_ip_hash?: string | null
+          last_opened_at?: string | null
+          last_user_agent_summary?: string | null
+          open_count?: number
+          pitch_invoice_id: string
+          project_id?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          tenant_id: string
+          token_hash: string
+          updated_at?: string
+        }
+        Update: {
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string
+          first_opened_at?: string | null
+          id?: string
+          last_ip_hash?: string | null
+          last_opened_at?: string | null
+          last_user_agent_summary?: string | null
+          open_count?: number
+          pitch_invoice_id?: string
+          project_id?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          tenant_id?: string
+          token_hash?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       invoice_reconciliation_events: {
         Row: {
@@ -62209,6 +62331,14 @@ export type Database = {
       referral_submission_has_blocking_flags: {
         Args: { _referral_submission_id: string }
         Returns: boolean
+      }
+      resolve_invoice_portal_token: {
+        Args: {
+          _ip_hash?: string
+          _token: string
+          _user_agent_summary?: string
+        }
+        Returns: Json
       }
       rollback_estimate_to_version: {
         Args: { estimate_id_param: string; version_id_param: string }
