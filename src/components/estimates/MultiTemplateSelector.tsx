@@ -1942,9 +1942,11 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
 
     } catch (error) {
       console.error('Error saving line item changes:', error);
+      const { describeEdgeFunctionError } = await import('@/lib/describeEdgeError');
+      const described = describeEdgeFunctionError('update-estimate-line-items', error);
       toast({
-        title: 'Error',
-        description: 'Failed to save line item changes',
+        title: 'Failed to save line item changes',
+        description: described.toastMessage,
         variant: 'destructive'
       });
     } finally {

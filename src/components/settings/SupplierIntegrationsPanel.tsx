@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, CheckCircle2, XCircle, Truck, Building2, Package, FileText, CreditCard, ExternalLink } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Truck, Building2, Package, FileText, CreditCard, ExternalLink, DollarSign } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { useAbcConnectionStatus } from '@/hooks/useAbcConnectionStatus';
@@ -78,6 +79,7 @@ interface Props {
  * tooling — those belong in the Advanced (Developer) tab.
  */
 export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
+  const navigate = useNavigate();
   const tenantId = useEffectiveTenantId();
   const { toast } = useToast();
   const abcStatus = useAbcConnectionStatus();
@@ -461,6 +463,15 @@ export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
                           Manage
                         </Button>
                       )}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => navigate(`/settings?tab=materials&supplier=${key}#supplier-mapping`)}
+                        title={`Verify ${meta.name} item mappings and pull live pricing`}
+                      >
+                        <DollarSign className="h-3 w-3 mr-1" />
+                        Verify Pricing
+                      </Button>
                       <Button
                         size="sm"
                         variant="ghost"
