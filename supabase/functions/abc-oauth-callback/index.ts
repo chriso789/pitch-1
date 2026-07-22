@@ -282,6 +282,24 @@ Deno.serve(async (req) => {
       { onConflict: "tenant_id,environment" }
     );
 
+    if (stateRow.created_by) {
+      await supabase.from("abc_user_connections").upsert(
+        {
+          tenant_id: integration.tenant_id,
+          user_id: stateRow.created_by,
+          environment,
+          token_expires_at: expiresAt,
+          scopes: String(tokenJson.scope ?? integration.scopes ?? "")
+            .split(/\s+/)
+            .filter(Boolean),
+          status: "connected",
+          last_refresh_at: new Date().toISOString(),
+          last_error: null,
+        },
+        { onConflict: "tenant_id,user_id,environment" },
+      );
+    }
+
     await supabase
       .from("abc_integrations")
       .update({ status: "connected", last_error: null })

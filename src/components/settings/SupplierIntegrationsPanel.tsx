@@ -107,7 +107,7 @@ export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
       setLoading(true);
       try {
         const [abcConn, srsConn, qxoConn, abcOrders, srsOrders, qxoOrders] = await Promise.all([
-          (supabase as any).from('abc_connections').select('connection_status, last_validated_at, last_error, updated_at').eq('tenant_id', tenantId).order('updated_at', { ascending: false }).limit(1).maybeSingle(),
+          (supabase as any).from('abc_user_connections').select('status, last_refresh_at, last_error, updated_at').eq('tenant_id', tenantId).eq('status', 'connected').order('updated_at', { ascending: false }).limit(1).maybeSingle(),
           (supabase as any).from('srs_connections').select('connection_status, last_validated_at, last_error, updated_at').eq('tenant_id', tenantId).order('updated_at', { ascending: false }).limit(1).maybeSingle(),
           (supabase as any).from('qxo_connections').select('connection_status, last_validated_at, last_error, has_credentials, updated_at').eq('tenant_id', tenantId).maybeSingle(),
           (supabase as any).from('abc_orders').select('id, order_number, confirmation_number, order_status, branch_number, created_at').eq('tenant_id', tenantId).order('created_at', { ascending: false }).limit(20),
@@ -148,8 +148,8 @@ export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
 
         const next: Record<SupplierKey, SupplierStatus> = {
           abc: {
-            connected: abcConn?.data?.connection_status === 'connected',
-            lastValidatedAt: abcConn?.data?.last_validated_at ?? null,
+            connected: abcConn?.data?.status === 'connected',
+            lastValidatedAt: abcConn?.data?.last_refresh_at ?? null,
             lastError: abcConn?.data?.last_error ?? null,
             lastOrderAt: abcOrderRows[0]?.createdAt ?? null,
             lastOrderStatus: abcOrderRows[0]?.status ?? null,

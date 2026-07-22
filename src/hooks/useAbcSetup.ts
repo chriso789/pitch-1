@@ -1,7 +1,7 @@
 // Single source of truth for "is this tenant's ABC pricing setup complete?".
-// Reads the selected Ship-To / Branch persisted on abc_connections by the
-// post-OAuth setup wizard. UI must consult this before issuing any ABC price
-// call — until `ready === true`, the locked-cell gate renders.
+// Reads the selected Ship-To / Branch persisted only after a real tenant ABC
+// user connection exists. Developer portal/API setup rows must not unlock
+// tenant pricing or ordering.
 
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -43,22 +43,37 @@ export function useAbcSetup(): AbcSetup {
     enabled: !!tenantId,
     staleTime: 30_000,
     queryFn: async (): Promise<AbcSetupRow | null> => {
+      const { data: userRows, error: userErr } = await (supabase as any)
+        .from('abc_user_connections')
+        .select('environment')
+        .eq('tenant_id', tenantId as any)
+        .eq('status', 'connected');
+      if (userErr) throw userErr;
+      const connectedEnvironments = new Set(
+        ((userRows || []) as Array<{ environment: string | null }>).map((r) => normalizeAbcSetupEnvironment(r.environment)),
+      );
+      if (connectedEnvironments.size === 0) return null;
       const { data, error } = await supabase
         .from('abc_connections')
         .select(
           'id, environment, connection_status, selected_ship_to_number, selected_branch_number, selected_ship_to_snapshot, selected_branch_snapshot, setup_completed_at, updated_at',
         )
         .eq('tenant_id', tenantId as any)
+        .eq('connection_status', 'connected')
         .order('updated_at', { ascending: false });
       if (error) throw error;
       const rows = (data || []) as AbcSetupRow[];
+      if (rows.length === 0) return null;
+
+      const accountRows = rows.filter((r) => connectedEnvironments.has(normalizeAbcSetupEnvironment(r.environment)));
       const connectedRows = rows.filter(
         (r) => (r.connection_status || '').toLowerCase() === 'connected',
       );
       const connected =
-        connectedRows.find((r) => normalizeAbcSetupEnvironment(r.environment) === 'production') ||
-        connectedRows[0];
-      return connected || rows[0] || null;
+        accountRows.find((r) => normalizeAbcSetupEnvironment(r.environment) === 'production') ||
+        connectedRows.find((r) => connectedEnvironments.has(normalizeAbcSetupEnvironment(r.environment))) ||
+        accountRows[0];
+      return connected || null;
     },
   });
 

@@ -109,15 +109,33 @@ app.get("/accounts", async (c) => {
 // ============================================================
 app.get("/setup/status", async (c) => {
   const { tenantId, svc } = ctx(c);
+  const { data: userConnections, error: ucErr } = await svc
+    .from("abc_user_connections")
+    .select("environment, status, updated_at")
+    .eq("tenant_id", tenantId)
+    .eq("status", "connected")
+    .order("updated_at", { ascending: false });
+  if (ucErr) return jsonErr(c, "user_connections_query_failed", ucErr.message, 500);
+  const connected = userConnections ?? [];
+  const connectedEnvironments = new Set(
+    connected.map((r: any) => (r.environment === "production" ? "production" : "sandbox")),
+  );
+  if (connectedEnvironments.size === 0) {
+    return jsonOk(c, { ready: false, connection: null, rows: [] });
+  }
+
   const { data, error } = await svc
     .from("abc_connections")
     .select(
       "id, environment, connection_status, selected_ship_to_number, selected_branch_number, selected_ship_to_snapshot, selected_branch_snapshot, setup_completed_at, updated_at",
     )
     .eq("tenant_id", tenantId)
+    .eq("connection_status", "connected")
     .order("updated_at", { ascending: false });
   if (error) return jsonErr(c, "setup_status_failed", error.message, 500);
-  const rows = data ?? [];
+  const rows = (data ?? []).filter((r: any) =>
+    connectedEnvironments.has(r.environment === "production" ? "production" : "sandbox"),
+  );
   const connectedRows = rows.filter(
     (r: any) => (r.connection_status || "").toLowerCase() === "connected",
   );
