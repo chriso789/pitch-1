@@ -95,8 +95,9 @@ export function AbcTenantConnectCard() {
         body: {
           action: 'start_oauth',
           tenant_id: tenantId,
-          // Server picks the right ABC environment for this tenant —
-          // normal users do not choose sandbox vs production.
+          // Tenant OAuth always uses production myABCsupply; sandbox is
+          // developer-tools-only and would reject real customer credentials.
+          environment: 'production',
           return_origin: window.location.origin,
         },
       });
