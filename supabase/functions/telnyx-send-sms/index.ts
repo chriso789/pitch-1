@@ -275,52 +275,84 @@ Deno.serve(async (req) => {
       locationId: resolvedLocationId || 'none'
     });
 
-    // Send SMS via Telnyx API
-    const response = await fetch('https://api.telnyx.com/v2/messages', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${TELNYX_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: finalFromNumber,
-        to: formattedTo,
-        text: message,
-        messaging_profile_id: TELNYX_SMS_PROFILE_ID,
-        ...(mediaUrlList.length > 0 ? { media_urls: mediaUrlList, type: 'MMS' } : {}),
-      }),
-    });
+    // Send SMS via Telnyx API — capture structured status/headers/body so callers
+    // (blast processor) can distinguish rate-limit rejections from permanent
+    // errors and requeue with a proper backoff instead of failing the row.
+    let response: Response;
+    try {
+      response = await fetch('https://api.telnyx.com/v2/messages', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${TELNYX_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: finalFromNumber,
+          to: formattedTo,
+          text: message,
+          messaging_profile_id: TELNYX_SMS_PROFILE_ID,
+          ...(mediaUrlList.length > 0 ? { media_urls: mediaUrlList, type: 'MMS' } : {}),
+        }),
+      });
+    } catch (netErr: any) {
+      const { classifyTelnyxResponse } = await import('../_shared/telnyx/rateLimit.ts');
+      const norm = classifyTelnyxResponse({ networkError: netErr });
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: norm.provider_error_message || 'telnyx_network_error',
+          rate_limit: norm,
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
 
     const responseText = await response.text();
-    let data;
-    
+    let data: any;
     try {
-      data = JSON.parse(responseText);
+      data = responseText ? JSON.parse(responseText) : {};
     } catch (e) {
       console.error('Failed to parse Telnyx response:', responseText);
-      throw new Error(`Telnyx API returned invalid response: ${responseText.substring(0, 200)}`);
+      data = { errors: [{ title: `Telnyx returned invalid response: ${responseText.substring(0, 200)}` }] };
     }
 
     if (!response.ok) {
-      console.error('Telnyx API error:', {
+      const { classifyTelnyxResponse } = await import('../_shared/telnyx/rateLimit.ts');
+      const headerObj: Record<string, string> = {};
+      response.headers.forEach((v, k) => { headerObj[k] = v; });
+      const norm = classifyTelnyxResponse({
         status: response.status,
-        statusText: response.statusText,
-        errors: data.errors || data
+        headers: headerObj,
+        body: data,
       });
-      
-       const errorMessage = data.errors?.[0]?.detail 
-        || data.errors?.[0]?.title 
-        || data.message 
+
+      const errorMessage = data.errors?.[0]?.detail
+        || data.errors?.[0]?.title
+        || data.message
         || `Telnyx API error: ${response.status}`;
 
-       // Make the most common configuration error actionable
-       if (/invalid source number/i.test(errorMessage)) {
-         throw new Error(
-           'Invalid source number. The selected “from” number is not an active Telnyx number on your messaging profile. Provision/assign a Telnyx number in Admin → Phone Settings, then try again.'
-         );
-       }
+      console.error('Telnyx API error:', {
+        status: response.status,
+        rate_limited: norm.is_rate_limited,
+        category: norm.category,
+        errors: data.errors || data,
+      });
 
-       throw new Error(errorMessage);
+      // Make the most common configuration error actionable
+      let friendly = errorMessage;
+      if (/invalid source number/i.test(errorMessage)) {
+        friendly =
+          'Invalid source number. The selected "from" number is not an active Telnyx number on your messaging profile. Provision/assign a Telnyx number in Admin → Phone Settings, then try again.';
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: friendly,
+          rate_limit: norm,
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
     }
 
     console.log('Telnyx SMS sent successfully:', {

@@ -11,6 +11,11 @@
 //   6. mark blast 'completed' when nothing remains
 import { createClient } from 'npm:@supabase/supabase-js@2.49.1';
 import { trackUsage, checkUsageLimit } from '../_shared/track-usage.ts';
+import { classifyTelnyxResponse, computeNextAttemptAt } from '../_shared/telnyx/rateLimit.ts';
+
+// Repair #2: hard ceiling for rate-limited retryable provider attempts before
+// the row is moved to failed. Distinct from the general processor claim retries.
+const RATE_LIMIT_RETRY_CEILING = 8;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -361,15 +366,19 @@ async function processBlast(
     console.warn('[blast-worker] reap exception (non-fatal)', e);
   }
 
-  // 2. Atomic claim
+  // Each processor tick owns a claim token. Any row we claim gets stamped with
+  // this token so only THIS worker can later release it back to pending (e.g.
+  // when Telnyx rate-limits us). An expired/parallel worker cannot overwrite a
+  // row we've reclaimed.
+  const processorRunId = crypto.randomUUID();
+  const claimToken = processorRunId;
+
+  // 2. Atomic claim (honors next_attempt_at from prior rate-limit releases)
   const { data: claimed, error: claimError } = await supabase.rpc('claim_sms_blast_items', {
     p_blast_id: blast.id,
     p_limit: minuteCapacity,
+    p_claim_token: claimToken,
   });
-  if (claimError) {
-    console.error('[blast-worker] claim error', claimError);
-    return { blast_id: blast.id, error: claimError.message };
-  }
   if (claimError) {
     console.error('[blast-worker] claim error', claimError);
     return { blast_id: blast.id, error: claimError.message };
@@ -509,6 +518,11 @@ async function processBlast(
   let blockedByGuard = 0;
   let blockedByCooldown = 0;
   let blockedByDedupe = 0;
+  let rateLimited = 0;         // Repair #2: releases back to pending
+  let rateLimitExhausted = 0;  // Repair #2: hit ceiling → failed
+  let ownershipConflicts = 0;  // Repair #2: another worker owns the row
+  let retryDelaySumMs = 0;
+  let retryDelayMaxMs = 0;
 
   // Safe pacing window — 800–1500ms between messages regardless of MPS capacity.
   const sleepMs = Math.max(
@@ -661,37 +675,149 @@ async function processBlast(
         }),
       });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok || !json?.success) {
-        const errMsg = String(json?.error || `HTTP ${res.status}`).slice(0, 500);
-        await supabase
-          .from('sms_blast_items')
-          .update({
-            status: 'failed',
-            last_error: errMsg,
-            error_message: errMsg,
-            from_number: loc.telnyx_phone_number,
-          })
-          .eq('id', item.id);
-        failed++;
-      } else {
+
+      // Provider-id safety: if Telnyx returned a message id despite an odd
+      // response, treat as sent — NEVER requeue a row with a provider id.
+      const providerMessageId = json?.messageId || json?.rate_limit?.provider_message_id || null;
+
+      if (json?.success && providerMessageId) {
         await supabase
           .from('sms_blast_items')
           .update({
             status: 'sent',
             sent_at: new Date().toISOString(),
-            telnyx_message_id: json.messageId || null,
+            telnyx_message_id: providerMessageId,
+            from_number: json.from || loc.telnyx_phone_number,
+          })
+          .eq('id', item.id);
+        sent++;
+      } else if (!res.ok || !json?.success) {
+        // Prefer the structured classification returned by telnyx-send-sms.
+        // Fall back to classifying whatever we can see locally.
+        const norm = json?.rate_limit && typeof json.rate_limit === 'object'
+          ? json.rate_limit
+          : classifyTelnyxResponse({ status: res.status, body: json });
+
+        const errMsg = String(json?.error || norm?.provider_error_message || `HTTP ${res.status}`).slice(0, 500);
+        const currentAttempts = Number((item as any).attempt_count || 0);
+
+        if (norm?.is_rate_limited && !providerMessageId) {
+          if (currentAttempts >= RATE_LIMIT_RETRY_CEILING) {
+            await supabase
+              .from('sms_blast_items')
+              .update({
+                status: 'failed',
+                last_error: `retry_exhausted: rate_limit (${currentAttempts} attempts)`,
+                error_message: `retry_exhausted: rate_limit — ${errMsg}`,
+                from_number: loc.telnyx_phone_number,
+                provider_error_code: norm.provider_error_code || null,
+                provider_request_id: norm.provider_request_id || null,
+              })
+              .eq('id', item.id);
+            rateLimitExhausted++;
+            failed++;
+          } else {
+            const { nextAttemptAt, delayMs } = computeNextAttemptAt(
+              norm.retry_after_ms ?? null,
+              currentAttempts,
+            );
+            const { data: rel } = await supabase.rpc('release_sms_blast_item_rate_limited', {
+              p_item_id: item.id,
+              p_claim_token: claimToken,
+              p_next_attempt_at: nextAttemptAt.toISOString(),
+              p_last_error: `rate_limited: ${errMsg}`,
+              p_provider_error_code: norm.provider_error_code || null,
+              p_provider_request_id: norm.provider_request_id || null,
+              p_retry_after_ms: norm.retry_after_ms ?? null,
+              p_processor_run_id: processorRunId,
+            });
+            const released = Array.isArray(rel) && rel[0]?.released === true;
+            if (released) {
+              rateLimited++;
+              retryDelaySumMs += delayMs;
+              if (delayMs > retryDelayMaxMs) retryDelayMaxMs = delayMs;
+            } else {
+              // Ownership conflict — another worker reclaimed OR a telnyx id
+              // landed on the row. Do NOT overwrite. Just log and move on.
+              ownershipConflicts++;
+              console.warn('[blast-worker] rate-limit release ownership conflict', {
+                item_id: item.id, blast_id: blast.id, run_id: processorRunId,
+              });
+            }
+          }
+        } else if (norm?.is_retryable && norm?.category !== 'rate_limit') {
+          // Non-rate-limit transient (network/5xx). Piggy-back on same
+          // conditional-release path so the row still respects backoff, but
+          // give it a shorter delay window.
+          const { nextAttemptAt, delayMs } = computeNextAttemptAt(null, currentAttempts);
+          const { data: rel } = await supabase.rpc('release_sms_blast_item_rate_limited', {
+            p_item_id: item.id,
+            p_claim_token: claimToken,
+            p_next_attempt_at: nextAttemptAt.toISOString(),
+            p_last_error: `${norm.category}: ${errMsg}`,
+            p_provider_error_code: norm.provider_error_code || null,
+            p_provider_request_id: norm.provider_request_id || null,
+            p_retry_after_ms: null,
+            p_processor_run_id: processorRunId,
+          });
+          const released = Array.isArray(rel) && rel[0]?.released === true;
+          if (released) {
+            retryDelaySumMs += delayMs;
+            if (delayMs > retryDelayMaxMs) retryDelayMaxMs = delayMs;
+          } else {
+            ownershipConflicts++;
+          }
+        } else {
+          // Permanent — record and let existing behaviour flag as failed.
+          await supabase
+            .from('sms_blast_items')
+            .update({
+              status: 'failed',
+              last_error: errMsg,
+              error_message: errMsg,
+              from_number: loc.telnyx_phone_number,
+              provider_error_code: norm?.provider_error_code || null,
+              provider_request_id: norm?.provider_request_id || null,
+            })
+            .eq('id', item.id);
+          failed++;
+        }
+      } else {
+        // Normal success path.
+        await supabase
+          .from('sms_blast_items')
+          .update({
+            status: 'sent',
+            sent_at: new Date().toISOString(),
+            telnyx_message_id: providerMessageId,
             from_number: json.from || loc.telnyx_phone_number,
           })
           .eq('id', item.id);
         sent++;
       }
     } catch (e: any) {
+      // Network exception talking to telnyx-send-sms itself. Treat as retryable
+      // and release the claim so it can be retried on next tick.
       const errMsg = String(e?.message || e).slice(0, 500);
-      await supabase
-        .from('sms_blast_items')
-        .update({ status: 'failed', last_error: errMsg, error_message: errMsg })
-        .eq('id', item.id);
-      failed++;
+      const currentAttempts = Number((item as any).attempt_count || 0);
+      const { nextAttemptAt, delayMs } = computeNextAttemptAt(null, currentAttempts);
+      const { data: rel } = await supabase.rpc('release_sms_blast_item_rate_limited', {
+        p_item_id: item.id,
+        p_claim_token: claimToken,
+        p_next_attempt_at: nextAttemptAt.toISOString(),
+        p_last_error: `connection_error: ${errMsg}`,
+        p_provider_error_code: null,
+        p_provider_request_id: null,
+        p_retry_after_ms: null,
+        p_processor_run_id: processorRunId,
+      });
+      const released = Array.isArray(rel) && rel[0]?.released === true;
+      if (released) {
+        retryDelaySumMs += delayMs;
+        if (delayMs > retryDelayMaxMs) retryDelayMaxMs = delayMs;
+      } else {
+        ownershipConflicts++;
+      }
     }
 
     // Pace
@@ -770,9 +896,20 @@ async function processBlast(
     })
     .eq('id', blast.id);
 
+  const requeuedTotal = rateLimited; // rate-limit releases + retryable transients
+  const avgRetryDelayMs = rateLimited > 0 ? Math.round(retryDelaySumMs / rateLimited) : 0;
+
   return {
     blast_id: blast.id,
+    processor_run_id: processorRunId,
     sent, failed, opted, blockedByGuard, blockedByCooldown, blockedByDedupe,
+    // Repair #2 observability
+    rate_limited: rateLimited,
+    rate_limit_exhausted: rateLimitExhausted,
+    ownership_conflicts: ownershipConflicts,
+    requeued: requeuedTotal,
+    avg_retry_delay_ms: avgRetryDelayMs,
+    max_retry_delay_ms: retryDelayMaxMs,
     claimed: claimed.length, totalMps, minuteCapacity, remaining,
     partial: remaining > 0,
     message: remaining > 0 ? 'Batch processed. Run processor again for remaining rendered items.' : undefined,

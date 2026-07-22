@@ -49965,6 +49965,7 @@ export type Database = {
           attempt_count: number | null
           blast_id: string
           claimed_at: string | null
+          claimed_by: string | null
           contact_id: string | null
           contact_name: string | null
           delivered_at: string | null
@@ -49972,8 +49973,11 @@ export type Database = {
           from_number: string | null
           id: string
           last_error: string | null
+          next_attempt_at: string | null
           personalized_message: string | null
           phone: string
+          provider_error_code: string | null
+          provider_request_id: string | null
           replied_at: string | null
           routed_contact_id: string | null
           routing_confidence: string | null
@@ -49994,6 +49998,7 @@ export type Database = {
           attempt_count?: number | null
           blast_id: string
           claimed_at?: string | null
+          claimed_by?: string | null
           contact_id?: string | null
           contact_name?: string | null
           delivered_at?: string | null
@@ -50001,8 +50006,11 @@ export type Database = {
           from_number?: string | null
           id?: string
           last_error?: string | null
+          next_attempt_at?: string | null
           personalized_message?: string | null
           phone: string
+          provider_error_code?: string | null
+          provider_request_id?: string | null
           replied_at?: string | null
           routed_contact_id?: string | null
           routing_confidence?: string | null
@@ -50023,6 +50031,7 @@ export type Database = {
           attempt_count?: number | null
           blast_id?: string
           claimed_at?: string | null
+          claimed_by?: string | null
           contact_id?: string | null
           contact_name?: string | null
           delivered_at?: string | null
@@ -50030,8 +50039,11 @@ export type Database = {
           from_number?: string | null
           id?: string
           last_error?: string | null
+          next_attempt_at?: string | null
           personalized_message?: string | null
           phone?: string
+          provider_error_code?: string | null
+          provider_request_id?: string | null
           replied_at?: string | null
           routed_contact_id?: string | null
           routing_confidence?: string | null
@@ -50425,6 +50437,60 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      sms_rate_limit_events: {
+        Row: {
+          attempt_count: number | null
+          blast_id: string
+          claimed_by: string | null
+          created_at: string
+          id: string
+          item_id: string
+          new_status: string
+          next_attempt_at: string | null
+          previous_status: string
+          processor_run_id: string | null
+          provider_error_code: string | null
+          provider_error_message: string | null
+          provider_request_id: string | null
+          retry_after_ms: number | null
+          tenant_id: string | null
+        }
+        Insert: {
+          attempt_count?: number | null
+          blast_id: string
+          claimed_by?: string | null
+          created_at?: string
+          id?: string
+          item_id: string
+          new_status: string
+          next_attempt_at?: string | null
+          previous_status: string
+          processor_run_id?: string | null
+          provider_error_code?: string | null
+          provider_error_message?: string | null
+          provider_request_id?: string | null
+          retry_after_ms?: number | null
+          tenant_id?: string | null
+        }
+        Update: {
+          attempt_count?: number | null
+          blast_id?: string
+          claimed_by?: string | null
+          created_at?: string
+          id?: string
+          item_id?: string
+          new_status?: string
+          next_attempt_at?: string | null
+          previous_status?: string
+          processor_run_id?: string | null
+          provider_error_code?: string | null
+          provider_error_message?: string | null
+          provider_request_id?: string | null
+          retry_after_ms?: number | null
+          tenant_id?: string | null
+        }
+        Relationships: []
       }
       sms_templates: {
         Row: {
@@ -61461,7 +61527,7 @@ export type Database = {
         Returns: boolean
       }
       claim_sms_blast_items: {
-        Args: { p_blast_id: string; p_limit: number }
+        Args: { p_blast_id: string; p_claim_token?: string; p_limit: number }
         Returns: {
           address_city_snapshot: string | null
           address_state_snapshot: string | null
@@ -61470,6 +61536,7 @@ export type Database = {
           attempt_count: number | null
           blast_id: string
           claimed_at: string | null
+          claimed_by: string | null
           contact_id: string | null
           contact_name: string | null
           delivered_at: string | null
@@ -61477,8 +61544,11 @@ export type Database = {
           from_number: string | null
           id: string
           last_error: string | null
+          next_attempt_at: string | null
           personalized_message: string | null
           phone: string
+          provider_error_code: string | null
+          provider_request_id: string | null
           replied_at: string | null
           routed_contact_id: string | null
           routing_confidence: string | null
@@ -62384,6 +62454,22 @@ export type Database = {
       referral_submission_has_blocking_flags: {
         Args: { _referral_submission_id: string }
         Returns: boolean
+      }
+      release_sms_blast_item_rate_limited: {
+        Args: {
+          p_claim_token: string
+          p_item_id: string
+          p_last_error: string
+          p_next_attempt_at: string
+          p_processor_run_id?: string
+          p_provider_error_code?: string
+          p_provider_request_id?: string
+          p_retry_after_ms?: number
+        }
+        Returns: {
+          attempt_count: number
+          released: boolean
+        }[]
       }
       resolve_invoice_portal_token: {
         Args: {
