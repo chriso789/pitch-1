@@ -694,6 +694,19 @@ export const handle = async (req) => {
     if (action === "revoke_connection" || action === "disconnect") {
       if (!tenant_id) return json({ success: false, error: "no_tenant" }, 400);
       try {
+        const { data: integration } = await supabase
+          .from("abc_integrations")
+          .select("id")
+          .eq("tenant_id", tenant_id)
+          .eq("environment", env)
+          .maybeSingle();
+        if ((integration as any)?.id) {
+          await supabase
+            .from("abc_tokens")
+            .delete()
+            .eq("integration_id", (integration as any).id)
+            .eq("tenant_id", tenant_id);
+        }
         await supabase
           .from("abc_user_connections")
           .delete()
@@ -702,6 +715,11 @@ export const handle = async (req) => {
         await supabase
           .from("abc_connections")
           .delete()
+          .eq("tenant_id", tenant_id)
+          .eq("environment", env);
+        await supabase
+          .from("abc_integrations")
+          .update({ status: "disconnected", last_error: null })
           .eq("tenant_id", tenant_id)
           .eq("environment", env);
       } catch (e) {
