@@ -3,7 +3,7 @@
 // branch availability, valid UOMs, and per-item live pricing pulled from
 // `abc-api-proxy` price_items.
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -26,6 +26,11 @@ interface PricedRow {
   checkedAt: string;
 }
 
+// Default browse queries so the catalog is populated immediately without
+// the user having to type anything. Cycles through common roofing categories
+// so at least a few pages of items show up on load.
+const DEFAULT_BROWSE_QUERIES = ['shingle', 'underlayment', 'ridge', 'drip edge', 'nail', 'ice water'];
+
 export default function AbcCatalogBrowserCard({ shipToNumber, branchNumber }: Props) {
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
@@ -33,23 +38,49 @@ export default function AbcCatalogBrowserCard({ shipToNumber, branchNumber }: Pr
   const [waf, setWaf] = useState(false);
   const [prices, setPrices] = useState<Record<string, PricedRow>>({});
   const [busy, setBusy] = useState<Record<string, boolean>>({});
+  const [autoLoaded, setAutoLoaded] = useState(false);
 
-  const runSearch = async () => {
-    if (!query.trim()) return;
+  const runSearch = async (override?: string) => {
+    const q = (override ?? query).trim();
+    if (!q) return;
     setSearching(true);
     try {
-      const res = await abcSearchProducts({ query: query.trim(), branchNumber, itemsPerPage: 50 });
+      const res = await abcSearchProducts({ query: q, branchNumber, itemsPerPage: 50 });
       setWaf(res.wafBlocked);
       setChildren(res.children);
       if (!res.success && !res.wafBlocked) {
         toast.error(res.error_code || 'ABC catalog search failed');
       }
+      return res;
     } catch (e: any) {
       toast.error(e?.message || 'ABC catalog search failed');
+      return null;
     } finally {
       setSearching(false);
     }
   };
+
+  // Auto-browse the catalog on first render so pricing/items are visible
+  // without requiring a manual search. Falls through the default query list
+  // until one returns results.
+  useEffect(() => {
+    if (autoLoaded) return;
+    let cancelled = false;
+    (async () => {
+      for (const q of DEFAULT_BROWSE_QUERIES) {
+        if (cancelled) return;
+        const res = await runSearch(q);
+        if (res && (res as any).children?.length) {
+          if (!cancelled) setQuery(q);
+          break;
+        }
+      }
+      if (!cancelled) setAutoLoaded(true);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [branchNumber]);
+
 
   const priceOne = async (c: AbcCatalogSearchResultChild) => {
     if (!shipToNumber || !branchNumber) {
@@ -100,7 +131,7 @@ export default function AbcCatalogBrowserCard({ shipToNumber, branchNumber }: Pr
                 className="pl-9 w-96 h-9"
               />
             </div>
-            <Button size="sm" onClick={runSearch} disabled={searching || !query.trim()}>
+            <Button size="sm" onClick={() => runSearch()} disabled={searching || !query.trim()}>
               {searching ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Search className="h-4 w-4 mr-1" />}
               Search
             </Button>
