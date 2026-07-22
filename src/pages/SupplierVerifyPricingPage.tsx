@@ -20,7 +20,12 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { useAbcSetup } from '@/hooks/useAbcSetup';
-import { abcPriceItems } from '@/lib/abc/proxyClient';
+import {
+  abcApproveMapping,
+  abcPriceItems,
+  abcSearchProducts,
+  type AbcCatalogSearchResultChild,
+} from '@/lib/abc/proxyClient';
 import {
   computeAbcRowState,
   statesForPricingResult,
@@ -36,7 +41,10 @@ import { Input } from '@/components/ui/input';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import { ArrowLeft, RefreshCcw, Search, Loader2, ExternalLink } from 'lucide-react';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import { ArrowLeft, RefreshCcw, Search, Loader2, ExternalLink, CheckCircle2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import { formatCurrency } from '@/lib/utils';
@@ -48,6 +56,8 @@ const SUPPLIER_META: Record<SupplierKind, { label: string; ordersTable: 'abc_ord
   srs: { label: 'SRS Distribution', ordersTable: 'srs_orders' },
   qxo: { label: 'QXO / Beacon', ordersTable: 'qxo_orders' },
 };
+
+const DEFAULT_ABC_CATALOG_QUERIES = ['shingle', 'underlayment', 'ridge', 'drip edge', 'nail', 'ice water'];
 
 interface AbcRow {
   templateItemId: string;
@@ -134,6 +144,13 @@ export default function SupplierVerifyPricingPage() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [query, setQuery] = useState('');
   const [findFor, setFindFor] = useState<AbcRow | null>(null);
+  const [catalogQuery, setCatalogQuery] = useState('shingle');
+  const [catalogRows, setCatalogRows] = useState<AbcCatalogSearchResultChild[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogPrices, setCatalogPrices] = useState<Record<string, PricingBadge>>({});
+  const [catalogPriceBusy, setCatalogPriceBusy] = useState(false);
+  const [selectedInternalByCatalog, setSelectedInternalByCatalog] = useState<Record<string, string>>({});
+  const [mappingBusy, setMappingBusy] = useState<Record<string, boolean>>({});
 
   const loadOrders = useCallback(async () => {
     if (!tenantId) return;
@@ -199,6 +216,18 @@ export default function SupplierVerifyPricingPage() {
     );
   }, [rows, query]);
 
+  const mappedRowsByAbcNumber = useMemo(() => {
+    const map = new Map<string, AbcRow[]>();
+    for (const row of rows) {
+      const itemNumber = row.mapping?.supplier_item_number?.trim();
+      if (!itemNumber) continue;
+      const list = map.get(itemNumber) || [];
+      list.push(row);
+      map.set(itemNumber, list);
+    }
+    return map;
+  }, [rows]);
+
   const computeState = useCallback((r: AbcRow): AbcRowStateInfo => {
     return computeAbcRowState({
       mapping: r.mapping,
@@ -249,6 +278,173 @@ export default function SupplierVerifyPricingPage() {
       } }));
     } finally {
       setRowBusy((b) => ({ ...b, [r.templateItemId]: false }));
+    }
+  };
+
+  const priceCatalogItems = useCallback(async (items: AbcCatalogSearchResultChild[]) => {
+    if (!abcSetup.shipToNumber || !abcSetup.branchNumber) return;
+    const priceable = items
+      .map((item) => ({ item, uom: item.defaultUom || item.validUoms[0] }))
+      .filter((entry): entry is { item: AbcCatalogSearchResultChild; uom: string } => !!entry.uom)
+      .slice(0, 75);
+
+    if (priceable.length === 0) return;
+    setCatalogPriceBusy(true);
+    setCatalogPrices((prev) => {
+      const next = { ...prev };
+      for (const { item } of priceable) {
+        next[item.itemNumber] = {
+          info: { state: 'pricing', label: 'Pricing…', tone: 'muted', canPrice: true, reason: 'Contacting ABC' },
+        };
+      }
+      return next;
+    });
+
+    try {
+      const res = await abcPriceItems({
+        shipToNumber: abcSetup.shipToNumber,
+        branchNumber: abcSetup.branchNumber,
+        purpose: 'estimating',
+        lines: priceable.map(({ item, uom }) => ({
+          id: item.itemNumber,
+          itemNumber: item.itemNumber,
+          quantity: 1,
+          uom,
+        })),
+      });
+
+      setCatalogPrices((prev) => {
+        const next = { ...prev };
+        for (const { item, uom } of priceable) {
+          const line = res.lines.find((l) => l.itemNumber === item.itemNumber || l.returnedItemNumber === item.itemNumber) || null;
+          const info = res.wafBlocked
+            ? statesForPricingResult({ errorCode: 'waf_blocked' })
+            : statesForPricingResult({
+              errorSummary: res.errorSummary || undefined,
+              unitPrice: line?.unitPrice ?? null,
+              lineStatus: line?.lineStatus,
+              lineStatusMessage: line?.lineStatusMessage,
+            });
+          next[item.itemNumber] = {
+            info,
+            unitPrice: line?.unitPrice ?? null,
+            returnedUom: line?.returnedUom ?? uom,
+            checkedAt: new Date().toISOString(),
+          };
+        }
+        return next;
+      });
+    } catch (e: any) {
+      setCatalogPrices((prev) => {
+        const next = { ...prev };
+        for (const { item } of priceable) {
+          next[item.itemNumber] = {
+            info: { state: 'error', label: 'Error', reason: e?.message || 'Lookup failed', tone: 'danger', canPrice: false },
+          };
+        }
+        return next;
+      });
+      toast.error(e?.message || 'ABC catalog pricing failed');
+    } finally {
+      setCatalogPriceBusy(false);
+    }
+  }, [abcSetup.branchNumber, abcSetup.shipToNumber]);
+
+  const loadCatalog = useCallback(async (searchTerm?: string, toastOnEmpty = true) => {
+    if (supplierKey !== 'abc') return;
+    const term = (searchTerm ?? catalogQuery).trim();
+    if (!term) return;
+    setCatalogLoading(true);
+    try {
+      const res = await abcSearchProducts({ query: term, branchNumber: abcSetup.branchNumber, itemsPerPage: 75 });
+      setCatalogRows(res.children);
+      setCatalogQuery(term);
+      if (res.wafBlocked) {
+        toast.error('ABC blocked the catalog request at the WAF layer.');
+      } else if (!res.success) {
+        toast.error(res.error_code || 'ABC catalog search failed');
+      } else if (res.children.length === 0 && toastOnEmpty) {
+        toast.warning(`No ABC catalog items returned for "${term}" at branch ${abcSetup.branchNumber || '—'}.`);
+      } else if (res.children.length > 0) {
+        await priceCatalogItems(res.children);
+      }
+    } catch (e: any) {
+      toast.error(e?.message || 'ABC catalog search failed');
+    } finally {
+      setCatalogLoading(false);
+    }
+  }, [abcSetup.branchNumber, catalogQuery, priceCatalogItems, supplierKey]);
+
+  useEffect(() => {
+    if (supplierKey !== 'abc' || !abcSetup.branchNumber) return;
+    let cancelled = false;
+    (async () => {
+      setCatalogLoading(true);
+      try {
+        for (const term of DEFAULT_ABC_CATALOG_QUERIES) {
+          if (cancelled) return;
+          const res = await abcSearchProducts({ query: term, branchNumber: abcSetup.branchNumber, itemsPerPage: 75 });
+          if (res.children.length > 0) {
+            if (cancelled) return;
+            setCatalogRows(res.children);
+            setCatalogQuery(term);
+            await priceCatalogItems(res.children);
+            return;
+          }
+        }
+        if (!cancelled) setCatalogRows([]);
+      } catch (e: any) {
+        if (!cancelled) toast.error(e?.message || 'ABC catalog search failed');
+      } finally {
+        if (!cancelled) setCatalogLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [abcSetup.branchNumber, priceCatalogItems, supplierKey]);
+
+  const matchCatalogItem = async (catalogItem: AbcCatalogSearchResultChild) => {
+    const templateItemId = selectedInternalByCatalog[catalogItem.itemNumber];
+    const selectedInternal = rows.find((r) => r.templateItemId === templateItemId);
+    const selectedUom = catalogItem.defaultUom || catalogItem.validUoms[0];
+    if (!tenantId || !abcSetup.shipToNumber || !abcSetup.branchNumber) {
+      toast.error('Complete the ABC ship-to and branch setup first.');
+      return;
+    }
+    if (!selectedInternal) {
+      toast.error('Choose an internal material to match this ABC catalog item.');
+      return;
+    }
+    if (!selectedUom) {
+      toast.error('ABC did not return a Product API UOM for this item.');
+      return;
+    }
+
+    setMappingBusy((prev) => ({ ...prev, [catalogItem.itemNumber]: true }));
+    try {
+      const { data: userRes } = await supabase.auth.getUser();
+      const { error } = await abcApproveMapping({
+        tenantId,
+        templateItemId,
+        itemNumber: catalogItem.itemNumber,
+        itemDescription: catalogItem.description,
+        familyId: catalogItem.familyId,
+        familyName: catalogItem.familyName,
+        colorName: catalogItem.colorName,
+        colorCode: catalogItem.colorCode,
+        validUoms: catalogItem.validUoms,
+        selectedUom,
+        branchNumber: abcSetup.branchNumber,
+        shipToNumber: abcSetup.shipToNumber,
+        rawCatalogPayload: catalogItem.raw,
+        approvedBy: userRes?.user?.id ?? null,
+      });
+      if (error) throw error;
+      toast.success(`Matched ABC ${catalogItem.itemNumber} to ${selectedInternal.materialName}`);
+      await loadRows();
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to save ABC mapping');
+    } finally {
+      setMappingBusy((prev) => ({ ...prev, [catalogItem.itemNumber]: false }));
     }
   };
 
@@ -366,27 +562,33 @@ export default function SupplierVerifyPricingPage() {
         </CardContent>
       </Card>
 
-      {supplierKey === 'abc' && (
-        <AbcCatalogBrowserCard shipToNumber={abcSetup.shipToNumber} branchNumber={abcSetup.branchNumber} />
-      )}
-
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between gap-4">
             <div>
               <CardTitle className="text-base">ABC Catalog Mapping</CardTitle>
               <CardDescription>
-                Each material must be matched to an exact ABC itemNumber (color-specific), verified at branch {abcSetup.branchNumber || '—'}, and assigned a Product API UOM before pricing.
+                Live ABC Product API catalog items for branch {abcSetup.branchNumber || '—'} are listed on the left. Match each catalog item to an internal material on the right.
               </CardDescription>
             </div>
             <div className="flex gap-2">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search materials…" className="pl-9 w-64 h-9" />
+                <Input
+                  value={catalogQuery}
+                  onChange={(e) => setCatalogQuery(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') loadCatalog(); }}
+                  placeholder="Search ABC catalog…"
+                  className="pl-9 w-72 h-9"
+                />
               </div>
-              <Button size="sm" onClick={refreshAll} disabled={bulkBusy || filteredRows.length === 0}>
-                {bulkBusy ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCcw className="h-4 w-4 mr-1" />}
-                Refresh all prices
+              <Button size="sm" variant="outline" onClick={() => loadCatalog()} disabled={catalogLoading || !catalogQuery.trim()}>
+                {catalogLoading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Search className="h-4 w-4 mr-1" />}
+                Search ABC
+              </Button>
+              <Button size="sm" onClick={() => priceCatalogItems(catalogRows)} disabled={catalogPriceBusy || catalogRows.length === 0 || !abcSetup.shipToNumber || !abcSetup.branchNumber}>
+                {catalogPriceBusy ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCcw className="h-4 w-4 mr-1" />}
+                Refresh catalog prices
               </Button>
             </div>
           </div>
@@ -407,48 +609,80 @@ export default function SupplierVerifyPricingPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rowsLoading ? (
-                  <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Loading materials…</TableCell></TableRow>
-                ) : filteredRows.length === 0 ? (
-                  <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No template items in this tenant.</TableCell></TableRow>
-                ) : filteredRows.map((r) => {
-                  const state = computeState(r);
-                  const priced = prices[r.templateItemId];
-                  const busy = !!rowBusy[r.templateItemId];
-                  const canPrice = (priced?.info.canPrice ?? state.canPrice) && !!abcSetup.shipToNumber && !!abcSetup.branchNumber;
-                  const isMapped = !!r.mapping?.supplier_item_number;
+                {catalogLoading || rowsLoading ? (
+                  <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Loading ABC catalog for this branch…</TableCell></TableRow>
+                ) : catalogRows.length === 0 ? (
+                  <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No ABC catalog items returned for branch {abcSetup.branchNumber || '—'}.</TableCell></TableRow>
+                ) : catalogRows.map((catalogItem) => {
+                  const matchedRows = mappedRowsByAbcNumber.get(catalogItem.itemNumber) || [];
+                  const matchedRow = matchedRows[0] || null;
+                  const state = matchedRow ? computeState(matchedRow) : null;
+                  const priced = catalogPrices[catalogItem.itemNumber];
+                  const selectedUom = catalogItem.defaultUom || catalogItem.validUoms[0] || null;
+                  const branchRow = abcSetup.branchNumber
+                    ? catalogItem.branchAvailability.find((b) => b.branchNumber === abcSetup.branchNumber)
+                    : null;
+                  const isBusy = !!mappingBusy[catalogItem.itemNumber];
                   return (
-                    <TableRow key={r.templateItemId}>
+                    <TableRow key={catalogItem.itemNumber}>
                       <TableCell className="font-mono text-xs">
-                        {isMapped ? r.mapping!.supplier_item_number : <span className="text-muted-foreground italic">Not mapped</span>}
+                        {catalogItem.itemNumber}
+                        {catalogItem.familyName && <div className="mt-1 font-sans text-[10px] text-muted-foreground">{catalogItem.familyName}</div>}
                       </TableCell>
-                      <TableCell className="text-xs">{r.mapping?.color_name || <span className="text-muted-foreground">—</span>}</TableCell>
-                      <TableCell className="text-xs">{r.mapping?.default_uom || <span className="text-muted-foreground">—</span>}</TableCell>
+                      <TableCell className="text-xs">{catalogItem.colorName || <span className="text-muted-foreground">—</span>}</TableCell>
+                      <TableCell className="text-xs">{selectedUom || <span className="text-muted-foreground">—</span>}</TableCell>
                       <TableCell>
                         {priced?.info.state === 'priced' && typeof priced.unitPrice === 'number' ? (
                           <div className="flex flex-col">
                             <span className="font-medium text-emerald-700">{formatCurrency(priced.unitPrice)}</span>
-                            <span className="text-[10px] text-muted-foreground">{priced.returnedUom || r.mapping?.default_uom} · {priced.checkedAt ? formatDistanceToNow(new Date(priced.checkedAt), { addSuffix: true }) : ''}</span>
+                            <span className="text-[10px] text-muted-foreground">{priced.returnedUom || selectedUom} · {priced.checkedAt ? formatDistanceToNow(new Date(priced.checkedAt), { addSuffix: true }) : ''}</span>
                           </div>
+                        ) : priced?.info ? (
+                          <span className={priced.info.tone === 'danger' ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'}>{priced.info.label}</span>
                         ) : (
-                          <span className="text-xs text-muted-foreground">
-                            {state.canPrice ? 'Not fetched' : 'Unavailable until mapped'}
-                          </span>
+                          <span className="text-xs text-muted-foreground">Not fetched</span>
                         )}
                       </TableCell>
                       <TableCell className="text-center text-muted-foreground">→</TableCell>
                       <TableCell>
-                        <div className="font-medium">{r.materialName}</div>
-                        <div className="font-mono text-[10px] text-muted-foreground">{r.internalCode}</div>
+                        {matchedRow ? (
+                          <div>
+                            <div className="font-medium">{matchedRow.materialName}</div>
+                            <div className="font-mono text-[10px] text-muted-foreground">{matchedRow.internalCode}{matchedRows.length > 1 ? ` · +${matchedRows.length - 1} more` : ''}</div>
+                          </div>
+                        ) : (
+                          <Select
+                            value={selectedInternalByCatalog[catalogItem.itemNumber]}
+                            onValueChange={(value) => setSelectedInternalByCatalog((prev) => ({ ...prev, [catalogItem.itemNumber]: value }))}
+                          >
+                            <SelectTrigger className="h-9 min-w-[240px]">
+                              <SelectValue placeholder="Choose internal material" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {rows.map((r) => (
+                                <SelectItem key={r.templateItemId} value={r.templateItemId}>{r.materialName}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
                       </TableCell>
-                      <TableCell><StateBadge info={priced?.info || state} /></TableCell>
+                      <TableCell>
+                        {matchedRow && state ? <StateBadge info={priced?.info || state} /> : <Badge variant="outline">Not matched</Badge>}
+                        <div className="mt-1 text-[10px] text-muted-foreground">
+                          {branchRow ? (branchRow.available ? 'Available at branch' : 'Not at branch') : abcSetup.branchNumber ? `Filtered to ${abcSetup.branchNumber}` : 'No branch selected'}
+                        </div>
+                      </TableCell>
                       <TableCell className="text-right space-x-1">
-                        <Button size="sm" variant="outline" onClick={() => setFindFor(r)}>
-                          {isMapped ? 'Change Match' : 'Find ABC Match'}
-                        </Button>
-                        <Button size="sm" onClick={() => priceOne(r)} disabled={busy || !canPrice}>
-                          {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Get Live Price'}
-                        </Button>
+                        {matchedRow ? (
+                          <Button size="sm" variant="outline" onClick={() => setFindFor(matchedRow)}>
+                            Change Match
+                          </Button>
+                        ) : (
+                          <Button size="sm" onClick={() => matchCatalogItem(catalogItem)} disabled={isBusy || !selectedInternalByCatalog[catalogItem.itemNumber] || !selectedUom}>
+                            {isBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3 mr-1" />}
+                            Save Match
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   );
