@@ -396,13 +396,13 @@ export default function SupplierVerifyPricingPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[130px]">Internal</TableHead>
-                  <TableHead>Material</TableHead>
-                  <TableHead className="w-[130px]">ABC Item</TableHead>
-                  <TableHead className="w-[110px]">Color</TableHead>
+                  <TableHead className="w-[140px]">ABC Item</TableHead>
+                  <TableHead className="w-[120px]">Color</TableHead>
                   <TableHead className="w-[70px]">UOM</TableHead>
-                  <TableHead className="w-[160px]">Status</TableHead>
                   <TableHead className="w-[140px]">Live Price</TableHead>
+                  <TableHead className="w-[12px] text-center text-muted-foreground">→</TableHead>
+                  <TableHead>Matched Internal Material</TableHead>
+                  <TableHead className="w-[160px]">Status</TableHead>
                   <TableHead className="w-[220px] text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -416,14 +416,14 @@ export default function SupplierVerifyPricingPage() {
                   const priced = prices[r.templateItemId];
                   const busy = !!rowBusy[r.templateItemId];
                   const canPrice = (priced?.info.canPrice ?? state.canPrice) && !!abcSetup.shipToNumber && !!abcSetup.branchNumber;
+                  const isMapped = !!r.mapping?.supplier_item_number;
                   return (
                     <TableRow key={r.templateItemId}>
-                      <TableCell className="font-mono text-xs">{r.internalCode}</TableCell>
-                      <TableCell><div className="font-medium">{r.materialName}</div></TableCell>
-                      <TableCell className="font-mono text-xs">{r.mapping?.supplier_item_number || <span className="text-muted-foreground">Not mapped</span>}</TableCell>
+                      <TableCell className="font-mono text-xs">
+                        {isMapped ? r.mapping!.supplier_item_number : <span className="text-muted-foreground italic">Not mapped</span>}
+                      </TableCell>
                       <TableCell className="text-xs">{r.mapping?.color_name || <span className="text-muted-foreground">—</span>}</TableCell>
                       <TableCell className="text-xs">{r.mapping?.default_uom || <span className="text-muted-foreground">—</span>}</TableCell>
-                      <TableCell><StateBadge info={priced?.info || state} /></TableCell>
                       <TableCell>
                         {priced?.info.state === 'priced' && typeof priced.unitPrice === 'number' ? (
                           <div className="flex flex-col">
@@ -436,9 +436,15 @@ export default function SupplierVerifyPricingPage() {
                           </span>
                         )}
                       </TableCell>
+                      <TableCell className="text-center text-muted-foreground">→</TableCell>
+                      <TableCell>
+                        <div className="font-medium">{r.materialName}</div>
+                        <div className="font-mono text-[10px] text-muted-foreground">{r.internalCode}</div>
+                      </TableCell>
+                      <TableCell><StateBadge info={priced?.info || state} /></TableCell>
                       <TableCell className="text-right space-x-1">
                         <Button size="sm" variant="outline" onClick={() => setFindFor(r)}>
-                          {r.mapping?.supplier_item_number ? 'Change Match' : 'Find ABC Match'}
+                          {isMapped ? 'Change Match' : 'Find ABC Match'}
                         </Button>
                         <Button size="sm" onClick={() => priceOne(r)} disabled={busy || !canPrice}>
                           {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Get Live Price'}
