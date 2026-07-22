@@ -173,7 +173,9 @@ app.post("/setup/select", async (c) => {
   if (ucErr) return jsonErr(c, "user_connections_query_failed", ucErr.message, 500);
   const connected = userConnections ?? [];
   const production = connected.filter((r: any) => r.environment === "production");
-  const connectionIds = (production.length > 0 ? production : connected).map((r: any) => r.id).filter(Boolean);
+  const selectedConnections = production.length > 0 ? production : connected;
+  const selectedEnvironment = selectedConnections[0]?.environment ?? null;
+  const connectionIds = selectedConnections.map((r: any) => r.id).filter(Boolean);
   if (connectionIds.length === 0) {
     return jsonErr(c, "abc_not_connected", "ABC is not connected for this user.", 409);
   }
@@ -221,8 +223,9 @@ app.post("/setup/select", async (c) => {
   // 3) Persist on the connection row (prefer connected, else most recent).
   const { data: connRows, error: connErr } = await svc
     .from("abc_connections")
-    .select("id, connection_status, updated_at")
+    .select("id, environment, connection_status, updated_at")
     .eq("tenant_id", tenantId)
+    .eq("environment", selectedEnvironment)
     .order("updated_at", { ascending: false });
   if (connErr) return jsonErr(c, "connection_lookup_failed", connErr.message, 500);
   const target =
