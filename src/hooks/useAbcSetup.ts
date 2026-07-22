@@ -55,8 +55,8 @@ export function useAbcSetup(): AbcSetup {
       const rows = (data || []) as AbcSetupRow[];
       if (rows.length === 0) return null;
 
-      const { data: userRows, error: userErr } = await supabase
-        .from('abc_user_connections' as any)
+      const { data: userRows, error: userErr } = await (supabase as any)
+        .from('abc_user_connections')
         .select('environment')
         .eq('tenant_id', tenantId as any)
         .eq('status', 'connected');
