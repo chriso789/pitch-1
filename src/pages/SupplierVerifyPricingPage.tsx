@@ -154,14 +154,16 @@ export default function SupplierVerifyPricingPage() {
     // Load all tenant template items + any existing ABC mapping. We don't
     // filter to "mapped" only, because unmapped rows are exactly what the
     // integration team wants to see so they can be matched.
-    const { data: items, error: itemsErr } = await supabase
+    // template_items are tenant-scoped via templates.tenant_id
+    const { data: rawItems, error: itemsErr } = await supabase
       .from('template_items' as any)
-      .select('id, item_name, description, item_type')
-      .eq('tenant_id', tenantId)
+      .select('id, item_name, description, item_type, templates!inner(tenant_id)')
+      .eq('templates.tenant_id', tenantId)
       .order('item_name');
     if (itemsErr) toast.error(`Couldn't load template items: ${itemsErr.message}`);
+    const items = rawItems || [];
 
-    const ids = (items || []).map((r: any) => r.id);
+    const ids = items.map((r: any) => r.id);
     let mappings: any[] = [];
     if (ids.length > 0) {
       const { data: mrows } = await supabase
@@ -173,7 +175,7 @@ export default function SupplierVerifyPricingPage() {
       mappings = mrows || [];
     }
     const byItem = new Map(mappings.map((m) => [m.template_item_id, m as AbcMappingRow]));
-    const built: AbcRow[] = (items || []).map((it: any) => ({
+    const built: AbcRow[] = items.map((it: any) => ({
       templateItemId: it.id,
       internalCode: it.id.slice(0, 8),
       materialName: it.item_name || it.description || '(unnamed)',
