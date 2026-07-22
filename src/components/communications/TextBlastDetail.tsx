@@ -149,7 +149,7 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
     ['sent', 'delivered', 'failed'].includes(i.status)
   );
   const progress = counts.total > 0
-    ? Math.round(((counts.sent + counts.failed + counts.opted) / counts.total) * 100)
+    ? Math.round(((counts.sent + counts.failed + counts.opted + counts.quarantined) / counts.total) * 100)
     : 0;
   const skippedCount = allItems.filter((item: any) => ['skipped_cooldown', 'skipped_duplicate'].includes(item.status)).length;
   const noTextsSent = blast.status === 'completed' && counts.sent === 0 && skippedCount > 0;
