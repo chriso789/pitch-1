@@ -908,10 +908,13 @@ export type Database = {
           abc_ship_to_number: string | null
           abc_uom: string | null
           amount: number | null
+          approved_mapping_id: string | null
+          approved_pricing_run_id: string | null
           id: string
           item_description: string | null
           item_number: string | null
           line_id: string | null
+          line_proof: Json | null
           order_id: string
           ordered_qty: number | null
           ordered_uom: string | null
@@ -931,10 +934,13 @@ export type Database = {
           abc_ship_to_number?: string | null
           abc_uom?: string | null
           amount?: number | null
+          approved_mapping_id?: string | null
+          approved_pricing_run_id?: string | null
           id?: string
           item_description?: string | null
           item_number?: string | null
           line_id?: string | null
+          line_proof?: Json | null
           order_id: string
           ordered_qty?: number | null
           ordered_uom?: string | null
@@ -954,10 +960,13 @@ export type Database = {
           abc_ship_to_number?: string | null
           abc_uom?: string | null
           amount?: number | null
+          approved_mapping_id?: string | null
+          approved_pricing_run_id?: string | null
           id?: string
           item_description?: string | null
           item_number?: string | null
           line_id?: string | null
+          line_proof?: Json | null
           order_id?: string
           ordered_qty?: number | null
           ordered_uom?: string | null
@@ -984,14 +993,19 @@ export type Database = {
           created_date: string | null
           currency: string | null
           delivery_requested_for: string | null
+          environment: string | null
           id: string
+          idempotency_key: string | null
           is_sandbox_demo_fallback: boolean
           jobsite_contact_email: string | null
           jobsite_contact_name: string | null
           jobsite_contact_phone: string | null
+          mapping_snapshot: Json | null
           order_number: string | null
           order_status: string | null
           ordered_on: string | null
+          payload_hash: string | null
+          pricing_run_id: string | null
           purchase_order: string | null
           raw_payload: Json
           request_id: string | null
@@ -1010,14 +1024,19 @@ export type Database = {
           created_date?: string | null
           currency?: string | null
           delivery_requested_for?: string | null
+          environment?: string | null
           id?: string
+          idempotency_key?: string | null
           is_sandbox_demo_fallback?: boolean
           jobsite_contact_email?: string | null
           jobsite_contact_name?: string | null
           jobsite_contact_phone?: string | null
+          mapping_snapshot?: Json | null
           order_number?: string | null
           order_status?: string | null
           ordered_on?: string | null
+          payload_hash?: string | null
+          pricing_run_id?: string | null
           purchase_order?: string | null
           raw_payload?: Json
           request_id?: string | null
@@ -1036,14 +1055,19 @@ export type Database = {
           created_date?: string | null
           currency?: string | null
           delivery_requested_for?: string | null
+          environment?: string | null
           id?: string
+          idempotency_key?: string | null
           is_sandbox_demo_fallback?: boolean
           jobsite_contact_email?: string | null
           jobsite_contact_name?: string | null
           jobsite_contact_phone?: string | null
+          mapping_snapshot?: Json | null
           order_number?: string | null
           order_status?: string | null
           ordered_on?: string | null
+          payload_hash?: string | null
+          pricing_run_id?: string | null
           purchase_order?: string | null
           raw_payload?: Json
           request_id?: string | null
