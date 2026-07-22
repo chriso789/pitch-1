@@ -246,11 +246,13 @@ export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
         });
         if (error) throw error;
       } else if (supplier === 'abc') {
-        const { error } = await supabase.functions.invoke('abc-save-account', {
-          body: { tenant_id: tenantId, clear: true },
+        const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
+          body: { action: 'revoke_connection', tenant_id: tenantId },
         });
         if (error) throw error;
+        if (data && data.success === false) throw new Error(data.error || 'ABC disconnect failed');
       }
+
       toast({ title: `${SUPPLIER_META[supplier].name} disconnected` });
       setReloadKey((k) => k + 1);
       if (supplier === 'abc') void abcStatus.refresh();
