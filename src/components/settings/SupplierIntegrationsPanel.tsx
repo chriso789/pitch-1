@@ -246,8 +246,9 @@ export function SupplierIntegrationsPanel({ onOpenAdvanced }: Props) {
         });
         if (error) throw error;
       } else if (supplier === 'abc') {
+        const environment = abcStatus.environment || 'production';
         const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
-          body: { action: 'revoke_connection', tenant_id: tenantId },
+          body: { action: 'revoke_connection', tenant_id: tenantId, environment },
         });
         if (error) throw error;
         if (data && data.success === false) throw new Error(data.error || 'ABC disconnect failed');
