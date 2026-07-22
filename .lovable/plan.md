@@ -1,71 +1,59 @@
-# Phase 1B — Slice 3B: Production Order Unification
+## ABC Catalog Mapping + Color-Specific SKU + Live Pricing UI Fix
 
-Goal: every production ABC order (`place_order`, `submit_order`) in **both** `abc-api-proxy` and `supplier-api/abc-proxy-handler` flows through
-`mappingResolver → orderService.buildAbcOrderPayload → orderPayloadBuilder`. No inline ABC payload construction, no client-trusted supplier identity, no unresolved-price fallbacks, no `body.order` bypass on the tenant path.
+Required by ABC Supply integration team. Replaces the placeholder-SKU/"Pending" table on `/supplier-verify/abc` with a real mapping workflow that ties each internal material to an exact ABC `itemNumber` (color-specific), verifies it at the selected branch, selects a valid Product API UOM, then prices via Price Items.
 
-## In-scope files
+---
 
-- `supabase/functions/_shared/abc/orderService.ts` — new exported helper `assembleProductionAbcOrder(ctx)` that does the trusted server-side reload + `resolveAbcMapping` per line + calls `buildAbcOrderPayload`. Returns `{ valid, orderRequest, payloadHash, idempotencyKey, lineProofs, warnings, errors }`.
-- `supabase/functions/_shared/abc/orderIdempotency.ts` — new small helper: `findExistingAbcOrder(supabase, tenant_id, env, payloadHash|idempotencyKey)` returns prior `abc_orders` row when hash matches.
-- `supabase/functions/_shared/abc/pricingFreshness.ts` — new: `loadFreshPricingForLine(...)` reads latest `abc_price_cache` / `supplier_price_history` entry for the (tenant, env, branch, shipTo, itemNumber, uom); rejects with `pricing_expired` when older than the configured TTL (default 24h, overridable via `ABC_PRICING_MAX_AGE_MINUTES`).
-- `supabase/functions/abc-api-proxy/handler.ts` — replace the entire `place_order|submit_order` block (lines ~1614–1845) with a thin caller of `assembleProductionAbcOrder` + `callAbc` + persistence.
-- `supabase/functions/supplier-api/abc-proxy-handler.ts` — same replacement (lines ~1720–1940).
-- `supabase/functions/_shared/abc/__tests__/orderProductionEquivalence.test.ts` — new equivalence tests running the same trusted-reload fixture through both handler modules and asserting identical `orderRequest`, `payloadHash`, `idempotencyKey`, and persistence input.
+### Root causes (traced this turn)
 
-## Migration (persistence extension only — no schema redesign)
+1. `SupplierVerifyPricingPage.tsx` renders rows from `template_items` / `template_item_supplier_mappings` and treats the internal `item_code` (`ATLAS-PINNACLE`, etc.) as if it were the ABC `itemNumber`.
+2. "Verify" calls the pricing route with that internal code, so ABC either returns no line or the parser flags it and the row stays generic "Pending".
+3. There is no catalog-search / color-picker / branch-verification / UOM-selection step in the UI, so most rows can never legally be priced.
+4. `abc-api` typed client still points at the stub for some helpers; production behavior lives in `abc-api-proxy` (`search_products`, `get_item`, `verify_catalog_item`, `price_items`) and the shared `_shared/abc/*` modules.
 
-```sql
-ALTER TABLE public.abc_orders
-  ADD COLUMN IF NOT EXISTS payload_hash TEXT,
-  ADD COLUMN IF NOT EXISTS idempotency_key TEXT,
-  ADD COLUMN IF NOT EXISTS pricing_run_id TEXT,
-  ADD COLUMN IF NOT EXISTS mapping_snapshot JSONB DEFAULT '{}'::jsonb;
+---
 
-CREATE UNIQUE INDEX IF NOT EXISTS abc_orders_tenant_env_idempotency_uniq
-  ON public.abc_orders (tenant_id, environment, idempotency_key)
-  WHERE idempotency_key IS NOT NULL;
+### Deliverables
 
-ALTER TABLE public.abc_order_lines
-  ADD COLUMN IF NOT EXISTS approved_mapping_id TEXT,
-  ADD COLUMN IF NOT EXISTS approved_pricing_run_id TEXT,
-  ADD COLUMN IF NOT EXISTS line_proof JSONB DEFAULT '{}'::jsonb;
+**1. New mapping workflow UI** (`src/pages/SupplierVerifyPricingPage.tsx` split into a page + components under `src/components/supplier-verify/abc/`):
+- Columns: Internal Code, Material, Requested Color, ABC Item, ABC Color, UOM, Branch Status, Live Price, Price Status, Last Checked, Actions.
+- Row state machine (replaces "Pending"): `needs_abc_match`, `needs_product_selection`, `needs_color_selection`, `needs_uom_selection`, `needs_branch_verification`, `needs_review`, `approved`, `ready_to_price`, `pricing`, `priced`, `price_unavailable`, `unavailable_at_branch`, `stale_mapping`, `pricing_expired`, `waf_blocked`.
+- Per-row actions: **Find ABC Match**, **Change ABC Match**, **Verify at Branch**, **Select UOM**, **Approve Mapping**, **Get Live Price**.
 
-NOTIFY pgrst, 'reload schema';
-```
+**2. Find ABC Match dialog** (`FindAbcMatchDialog.tsx`):
+- Calls `abc-api-proxy` `search_products` with `familyItems=true`, `embed=branches,variations`.
+- Renders every color variant as a **separate selectable row** with its own `itemNumber`, description, manufacturer, family, color, valid UOMs, branch availability, active flag.
+- User picks the exact color-specific child; dialog then runs `verify_catalog_item` at the selected branch and forces UOM selection if >1 valid UOM (no EA default).
+- Approve writes to `template_item_supplier_mappings` with: `supplier='abc'`, `itemNumber`, `itemDescription`, `familyId/familyName`, `colorName/colorCode`, `validUoms`, `selectedUom`, `branchNumber`, `branchVerifiedAt`, `mappingStatus='approved'`, raw catalog snapshot, `approved_by`, `approved_at`.
 
-RLS: unchanged — new columns inherit existing `abc_orders` / `abc_order_lines` tenant policies.
+**3. Pricing wiring**:
+- Replace current row-level Verify with a call routed through `abc-api-proxy` `price_items` using only the **approved** `itemNumber` + `selectedUom` + quantity + `shipToNumber` + `branchNumber` from `useAbcSetup`.
+- Use `pricingResponseParser` to derive status (`priced`, `zero_price_contact_branch`, `unavailable`, `restricted`, `backorder`, `pricing_rejected`, `item_mismatch`, `uom_mismatch`, `missing_response_line`, `waf_blocked`).
+- Persist to `supplier_pricing_runs` + `supplier_price_history` with exact itemNumber/UOM/color/branch/ShipTo/status/raw response.
 
-## Behaviour changes (production `place_order` / `submit_order`)
+**4. Refresh All Prices**:
+- Only submits rows where `mappingResolver.canPrice === true`.
+- Returns `{ requested, priced, skipped, failed, skippedReasons }` and renders the summary ("12 total · 7 priced · 3 need ABC match · 1 needs color · 1 unavailable at branch").
 
-1. **`body.order` bypass removed.** If `body.order` is present and the caller is not the master-only sandbox debug route, respond `400 { error: "pre_shaped_order_forbidden" }`. The sandbox `submit_test_order` action keeps its existing single-item shared-builder path (already migrated in Slice 3A).
-2. **Trusted server-side reload.** Handler ignores `body.shipToNumber`, `body.branchNumber`, `body.unit_cost`, `body.delivery_address`, `body.customer_name`, `body.jobsite_contact` when building the payload. Everything is reloaded from `abc_connections` (branch, ship-to), `projects` / `contacts` (address, jobsite contact), `template_item_supplier_mappings` (approved ABC mapping), and `abc_price_cache` / `supplier_price_history` (pricing).
-3. **Validated address gate.** Reject with `order_address_not_validated` if the reloaded project/property address is missing a validated `validated_addresses` row (or is missing line1/city/state/postal). Sandbox `submit_test_order` retains its fixed demo address.
-4. **Approved-mapping gate per line.** For each `body.items[i]`, resolve mapping via `resolveAbcMapping`. Refuse the whole order if any line is not `state === "approved" && canOrder === true` — response `{ error: "line_mapping_not_approved", lineId, reason }`.
-5. **Pricing freshness gate.** For each approved line, load latest pricing row from persistence. If the row is older than `ABC_PRICING_MAX_AGE_MINUTES` (default 1440), reject with `pricing_expired` (no silent refresh). If no row exists, `unresolved_sku_pricing`.
-6. **No unsafe identifier fallbacks.** `item_name` and `srs_item_code` may not become an ABC `itemNumber` — only `approvedItemNumber` from the resolver. Default `EA` UOM removed; UOM must come from the approved mapping/child.
-7. **Multi-line support.** All lines pass through `buildAbcOrderPayload` in one payload. One invalid line blocks the whole order. No partial submissions.
-8. **Idempotency.** Before the HTTP call, look up `abc_orders` by `(tenant_id, environment, idempotency_key)`. Return the existing order row (200 with `duplicate: true, existingOrder`) instead of re-submitting.
-9. **Persistence.** Extend the existing `abc_orders` insert to write `payload_hash`, `idempotency_key`, `pricing_run_id` (from line proofs when consistent, else null), `mapping_snapshot` (compact snapshot of approved mappings used). Extend `abc_order_lines` insert to write `approved_mapping_id`, `approved_pricing_run_id`, `line_proof` from `lineProofs[i]`.
-10. **Equivalence.** Both handlers call `assembleProductionAbcOrder` with the same reload result and produce byte-identical `orderRequest`, `payloadHash`, `idempotencyKey`, and identical persistence input objects.
+**5. Data cleanup migration**:
+- Audit `template_item_supplier_mappings` where `supplier='abc'` AND `supplier_item_number = internal item_code` (and never verified through ABC Product API) → set `mapping_status='needs_review'`, clear `supplier_item_number`, keep internal codes intact.
+- Add columns if missing on `template_item_supplier_mappings`: `abc_family_id`, `abc_family_name`, `abc_color_name`, `abc_color_code`, `abc_valid_uoms jsonb`, `abc_selected_uom`, `abc_branch_verified_at`, `abc_catalog_snapshot jsonb`, `mapping_status`.
 
-## Not in this slice (per brief)
+**6. Tests** (the 25 cases listed in the brief) under `tests/components/supplier-verify/` and `tests/edge-functions/abc/`.
 
-- No frontend changes.
-- No route cutover.
-- No `abc-api-proxy` shim.
-- No sandbox helpers removed.
-- No pricing/catalog logic changes.
+**7. Acceptance proof** doc `docs/abc-catalog-mapping-acceptance.md` with request/response payloads for a color-bearing product (Atlas Pinnacle Pristine — two colors), persisted mapping rows, pricing history rows, and screenshots. Any step blocked by ABC WAF is explicitly flagged, not passed.
 
-## Deliverables (in the response after execution)
+---
 
-1. Files changed.
-2. Legacy code deleted (line ranges).
-3. Shared builder integration diff summary.
-4. `body.order` removal proof (grep result).
-5. Multi-line handling summary.
-6. Idempotency implementation summary.
-7. Persistence changes summary.
-8. Equivalence test results (`deno test`).
-9. Any remaining duplicated code with justification.
+### Technical scope
 
-Approve and I'll execute in this order: migration → shared helpers (`assembleProductionAbcOrder`, `orderIdempotency`, `pricingFreshness`) → handler swaps (abc-api-proxy first, then supplier-api) → equivalence tests → run tests.
+- Frontend: `src/pages/SupplierVerifyPricingPage.tsx`, new `src/components/supplier-verify/abc/*` (row, dialog, state chips, summary).
+- Shared client: extend `src/lib/abc/abcApi.ts` with `searchProducts`, `getItem`, `verifyCatalogItem`, `priceItems` all routed through `abc-api-proxy` (not the `abc-api` stub).
+- Backend: no new edge functions — reuse `abc-api-proxy` actions + `_shared/abc/{productNormalizer,familyColorResolver,uomValidator,branchVerifier,availabilityParser,pricingResponseParser,mappingResolver}`. Add any missing action wiring only if a gap is found while tracing.
+- DB: one migration for the mapping-columns + cleanup UPDATE.
+
+### Out of scope
+QXO, SRS UI changes, supplier comparison, signed-estimate cost mutation, new price fabrication.
+
+### Acceptance chain (must pass end-to-end)
+internal material → ABC family search → color-specific child `itemNumber` → branch verification → Product API UOM → Price Items → visible live price with parsed status.
