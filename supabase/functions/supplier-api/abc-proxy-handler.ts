@@ -21,6 +21,11 @@ import {
   searchAbcCatalog,
   getAbcCatalogItem,
 } from "../_shared/abc/catalogService.ts";
+import {
+  priceItems as priceItemsService,
+  validatePricingRequest,
+  type AbcPricingServiceRequest,
+} from "../_shared/abc/pricingService.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -812,32 +817,49 @@ export const handle = async (req) => {
     }
 
     // ---------------- price_items ----------------
+    // Routes through the shared pricing service. See _shared/abc/pricingService.ts.
+    // `success` reflects parsed.runStatus, NOT HTTP status.
     if (action === "price_items") {
-      const endpoint = `${cfg.apiBase}/pricing/v2/prices`;
-      const lines = (body.lines || []).map((l, i) => ({
-        id: String(i + 1),
-        itemNumber: l.itemNumber,
-        quantity: Number(l.quantity) || 1,
-        uom: (l.unitOfMeasure || "EA").toUpperCase(),
-      }));
-      if (!lines.length) return json({ success: false, error: "lines required" }, 400);
-      const payload = {
-        requestId: body.requestId || `PITCH-PRICE-${Date.now()}`,
+      const req: AbcPricingServiceRequest = {
+        requestId: body.requestId,
         shipToNumber: body.shipToNumber,
         branchNumber: body.branchNumber,
-        purpose: body.purpose || "estimating",
-        lines,
+        purpose: body.purpose as any,
+        lines: (body.lines || []).map((l: any) => ({
+          itemNumber: l.itemNumber,
+          quantity: Number(l.quantity) || 1,
+          uom: l.unitOfMeasure || l.uom || "EA",
+        })),
       };
-      const r = await callAbc(tok.token, "POST", endpoint, payload);
-      const error_code = r.ok ? null : mapAbcError(r.status, r.json);
+      const invalid = validatePricingRequest(req);
+      if (invalid) {
+        return json({ success: false, error: invalid.error_code, missing: invalid.missing, message: invalid.message }, 400);
+      }
+      const result = await priceItemsService(
+        { apiBase: cfg.apiBase, token: tok.token, callAbc, mapAbcError },
+        req,
+      );
       await auditCall(supabase, {
-        tenant_id, environment: env, action, endpoint,
-        request_body_redacted: payload,
-        status_code: r.status, response_body: r.json ?? r.text, error_code,
+        tenant_id, environment: env, action, endpoint: result.endpoint,
+        request_body_redacted: result.request,
+        status_code: result.status, response_body: result.body, error_code: result.error_code,
         duration_ms: Date.now() - startedAt, created_by: userId,
       });
-      return json({ success: r.ok, environment: env, endpoint, request: payload, status: r.status, body: r.json ?? r.text, error_code });
+      return json({
+        success: result.success,
+        environment: env,
+        endpoint: result.endpoint,
+        request: result.request,
+        status: result.status,
+        body: result.body,
+        error_code: result.error_code,
+        parsed: result.parsed,
+        runStatus: result.runStatus,
+        counts: result.counts,
+        warnings: result.warnings,
+      });
     }
+
 
     // ---------------- price_items_record_history ----------------
     // Calls ABC Price Items and records every result line into
@@ -885,74 +907,45 @@ export const handle = async (req) => {
         return json({ success: false, error: "pricing_run_start_failed", details: e?.message ?? String(e) }, 500);
       }
 
-      // 2) Call ABC Price Items
-      const endpoint = `${cfg.apiBase}/pricing/v2/prices`;
-      const abcLines = items.map((l, i) => ({
-        id: String(i + 1),
-        itemNumber: l.itemNumber!,
-        quantity: Number(l.quantity) || 1,
-        uom: (l.uom || "EA").toString().toUpperCase(),
-      }));
-      const payload = {
+      // 2) Call ABC Price Items via shared pricing service
+      const serviceReq: AbcPricingServiceRequest = {
         requestId: `PITCH-PRICE-RUN-${runId}`,
         shipToNumber: body.shipToNumber,
         branchNumber: body.branchNumber,
-        purpose: body.purpose || "estimating",
-        lines: abcLines,
+        purpose: (body.purpose as any) ?? "estimating",
+        lines: items.map((l) => ({
+          itemNumber: l.itemNumber!,
+          quantity: Number(l.quantity) || 1,
+          uom: (l.uom || "EA").toString(),
+          itemDescription: l.itemDescription ?? null,
+          templateItemId: l.template_item_id ?? null,
+          estimateLineItemId: l.estimate_line_item_id ?? null,
+        })),
       };
-
-      const r = await callAbc(tok.token, "POST", endpoint, payload);
-      const error_code = r.ok ? null : mapAbcError(r.status, r.json);
+      const result = await priceItemsService(
+        { apiBase: cfg.apiBase, token: tok.token, callAbc, mapAbcError },
+        serviceReq,
+      );
       await auditCall(supabase, {
-        tenant_id, environment: env, action, endpoint,
-        request_body_redacted: payload,
-        status_code: r.status, response_body: r.json ?? r.text, error_code,
+        tenant_id, environment: env, action, endpoint: result.endpoint,
+        request_body_redacted: result.request,
+        status_code: result.status, response_body: result.body, error_code: result.error_code,
         duration_ms: Date.now() - startedAt, created_by: userId,
       });
 
-      // 3) Build history rows for every input item, joined to ABC response by id/itemNumber
-      const respLines: any[] = Array.isArray(r.json?.lines)
-        ? r.json.lines
-        : Array.isArray(r.json?.prices)
-          ? r.json.prices
-          : Array.isArray(r.json)
-            ? r.json
-            : [];
-
-      const findResp = (idx: number, itemNumber: string) => {
-        const byId = respLines.find((x) => String(x?.id ?? "") === String(idx + 1));
-        if (byId) return byId;
-        return respLines.find(
-          (x) => String(x?.itemNumber ?? x?.item_number ?? "").toUpperCase() === itemNumber.toUpperCase(),
-        );
-      };
-
-      const isWaf = r.status === 499 || error_code === "abc_waf_blocked";
-      const errorSummary = isWaf
-        ? "abc_waf_blocked"
-        : r.ok
-          ? null
-          : (error_code ?? `abc_http_${r.status}`);
+      // 3) Build history rows from parsed lines (single source of truth)
+      const parsed = result.parsed;
+      const isWaf = result.status === 499 || result.error_code === "abc_waf_blocked";
+      const errorSummary = parsed.errorSummary
+        ?? (isWaf ? "abc_waf_blocked" : result.error_code ?? null);
 
       const historyRows: PriceHistoryLineInput[] = items.map((it, idx) => {
-        const match = r.ok ? findResp(idx, it.itemNumber!) : null;
-        const unitPrice = match
-          ? Number(
-              match.unitPrice ?? match.unit_price ?? match.price ?? match.netPrice ?? match.net_price,
-            )
-          : NaN;
-        const extPrice = match
-          ? Number(match.extendedPrice ?? match.extended_price ?? match.totalPrice ?? match.total_price)
-          : NaN;
-        const availability = match
-          ? (match.availability ?? match.availabilityStatus ?? match.status ?? null)
-          : null;
-        const lineStatus: PriceHistoryLineInput["status"] = r.ok && match
+        const p = parsed.lines[idx];
+        const lineStatus: PriceHistoryLineInput["status"] = p?.status === "ok"
           ? "ok"
-          : isWaf
+          : isWaf || p?.status === "unavailable"
             ? "unavailable"
             : "error";
-
         return {
           tenant_id: tenant_id!,
           pricing_run_id: runId,
@@ -962,16 +955,18 @@ export const handle = async (req) => {
           estimate_id: sourceContext === "estimate" ? (body.source_id ?? null) : null,
           estimate_line_item_id: sourceContext === "estimate" ? (it.estimate_line_item_id ?? null) : null,
           supplier_item_number: it.itemNumber ?? null,
-          supplier_item_description: (match?.description ?? match?.itemDescription ?? it.itemDescription) ?? null,
-          uom: ((match?.uom ?? match?.unitOfMeasure ?? it.uom) ?? "EA").toString().toUpperCase(),
+          supplier_item_description: p?.itemDescription ?? it.itemDescription ?? null,
+          uom: (p?.returnedUom ?? p?.requestedUom ?? it.uom ?? "EA").toString().toUpperCase(),
           quantity: Number(it.quantity) || 1,
-          unit_price: Number.isFinite(unitPrice) ? unitPrice : null,
-          extended_price: Number.isFinite(extPrice) ? extPrice : null,
-          availability: availability ? String(availability) : null,
+          unit_price: p?.unitPrice ?? null,
+          extended_price: p?.extendedPrice ?? null,
+          availability: p?.availability?.status ? String(p.availability.status) : null,
           ship_to_number: body.shipToNumber ?? null,
           branch_number: body.branchNumber ?? null,
           price_source: "abc_price_items",
-          raw_response: match ?? (r.ok ? null : { error_code, status: r.status, body: r.json ?? r.text }),
+          raw_response: p?.raw ?? (result.status !== 200
+            ? { error_code: result.error_code, status: result.status, body: result.body }
+            : null),
           status: lineStatus,
           created_by: userId,
         };
@@ -985,19 +980,23 @@ export const handle = async (req) => {
         console.warn("[supplier-api abc] recordPriceHistoryBulk failed", e);
       }
 
-      // 4) Complete run
-      const okCount = historyRows.filter((h) => h.status === "ok").length;
-      const finalStatus: Exclude<PricingRunStatus, "running"> = r.ok
-        ? (okCount === historyRows.length ? "completed" : okCount > 0 ? "partial" : "failed")
-        : "failed";
+      // 4) Complete run — status derived from parsed.runStatus (NOT HTTP)
+      const finalStatus: Exclude<PricingRunStatus, "running"> =
+        parsed.runStatus === "completed"
+          ? "completed"
+          : parsed.runStatus === "partial"
+            ? "partial"
+            : "failed";
 
       try {
         await completePricingRun(supabase, runId, {
           status: finalStatus,
           error_summary: errorSummary,
           metadata_patch: {
-            abc_status: r.status,
-            abc_error_code: error_code,
+            abc_status: result.status,
+            abc_error_code: result.error_code,
+            run_status: parsed.runStatus,
+            counts: parsed.counts,
             recorded_count: recordedCount,
             requested_count: historyRows.length,
           },
@@ -1007,15 +1006,18 @@ export const handle = async (req) => {
       }
 
       return json({
-        success: r.ok,
+        success: result.success,
         environment: env,
-        endpoint,
+        endpoint: result.endpoint,
         run_id: runId,
         run_status: finalStatus,
         recorded_count: recordedCount,
         requested_count: historyRows.length,
-        error_code,
+        error_code: result.error_code,
         error_summary: errorSummary,
+        parsed,
+        counts: parsed.counts,
+        warnings: parsed.warnings,
         lines: historyRows.map((h) => ({
           template_item_id: h.template_item_id,
           estimate_line_item_id: h.estimate_line_item_id,
@@ -1029,6 +1031,7 @@ export const handle = async (req) => {
         })),
       });
     }
+
 
 
 

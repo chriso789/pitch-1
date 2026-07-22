@@ -14,6 +14,11 @@ import {
   searchAbcCatalog,
   getAbcCatalogItem,
 } from "../_shared/abc/catalogService.ts";
+import {
+  priceItems as priceItemsService,
+  validatePricingRequest,
+  type AbcPricingServiceRequest,
+} from "../_shared/abc/pricingService.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -992,32 +997,50 @@ export const handle = async (req) => {
     }
 
     // ---------------- price_items ----------------
+    // Routes through the shared pricing service so this handler and
+    // supplier-api/abc-proxy return byte-identical wire payloads and parsed
+    // verdicts. `success` reflects parsed.runStatus, NOT HTTP status.
     if (action === "price_items") {
-      const endpoint = `${cfg.apiBase}/pricing/v2/prices`;
-      const lines = (body.lines || []).map((l, i) => ({
-        id: String(i + 1),
-        itemNumber: l.itemNumber,
-        quantity: Number(l.quantity) || 1,
-        uom: (l.unitOfMeasure || "EA").toUpperCase(),
-      }));
-      if (!lines.length) return json({ success: false, error: "lines required" }, 400);
-      const payload = {
-        requestId: body.requestId || `PITCH-PRICE-${Date.now()}`,
+      const req: AbcPricingServiceRequest = {
+        requestId: body.requestId,
         shipToNumber: body.shipToNumber,
         branchNumber: body.branchNumber,
-        purpose: body.purpose || "estimating",
-        lines,
+        purpose: body.purpose as any,
+        lines: (body.lines || []).map((l: any) => ({
+          itemNumber: l.itemNumber,
+          quantity: Number(l.quantity) || 1,
+          uom: l.unitOfMeasure || l.uom || "EA",
+        })),
       };
-      const r = await callAbc(tok.token, "POST", endpoint, payload);
-      const error_code = r.ok ? null : mapAbcError(r.status, r.json);
+      const invalid = validatePricingRequest(req);
+      if (invalid) {
+        return json({ success: false, error: invalid.error_code, missing: invalid.missing, message: invalid.message }, 400);
+      }
+      const result = await priceItemsService(
+        { apiBase: cfg.apiBase, token: tok.token, callAbc, mapAbcError },
+        req,
+      );
       await auditCall(supabase, {
-        tenant_id, environment: env, action, endpoint,
-        request_body_redacted: payload,
-        status_code: r.status, response_body: r.json ?? r.text, error_code,
+        tenant_id, environment: env, action, endpoint: result.endpoint,
+        request_body_redacted: result.request,
+        status_code: result.status, response_body: result.body, error_code: result.error_code,
         duration_ms: Date.now() - startedAt, created_by: userId,
       });
-      return json({ success: r.ok, environment: env, endpoint, request: payload, status: r.status, body: r.json ?? r.text, error_code });
+      return json({
+        success: result.success,
+        environment: env,
+        endpoint: result.endpoint,
+        request: result.request,
+        status: result.status,
+        body: result.body,
+        error_code: result.error_code,
+        parsed: result.parsed,
+        runStatus: result.runStatus,
+        counts: result.counts,
+        warnings: result.warnings,
+      });
     }
+
 
 
     // ---------------- get_order_status ----------------
