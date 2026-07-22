@@ -366,6 +366,10 @@ export default function SupplierVerifyPricingPage() {
         </CardContent>
       </Card>
 
+      {supplierKey === 'abc' && (
+        <AbcCatalogBrowserCard shipToNumber={abcSetup.shipToNumber} branchNumber={abcSetup.branchNumber} />
+      )}
+
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between gap-4">
