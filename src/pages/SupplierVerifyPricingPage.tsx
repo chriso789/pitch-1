@@ -6,10 +6,9 @@
 //   • Each row shows a specific state (Needs ABC Match / Needs Color /
 //     Needs UOM / Needs Branch Verification / Ready to Price / Priced /
 //     Zero Price / Unavailable / WAF Blocked / Error) — never generic "Pending".
-//   • "Get Live Price" is gated behind an approved mapping backed by a real
-//     ABC Product API catalog snapshot.
-//   • "Refresh All Prices" only submits rows where canPrice === true and
-//     returns a summary of what was priced vs skipped and why.
+//   • The mapping grid is ABC-catalog-first: catalog item + color + UOM + live
+//     price on the left, tenant internal material match on the right.
+//   • "Refresh catalog prices" only submits real ABC Product API itemNumbers.
 //   • Every price call goes through `abc-api-proxy` → `price_items` (the
 //     production route), never the `abc-api` stub.
 //
@@ -20,7 +19,12 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { useAbcSetup } from '@/hooks/useAbcSetup';
-import { abcPriceItems } from '@/lib/abc/proxyClient';
+import {
+  abcApproveMapping,
+  abcPriceItems,
+  abcSearchProducts,
+  type AbcCatalogSearchResultChild,
+} from '@/lib/abc/proxyClient';
 import {
   computeAbcRowState,
   statesForPricingResult,
@@ -28,7 +32,6 @@ import {
   type AbcRowStateInfo,
 } from '@/lib/abc/mappingState';
 import FindAbcMatchDialog from '@/components/supplier-verify/abc/FindAbcMatchDialog';
-import AbcCatalogBrowserCard from '@/components/supplier-verify/abc/AbcCatalogBrowserCard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -36,7 +39,10 @@ import { Input } from '@/components/ui/input';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import { ArrowLeft, RefreshCcw, Search, Loader2, ExternalLink } from 'lucide-react';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import { ArrowLeft, RefreshCcw, Search, Loader2, ExternalLink, CheckCircle2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import { formatCurrency } from '@/lib/utils';
@@ -48,6 +54,8 @@ const SUPPLIER_META: Record<SupplierKind, { label: string; ordersTable: 'abc_ord
   srs: { label: 'SRS Distribution', ordersTable: 'srs_orders' },
   qxo: { label: 'QXO / Beacon', ordersTable: 'qxo_orders' },
 };
+
+const DEFAULT_ABC_CATALOG_QUERIES = ['shingle', 'underlayment', 'ridge', 'drip edge', 'nail', 'ice water'];
 
 interface AbcRow {
   templateItemId: string;
@@ -64,37 +72,70 @@ interface PricingBadge {
   checkedAt?: string | null;
 }
 
-function normalizeOrder(supplier: SupplierKind, row: any) {
+interface NormalizedSupplierOrder {
+  id: string;
+  reference: string;
+  po: string | null;
+  status: string | null;
+  total: number | string | null;
+  branch: string | null;
+  when: string | null;
+}
+
+interface TemplateItemRecord {
+  id: string;
+  item_name: string | null;
+  description: string | null;
+}
+
+type AbcMappingRecord = AbcMappingRow & { template_item_id: string };
+
+type UnknownRecord = Record<string, unknown>;
+
+function stringValue(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  return String(value);
+}
+
+function numberOrStringValue(value: unknown): number | string | null {
+  return typeof value === 'number' || typeof value === 'string' ? value : null;
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
+function normalizeOrder(supplier: SupplierKind, row: UnknownRecord): NormalizedSupplierOrder {
   if (supplier === 'abc') {
     return {
-      id: row.id,
-      reference: row.order_number ?? row.confirmation_number ?? '—',
-      po: row.purchase_order ?? null,
-      status: row.order_status ?? null,
-      total: row.total_amount ?? null,
-      branch: row.branch_number ?? null,
-      when: row.ordered_on ?? row.created_at ?? null,
+      id: stringValue(row.id) || `${supplier}-${stringValue(row.order_number) || stringValue(row.confirmation_number) || 'order'}`,
+      reference: stringValue(row.order_number ?? row.confirmation_number) || '—',
+      po: stringValue(row.purchase_order),
+      status: stringValue(row.order_status),
+      total: numberOrStringValue(row.total_amount),
+      branch: stringValue(row.branch_number),
+      when: stringValue(row.ordered_on ?? row.created_at),
     };
   }
   if (supplier === 'srs') {
     return {
-      id: row.id,
-      reference: row.srs_order_id ?? row.order_number ?? '—',
-      po: row.order_number ?? null,
-      status: row.status ?? null,
-      total: row.total_amount ?? null,
-      branch: row.branch_id ?? row.branch_number ?? null,
-      when: row.submitted_at ?? row.created_at ?? null,
+      id: stringValue(row.id) || `${supplier}-${stringValue(row.srs_order_id) || stringValue(row.order_number) || 'order'}`,
+      reference: stringValue(row.srs_order_id ?? row.order_number) || '—',
+      po: stringValue(row.order_number),
+      status: stringValue(row.status),
+      total: numberOrStringValue(row.total_amount),
+      branch: stringValue(row.branch_id ?? row.branch_number),
+      when: stringValue(row.submitted_at ?? row.created_at),
     };
   }
   return {
-    id: row.id,
-    reference: row.beacon_order_id ?? row.job_number ?? '—',
-    po: row.po_number ?? null,
-    status: row.status_value ?? row.status_code ?? null,
-    total: row.total ?? null,
-    branch: row.branch_id ?? null,
-    when: row.order_placed_date ?? row.created_at ?? null,
+    id: stringValue(row.id) || `${supplier}-${stringValue(row.beacon_order_id) || stringValue(row.job_number) || 'order'}`,
+    reference: stringValue(row.beacon_order_id ?? row.job_number) || '—',
+    po: stringValue(row.po_number),
+    status: stringValue(row.status_value ?? row.status_code),
+    total: numberOrStringValue(row.total),
+    branch: stringValue(row.branch_id),
+    when: stringValue(row.order_placed_date ?? row.created_at),
   };
 }
 
@@ -125,15 +166,18 @@ export default function SupplierVerifyPricingPage() {
   const meta = SUPPLIER_META[supplierKey];
   const abcSetup = useAbcSetup();
 
-  const [orders, setOrders] = useState<any[]>([]);
+  const [orders, setOrders] = useState<NormalizedSupplierOrder[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
   const [rows, setRows] = useState<AbcRow[]>([]);
   const [rowsLoading, setRowsLoading] = useState(true);
-  const [prices, setPrices] = useState<Record<string, PricingBadge>>({});
-  const [rowBusy, setRowBusy] = useState<Record<string, boolean>>({});
-  const [bulkBusy, setBulkBusy] = useState(false);
-  const [query, setQuery] = useState('');
   const [findFor, setFindFor] = useState<AbcRow | null>(null);
+  const [catalogQuery, setCatalogQuery] = useState('shingle');
+  const [catalogRows, setCatalogRows] = useState<AbcCatalogSearchResultChild[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogPrices, setCatalogPrices] = useState<Record<string, PricingBadge>>({});
+  const [catalogPriceBusy, setCatalogPriceBusy] = useState(false);
+  const [selectedInternalByCatalog, setSelectedInternalByCatalog] = useState<Record<string, string>>({});
+  const [mappingBusy, setMappingBusy] = useState<Record<string, boolean>>({});
 
   const loadOrders = useCallback(async () => {
     if (!tenantId) return;
@@ -145,7 +189,7 @@ export default function SupplierVerifyPricingPage() {
       .order('updated_at', { ascending: false })
       .limit(100);
     if (error) toast.error(`Couldn't load orders: ${error.message}`);
-    setOrders((data || []).map((r: any) => normalizeOrder(supplierKey, r)));
+    setOrders(((data || []) as UnknownRecord[]).map((r) => normalizeOrder(supplierKey, r)));
     setOrdersLoading(false);
   }, [tenantId, meta.ordersTable, supplierKey]);
 
@@ -157,26 +201,26 @@ export default function SupplierVerifyPricingPage() {
     // integration team wants to see so they can be matched.
     // template_items are tenant-scoped via templates.tenant_id
     const { data: rawItems, error: itemsErr } = await supabase
-      .from('template_items' as any)
+      .from('template_items' as never)
       .select('id, item_name, description, item_type, templates!inner(tenant_id)')
       .eq('templates.tenant_id', tenantId)
       .order('item_name');
     if (itemsErr) toast.error(`Couldn't load template items: ${itemsErr.message}`);
     const items = rawItems || [];
 
-    const ids = items.map((r: any) => r.id);
-    let mappings: any[] = [];
+    const ids = (items as TemplateItemRecord[]).map((r) => r.id);
+    let mappings: AbcMappingRecord[] = [];
     if (ids.length > 0) {
       const { data: mrows } = await supabase
-        .from('template_item_supplier_mappings' as any)
+        .from('template_item_supplier_mappings' as never)
         .select('template_item_id, id, supplier, supplier_item_number, supplier_item_description, color_name, default_uom, valid_uoms, branch_scope, ship_to_scope, mapping_status, review_state, approved_at, last_checked_at, raw_catalog_payload')
         .eq('tenant_id', tenantId)
         .eq('supplier', 'abc')
         .in('template_item_id', ids);
-      mappings = mrows || [];
+      mappings = ((mrows || []) as unknown) as AbcMappingRecord[];
     }
-    const byItem = new Map(mappings.map((m) => [m.template_item_id, m as AbcMappingRow]));
-    const built: AbcRow[] = items.map((it: any) => ({
+    const byItem = new Map(mappings.map((m) => [m.template_item_id, m]));
+    const built: AbcRow[] = (items as TemplateItemRecord[]).map((it) => ({
       templateItemId: it.id,
       internalCode: it.id.slice(0, 8),
       materialName: it.item_name || it.description || '(unnamed)',
@@ -189,15 +233,17 @@ export default function SupplierVerifyPricingPage() {
 
   useEffect(() => { loadOrders(); loadRows(); }, [loadOrders, loadRows]);
 
-  const filteredRows = useMemo(() => {
-    if (!query) return rows;
-    const q = query.toLowerCase();
-    return rows.filter((r) =>
-      r.materialName.toLowerCase().includes(q) ||
-      r.internalCode.toLowerCase().includes(q) ||
-      (r.mapping?.supplier_item_number || '').toLowerCase().includes(q)
-    );
-  }, [rows, query]);
+  const mappedRowsByAbcNumber = useMemo(() => {
+    const map = new Map<string, AbcRow[]>();
+    for (const row of rows) {
+      const itemNumber = row.mapping?.supplier_item_number?.trim();
+      if (!itemNumber) continue;
+      const list = map.get(itemNumber) || [];
+      list.push(row);
+      map.set(itemNumber, list);
+    }
+    return map;
+  }, [rows]);
 
   const computeState = useCallback((r: AbcRow): AbcRowStateInfo => {
     return computeAbcRowState({
@@ -207,84 +253,170 @@ export default function SupplierVerifyPricingPage() {
     });
   }, [abcSetup.branchNumber]);
 
-  const priceOne = async (r: AbcRow) => {
-    const state = computeState(r);
-    if (!state.canPrice) {
-      toast.error(`Cannot price: ${state.reason}`);
-      return;
-    }
-    if (!abcSetup.shipToNumber || !abcSetup.branchNumber || !r.mapping) return;
-    setRowBusy((b) => ({ ...b, [r.templateItemId]: true }));
-    setPrices((p) => ({ ...p, [r.templateItemId]: { info: { ...state, state: 'pricing', label: 'Pricing…', tone: 'muted', canPrice: true, reason: 'Contacting ABC' } } }));
+  const priceCatalogItems = useCallback(async (items: AbcCatalogSearchResultChild[]) => {
+    if (!abcSetup.shipToNumber || !abcSetup.branchNumber) return;
+    const priceable = items
+      .map((item) => ({ item, uom: item.defaultUom || item.validUoms[0] }))
+      .filter((entry): entry is { item: AbcCatalogSearchResultChild; uom: string } => !!entry.uom)
+      .slice(0, 75);
+
+    if (priceable.length === 0) return;
+    setCatalogPriceBusy(true);
+    setCatalogPrices((prev) => {
+      const next = { ...prev };
+      for (const { item } of priceable) {
+        next[item.itemNumber] = {
+          info: { state: 'pricing', label: 'Pricing…', tone: 'muted', canPrice: true, reason: 'Contacting ABC' },
+        };
+      }
+      return next;
+    });
+
     try {
       const res = await abcPriceItems({
         shipToNumber: abcSetup.shipToNumber,
         branchNumber: abcSetup.branchNumber,
         purpose: 'estimating',
-        lines: [{
-          id: r.templateItemId,
-          itemNumber: r.mapping.supplier_item_number as string,
+        lines: priceable.map(({ item, uom }) => ({
+          id: item.itemNumber,
+          itemNumber: item.itemNumber,
           quantity: 1,
-          uom: r.mapping.default_uom as string,
-        }],
+          uom,
+        })),
       });
-      const line = res.lines[0] || null;
-      const info = res.wafBlocked
-        ? statesForPricingResult({ errorCode: 'waf_blocked' })
-        : statesForPricingResult({
-          errorSummary: res.errorSummary || undefined,
-          unitPrice: line?.unitPrice ?? null,
-          lineStatus: line?.lineStatus,
-          lineStatusMessage: line?.lineStatusMessage,
-        });
-      setPrices((p) => ({ ...p, [r.templateItemId]: {
-        info,
-        unitPrice: line?.unitPrice ?? null,
-        returnedUom: line?.returnedUom ?? null,
-        checkedAt: new Date().toISOString(),
-      } }));
-    } catch (e: any) {
-      setPrices((p) => ({ ...p, [r.templateItemId]: {
-        info: { state: 'error', label: 'Error', reason: e?.message || 'Lookup failed', tone: 'danger', canPrice: false },
-      } }));
-    } finally {
-      setRowBusy((b) => ({ ...b, [r.templateItemId]: false }));
-    }
-  };
 
-  const refreshAll = async () => {
-    setBulkBusy(true);
-    const summary = { requested: 0, priced: 0, skipped: 0, failed: 0, skippedReasons: {} as Record<string, number> };
-    try {
-      const priceable: AbcRow[] = [];
-      for (const r of filteredRows) {
-        const s = computeState(r);
-        summary.requested += 1;
-        if (s.canPrice) priceable.push(r);
-        else {
-          summary.skipped += 1;
-          summary.skippedReasons[s.label] = (summary.skippedReasons[s.label] || 0) + 1;
+      setCatalogPrices((prev) => {
+        const next = { ...prev };
+        for (const { item, uom } of priceable) {
+          const line = res.lines.find((l) => l.itemNumber === item.itemNumber || l.returnedItemNumber === item.itemNumber) || null;
+          const info = res.wafBlocked
+            ? statesForPricingResult({ errorCode: 'waf_blocked' })
+            : statesForPricingResult({
+              errorSummary: res.errorSummary || undefined,
+              unitPrice: line?.unitPrice ?? null,
+              lineStatus: line?.lineStatus,
+              lineStatusMessage: line?.lineStatusMessage,
+            });
+          next[item.itemNumber] = {
+            info,
+            unitPrice: line?.unitPrice ?? null,
+            returnedUom: line?.returnedUom ?? uom,
+            checkedAt: new Date().toISOString(),
+          };
         }
-      }
-      const queue = [...priceable];
-      const worker = async () => {
-        while (queue.length) {
-          const next = queue.shift()!;
-          await priceOne(next);
-          const info = prices[next.templateItemId]?.info;
-          if (info?.state === 'priced') summary.priced += 1; else summary.failed += 1;
+        return next;
+      });
+    } catch (e: unknown) {
+      setCatalogPrices((prev) => {
+        const next = { ...prev };
+        for (const { item } of priceable) {
+          next[item.itemNumber] = {
+            info: { state: 'error', label: 'Error', reason: getErrorMessage(e, 'Lookup failed'), tone: 'danger', canPrice: false },
+          };
         }
-      };
-      await Promise.all([worker(), worker(), worker()]);
-      const bits = [
-        `${summary.requested} total`,
-        `${summary.priced} priced`,
-        `${summary.skipped} skipped`,
-        ...Object.entries(summary.skippedReasons).map(([k, v]) => `${v} ${k.toLowerCase()}`),
-      ];
-      toast.success(bits.join(' · '));
+        return next;
+      });
+      toast.error(getErrorMessage(e, 'ABC catalog pricing failed'));
     } finally {
-      setBulkBusy(false);
+      setCatalogPriceBusy(false);
+    }
+  }, [abcSetup.branchNumber, abcSetup.shipToNumber]);
+
+  const loadCatalog = useCallback(async (searchTerm?: string, toastOnEmpty = true) => {
+    if (supplierKey !== 'abc') return;
+    const term = (searchTerm ?? catalogQuery).trim();
+    if (!term) return;
+    setCatalogLoading(true);
+    try {
+      const res = await abcSearchProducts({ query: term, branchNumber: abcSetup.branchNumber, itemsPerPage: 75 });
+      setCatalogRows(res.children);
+      setCatalogQuery(term);
+      if (res.wafBlocked) {
+        toast.error('ABC blocked the catalog request at the WAF layer.');
+      } else if (!res.success) {
+        toast.error(res.error_code || 'ABC catalog search failed');
+      } else if (res.children.length === 0 && toastOnEmpty) {
+        toast.warning(`No ABC catalog items returned for "${term}" at branch ${abcSetup.branchNumber || '—'}.`);
+      } else if (res.children.length > 0) {
+        await priceCatalogItems(res.children);
+      }
+    } catch (e: unknown) {
+      toast.error(getErrorMessage(e, 'ABC catalog search failed'));
+    } finally {
+      setCatalogLoading(false);
+    }
+  }, [abcSetup.branchNumber, catalogQuery, priceCatalogItems, supplierKey]);
+
+  useEffect(() => {
+    if (supplierKey !== 'abc' || !abcSetup.branchNumber) return;
+    let cancelled = false;
+    (async () => {
+      setCatalogLoading(true);
+      try {
+        for (const term of DEFAULT_ABC_CATALOG_QUERIES) {
+          if (cancelled) return;
+          const res = await abcSearchProducts({ query: term, branchNumber: abcSetup.branchNumber, itemsPerPage: 75 });
+          if (res.children.length > 0) {
+            if (cancelled) return;
+            setCatalogRows(res.children);
+            setCatalogQuery(term);
+            await priceCatalogItems(res.children);
+            return;
+          }
+        }
+        if (!cancelled) setCatalogRows([]);
+      } catch (e: unknown) {
+        if (!cancelled) toast.error(getErrorMessage(e, 'ABC catalog search failed'));
+      } finally {
+        if (!cancelled) setCatalogLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [abcSetup.branchNumber, priceCatalogItems, supplierKey]);
+
+  const matchCatalogItem = async (catalogItem: AbcCatalogSearchResultChild) => {
+    const templateItemId = selectedInternalByCatalog[catalogItem.itemNumber];
+    const selectedInternal = rows.find((r) => r.templateItemId === templateItemId);
+    const selectedUom = catalogItem.defaultUom || catalogItem.validUoms[0];
+    if (!tenantId || !abcSetup.shipToNumber || !abcSetup.branchNumber) {
+      toast.error('Complete the ABC ship-to and branch setup first.');
+      return;
+    }
+    if (!selectedInternal) {
+      toast.error('Choose an internal material to match this ABC catalog item.');
+      return;
+    }
+    if (!selectedUom) {
+      toast.error('ABC did not return a Product API UOM for this item.');
+      return;
+    }
+
+    setMappingBusy((prev) => ({ ...prev, [catalogItem.itemNumber]: true }));
+    try {
+      const { data: userRes } = await supabase.auth.getUser();
+      const { error } = await abcApproveMapping({
+        tenantId,
+        templateItemId,
+        itemNumber: catalogItem.itemNumber,
+        itemDescription: catalogItem.description,
+        familyId: catalogItem.familyId,
+        familyName: catalogItem.familyName,
+        colorName: catalogItem.colorName,
+        colorCode: catalogItem.colorCode,
+        validUoms: catalogItem.validUoms,
+        selectedUom,
+        branchNumber: abcSetup.branchNumber,
+        shipToNumber: abcSetup.shipToNumber,
+        rawCatalogPayload: catalogItem.raw,
+        approvedBy: userRes?.user?.id ?? null,
+      });
+      if (error) throw error;
+      toast.success(`Matched ABC ${catalogItem.itemNumber} to ${selectedInternal.materialName}`);
+      await loadRows();
+    } catch (e: unknown) {
+      toast.error(getErrorMessage(e, 'Failed to save ABC mapping'));
+    } finally {
+      setMappingBusy((prev) => ({ ...prev, [catalogItem.itemNumber]: false }));
     }
   };
 
@@ -303,7 +435,7 @@ export default function SupplierVerifyPricingPage() {
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => { loadOrders(); loadRows(); }}>
+          <Button variant="outline" size="sm" onClick={() => { loadOrders(); loadRows(); if (supplierKey === 'abc') loadCatalog(undefined, false); }}>
             <RefreshCcw className="h-4 w-4 mr-1" /> Reload
           </Button>
           <Button variant="outline" size="sm" onClick={() => navigate('/supplier-orders')}>
@@ -366,27 +498,33 @@ export default function SupplierVerifyPricingPage() {
         </CardContent>
       </Card>
 
-      {supplierKey === 'abc' && (
-        <AbcCatalogBrowserCard shipToNumber={abcSetup.shipToNumber} branchNumber={abcSetup.branchNumber} />
-      )}
-
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between gap-4">
             <div>
               <CardTitle className="text-base">ABC Catalog Mapping</CardTitle>
               <CardDescription>
-                Each material must be matched to an exact ABC itemNumber (color-specific), verified at branch {abcSetup.branchNumber || '—'}, and assigned a Product API UOM before pricing.
+                Live ABC Product API catalog items for branch {abcSetup.branchNumber || '—'} are listed on the left. Match each catalog item to an internal material on the right.
               </CardDescription>
             </div>
             <div className="flex gap-2">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search materials…" className="pl-9 w-64 h-9" />
+                <Input
+                  value={catalogQuery}
+                  onChange={(e) => setCatalogQuery(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') loadCatalog(); }}
+                  placeholder="Search ABC catalog…"
+                  className="pl-9 w-72 h-9"
+                />
               </div>
-              <Button size="sm" onClick={refreshAll} disabled={bulkBusy || filteredRows.length === 0}>
-                {bulkBusy ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCcw className="h-4 w-4 mr-1" />}
-                Refresh all prices
+              <Button size="sm" variant="outline" onClick={() => loadCatalog()} disabled={catalogLoading || !catalogQuery.trim()}>
+                {catalogLoading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Search className="h-4 w-4 mr-1" />}
+                Search ABC
+              </Button>
+              <Button size="sm" onClick={() => priceCatalogItems(catalogRows)} disabled={catalogPriceBusy || catalogRows.length === 0 || !abcSetup.shipToNumber || !abcSetup.branchNumber}>
+                {catalogPriceBusy ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCcw className="h-4 w-4 mr-1" />}
+                Refresh catalog prices
               </Button>
             </div>
           </div>
@@ -396,7 +534,7 @@ export default function SupplierVerifyPricingPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[140px]">ABC Item</TableHead>
+                  <TableHead className="w-[260px]">ABC Item</TableHead>
                   <TableHead className="w-[120px]">Color</TableHead>
                   <TableHead className="w-[70px]">UOM</TableHead>
                   <TableHead className="w-[140px]">Live Price</TableHead>
@@ -407,48 +545,81 @@ export default function SupplierVerifyPricingPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rowsLoading ? (
-                  <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Loading materials…</TableCell></TableRow>
-                ) : filteredRows.length === 0 ? (
-                  <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No template items in this tenant.</TableCell></TableRow>
-                ) : filteredRows.map((r) => {
-                  const state = computeState(r);
-                  const priced = prices[r.templateItemId];
-                  const busy = !!rowBusy[r.templateItemId];
-                  const canPrice = (priced?.info.canPrice ?? state.canPrice) && !!abcSetup.shipToNumber && !!abcSetup.branchNumber;
-                  const isMapped = !!r.mapping?.supplier_item_number;
+                {catalogLoading || rowsLoading ? (
+                  <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Loading ABC catalog for this branch…</TableCell></TableRow>
+                ) : catalogRows.length === 0 ? (
+                  <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No ABC catalog items returned for branch {abcSetup.branchNumber || '—'}.</TableCell></TableRow>
+                ) : catalogRows.map((catalogItem) => {
+                  const matchedRows = mappedRowsByAbcNumber.get(catalogItem.itemNumber) || [];
+                  const matchedRow = matchedRows[0] || null;
+                  const state = matchedRow ? computeState(matchedRow) : null;
+                  const priced = catalogPrices[catalogItem.itemNumber];
+                  const selectedUom = catalogItem.defaultUom || catalogItem.validUoms[0] || null;
+                  const branchRow = abcSetup.branchNumber
+                    ? catalogItem.branchAvailability.find((b) => b.branchNumber === abcSetup.branchNumber)
+                    : null;
+                  const isBusy = !!mappingBusy[catalogItem.itemNumber];
                   return (
-                    <TableRow key={r.templateItemId}>
+                    <TableRow key={catalogItem.itemNumber}>
                       <TableCell className="font-mono text-xs">
-                        {isMapped ? r.mapping!.supplier_item_number : <span className="text-muted-foreground italic">Not mapped</span>}
+                        <div>{catalogItem.itemNumber}</div>
+                        <div className="mt-1 font-sans text-xs font-medium text-foreground">{catalogItem.description || 'No ABC description returned'}</div>
+                        {catalogItem.familyName && <div className="mt-1 font-sans text-[10px] text-muted-foreground">{catalogItem.familyName}</div>}
                       </TableCell>
-                      <TableCell className="text-xs">{r.mapping?.color_name || <span className="text-muted-foreground">—</span>}</TableCell>
-                      <TableCell className="text-xs">{r.mapping?.default_uom || <span className="text-muted-foreground">—</span>}</TableCell>
+                      <TableCell className="text-xs">{catalogItem.colorName || <span className="text-muted-foreground">—</span>}</TableCell>
+                      <TableCell className="text-xs">{selectedUom || <span className="text-muted-foreground">—</span>}</TableCell>
                       <TableCell>
                         {priced?.info.state === 'priced' && typeof priced.unitPrice === 'number' ? (
                           <div className="flex flex-col">
                             <span className="font-medium text-emerald-700">{formatCurrency(priced.unitPrice)}</span>
-                            <span className="text-[10px] text-muted-foreground">{priced.returnedUom || r.mapping?.default_uom} · {priced.checkedAt ? formatDistanceToNow(new Date(priced.checkedAt), { addSuffix: true }) : ''}</span>
+                            <span className="text-[10px] text-muted-foreground">{priced.returnedUom || selectedUom} · {priced.checkedAt ? formatDistanceToNow(new Date(priced.checkedAt), { addSuffix: true }) : ''}</span>
                           </div>
+                        ) : priced?.info ? (
+                          <span className={priced.info.tone === 'danger' ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'}>{priced.info.label}</span>
                         ) : (
-                          <span className="text-xs text-muted-foreground">
-                            {state.canPrice ? 'Not fetched' : 'Unavailable until mapped'}
-                          </span>
+                          <span className="text-xs text-muted-foreground">Not fetched</span>
                         )}
                       </TableCell>
                       <TableCell className="text-center text-muted-foreground">→</TableCell>
                       <TableCell>
-                        <div className="font-medium">{r.materialName}</div>
-                        <div className="font-mono text-[10px] text-muted-foreground">{r.internalCode}</div>
+                        {matchedRow ? (
+                          <div>
+                            <div className="font-medium">{matchedRow.materialName}</div>
+                            <div className="font-mono text-[10px] text-muted-foreground">{matchedRow.internalCode}{matchedRows.length > 1 ? ` · +${matchedRows.length - 1} more` : ''}</div>
+                          </div>
+                        ) : (
+                          <Select
+                            value={selectedInternalByCatalog[catalogItem.itemNumber]}
+                            onValueChange={(value) => setSelectedInternalByCatalog((prev) => ({ ...prev, [catalogItem.itemNumber]: value }))}
+                          >
+                            <SelectTrigger className="h-9 min-w-[240px]">
+                              <SelectValue placeholder="Choose internal material" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {rows.map((r) => (
+                                <SelectItem key={r.templateItemId} value={r.templateItemId}>{r.materialName}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
                       </TableCell>
-                      <TableCell><StateBadge info={priced?.info || state} /></TableCell>
+                      <TableCell>
+                        {matchedRow && state ? <StateBadge info={priced?.info || state} /> : <Badge variant="outline">Not matched</Badge>}
+                        <div className="mt-1 text-[10px] text-muted-foreground">
+                          {branchRow ? (branchRow.available ? 'Available at branch' : 'Not at branch') : abcSetup.branchNumber ? `Filtered to ${abcSetup.branchNumber}` : 'No branch selected'}
+                        </div>
+                      </TableCell>
                       <TableCell className="text-right space-x-1">
-                        <Button size="sm" variant="outline" onClick={() => setFindFor(r)}>
-                          {isMapped ? 'Change Match' : 'Find ABC Match'}
-                        </Button>
-                        <Button size="sm" onClick={() => priceOne(r)} disabled={busy || !canPrice}>
-                          {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Get Live Price'}
-                        </Button>
+                        {matchedRow ? (
+                          <Button size="sm" variant="outline" onClick={() => setFindFor(matchedRow)}>
+                            Change Match
+                          </Button>
+                        ) : (
+                          <Button size="sm" onClick={() => matchCatalogItem(catalogItem)} disabled={isBusy || !selectedInternalByCatalog[catalogItem.itemNumber] || !selectedUom}>
+                            {isBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3 mr-1" />}
+                            Save Match
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   );
