@@ -341,6 +341,26 @@ async function processBlast(
     return { blast_id: blast.id, dry_run: true, remaining: pendingCount ?? 0 };
   }
 
+  // 1b. Reap any items stuck in `claimed` from a prior processor crash so
+  // this cycle can safely re-claim them. Runs BEFORE the atomic claim, uses
+  // FOR UPDATE SKIP LOCKED internally so it never races with a live sender.
+  // Never touches sent/delivered/failed/opted-out/cancelled rows, and never
+  // requeues anything with a Telnyx message ID. Does NOT bump attempt_count.
+  try {
+    const { data: reaped, error: reapErr } = await supabase.rpc('reap_stale_sms_claims', {
+      max_age_minutes: 5,
+      batch_limit: 500,
+    });
+    if (reapErr) {
+      console.warn('[blast-worker] reap error (non-fatal)', reapErr);
+    } else if (reaped && reaped.length) {
+      const total = reaped.reduce((s: number, r: any) => s + Number(r.reaped_count || 0), 0);
+      if (total > 0) console.log('[blast-worker] reaped stale claims', { total, per_blast: reaped });
+    }
+  } catch (e) {
+    console.warn('[blast-worker] reap exception (non-fatal)', e);
+  }
+
   // 2. Atomic claim
   const { data: claimed, error: claimError } = await supabase.rpc('claim_sms_blast_items', {
     p_blast_id: blast.id,
