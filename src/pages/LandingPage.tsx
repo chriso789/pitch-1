@@ -541,7 +541,7 @@ const LandingPage = () => {
           </div>
           <div className="border-t border-slate-800 pt-8 text-center text-slate-400 text-sm space-y-3">
             <p>&copy; {new Date().getFullYear()} PITCH CRM™. All rights reserved.</p>
-            <p className="text-xs text-slate-500 max-w-2xl mx-auto">
+            <p className="text-xs text-slate-300 max-w-2xl mx-auto">
               PITCH™ and PITCH CRM™ are trademarks of PITCH CRM, Inc. This software is not affiliated with, endorsed by, or connected to any other product or service with a similar name.
             </p>
           </div>
