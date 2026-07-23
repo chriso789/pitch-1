@@ -177,6 +177,41 @@ export default function PropertyInfoPanelMobileBody(props: Props) {
   const [manualLastName, setManualLastName] = useState("");
   const [manualPhone, setManualPhone] = useState("");
   const [manualEmail, setManualEmail] = useState("");
+  const [manualPrefilled, setManualPrefilled] = useState(false);
+
+  // Auto-fill homeowner fields once public data returns (owner name / phone / email).
+  // Only prefills empty inputs so a rep's manual entry is never overwritten.
+  useEffect(() => {
+    if (manualPrefilled) return;
+    const ownerFull: string = primaryOwner?.full_name || primaryOwner?.name || "";
+    const [ownerFirst, ...ownerRest] = ownerFull.trim().split(/\s+/);
+    const ownerLast = ownerRest.join(" ");
+    const firstPhone = phoneNumbers?.[0];
+    const phoneNum =
+      typeof firstPhone === "string" ? firstPhone : firstPhone?.number || "";
+    const firstEmail = emails?.[0];
+    const emailAddr =
+      typeof firstEmail === "string" ? firstEmail : firstEmail?.address || "";
+
+    let didFill = false;
+    if (!manualFirstName && ownerFirst) {
+      setManualFirstName(ownerFirst);
+      didFill = true;
+    }
+    if (!manualLastName && ownerLast) {
+      setManualLastName(ownerLast);
+      didFill = true;
+    }
+    if (!manualPhone && phoneNum) {
+      setManualPhone(phoneNum);
+      didFill = true;
+    }
+    if (!manualEmail && emailAddr) {
+      setManualEmail(emailAddr);
+      didFill = true;
+    }
+    if (didFill) setManualPrefilled(true);
+  }, [primaryOwner, phoneNumbers, emails, manualPrefilled, manualFirstName, manualLastName, manualPhone, manualEmail]);
 
   const hasManualEntry = Boolean(
     manualFirstName.trim() || manualLastName.trim() || manualPhone.trim() || manualEmail.trim(),
