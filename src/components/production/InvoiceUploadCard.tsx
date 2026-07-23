@@ -183,6 +183,13 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
 
       if (error) {
         console.error('AI parse error:', error);
+        toast({
+          title: 'Auto-Scan Unavailable',
+          description:
+            (error as any)?.message ||
+            'Could not read the invoice automatically. Please fill in the fields below manually and submit.',
+          variant: 'destructive',
+        });
         return;
       }
 
@@ -218,9 +225,26 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
           title: 'Invoice Scanned Successfully',
           description: `Extracted ${items.length} line item${items.length !== 1 ? 's' : ''} — total $${amount ? Number(amount).toFixed(2) : '0.00'}. Verify and submit.`,
         });
+      } else {
+        // Function returned 200 but couldn't extract anything — tell the user
+        // instead of leaving them staring at an empty form.
+        toast({
+          title: 'Nothing detected in document',
+          description:
+            data?.message ||
+            'The AI could not read this file. Enter the amount, vendor, and date manually below, then submit.',
+          variant: 'destructive',
+        });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Invoice scan failed:', err);
+      toast({
+        title: 'Auto-Scan Failed',
+        description:
+          err?.message ||
+          'Something went wrong scanning the invoice. You can still fill in the fields and submit.',
+        variant: 'destructive',
+      });
     } finally {
       setScanning(false);
     }
@@ -448,7 +472,9 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
                 <input
                   type="file"
                   className="hidden"
-                  accept=".pdf,.png,.jpg,.jpeg"
+                  // Accept anything a phone camera / photo library produces
+                  // (including iPhone HEIC/HEIF) plus PDFs from email attachments.
+                  accept="image/*,application/pdf,.pdf,.heic,.heif"
                   onChange={handleFileUpload}
                   disabled={uploading || scanning}
                 />
