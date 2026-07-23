@@ -80,7 +80,7 @@ export const ClassicCoverPage: React.FC<CoverPageProps> = ({
       <div className="px-10 pt-6">
         {propertyPhoto ? (
           <div className="w-full h-[300px] overflow-hidden border-2 border-[#1B2A4A]/10">
-            <img src={propertyPhoto} alt="Property" className="w-full h-full object-cover" />
+            <img src={propertyPhoto} alt="Main property photo for estimate" className="w-full h-full object-cover" />
           </div>
         ) : (
           <div className="w-full h-[300px] bg-gradient-to-br from-[#1B2A4A] to-[#2D4A7A]" />

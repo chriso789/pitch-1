@@ -95,7 +95,7 @@ export const PremiumDarkCoverPage: React.FC<CoverPageProps> = ({
         {/* Right — photo with gradient mask */}
         {propertyPhoto && (
           <div className="w-[340px] shrink-0 relative overflow-hidden">
-            <img src={propertyPhoto} alt="Property" className="w-full h-full object-cover" />
+            <img src={propertyPhoto} alt="Main property photo for estimate" className="w-full h-full object-cover" />
             {/* Left fade to blend into dark bg */}
             <div className="absolute inset-0" style={{ background: 'linear-gradient(90deg, #0A0A0A 0%, transparent 30%)' }} />
             {/* Bottom fade */}

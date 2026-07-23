@@ -74,11 +74,11 @@ export const LegalPageLayout: React.FC<LegalPageLayoutProps> = ({
               </span>
             </Link>
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="sm" onClick={handlePrint}>
+              <Button variant="ghost" size="sm" onClick={handlePrint} aria-label="Print this page">
                 <Printer className="w-4 h-4 mr-2" />
                 <span className="hidden sm:inline">Print</span>
               </Button>
-              <Button variant="outline" size="sm" onClick={() => navigate(-1)}>
+              <Button variant="outline" size="sm" onClick={() => navigate(-1)} aria-label="Go back to previous page">
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 <span className="hidden sm:inline">Back</span>
               </Button>
