@@ -180,6 +180,7 @@ const AppContent = () => {
         <Route path="/demo-request" element={<DemoRequest />} />
         <Route path="/book-demo/:token" element={<BookDemo />} />
         <Route path="/request-setup-link" element={<RequestSetupLink />} />
+        <Route path="/blog/pitch-vs-acculynx" element={<Suspense fallback={<PageLoader />}>{React.createElement(React.lazy(() => import("@/pages/blog/PitchVsAcculynx")))}</Suspense>} />
 
         {/* Public routes – directly defined to avoid nested Routes matching issues */}
         <Route path="/legal/privacy" element={<Suspense fallback={<PageLoader />}><Privacy /></Suspense>} />
