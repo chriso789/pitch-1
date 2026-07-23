@@ -11,7 +11,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { Search, Package, Loader2, CheckCircle2, RefreshCw } from 'lucide-react';
+import { Search, Package, Loader2, CheckCircle2, RefreshCw, Download } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
@@ -161,6 +161,9 @@ export const AbcCatalogBrowser: React.FC = () => {
   const [pricesLoading, setPricesLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [priceError, setPriceError] = useState<string | null>(null);
+  const [dumping, setDumping] = useState(false);
+  const [dumpMode, setDumpMode] = useState(false);
+  const [dumpMeta, setDumpMeta] = useState<{ count: number; stoppedReason: string | null } | null>(null);
 
   const allowSandboxFallback = effectiveEnvironment === 'sandbox';
   // Resolve ship-to / branch (connected account → sandbox fallback only in sandbox).
@@ -319,6 +322,53 @@ export const AbcCatalogBrowser: React.FC = () => {
     }
   };
 
+  const dumpEntireCatalog = async () => {
+    if (!tenantId) return;
+    if (!branchNumber) {
+      toast({
+        title: 'Branch required',
+        description: 'Sync a Ship-To + Branch first so the full branch catalog can be pulled.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setDumping(true);
+    setError(null);
+    setPriceError(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
+        body: {
+          action: 'dump_catalog',
+          tenant_id: tenantId,
+          environment: effectiveEnvironment,
+          branchNumber,
+          shipToNumber: shipToNumber || undefined,
+          includePricing: !!shipToNumber,
+          maxItems: 5000,
+        },
+      });
+      if (error) throw new Error(error.message);
+      if (!data?.success) throw new Error(data?.error_code || data?.error || 'dump_catalog failed');
+      const merged: AbcItem[] = Array.isArray(data.items) ? data.items : [];
+      setItems(merged);
+      // Convert priced rows into the same shape normalizePriceRows produces.
+      const priceRows = data.prices && typeof data.prices === 'object' ? Object.values(data.prices) : [];
+      setPrices(normalizePriceRows({ lines: priceRows }));
+      setDumpMode(true);
+      setDumpMeta({ count: merged.length, stoppedReason: data.stoppedReason ?? null });
+      toast({
+        title: 'Full ABC branch catalog loaded',
+        description: `Pulled ${merged.length} unique items from branch ${branchNumber}${
+          data.stoppedReason ? ` (stopped: ${data.stoppedReason})` : ''
+        }.`,
+      });
+    } catch (e: any) {
+      setError(e?.message || 'Could not dump ABC catalog.');
+    } finally {
+      setDumping(false);
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -353,11 +403,28 @@ export const AbcCatalogBrowser: React.FC = () => {
                   Sync my ABC accounts
                 </Button>
               )}
+              {isConnected && branchNumber && (
+                <Button
+                  size="sm"
+                  variant="default"
+                  onClick={dumpEntireCatalog}
+                  disabled={dumping}
+                  title="Pull every item ABC exposes for this branch and price them against the connected ship-to."
+                >
+                  {dumping ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                  ) : (
+                    <Download className="h-3.5 w-3.5 mr-1" />
+                  )}
+                  Dump entire branch catalog
+                </Button>
+              )}
               <Badge variant="secondary">
-                {loading ? '…' : `${items.length} items`}
+                {loading || dumping ? '…' : `${items.length} items${dumpMode ? ' (full dump)' : ''}`}
               </Badge>
             </div>
           </div>
+
 
               {isConnected && usingSandboxFallback && (
             <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
@@ -383,7 +450,7 @@ export const AbcCatalogBrowser: React.FC = () => {
             <Input
               placeholder="Search ABC catalog (e.g. shingle, underlayment, drip edge)..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => { setSearchTerm(e.target.value); if (dumpMode) setDumpMode(false); }}
               className="pl-9"
             />
           </div>
@@ -426,26 +493,33 @@ export const AbcCatalogBrowser: React.FC = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {loading ? (
+                  {loading || dumping ? (
                     <TableRow>
                       <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                         <Loader2 className="h-4 w-4 animate-spin inline mr-2" />
-                        Searching ABC catalog...
+                        {dumping ? `Dumping entire branch ${branchNumber} catalog…` : 'Searching ABC catalog...'}
+                      </TableCell>
+                    </TableRow>
+                  ) : items.length > 0 ? null : dumpMode ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                        No items returned for branch {branchNumber}.
                       </TableCell>
                     </TableRow>
                   ) : debounced.length < 2 ? (
                     <TableRow>
                       <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                        Type at least 2 characters to search the ABC catalog
+                        Type at least 2 characters to search, or click <b>Dump entire branch catalog</b> to load every item for branch {branchNumber || '—'}.
                       </TableCell>
                     </TableRow>
-                  ) : items.length === 0 ? (
+                  ) : (
                     <TableRow>
                       <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                         No items found for "{debounced}"
                       </TableCell>
                     </TableRow>
-                  ) : (
+                  )}
+                  {items.length > 0 && (
                     items.map((item, idx) => {
                       const p = prices[item.itemNumber];
                       return (
