@@ -121,7 +121,7 @@ export function useAbcCatalog(
     return () => {
       cancelled = true;
     };
-  }, [tenantId, environment]);
+  }, [tenantId, environment, nonce]);
 
-  return { branches, shipTos, loading, error };
+  return { branches, shipTos, loading, error, refetch };
 }
