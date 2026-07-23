@@ -87,7 +87,7 @@ export function useMaterialSupplierSkus(materialId: string | undefined | null) {
         .select()
         .single();
       if (error) throw error;
-      return data as MaterialSupplierSku;
+      return (data as unknown) as MaterialSupplierSku;
     },
     onSuccess: invalidate,
   });
