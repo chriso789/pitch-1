@@ -35,8 +35,11 @@ interface AbcItem {
   description?: string;
   brandName?: string;
   brand?: string;
+  manufacturer?: string;
+  manufacturerName?: string;
   uom?: string;
   unitOfMeasure?: string;
+  uoms?: Array<string | { code?: string; uom?: string; uomCode?: string; unitOfMeasure?: string; value?: string; isDefault?: boolean; default?: boolean }>;
   category?: string;
   productCategory?: string;
 }
@@ -55,6 +58,16 @@ const SANDBOX_BRANCH = '1209';
 
 function normalizeItems(body: any): AbcItem[] {
   if (!body) return [];
+  if (Array.isArray(body?.normalized?.items)) {
+    return body.normalized.items.map((item: any) => ({
+      ...item,
+      ...item.raw,
+      itemNumber: item.itemNumber,
+      itemDescription: item.itemDescription ?? item.raw?.itemDescription ?? item.raw?.description,
+      brandName: item.raw?.brandName ?? item.raw?.brand ?? item.raw?.manufacturerName ?? item.raw?.manufacturer,
+      uom: item.uoms?.find((u: any) => u?.isDefault)?.code ?? item.uoms?.[0]?.code ?? item.raw?.uom ?? item.raw?.unitOfMeasure,
+    }));
+  }
   const raw =
     body.items ||
     body.data ||
@@ -64,6 +77,27 @@ function normalizeItems(body: any): AbcItem[] {
     [];
   if (!Array.isArray(raw)) return [];
   return raw as AbcItem[];
+}
+
+function readPriceNumber(...values: any[]): number | null {
+  for (const value of values) {
+    if (value == null) continue;
+    const raw = typeof value === 'object' ? value.value ?? value.amount ?? value.price : value;
+    const n = Number(raw);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+function readItemUom(item: AbcItem): string | null {
+  const scalar = item.uom || item.unitOfMeasure || (item as any).unit_of_measure || (item as any).baseUom || (item as any).stockingUom;
+  if (typeof scalar === 'string' && scalar.trim()) return scalar.trim().toUpperCase();
+  const uoms = item.uoms || (item as any).unitOfMeasures || (item as any).unit_of_measures;
+  if (!Array.isArray(uoms) || !uoms.length) return null;
+  const preferred: any = uoms.find((u: any) => u?.isDefault || u?.default) || uoms[0];
+  if (typeof preferred === 'string') return preferred.trim().toUpperCase() || null;
+  const code = preferred?.code || preferred?.uom || preferred?.uomCode || preferred?.unitOfMeasure || preferred?.value;
+  return typeof code === 'string' && code.trim() ? code.trim().toUpperCase() : null;
 }
 
 function normalizePriceRows(body: any): Record<string, AbcPrice> {
@@ -78,24 +112,28 @@ function normalizePriceRows(body: any): Record<string, AbcPrice> {
   const out: Record<string, AbcPrice> = {};
   if (!Array.isArray(rows)) return out;
   for (const r of rows) {
-    const item = String(r.itemNumber || r.item_number || r.sku || '').trim();
+    const item = String(r.itemNumber || r.item_number || r.returnedItemNumber || r.requestedItemNumber || r.sku || '').trim();
     if (!item) continue;
-    const rawUnit =
-      r.unitPrice ??
-      r.unit_price ??
-      r.price ??
-      r.netPrice ??
-      r.net_price ??
-      null;
-    const rawList =
-      r.listPrice ??
-      r.list_price ??
-      r.suggestedRetailPrice ??
-      r.suggested_retail_price ??
-      r.retailPrice ??
-      r.retail_price ??
-      r.msrp ??
-      null;
+    const rawUnit = readPriceNumber(
+      r.unitPrice,
+      r.unit_price,
+      r.price,
+      r.netPrice,
+      r.net_price,
+      r.customerPrice,
+      r.customer_price,
+      r.contractPrice,
+      r.contract_price,
+    );
+    const rawList = readPriceNumber(
+      r.listPrice,
+      r.list_price,
+      r.suggestedRetailPrice,
+      r.suggested_retail_price,
+      r.retailPrice,
+      r.retail_price,
+      r.msrp,
+    );
     const cur: any = r.currency ?? r.currencyCode ?? r.currency_code;
     const curStr =
       typeof cur === 'string'
@@ -106,18 +144,17 @@ function normalizePriceRows(body: any): Record<string, AbcPrice> {
     // unitPrice: 0 but often still returns a valid listPrice/MSRP — surface
     // that instead of hiding the number.
     const statusCode: string | null =
-      (r.status && typeof r.status === 'object' && r.status.code) || null;
+      (r.status && typeof r.status === 'object' && r.status.code) || r.lineStatusCode || null;
     const statusMessage: string | null =
-      (r.status && typeof r.status === 'object' && r.status.message) || null;
+      (r.status && typeof r.status === 'object' && r.status.message) || r.lineStatusMessage || null;
     const isErrored =
       statusCode && String(statusCode).toLowerCase() !== 'ok';
-    const unit =
-      isErrored || rawUnit == null ? null : Number(rawUnit);
-    const list = rawList == null ? null : Number(rawList);
+    const unit = isErrored || rawUnit == null ? null : rawUnit;
+    const list = rawList;
     out[item] = {
       unitPrice: unit,
       listPrice: Number.isFinite(list as number) ? (list as number) : null,
-      uom: r.uom || r.unitOfMeasure || null,
+      uom: r.uom || r.unitOfMeasure || r.unit_of_measure || r.returnedUom || r.requestedUom || null,
       currency: String(curStr).toUpperCase().slice(0, 3) || 'USD',
       statusCode,
       statusMessage,
@@ -228,7 +265,7 @@ export const AbcCatalogBrowser: React.FC = () => {
               'ABC search failed',
           );
         }
-        setItems(normalizeItems(data.body));
+        setItems(normalizeItems(data));
       } catch (e: any) {
         if (!cancelled) setError(e?.message || 'ABC search failed');
       } finally {
@@ -254,7 +291,7 @@ export const AbcCatalogBrowser: React.FC = () => {
         const lines = items.slice(0, 25).map((it) => ({
           itemNumber: it.itemNumber,
           quantity: 1,
-          unitOfMeasure: it.uom || it.unitOfMeasure || 'EA',
+          unitOfMeasure: readItemUom(it) || undefined,
         }));
         const { data, error: invokeErr } = await supabase.functions.invoke(
           'abc-api-proxy',
@@ -284,7 +321,7 @@ export const AbcCatalogBrowser: React.FC = () => {
               'ABC pricing failed',
           );
         }
-        setPrices(normalizePriceRows(data.body));
+        setPrices(normalizePriceRows(data?.parsed?.lines?.length ? { lines: data.parsed.lines } : data.body));
       } catch (e: any) {
         if (!cancelled) setPriceError(e?.message || 'ABC pricing failed');
       } finally {
@@ -553,9 +590,9 @@ export const AbcCatalogBrowser: React.FC = () => {
                           <TableCell className="font-medium">
                             {item.itemDescription || item.description || '—'}
                           </TableCell>
-                          <TableCell>{item.brandName || item.brand || '—'}</TableCell>
+                          <TableCell>{item.brandName || item.brand || item.manufacturerName || item.manufacturer || '—'}</TableCell>
                           <TableCell className="text-muted-foreground text-sm">
-                            {p?.uom || item.uom || item.unitOfMeasure || '—'}
+                            {p?.uom || readItemUom(item) || '—'}
                           </TableCell>
                           <TableCell className="text-right font-mono">
                             {pricesLoading && !p ? (

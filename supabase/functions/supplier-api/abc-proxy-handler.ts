@@ -37,6 +37,53 @@ import {
   persistAbcProductionOrder,
 } from "../_shared/abc/orderProduction.ts";
 
+function firstTrimmedString(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed) return trimmed;
+    }
+  }
+  return null;
+}
+
+function extractAbcProductUom(item: Record<string, unknown>): string | undefined {
+  const scalar = firstTrimmedString(
+    item.uom,
+    item.unitOfMeasure,
+    item.unit_of_measure,
+    item.baseUom,
+    item.base_uom,
+    item.stockingUom,
+    item.stocking_uom,
+    item.defaultUom,
+    item.default_uom,
+  );
+  if (scalar) return scalar.toUpperCase();
+
+  const candidates = [item.uoms, item.unitOfMeasures, item.unit_of_measures];
+  for (const candidate of candidates) {
+    if (!Array.isArray(candidate)) continue;
+    const entries = candidate as unknown[];
+    const preferred = entries.find((entry) => {
+      if (!entry || typeof entry !== "object") return false;
+      const rec = entry as Record<string, unknown>;
+      return rec.isDefault === true || rec.is_default === true || rec.default === true;
+    }) ?? entries[0];
+    if (typeof preferred === "string") {
+      const trimmed = preferred.trim();
+      if (trimmed) return trimmed.toUpperCase();
+    }
+    if (preferred && typeof preferred === "object") {
+      const rec = preferred as Record<string, unknown>;
+      const code = firstTrimmedString(rec.code, rec.uom, rec.uomCode, rec.unitOfMeasure, rec.unit_of_measure, rec.value);
+      if (code) return code.toUpperCase();
+    }
+  }
+
+  return undefined;
+}
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -954,7 +1001,7 @@ export const handle = async (req) => {
             lines: chunk.map((it) => ({
               itemNumber: String(it.itemNumber),
               quantity: 1,
-              uom: it.uom || it.unitOfMeasure || "EA",
+              uom: extractAbcProductUom(it),
             })),
           };
           const invalid = validatePricingRequest(req);
@@ -969,6 +1016,19 @@ export const handle = async (req) => {
               const num = String((r as any).itemNumber || (r as any).item_number || "").trim();
               if (num) prices[num] = r;
             }
+          }
+          for (const line of p.parsed?.lines ?? []) {
+            const num = String(line.returnedItemNumber || line.requestedItemNumber || "").trim();
+            if (!num || prices[num]) continue;
+            prices[num] = {
+              itemNumber: num,
+              uom: line.returnedUom || line.requestedUom || null,
+              unitPrice: line.unitPrice,
+              status: {
+                code: line.lineStatusCode || line.status,
+                message: line.lineStatusMessage || line.reasonCodes.join(", "),
+              },
+            };
           }
         }
       }
@@ -1007,7 +1067,7 @@ export const handle = async (req) => {
         lines: (body.lines || []).map((l: any) => ({
           itemNumber: l.itemNumber,
           quantity: Number(l.quantity) || 1,
-          uom: l.unitOfMeasure || l.uom || "EA",
+          uom: firstTrimmedString(l.unitOfMeasure, l.uom) || undefined,
         })),
       };
       const invalid = validatePricingRequest(req);
@@ -1095,7 +1155,7 @@ export const handle = async (req) => {
         lines: items.map((l) => ({
           itemNumber: l.itemNumber!,
           quantity: Number(l.quantity) || 1,
-          uom: (l.uom || "EA").toString(),
+          uom: l.uom ? l.uom.toString() : undefined,
           itemDescription: l.itemDescription ?? null,
           templateItemId: l.template_item_id ?? null,
           estimateLineItemId: l.estimate_line_item_id ?? null,

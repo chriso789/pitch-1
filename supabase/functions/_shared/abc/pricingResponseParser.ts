@@ -450,7 +450,7 @@ export function parseAbcPricingLine(
   // ----- UOM check -----
   const requestedUomUpper = trim(requestedLine.uom).toUpperCase();
   const returnedUomUpper = upperKey(fields.uom);
-  if (!status && rawLine != null && requireUom) {
+  if (!status && rawLine != null && requireUom && requestedUomUpper) {
     if (!fields.uom) {
       status = "uom_mismatch";
       pushUnique(reasonCodes, "returned_uom_missing");

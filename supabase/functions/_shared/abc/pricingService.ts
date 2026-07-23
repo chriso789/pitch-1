@@ -21,7 +21,7 @@
  *     `result.parsed.runStatus`, not `result.status`.
  *   • Zero unit price is NEVER `usableForOrder`. Preserved from the parser.
  *   • Canonical validation rejects: missing shipToNumber / branchNumber /
- *     itemNumber / uom, and quantity <= 0.
+ *     itemNumber, and quantity <= 0. UOM is optional per ABC docs for pricing.
  */
 import type { AbcCallAbc, AbcMapError } from "./catalogService.ts";
 import {
@@ -42,7 +42,12 @@ export interface AbcPricingServiceRequestLine {
   id?: string | null;
   itemNumber: string;
   quantity: number;
-  uom: string;
+  /**
+   * Optional per ABC docs. When omitted, ABC prices in the item's stocking UOM
+   * and returns that UOM on the response line. Ordering flows should still pass
+   * an explicit, user-confirmed UOM.
+   */
+  uom?: string | null;
   /** Optional passthrough for history rows (never sent on the wire). */
   itemDescription?: string | null;
   mappingId?: string | null;
@@ -65,7 +70,7 @@ export interface AbcPricingWirePayload {
   shipToNumber: string;
   branchNumber: string;
   purpose: AbcPricePurpose;
-  lines: Array<{ id: string; itemNumber: string; quantity: number; uom: string }>;
+  lines: Array<{ id: string; itemNumber: string; quantity: number; uom?: string }>;
 }
 
 export interface AbcPricingServiceCounts {
@@ -156,7 +161,6 @@ export function validatePricingRequest(
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i] ?? ({} as AbcPricingServiceRequestLine);
     if (!trim(l.itemNumber)) lineMissing.push(`lines[${i}].itemNumber`);
-    if (!trim(l.uom)) lineMissing.push(`lines[${i}].uom`);
     const qty = Number(l.quantity);
     if (!Number.isFinite(qty) || qty <= 0) lineMissing.push(`lines[${i}].quantity`);
   }
@@ -185,12 +189,16 @@ export function buildPriceItemsPayload(
 ): AbcPricingWirePayload {
   const now = opts.now ?? (() => Date.now());
   const purpose = normalizePurpose(req?.purpose);
-  const lines = (Array.isArray(req?.lines) ? req.lines : []).map((l, i) => ({
-    id: trim(l?.id) || String(i + 1),
-    itemNumber: trim(l?.itemNumber),
-    quantity: Number(l?.quantity) || 1,
-    uom: trim(l?.uom).toUpperCase() || "EA",
-  }));
+  const lines = (Array.isArray(req?.lines) ? req.lines : []).map((l, i) => {
+    const uom = trim(l?.uom).toUpperCase();
+    const line: { id: string; itemNumber: string; quantity: number; uom?: string } = {
+      id: trim(l?.id) || String(i + 1),
+      itemNumber: trim(l?.itemNumber),
+      quantity: Number(l?.quantity) || 1,
+    };
+    if (uom) line.uom = uom;
+    return line;
+  });
   return {
     requestId: trim(req?.requestId) || `PITCH-PRICE-${now()}`,
     shipToNumber: trim(req?.shipToNumber),
@@ -213,7 +221,7 @@ export function toParserRequestedLines(
       itemNumber: w.itemNumber,
       itemDescription: orig.itemDescription ?? null,
       quantity: w.quantity,
-      uom: w.uom,
+      uom: w.uom ?? "",
       mappingId: orig.mappingId ?? null,
       templateItemId: orig.templateItemId ?? null,
       estimateLineItemId: orig.estimateLineItemId ?? null,
