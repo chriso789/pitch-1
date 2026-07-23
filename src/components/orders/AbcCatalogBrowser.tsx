@@ -493,26 +493,33 @@ export const AbcCatalogBrowser: React.FC = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {loading ? (
+                  {loading || dumping ? (
                     <TableRow>
                       <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                         <Loader2 className="h-4 w-4 animate-spin inline mr-2" />
-                        Searching ABC catalog...
+                        {dumping ? `Dumping entire branch ${branchNumber} catalog…` : 'Searching ABC catalog...'}
+                      </TableCell>
+                    </TableRow>
+                  ) : items.length > 0 ? null : dumpMode ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                        No items returned for branch {branchNumber}.
                       </TableCell>
                     </TableRow>
                   ) : debounced.length < 2 ? (
                     <TableRow>
                       <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                        Type at least 2 characters to search the ABC catalog
+                        Type at least 2 characters to search, or click <b>Dump entire branch catalog</b> to load every item for branch {branchNumber || '—'}.
                       </TableCell>
                     </TableRow>
-                  ) : items.length === 0 ? (
+                  ) : (
                     <TableRow>
                       <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                         No items found for "{debounced}"
                       </TableCell>
                     </TableRow>
-                  ) : (
+                  )}
+                  {items.length > 0 && (
                     items.map((item, idx) => {
                       const p = prices[item.itemNumber];
                       return (
