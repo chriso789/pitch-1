@@ -1102,6 +1102,27 @@ const ItemsContinuationPage: React.FC<{
   );
 };
 
+// Summary-only page: used when the AI scope narrative renders on its own page.
+// Carries Change Orders, Pricing Summary, and Terms/Signature block on a
+// dedicated page so nothing gets clipped by a tall narrative.
+const SummaryOnlyPage: React.FC<{
+  breakdown: EstimatePDFDocumentProps['breakdown'];
+  config: EstimatePDFDocumentProps['config'];
+  opts: PDFComponentOptions;
+  showTerms: boolean;
+  finePrintContent?: string;
+  changeOrdersBlock?: React.ReactNode;
+}> = ({ breakdown, config, opts, showTerms, finePrintContent, changeOrdersBlock }) => {
+  return (
+    <div className="space-y-3">
+      {changeOrdersBlock}
+      <PricingSummary breakdown={breakdown} config={config} opts={opts} />
+      {showTerms && <TermsSection finePrintContent={finePrintContent} opts={opts} breakdown={breakdown} />}
+    </div>
+  );
+};
+
+
 // Items Table Component - renders pre-built render blocks
 const ItemsTable: React.FC<{ blocks: RenderBlock[]; opts: PDFComponentOptions; continued?: boolean; markupFactor?: number }> = ({ blocks, opts, continued = false, markupFactor = 1 }) => {
   const colCount = 1 + (opts.showLineItemQuantities ? 2 : 0) + (opts.showLineItemPricing ? 2 : 0);
