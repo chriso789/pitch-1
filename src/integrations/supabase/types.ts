@@ -5495,6 +5495,59 @@ export type Database = {
           },
         ]
       }
+      benchmark_update_suggestions: {
+        Row: {
+          created_at: string
+          current_basis_cost: number | null
+          id: string
+          material_id: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          sample_size: number
+          status: string
+          suggested_basis_cost: number
+          tenant_id: string
+          variance_percent: number | null
+          weighted_method: string
+        }
+        Insert: {
+          created_at?: string
+          current_basis_cost?: number | null
+          id?: string
+          material_id: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          sample_size: number
+          status?: string
+          suggested_basis_cost: number
+          tenant_id: string
+          variance_percent?: number | null
+          weighted_method?: string
+        }
+        Update: {
+          created_at?: string
+          current_basis_cost?: number | null
+          id?: string
+          material_id?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          sample_size?: number
+          status?: string
+          suggested_basis_cost?: number
+          tenant_id?: string
+          variance_percent?: number | null
+          weighted_method?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "benchmark_update_suggestions_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materials"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       blocked_email_domains: {
         Row: {
           created_at: string | null
@@ -27482,6 +27535,74 @@ export type Database = {
           },
         ]
       }
+      material_supplier_skus: {
+        Row: {
+          color: string | null
+          created_at: string
+          id: string
+          manufacturer: string | null
+          mapping_confidence: number | null
+          mapping_source: string
+          material_id: string
+          notes: string | null
+          product_family: string | null
+          supplier: string
+          supplier_item_number: string
+          supplier_product_id: string | null
+          tenant_id: string
+          uom: string | null
+          updated_at: string
+          verified_at: string | null
+          verified_by: string | null
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string
+          id?: string
+          manufacturer?: string | null
+          mapping_confidence?: number | null
+          mapping_source?: string
+          material_id: string
+          notes?: string | null
+          product_family?: string | null
+          supplier: string
+          supplier_item_number: string
+          supplier_product_id?: string | null
+          tenant_id: string
+          uom?: string | null
+          updated_at?: string
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Update: {
+          color?: string | null
+          created_at?: string
+          id?: string
+          manufacturer?: string | null
+          mapping_confidence?: number | null
+          mapping_source?: string
+          material_id?: string
+          notes?: string | null
+          product_family?: string | null
+          supplier?: string
+          supplier_item_number?: string
+          supplier_product_id?: string | null
+          tenant_id?: string
+          uom?: string | null
+          updated_at?: string
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "material_supplier_skus_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materials"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       material_suppliers: {
         Row: {
           account_number: string | null
@@ -27532,11 +27653,16 @@ export type Database = {
           created_at: string | null
           default_markup_pct: number | null
           description: string | null
+          historical_average_cost: number | null
+          historical_purchase_count: number
           id: string
           is_taxable: boolean | null
           name: string
           supplier_sku: string | null
           tags: string[] | null
+          template_basis_last_updated: string | null
+          template_basis_source: string | null
+          template_basis_unit_cost: number | null
           tenant_id: string | null
           uom: string
           updated_at: string | null
@@ -27551,11 +27677,16 @@ export type Database = {
           created_at?: string | null
           default_markup_pct?: number | null
           description?: string | null
+          historical_average_cost?: number | null
+          historical_purchase_count?: number
           id?: string
           is_taxable?: boolean | null
           name: string
           supplier_sku?: string | null
           tags?: string[] | null
+          template_basis_last_updated?: string | null
+          template_basis_source?: string | null
+          template_basis_unit_cost?: number | null
           tenant_id?: string | null
           uom?: string
           updated_at?: string | null
@@ -27570,11 +27701,16 @@ export type Database = {
           created_at?: string | null
           default_markup_pct?: number | null
           description?: string | null
+          historical_average_cost?: number | null
+          historical_purchase_count?: number
           id?: string
           is_taxable?: boolean | null
           name?: string
           supplier_sku?: string | null
           tags?: string[] | null
+          template_basis_last_updated?: string | null
+          template_basis_source?: string | null
+          template_basis_unit_cost?: number | null
           tenant_id?: string | null
           uom?: string
           updated_at?: string | null
@@ -37361,6 +37497,74 @@ export type Database = {
         }
         Relationships: []
       }
+      procurement_cost_ledger: {
+        Row: {
+          branch: string | null
+          color: string | null
+          confirmed_quantity: number
+          confirmed_unit_cost: number
+          created_at: string
+          extended_cost: number
+          id: string
+          manufacturer: string | null
+          material_id: string | null
+          product_family: string | null
+          purchase_date: string
+          source_confirmation_id: string | null
+          supplier: string
+          supplier_item_number: string | null
+          supplier_order_id: string | null
+          tenant_id: string
+          uom: string | null
+        }
+        Insert: {
+          branch?: string | null
+          color?: string | null
+          confirmed_quantity: number
+          confirmed_unit_cost: number
+          created_at?: string
+          extended_cost: number
+          id?: string
+          manufacturer?: string | null
+          material_id?: string | null
+          product_family?: string | null
+          purchase_date: string
+          source_confirmation_id?: string | null
+          supplier: string
+          supplier_item_number?: string | null
+          supplier_order_id?: string | null
+          tenant_id: string
+          uom?: string | null
+        }
+        Update: {
+          branch?: string | null
+          color?: string | null
+          confirmed_quantity?: number
+          confirmed_unit_cost?: number
+          created_at?: string
+          extended_cost?: number
+          id?: string
+          manufacturer?: string | null
+          material_id?: string | null
+          product_family?: string | null
+          purchase_date?: string
+          source_confirmation_id?: string | null
+          supplier?: string
+          supplier_item_number?: string | null
+          supplier_order_id?: string | null
+          tenant_id?: string
+          uom?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procurement_cost_ledger_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materials"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       product_approval_documents: {
         Row: {
           approval_kind: string
@@ -40623,6 +40827,11 @@ export type Database = {
       }
       purchase_order_items: {
         Row: {
+          confirmed_order_date: string | null
+          confirmed_order_total: number | null
+          confirmed_order_unit_cost: number | null
+          cost_variance_amount: number | null
+          cost_variance_percent: number | null
           created_at: string | null
           delivered_quantity: number | null
           id: string
@@ -40638,11 +40847,19 @@ export type Database = {
           product_id: string
           quantity: number
           srs_item_code: string | null
+          supplier_pricing_run_id: string | null
+          supplier_quote_checked_at: string | null
+          supplier_quoted_unit_cost: number | null
           tenant_id: string
           unit_price: number
           vendor_product_id: string | null
         }
         Insert: {
+          confirmed_order_date?: string | null
+          confirmed_order_total?: number | null
+          confirmed_order_unit_cost?: number | null
+          cost_variance_amount?: number | null
+          cost_variance_percent?: number | null
           created_at?: string | null
           delivered_quantity?: number | null
           id?: string
@@ -40658,11 +40875,19 @@ export type Database = {
           product_id: string
           quantity: number
           srs_item_code?: string | null
+          supplier_pricing_run_id?: string | null
+          supplier_quote_checked_at?: string | null
+          supplier_quoted_unit_cost?: number | null
           tenant_id: string
           unit_price: number
           vendor_product_id?: string | null
         }
         Update: {
+          confirmed_order_date?: string | null
+          confirmed_order_total?: number | null
+          confirmed_order_unit_cost?: number | null
+          cost_variance_amount?: number | null
+          cost_variance_percent?: number | null
           created_at?: string | null
           delivered_quantity?: number | null
           id?: string
@@ -40678,6 +40903,9 @@ export type Database = {
           product_id?: string
           quantity?: number
           srs_item_code?: string | null
+          supplier_pricing_run_id?: string | null
+          supplier_quote_checked_at?: string | null
+          supplier_quoted_unit_cost?: number | null
           tenant_id?: string
           unit_price?: number
           vendor_product_id?: string | null

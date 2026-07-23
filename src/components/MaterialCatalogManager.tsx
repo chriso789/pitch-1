@@ -16,6 +16,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Papa from "papaparse";
 import { MaterialImportAuditDialog } from "@/components/materials/MaterialImportAuditDialog";
 import { SupplierMappingPanel } from "@/components/materials/SupplierMappingPanel";
+import { SupplierSkuMappings } from "@/components/materials/SupplierSkuMappings";
 
 interface Material {
   id: string;
@@ -676,6 +677,15 @@ function MaterialForm({
           />
         </div>
       </div>
+
+      {material?.id && (
+        <div className="space-y-2">
+          <Label>Supplier item numbers</Label>
+          <SupplierSkuMappings materialId={material.id} />
+        </div>
+      )}
+
+
 
       <DialogFooter>
         <Button type="submit" disabled={saving}>
