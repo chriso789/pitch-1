@@ -507,13 +507,20 @@ export default function PropertyInfoPanelMobileBody(props: Props) {
           </div>
         ) : null}
 
-        {/* Manual homeowner entry — always available so reps can capture at the door */}
-        {!hasContact && !publicLookupLoading && (
-          <div className="mb-4 rounded-lg border bg-card p-3 space-y-2">
-            <div className="flex items-center justify-between">
-              <p className="text-[11px] font-medium text-muted-foreground">
-                Enter homeowner info
-              </p>
+        {/* Homeowner entry — always visible on pin open. Auto-fills from public
+            data when available; reps can edit or complete at the door. */}
+        <div className="mb-4 rounded-lg border bg-card p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-medium text-muted-foreground">
+              {hasContact || manualPrefilled ? "Homeowner info" : "Enter homeowner info"}
+            </p>
+            <div className="flex items-center gap-2">
+              {publicLookupLoading && (
+                <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Looking up public info…
+                </span>
+              )}
               <button
                 type="button"
                 onClick={onSkipTrace}
@@ -528,6 +535,7 @@ export default function PropertyInfoPanelMobileBody(props: Props) {
                 {enriching ? "Looking up…" : "Skip-trace"}
               </button>
             </div>
+          </div>
             <div className="grid grid-cols-2 gap-2">
               <Input
                 value={manualFirstName}
