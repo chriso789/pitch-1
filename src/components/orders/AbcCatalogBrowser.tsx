@@ -11,7 +11,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { Search, Package, Loader2, CheckCircle2, RefreshCw } from 'lucide-react';
+import { Search, Package, Loader2, CheckCircle2, RefreshCw, Download } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
