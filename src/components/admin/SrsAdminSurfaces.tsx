@@ -39,6 +39,9 @@ export function SrsAdminSurfaces() {
         </CardHeader>
       </Card>
 
+      {/* Health dashboard — 15 live tiles for the active tenant. */}
+      <SrsIntegrationHealth />
+
       {/* Connection setup + credentials + environment toggle. This panel
           also embeds its own diagnostics/reconciliation/catalog when a
           connection exists. */}
