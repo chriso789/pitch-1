@@ -1017,6 +1017,19 @@ export const handle = async (req) => {
               if (num) prices[num] = r;
             }
           }
+          for (const line of p.parsed?.lines ?? []) {
+            const num = String(line.returnedItemNumber || line.requestedItemNumber || "").trim();
+            if (!num || prices[num]) continue;
+            prices[num] = {
+              itemNumber: num,
+              uom: line.returnedUom || line.requestedUom || null,
+              unitPrice: line.unitPrice,
+              status: {
+                code: line.lineStatusCode || line.status,
+                message: line.lineStatusMessage || line.reasonCodes.join(", "),
+              },
+            };
+          }
         }
       }
 

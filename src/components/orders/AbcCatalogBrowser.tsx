@@ -112,7 +112,7 @@ function normalizePriceRows(body: any): Record<string, AbcPrice> {
   const out: Record<string, AbcPrice> = {};
   if (!Array.isArray(rows)) return out;
   for (const r of rows) {
-    const item = String(r.itemNumber || r.item_number || r.sku || '').trim();
+    const item = String(r.itemNumber || r.item_number || r.returnedItemNumber || r.requestedItemNumber || r.sku || '').trim();
     if (!item) continue;
     const rawUnit = readPriceNumber(
       r.unitPrice,
@@ -144,9 +144,9 @@ function normalizePriceRows(body: any): Record<string, AbcPrice> {
     // unitPrice: 0 but often still returns a valid listPrice/MSRP — surface
     // that instead of hiding the number.
     const statusCode: string | null =
-      (r.status && typeof r.status === 'object' && r.status.code) || null;
+      (r.status && typeof r.status === 'object' && r.status.code) || r.lineStatusCode || null;
     const statusMessage: string | null =
-      (r.status && typeof r.status === 'object' && r.status.message) || null;
+      (r.status && typeof r.status === 'object' && r.status.message) || r.lineStatusMessage || null;
     const isErrored =
       statusCode && String(statusCode).toLowerCase() !== 'ok';
     const unit = isErrored || rawUnit == null ? null : rawUnit;
@@ -154,7 +154,7 @@ function normalizePriceRows(body: any): Record<string, AbcPrice> {
     out[item] = {
       unitPrice: unit,
       listPrice: Number.isFinite(list as number) ? (list as number) : null,
-      uom: r.uom || r.unitOfMeasure || r.unit_of_measure || null,
+      uom: r.uom || r.unitOfMeasure || r.unit_of_measure || r.returnedUom || r.requestedUom || null,
       currency: String(curStr).toUpperCase().slice(0, 3) || 'USD',
       statusCode,
       statusMessage,
@@ -321,7 +321,7 @@ export const AbcCatalogBrowser: React.FC = () => {
               'ABC pricing failed',
           );
         }
-        setPrices(normalizePriceRows(data.body));
+        setPrices(normalizePriceRows(data?.parsed?.lines?.length ? { lines: data.parsed.lines } : data.body));
       } catch (e: any) {
         if (!cancelled) setPriceError(e?.message || 'ABC pricing failed');
       } finally {
