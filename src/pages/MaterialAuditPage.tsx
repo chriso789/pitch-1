@@ -217,8 +217,70 @@ function SpendChart({ chartData }: { chartData: Array<{ name: string; total: num
 }
 
 // --- Price Lists Tab ---
+type SupplierTab = { id: string; label: string; match: (key: string, display: string) => boolean; removable?: boolean };
+
+const BUILTIN_SUPPLIER_TABS: SupplierTab[] = [
+  { id: "abc-supply", label: "ABC", match: (k, d) => k === "abc-supply" || /abc/i.test(d) },
+  { id: "srs", label: "SRS", match: (k, d) => k === "srs" || /srs|suncoast/i.test(d) },
+  { id: "qxo", label: "QXO", match: (k, d) => k === "qxo" || /qxo|beacon/i.test(d) },
+];
+
+const CUSTOM_TABS_STORAGE_KEY = "material-audit:price-agreement-tabs";
+
 function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists = [], importBatches = [], invoiceSuppliers = [], tenantId, legacySuppliers, queryClient }: any) {
   const [drilldownSupplier, setDrilldownSupplier] = useState<any | null>(null);
+  const [customTabs, setCustomTabs] = useState<{ id: string; label: string }[]>(() => {
+    try {
+      const raw = localStorage.getItem(CUSTOM_TABS_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+  });
+  const [activeSupplierTab, setActiveSupplierTab] = useState<string>("abc-supply");
+
+  React.useEffect(() => {
+    try { localStorage.setItem(CUSTOM_TABS_STORAGE_KEY, JSON.stringify(customTabs)); } catch {}
+  }, [customTabs]);
+
+  const supplierTabs: SupplierTab[] = React.useMemo(() => [
+    ...BUILTIN_SUPPLIER_TABS,
+    ...customTabs.map((t) => ({
+      id: t.id,
+      label: t.label,
+      removable: true,
+      match: (k: string, d: string) => {
+        const needle = t.label.toLowerCase();
+        return k === t.id || d.toLowerCase().includes(needle);
+      },
+    })),
+    { id: "other", label: "Other", match: (k, d) => {
+      const all = [...BUILTIN_SUPPLIER_TABS, ...customTabs.map((t) => ({
+        id: t.id, label: t.label,
+        match: (kk: string, dd: string) => kk === t.id || dd.toLowerCase().includes(t.label.toLowerCase()),
+      }))];
+      return !all.some((tt) => tt.match(k, d));
+    }},
+  ], [customTabs]);
+
+  const activeTabDef = supplierTabs.find((t) => t.id === activeSupplierTab) || supplierTabs[0];
+  const rowMatchesActive = React.useCallback((rawName: string | null | undefined) => {
+    const { key, display } = canonicalizeVendorName(rawName);
+    return activeTabDef ? activeTabDef.match(key, display) : true;
+  }, [activeTabDef]);
+
+  const handleAddTab = () => {
+    const name = window.prompt("New supplier tab name (e.g. Home Depot, Standing Metals):")?.trim();
+    if (!name) return;
+    const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || `custom-${Date.now()}`;
+    if (supplierTabs.some((t) => t.id === id)) { toast.error("Tab already exists"); return; }
+    setCustomTabs((prev) => [...prev, { id, label: name }]);
+    setActiveSupplierTab(id);
+  };
+
+  const handleRemoveTab = (id: string) => {
+    setCustomTabs((prev) => prev.filter((t) => t.id !== id));
+    if (activeSupplierTab === id) setActiveSupplierTab("abc-supply");
+  };
+
 
   // A supplier is considered "standardized" only when its name appears in
   // a CSV/PDF import batch OR in pricebookGroups/legacyPriceLists.
@@ -280,7 +342,40 @@ function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists =
             queryClient.invalidateQueries({ queryKey: ["template-manufacturer-price-lists"] });
           }} />
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2 border-b pb-3">
+            {supplierTabs.map((t) => {
+              const active = t.id === activeSupplierTab;
+              return (
+                <div key={t.id} className="flex items-center">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={active ? "default" : "outline"}
+                    onClick={() => setActiveSupplierTab(t.id)}
+                    className="h-8 rounded-r-none"
+                  >
+                    {t.label}
+                  </Button>
+                  {t.removable && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 rounded-l-none border-l-0 px-2 text-muted-foreground hover:text-destructive"
+                      onClick={() => handleRemoveTab(t.id)}
+                      aria-label={`Remove ${t.label} tab`}
+                    >
+                      ×
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+            <Button type="button" size="sm" variant="ghost" className="h-8" onClick={handleAddTab}>
+              + Add Company
+            </Button>
+          </div>
           <Table>
             <TableHeader>
               <TableRow>
@@ -294,84 +389,94 @@ function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists =
               </TableRow>
             </TableHeader>
             <TableBody>
-              {pricebookGroups.map((g: any, i: number) => (
-                <TableRow key={"pb-" + i}>
-                  <TableCell className="font-medium">{canonicalizeVendorName(g.supplier_name).display}</TableCell>
-                  <TableCell><Badge variant="outline" className="text-xs">Pricebook</Badge></TableCell>
-                  <TableCell>
-                    <Badge variant={g.is_active ? "default" : "outline"} className={g.is_active ? "bg-emerald-600" : ""}>
-                      {g.is_active ? "Active" : "Inactive"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{g.item_count}</TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap gap-1">
-                      {g.categories.slice(0, 3).map((c: string) => (
-                        <Badge key={c} variant="outline" className="text-xs">{c}</Badge>
-                      ))}
-                      {g.categories.length > 3 && <Badge variant="outline" className="text-xs">+{g.categories.length - 3}</Badge>}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {g.imported_at ? new Date(g.imported_at).toLocaleDateString() : "\u2014"}
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {g.imported_at ? new Date(g.imported_at).toLocaleDateString() : "\u2014"}
-                  </TableCell>
-                </TableRow>
-              ))}
-              {/* Material Catalog (CSV) category rows intentionally hidden — only real uploaded price agreements are shown here. */}
-              {legacyPriceLists.map((pl: any) => (
-                <TableRow key={pl.id}>
-                  <TableCell className="font-medium">{canonicalizeVendorName((pl as any).material_suppliers?.supplier_name).display}</TableCell>
-                  <TableCell><Badge variant="outline" className="text-xs">Imported List</Badge></TableCell>
-                  <TableCell>
-                    <Badge variant={pl.status === "active" ? "default" : "outline"} className={pl.status === "active" ? "bg-emerald-600" : ""}>{pl.status}</Badge>
-                  </TableCell>
-                  <TableCell>{pl.items_count || "\u2014"}</TableCell>
-                  <TableCell>{pl.effective_start_date} {"\u2014"} {pl.effective_end_date || "\u221E"}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {new Date(pl.created_at).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {pl.updated_at ? new Date(pl.updated_at).toLocaleDateString() : "\u2014"}
-                  </TableCell>
-                </TableRow>
-              ))}
-              {invoiceOnlyMaterialSuppliers.map((s: any) => {
-                const isPermits = s.supplier_name?.toLowerCase().startsWith("permits");
+              {(() => {
+                const pbRows = pricebookGroups.filter((g: any) => rowMatchesActive(g.supplier_name));
+                const legacyRows = legacyPriceLists.filter((pl: any) => rowMatchesActive(pl?.material_suppliers?.supplier_name));
+                const invRows = invoiceOnlyMaterialSuppliers.filter((s: any) => rowMatchesActive(s.supplier_name));
+                const totalRows = pbRows.length + legacyRows.length + invRows.length;
                 return (
-                  <TableRow
-                    key={"inv-" + s.supplier_name}
-                    className="cursor-pointer hover:bg-muted/40"
-                    onClick={() => setDrilldownSupplier(s)}
-                  >
-                    <TableCell className="font-medium">{s.supplier_name}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className={"text-xs " + (isPermits ? "bg-blue-500/10 text-blue-700 border-blue-500/30" : "bg-amber-500/10 text-amber-700 border-amber-500/30")}>
-                        {isPermits ? "Permit Fees" : "From Invoices"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="text-xs">{s.item_count > 0 ? "Observed only" : "No line items"}</Badge>
-                    </TableCell>
-                    <TableCell>{s.item_count || "\u2014"}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {s.invoice_count} invoice{s.invoice_count === 1 ? "" : "s"}{s.line_count > 0 ? " \u00b7 " + s.line_count + " lines" : ""}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{"\u2014"}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {s.last_invoice_at ? new Date(s.last_invoice_at).toLocaleDateString() : "\u2014"}
-                    </TableCell>
-                  </TableRow>
+                  <>
+                    {pbRows.map((g: any, i: number) => (
+                      <TableRow key={"pb-" + i}>
+                        <TableCell className="font-medium">{canonicalizeVendorName(g.supplier_name).display}</TableCell>
+                        <TableCell><Badge variant="outline" className="text-xs">Pricebook</Badge></TableCell>
+                        <TableCell>
+                          <Badge variant={g.is_active ? "default" : "outline"} className={g.is_active ? "bg-emerald-600" : ""}>
+                            {g.is_active ? "Active" : "Inactive"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{g.item_count}</TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap gap-1">
+                            {g.categories.slice(0, 3).map((c: string) => (
+                              <Badge key={c} variant="outline" className="text-xs">{c}</Badge>
+                            ))}
+                            {g.categories.length > 3 && <Badge variant="outline" className="text-xs">+{g.categories.length - 3}</Badge>}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {g.imported_at ? new Date(g.imported_at).toLocaleDateString() : "\u2014"}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {g.imported_at ? new Date(g.imported_at).toLocaleDateString() : "\u2014"}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {legacyRows.map((pl: any) => (
+                      <TableRow key={pl.id}>
+                        <TableCell className="font-medium">{canonicalizeVendorName((pl as any).material_suppliers?.supplier_name).display}</TableCell>
+                        <TableCell><Badge variant="outline" className="text-xs">Imported List</Badge></TableCell>
+                        <TableCell>
+                          <Badge variant={pl.status === "active" ? "default" : "outline"} className={pl.status === "active" ? "bg-emerald-600" : ""}>{pl.status}</Badge>
+                        </TableCell>
+                        <TableCell>{pl.items_count || "\u2014"}</TableCell>
+                        <TableCell>{pl.effective_start_date} {"\u2014"} {pl.effective_end_date || "\u221E"}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {new Date(pl.created_at).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {pl.updated_at ? new Date(pl.updated_at).toLocaleDateString() : "\u2014"}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {invRows.map((s: any) => {
+                      const isPermits = s.supplier_name?.toLowerCase().startsWith("permits");
+                      return (
+                        <TableRow
+                          key={"inv-" + s.supplier_name}
+                          className="cursor-pointer hover:bg-muted/40"
+                          onClick={() => setDrilldownSupplier(s)}
+                        >
+                          <TableCell className="font-medium">{s.supplier_name}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className={"text-xs " + (isPermits ? "bg-blue-500/10 text-blue-700 border-blue-500/30" : "bg-amber-500/10 text-amber-700 border-amber-500/30")}>
+                              {isPermits ? "Permit Fees" : "From Invoices"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="text-xs">{s.item_count > 0 ? "Observed only" : "No line items"}</Badge>
+                          </TableCell>
+                          <TableCell>{s.item_count || "\u2014"}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {s.invoice_count} invoice{s.invoice_count === 1 ? "" : "s"}{s.line_count > 0 ? " \u00b7 " + s.line_count + " lines" : ""}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{"\u2014"}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {s.last_invoice_at ? new Date(s.last_invoice_at).toLocaleDateString() : "\u2014"}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                    {totalRows === 0 && (
+                      <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">No price agreements for {activeTabDef?.label ?? "this supplier"} yet</TableCell></TableRow>
+                    )}
+                  </>
                 );
-              })}
-              {pricebookGroups.length === 0 && legacyPriceLists.length === 0 && templatePriceLists.length === 0 && invoiceOnlyMaterialSuppliers.length === 0 && (
-                <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">No material price lists imported yet</TableCell></TableRow>
-              )}
+              })()}
             </TableBody>
           </Table>
         </CardContent>
+
       </Card>
 
       {crewSuppliers.length > 0 && (
