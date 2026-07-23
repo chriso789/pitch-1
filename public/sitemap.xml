@@ -6,6 +6,11 @@
   <url><loc>https://pitch-crm.ai/demo-request</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://pitch-crm.ai/login</loc><changefreq>monthly</changefreq><priority>0.4</priority></url>
   <url><loc>https://pitch-crm.ai/signup</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://pitch-crm.ai/reset-password</loc><changefreq>monthly</changefreq><priority>0.3</priority></url>
+  <url><loc>https://pitch-crm.ai/setup-account</loc><changefreq>monthly</changefreq><priority>0.3</priority></url>
+  <url><loc>https://pitch-crm.ai/auth/confirm-email</loc><changefreq>monthly</changefreq><priority>0.3</priority></url>
+  <url><loc>https://pitch-crm.ai/deeplink</loc><changefreq>monthly</changefreq><priority>0.1</priority></url>
+  <url><loc>https://pitch-crm.ai/providers/inventory</loc><changefreq>monthly</changefreq><priority>0.1</priority></url>
   <url><loc>https://pitch-crm.ai/legal/privacy</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
   <url><loc>https://pitch-crm.ai/legal/terms</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
   <url><loc>https://pitch-crm.ai/legal/security</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
