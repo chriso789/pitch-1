@@ -2228,15 +2228,17 @@ export const handle = async (req) => {
       }
 
       const accountsBody: any = accountsResp.json ?? {};
-      const accountRows: any[] = Array.isArray(accountsBody?.accounts)
-        ? accountsBody.accounts
-        : Array.isArray(accountsBody?.data)
-          ? accountsBody.data
-          : Array.isArray(accountsBody?.items)
-            ? accountsBody.items
-            : Array.isArray(accountsBody)
-              ? accountsBody
-              : [];
+      const accountRows: any[] = Array.isArray(accountsBody?.shipTos)
+        ? accountsBody.shipTos
+        : Array.isArray(accountsBody?.accounts)
+          ? accountsBody.accounts
+          : Array.isArray(accountsBody?.data)
+            ? accountsBody.data
+            : Array.isArray(accountsBody?.items)
+              ? accountsBody.items
+              : Array.isArray(accountsBody)
+                ? accountsBody
+                : [];
 
       const shipToNumbers = new Set<string>();
       for (const a of accountRows) {
@@ -2261,11 +2263,22 @@ export const handle = async (req) => {
       const branchRowsByNumber = new Map<string, any>();
       const accountBranchRows: Array<{ ship_to_number: string; branch: any }> = [];
 
+      // Build a lookup from search response so we can fall back if the
+      // per-ship-to GET is not available in the sandbox.
+      const searchByNumber = new Map<string, any>();
+      for (const a of accountRows) {
+        const n = String(a?.number ?? a?.shipToNumber ?? "").trim();
+        if (n) searchByNumber.set(n, a);
+      }
+
       for (const stn of Array.from(shipToNumbers).slice(0, 50)) {
-        const endpoint = `${cfg.apiBase}${shipToPath}/${encodeURIComponent(stn)}`;
-        const r = await callAbc(tok.token, "GET", endpoint);
-        if (!r.ok) continue;
-        const payload = (r.json ?? {}) as any;
+        let payload: any = null;
+        try {
+          const endpoint = `${cfg.apiBase}${shipToPath}/${encodeURIComponent(stn)}`;
+          const r = await callAbc(tok.token, "GET", endpoint);
+          if (r.ok) payload = r.json ?? null;
+        } catch (_) { /* fall through to search payload */ }
+        if (!payload) payload = searchByNumber.get(stn) ?? { number: stn };
         shipToRows.push({ ship_to_number: stn, payload });
         const branches: any[] = Array.isArray(payload?.branches)
           ? payload.branches
@@ -2287,7 +2300,6 @@ export const handle = async (req) => {
         (r) => !shipToNumbersWithBranches.has(r.ship_to_number),
       ).length;
       const shipToUpserts = shipToRows
-        .filter((r) => shipToNumbersWithBranches.has(r.ship_to_number))
         .map(({ ship_to_number, payload }) => {
           const st = payload?.shipTo ?? payload ?? {};
           const addr = st?.address ?? st?.shippingAddress ?? {};
