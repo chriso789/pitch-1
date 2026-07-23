@@ -107,30 +107,45 @@ Deno.serve(async (req: Request) => {
       return errorResponse('NOT_SENT', 'This envelope has not been sent yet', 400);
     }
 
-    // Update recipient status to viewed (if first view)
+    // Track first view for status transition + audit; but notify on EVERY open
     const isFirstView = recipient.status !== 'viewed' && recipient.status !== 'signed';
-    
+    const shouldNotify = recipient.status !== 'signed';
+
     if (isFirstView) {
       await supabase
         .from('signature_recipients')
-        .update({
-          status: 'viewed',
-        })
+        .update({ status: 'viewed' })
         .eq('id', recipient.id);
+    }
+
+    if (shouldNotify) {
+      // Count prior opens (audit rows) to include re-open context
+      const { count: priorOpens } = await supabase
+        .from('audit_events')
+        .select('id', { count: 'exact', head: true })
+        .eq('target_type', 'signature_envelope')
+        .eq('target_id', envelope.id)
+        .in('action', ['envelope.first_viewed', 'envelope.viewed'])
+        .eq('metadata->>recipient_id', recipient.id);
+
+      const openNumber = (priorOpens || 0) + 1;
+      const openSuffix = openNumber > 1 ? ` (open #${openNumber})` : '';
 
       // Notify sender that recipient opened envelope
       await createNotification(supabase, {
         tenant_id: envelope.tenant_id,
         user_id: envelope.created_by,
         type: 'envelope_viewed',
-        title: 'Envelope Opened',
-        message: `${recipient.recipient_name} (${recipient.recipient_email}) opened "${envelope.title}"`,
+        title: isFirstView ? 'Envelope Opened' : 'Envelope Reopened',
+        message: `${recipient.recipient_name} (${recipient.recipient_email}) opened "${envelope.title}"${openSuffix}`,
         action_url: `/signature-envelopes/${envelope.id}`,
         metadata: {
           envelope_id: envelope.id,
           recipient_id: recipient.id,
           recipient_name: recipient.recipient_name,
           recipient_email: recipient.recipient_email,
+          open_number: openNumber,
+          is_first_view: isFirstView,
         },
       });
 
@@ -138,7 +153,6 @@ Deno.serve(async (req: Request) => {
       const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
       const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
       try {
-        // Use Realtime broadcast for instant delivery (bypasses Postgres change polling delay)
         const broadcastClient = createClient(supabaseUrl, supabaseAnonKey);
         await broadcastClient
           .channel(`broadcast:${envelope.tenant_id}:${envelope.created_by}`)
@@ -148,13 +162,14 @@ Deno.serve(async (req: Request) => {
             payload: {
               id: crypto.randomUUID(),
               type: 'envelope_viewed',
-              title: 'Envelope Opened 🔔',
-              message: `${recipient.recipient_name} (${recipient.recipient_email}) opened "${envelope.title}"`,
+              title: isFirstView ? 'Envelope Opened 🔔' : `Envelope Reopened 🔔`,
+              message: `${recipient.recipient_name} (${recipient.recipient_email}) opened "${envelope.title}"${openSuffix}`,
               metadata: {
                 envelope_id: envelope.id,
                 recipient_id: recipient.id,
                 recipient_name: recipient.recipient_name,
                 action_url: `/signature-envelopes/${envelope.id}`,
+                open_number: openNumber,
               },
             },
           });
@@ -162,7 +177,7 @@ Deno.serve(async (req: Request) => {
         console.warn('Broadcast notification failed (non-blocking):', broadcastErr);
       }
 
-      // Send SMS notification to envelope creator
+      // Send SMS notification to envelope creator on every open
       try {
         const { data: creatorProfile } = await supabase
           .from('profiles')
@@ -171,8 +186,10 @@ Deno.serve(async (req: Request) => {
           .single();
 
         if (creatorProfile?.phone) {
-          const smsMessage = `🔔 ${recipient.recipient_name} just opened your signature request for "${envelope.title}"!`;
-          
+          const smsMessage = isFirstView
+            ? `🔔 ${recipient.recipient_name} just opened your signature request for "${envelope.title}"!`
+            : `🔔 ${recipient.recipient_name} reopened "${envelope.title}" (open #${openNumber})`;
+
           await fetch(`${supabaseUrl}/functions/v1/telnyx-send-sms`, {
             method: 'POST',
             headers: {
@@ -186,7 +203,7 @@ Deno.serve(async (req: Request) => {
               sent_by: envelope.created_by,
             }),
           });
-          console.log(`SMS sent to ${creatorProfile.first_name} at ${creatorProfile.phone}`);
+          console.log(`SMS sent to ${creatorProfile.first_name} at ${creatorProfile.phone} (open #${openNumber})`);
         }
       } catch (smsErr) {
         console.warn('SMS notification failed (non-blocking):', smsErr);
