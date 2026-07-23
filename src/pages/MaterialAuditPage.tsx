@@ -217,8 +217,70 @@ function SpendChart({ chartData }: { chartData: Array<{ name: string; total: num
 }
 
 // --- Price Lists Tab ---
+type SupplierTab = { id: string; label: string; match: (key: string, display: string) => boolean; removable?: boolean };
+
+const BUILTIN_SUPPLIER_TABS: SupplierTab[] = [
+  { id: "abc-supply", label: "ABC", match: (k, d) => k === "abc-supply" || /abc/i.test(d) },
+  { id: "srs", label: "SRS", match: (k, d) => k === "srs" || /srs|suncoast/i.test(d) },
+  { id: "qxo", label: "QXO", match: (k, d) => k === "qxo" || /qxo|beacon/i.test(d) },
+];
+
+const CUSTOM_TABS_STORAGE_KEY = "material-audit:price-agreement-tabs";
+
 function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists = [], importBatches = [], invoiceSuppliers = [], tenantId, legacySuppliers, queryClient }: any) {
   const [drilldownSupplier, setDrilldownSupplier] = useState<any | null>(null);
+  const [customTabs, setCustomTabs] = useState<{ id: string; label: string }[]>(() => {
+    try {
+      const raw = localStorage.getItem(CUSTOM_TABS_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+  });
+  const [activeSupplierTab, setActiveSupplierTab] = useState<string>("abc-supply");
+
+  React.useEffect(() => {
+    try { localStorage.setItem(CUSTOM_TABS_STORAGE_KEY, JSON.stringify(customTabs)); } catch {}
+  }, [customTabs]);
+
+  const supplierTabs: SupplierTab[] = React.useMemo(() => [
+    ...BUILTIN_SUPPLIER_TABS,
+    ...customTabs.map((t) => ({
+      id: t.id,
+      label: t.label,
+      removable: true,
+      match: (k: string, d: string) => {
+        const needle = t.label.toLowerCase();
+        return k === t.id || d.toLowerCase().includes(needle);
+      },
+    })),
+    { id: "other", label: "Other", match: (k, d) => {
+      const all = [...BUILTIN_SUPPLIER_TABS, ...customTabs.map((t) => ({
+        id: t.id, label: t.label,
+        match: (kk: string, dd: string) => kk === t.id || dd.toLowerCase().includes(t.label.toLowerCase()),
+      }))];
+      return !all.some((tt) => tt.match(k, d));
+    }},
+  ], [customTabs]);
+
+  const activeTabDef = supplierTabs.find((t) => t.id === activeSupplierTab) || supplierTabs[0];
+  const rowMatchesActive = React.useCallback((rawName: string | null | undefined) => {
+    const { key, display } = canonicalizeVendorName(rawName);
+    return activeTabDef ? activeTabDef.match(key, display) : true;
+  }, [activeTabDef]);
+
+  const handleAddTab = () => {
+    const name = window.prompt("New supplier tab name (e.g. Home Depot, Standing Metals):")?.trim();
+    if (!name) return;
+    const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || `custom-${Date.now()}`;
+    if (supplierTabs.some((t) => t.id === id)) { toast.error("Tab already exists"); return; }
+    setCustomTabs((prev) => [...prev, { id, label: name }]);
+    setActiveSupplierTab(id);
+  };
+
+  const handleRemoveTab = (id: string) => {
+    setCustomTabs((prev) => prev.filter((t) => t.id !== id));
+    if (activeSupplierTab === id) setActiveSupplierTab("abc-supply");
+  };
+
 
   // A supplier is considered "standardized" only when its name appears in
   // a CSV/PDF import batch OR in pricebookGroups/legacyPriceLists.
