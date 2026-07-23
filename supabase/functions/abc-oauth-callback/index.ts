@@ -32,6 +32,55 @@ function htmlRedirect(target: string, _message: string) {
   });
 }
 
+function htmlSuccessPage(environment: string, returnTo: string) {
+  const envLabel = environment === "production" ? "Production" : "Sandbox";
+  const body = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>ABC Supply Connected</title>
+<style>
+  :root { color-scheme: light dark; }
+  html,body { margin:0; height:100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  body { display:flex; align-items:center; justify-content:center; background:linear-gradient(135deg,#1e40af,#2563eb); color:#fff; padding:24px; }
+  .card { background:#fff; color:#0f172a; border-radius:16px; padding:40px 32px; max-width:440px; width:100%; box-shadow:0 20px 60px rgba(0,0,0,.25); text-align:center; }
+  .check { width:64px; height:64px; border-radius:50%; background:#16a34a; color:#fff; display:flex; align-items:center; justify-content:center; margin:0 auto 20px; font-size:34px; font-weight:700; }
+  h1 { margin:0 0 8px; font-size:22px; }
+  p { margin:6px 0; color:#475569; font-size:15px; line-height:1.5; }
+  .env { display:inline-block; margin-top:12px; padding:4px 10px; border-radius:999px; background:#eff6ff; color:#1d4ed8; font-size:12px; font-weight:600; letter-spacing:.03em; text-transform:uppercase; }
+  .row { margin-top:24px; display:flex; gap:10px; justify-content:center; flex-wrap:wrap; }
+  button, a.btn { border:0; border-radius:10px; padding:10px 18px; font-size:14px; font-weight:600; cursor:pointer; text-decoration:none; }
+  .primary { background:#2563eb; color:#fff; }
+  .ghost { background:#f1f5f9; color:#0f172a; }
+  .hint { margin-top:18px; font-size:12px; color:#64748b; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="check">✓</div>
+    <h1>ABC Supply Connected</h1>
+    <p>Your ABC Supply account is now linked to Pitch CRM.</p>
+    <div class="env">${envLabel} environment</div>
+    <p style="margin-top:18px;">You can safely close this tab and return to Pitch to verify pricing and place orders.</p>
+    <div class="row">
+      <button class="primary" onclick="window.close()">Close this tab</button>
+      <a class="ghost btn" href="${returnTo}">Return to Pitch</a>
+    </div>
+    <div class="hint">If the tab doesn't close automatically, close it manually — your connection is saved.</div>
+  </div>
+  <script>
+    try { if (window.opener) { window.opener.postMessage({ type: 'abc-oauth', status: 'connected', environment: ${JSON.stringify(environment)} }, '*'); } } catch (e) {}
+    setTimeout(function(){ try { window.close(); } catch(e){} }, 1200);
+  </script>
+</body>
+</html>`;
+  return new Response(body, {
+    status: 200,
+    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
+  });
+}
+
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -359,7 +408,7 @@ Deno.serve(async (req) => {
       console.error("abc-oauth-callback post-OAuth sync scheduling failed", e);
     }
 
-    return htmlRedirect(returnTo + "connected", "ABC Supply connected. Returning to app…");
+    return htmlSuccessPage(environment, returnTo + "connected");
   } catch (e) {
     console.error("abc-oauth-callback error:", e);
     return htmlRedirect(
