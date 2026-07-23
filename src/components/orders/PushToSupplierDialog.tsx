@@ -37,6 +37,7 @@ interface SupplierOption {
 
 interface MaterialItem extends AbcLineState {
   id?: string;
+  template_item_id?: string | null;
   item_name: string;
   description?: string;
   quantity: number;
@@ -45,6 +46,8 @@ interface MaterialItem extends AbcLineState {
   srs_item_code?: string | null;
   color_specs?: string;
   requires_color?: boolean;
+  abc_branch?: string | null;
+  abc_ship_to?: string | null;
 }
 
 interface Props {
@@ -436,15 +439,36 @@ export function PushToSupplierDialog({
     return autoFillSrsCatalogSkus(base, products).items;
   };
 
-  const persistSku = async (item: MaterialItem, sku: string | null) => {
-    if (item.id) {
-      await supabase
-        .from('estimate_line_items')
-        .update({ srs_item_code: sku })
+  const persistSupplierLine = async (item: MaterialItem, patch: Partial<MaterialItem>) => {
+    const dbPatch: Record<string, any> = {};
+    const jsonPatch: Record<string, any> = {};
+
+    const setPatch = (key: string, value: any, persistToDb = true) => {
+      jsonPatch[key] = value ?? null;
+      if (persistToDb) dbPatch[key] = value ?? null;
+    };
+
+    if ('srs_item_code' in patch) setPatch('srs_item_code', patch.srs_item_code);
+    if ('abc_item_number' in patch) setPatch('abc_item_number', patch.abc_item_number);
+    if ('abc_color' in patch) setPatch('abc_color', patch.abc_color);
+    if ('abc_uom' in patch) setPatch('abc_uom', patch.abc_uom);
+    if ('abc_price' in patch) setPatch('abc_price', patch.abc_price);
+    if ('abc_price_status' in patch) setPatch('abc_price_status', patch.abc_price_status);
+    if ('abc_price_timestamp' in patch) setPatch('abc_price_timestamp', patch.abc_price_timestamp);
+    if ('abc_availability' in patch) setPatch('abc_availability', patch.abc_availability);
+    if ('abc_branch' in patch) setPatch('abc_branch', patch.abc_branch);
+    if ('abc_ship_to' in patch) setPatch('abc_ship_to', patch.abc_ship_to);
+    // color_specs is stored in enhanced_estimates.line_items JSON; the typed
+    // estimate_line_items table stores ABC color separately as abc_color.
+    if ('color_specs' in patch) setPatch('color_specs', patch.color_specs, false);
+
+    if (item.id && Object.keys(dbPatch).length > 0) {
+      await (supabase.from('estimate_line_items') as any)
+        .update(dbPatch)
         .eq('id', item.id);
     }
 
-    if (estimateId) {
+    if (estimateId && Object.keys(jsonPatch).length > 0) {
       const { data: enhanced } = await (supabase.from('enhanced_estimates') as any)
         .select('id, line_items')
         .eq('id', estimateId)
@@ -456,12 +480,85 @@ export function PushToSupplierDialog({
         const nextMaterials = materials.map((li: any) => {
           const sameId = item.id && li.id === item.id;
           const sameName = li.item_name === item.item_name || li.name === item.item_name;
-          return sameId || sameName ? { ...li, srs_item_code: sku, product_code: sku || li.product_code } : li;
+          if (!sameId && !sameName) return li;
+          const next = {
+            ...li,
+            ...jsonPatch,
+            product_code: jsonPatch.srs_item_code || li.product_code,
+            metadata: {
+              ...(li.metadata || {}),
+              ...(jsonPatch.abc_item_number !== undefined ? { abc_item_number: jsonPatch.abc_item_number } : {}),
+              ...(jsonPatch.abc_uom !== undefined ? { abc_uom: jsonPatch.abc_uom } : {}),
+              ...(jsonPatch.abc_color !== undefined ? { abc_color: jsonPatch.abc_color } : {}),
+              ...(jsonPatch.color_specs !== undefined ? { color_specs: jsonPatch.color_specs } : {}),
+              ...(jsonPatch.srs_item_code !== undefined ? { srs_item_code: jsonPatch.srs_item_code } : {}),
+            },
+          };
+          return next;
         });
         await (supabase.from('enhanced_estimates') as any)
           .update({ line_items: { ...lineItems, materials: nextMaterials } })
           .eq('id', estimateId);
       }
+    }
+  };
+
+  const persistSku = async (item: MaterialItem, sku: string | null) => {
+    await persistSupplierLine(item, { srs_item_code: sku });
+  };
+
+  const persistAbcTemplateMapping = async (
+    item: MaterialItem,
+    patch: Partial<MaterialItem>,
+    rawCatalogPayload?: unknown,
+  ) => {
+    if (!item.template_item_id || !patch.abc_item_number) return;
+    const uom = String(patch.abc_uom || item.abc_uom || item.unit || '').trim().toUpperCase();
+    if (!uom) return;
+    try {
+      await edgeApi('supplier-api', '/abc/mapping/approve', {
+        template_item_id: item.template_item_id,
+        item_number: patch.abc_item_number,
+        item_description: item.description || item.item_name,
+        valid_uoms: [uom],
+        default_uom: uom,
+        branch_scope: branchCode.trim() ? [branchCode.trim()] : [],
+        raw_catalog_payload: rawCatalogPayload ?? null,
+        match_reason: 'line_item_manual_pick',
+      });
+    } catch (e) {
+      console.warn('[PushToSupplier] ABC template mapping approve failed', e);
+    }
+  };
+
+  const upsertAbcPriceCache = async (item: MaterialItem, next: AbcLineState) => {
+    const itemNumber = next.abc_item_number || item.abc_item_number;
+    const uom = String(next.abc_uom || item.abc_uom || item.unit || '').trim().toUpperCase();
+    const unitPrice = Number(next.abc_price);
+    if (!tenantId || !itemNumber || !uom || !branchCode.trim() || !abcShipToNumber.trim() || !Number.isFinite(unitPrice)) return;
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const userId = authData?.user?.id;
+      if (!userId) return;
+      const fetchedAt = next.abc_price_timestamp || new Date().toISOString();
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+      await (supabase.from('abc_price_cache') as any).upsert({
+        tenant_id: tenantId,
+        user_id: userId,
+        ship_to_number: abcShipToNumber.trim(),
+        branch_number: branchCode.trim(),
+        item_number: itemNumber,
+        uom,
+        purpose: 'estimating',
+        unit_price: unitPrice,
+        currency: 'USD',
+        price_pending: false,
+        raw: { source: 'push_to_supplier_dialog', estimate_id: estimateId ?? null, line_item_id: item.id ?? null },
+        fetched_at: fetchedAt,
+        expires_at: expiresAt,
+      }, { onConflict: 'tenant_id,user_id,ship_to_number,branch_number,item_number,uom,purpose' });
+    } catch (e) {
+      console.warn('[PushToSupplier] ABC price cache upsert failed', e);
     }
   };
 
@@ -764,10 +861,16 @@ export function PushToSupplierDialog({
             : `PO ${result.po_number} submitted.`,
         });
       } else if (selected === 'abc') {
+        const unmappedAbcItems = editableItems.filter(i => Number(i.quantity) > 0 && !i.abc_item_number);
+        if (unmappedAbcItems.length) {
+          throw new Error(
+            `ABC requires a catalog item number on every line. Add ABC item numbers for: ${unmappedAbcItems.map(i => i.item_name).join(', ')}.`
+          );
+        }
         // UOM gate — ABC branches reject orders with an invalid UOM. Block
         // submit if any line is missing a UOM so the user can pull a valid
         // one from the catalog before we contact the API.
-        const missingUomLine = editableItems.find(i => !String(i.unit || '').trim());
+        const missingUomLine = editableItems.find(i => !String(i.abc_uom || i.unit || '').trim());
         if (missingUomLine) {
           toast({
             title: 'Missing UOM',
@@ -799,12 +902,18 @@ export function PushToSupplierDialog({
               email: jobsiteContactEmail.trim(),
             },
             items: editableItems.map(i => ({
+              template_item_id: i.template_item_id || i.id,
               item_name: i.item_name,
               description: i.description,
               quantity: Number(i.quantity),
-              unit: i.unit,
+              unit: i.abc_uom || i.unit,
               unit_cost: Number(i.unit_cost || 0),
-              srs_item_code: i.srs_item_code || null,
+              abc_item_number: i.abc_item_number || null,
+              abc_uom: i.abc_uom || i.unit || null,
+              abc_price: i.abc_price ?? null,
+              abc_color: i.abc_color || null,
+              abc_branch: branchCode.trim() || null,
+              abc_ship_to: abcShipToNumber.trim() || null,
               color_specs: i.color_specs || null,
             })),
           },
@@ -1097,7 +1206,22 @@ export function PushToSupplierDialog({
                                       else updateItem(i, { srs_item_code: v });
                                     }}
                                     onBlur={async e => {
-                                      if (selected !== 'abc') persistSku(it, e.target.value.trim() || null);
+                                      const value = e.target.value.trim() || null;
+                                      if (selected === 'abc') {
+                                        const patch = {
+                                          abc_item_number: value,
+                                          abc_branch: branchCode.trim() || null,
+                                          abc_ship_to: abcShipToNumber.trim() || null,
+                                          abc_price: null,
+                                          abc_price_status: null,
+                                          abc_price_timestamp: null,
+                                          abc_availability: null,
+                                        };
+                                        await persistSupplierLine(it, patch);
+                                        await persistAbcTemplateMapping(it, patch);
+                                      } else {
+                                        persistSku(it, value);
+                                      }
                                     }}
                                     placeholder={selected === 'srs' ? 'productId (e.g. 3473)' : selected === 'abc' ? 'ABC item #' : 'SKU'}
                                     className={`h-7 w-36 font-mono text-xs ${(selected === 'abc' ? !it.abc_item_number : !it.srs_item_code) ? 'border-amber-400' : ''}`}
@@ -1122,17 +1246,22 @@ export function PushToSupplierDialog({
                                       branchNumber={branchCode}
                                       initialQuery={it.item_name}
                                       onPick={(picked) => {
-                                        updateItem(i, {
+                                        const patch = {
                                           abc_item_number: picked.itemNumber,
                                           abc_color: picked.color || it.abc_color || null,
                                           abc_uom: picked.uom || it.abc_uom || it.unit || null,
                                           color_specs: picked.color || it.color_specs,
+                                          abc_branch: branchCode.trim() || null,
+                                          abc_ship_to: abcShipToNumber.trim() || null,
                                           // Reset stale price when item changes
                                           abc_price: null,
                                           abc_price_status: null,
                                           abc_availability: null,
                                           abc_price_timestamp: null,
-                                        });
+                                        };
+                                        updateItem(i, patch);
+                                        persistSupplierLine(it, patch);
+                                        persistAbcTemplateMapping(it, patch, picked.raw);
                                       }}
                                     />
                                   )}
@@ -1146,7 +1275,20 @@ export function PushToSupplierDialog({
                                   className="h-7 w-20 text-right"
                                 />
                               </td>
-                              <td className="p-2">{safeText(it.unit)}</td>
+                              <td className="p-2">
+                                {selected === 'abc' ? (
+                                  <Input
+                                    value={it.abc_uom || it.unit || ''}
+                                    onChange={e => updateItem(i, { abc_uom: e.target.value })}
+                                    onBlur={e => persistSupplierLine(it, {
+                                      abc_uom: e.target.value.trim().toUpperCase() || null,
+                                      abc_branch: branchCode.trim() || null,
+                                      abc_ship_to: abcShipToNumber.trim() || null,
+                                    })}
+                                    className={`h-7 w-20 font-mono text-xs ${!(it.abc_uom || it.unit) ? 'border-amber-400' : ''}`}
+                                  />
+                                ) : safeText(it.unit)}
+                              </td>
                               <td className="p-2">
                                 {(() => {
                                   const { brand, colors } = colorsForItem(it.item_name);
@@ -1190,6 +1332,32 @@ export function PushToSupplierDialog({
                                   );
                                 })()}
                               </td>
+                              {selected === 'abc' && tenantId && (
+                                <td className="p-2">
+                                  <div className="flex items-center gap-1">
+                                    <AbcPriceCell state={it} />
+                                    <AbcPriceButton
+                                      tenantId={tenantId}
+                                      environment={(suppliers.find(s => s.key === 'abc')?.environment === 'production' ? 'production' : 'sandbox')}
+                                      branchNumber={branchCode}
+                                      shipToNumber={abcShipToNumber}
+                                      itemNumber={it.abc_item_number}
+                                      uom={it.abc_uom || it.unit}
+                                      quantity={Number(it.quantity) || 1}
+                                      state={it}
+                                      onPriced={(next) => {
+                                        updateItem(i, next);
+                                        persistSupplierLine(it, {
+                                          ...next,
+                                          abc_branch: branchCode.trim() || null,
+                                          abc_ship_to: abcShipToNumber.trim() || null,
+                                        });
+                                        upsertAbcPriceCache(it, next);
+                                      }}
+                                    />
+                                  </div>
+                                </td>
+                              )}
                             </tr>
                           );
                         })}
@@ -1210,7 +1378,7 @@ export function PushToSupplierDialog({
                       A color is required on every highlighted line before this order can be pushed to the supplier.
                     </p>
                   )}
-                  {selected && editableItems.some(i => !i.srs_item_code) && (
+                  {selected && editableItems.some(i => selected === 'abc' ? !i.abc_item_number : !i.srs_item_code) && (
                     <p className="mt-2 text-xs text-amber-600">
                       Items without a {selected.toUpperCase()} SKU cannot be placed automatically. Add a valid supplier SKU/productId to every line before pushing.
                     </p>
