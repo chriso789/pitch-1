@@ -2092,7 +2092,12 @@ export const MaterialAuditContent = () => {
   };
 
   const totalInvoiceAmount = materialInvoices.reduce((sum: number, inv: any) => sum + Number(inv.invoice_amount || 0), 0);
-  const totalPricebookItems = pricebookGroups.reduce((sum: number, g: any) => sum + g.item_count, 0);
+  // Price Lists card should reflect every source of agreed pricing, not just supplier_pricebooks.
+  const pricebookItemsCount = pricebookGroups.reduce((sum: number, g: any) => sum + (g.item_count || 0), 0);
+  const legacyItemsCount = legacyPriceLists.reduce((sum: number, pl: any) => sum + (pl.items_count || 0), 0);
+  const templateItemsCount = templatePriceLists.reduce((sum: number, g: any) => sum + (g.item_count || 0), 0);
+  const totalPricebookItems = pricebookItemsCount + legacyItemsCount + templateItemsCount;
+  const totalPriceLists = pricebookGroups.length + legacyPriceLists.length + templatePriceLists.length;
 
   const chartData = React.useMemo(() => {
     const byVendor: Record<string, { display: string; total: number }> = {};
