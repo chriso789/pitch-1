@@ -19,6 +19,8 @@ import { SRSPricelistBackfill } from "@/components/pricing/SRSPricelistBackfill"
 import { SRSCatalogBrowser } from "@/components/orders/SRSCatalogBrowser";
 import { SrsDiagnosticsPanel } from "@/components/orders/SrsDiagnosticsPanel";
 import { SRSReconciliationPanel } from "@/components/orders/SRSReconciliationPanel";
+import { SrsIntegrationHealth } from "@/components/admin/SrsIntegrationHealth";
+import { SrsProductionReadinessReport } from "@/components/admin/SrsProductionReadinessReport";
 
 export function SrsAdminSurfaces() {
   return (
@@ -36,6 +38,9 @@ export function SrsAdminSurfaces() {
           </CardDescription>
         </CardHeader>
       </Card>
+
+      {/* Health dashboard — 15 live tiles for the active tenant. */}
+      <SrsIntegrationHealth />
 
       {/* Connection setup + credentials + environment toggle. This panel
           also embeds its own diagnostics/reconciliation/catalog when a
@@ -116,6 +121,9 @@ export function SrsAdminSurfaces() {
           <SRSReconciliationPanel />
         </CardContent>
       </Card>
+
+      {/* Production readiness report — verified capabilities + open SRS questions. */}
+      <SrsProductionReadinessReport />
     </div>
   );
 }

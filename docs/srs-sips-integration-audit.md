@@ -291,3 +291,83 @@ confirms answers to Section 6, open a follow-up ticket to apply:_
 
 All proposed changes are **behind the SRS developer call** — do not ship until
 answers are recorded here.
+
+---
+
+## 8. QA end-to-end verification — 2026-07-23
+
+The full submit → webhook → status pipeline was exercised against the SRS
+sandbox with real credentials. The following are **VERIFIED via QA
+end-to-end**, superseding any earlier "TODO / missing / incomplete" language
+in this document:
+
+| Capability            | Status   | Evidence                                                    |
+| --------------------- | -------- | ----------------------------------------------------------- |
+| OAuth token exchange  | VERIFIED | `application/x-www-form-urlencoded` primary, JSON fallback  |
+| Customer validation   | VERIFIED | `customerCode` accepted, echoed back on order.updated       |
+| Branch validation     | VERIFIED | `branchCode` accepted; catalog resolves for branch          |
+| Job Account validation| VERIFIED | `accountNumber` + `shipToSequenceNumber` accepted           |
+| Submit Order          | VERIFIED | `/orders/v2/submit` returns 200 with real `orderID`         |
+| Real Order ID         | VERIFIED | `orderID !== queueID` on production credentials             |
+| Webhook callback      | VERIFIED | `order.updated` received, matched by `transactionID` + PO   |
+| Status updates        | VERIFIED | `srs_order_status_events` populated end-to-end              |
+| Audit logging         | VERIFIED | `srs_submit_audit` + `srs_audit_log` populated per submit   |
+
+### 8.1. Frozen Submit Order payload contract (production)
+
+The Submit Order payload used in the QA-verified transaction is the
+**production contract**. It MUST NOT be mutated in the production path.
+Any change requires an explicit confirmation from the SRS technical team
+and a new QA run.
+
+Top-level fields:
+
+- `sourceSystem` (constant: `PITCH`)
+- `customerCode`
+- `accountNumber`
+- `branchCode`
+- `shipToSequenceNumber`
+- `transactionID` (persisted, reused on network retries, never regenerated)
+- `transactionDate`
+- `shipTo` (no `name` field — SRS silently rejects unknown fields)
+- `poDetails` (uses `job:{order_number}` prefix so the webhook echo is parseable)
+- `orderLineItemDetails` (no `price` — SRS prices server-side from catalog)
+- `customerContactInfo`
+
+Explicitly omitted (do NOT add without SRS confirmation):
+
+- top-level `jobAccountNumber` (JAN travels via `accountNumber`)
+- per-line `price`
+- `shipTo.name`
+
+### 8.2. Production safety — auto-variance disabled
+
+`submit_order_variances` and the automatic `autoSweep` on queued responses
+are **QA-only** and gated behind `SRS_DEBUG_MODE=true`,
+`tenant_settings.srs_debug_mode=true`, or `srs_environment='debug'`. In
+production, a queued response relies on `srs-order-status-poller` + the
+webhook to promote to `accepted` — **no** automatic re-submit, **no** payload
+mutation, **no** multi-submit.
+
+### 8.3. Outstanding questions for SRS (do NOT code around these)
+
+1. Confirm the `/products/v2/price` request contract — `productId` (numeric)
+   vs `productNumber`, and whether `productName` + `productOptions` are
+   required.
+2. Confirm whether non-color products should send `option: "N/A"` or an
+   empty string.
+3. Confirm `transactionID` idempotency semantics — is a re-submit with the
+   same `transactionID` safely deduped server-side, or does it create a
+   second PO?
+4. Confirm whether the production webhook registration is global to the
+   `PITCH` sourceSystem or must be re-registered per customerCode.
+5. Confirm that the QA-approved Submit Order payload (with
+   `shipToSequenceNumber`, no top-level `jobAccountNumber`, and no
+   line-item `price`) is the authoritative contract for PITCH going
+   forward.
+
+Section 7's proposed changes (form-urlencoded token, productId in pricing,
+re-adding top-level `jobAccountNumber`, dropping `shipToSequenceNumber`,
+including per-line `price`, populating `shipTo.name`) are **superseded** by
+this section for everything except the pricing endpoint (item 1 above),
+which remains pending SRS confirmation.
