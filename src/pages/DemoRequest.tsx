@@ -311,6 +311,11 @@ const DemoRequest: React.FC = () => {
   // ============== FORM STEP ==============
   return (
     <div className="min-h-screen min-h-[100dvh] gradient-hero overflow-auto">
+      <SEO
+        title="Request a Demo — Pitch CRM"
+        description="Book a personalized walkthrough of Pitch CRM: power dialer, AI roof measurements, estimates, and pipeline in one platform."
+        path="/demo-request"
+      />
       <div className="pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] px-4">
         <div className="w-full max-w-2xl mx-auto py-4">
           <div className="text-center mb-6">
