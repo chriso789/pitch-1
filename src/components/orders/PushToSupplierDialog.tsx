@@ -440,27 +440,35 @@ export function PushToSupplierDialog({
   };
 
   const persistSupplierLine = async (item: MaterialItem, patch: Partial<MaterialItem>) => {
-    const estimatePatch: Record<string, any> = {};
+    const dbPatch: Record<string, any> = {};
+    const jsonPatch: Record<string, any> = {};
 
-    if ('srs_item_code' in patch) estimatePatch.srs_item_code = patch.srs_item_code ?? null;
-    if ('abc_item_number' in patch) estimatePatch.abc_item_number = patch.abc_item_number ?? null;
-    if ('abc_color' in patch) estimatePatch.abc_color = patch.abc_color ?? null;
-    if ('abc_uom' in patch) estimatePatch.abc_uom = patch.abc_uom ?? null;
-    if ('abc_price' in patch) estimatePatch.abc_price = patch.abc_price ?? null;
-    if ('abc_price_status' in patch) estimatePatch.abc_price_status = patch.abc_price_status ?? null;
-    if ('abc_price_timestamp' in patch) estimatePatch.abc_price_timestamp = patch.abc_price_timestamp ?? null;
-    if ('abc_availability' in patch) estimatePatch.abc_availability = patch.abc_availability ?? null;
-    if ('abc_branch' in patch) estimatePatch.abc_branch = patch.abc_branch ?? null;
-    if ('abc_ship_to' in patch) estimatePatch.abc_ship_to = patch.abc_ship_to ?? null;
-    if ('color_specs' in patch) estimatePatch.color_specs = patch.color_specs ?? null;
+    const setPatch = (key: string, value: any, persistToDb = true) => {
+      jsonPatch[key] = value ?? null;
+      if (persistToDb) dbPatch[key] = value ?? null;
+    };
 
-    if (item.id) {
+    if ('srs_item_code' in patch) setPatch('srs_item_code', patch.srs_item_code);
+    if ('abc_item_number' in patch) setPatch('abc_item_number', patch.abc_item_number);
+    if ('abc_color' in patch) setPatch('abc_color', patch.abc_color);
+    if ('abc_uom' in patch) setPatch('abc_uom', patch.abc_uom);
+    if ('abc_price' in patch) setPatch('abc_price', patch.abc_price);
+    if ('abc_price_status' in patch) setPatch('abc_price_status', patch.abc_price_status);
+    if ('abc_price_timestamp' in patch) setPatch('abc_price_timestamp', patch.abc_price_timestamp);
+    if ('abc_availability' in patch) setPatch('abc_availability', patch.abc_availability);
+    if ('abc_branch' in patch) setPatch('abc_branch', patch.abc_branch);
+    if ('abc_ship_to' in patch) setPatch('abc_ship_to', patch.abc_ship_to);
+    // color_specs is stored in enhanced_estimates.line_items JSON; the typed
+    // estimate_line_items table stores ABC color separately as abc_color.
+    if ('color_specs' in patch) setPatch('color_specs', patch.color_specs, false);
+
+    if (item.id && Object.keys(dbPatch).length > 0) {
       await (supabase.from('estimate_line_items') as any)
-        .update(estimatePatch)
+        .update(dbPatch)
         .eq('id', item.id);
     }
 
-    if (estimateId) {
+    if (estimateId && Object.keys(jsonPatch).length > 0) {
       const { data: enhanced } = await (supabase.from('enhanced_estimates') as any)
         .select('id, line_items')
         .eq('id', estimateId)
@@ -475,14 +483,15 @@ export function PushToSupplierDialog({
           if (!sameId && !sameName) return li;
           const next = {
             ...li,
-            ...estimatePatch,
-            product_code: estimatePatch.srs_item_code || li.product_code,
+            ...jsonPatch,
+            product_code: jsonPatch.srs_item_code || li.product_code,
             metadata: {
               ...(li.metadata || {}),
-              ...(estimatePatch.abc_item_number !== undefined ? { abc_item_number: estimatePatch.abc_item_number } : {}),
-              ...(estimatePatch.abc_uom !== undefined ? { abc_uom: estimatePatch.abc_uom } : {}),
-              ...(estimatePatch.abc_color !== undefined ? { abc_color: estimatePatch.abc_color } : {}),
-              ...(estimatePatch.srs_item_code !== undefined ? { srs_item_code: estimatePatch.srs_item_code } : {}),
+              ...(jsonPatch.abc_item_number !== undefined ? { abc_item_number: jsonPatch.abc_item_number } : {}),
+              ...(jsonPatch.abc_uom !== undefined ? { abc_uom: jsonPatch.abc_uom } : {}),
+              ...(jsonPatch.abc_color !== undefined ? { abc_color: jsonPatch.abc_color } : {}),
+              ...(jsonPatch.color_specs !== undefined ? { color_specs: jsonPatch.color_specs } : {}),
+              ...(jsonPatch.srs_item_code !== undefined ? { srs_item_code: jsonPatch.srs_item_code } : {}),
             },
           };
           return next;
