@@ -34,6 +34,8 @@ export function useAbcCatalog(
   const [shipTos, setShipTos] = useState<AbcShipTo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [nonce, setNonce] = useState(0);
+  const refetch = useCallback(() => setNonce((n) => n + 1), []);
 
   useEffect(() => {
     if (!tenantId) {
