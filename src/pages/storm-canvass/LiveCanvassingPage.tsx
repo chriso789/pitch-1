@@ -536,12 +536,19 @@ export default function LiveCanvassingPage() {
   // Handle address selection from search
   const handleAddressSelect = async (place: any) => {
     const panAndRefresh = (lat: number, lng: number, address: string) => {
-      // Pan map to the searched location
+      // Clear any existing route/destination so the map just pans to the
+      // searched address — never auto-route. Prevents stale "Route Error"
+      // toasts from a prior navigation attempt.
+      setDestination(null);
+      setRouteData(null);
+      setIsCalculatingRoute(false);
+      // Pause auto-follow so the map stays centered on the searched address
+      // instead of snapping back to the user's GPS position.
+      setUserInteractionPaused(true);
+      setCurrentAddress(address);
       setUserLocation({ lat, lng });
       // Force marker refresh so pins load for the new viewport
       setMarkersRefreshKey(prev => prev + 1);
-      // Note: intentionally do NOT auto-calculate a route on address select —
-      // just pan to the house. Routing happens via explicit "Navigate" actions.
     };
 
     if (!place.geometry?.location) {
