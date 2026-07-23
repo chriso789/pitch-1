@@ -2300,7 +2300,6 @@ export const handle = async (req) => {
         (r) => !shipToNumbersWithBranches.has(r.ship_to_number),
       ).length;
       const shipToUpserts = shipToRows
-        .filter((r) => shipToNumbersWithBranches.has(r.ship_to_number))
         .map(({ ship_to_number, payload }) => {
           const st = payload?.shipTo ?? payload ?? {};
           const addr = st?.address ?? st?.shippingAddress ?? {};
