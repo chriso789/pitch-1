@@ -1002,6 +1002,34 @@ const ChangeOrdersBlock: React.FC<{ items: LineItem[] }> = ({ items }) => {
   );
 };
 
+// Split a long AI narrative into safely-sized chunks so it never pushes the
+// totals or signature block off the page. Prefers paragraph, then sentence,
+// then word boundaries; falls back to a hard slice for pathological input.
+function chunkNarrative(text: string, firstMax: number, contMax: number): string[] {
+  const clean = (text || '').trim();
+  if (!clean) return [];
+  if (clean.length <= firstMax) return [clean];
+
+  const chunks: string[] = [];
+  let remaining = clean;
+  let limit = firstMax;
+  while (remaining.length > limit) {
+    const window = remaining.slice(0, limit);
+    let cut = window.lastIndexOf('\n\n');
+    if (cut < limit * 0.5) {
+      const sentenceMatch = window.match(/[.!?]\s(?=[^.!?]*$)/);
+      cut = sentenceMatch ? (sentenceMatch.index ?? -1) + 2 : -1;
+    }
+    if (cut < limit * 0.5) cut = window.lastIndexOf(' ');
+    if (cut < limit * 0.5) cut = limit;
+    chunks.push(remaining.slice(0, cut).trim());
+    remaining = remaining.slice(cut).trim();
+    limit = contMax;
+  }
+  if (remaining) chunks.push(remaining);
+  return chunks;
+}
+
 const FirstPage: React.FC<{
   customerName: string;
   customerAddress: string;
@@ -1017,6 +1045,8 @@ const FirstPage: React.FC<{
   finePrintContent?: string;
   estimateName?: string;
   changeOrdersBlock?: React.ReactNode;
+  narrativeOverride?: string;
+  narrativeContinues?: boolean;
 }> = ({
   customerName,
   customerAddress,
@@ -1032,7 +1062,10 @@ const FirstPage: React.FC<{
   finePrintContent,
   estimateName,
   changeOrdersBlock,
+  narrativeOverride,
+  narrativeContinues,
 }) => {
+  const narrativeText = narrativeOverride ?? opts.scopeNarrative;
   return (
     <div className="space-y-2">
       {/* Estimate Name Banner */}
