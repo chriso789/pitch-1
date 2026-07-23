@@ -227,7 +227,7 @@ const Features = () => {
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
       <SEO
-        title="Features — Power Dialer, AI Measurements & Pipeline | Pitch CRM"
+        title="Pitch CRM Features — Dialer, AI Measurements, Pipeline"
         description="Explore Pitch CRM features: power dialer, AI roof measurements, estimates, proposals, territory canvassing, automation, and analytics."
         path="/features"
       />
