@@ -1,3 +1,12 @@
+// TODO(srs-meeting): Confirm the /products/v2/price request contract with
+// the SRS technical team before changing this endpoint. Open questions:
+//   1. productId (numeric) vs productNumber (string) as the primary key.
+//   2. Whether productName + productOptions are required for color/variant
+//      products, and whether non-color products should send option: "N/A"
+//      or an empty string.
+// Do NOT modify the Submit Order payload as a side effect of any pricing
+// change — the Submit Order contract is frozen (see
+// docs/srs-sips-integration-audit.md §8.1).
 import { createClient } from "npm:@supabase/supabase-js@2.49.1"
 
 const corsHeaders = {
