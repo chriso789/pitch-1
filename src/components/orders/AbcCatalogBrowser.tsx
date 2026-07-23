@@ -450,7 +450,7 @@ export const AbcCatalogBrowser: React.FC = () => {
             <Input
               placeholder="Search ABC catalog (e.g. shingle, underlayment, drip edge)..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => { setSearchTerm(e.target.value); if (dumpMode) setDumpMode(false); }}
               className="pl-9"
             />
           </div>
