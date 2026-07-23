@@ -121,6 +121,9 @@ export function SrsAdminSurfaces() {
           <SRSReconciliationPanel />
         </CardContent>
       </Card>
+
+      {/* Production readiness report — verified capabilities + open SRS questions. */}
+      <SrsProductionReadinessReport />
     </div>
   );
 }
