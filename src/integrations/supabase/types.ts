@@ -27029,17 +27029,24 @@ export type Database = {
           charged_extended_price: number | null
           charged_unit_price: number | null
           company_id: string
+          contract_uom: string | null
           created_at: string | null
           discrepancy_status: string | null
           discrepancy_type: string
+          expected_extended_cost: number | null
           expected_extended_price: number | null
+          expected_unit_cost: number | null
           id: string
           invoice_description: string
           invoice_document_id: string
           invoice_line_item_id: string | null
           invoice_uom: string | null
+          invoiced_extended_cost: number | null
+          invoiced_unit_cost: number | null
           match_confidence: number | null
           match_type: string
+          price_book_item_id: string | null
+          price_book_version_id: string | null
           price_difference_per_unit: number | null
           price_list_id: string | null
           price_list_item_id: string | null
@@ -27048,6 +27055,10 @@ export type Database = {
           supplier_id: string
           supplier_sku: string | null
           total_difference: number | null
+          uom_conversion_factor: number | null
+          uom_review_required: boolean
+          variance_amount: number | null
+          variance_percent: number | null
         }
         Insert: {
           agreed_description?: string | null
@@ -27058,17 +27069,24 @@ export type Database = {
           charged_extended_price?: number | null
           charged_unit_price?: number | null
           company_id: string
+          contract_uom?: string | null
           created_at?: string | null
           discrepancy_status?: string | null
           discrepancy_type: string
+          expected_extended_cost?: number | null
           expected_extended_price?: number | null
+          expected_unit_cost?: number | null
           id?: string
           invoice_description: string
           invoice_document_id: string
           invoice_line_item_id?: string | null
           invoice_uom?: string | null
+          invoiced_extended_cost?: number | null
+          invoiced_unit_cost?: number | null
           match_confidence?: number | null
           match_type: string
+          price_book_item_id?: string | null
+          price_book_version_id?: string | null
           price_difference_per_unit?: number | null
           price_list_id?: string | null
           price_list_item_id?: string | null
@@ -27077,6 +27095,10 @@ export type Database = {
           supplier_id: string
           supplier_sku?: string | null
           total_difference?: number | null
+          uom_conversion_factor?: number | null
+          uom_review_required?: boolean
+          variance_amount?: number | null
+          variance_percent?: number | null
         }
         Update: {
           agreed_description?: string | null
@@ -27087,17 +27109,24 @@ export type Database = {
           charged_extended_price?: number | null
           charged_unit_price?: number | null
           company_id?: string
+          contract_uom?: string | null
           created_at?: string | null
           discrepancy_status?: string | null
           discrepancy_type?: string
+          expected_extended_cost?: number | null
           expected_extended_price?: number | null
+          expected_unit_cost?: number | null
           id?: string
           invoice_description?: string
           invoice_document_id?: string
           invoice_line_item_id?: string | null
           invoice_uom?: string | null
+          invoiced_extended_cost?: number | null
+          invoiced_unit_cost?: number | null
           match_confidence?: number | null
           match_type?: string
+          price_book_item_id?: string | null
+          price_book_version_id?: string | null
           price_difference_per_unit?: number | null
           price_list_id?: string | null
           price_list_item_id?: string | null
@@ -27106,6 +27135,10 @@ export type Database = {
           supplier_id?: string
           supplier_sku?: string | null
           total_difference?: number | null
+          uom_conversion_factor?: number | null
+          uom_review_required?: boolean
+          variance_amount?: number | null
+          variance_percent?: number | null
         }
         Relationships: [
           {
@@ -27113,6 +27146,20 @@ export type Database = {
             columns: ["audit_id"]
             isOneToOne: false
             referencedRelation: "material_invoice_audits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_invoice_audit_lines_audit_id_fkey"
+            columns: ["audit_id"]
+            isOneToOne: false
+            referencedRelation: "material_invoice_audits_all"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_invoice_audit_lines_price_book_item_id_fkey"
+            columns: ["price_book_item_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_price_book_items"
             referencedColumns: ["id"]
           },
         ]
@@ -27124,14 +27171,20 @@ export type Database = {
           company_id: string
           created_at: string | null
           csv_file_url: string | null
+          effective_date_used: string | null
           id: string
+          idempotency_key: string | null
           invoice_date: string | null
           invoice_document_id: string
+          invoice_snapshot_hash: string | null
+          is_canonical: boolean
           matched_lines: number | null
           notes: string | null
           overcharged_lines: number | null
+          price_book_version_id: string | null
           price_list_id: string | null
           report_file_url: string | null
+          supersedes_audit_id: string | null
           supplier_id: string
           total_actual_amount: number | null
           total_expected_amount: number | null
@@ -27147,14 +27200,20 @@ export type Database = {
           company_id: string
           created_at?: string | null
           csv_file_url?: string | null
+          effective_date_used?: string | null
           id?: string
+          idempotency_key?: string | null
           invoice_date?: string | null
           invoice_document_id: string
+          invoice_snapshot_hash?: string | null
+          is_canonical?: boolean
           matched_lines?: number | null
           notes?: string | null
           overcharged_lines?: number | null
+          price_book_version_id?: string | null
           price_list_id?: string | null
           report_file_url?: string | null
+          supersedes_audit_id?: string | null
           supplier_id: string
           total_actual_amount?: number | null
           total_expected_amount?: number | null
@@ -27170,14 +27229,20 @@ export type Database = {
           company_id?: string
           created_at?: string | null
           csv_file_url?: string | null
+          effective_date_used?: string | null
           id?: string
+          idempotency_key?: string | null
           invoice_date?: string | null
           invoice_document_id?: string
+          invoice_snapshot_hash?: string | null
+          is_canonical?: boolean
           matched_lines?: number | null
           notes?: string | null
           overcharged_lines?: number | null
+          price_book_version_id?: string | null
           price_list_id?: string | null
           report_file_url?: string | null
+          supersedes_audit_id?: string | null
           supplier_id?: string
           total_actual_amount?: number | null
           total_expected_amount?: number | null
@@ -27189,10 +27254,31 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "material_invoice_audits_price_book_version_id_fkey"
+            columns: ["price_book_version_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_price_book_versions"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "material_invoice_audits_price_list_id_fkey"
             columns: ["price_list_id"]
             isOneToOne: false
             referencedRelation: "supplier_price_lists"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_invoice_audits_supersedes_audit_id_fkey"
+            columns: ["supersedes_audit_id"]
+            isOneToOne: false
+            referencedRelation: "material_invoice_audits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_invoice_audits_supersedes_audit_id_fkey"
+            columns: ["supersedes_audit_id"]
+            isOneToOne: false
+            referencedRelation: "material_invoice_audits_all"
             referencedColumns: ["id"]
           },
         ]
@@ -27531,6 +27617,13 @@ export type Database = {
             columns: ["audit_id"]
             isOneToOne: false
             referencedRelation: "material_invoice_audits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_supplier_credit_claims_audit_id_fkey"
+            columns: ["audit_id"]
+            isOneToOne: false
+            referencedRelation: "material_invoice_audits_all"
             referencedColumns: ["id"]
           },
         ]
@@ -54573,6 +54666,130 @@ export type Database = {
         }
         Relationships: []
       }
+      supplier_price_book_items: {
+        Row: {
+          color: string | null
+          company_id: string
+          created_at: string
+          description: string | null
+          id: string
+          manufacturer: string | null
+          price_book_version_id: string
+          product_family: string | null
+          raw_import: Json | null
+          supplier_id: string
+          supplier_item_number: string
+          unit_cost: number
+          uom: string
+        }
+        Insert: {
+          color?: string | null
+          company_id: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          manufacturer?: string | null
+          price_book_version_id: string
+          product_family?: string | null
+          raw_import?: Json | null
+          supplier_id: string
+          supplier_item_number: string
+          unit_cost: number
+          uom: string
+        }
+        Update: {
+          color?: string | null
+          company_id?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          manufacturer?: string | null
+          price_book_version_id?: string
+          product_family?: string | null
+          raw_import?: Json | null
+          supplier_id?: string
+          supplier_item_number?: string
+          unit_cost?: number
+          uom?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "spbi_parent_fk"
+            columns: ["price_book_version_id", "company_id", "supplier_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_price_book_versions"
+            referencedColumns: ["id", "company_id", "supplier_id"]
+          },
+        ]
+      }
+      supplier_price_book_versions: {
+        Row: {
+          company_id: string
+          content_hash: string
+          created_at: string
+          description: string | null
+          effective_date: string
+          id: string
+          is_legacy_fallback: boolean
+          item_count: number
+          legacy_price_list_id: string | null
+          revision: number
+          source_file_name: string | null
+          source_file_sha256: string | null
+          source_file_url: string | null
+          status: string
+          supplier_id: string
+          uploaded_at: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          company_id: string
+          content_hash: string
+          created_at?: string
+          description?: string | null
+          effective_date: string
+          id?: string
+          is_legacy_fallback?: boolean
+          item_count?: number
+          legacy_price_list_id?: string | null
+          revision: number
+          source_file_name?: string | null
+          source_file_sha256?: string | null
+          source_file_url?: string | null
+          status?: string
+          supplier_id: string
+          uploaded_at?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          company_id?: string
+          content_hash?: string
+          created_at?: string
+          description?: string | null
+          effective_date?: string
+          id?: string
+          is_legacy_fallback?: boolean
+          item_count?: number
+          legacy_price_list_id?: string | null
+          revision?: number
+          source_file_name?: string | null
+          source_file_sha256?: string | null
+          source_file_url?: string | null
+          status?: string
+          supplier_id?: string
+          uploaded_at?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_price_book_versions_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "material_suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       supplier_price_history: {
         Row: {
           account_number: string | null
@@ -60919,6 +61136,128 @@ export type Database = {
         }
         Relationships: []
       }
+      material_invoice_audits_all: {
+        Row: {
+          audit_run_by: string | null
+          audit_status: string | null
+          company_id: string | null
+          created_at: string | null
+          csv_file_url: string | null
+          effective_date_used: string | null
+          id: string | null
+          idempotency_key: string | null
+          invoice_date: string | null
+          invoice_document_id: string | null
+          invoice_snapshot_hash: string | null
+          is_canonical: boolean | null
+          is_legacy: boolean | null
+          matched_lines: number | null
+          notes: string | null
+          overcharged_lines: number | null
+          price_book_version_id: string | null
+          price_list_id: string | null
+          report_file_url: string | null
+          supersedes_audit_id: string | null
+          supplier_id: string | null
+          total_actual_amount: number | null
+          total_expected_amount: number | null
+          total_invoice_lines: number | null
+          total_overcharge_amount: number | null
+          total_undercharge_amount: number | null
+          undercharged_lines: number | null
+          unmatched_lines: number | null
+        }
+        Insert: {
+          audit_run_by?: string | null
+          audit_status?: string | null
+          company_id?: string | null
+          created_at?: string | null
+          csv_file_url?: string | null
+          effective_date_used?: string | null
+          id?: string | null
+          idempotency_key?: string | null
+          invoice_date?: string | null
+          invoice_document_id?: string | null
+          invoice_snapshot_hash?: string | null
+          is_canonical?: boolean | null
+          is_legacy?: never
+          matched_lines?: number | null
+          notes?: string | null
+          overcharged_lines?: number | null
+          price_book_version_id?: string | null
+          price_list_id?: string | null
+          report_file_url?: string | null
+          supersedes_audit_id?: string | null
+          supplier_id?: string | null
+          total_actual_amount?: number | null
+          total_expected_amount?: number | null
+          total_invoice_lines?: number | null
+          total_overcharge_amount?: number | null
+          total_undercharge_amount?: number | null
+          undercharged_lines?: number | null
+          unmatched_lines?: number | null
+        }
+        Update: {
+          audit_run_by?: string | null
+          audit_status?: string | null
+          company_id?: string | null
+          created_at?: string | null
+          csv_file_url?: string | null
+          effective_date_used?: string | null
+          id?: string | null
+          idempotency_key?: string | null
+          invoice_date?: string | null
+          invoice_document_id?: string | null
+          invoice_snapshot_hash?: string | null
+          is_canonical?: boolean | null
+          is_legacy?: never
+          matched_lines?: number | null
+          notes?: string | null
+          overcharged_lines?: number | null
+          price_book_version_id?: string | null
+          price_list_id?: string | null
+          report_file_url?: string | null
+          supersedes_audit_id?: string | null
+          supplier_id?: string | null
+          total_actual_amount?: number | null
+          total_expected_amount?: number | null
+          total_invoice_lines?: number | null
+          total_overcharge_amount?: number | null
+          total_undercharge_amount?: number | null
+          undercharged_lines?: number | null
+          unmatched_lines?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "material_invoice_audits_price_book_version_id_fkey"
+            columns: ["price_book_version_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_price_book_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_invoice_audits_price_list_id_fkey"
+            columns: ["price_list_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_price_lists"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_invoice_audits_supersedes_audit_id_fkey"
+            columns: ["supersedes_audit_id"]
+            isOneToOne: false
+            referencedRelation: "material_invoice_audits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_invoice_audits_supersedes_audit_id_fkey"
+            columns: ["supersedes_audit_id"]
+            isOneToOne: false
+            referencedRelation: "material_invoice_audits_all"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       roof_daily_performance_metrics: {
         Row: {
           avg_accuracy: number | null
@@ -62570,6 +62909,19 @@ export type Database = {
         }
         Returns: boolean
       }
+      import_supplier_price_book: {
+        Args: {
+          _company_id: string
+          _description: string
+          _effective_date: string
+          _items: Json
+          _source_file_name: string
+          _source_file_sha256: string
+          _source_file_url: string
+          _supplier_id: string
+        }
+        Returns: string
+      }
       increment_campaign_answered: {
         Args: { p_campaign_id: string }
         Returns: undefined
@@ -62851,6 +63203,14 @@ export type Database = {
           _user_agent_summary?: string
         }
         Returns: Json
+      }
+      resolve_price_book_version: {
+        Args: {
+          _company_id: string
+          _invoice_date: string
+          _supplier_id: string
+        }
+        Returns: string
       }
       rollback_estimate_to_version: {
         Args: { estimate_id_param: string; version_id_param: string }
