@@ -831,7 +831,7 @@ export const handle = async (req) => {
       // bag (bill-to, ship-to, etc.) and we cannot guarantee branches[] hydration.
       // Always constrain to ship-to so /accounts only ever sees the right shape.
       const accountsPayload = {
-        filters: [{ field: "accountType", op: "eq", value: "ship-to" }],
+        filters: [{ key: "accountType", condition: "eq", values: ["ship-to"] }],
         pagination: { itemsPerPage: 100, pageNumber: 1 },
       };
       const accountsEndpoint = `${cfg.apiBase}${accountSearchPath}`;
