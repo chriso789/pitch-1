@@ -77,28 +77,49 @@ export function useAbcCatalog(
         const s1 = await shipToQuery;
         if (cancelled) return;
 
-        const shipToRows = (s1?.data || []) as AbcShipTo[];
-        const shipToIds = shipToRows.map((row) => row.id).filter(Boolean) as string[];
+        const shipToRowsRaw = (s1?.data || []) as AbcShipTo[];
+        const shipToIds = shipToRowsRaw.map((row) => row.id).filter(Boolean) as string[];
 
-        let accountRows: AbcBranch[] = [];
+        // Pull ALL branches for these ship-tos so we can (a) pick the ship-to
+        // that actually has branches attached and (b) scope branches to that
+        // ship-to. Mixing branches across ship-tos triggers ABC 401
+        // ("branch X not present in given shipTo").
+        let allAccountBranches: Array<any> = [];
         if (shipToIds.length > 0) {
-          const preferredShipToId = shipToIds[0];
           const b1 = await (supabase as any)
             .from('abc_account_branches')
             .select('branch_number, name, city, state, is_default, is_home_branch, ship_to_id')
             .eq('tenant_id', tenantId)
-            .eq('ship_to_id', preferredShipToId)
-            .order('is_home_branch', { ascending: false })
-            .order('is_default', { ascending: false })
-            .order('branch_number');
-          accountRows = ((b1?.data || []) as any[]).map((r) => ({
+            .in('ship_to_id', shipToIds);
+          allAccountBranches = (b1?.data || []) as any[];
+        }
+        const shipToIdsWithBranches = new Set(
+          allAccountBranches.map((r) => r.ship_to_id).filter(Boolean),
+        );
+
+        // Prefer a ship-to that has branches; otherwise keep original order.
+        const shipToRows = [...shipToRowsRaw].sort((a, b) => {
+          const aHas = a.id && shipToIdsWithBranches.has(a.id) ? 1 : 0;
+          const bHas = b.id && shipToIdsWithBranches.has(b.id) ? 1 : 0;
+          return bHas - aHas;
+        });
+
+        const preferredShipToId = shipToRows[0]?.id || null;
+        const accountRows: AbcBranch[] = allAccountBranches
+          .filter((r) => r.ship_to_id === preferredShipToId)
+          .sort((a, b) => {
+            const ah = (a.is_home_branch || a.is_default) ? 1 : 0;
+            const bh = (b.is_home_branch || b.is_default) ? 1 : 0;
+            if (ah !== bh) return bh - ah;
+            return String(a.branch_number).localeCompare(String(b.branch_number));
+          })
+          .map((r) => ({
             branch_number: r.branch_number,
             name: r.name,
             city: r.city,
             state: r.state,
             is_default: !!(r.is_default ?? r.is_home_branch),
-          })) as AbcBranch[];
-        }
+          }));
 
         let wideRows: AbcBranch[] = [];
         if (!environment && accountRows.length === 0) {
@@ -111,9 +132,6 @@ export function useAbcCatalog(
         }
         if (cancelled) return;
 
-        // Only branches attached to the selected ship-to are valid for
-        // pricing — mixing branches across ship-tos triggers ABC 401
-        // ("branch X not present in given shipTo").
         const dedup = new Map<string, AbcBranch>();
         for (const row of [...accountRows, ...wideRows]) {
           if (!row.branch_number) continue;
