@@ -1176,6 +1176,27 @@ const SummaryOnlyPage: React.FC<{
   );
 };
 
+// Narrative continuation page: renders extra narrative chunks when the AI
+// explanation is too long to fit alongside the totals/signature.
+const NarrativeContinuationPage: React.FC<{ text: string; continues?: boolean }> = ({ text, continues }) => {
+  return (
+    <div className="space-y-2">
+      <h3 className="text-sm font-semibold text-gray-900 mb-1.5 flex items-center gap-1.5">
+        <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
+        Project Scope (continued)
+      </h3>
+      <div className="text-xs text-gray-800 leading-relaxed whitespace-pre-wrap scope-narrative">
+        {text}
+      </div>
+      {continues && (
+        <p className="text-xs text-gray-400 italic text-right mt-2">Continues on next page…</p>
+      )}
+    </div>
+  );
+};
+
+
+
 
 // Items Table Component - renders pre-built render blocks
 const ItemsTable: React.FC<{ blocks: RenderBlock[]; opts: PDFComponentOptions; continued?: boolean; markupFactor?: number }> = ({ blocks, opts, continued = false, markupFactor = 1 }) => {
