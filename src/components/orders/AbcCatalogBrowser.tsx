@@ -152,7 +152,7 @@ export const AbcCatalogBrowser: React.FC = () => {
   const { toast } = useToast();
   const [syncing, setSyncing] = useState(false);
   const effectiveEnvironment = environment || 'production';
-  const { branches, shipTos } = useAbcCatalog(tenantId, effectiveEnvironment);
+  const { branches, shipTos, refetch: refetchCatalog } = useAbcCatalog(tenantId, effectiveEnvironment);
   const [searchTerm, setSearchTerm] = useState('shingle');
   const [debounced, setDebounced] = useState('shingle');
   const [items, setItems] = useState<AbcItem[]>([]);
@@ -308,9 +308,10 @@ export const AbcCatalogBrowser: React.FC = () => {
         title: 'ABC accounts synced',
         description: `Loaded ${data?.ship_tos_upserted ?? 0} ship-to(s) and ${data?.branches_upserted ?? 0} branch(es). Refreshing pricing…`,
       });
-      // Nudge downstream data — the useAbcCatalog hook re-subscribes on tenant change,
-      // but a full reload guarantees fresh ship-to/branch rows.
-      window.location.reload();
+      // Soft-refresh the catalog hook so ship-to/branch rows re-hydrate
+      // without a full page reload (which was bouncing users out of the
+      // Company Admin tab / modal context).
+      refetchCatalog();
     } catch (e: any) {
       toast({
         title: 'ABC account sync failed',

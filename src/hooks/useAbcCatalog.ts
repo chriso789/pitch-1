@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
 export interface AbcBranch {
@@ -34,6 +34,8 @@ export function useAbcCatalog(
   const [shipTos, setShipTos] = useState<AbcShipTo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [nonce, setNonce] = useState(0);
+  const refetch = useCallback(() => setNonce((n) => n + 1), []);
 
   useEffect(() => {
     if (!tenantId) {
@@ -119,7 +121,7 @@ export function useAbcCatalog(
     return () => {
       cancelled = true;
     };
-  }, [tenantId, environment]);
+  }, [tenantId, environment, nonce]);
 
-  return { branches, shipTos, loading, error };
+  return { branches, shipTos, loading, error, refetch };
 }
