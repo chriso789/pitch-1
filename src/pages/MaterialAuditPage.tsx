@@ -324,9 +324,12 @@ function PriceListsTab({ pricebookGroups, legacyPriceLists, templatePriceLists =
     () => invoiceOnlySuppliers.filter((s: any) => !isCrewVendor(s)),
     [invoiceOnlySuppliers]
   );
+  // Labor / subcontractor vendors are shown regardless of whether their name
+  // overlaps a standardized material supplier bucket (e.g. an "ABC Supply #500"
+  // invoice mis-typed as labor, or a crew whose name happens to contain "Roofing").
   const crewSuppliers = React.useMemo(
-    () => invoiceOnlySuppliers.filter((s: any) => isCrewVendor(s)),
-    [invoiceOnlySuppliers]
+    () => invoiceSuppliers.filter((s: any) => isCrewVendor(s)),
+    [invoiceSuppliers]
   );
   return (
     <TabsContent value="price-lists">
