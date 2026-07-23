@@ -207,6 +207,12 @@ const RequestSetupLink: React.FC = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center gradient-hero p-4">
+      <SEO
+        title="Request Setup Link — Pitch CRM"
+        description="Request a secure setup link to activate your Pitch CRM account and finish onboarding."
+        path="/request-setup-link"
+        noindex
+      />
       <div className="w-full max-w-md space-y-6">
         <div className="text-center">
           <h1 className="text-4xl font-bold text-white mb-2">PITCH</h1>
