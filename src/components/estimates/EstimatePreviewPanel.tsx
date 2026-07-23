@@ -64,6 +64,7 @@ import { ShareEstimateDialog } from './ShareEstimateDialog';
 import { saveEstimatePdf } from '@/lib/estimates/estimatePdfSaver';
 import { getHeicDisplayUrl } from '@/hooks/useHeicConverter';
 import { SafeImage } from '@/components/ui/safe-image';
+import { describeEdgeFunctionError } from '@/lib/describeEdgeError';
 
 interface CompanyInfo {
   name: string;
@@ -948,7 +949,7 @@ export function EstimatePreviewPanel({
           const { data, error } = await supabase.functions.invoke('estimate-scope-narrative', {
             body: t.payload,
           });
-          if (error) throw error;
+          if (error) throw describeEdgeFunctionError('estimate-scope-narrative', error, data);
           const narrative = (data as any)?.narrative?.trim();
           if (!narrative) throw new Error('No narrative returned');
           return { key: t.key, narrative };
@@ -979,7 +980,7 @@ export function EstimatePreviewPanel({
       console.error('[scope-narrative] error', e);
       toast({
         title: 'Generation failed',
-        description: e?.message || 'Could not generate scope narrative.',
+        description: e?.toastMessage || e?.message || 'Could not generate scope narrative.',
         variant: 'destructive',
       });
     } finally {

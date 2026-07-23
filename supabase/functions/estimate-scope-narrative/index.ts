@@ -114,11 +114,12 @@ Write the customer-friendly Project Scope now.`;
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${lovableKey}`,
+        'Lovable-API-Key': lovableKey,
+        'X-Lovable-AIG-SDK': 'vercel-ai-sdk',
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: 'google/gemini-3.6-flash',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
@@ -140,7 +141,7 @@ Write the customer-friendly Project Scope now.`;
           status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
-      return new Response(JSON.stringify({ error: 'AI gateway error' }), {
+      return new Response(JSON.stringify({ error: `AI gateway error (${response.status})` }), {
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
