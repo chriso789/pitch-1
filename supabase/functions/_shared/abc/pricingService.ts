@@ -21,7 +21,7 @@
  *     `result.parsed.runStatus`, not `result.status`.
  *   • Zero unit price is NEVER `usableForOrder`. Preserved from the parser.
  *   • Canonical validation rejects: missing shipToNumber / branchNumber /
- *     itemNumber / uom, and quantity <= 0.
+ *     itemNumber, and quantity <= 0. UOM is optional per ABC docs for pricing.
  */
 import type { AbcCallAbc, AbcMapError } from "./catalogService.ts";
 import {
@@ -221,7 +221,7 @@ export function toParserRequestedLines(
       itemNumber: w.itemNumber,
       itemDescription: orig.itemDescription ?? null,
       quantity: w.quantity,
-      uom: w.uom,
+      uom: w.uom ?? "",
       mappingId: orig.mappingId ?? null,
       templateItemId: orig.templateItemId ?? null,
       estimateLineItemId: orig.estimateLineItemId ?? null,

@@ -1142,7 +1142,7 @@ export const handle = async (req) => {
         lines: items.map((l) => ({
           itemNumber: l.itemNumber!,
           quantity: Number(l.quantity) || 1,
-          uom: (l.uom || "EA").toString(),
+          uom: l.uom ? l.uom.toString() : undefined,
           itemDescription: l.itemDescription ?? null,
           templateItemId: l.template_item_id ?? null,
           estimateLineItemId: l.estimate_line_item_id ?? null,
