@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { SEO } from "@/components/seo/SEO";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -102,6 +103,11 @@ export default function RequestInspectionPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted/30 py-10 px-4">
+      <SEO
+        title="Request an Inspection — Pitch CRM"
+        description="Book a 4-Point or Wind Mitigation inspection. Fast scheduling, secure payment, and instant confirmation."
+        path="/request-inspection"
+      />
       <div className="max-w-2xl mx-auto">
         <div className="text-center mb-8">
           <h1 className="text-3xl md:text-4xl font-bold tracking-tight">Request an Inspection</h1>

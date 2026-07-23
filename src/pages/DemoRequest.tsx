@@ -13,6 +13,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Loader2, ArrowLeft, CheckCircle, Mail, Building, User, Phone, CalendarIcon, Clock } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { SEO } from '@/components/seo/SEO';
 
 const TIME_OPTIONS = [
   '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
@@ -311,6 +312,11 @@ const DemoRequest: React.FC = () => {
   // ============== FORM STEP ==============
   return (
     <div className="min-h-screen min-h-[100dvh] gradient-hero overflow-auto">
+      <SEO
+        title="Request a Demo — Pitch CRM"
+        description="Book a personalized walkthrough of Pitch CRM: power dialer, AI roof measurements, estimates, and pipeline in one platform."
+        path="/demo-request"
+      />
       <div className="pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] px-4">
         <div className="w-full max-w-2xl mx-auto py-4">
           <div className="text-center mb-6">
