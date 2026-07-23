@@ -272,7 +272,7 @@ const LandingPage = () => {
             onClose={() => setShowDemo(false)} 
           />
 
-          <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-slate-500">
+          <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-slate-700">
             <div className="flex items-center space-x-2">
               <CheckCircle2 className="w-4 h-4 text-green-500" />
               <span>No credit card required</span>
