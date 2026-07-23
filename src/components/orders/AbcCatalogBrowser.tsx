@@ -322,6 +322,53 @@ export const AbcCatalogBrowser: React.FC = () => {
     }
   };
 
+  const dumpEntireCatalog = async () => {
+    if (!tenantId) return;
+    if (!branchNumber) {
+      toast({
+        title: 'Branch required',
+        description: 'Sync a Ship-To + Branch first so the full branch catalog can be pulled.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setDumping(true);
+    setError(null);
+    setPriceError(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
+        body: {
+          action: 'dump_catalog',
+          tenant_id: tenantId,
+          environment: effectiveEnvironment,
+          branchNumber,
+          shipToNumber: shipToNumber || undefined,
+          includePricing: !!shipToNumber,
+          maxItems: 5000,
+        },
+      });
+      if (error) throw new Error(error.message);
+      if (!data?.success) throw new Error(data?.error_code || data?.error || 'dump_catalog failed');
+      const merged: AbcItem[] = Array.isArray(data.items) ? data.items : [];
+      setItems(merged);
+      // Convert priced rows into the same shape normalizePriceRows produces.
+      const priceRows = data.prices && typeof data.prices === 'object' ? Object.values(data.prices) : [];
+      setPrices(normalizePriceRows({ lines: priceRows }));
+      setDumpMode(true);
+      setDumpMeta({ count: merged.length, stoppedReason: data.stoppedReason ?? null });
+      toast({
+        title: 'Full ABC branch catalog loaded',
+        description: `Pulled ${merged.length} unique items from branch ${branchNumber}${
+          data.stoppedReason ? ` (stopped: ${data.stoppedReason})` : ''
+        }.`,
+      });
+    } catch (e: any) {
+      setError(e?.message || 'Could not dump ABC catalog.');
+    } finally {
+      setDumping(false);
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
