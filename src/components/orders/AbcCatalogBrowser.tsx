@@ -403,11 +403,28 @@ export const AbcCatalogBrowser: React.FC = () => {
                   Sync my ABC accounts
                 </Button>
               )}
+              {isConnected && branchNumber && (
+                <Button
+                  size="sm"
+                  variant="default"
+                  onClick={dumpEntireCatalog}
+                  disabled={dumping}
+                  title="Pull every item ABC exposes for this branch and price them against the connected ship-to."
+                >
+                  {dumping ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                  ) : (
+                    <Download className="h-3.5 w-3.5 mr-1" />
+                  )}
+                  Dump entire branch catalog
+                </Button>
+              )}
               <Badge variant="secondary">
-                {loading ? '…' : `${items.length} items`}
+                {loading || dumping ? '…' : `${items.length} items${dumpMode ? ' (full dump)' : ''}`}
               </Badge>
             </div>
           </div>
+
 
               {isConnected && usingSandboxFallback && (
             <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
