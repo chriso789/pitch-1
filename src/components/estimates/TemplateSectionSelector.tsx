@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { useCompanyInfo } from '@/hooks/useCompanyInfo';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { useLatestMeasurement } from '@/hooks/useMeasurement';
+import { useAbcCatalog } from '@/hooks/useAbcCatalog';
 import { format } from 'date-fns';
 import { LaborOrderExport } from '@/components/orders/LaborOrderExport';
 import { MaterialLineItemsExport } from '@/components/orders/MaterialLineItemsExport';
@@ -35,6 +36,7 @@ import {
 
 interface LineItem {
   id: string;
+  template_item_id?: string | null;
   item_name: string;
   qty: number;
   unit: string;
@@ -92,6 +94,7 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
   // SKU we pick here writes back to the same enhanced_estimates.line_items
   // JSON, so PushToSupplierDialog later sees the same matches.
   const abcConnection = useAbcConnectionStatus();
+  const abcAccounts = useAbcCatalog(effectiveTenantId, abcConnection.environment);
   const [matchSupplier, setMatchSupplier] = useState<SupplierKey | ''>('');
   const [matchBranch, setMatchBranch] = useState<string>('');
   const [matchShipTo, setMatchShipTo] = useState<string>('');
@@ -213,6 +216,7 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
           
           return {
             id: item.id || crypto.randomUUID(),
+            template_item_id: item.template_item_id || item.material_id || item.metadata?.template_item_id || null,
             item_name: item.item_name || item.name || 'Unknown Item',
             qty: qty,
             unit: item.unit || 'ea',
@@ -300,6 +304,17 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
     })();
     return () => { cancelled = true; };
   }, [sectionType, effectiveTenantId, abcConnection.isConnected, abcConnection.defaultBranchCode, abcConnection.environment]);
+
+  useEffect(() => {
+    if (sectionType !== 'material' || matchSupplier !== 'abc') return;
+    if (!matchShipTo && abcAccounts.shipTos[0]?.ship_to_number) {
+      setMatchShipTo(abcAccounts.shipTos[0].ship_to_number);
+    }
+    if (!matchBranch && abcAccounts.branches[0]?.branch_number) {
+      setMatchBranch(abcAccounts.branches[0].branch_number);
+      setCatalogLoadedKey('');
+    }
+  }, [sectionType, matchSupplier, matchShipTo, matchBranch, abcAccounts.shipTos, abcAccounts.branches]);
 
   // Load ABC catalog once per (branch, supplier) so the inline match can
   // resolve descriptions + auto-pick best matches. We search with a broad
@@ -559,6 +574,7 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
       const unitCost = Number(item.unit_cost) || 0;
       return {
         id: crypto.randomUUID(),
+        template_item_id: item.id,
         item_name: item.item_name,
         qty,
         unit: item.unit || 'ea',
@@ -1074,6 +1090,7 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
                       projectAddress={projectAddress}
                       items={lineItems.map((li: any) => ({
                         id: li.id,
+                          template_item_id: li.template_item_id,
                         item_name: li.item_name,
                         qty: Number(li.qty || 0),
                         unit: li.unit || 'EA',
@@ -1081,6 +1098,13 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
                         notes: li.notes,
                         color_specs: li.color_specs,
                         srs_item_code: li.srs_item_code || li.product_code,
+                          abc_item_number: li.abc_item_number,
+                          abc_color: li.abc_color,
+                          abc_uom: li.abc_uom,
+                          abc_price: li.abc_price,
+                          abc_price_status: li.abc_price_status,
+                          abc_price_timestamp: li.abc_price_timestamp,
+                          abc_availability: li.abc_availability,
                         requires_color: !!(li.requires_color ?? li.metadata?.requires_color),
                       }))}
                     />

@@ -5,6 +5,7 @@ import { PushToSupplierDialog } from './PushToSupplierDialog';
 
 interface MaterialItem {
   id?: string;
+  template_item_id?: string | null;
   item_name: string;
   qty: number;
   unit: string;
@@ -12,6 +13,13 @@ interface MaterialItem {
   notes?: string;
   color_specs?: string;
   srs_item_code?: string;
+  abc_item_number?: string | null;
+  abc_color?: string | null;
+  abc_uom?: string | null;
+  abc_price?: number | null;
+  abc_price_status?: string | null;
+  abc_price_timestamp?: string | null;
+  abc_availability?: string | null;
   requires_color?: boolean;
 }
 
@@ -51,12 +59,20 @@ export function PushToSupplierButton({
           projectAddress={projectAddress}
           items={items.map(i => ({
             id: i.id,
+            template_item_id: i.template_item_id,
             item_name: i.item_name,
             description: i.notes,
             quantity: i.qty,
             unit: i.unit,
             unit_cost: i.unit_cost,
             srs_item_code: i.srs_item_code,
+            abc_item_number: i.abc_item_number,
+            abc_color: i.abc_color,
+            abc_uom: i.abc_uom,
+            abc_price: i.abc_price,
+            abc_price_status: i.abc_price_status as any,
+            abc_price_timestamp: i.abc_price_timestamp,
+            abc_availability: i.abc_availability,
             color_specs: i.color_specs,
             requires_color: !!i.requires_color,
           }))}
