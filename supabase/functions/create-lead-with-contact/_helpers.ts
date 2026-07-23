@@ -143,6 +143,20 @@ export function normalizePhone(phone: string | null | undefined): string | null 
   return digits.length > 10 ? digits.slice(-10) : digits;
 }
 
+// Detect obvious placeholder / junk phone numbers that should NOT trigger
+// duplicate-contact matching (e.g. 1111111111, 0000000000, 1234567890,
+// 5555555555). Real customers never have these.
+export function isPlaceholderPhone(phone: string | null | undefined): boolean {
+  const n = normalizePhone(phone);
+  if (!n) return true;
+  if (/^(\d)\1+$/.test(n)) return true; // all same digit
+  if (n === "1234567890" || n === "0123456789") return true;
+  if (n === "9876543210") return true;
+  if (/^555\d{7}$/.test(n)) return true; // 555-xxxxxxx test range
+  return false;
+}
+
+
 export function normalizeEmail(email: string | null | undefined): string | null {
   if (!email) return null;
   const e = String(email).trim().toLowerCase();

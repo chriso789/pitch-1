@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import {
   errorResponse,
+  isPlaceholderPhone,
   mapLeadSource,
   mapRoofType,
   mapStatus,
@@ -8,6 +9,7 @@ import {
   normalizePhone,
   type StructuredError,
 } from "./_helpers.ts";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -385,8 +387,9 @@ Deno.serve(async (req: Request) => {
     if (!contactId) {
       console.log("[create-lead-with-contact] Checking for existing contact...");
 
-      const normalizedPhone = normalizePhone(body.phone);
+      const normalizedPhone = isPlaceholderPhone(body.phone) ? null : normalizePhone(body.phone);
       const normalizedEmail = normalizeEmail(body.email);
+
 
       // --- DEDUP TIER 1: exact phone or email match within tenant ---
       if (normalizedPhone || normalizedEmail) {
