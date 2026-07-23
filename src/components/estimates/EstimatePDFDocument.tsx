@@ -671,8 +671,11 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     // Chunk narrative by character length so a very long AI explanation can never
     // push the totals or signature block off the page. First page has less room
     // (header + customer + banner); continuation pages get more.
+    // Fit the entire scope narrative on the first page whenever possible so the
+    // document stays at 2 pages (narrative page + summary page). Only very long
+    // narratives will spill into a continuation page.
     const narrativeChunks = useNarrativeSplit
-      ? chunkNarrative(opts.scopeNarrative!, 1600, 2600)
+      ? chunkNarrative(opts.scopeNarrative!, 5200, 5200)
       : [];
     const firstPageHasTerms = !useNarrativeSplit && itemChunks.length <= 1 && opts.showTermsAndConditions && !skipWarrantyAndTerms;
     if (firstPageHasTerms && opts.showSignatureBlock) {
