@@ -89,6 +89,7 @@ export default function PitchVsAcculynx() {
         title="Pitch CRM vs AccuLynx: 2026 Roofing CRM Comparison"
         description="AccuLynx vs Pitch CRM — compare pricing, AI roof measurements, dialer, proposals, and see how roofing contractors save $40k+/user per year."
         path={PATH}
+        ogType="article"
         jsonLd={jsonLd}
       />
 
