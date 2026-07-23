@@ -387,8 +387,9 @@ Deno.serve(async (req: Request) => {
     if (!contactId) {
       console.log("[create-lead-with-contact] Checking for existing contact...");
 
-      const normalizedPhone = normalizePhone(body.phone);
+      const normalizedPhone = isPlaceholderPhone(body.phone) ? null : normalizePhone(body.phone);
       const normalizedEmail = normalizeEmail(body.email);
+
 
       // --- DEDUP TIER 1: exact phone or email match within tenant ---
       if (normalizedPhone || normalizedEmail) {
