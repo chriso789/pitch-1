@@ -668,6 +668,12 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     // Split it: narrative gets its own page, then a dedicated summary page
     // renders the PCO block + totals + terms/signature so nothing gets clipped.
     const useNarrativeSplit = !!(opts.useScopeNarrative && opts.scopeNarrative && !opts.showOnlyTotal);
+    // Chunk narrative by character length so a very long AI explanation can never
+    // push the totals or signature block off the page. First page has less room
+    // (header + customer + banner); continuation pages get more.
+    const narrativeChunks = useNarrativeSplit
+      ? chunkNarrative(opts.scopeNarrative!, 1600, 2600)
+      : [];
     const firstPageHasTerms = !useNarrativeSplit && itemChunks.length <= 1 && opts.showTermsAndConditions && !skipWarrantyAndTerms;
     if (firstPageHasTerms && opts.showSignatureBlock) {
       estimateSignatureRelIdx = estimateNodes.length;
@@ -688,6 +694,8 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
         showTerms={firstPageHasTerms}
         finePrintContent={firstPageHasTerms && opts.showCustomFinePrint ? finePrintContent : undefined}
         estimateName={estimateName}
+        narrativeOverride={useNarrativeSplit ? narrativeChunks[0] : undefined}
+        narrativeContinues={useNarrativeSplit && narrativeChunks.length > 1}
       />
     );
     for (let i = 1; i < itemChunks.length; i++) {
@@ -711,9 +719,19 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
       );
     }
 
-    // Narrative mode: append a dedicated summary page so PCO + totals +
-    // signature never get clipped by the tall narrative.
+    // Narrative mode: emit continuation pages for any overflow, then always
+    // append a dedicated summary page so PCO + totals + signature are never
+    // clipped by a tall narrative.
     if (useNarrativeSplit) {
+      for (let i = 1; i < narrativeChunks.length; i++) {
+        estimateNodes.push(
+          <NarrativeContinuationPage
+            key={`narrative-page-${i + 1}`}
+            text={narrativeChunks[i]}
+            continues={i < narrativeChunks.length - 1}
+          />
+        );
+      }
       const showTerms = opts.showTermsAndConditions && !skipWarrantyAndTerms;
       if (showTerms && opts.showSignatureBlock) {
         estimateSignatureRelIdx = estimateNodes.length;
