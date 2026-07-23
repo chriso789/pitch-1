@@ -131,7 +131,8 @@ export function isCrewVendor(supplier: { supplier_name?: string; invoice_types?:
 }
 
 // --- Summary Cards ---
-function SummaryCards({ pricebookGroups, totalPricebookItems, materialInvoices, totalInvoiceAmount, unmatchedLines }: any) {
+function SummaryCards({ pricebookGroups, totalPriceLists, totalPricebookItems, materialInvoices, totalInvoiceAmount, unmatchedLines }: any) {
+  const listsCount = typeof totalPriceLists === "number" ? totalPriceLists : pricebookGroups.length;
   return (
     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
       <Card>
@@ -140,7 +141,7 @@ function SummaryCards({ pricebookGroups, totalPricebookItems, materialInvoices, 
             <Package className="h-5 w-5 text-muted-foreground" />
             <div>
               <p className="text-sm text-muted-foreground">Price Lists</p>
-              <p className="text-2xl font-bold">{pricebookGroups.length}</p>
+              <p className="text-2xl font-bold">{listsCount}</p>
               <p className="text-xs text-muted-foreground">{totalPricebookItems} items</p>
             </div>
           </div>
