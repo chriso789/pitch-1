@@ -887,6 +887,114 @@ export const handle = async (req) => {
       });
     }
 
+    // ---------------- dump_catalog ----------------
+    // Alphanumeric sweep of ABC Product Search (ABC has no "list-all" endpoint)
+    // + optional batched pricing against the caller's ship-to/branch.
+    if (action === "dump_catalog") {
+      const branchNumber = String(body.branchNumber || "").trim();
+      const shipToNumber = String(body.shipToNumber || "").trim();
+      const includePricing = body.includePricing !== false && !!shipToNumber && !!branchNumber;
+      const maxItems = Math.min(Math.max(Number(body.maxItems) || 3000, 100), 5000);
+      const perPage = 100;
+      const maxPagesPerSeed = 20;
+      const deadline = Date.now() + 50_000;
+      const seeds = [
+        "a","b","c","d","e","f","g","h","i","l","m","n","o","p","r","s","t","u","v","w","x","y","z",
+        "0","1","2","3","4","5","6","7","8","9",
+      ];
+      const items: Record<string, unknown> = {};
+      const seedStats: Array<{ seed: string; pages: number; added: number }> = [];
+      let stoppedReason: string | null = null;
+
+      seedLoop:
+      for (const seed of seeds) {
+        if (Date.now() > deadline) { stoppedReason = "time_budget"; break; }
+        if (Object.keys(items).length >= maxItems) { stoppedReason = "max_items"; break; }
+        let pages = 0;
+        let addedForSeed = 0;
+        for (let page = 1; page <= maxPagesPerSeed; page++) {
+          if (Date.now() > deadline) { stoppedReason = "time_budget"; break seedLoop; }
+          const result = await searchAbcCatalog(
+            { apiBase: cfg.apiBase, token: tok.token, callAbc, mapAbcError },
+            { query: seed, branchNumber: branchNumber || undefined, itemsPerPage: perPage, pageNumber: page },
+          );
+          pages++;
+          if (!result.success) {
+            stoppedReason = stoppedReason || `abc_error:${result.error_code || result.status}`;
+            break;
+          }
+          const bodyAny = result.body as any;
+          const raw = bodyAny?.items || bodyAny?.data || bodyAny?.results || bodyAny?.searchResults || [];
+          if (!Array.isArray(raw) || raw.length === 0) break;
+          for (const it of raw) {
+            const num = String((it as any)?.itemNumber || (it as any)?.item_number || "").trim();
+            if (!num) continue;
+            if (!items[num]) {
+              items[num] = it;
+              addedForSeed++;
+              if (Object.keys(items).length >= maxItems) { stoppedReason = "max_items"; break; }
+            }
+          }
+          if (Object.keys(items).length >= maxItems) break;
+          if (raw.length < perPage) break;
+        }
+        seedStats.push({ seed, pages, added: addedForSeed });
+      }
+
+      const merged = Object.values(items);
+      const prices: Record<string, unknown> = {};
+
+      if (includePricing && merged.length) {
+        const chunkSize = 25;
+        for (let i = 0; i < merged.length; i += chunkSize) {
+          if (Date.now() > deadline) { stoppedReason = stoppedReason || "time_budget_pricing"; break; }
+          const chunk = merged.slice(i, i + chunkSize) as any[];
+          const req: AbcPricingServiceRequest = {
+            shipToNumber, branchNumber, purpose: "estimating" as any,
+            lines: chunk.map((it) => ({
+              itemNumber: String(it.itemNumber),
+              quantity: 1,
+              uom: it.uom || it.unitOfMeasure || "EA",
+            })),
+          };
+          const invalid = validatePricingRequest(req);
+          if (invalid) break;
+          const p = await priceItemsService(
+            { apiBase: cfg.apiBase, token: tok.token, callAbc, mapAbcError },
+            req,
+          );
+          const rows = (p.body as any)?.lines || (p.body as any)?.prices || (p.body as any)?.items || [];
+          if (Array.isArray(rows)) {
+            for (const r of rows) {
+              const num = String((r as any).itemNumber || (r as any).item_number || "").trim();
+              if (num) prices[num] = r;
+            }
+          }
+        }
+      }
+
+      await auditCall(supabase, {
+        tenant_id, environment: env, action, endpoint: `${cfg.apiBase}/product/v1/search/items (sweep)`,
+        request_body_redacted: { branchNumber, shipToNumber, includePricing, maxItems, seeds: seeds.length },
+        status_code: 200, response_body: { count: merged.length, stoppedReason, seedStats },
+        error_code: null, duration_ms: Date.now() - startedAt, created_by: userId,
+      });
+
+      return json({
+        success: true,
+        environment: env,
+        branchNumber,
+        shipToNumber,
+        count: merged.length,
+        items: merged,
+        prices,
+        stoppedReason,
+        seedStats,
+      });
+    }
+
+
+
     // ---------------- price_items ----------------
     // Routes through the shared pricing service. See _shared/abc/pricingService.ts.
     // `success` reflects parsed.runStatus, NOT HTTP status.
