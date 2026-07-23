@@ -152,7 +152,7 @@ export const AbcCatalogBrowser: React.FC = () => {
   const { toast } = useToast();
   const [syncing, setSyncing] = useState(false);
   const effectiveEnvironment = environment || 'production';
-  const { branches, shipTos } = useAbcCatalog(tenantId, effectiveEnvironment);
+  const { branches, shipTos, refetch: refetchCatalog } = useAbcCatalog(tenantId, effectiveEnvironment);
   const [searchTerm, setSearchTerm] = useState('shingle');
   const [debounced, setDebounced] = useState('shingle');
   const [items, setItems] = useState<AbcItem[]>([]);
