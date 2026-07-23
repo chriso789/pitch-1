@@ -159,9 +159,10 @@ function isPdf(url: string, mimeType?: string): boolean {
   return url.toLowerCase().endsWith(".pdf");
 }
 
-function isImage(url: string): boolean {
+function isImage(url: string, mimeType?: string): boolean {
+  if (mimeType?.startsWith("image/")) return true;
   const lower = url.toLowerCase();
-  return /\.(png|jpe?g|webp|gif)(\?.*)?$/.test(lower);
+  return /\.(png|jpe?g|webp|gif|heic|heif|bmp|tiff?)(\?.*)?$/.test(lower);
 }
 
 Deno.serve(async (req) => {
