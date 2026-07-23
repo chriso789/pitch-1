@@ -677,6 +677,15 @@ function MaterialForm({
         </div>
       </div>
 
+      {material?.id && (
+        <div className="space-y-2">
+          <Label>Supplier item numbers</Label>
+          <SupplierSkuMappings materialId={material.id} />
+        </div>
+      )}
+
+
+
       <DialogFooter>
         <Button type="submit" disabled={saving}>
           {saving ? 'Saving...' : (material ? 'Update Material' : 'Add Material')}
