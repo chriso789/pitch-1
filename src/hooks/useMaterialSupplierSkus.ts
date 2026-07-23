@@ -58,7 +58,7 @@ export function useMaterialSupplierSkus(materialId: string | undefined | null) {
         .eq('material_id', materialId as string)
         .order('supplier');
       if (error) throw error;
-      return (data ?? []) as MaterialSupplierSku[];
+      return ((data ?? []) as unknown) as MaterialSupplierSku[];
     },
   });
 
