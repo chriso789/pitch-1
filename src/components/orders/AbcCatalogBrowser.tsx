@@ -161,6 +161,9 @@ export const AbcCatalogBrowser: React.FC = () => {
   const [pricesLoading, setPricesLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [priceError, setPriceError] = useState<string | null>(null);
+  const [dumping, setDumping] = useState(false);
+  const [dumpMode, setDumpMode] = useState(false);
+  const [dumpMeta, setDumpMeta] = useState<{ count: number; stoppedReason: string | null } | null>(null);
 
   const allowSandboxFallback = effectiveEnvironment === 'sandbox';
   // Resolve ship-to / branch (connected account → sandbox fallback only in sandbox).
