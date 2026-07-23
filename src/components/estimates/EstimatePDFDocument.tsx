@@ -668,6 +668,12 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     // Split it: narrative gets its own page, then a dedicated summary page
     // renders the PCO block + totals + terms/signature so nothing gets clipped.
     const useNarrativeSplit = !!(opts.useScopeNarrative && opts.scopeNarrative && !opts.showOnlyTotal);
+    // Chunk narrative by character length so a very long AI explanation can never
+    // push the totals or signature block off the page. First page has less room
+    // (header + customer + banner); continuation pages get more.
+    const narrativeChunks = useNarrativeSplit
+      ? chunkNarrative(opts.scopeNarrative!, 1600, 2600)
+      : [];
     const firstPageHasTerms = !useNarrativeSplit && itemChunks.length <= 1 && opts.showTermsAndConditions && !skipWarrantyAndTerms;
     if (firstPageHasTerms && opts.showSignatureBlock) {
       estimateSignatureRelIdx = estimateNodes.length;
@@ -688,6 +694,8 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
         showTerms={firstPageHasTerms}
         finePrintContent={firstPageHasTerms && opts.showCustomFinePrint ? finePrintContent : undefined}
         estimateName={estimateName}
+        narrativeOverride={useNarrativeSplit ? narrativeChunks[0] : undefined}
+        narrativeContinues={useNarrativeSplit && narrativeChunks.length > 1}
       />
     );
     for (let i = 1; i < itemChunks.length; i++) {
@@ -711,9 +719,19 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
       );
     }
 
-    // Narrative mode: append a dedicated summary page so PCO + totals +
-    // signature never get clipped by the tall narrative.
+    // Narrative mode: emit continuation pages for any overflow, then always
+    // append a dedicated summary page so PCO + totals + signature are never
+    // clipped by a tall narrative.
     if (useNarrativeSplit) {
+      for (let i = 1; i < narrativeChunks.length; i++) {
+        estimateNodes.push(
+          <NarrativeContinuationPage
+            key={`narrative-page-${i + 1}`}
+            text={narrativeChunks[i]}
+            continues={i < narrativeChunks.length - 1}
+          />
+        );
+      }
       const showTerms = opts.showTermsAndConditions && !skipWarrantyAndTerms;
       if (showTerms && opts.showSignatureBlock) {
         estimateSignatureRelIdx = estimateNodes.length;
@@ -984,6 +1002,34 @@ const ChangeOrdersBlock: React.FC<{ items: LineItem[] }> = ({ items }) => {
   );
 };
 
+// Split a long AI narrative into safely-sized chunks so it never pushes the
+// totals or signature block off the page. Prefers paragraph, then sentence,
+// then word boundaries; falls back to a hard slice for pathological input.
+function chunkNarrative(text: string, firstMax: number, contMax: number): string[] {
+  const clean = (text || '').trim();
+  if (!clean) return [];
+  if (clean.length <= firstMax) return [clean];
+
+  const chunks: string[] = [];
+  let remaining = clean;
+  let limit = firstMax;
+  while (remaining.length > limit) {
+    const window = remaining.slice(0, limit);
+    let cut = window.lastIndexOf('\n\n');
+    if (cut < limit * 0.5) {
+      const sentenceMatch = window.match(/[.!?]\s(?=[^.!?]*$)/);
+      cut = sentenceMatch ? (sentenceMatch.index ?? -1) + 2 : -1;
+    }
+    if (cut < limit * 0.5) cut = window.lastIndexOf(' ');
+    if (cut < limit * 0.5) cut = limit;
+    chunks.push(remaining.slice(0, cut).trim());
+    remaining = remaining.slice(cut).trim();
+    limit = contMax;
+  }
+  if (remaining) chunks.push(remaining);
+  return chunks;
+}
+
 const FirstPage: React.FC<{
   customerName: string;
   customerAddress: string;
@@ -999,6 +1045,8 @@ const FirstPage: React.FC<{
   finePrintContent?: string;
   estimateName?: string;
   changeOrdersBlock?: React.ReactNode;
+  narrativeOverride?: string;
+  narrativeContinues?: boolean;
 }> = ({
   customerName,
   customerAddress,
@@ -1014,7 +1062,10 @@ const FirstPage: React.FC<{
   finePrintContent,
   estimateName,
   changeOrdersBlock,
+  narrativeOverride,
+  narrativeContinues,
 }) => {
+  const narrativeText = narrativeOverride ?? opts.scopeNarrative;
   return (
     <div className="space-y-2">
       {/* Estimate Name Banner */}
@@ -1037,15 +1088,18 @@ const FirstPage: React.FC<{
       )}
 
       {/* AI Customer-Friendly Scope Narrative */}
-      {!opts.showOnlyTotal && opts.useScopeNarrative && opts.scopeNarrative && (
+      {!opts.showOnlyTotal && opts.useScopeNarrative && narrativeText && (
         <div>
           <h3 className="text-sm font-semibold text-gray-900 mb-1.5 flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
             Project Scope
           </h3>
           <div className="text-xs text-gray-800 leading-relaxed whitespace-pre-wrap scope-narrative">
-            {opts.scopeNarrative}
+            {narrativeText}
           </div>
+          {narrativeContinues && (
+            <p className="text-xs text-gray-400 italic text-right mt-2">Continues on next page…</p>
+          )}
         </div>
       )}
 
@@ -1121,6 +1175,27 @@ const SummaryOnlyPage: React.FC<{
     </div>
   );
 };
+
+// Narrative continuation page: renders extra narrative chunks when the AI
+// explanation is too long to fit alongside the totals/signature.
+const NarrativeContinuationPage: React.FC<{ text: string; continues?: boolean }> = ({ text, continues }) => {
+  return (
+    <div className="space-y-2">
+      <h3 className="text-sm font-semibold text-gray-900 mb-1.5 flex items-center gap-1.5">
+        <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
+        Project Scope (continued)
+      </h3>
+      <div className="text-xs text-gray-800 leading-relaxed whitespace-pre-wrap scope-narrative">
+        {text}
+      </div>
+      {continues && (
+        <p className="text-xs text-gray-400 italic text-right mt-2">Continues on next page…</p>
+      )}
+    </div>
+  );
+};
+
+
 
 
 // Items Table Component - renders pre-built render blocks
