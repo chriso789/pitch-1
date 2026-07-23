@@ -2131,6 +2131,7 @@ export const MaterialAuditContent = () => {
     <div className="space-y-4">
       <SummaryCards
         pricebookGroups={pricebookGroups}
+        totalPriceLists={totalPriceLists}
         totalPricebookItems={totalPricebookItems}
         materialInvoices={materialInvoices}
         totalInvoiceAmount={totalInvoiceAmount}
