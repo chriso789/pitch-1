@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import {
   errorResponse,
+  isPlaceholderPhone,
   mapLeadSource,
   mapRoofType,
   mapStatus,
@@ -8,6 +9,7 @@ import {
   normalizePhone,
   type StructuredError,
 } from "./_helpers.ts";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
