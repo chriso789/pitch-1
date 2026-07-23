@@ -105,9 +105,23 @@ export function useAbcCatalog(
         });
 
         const preferredShipToId = shipToRows[0]?.id || null;
+        // In sandbox, ABC's demo pairing is ship-to 2010466-2 + branch 1209.
+        // If both branches are on the same ship-to, ABC's other branches will
+        // 401 ("branch X not present in given shipTo") even though they show up
+        // in the ship-to's branch list. Bias toward the known-good sandbox
+        // branch when we're on that account.
+        const sandboxDefaultBranch = environment === 'sandbox' ? '1209' : null;
+        const preferredShipToNumber = shipToRows[0]?.ship_to_number || null;
+        const biasSandboxBranch =
+          sandboxDefaultBranch && preferredShipToNumber === '2010466-2';
         const accountRows: AbcBranch[] = allAccountBranches
           .filter((r) => r.ship_to_id === preferredShipToId)
           .sort((a, b) => {
+            if (biasSandboxBranch) {
+              const aSb = String(a.branch_number) === sandboxDefaultBranch ? 1 : 0;
+              const bSb = String(b.branch_number) === sandboxDefaultBranch ? 1 : 0;
+              if (aSb !== bSb) return bSb - aSb;
+            }
             const ah = (a.is_home_branch || a.is_default) ? 1 : 0;
             const bh = (b.is_home_branch || b.is_default) ? 1 : 0;
             if (ah !== bh) return bh - ah;
