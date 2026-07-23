@@ -408,7 +408,7 @@ Deno.serve(async (req) => {
       console.error("abc-oauth-callback post-OAuth sync scheduling failed", e);
     }
 
-    return htmlRedirect(returnTo + "connected", "ABC Supply connected. Returning to app…");
+    return htmlSuccessPage(environment, returnTo + "connected");
   } catch (e) {
     console.error("abc-oauth-callback error:", e);
     return htmlRedirect(
