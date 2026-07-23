@@ -432,16 +432,26 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
       });
 
       if (error) {
-        const described = describeEdgeFunctionError('create-lead-with-contact', error, data);
+        // Try to read the JSON body from FunctionsHttpError so we can catch
+        // structured errors like duplicate_contact (returned as HTTP 409).
+        let body: any = data;
+        const ctx = (error as any)?.context;
+        if (!body && ctx?.clone) {
+          try { body = await ctx.clone().json(); } catch { /* ignore */ }
+        }
+
+        if (body?.code === 'duplicate_contact' && !forceDuplicate) {
+          setDuplicateWarning({
+            message: body.message || 'A matching contact already exists.',
+            existingContact: body.details?.existingContact || body.existingContact,
+          });
+          setLoading(false);
+          return;
+        }
+
+        const described = describeEdgeFunctionError('create-lead-with-contact', error, body);
         console.error('[create-lead-with-contact] Edge function error:', described, error);
         throw new Error(described.toastMessage);
-      }
-
-      // Handle duplicate warning
-      if (data?.duplicate === true) {
-        setDuplicateWarning({ message: data.message, existingContact: data.existingContact });
-        setLoading(false);
-        return;
       }
 
       if (!data?.success) {
