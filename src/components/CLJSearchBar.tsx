@@ -474,9 +474,16 @@ export const CLJSearchBar = () => {
                             </span>
                           </div>
                         </div>
-                        <Badge variant="outline" className={cn("text-xs shrink-0 ml-2", config.badgeClass)}>
-                          {config.label}
-                        </Badge>
+                        <div className="flex items-center gap-1 shrink-0 ml-2">
+                          {result.clj_number && (
+                            <span className="text-[10px] font-medium text-muted-foreground tabular-nums px-1.5 py-0.5 rounded bg-muted/60">
+                              {formatCljForType(result.clj_number, 'contact')}
+                            </span>
+                          )}
+                          <Badge variant="outline" className={cn("text-xs", config.badgeClass)}>
+                            {config.label}
+                          </Badge>
+                        </div>
                       </CommandItem>
                     );
                   })}
