@@ -17,7 +17,7 @@
  *   G. AI strategy + storm reports + score (collapsed accordions)
  *   H. Notes (collapsed by default)
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Phone,
   Mail,
@@ -177,6 +177,41 @@ export default function PropertyInfoPanelMobileBody(props: Props) {
   const [manualLastName, setManualLastName] = useState("");
   const [manualPhone, setManualPhone] = useState("");
   const [manualEmail, setManualEmail] = useState("");
+  const [manualPrefilled, setManualPrefilled] = useState(false);
+
+  // Auto-fill homeowner fields once public data returns (owner name / phone / email).
+  // Only prefills empty inputs so a rep's manual entry is never overwritten.
+  useEffect(() => {
+    if (manualPrefilled) return;
+    const ownerFull: string = primaryOwner?.full_name || primaryOwner?.name || "";
+    const [ownerFirst, ...ownerRest] = ownerFull.trim().split(/\s+/);
+    const ownerLast = ownerRest.join(" ");
+    const firstPhone = phoneNumbers?.[0];
+    const phoneNum =
+      typeof firstPhone === "string" ? firstPhone : firstPhone?.number || "";
+    const firstEmail = emails?.[0];
+    const emailAddr =
+      typeof firstEmail === "string" ? firstEmail : firstEmail?.address || "";
+
+    let didFill = false;
+    if (!manualFirstName && ownerFirst) {
+      setManualFirstName(ownerFirst);
+      didFill = true;
+    }
+    if (!manualLastName && ownerLast) {
+      setManualLastName(ownerLast);
+      didFill = true;
+    }
+    if (!manualPhone && phoneNum) {
+      setManualPhone(phoneNum);
+      didFill = true;
+    }
+    if (!manualEmail && emailAddr) {
+      setManualEmail(emailAddr);
+      didFill = true;
+    }
+    if (didFill) setManualPrefilled(true);
+  }, [primaryOwner, phoneNumbers, emails, manualPrefilled, manualFirstName, manualLastName, manualPhone, manualEmail]);
 
   const hasManualEntry = Boolean(
     manualFirstName.trim() || manualLastName.trim() || manualPhone.trim() || manualEmail.trim(),
@@ -472,13 +507,20 @@ export default function PropertyInfoPanelMobileBody(props: Props) {
           </div>
         ) : null}
 
-        {/* Manual homeowner entry — always available so reps can capture at the door */}
-        {!hasContact && !publicLookupLoading && (
-          <div className="mb-4 rounded-lg border bg-card p-3 space-y-2">
-            <div className="flex items-center justify-between">
-              <p className="text-[11px] font-medium text-muted-foreground">
-                Enter homeowner info
-              </p>
+        {/* Homeowner entry — always visible on pin open. Auto-fills from public
+            data when available; reps can edit or complete at the door. */}
+        <div className="mb-4 rounded-lg border bg-card p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-medium text-muted-foreground">
+              {hasContact || manualPrefilled ? "Homeowner info" : "Enter homeowner info"}
+            </p>
+            <div className="flex items-center gap-2">
+              {publicLookupLoading && (
+                <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Looking up public info…
+                </span>
+              )}
               <button
                 type="button"
                 onClick={onSkipTrace}
@@ -493,6 +535,7 @@ export default function PropertyInfoPanelMobileBody(props: Props) {
                 {enriching ? "Looking up…" : "Skip-trace"}
               </button>
             </div>
+          </div>
             <div className="grid grid-cols-2 gap-2">
               <Input
                 value={manualFirstName}
@@ -539,8 +582,7 @@ export default function PropertyInfoPanelMobileBody(props: Props) {
             {skipTraceError && (
               <p className="text-[10px] text-destructive">{skipTraceError}</p>
             )}
-          </div>
-        )}
+        </div>
 
         {skipTraceError && hasContact === false && !enriching && (
           <Alert variant="destructive" className="mb-4 py-2">
