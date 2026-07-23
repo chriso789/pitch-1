@@ -13,6 +13,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Loader2, ArrowLeft, CheckCircle, Mail, Building, User, Phone, CalendarIcon, Clock } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { SEO } from '@/components/seo/SEO';
 
 const TIME_OPTIONS = [
   '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
