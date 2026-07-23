@@ -1089,6 +1089,128 @@ export const handle = async (req) => {
       });
     }
 
+    // ---------------- dump_catalog ----------------
+    // Pages through ABC Product Search using an alphanumeric sweep of the
+    // `itemDescription contains` filter (ABC's API requires a filter — there
+    // is no "list everything" endpoint), dedupes by itemNumber and returns
+    // the merged catalog. Optionally batch-prices results against the
+    // caller's shipTo/branch. Bounded so it can't run forever.
+    if (action === "dump_catalog") {
+      const branchNumber = String(body.branchNumber || "").trim();
+      const shipToNumber = String(body.shipToNumber || "").trim();
+      const includePricing = body.includePricing !== false && !!shipToNumber && !!branchNumber;
+      const maxItems = Math.min(Math.max(Number(body.maxItems) || 3000, 100), 5000);
+      const perPage = 100;
+      const maxPagesPerSeed = 20; // 20 * 100 = 2000 per seed hard cap
+      const deadline = Date.now() + 50_000; // 50s soft deadline
+      // Sweep seeds — every ABC roofing SKU description contains at least one
+      // of these. We dedupe after so hitting the same SKU twice is harmless.
+      const seeds = [
+        "a","b","c","d","e","f","g","h","i","l","m","n","o","p","r","s","t","u","v","w","x","y","z",
+        "0","1","2","3","4","5","6","7","8","9",
+      ];
+      const items: Record<string, unknown> = {};
+      const seedStats: Array<{ seed: string; pages: number; added: number }> = [];
+      let stoppedReason: string | null = null;
+
+      seedLoop:
+      for (const seed of seeds) {
+        if (Date.now() > deadline) { stoppedReason = "time_budget"; break; }
+        if (Object.keys(items).length >= maxItems) { stoppedReason = "max_items"; break; }
+        let pages = 0;
+        let addedForSeed = 0;
+        for (let page = 1; page <= maxPagesPerSeed; page++) {
+          if (Date.now() > deadline) { stoppedReason = "time_budget"; break seedLoop; }
+          const result = await searchAbcCatalog(
+            { apiBase: cfg.apiBase, token: tok.token, callAbc, mapAbcError },
+            { query: seed, branchNumber: branchNumber || undefined, itemsPerPage: perPage, pageNumber: page },
+          );
+          pages++;
+          if (!result.success) {
+            stoppedReason = stoppedReason || `abc_error:${result.error_code || result.status}`;
+            break;
+          }
+          const bodyAny = result.body as any;
+          const raw =
+            bodyAny?.items ||
+            bodyAny?.data ||
+            bodyAny?.results ||
+            bodyAny?.searchResults ||
+            [];
+          if (!Array.isArray(raw) || raw.length === 0) break;
+          for (const it of raw) {
+            const num = String(it?.itemNumber || it?.item_number || "").trim();
+            if (!num) continue;
+            if (!items[num]) {
+              items[num] = it;
+              addedForSeed++;
+              if (Object.keys(items).length >= maxItems) { stoppedReason = "max_items"; break; }
+            }
+          }
+          if (Object.keys(items).length >= maxItems) break;
+          if (raw.length < perPage) break; // last page
+        }
+        seedStats.push({ seed, pages, added: addedForSeed });
+      }
+
+      const merged = Object.values(items);
+      const prices: Record<string, unknown> = {};
+
+      if (includePricing && merged.length) {
+        // Chunk items into groups of 25 for price_items.
+        const chunkSize = 25;
+        for (let i = 0; i < merged.length; i += chunkSize) {
+          if (Date.now() > deadline) { stoppedReason = stoppedReason || "time_budget_pricing"; break; }
+          const chunk = merged.slice(i, i + chunkSize) as any[];
+          const req: AbcPricingServiceRequest = {
+            shipToNumber, branchNumber, purpose: "estimating" as any,
+            lines: chunk.map((it) => ({
+              itemNumber: String(it.itemNumber),
+              quantity: 1,
+              uom: it.uom || it.unitOfMeasure || "EA",
+            })),
+          };
+          const invalid = validatePricingRequest(req);
+          if (invalid) break;
+          const p = await priceItemsService(
+            { apiBase: cfg.apiBase, token: tok.token, callAbc, mapAbcError },
+            req,
+          );
+          const rows =
+            (p.body as any)?.lines ||
+            (p.body as any)?.prices ||
+            (p.body as any)?.items ||
+            [];
+          if (Array.isArray(rows)) {
+            for (const r of rows) {
+              const num = String(r.itemNumber || r.item_number || "").trim();
+              if (num) prices[num] = r;
+            }
+          }
+        }
+      }
+
+      await auditCall(supabase, {
+        tenant_id, environment: env, action, endpoint: `${cfg.apiBase}/product/v1/search/items (sweep)`,
+        request_body_redacted: { branchNumber, shipToNumber, includePricing, maxItems, seeds: seeds.length },
+        status_code: 200, response_body: { count: merged.length, stoppedReason, seedStats },
+        error_code: null, duration_ms: Date.now() - startedAt, created_by: userId,
+      });
+
+      return json({
+        success: true,
+        environment: env,
+        branchNumber,
+        shipToNumber,
+        count: merged.length,
+        items: merged,
+        prices,
+        stoppedReason,
+        seedStats,
+      });
+    }
+
+
     if (action === "get_item") {
       const itm = (body.itemNumber || "").toString().trim();
       if (!itm) return json({ success: false, error: "itemNumber required" }, 400);
