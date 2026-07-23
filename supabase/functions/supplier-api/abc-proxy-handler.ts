@@ -2228,15 +2228,17 @@ export const handle = async (req) => {
       }
 
       const accountsBody: any = accountsResp.json ?? {};
-      const accountRows: any[] = Array.isArray(accountsBody?.accounts)
-        ? accountsBody.accounts
-        : Array.isArray(accountsBody?.data)
-          ? accountsBody.data
-          : Array.isArray(accountsBody?.items)
-            ? accountsBody.items
-            : Array.isArray(accountsBody)
-              ? accountsBody
-              : [];
+      const accountRows: any[] = Array.isArray(accountsBody?.shipTos)
+        ? accountsBody.shipTos
+        : Array.isArray(accountsBody?.accounts)
+          ? accountsBody.accounts
+          : Array.isArray(accountsBody?.data)
+            ? accountsBody.data
+            : Array.isArray(accountsBody?.items)
+              ? accountsBody.items
+              : Array.isArray(accountsBody)
+                ? accountsBody
+                : [];
 
       const shipToNumbers = new Set<string>();
       for (const a of accountRows) {
