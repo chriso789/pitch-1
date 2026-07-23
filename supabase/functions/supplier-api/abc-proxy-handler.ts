@@ -2197,7 +2197,7 @@ export const handle = async (req) => {
       const shipToPath = Deno.env.get("ABC_SHIPTO_PATH") || "/account/v1/shiptos";
 
       const accountsPayload = {
-        filters: [{ field: "accountType", op: "eq", value: "ship-to" }],
+        filters: [{ key: "accountType", condition: "eq", values: ["ship-to"] }],
         pagination: { itemsPerPage: 100, pageNumber: 1 },
       };
       const accountsEndpoint = `${cfg.apiBase}${accountSearchPath}`;
