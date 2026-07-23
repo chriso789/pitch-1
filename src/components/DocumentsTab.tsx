@@ -117,7 +117,7 @@ const DocumentThumbnail: React.FC<{
       <div className="w-12 h-12 rounded-lg overflow-hidden bg-muted flex-shrink-0 border">
         <img 
           src={thumbUrl}
-          alt={doc.title || `Document preview: ${doc.filename}`}
+          alt={`Document preview: ${doc.filename}`}
           className="w-full h-full object-cover"
           onError={() => setLoadError(true)}
           loading="lazy"
