@@ -663,7 +663,12 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     // --- Estimate Content section (first page + continuations + change orders) ---
     const estimateNodes: React.ReactNode[] = [];
     let estimateSignatureRelIdx: number | undefined = undefined;
-    const firstPageHasTerms = itemChunks.length <= 1 && opts.showTermsAndConditions && !skipWarrantyAndTerms;
+    // When the AI scope narrative is used, the narrative can be tall and would
+    // otherwise share a page with the PCO table, totals, terms and signature.
+    // Split it: narrative gets its own page, then a dedicated summary page
+    // renders the PCO block + totals + terms/signature so nothing gets clipped.
+    const useNarrativeSplit = !!(opts.useScopeNarrative && opts.scopeNarrative && !opts.showOnlyTotal);
+    const firstPageHasTerms = !useNarrativeSplit && itemChunks.length <= 1 && opts.showTermsAndConditions && !skipWarrantyAndTerms;
     if (firstPageHasTerms && opts.showSignatureBlock) {
       estimateSignatureRelIdx = estimateNodes.length;
     }
@@ -676,7 +681,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
         customerEmail={customerEmail}
         items={itemChunks[0] || []}
         blocks={blockChunks[0] || []}
-        isOnlyChunk={itemChunks.length <= 1}
+        isOnlyChunk={!useNarrativeSplit && itemChunks.length <= 1}
         breakdown={breakdown}
         config={config}
         opts={opts}
@@ -705,10 +710,30 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
         />
       );
     }
+
+    // Narrative mode: append a dedicated summary page so PCO + totals +
+    // signature never get clipped by the tall narrative.
+    if (useNarrativeSplit) {
+      const showTerms = opts.showTermsAndConditions && !skipWarrantyAndTerms;
+      if (showTerms && opts.showSignatureBlock) {
+        estimateSignatureRelIdx = estimateNodes.length;
+      }
+      estimateNodes.push(
+        <SummaryOnlyPage
+          key="summary-page"
+          breakdown={breakdown}
+          config={config}
+          opts={opts}
+          showTerms={showTerms}
+          finePrintContent={showTerms && opts.showCustomFinePrint ? finePrintContent : undefined}
+        />
+      );
+    }
+
     if (changeOrderItems.length > 0) {
       const changeOrdersBlock = <ChangeOrdersBlock items={changeOrderItems} />;
-      // Inject into the page rendering the PricingSummary (last items page),
-      // above the totals — not as a separate page.
+      // Inject into the page rendering the PricingSummary (last items page or
+      // the dedicated summary page in narrative mode), above the totals.
       const targetIdx = estimateNodes.length - 1;
       const target = estimateNodes[targetIdx] as React.ReactElement;
       if (target) {
@@ -1076,6 +1101,27 @@ const ItemsContinuationPage: React.FC<{
     </div>
   );
 };
+
+// Summary-only page: used when the AI scope narrative renders on its own page.
+// Carries Change Orders, Pricing Summary, and Terms/Signature block on a
+// dedicated page so nothing gets clipped by a tall narrative.
+const SummaryOnlyPage: React.FC<{
+  breakdown: EstimatePDFDocumentProps['breakdown'];
+  config: EstimatePDFDocumentProps['config'];
+  opts: PDFComponentOptions;
+  showTerms: boolean;
+  finePrintContent?: string;
+  changeOrdersBlock?: React.ReactNode;
+}> = ({ breakdown, config, opts, showTerms, finePrintContent, changeOrdersBlock }) => {
+  return (
+    <div className="space-y-3">
+      {changeOrdersBlock}
+      <PricingSummary breakdown={breakdown} config={config} opts={opts} />
+      {showTerms && <TermsSection finePrintContent={finePrintContent} opts={opts} breakdown={breakdown} />}
+    </div>
+  );
+};
+
 
 // Items Table Component - renders pre-built render blocks
 const ItemsTable: React.FC<{ blocks: RenderBlock[]; opts: PDFComponentOptions; continued?: boolean; markupFactor?: number }> = ({ blocks, opts, continued = false, markupFactor = 1 }) => {
