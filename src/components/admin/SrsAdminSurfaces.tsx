@@ -19,6 +19,8 @@ import { SRSPricelistBackfill } from "@/components/pricing/SRSPricelistBackfill"
 import { SRSCatalogBrowser } from "@/components/orders/SRSCatalogBrowser";
 import { SrsDiagnosticsPanel } from "@/components/orders/SrsDiagnosticsPanel";
 import { SRSReconciliationPanel } from "@/components/orders/SRSReconciliationPanel";
+import { SrsIntegrationHealth } from "@/components/admin/SrsIntegrationHealth";
+import { SrsProductionReadinessReport } from "@/components/admin/SrsProductionReadinessReport";
 
 export function SrsAdminSurfaces() {
   return (
