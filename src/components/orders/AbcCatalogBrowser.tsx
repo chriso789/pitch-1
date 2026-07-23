@@ -126,6 +126,23 @@ function normalizePriceRows(body: any): Record<string, AbcPrice> {
   return out;
 }
 
+function extractPriceRows(body: any): any[] {
+  if (!body) return [];
+  const rows =
+    body.lines ||
+    body.prices ||
+    body.items ||
+    body.data ||
+    body?.body?.lines ||
+    body?.parsed?.lines ||
+    [];
+  return Array.isArray(rows) ? rows : [];
+}
+
+function hasPriceRows(body: any): boolean {
+  return extractPriceRows(body).length > 0;
+}
+
 function fmtCurrency(value: number, currency: string): string {
   const c = /^[A-Z]{3}$/.test(currency) ? currency : 'USD';
   try {
@@ -255,7 +272,11 @@ export const AbcCatalogBrowser: React.FC = () => {
         );
         if (cancelled) return;
         if (invokeErr) throw new Error(invokeErr.message || 'ABC pricing failed');
-        if (!data?.success) {
+        // ABC can return HTTP 200 with a mixed batch: some SKUs priced, some
+        // zero/call-for-pricing. The backend correctly marks that run as not
+        // fully successful, but the UI must still keep the returned UOM and any
+        // priced lines instead of blanking the whole table.
+        if (!data?.success && !hasPriceRows(data?.body)) {
           throw new Error(
             data?.error_code ||
               data?.body?.message ||
@@ -355,6 +376,9 @@ export const AbcCatalogBrowser: React.FC = () => {
       // Convert priced rows into the same shape normalizePriceRows produces.
       const priceRows = data.prices && typeof data.prices === 'object' ? Object.values(data.prices) : [];
       setPrices(normalizePriceRows({ lines: priceRows }));
+      if (shipToNumber && priceRows.length === 0) {
+        setPriceError('ABC returned the catalog but no pricing rows for this ship-to/branch.');
+      }
       setDumpMode(true);
       setDumpMeta({ count: merged.length, stoppedReason: data.stoppedReason ?? null });
       toast({
@@ -549,12 +573,7 @@ export const AbcCatalogBrowser: React.FC = () => {
                                 </span>
                               </span>
                             ) : p && p.statusMessage ? (
-                              <span
-                                className="text-xs text-amber-600"
-                                title={p.statusMessage}
-                              >
-                                Call for pricing
-                              </span>
+                              <span className="text-muted-foreground" title={p.statusMessage}>—</span>
                             ) : (
                               fmtPrice(p)
                             )}
