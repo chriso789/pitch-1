@@ -131,7 +131,8 @@ export function isCrewVendor(supplier: { supplier_name?: string; invoice_types?:
 }
 
 // --- Summary Cards ---
-function SummaryCards({ pricebookGroups, totalPricebookItems, materialInvoices, totalInvoiceAmount, unmatchedLines }: any) {
+function SummaryCards({ pricebookGroups, totalPriceLists, totalPricebookItems, materialInvoices, totalInvoiceAmount, unmatchedLines }: any) {
+  const listsCount = typeof totalPriceLists === "number" ? totalPriceLists : pricebookGroups.length;
   return (
     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
       <Card>
@@ -140,7 +141,7 @@ function SummaryCards({ pricebookGroups, totalPricebookItems, materialInvoices, 
             <Package className="h-5 w-5 text-muted-foreground" />
             <div>
               <p className="text-sm text-muted-foreground">Price Lists</p>
-              <p className="text-2xl font-bold">{pricebookGroups.length}</p>
+              <p className="text-2xl font-bold">{listsCount}</p>
               <p className="text-xs text-muted-foreground">{totalPricebookItems} items</p>
             </div>
           </div>
@@ -2092,7 +2093,12 @@ export const MaterialAuditContent = () => {
   };
 
   const totalInvoiceAmount = materialInvoices.reduce((sum: number, inv: any) => sum + Number(inv.invoice_amount || 0), 0);
-  const totalPricebookItems = pricebookGroups.reduce((sum: number, g: any) => sum + g.item_count, 0);
+  // Price Lists card should reflect every source of agreed pricing, not just supplier_pricebooks.
+  const pricebookItemsCount = pricebookGroups.reduce((sum: number, g: any) => sum + (g.item_count || 0), 0);
+  const legacyItemsCount = legacyPriceLists.reduce((sum: number, pl: any) => sum + (pl.items_count || 0), 0);
+  const templateItemsCount = templatePriceLists.reduce((sum: number, g: any) => sum + (g.item_count || 0), 0);
+  const totalPricebookItems = pricebookItemsCount + legacyItemsCount + templateItemsCount;
+  const totalPriceLists = pricebookGroups.length + legacyPriceLists.length + templatePriceLists.length;
 
   const chartData = React.useMemo(() => {
     const byVendor: Record<string, { display: string; total: number }> = {};
@@ -2126,6 +2132,7 @@ export const MaterialAuditContent = () => {
     <div className="space-y-4">
       <SummaryCards
         pricebookGroups={pricebookGroups}
+        totalPriceLists={totalPriceLists}
         totalPricebookItems={totalPricebookItems}
         materialInvoices={materialInvoices}
         totalInvoiceAmount={totalInvoiceAmount}
