@@ -324,6 +324,7 @@ interface ProxyRequest {
     | "get_branches"
     | "get_branch"
     | "search_products"
+    | "dump_catalog"
     | "get_item"
     | "place_order"
     | "submit_order"           // legacy alias for place_order
