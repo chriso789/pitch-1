@@ -61,13 +61,13 @@ export const PowerDialerMockup = () => {
 
           {/* Call Controls */}
           <div className="flex justify-center gap-2 md:gap-3 mt-auto">
-            <button className="w-10 md:w-12 h-10 md:h-12 bg-slate-700 rounded-full flex items-center justify-center hover:bg-slate-600">
+            <button aria-label="Mute microphone" className="w-10 md:w-12 h-10 md:h-12 bg-slate-700 rounded-full flex items-center justify-center hover:bg-slate-600">
               <Mic className="w-4 md:w-5 h-4 md:h-5 text-white" />
             </button>
-            <button className="w-12 md:w-14 h-12 md:h-14 bg-red-500 rounded-full flex items-center justify-center hover:bg-red-600">
+            <button aria-label="Hang up call" className="w-12 md:w-14 h-12 md:h-14 bg-red-500 rounded-full flex items-center justify-center hover:bg-red-600">
               <PhoneOff className="w-5 md:w-6 h-5 md:h-6 text-white" />
             </button>
-            <button className="w-10 md:w-12 h-10 md:h-12 bg-slate-700 rounded-full flex items-center justify-center hover:bg-slate-600">
+            <button aria-label="View call queue" className="w-10 md:w-12 h-10 md:h-12 bg-slate-700 rounded-full flex items-center justify-center hover:bg-slate-600">
               <Clock4 className="w-4 md:w-5 h-4 md:h-5 text-white" />
             </button>
           </div>
