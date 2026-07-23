@@ -582,8 +582,7 @@ export default function PropertyInfoPanelMobileBody(props: Props) {
             {skipTraceError && (
               <p className="text-[10px] text-destructive">{skipTraceError}</p>
             )}
-          </div>
-        )}
+        </div>
 
         {skipTraceError && hasContact === false && !enriching && (
           <Alert variant="destructive" className="mb-4 py-2">
