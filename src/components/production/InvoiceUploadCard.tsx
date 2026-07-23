@@ -472,7 +472,9 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
                 <input
                   type="file"
                   className="hidden"
-                  accept=".pdf,.png,.jpg,.jpeg"
+                  // Accept anything a phone camera / photo library produces
+                  // (including iPhone HEIC/HEIF) plus PDFs from email attachments.
+                  accept="image/*,application/pdf,.pdf,.heic,.heif"
                   onChange={handleFileUpload}
                   disabled={uploading || scanning}
                 />
