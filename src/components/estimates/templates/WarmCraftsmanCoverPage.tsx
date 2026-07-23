@@ -116,7 +116,7 @@ export const WarmCraftsmanCoverPage: React.FC<CoverPageProps> = ({
         <div className="w-[340px] shrink-0">
           {propertyPhoto ? (
             <div className="w-full h-[460px] overflow-hidden" style={{ borderLeft: '5px solid #C9956B' }}>
-              <img src={propertyPhoto} alt="Property" className="w-full h-full object-cover" />
+              <img src={propertyPhoto} alt="Main property photo for estimate" className="w-full h-full object-cover" />
             </div>
           ) : (
             <div className="w-full h-[460px]" style={{ background: 'linear-gradient(180deg, #5C4033, #3D3225)', borderLeft: '5px solid #C9956B' }} />

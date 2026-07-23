@@ -95,7 +95,7 @@ export function InspectionSummary({
             >
               {firstPhoto ? (
                 <div className="relative">
-                  <img src={firstPhoto} alt={step.title} className="w-full h-20 object-cover rounded-md mb-1" />
+                  <img src={firstPhoto} alt={`Inspection photo for ${step.title}`} className="w-full h-20 object-cover rounded-md mb-1" />
                   {extraCount > 0 && (
                     <span className="absolute top-1 right-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded-full font-medium">
                       +{extraCount}

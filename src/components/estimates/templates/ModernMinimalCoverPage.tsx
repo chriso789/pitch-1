@@ -74,7 +74,7 @@ export const ModernMinimalCoverPage: React.FC<CoverPageProps> = ({
       {/* Property photo — right-aligned smaller inset */}
       {propertyPhoto && (
         <div className="absolute right-16 bottom-[180px] w-[320px] h-[200px] overflow-hidden">
-          <img src={propertyPhoto} alt="Property" className="w-full h-full object-cover" />
+          <img src={propertyPhoto} alt="Main property photo for estimate" className="w-full h-full object-cover" />
         </div>
       )}
 

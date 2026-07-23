@@ -120,6 +120,7 @@ const DashboardMockup = () => {
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               readOnly
+              aria-label="Search contacts, leads, and jobs"
               placeholder="Search contacts, leads, jobs..."
               className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-600 focus:outline-none"
             />
