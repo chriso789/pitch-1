@@ -29,6 +29,7 @@ import { ProfitBreakdownDisplay } from './ProfitBreakdownDisplay';
 import { AddEstimateLineDialog } from './estimates/AddEstimateLineDialog';
 import { AddFromLibraryDialog } from './estimates/AddFromLibraryDialog';
 import { PullMeasurementsButton } from './measurements/PullMeasurementsButton';
+import { useFeatureAccess } from '@/hooks/useFeatureAccess';
 import { useLatestMeasurement } from '@/hooks/useMeasurement';
 import { useLivePricing } from '@/hooks/useLivePricing';
 import { useUserProfile } from '@/contexts/UserProfileContext';
