@@ -206,6 +206,11 @@ export default function ProjectAccountingPanel({ projectId }: Props) {
         </CardTitle>
         <div className="flex items-center gap-2">
           <Badge variant={r.tone}>{r.label}</Badge>
+          <Button asChild size="sm" variant="ghost">
+            <Link to="/settings/quickbooks/mappings">
+              <Settings2 className="h-4 w-4 mr-1" /> Mappings
+            </Link>
+          </Button>
           <Button
             size="sm"
             variant="outline"
