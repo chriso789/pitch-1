@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Loader2, ExternalLink, DollarSign, RefreshCcw, Copy, CheckCircle2, AlertTriangle, CreditCard,
 } from "lucide-react";
+import { InvoiceEmailActions } from "@/components/invoices/InvoiceEmailActions";
 
 interface QuickBooksInvoiceManagerProps {
   projectId: string;
@@ -284,7 +285,14 @@ export function QuickBooksInvoiceManager({ projectId, tenantId }: QuickBooksInvo
                     {inv.last_synced_at && <>Last synced {new Date(inv.last_synced_at).toLocaleString()}</>}
                   </CardDescription>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <InvoiceEmailActions
+                    invoiceId={inv.id}
+                    tenantId={tenantId}
+                    projectId={projectId}
+                    invoiceLabel={`Invoice ${inv.doc_number ? `#${inv.doc_number}` : `(${inv.qbo_invoice_id})`}`}
+                    isVoid={["voided", "void"].includes(String(inv.qbo_status ?? "").toLowerCase())}
+                  />
                   <Button variant="outline" size="sm" onClick={() => handleSync(inv.qbo_invoice_id)} disabled={syncingId === inv.qbo_invoice_id}>
                     {syncingId === inv.qbo_invoice_id ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
                     <span className="ml-1.5">Sync</span>

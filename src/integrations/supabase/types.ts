@@ -24545,6 +24545,129 @@ export type Database = {
           },
         ]
       }
+      invoice_email_deliveries: {
+        Row: {
+          accepted_at: string | null
+          bounced_at: string | null
+          complained_at: string | null
+          contact_id: string | null
+          created_at: string
+          created_by: string | null
+          delayed_at: string | null
+          delivered_at: string | null
+          failed_at: string | null
+          failure_reason: string | null
+          from_email: string
+          from_name: string | null
+          id: string
+          idempotency_key: string
+          is_resend: boolean
+          parent_delivery_id: string | null
+          pitch_invoice_id: string
+          portal_token_id: string | null
+          project_id: string | null
+          provider: string
+          provider_message_id: string | null
+          queued_at: string
+          recipient_email: string
+          reply_to: string | null
+          retry_count: number
+          send_request_id: string
+          sender_kind: string
+          sent_at: string | null
+          status: string
+          subject: string
+          template_version: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          bounced_at?: string | null
+          complained_at?: string | null
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          delayed_at?: string | null
+          delivered_at?: string | null
+          failed_at?: string | null
+          failure_reason?: string | null
+          from_email: string
+          from_name?: string | null
+          id?: string
+          idempotency_key: string
+          is_resend?: boolean
+          parent_delivery_id?: string | null
+          pitch_invoice_id: string
+          portal_token_id?: string | null
+          project_id?: string | null
+          provider?: string
+          provider_message_id?: string | null
+          queued_at?: string
+          recipient_email: string
+          reply_to?: string | null
+          retry_count?: number
+          send_request_id: string
+          sender_kind: string
+          sent_at?: string | null
+          status?: string
+          subject: string
+          template_version?: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          accepted_at?: string | null
+          bounced_at?: string | null
+          complained_at?: string | null
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          delayed_at?: string | null
+          delivered_at?: string | null
+          failed_at?: string | null
+          failure_reason?: string | null
+          from_email?: string
+          from_name?: string | null
+          id?: string
+          idempotency_key?: string
+          is_resend?: boolean
+          parent_delivery_id?: string | null
+          pitch_invoice_id?: string
+          portal_token_id?: string | null
+          project_id?: string | null
+          provider?: string
+          provider_message_id?: string | null
+          queued_at?: string
+          recipient_email?: string
+          reply_to?: string | null
+          retry_count?: number
+          send_request_id?: string
+          sender_kind?: string
+          sent_at?: string | null
+          status?: string
+          subject?: string
+          template_version?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_email_deliveries_parent_delivery_id_fkey"
+            columns: ["parent_delivery_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_email_deliveries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_email_deliveries_portal_token_id_fkey"
+            columns: ["portal_token_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_portal_tokens"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invoice_portal_tokens: {
         Row: {
           contact_id: string | null
@@ -40513,6 +40636,39 @@ export type Database = {
           provider?: string
           unit?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      provider_webhook_events: {
+        Row: {
+          event_type: string | null
+          id: string
+          payload_hash: string | null
+          processed_at: string | null
+          processing_result: string | null
+          provider: string
+          provider_event_id: string
+          received_at: string
+        }
+        Insert: {
+          event_type?: string | null
+          id?: string
+          payload_hash?: string | null
+          processed_at?: string | null
+          processing_result?: string | null
+          provider: string
+          provider_event_id: string
+          received_at?: string
+        }
+        Update: {
+          event_type?: string | null
+          id?: string
+          payload_hash?: string | null
+          processed_at?: string | null
+          processing_result?: string | null
+          provider?: string
+          provider_event_id?: string
+          received_at?: string
         }
         Relationships: []
       }
@@ -56501,6 +56657,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      tenant_email_settings: {
+        Row: {
+          created_at: string
+          from_email: string | null
+          from_name: string | null
+          invoice_template_version: number
+          platform_sender_fallback_enabled: boolean
+          provider: string
+          reply_to: string | null
+          sending_enabled: boolean
+          tenant_id: string
+          updated_at: string
+          verified_domain_status: string
+        }
+        Insert: {
+          created_at?: string
+          from_email?: string | null
+          from_name?: string | null
+          invoice_template_version?: number
+          platform_sender_fallback_enabled?: boolean
+          provider?: string
+          reply_to?: string | null
+          sending_enabled?: boolean
+          tenant_id: string
+          updated_at?: string
+          verified_domain_status?: string
+        }
+        Update: {
+          created_at?: string
+          from_email?: string | null
+          from_name?: string | null
+          invoice_template_version?: number
+          platform_sender_fallback_enabled?: boolean
+          provider?: string
+          reply_to?: string | null
+          sending_enabled?: boolean
+          tenant_id?: string
+          updated_at?: string
+          verified_domain_status?: string
+        }
+        Relationships: []
       }
       tenant_erecording_credentials: {
         Row: {
