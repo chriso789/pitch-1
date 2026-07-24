@@ -6,6 +6,7 @@ const SettingsPage = React.lazy(() => import("@/pages/Settings"));
 const AIAgentSettingsPage = React.lazy(() => import("@/pages/settings/AIAgentSettingsPage"));
 const AIAdminPage = React.lazy(() => import("@/pages/settings/AIAdminPage"));
 const CompanyReferralSettingsPage = React.lazy(() => import("@/pages/app/settings/CompanyReferralSettingsPage"));
+const QuickBooksMappingsPage = React.lazy(() => import("@/pages/settings/QuickBooksMappingsPage"));
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-background">
