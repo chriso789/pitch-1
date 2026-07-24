@@ -1390,22 +1390,27 @@ const TermsSection: React.FC<{
   compact?: boolean;
 }> = ({ finePrintContent, opts, breakdown, compact }) => {
   return (
-    <div className="space-y-3 mt-3">
+    <div className={compact ? "space-y-1.5 mt-2" : "space-y-3 mt-3"}>
       {opts.showTermsAndConditions && (
-        <div className="text-xs text-gray-600 p-2 bg-gray-50 rounded">
-          <h4 className="font-semibold mb-1">Terms & Conditions</h4>
+        <div className={compact
+          ? "text-[9px] leading-snug text-gray-600 p-1.5 bg-gray-50 rounded"
+          : "text-xs text-gray-600 p-2 bg-gray-50 rounded"}>
+          <h4 className={compact ? "font-semibold mb-0.5 text-[10px]" : "font-semibold mb-1"}>Terms & Conditions</h4>
           <p>This estimate is valid for 30 days. Work will be scheduled upon signed acceptance and deposit. Final pricing may vary based on site conditions discovered during work.</p>
         </div>
       )}
 
       {opts.showCustomFinePrint && finePrintContent && (
-        <div className="text-xs text-gray-500 p-2 border-t border-gray-100">
+        <div className={compact
+          ? "text-[8px] leading-snug text-gray-500 p-1.5 border-t border-gray-100"
+          : "text-xs text-gray-500 p-2 border-t border-gray-100"}>
           {finePrintContent}
         </div>
       )}
 
       {opts.showSignatureBlock && (
-        <div className="mt-4 pt-3 border-t border-gray-200" data-signature-block="true">
+        <div className={compact ? "mt-2 pt-2 border-t border-gray-200" : "mt-4 pt-3 border-t border-gray-200"} data-signature-block="true">
+
           {compact && breakdown ? (
             // Compact: signatures flank a centered price so everything fits one page
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: '24px', width: '100%' }}>
