@@ -5,7 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { AlertCircle, CheckCircle2, RefreshCw, AlertTriangle } from "lucide-react";
+import { AlertCircle, CheckCircle2, RefreshCw, AlertTriangle, Settings2 } from "lucide-react";
+import { Link } from "react-router-dom";
 
 interface Props {
   projectId: string;
@@ -205,6 +206,11 @@ export default function ProjectAccountingPanel({ projectId }: Props) {
         </CardTitle>
         <div className="flex items-center gap-2">
           <Badge variant={r.tone}>{r.label}</Badge>
+          <Button asChild size="sm" variant="ghost">
+            <Link to="/settings/quickbooks/mappings">
+              <Settings2 className="h-4 w-4 mr-1" /> Mappings
+            </Link>
+          </Button>
           <Button
             size="sm"
             variant="outline"
