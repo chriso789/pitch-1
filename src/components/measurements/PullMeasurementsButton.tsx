@@ -15,6 +15,7 @@ import { triggerAutomation, AUTOMATION_EVENTS } from '@/lib/automations/triggerA
 import { useMeasurementJob } from '@/hooks/useMeasurementJob';
 import { MeasurementOrderAddressGate } from '@/components/address/MeasurementOrderAddressGate';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { useFeatureAccess } from '@/hooks/useFeatureAccess';
 import { useSupplierDeveloperMode } from '@/hooks/useSupplierDeveloperMode';
 import { EdgeConfirmationWizard } from './EdgeConfirmationWizard';
 import type { PlanEdge, EdgeType, AerialBackground } from './DimensionedPlanDrawing';
