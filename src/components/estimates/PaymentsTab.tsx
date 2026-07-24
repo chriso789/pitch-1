@@ -672,7 +672,34 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
         console.error('Failed to generate invoice PDF:', pdfErr);
         toast.warning('Invoice created, but PDF generation failed');
       }
+
+      // Auto-send from Pitch email after the PDF is uploaded so the recipient
+      // gets a working link. The server resolves tenant + contact and delivers
+      // via the tenant's verified domain (or platform fallback).
+      if (sendFromPitchEmail && createdInvoice?.id && customer.email) {
+        try {
+          const { data: shareRes, error: shareErr } = await supabase.functions.invoke('invoice-share', {
+            body: {
+              invoice_id: createdInvoice.id,
+              channel: 'email',
+              recipient: customer.email,
+              include_qbo_link: true,
+            },
+          });
+          if (shareErr || !(shareRes as any)?.ok) {
+            const reason = (shareRes as any)?.reason || (shareRes as any)?.error || shareErr?.message || 'unknown';
+            toast.warning(`Invoice created, but auto-email failed: ${reason}`);
+          } else {
+            toast.success(`Invoice emailed to ${customer.email}`);
+          }
+        } catch (e: any) {
+          toast.warning(`Invoice created, but auto-email failed: ${e?.message ?? 'unknown'}`);
+        }
+      } else if (sendFromPitchEmail && !customer.email) {
+        toast.warning('Send from Pitch Email selected, but the contact has no email on file');
+      }
     },
+
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project-ar-invoices', pipelineEntryId] });
       queryClient.invalidateQueries({ queryKey: ['documents', pipelineEntryId] });
