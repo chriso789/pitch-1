@@ -301,7 +301,7 @@ export default function CommissionReport() {
           .from('change_orders')
           .select('project_id, cost_impact, status')
           .in('project_id', projectIds)
-          .in('status', ['approved', 'completed']);
+          .in('status', ['approved', 'completed', 'invoiced', 'paid']);
         (coRows || []).forEach((co: any) => {
           const eid = entryByProject.get(co.project_id);
           if (!eid) return;
