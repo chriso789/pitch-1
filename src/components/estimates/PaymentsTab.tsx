@@ -646,7 +646,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
           pipelineEntryId,
           userId: user.id,
           data: {
-            invoiceNumber,
+            invoiceNumber: invoiceNumberForPdf,
             invoiceDate: format(today, 'MMM d, yyyy'),
             dueDate: due ? format(due, 'MMM d, yyyy') : null,
             notes: invoiceNotes || null,
