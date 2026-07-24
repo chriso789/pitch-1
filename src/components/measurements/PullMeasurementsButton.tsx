@@ -206,6 +206,8 @@ export function PullMeasurementsButton({
   onSuccess
 }: PullMeasurementsButtonProps) {
   const { toast } = useToast();
+  const { hasFeature, isLoading: featureLoading } = useFeatureAccess();
+  const aiMeasurementsEnabled = hasFeature('measurements');
   const { isDeveloper } = useSupplierDeveloperMode();
   const queryClient = useQueryClient();
   const imageCache = useImageCache();
