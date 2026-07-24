@@ -134,12 +134,22 @@ Deno.serve(async (req) => {
 
       let mappingId: string;
       if (action === "create") {
+        // Partial unique index doesn't support ON CONFLICT — check-then-insert.
+        const { data: existing } = await admin
+          .from("project_scope_accounting_mappings")
+          .select("id")
+          .eq("tenant_id", effectiveTenantId)
+          .eq("qbo_connection_id", inp.qbo_connection_id)
+          .eq("trade_id", inp.trade_id)
+          .eq("project_type_id", inp.project_type_id)
+          .eq("job_type_key", inp.job_type_id ?? "__null__")
+          .eq("active", true)
+          .is("archived_at", null)
+          .maybeSingle();
+        if (existing) return json(409, { ok: false, error: "duplicate_mapping", mapping_id: existing.id }, requestId);
         const { data, error } = await admin
           .from("project_scope_accounting_mappings")
-          .upsert(
-            { ...base, created_by: userId },
-            { onConflict: "tenant_id,qbo_connection_id,trade_id,project_type_id,job_type_key" },
-          )
+          .insert({ ...base, created_by: userId })
           .select("id")
           .single();
         if (error) return json(400, { ok: false, error: "create_failed", detail: error.message }, requestId);
