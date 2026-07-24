@@ -559,9 +559,6 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const invoiceCount = (invoices || []).length + 1;
-      const invoiceNumber = `INV-${pipelineEntryId.slice(0, 6).toUpperCase()}-${String(invoiceCount).padStart(3, '0')}`;
-      
       const lineItemsPayload: InvoiceLineItem[] = selectedGroups.map(({ g, total }) => ({
         description: g.label,
         qty: 1,
@@ -579,24 +576,42 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
         });
       }
 
-      const { error } = await supabase.from('project_invoices').insert({
-        tenant_id: activeTenantId!,
-        pipeline_entry_id: pipelineEntryId,
-        invoice_number: invoiceNumber,
-        amount,
-        balance: amount,
-        status: 'draft',
-        due_date: invoiceDueDate || null,
-        notes: invoiceNotes || null,
-        created_by: user.id,
-        line_items: lineItemsPayload as any,
-        cc_fee_amount: feeAmount,
-        cc_fee_percent: addCcFee ? ccFeePercent : 0,
-      } as any);
-      if (error) {
-        console.error('Invoice creation error:', error);
-        throw new Error(error.message || 'Failed to create invoice');
+      // Server-authoritative invoice creation. The browser must NEVER submit
+      // tenant_id / company_id / realm_id — the edge function resolves those
+      // from the project (pipeline_entry) and validates access.
+      const { data: fnResult, error: fnErr } = await supabase.functions.invoke('invoice-create', {
+        body: {
+          project_id: pipelineEntryId,
+          invoice_type: 'standard',
+          due_date: invoiceDueDate || null,
+          notes: invoiceNotes || null,
+          line_items: lineItemsPayload,
+          cc_fee_amount: feeAmount,
+          cc_fee_percent: addCcFee ? ccFeePercent : 0,
+          payment_options: {
+            allowCreditCard: qboAllowCreditCard,
+            allowAch: qboAllowAch,
+            requireDeposit: qboRequireDeposit,
+            autoEmailViaQbo: qboEmailViaQbo,
+            sendFromPitchEmail,
+            createPortalLink: createPitchPortalLink,
+            terms: invoiceTerms,
+            customTerms: invoiceCustomTerms || undefined,
+            customerMemo: customerMemo || undefined,
+            invoiceNumberOverride: invoiceNumber || undefined,
+          },
+        },
+      });
+      if (fnErr || !fnResult?.ok) {
+        const msg = (fnResult as any)?.error || fnErr?.message || 'Failed to create invoice';
+        console.error('Invoice creation error:', fnErr, fnResult);
+        throw new Error(msg);
       }
+      const createdInvoice: any = (fnResult as any).invoice;
+      const invoiceNumberOut: string = createdInvoice?.invoice_number || '';
+      // Preserve the resolved invoice number for the downstream PDF step.
+      const invoiceNumberForPdf = invoiceNumberOut;
+
 
       // Fetch customer for the PDF (contact via pipeline_entry)
       let customer = { name: '', address: '', email: '', phone: '' } as Record<string, string>;
