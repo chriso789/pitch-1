@@ -5,7 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { AlertCircle, CheckCircle2, RefreshCw, AlertTriangle } from "lucide-react";
+import { AlertCircle, CheckCircle2, RefreshCw, AlertTriangle, Settings2 } from "lucide-react";
+import { Link } from "react-router-dom";
 
 interface Props {
   projectId: string;
