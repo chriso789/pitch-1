@@ -83,18 +83,6 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
   invoiceType,
   onSuccess
 }) => {
-  // Material invoices use the multi-file batch uploader so users can drop
-  // many invoices at once, see parsed contents, and resolve duplicates inline.
-  if (invoiceType === 'material') {
-    return (
-      <BatchMaterialInvoiceCard
-        projectId={projectId}
-        pipelineEntryId={pipelineEntryId}
-        changeOrderId={changeOrderId}
-        onSuccess={onSuccess}
-      />
-    );
-  }
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -155,6 +143,19 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
     return () => window.removeEventListener('invoice-deleted', handleInvoiceDeleted as EventListener);
   }, [pipelineEntryId, invoiceType]);
 
+  // Material invoices use the multi-file batch uploader so users can drop
+  // many invoices at once, see parsed contents, and resolve duplicates inline.
+  if (invoiceType === 'material') {
+    return (
+      <BatchMaterialInvoiceCard
+        projectId={projectId}
+        pipelineEntryId={pipelineEntryId}
+        changeOrderId={changeOrderId}
+        onSuccess={onSuccess}
+      />
+    );
+  }
+
   const formatLineItemsSummary = (items: LineItem[]): string => {
     if (!items.length) return '';
     const lines = items.map(item => {
@@ -166,10 +167,32 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
     return lines.join('\n');
   };
 
-  const parseInvoiceWithAI = async (documentUrl: string) => {
+  const createSignedInvoiceUrl = async (pathOrUrl: string) => {
+    if (!pathOrUrl) return null;
+    if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
+
+    const { data: signed, error: signErr } = await supabase.storage
+      .from('project-invoices')
+      .createSignedUrl(pathOrUrl, 60 * 10);
+
+    if (signErr || !signed?.signedUrl) return null;
+    return signed.signedUrl;
+  };
+
+  const parseInvoiceWithAI = async (documentPathOrUrl: string) => {
     setScanning(true);
     setScanSuccess(false);
     try {
+      const documentUrl = await createSignedInvoiceUrl(documentPathOrUrl);
+      if (!documentUrl) {
+        toast({
+          title: 'Unable to scan file',
+          description: 'The file is still attached. Enter the fields manually and submit when ready.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
       const { data, error } = await supabase.functions.invoke('parse-invoice-document', {
         body: {
           document_url: documentUrl,
@@ -277,36 +300,20 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
 
       if (error) throw error;
 
-      // The bucket is private, so build a signed URL we can both preview now
-      // and (re-)sign on demand later via openInvoiceDocument().
-      const { data: signed, error: signErr } = await supabase.storage
-        .from('project-invoices')
-        .createSignedUrl(fileName, 60 * 10); // 10 minutes
-
-      // Store the signed URL — openInvoiceDocument extracts the path and
-      // re-signs when the user clicks preview, so expiry is fine.
+      // Store the tenant-scoped storage path, not a short-lived signed URL.
+      // The preview dialog re-signs the path on demand.
       setFormData(prev => ({
         ...prev,
-        document_url: signed?.signedUrl || '',
+        document_url: fileName,
         document_name: file.name
       }));
 
-      if (signErr || !signed?.signedUrl) {
-        toast({
-          title: 'File Uploaded',
-          description: 'Could not auto-scan — please fill fields manually.',
-          variant: 'destructive',
-        });
-        return;
-      }
-
       toast({
-        title: 'File Uploaded',
-        description: 'Scanning invoice with AI...'
+        title: 'File Attached',
+        description: invoiceType === 'overhead'
+          ? 'Enter the charge details and submit when ready.'
+          : 'Enter the invoice details and submit when ready.'
       });
-
-      // Trigger AI parsing using the signed URL
-      parseInvoiceWithAI(signed.signedUrl);
     } catch (error: any) {
       toast({
         title: 'Upload Failed',
@@ -444,19 +451,43 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
         <div>
           <Label>Invoice Document</Label>
           {formData.document_url ? (
-            <div className="flex items-center gap-2 p-2 bg-muted rounded-md mt-1">
-              <FileText className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm flex-1 truncate">{formData.document_name}</span>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                onClick={() => {
-                  resetImportFields();
-                }}
-              >
-                <X className="h-3 w-3" />
-              </Button>
+            <div className="mt-1 space-y-2">
+              <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
+                <FileText className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm flex-1 truncate">{formData.document_name}</span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  onClick={() => {
+                    resetImportFields();
+                  }}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+              {isLabor && !scanSuccess && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => parseInvoiceWithAI(formData.document_url)}
+                  disabled={scanning}
+                >
+                  {scanning ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Scanning...
+                    </>
+                  ) : (
+                    <>
+                      <ScanLine className="h-4 w-4 mr-2" />
+                      Auto-fill from document
+                    </>
+                  )}
+                </Button>
+              )}
             </div>
           ) : (
             <div className="mt-1">
@@ -467,7 +498,7 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
                   <Upload className="h-4 w-4 text-muted-foreground" />
                 )}
                 <span className="text-sm text-muted-foreground">
-                  {uploading ? 'Uploading...' : 'Upload PDF or Image — fields will auto-fill'}
+                  {uploading ? 'Uploading...' : 'Upload PDF or Image'}
                 </span>
                 <input
                   type="file"

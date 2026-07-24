@@ -411,7 +411,7 @@ Deno.serve(async (req) => {
     let invoiceQuery = supabase
       .from('project_cost_invoices')
       .select('invoice_type, invoice_amount')
-      .in('status', ['pending', 'approved']);
+      .in('status', ['pending', 'verified', 'approved']);
     
     if (effectiveProjectId) {
       invoiceQuery = invoiceQuery.eq('project_id', effectiveProjectId);
