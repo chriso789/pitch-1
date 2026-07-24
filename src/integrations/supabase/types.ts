@@ -41914,6 +41914,80 @@ export type Database = {
         }
         Relationships: []
       }
+      qbo_catalog_sync_state: {
+        Row: {
+          capability_status: string | null
+          created_at: string
+          entity_kind: string
+          id: string
+          last_full_refresh_at: string | null
+          last_intuit_tid: string | null
+          last_refresh_completed_at: string | null
+          last_refresh_error: string | null
+          last_refresh_started_at: string | null
+          last_successful_refresh_at: string | null
+          page_count: number
+          qbo_connection_id: string
+          refresh_status: string
+          rows_fetched: number
+          rows_inserted: number
+          rows_marked_stale: number
+          rows_updated: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          capability_status?: string | null
+          created_at?: string
+          entity_kind: string
+          id?: string
+          last_full_refresh_at?: string | null
+          last_intuit_tid?: string | null
+          last_refresh_completed_at?: string | null
+          last_refresh_error?: string | null
+          last_refresh_started_at?: string | null
+          last_successful_refresh_at?: string | null
+          page_count?: number
+          qbo_connection_id: string
+          refresh_status?: string
+          rows_fetched?: number
+          rows_inserted?: number
+          rows_marked_stale?: number
+          rows_updated?: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          capability_status?: string | null
+          created_at?: string
+          entity_kind?: string
+          id?: string
+          last_full_refresh_at?: string | null
+          last_intuit_tid?: string | null
+          last_refresh_completed_at?: string | null
+          last_refresh_error?: string | null
+          last_refresh_started_at?: string | null
+          last_successful_refresh_at?: string | null
+          page_count?: number
+          qbo_connection_id?: string
+          refresh_status?: string
+          rows_fetched?: number
+          rows_inserted?: number
+          rows_marked_stale?: number
+          rows_updated?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qbo_catalog_sync_state_qbo_connection_id_fkey"
+            columns: ["qbo_connection_id"]
+            isOneToOne: false
+            referencedRelation: "qbo_connections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       qbo_class_cache: {
         Row: {
           active: boolean
@@ -41971,6 +42045,62 @@ export type Database = {
             foreignKeyName: "qbo_class_cache_qbo_connection_id_fkey"
             columns: ["qbo_connection_id"]
             isOneToOne: false
+            referencedRelation: "qbo_connections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      qbo_company_capabilities: {
+        Row: {
+          class_tracking_enabled: boolean | null
+          class_tracking_per_txn: boolean | null
+          custom_txn_numbers: boolean | null
+          last_synced_at: string
+          location_tracking_enabled: boolean | null
+          online_payment_available: boolean | null
+          projects_enabled: boolean | null
+          qbo_connection_id: string
+          raw_preferences: Json | null
+          sales_tax_enabled: boolean | null
+          tenant_id: string
+          terms_available: boolean | null
+          updated_at: string
+        }
+        Insert: {
+          class_tracking_enabled?: boolean | null
+          class_tracking_per_txn?: boolean | null
+          custom_txn_numbers?: boolean | null
+          last_synced_at?: string
+          location_tracking_enabled?: boolean | null
+          online_payment_available?: boolean | null
+          projects_enabled?: boolean | null
+          qbo_connection_id: string
+          raw_preferences?: Json | null
+          sales_tax_enabled?: boolean | null
+          tenant_id: string
+          terms_available?: boolean | null
+          updated_at?: string
+        }
+        Update: {
+          class_tracking_enabled?: boolean | null
+          class_tracking_per_txn?: boolean | null
+          custom_txn_numbers?: boolean | null
+          last_synced_at?: string
+          location_tracking_enabled?: boolean | null
+          online_payment_available?: boolean | null
+          projects_enabled?: boolean | null
+          qbo_connection_id?: string
+          raw_preferences?: Json | null
+          sales_tax_enabled?: boolean | null
+          tenant_id?: string
+          terms_available?: boolean | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qbo_company_capabilities_qbo_connection_id_fkey"
+            columns: ["qbo_connection_id"]
+            isOneToOne: true
             referencedRelation: "qbo_connections"
             referencedColumns: ["id"]
           },
@@ -64269,6 +64399,10 @@ export type Database = {
           attempt_count: number
           released: boolean
         }[]
+      }
+      reresolve_projects_for_mapping: {
+        Args: { p_mapping_id: string }
+        Returns: Json
       }
       resolve_invoice_portal_token: {
         Args: {
