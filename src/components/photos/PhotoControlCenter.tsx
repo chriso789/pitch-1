@@ -162,7 +162,9 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
     toggleEstimateInclusion,
     estimatePhotos,
     photosByCategory,
+    refetch,
   } = usePhotos({ contactId, leadId, projectId });
+
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
