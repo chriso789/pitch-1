@@ -340,6 +340,33 @@ export default function ProjectAccountingPanel({ projectId }: Props) {
           </div>
         )}
 
+        <div className="rounded-md border p-2 text-xs flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2 min-w-0">
+            <BookOpen className="h-4 w-4 flex-shrink-0" />
+            <span className="font-medium">QuickBooks Customer</span>
+            {qboMapping?.qbo_customer_id ? (
+              <>
+                <Badge variant="default" className="text-[10px]">
+                  {qboMapping.sync_status === "ready" ? "Linked" : qboMapping.sync_status}
+                </Badge>
+                <span className="truncate text-muted-foreground">
+                  {qboMapping.qbo_display_name} · ID {qboMapping.qbo_customer_id}
+                </span>
+              </>
+            ) : qboMapping ? (
+              <Badge variant="outline" className="text-[10px]">{qboMapping.sync_status}</Badge>
+            ) : (
+              <Badge variant="outline" className="text-[10px]">Not created</Badge>
+            )}
+          </div>
+          {qboMapping?.last_error && (
+            <span className="text-destructive text-[11px] truncate max-w-full">
+              {qboMapping.last_error}
+            </span>
+          )}
+        </div>
+
+
         <div className="border-t pt-3">
           <div className="text-xs uppercase text-muted-foreground mb-2">Scopes &amp; QBO Mapping</div>
           <div className="space-y-1.5">
