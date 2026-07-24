@@ -153,7 +153,73 @@ export default function ProjectAccountingPanel({ projectId }: Props) {
     onError: (e: any) => toast.error(e?.message ?? "Failed to refresh mapping"),
   });
 
+  const { data: qboMapping, refetch: refetchMapping } = useQuery({
+    queryKey: ["project-qbo-mapping", projectId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("project_qbo_mappings")
+        .select("id, qbo_connection_id, qbo_customer_id, qbo_display_name, sync_status, last_error, last_synced_at, last_verified_at, is_active")
+        .eq("pitch_project_id", projectId)
+        .eq("is_active", true)
+        .maybeSingle();
+      return data as {
+        id: string;
+        qbo_connection_id: string;
+        qbo_customer_id: string | null;
+        qbo_display_name: string | null;
+        sync_status: string;
+        last_error: string | null;
+        last_synced_at: string | null;
+        last_verified_at: string | null;
+        is_active: boolean;
+      } | null;
+    },
+  });
+
+  const syncMut = useMutation({
+    mutationFn: async (trigger: "auto" | "manual") => {
+      const { data, error } = await supabase.functions.invoke("qbo-project-sync", {
+        body: { project_id: projectId, trigger },
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (res: any, trigger) => {
+      if (res?.ok) {
+        if (trigger === "manual") {
+          toast.success(`QuickBooks customer ready: ${res?.data?.qbo_display_name ?? "created"}`);
+        }
+      } else {
+        toast.error(res?.error ?? "QuickBooks sync failed");
+      }
+      qc.invalidateQueries({ queryKey: ["project-accounting-snapshot", projectId] });
+      refetchMapping();
+    },
+    onError: (e: any) => toast.error(e?.message ?? "QuickBooks sync failed"),
+  });
+
+  // Auto-trigger: once mappings resolve to qbo_sync_pending, kick off the customer
+  // creation exactly once per mount.
+  const autoTriggeredRef = useRef(false);
+  useEffect(() => {
+    if (autoTriggeredRef.current) return;
+    const readiness = data?.snapshot?.accounting_readiness;
+    if (readiness === "qbo_sync_pending" && !syncMut.isPending) {
+      autoTriggeredRef.current = true;
+      syncMut.mutate("auto");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data?.snapshot?.accounting_readiness]);
+
   if (isLoading) {
+    return (
+      <Card>
+        <CardHeader><CardTitle>Project Accounting</CardTitle></CardHeader>
+        <CardContent><Skeleton className="h-32 w-full" /></CardContent>
+      </Card>
+    );
+  }
+
     return (
       <Card>
         <CardHeader><CardTitle>Project Accounting</CardTitle></CardHeader>
