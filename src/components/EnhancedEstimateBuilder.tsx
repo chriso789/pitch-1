@@ -29,6 +29,7 @@ import { ProfitBreakdownDisplay } from './ProfitBreakdownDisplay';
 import { AddEstimateLineDialog } from './estimates/AddEstimateLineDialog';
 import { AddFromLibraryDialog } from './estimates/AddFromLibraryDialog';
 import { PullMeasurementsButton } from './measurements/PullMeasurementsButton';
+import { useFeatureAccess } from '@/hooks/useFeatureAccess';
 import { useLatestMeasurement } from '@/hooks/useMeasurement';
 import { useLivePricing } from '@/hooks/useLivePricing';
 import { useUserProfile } from '@/contexts/UserProfileContext';
@@ -302,6 +303,8 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
   onEstimateCreated
 }) => {
   const { toast } = useToast();
+  const { hasFeature } = useFeatureAccess();
+  const aiMeasurementsEnabled = hasFeature('measurements');
   const [searchParams] = useSearchParams();
   const { profile } = useUserProfile();
   const { fetchLivePricing, applyLivePricing, refreshing: livePricingRefreshing } = useLivePricing();
@@ -2215,6 +2218,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                 )}
                 
                 <div className="mt-2">
+                  {aiMeasurementsEnabled && (
                     <PullMeasurementsButton
                       propertyId={pipelineEntryId || ''}
                       lat={coordinates?.lat || 0}
@@ -2232,7 +2236,9 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                         });
                       }}
                     />
-                  </div>
+                  )}
+                </div>
+
 
                   {solarMeasurementData && (
                     <div className="border rounded-lg p-3 space-y-2 mt-3 bg-muted/50">
