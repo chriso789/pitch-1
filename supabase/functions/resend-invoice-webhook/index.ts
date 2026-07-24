@@ -161,5 +161,21 @@ Deno.serve(async (req) => {
     .eq("provider", "resend")
     .eq("provider_event_id", normalized.providerEventId);
 
+  // Fire staff notification (SMS + bell) for failure-class events.
+  if (["bounced", "complained", "failed"].includes(normalized.status)) {
+    fetch(`${SUPABASE_URL}/functions/v1/invoice-notify`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${SERVICE_ROLE}`,
+      },
+      body: JSON.stringify({
+        tenant_id: delivery.tenant_id,
+        pitch_invoice_id: delivery.pitch_invoice_id,
+        event_type: STATUS_TO_EVENT_TYPE[normalized.status],
+      }),
+    }).catch((e) => console.error("[resend-invoice-webhook] notify failed", e));
+  }
+
   return json({ ok: true }, 200);
 });
