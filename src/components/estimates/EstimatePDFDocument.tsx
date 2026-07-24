@@ -1408,8 +1408,8 @@ const TermsSection: React.FC<{
         <div className="mt-4 pt-3 border-t border-gray-200" data-signature-block="true">
           {compact && breakdown ? (
             // Compact: signatures flank a centered price so everything fits one page
-            <div className="grid grid-cols-[1fr_auto_1fr] gap-6 items-end">
-              <div>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '24px', width: '100%' }}>
+              <div style={{ flex: 1 }}>
                 <p className="text-xs text-gray-500 mb-10">Customer Signature</p>
                 <div className="h-5 border-b border-gray-400" data-signature-line="customer"></div>
                 <p className="text-xs text-gray-500 mt-2 flex items-end gap-1">
@@ -1417,14 +1417,14 @@ const TermsSection: React.FC<{
                   <span className="inline-block border-b border-gray-400 flex-1 h-4" data-date-line="customer"></span>
                 </p>
               </div>
-              <div className="text-center px-4 pb-2">
-                <p className="text-[10px] uppercase tracking-wide text-gray-500 mb-0.5">Your Investment</p>
-                <div className="text-xl font-bold text-blue-600 whitespace-nowrap">
+              <div style={{ flexShrink: 0, textAlign: 'center', padding: '0 16px 8px' }}>
+                <p style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#6b7280', marginBottom: '2px' }}>Your Investment</p>
+                <div style={{ fontSize: '20px', fontWeight: 700, color: '#2563eb', whiteSpace: 'nowrap' }}>
                   {formatCurrency(breakdown.sellingPrice)}
                 </div>
-                <p className="text-[8px] text-gray-400 mt-0.5">Price includes applicable sales tax</p>
+                <p style={{ fontSize: '8px', color: '#9ca3af', marginTop: '2px' }}>Price includes applicable sales tax</p>
               </div>
-              <div>
+              <div style={{ flex: 1 }}>
                 <p className="text-xs text-gray-500 mb-10">Company Representative</p>
                 <div className="h-5 border-b border-gray-400" data-signature-line="company"></div>
                 <p className="text-xs text-gray-500 mt-2 flex items-end gap-1">
