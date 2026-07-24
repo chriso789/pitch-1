@@ -215,15 +215,17 @@ export function usePhotos({ contactId, leadId, projectId, enabled = true }: UseP
 
       setUploadProgress(100);
 
-      // Invalidate queries
-      queryClient.invalidateQueries({ queryKey });
-
-      toast({
-        title: 'Photo uploaded',
-        description: 'Photo has been uploaded successfully',
-      });
+      // Invalidate queries (unless caller batches many uploads and will invalidate once)
+      if (!silent) {
+        queryClient.invalidateQueries({ queryKey });
+        toast({
+          title: 'Photo uploaded',
+          description: 'Photo has been uploaded successfully',
+        });
+      }
 
       return photoRecord as unknown as CustomerPhoto;
+
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
