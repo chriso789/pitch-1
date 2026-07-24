@@ -133,11 +133,13 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set());
   const [filterCategory, setFilterCategory] = useState<string>('all');
+  const [sortMode, setSortMode] = useState<'manual' | 'oldest' | 'newest'>('manual');
   const [editingPhoto, setEditingPhoto] = useState<CustomerPhoto | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [pendingPreviews, setPendingPreviews] = useState<PendingPreview[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+
 
   const projectCoords =
     typeof projectLatitude === 'number' &&
