@@ -1,284 +1,172 @@
-# Material Price Book Versioning + Historical Audit Engine (v2 — corrected)
+# Phase 2 Slice B — Invoice Email Delivery + Staff Actions
 
-**Canonical rule:** A material invoice is ALWAYS audited against the supplier price book whose `effective_date` is the greatest date ≤ `invoice_date` for that supplier and tenant, breaking ties by highest `revision`. Historical audits are byte-for-byte frozen: importing, archiving, or re-resolving never mutates a prior audit row.
+## Scope
+Enable authorized staff to send Pitch-branded invoice emails via Resend, pointing to the secure Slice A portal (never raw QBO URLs). Full delivery lifecycle, webhook status sync, idempotency, bounce/complaint safety, RLS-hardened.
 
-Tenant scoping in this project uses `company_id` on existing material tables; the resolver + new tables follow that convention and route through the existing `get_user_company_ids()` / role helpers. No client-supplied tenant/company id is trusted.
-
----
-
-## 0. Real schema baseline (verified before writing SQL)
-
-Confirmed via `information_schema`:
-
-- Existing audit tables already form a two-level model — **keep them**:
-  - `public.material_invoice_audits` — run-level (per invoice document). Columns include `company_id`, `invoice_document_id`, `supplier_id`, `price_list_id`, `invoice_date`, totals, `audit_status`.
-  - `public.material_invoice_audit_lines` — line-level. Columns include `audit_id`, `invoice_line_item_id`, `supplier_id`, `price_list_id`, `price_list_item_id`, `match_type`, `agreed_uom`, `invoice_uom`, `agreed_unit_price`, `charged_unit_price`, `quantity`, `total_difference`.
-- Legacy pricing tables: `supplier_price_lists`, `supplier_price_list_items`, `supplier_pricebooks` — remain read-only. New pricing writes go to the new versioned tables and are linked back through a bridge column so old rows and views keep working.
-- Existing invoice line source: `material_invoice_line_items` + `material_invoice_documents`.
-
-The plan therefore **does not create** a table named `material_invoice_audits` a second time. It extends the existing pair and adds new versioning tables alongside them.
+## Out of scope (do NOT build)
+SMS, auto-reminders, auto-closeout, warranty gen, native card/ACH, financing, marketing email.
 
 ---
 
-## 1. Database migration (single migration, approval required)
+## 1. Database migrations
 
-### 1a. `supplier_price_book_versions` — immutable version headers
+### 1a. `tenant_email_settings` (create or extend)
+Columns: `tenant_id` (PK), `provider` ('resend' default), `from_name`, `from_email`, `reply_to`, `sending_enabled` bool, `verified_domain_status` ('unverified'|'pending'|'verified'), `invoice_template_version` int default 1, `platform_sender_fallback_enabled` bool default true, timestamps.
+- RLS: tenant admins can read/write own row; service_role full.
+- **No** provider API key column — API key lives only in edge function env (`RESEND_API_KEY` secret).
 
-Columns:
-- `id uuid pk default gen_random_uuid()`
-- `company_id uuid not null` (tenant column, matches existing tables)
-- `supplier_id uuid not null references public.material_suppliers(id) on delete restrict` — **stable supplier identity**; removes the ambiguous free-text `'other'`. Custom suppliers get a real row in `material_suppliers`.
-- `effective_date date not null`
-- `revision integer not null` — monotonically allocated per `(company_id, supplier_id, effective_date)`; multiple same-date imports are allowed and ordered deterministically.
-- `uploaded_at timestamptz not null default now()`
-- `uploaded_by uuid`
-- `source_file_url text`
-- `source_file_name text`
-- `source_file_sha256 text` — raw file hash for traceability
-- `content_hash text not null` — canonical normalized content hash (see §1d)
-- `status text not null default 'active' check (status in ('active','archived'))` — **UI-only flag; resolver ignores it**
-- `description text`
-- `item_count integer not null default 0` — set server-side inside the import RPC
-- `legacy_price_list_id uuid references public.supplier_price_lists(id)` — for the migration bridge only
-- `is_legacy_fallback boolean not null default false`
+### 1b. `invoice_email_deliveries`
+Full spec column set from prompt §7. Status enum: `queued|accepted|sent|delivered|delayed|bounced|complained|failed`.
+- Unique index on `(tenant_id, idempotency_key)` for dedupe.
+- Index on `provider_message_id` (nullable, unique per provider).
+- RLS: tenant-scoped read for authorized roles; **no** direct client insert/update — writes only via edge functions with service role + explicit `tenant_id` filter.
 
-Constraints & indexes:
-- `unique (company_id, supplier_id, effective_date, revision)` — atomic revision allocation
-- `unique (company_id, supplier_id, content_hash)` — reject exact duplicate imports
-- `index (company_id, supplier_id, effective_date desc, revision desc)` — resolver hot path
-- Immutability trigger: block `UPDATE` on all columns except `status` and `description`; block `DELETE` unconditionally.
+### 1c. `customer_invoice_events` (create if missing, else reuse)
+Append-only event log: `id, tenant_id, project_id, pitch_invoice_id, portal_access_grant_id, delivery_id, event_type, event_data jsonb, actor_user_id, created_at`.
+- Event types from prompt §12.
+- RLS: read for tenant authorized staff; insert only via service role.
 
-### 1b. `supplier_price_book_items` — immutable line items
-
-Columns:
-- `id uuid pk default gen_random_uuid()`
-- `price_book_version_id uuid not null references public.supplier_price_book_versions(id) on delete restrict`
-- `company_id uuid not null`
-- `supplier_id uuid not null`
-- `supplier_item_number text not null`
-- `manufacturer text`, `product_family text`, `color text`
-- `description text`
-- `uom text not null`
-- `unit_cost numeric(14,4) not null check (unit_cost >= 0)`
-- `raw_import jsonb`
-
-Parent consistency (no drift between item and its version):
-- Composite FK: `(price_book_version_id, company_id, supplier_id)` → `supplier_price_book_versions(id, company_id, supplier_id)` with a supporting unique index on the parent.
-- Trigger additionally verifies `company_id` and `supplier_id` on insert.
-
-Uniqueness & indexes:
-- `unique (price_book_version_id, supplier_item_number)`
-- `index (company_id, supplier_id, supplier_item_number)`
-
-Immutability trigger blocks `UPDATE`/`DELETE`.
-
-### 1c. Extend existing audit tables (do not recreate)
-
-`alter table public.material_invoice_audits add column`:
-- `price_book_version_id uuid references public.supplier_price_book_versions(id)`
-- `effective_date_used date`
-- `invoice_snapshot_hash text` — hash of the invoice line set at audit time
-- `supersedes_audit_id uuid references public.material_invoice_audits(id)` — set on the **new** run; the old run is never updated
-- `idempotency_key text` — retries with the same key return the same run
-- `is_canonical boolean not null default true` — canonical historical audits vs `false` for explicit "current price comparison"
-- `unique (company_id, invoice_document_id, idempotency_key)`
-
-`alter table public.material_invoice_audit_lines add column`:
-- `price_book_version_id uuid`
-- `price_book_item_id uuid references public.supplier_price_book_items(id)`
-- `contract_uom text`, `invoice_uom text`, `uom_conversion_factor numeric(14,6)`
-- `expected_unit_cost numeric(14,4)`, `expected_extended_cost numeric(14,4)`
-- `invoiced_unit_cost numeric(14,4)`, `invoiced_extended_cost numeric(14,4)`
-- `variance_amount numeric(14,4)`, `variance_percent numeric(10,4)` — nullable when `expected_unit_cost = 0` (see §7)
-- `uom_review_required boolean not null default false` — set when conversion is unknown; row is flagged for review instead of pretending units match
-
-Immutability: add trigger blocking `UPDATE`/`DELETE` on both audit tables once `audit_status` moves to `final` (short-lived `draft` window inside the audit RPC only).
-
-### 1d. Canonical content hash (documented algorithm)
-
-Applied server-side inside the import RPC:
-
-1. For each item, normalize:
-   - `supplier_item_number` → `upper(regexp_replace(x, '[^A-Z0-9]', '', 'g'))`
-   - `uom` → `upper(trim(x))`
-   - `unit_cost` → cast to `numeric(14,4)`, canonical string with 4 decimals
-   - `manufacturer`, `product_family`, `color`, `description` → `trim(collapse-whitespace)` (keep case for description; upper for the first three)
-   - `null` → literal string `\N`
-2. Serialize each row as tab-joined normalized fields in this fixed column order: `supplier_item_number, uom, unit_cost, manufacturer, product_family, color, description`.
-3. Sort rows lexicographically.
-4. Prepend header: `sha256(company_id || '|' || supplier_id || '|' || effective_date::text)`.
-5. `content_hash = sha256(header || newline || joined-rows)`.
-6. `source_file_sha256` stored separately from the raw uploaded bytes.
-
-Consequence: renewing a price book with unchanged prices but a new `effective_date` produces a new `content_hash` and imports successfully. Re-uploading an identical file for the same date collides on `(company_id, supplier_id, content_hash)` and is rejected.
-
-### 1e. Resolver RPC — historical, deterministic
-
-```sql
-create or replace function public.resolve_price_book_version(
-  _company_id uuid,
-  _supplier_id uuid,
-  _invoice_date date
-) returns uuid
-language sql
-stable
-security definer
-set search_path = public, pg_temp
-as $$
-  select v.id
-  from public.supplier_price_book_versions v
-  where v.company_id = _company_id
-    and v.supplier_id = _supplier_id
-    and v.effective_date <= _invoice_date
-  order by v.effective_date desc, v.revision desc
-  limit 1
-$$;
-
-revoke all on function public.resolve_price_book_version(uuid,uuid,date) from public;
-grant execute on function public.resolve_price_book_version(uuid,uuid,date) to authenticated, service_role;
-```
-
-Wrapper enforces membership: rejects if `_company_id` is not in `public.get_user_company_ids(auth.uid())`. Resolver **does not filter on `status`** — archiving is UI-only.
-
-### 1f. Atomic import RPC
-
-```sql
-create or replace function public.import_supplier_price_book(
-  _company_id uuid,
-  _supplier_id uuid,
-  _effective_date date,
-  _source_file_url text,
-  _source_file_name text,
-  _source_file_sha256 text,
-  _description text,
-  _items jsonb  -- array of normalized item objects
-) returns uuid
-language plpgsql
-security definer
-set search_path = public, pg_temp
-as $$ ... $$;
-```
-
-Behavior:
-- Verifies caller membership + `price_book_import` role helper.
-- Computes canonical `content_hash` server-side from `_items` (never trusts the client).
-- Allocates `revision = coalesce(max(revision), 0) + 1` for `(company_id, supplier_id, effective_date)` inside a single `serializable` transaction; concurrent same-date imports serialize cleanly.
-- Inserts header + all items in the same transaction. Any invalid row (bad `unit_cost`, empty item number, duplicate `supplier_item_number` within the payload) aborts the whole insert.
-- Sets `item_count` from the actual inserted rows.
-- Returns the new `price_book_version_id`.
-- Duplicate `content_hash` raises `unique_violation` and rolls back.
-
-Grants: `execute` to `authenticated`, `service_role`; revoked from `public`. Direct `insert` on the two versioned tables is denied for `authenticated` via RLS — the RPC is the only write path.
-
-### 1g. GRANTs + RLS
-
-For `supplier_price_book_versions`, `supplier_price_book_items`:
-```sql
-grant select on public.supplier_price_book_versions to authenticated;
-grant select on public.supplier_price_book_items    to authenticated;
-grant all    on public.supplier_price_book_versions to service_role;
-grant all    on public.supplier_price_book_items    to service_role;
-
-alter table public.supplier_price_book_versions enable row level security;
-alter table public.supplier_price_book_items    enable row level security;
-
-create policy pbv_select on public.supplier_price_book_versions
-  for select to authenticated
-  using (company_id = any (public.get_user_company_ids(auth.uid())));
-
-create policy pbi_select on public.supplier_price_book_items
-  for select to authenticated
-  using (company_id = any (public.get_user_company_ids(auth.uid())));
-```
-
-No `insert/update/delete` policies for `authenticated` — writes go exclusively through the `security definer` RPCs, which re-verify membership + role.
-
-`notify pgrst, 'reload schema';` at the end of the migration.
+### 1d. `provider_webhook_events` (dedupe table)
+`provider, provider_event_id (unique), received_at, processed_at, payload_hash`.
+Used to reject duplicate Resend webhook deliveries.
 
 ---
 
-## 2. Import pipeline changes
+## 2. Provider abstraction
 
-Files: `supabase/functions/import-supplier-price-list/index.ts`, `srs-pricelist-importer`, `srs-pricelist-backfill`, and any ABC/QXO importers.
+`supabase/functions/_shared/email/types.ts` — interfaces:
+- `TransactionalEmailProvider` with `sendInvoiceEmail`, `normalizeWebhookEvent`, `classifyProviderFailure`, `verifyWebhook`, `getProviderMessageId`.
+- `NormalizedEmailEvent`, `SendInvoiceEmailInput`, `SendResult`.
 
-- All importers call `public.import_supplier_price_book(...)`; no direct table writes.
-- Client must supply `effective_date`; UI required field (default = file's stated date).
-- Duplicate-hash errors surface as a clear "This exact price list has already been imported for this supplier" message.
-- Legacy importers that mutated `supplier_price_lists` rows are switched to append-only via the new RPC. The old tables become read-only for reads/backfill.
+`supabase/functions/_shared/email/resend-adapter.ts` — Resend implementation. Uses `RESEND_API_KEY` from env. Invoice/portal code imports only the interface.
 
----
-
-## 3. Audit engine rewrite
-
-Files: `supabase/functions/audit-material-invoice/index.ts`, `audit-cost-invoice/index.ts`.
-
-Flow:
-1. Read `invoice.invoice_date`, `company_id`, `supplier_id`.
-2. `version_id = resolve_price_book_version(company_id, supplier_id, invoice_date)`.
-3. If `version_id is null` → run still recorded; every line is `match_type='unmatched'` with `discrepancy_type='no_historical_contract'`. Never treat missing pricing as `0`.
-4. Match each `material_invoice_line_items` row by `supplier_item_number` (with SKU-alias fallback) against `supplier_price_book_items WHERE price_book_version_id = version_id`.
-5. Compute UOM conversion via existing UOM helpers. Unknown conversions → `uom_review_required = true`, `match_type='needs_uom_review'`; no variance persisted.
-6. Persist `material_invoice_audits` (run) with `price_book_version_id`, `effective_date_used`, `invoice_snapshot_hash`, `idempotency_key`, `is_canonical=true`, and matching `material_invoice_audit_lines`.
-7. Never update `materials.unit_cost` from an invoice audit. Cost-drift routing continues through `benchmark_update_suggestions`.
-
-Re-audit endpoint:
-- Only action is **"Re-resolve price book for this invoice date."** Re-runs the resolver against `invoice_date`; if a backdated version was imported after the last audit, the new run picks it up. Never selects a version with `effective_date > invoice_date`.
-- Writes a **new** run row; sets `supersedes_audit_id` on the new row to the previous run id. The old run is untouched.
-- `idempotency_key` derived from `(invoice_document_id, invoice_snapshot_hash, version_id)` prevents duplicate retries.
-- A separate, clearly labeled **"Compare to current pricing (non-canonical)"** action is available; it writes a run with `is_canonical=false` and is excluded from historical variance reports.
+`supabase/functions/_shared/email/index.ts` — `getEmailProvider(providerName)` factory.
 
 ---
 
-## 4. UI changes
+## 3. Edge functions
 
-- `src/pages/MaterialAuditPage.tsx` "Price Agreements" tabs: list `supplier_price_book_versions` per supplier, showing effective date, revision, uploaded_at, item_count, hash badge, and status. Archived versions render greyed-out with an "Archived (UI-only, still used for historical audits)" tooltip. No delete action.
-- Import dialog: `effective_date` required; clear hash-collision error copy; shows revision that will be allocated.
-- Invoice audit view: display **Price Book Used**, **Revision**, **Effective Date**, per-line **Contract UOM / Invoice UOM / Conversion / Expected unit & extended / Invoiced unit & extended / Variance $ / Variance %** (with `—` when review is required). Buttons:
-  - **"Re-resolve price book for this invoice date"** (confirmation modal: "Creates a new audit run. The prior run is preserved unchanged.")
-  - **"Compare to current pricing (non-canonical)"** — separate section, marked non-canonical.
+### 3a. `invoice-email-send` (POST)
+1. Auth: verify JWT, resolve user + tenant server-side.
+2. Load Pitch invoice by ID; verify `tenant_id` matches.
+3. Verify caller role (accounting/owner/admin/permitted).
+4. Load recipient contact; verify belongs to project & tenant.
+5. Resolve or create portal grant (Slice A helper).
+6. Compute idempotency key = `hash(tenant_id | invoice_id | recipient_email | template_version | send_request_id)`.
+7. Insert delivery row `status=queued` with `ON CONFLICT (tenant_id, idempotency_key) DO NOTHING`. If existing row within N seconds and not explicit resend → return existing.
+8. Resolve sender: verified tenant domain OR platform fallback with tenant display name.
+9. Render HTML + text template (default from §6). CTA = Pitch portal URL (`/invoice/<token>`). **Never** QBO URL.
+10. Call `provider.sendInvoiceEmail`. On success: update delivery `status=accepted`, store `provider_message_id`. On classified transient failure: schedule retry (bounded backoff). On hard failure: `status=failed`.
+11. Append `invoice_email_queued`, `invoice_email_accepted` events.
+12. Return safe result (no provider raw).
 
----
+### 3b. `invoice-email-resend` (POST)
+Explicit resend: generates new `send_request_id`, new idempotency key, new delivery row. Blocks if recipient is on bounce/complaint suppression unless caller has override permission.
 
-## 5. Legacy migration strategy
+### 3c. `invoice-portal-revoke` (POST)
+Revokes portal grant, appends `portal_link_revoked` event.
 
-- For every distinct `(company_id, supplier_id)` in `supplier_price_lists` that has a real `effective_date`, migrate each list as its own version row with its real date (revision allocated in the order they were originally imported). Items copied verbatim; `legacy_price_list_id` links back for reporting continuity.
-- For any `(company_id, supplier_id)` referenced by historical `material_invoice_documents` that has **no** dated pricing available, insert a single `is_legacy_fallback = true` version dated `1900-01-01` populated from the newest available legacy list. This guarantees the resolver returns something.
-- If neither dated nor legacy items exist for a `(company_id, supplier_id)`, the resolver returns `null` and the audit reports `unmatched / no_historical_contract`. Never treat missing pricing as zero.
-- Existing rows in `material_invoice_audits` / `material_invoice_audit_lines` remain unchanged; a view `material_invoice_audits_all` unions the pre-versioning and post-versioning rows for reporting.
-- Backfill script is idempotent and batched; it re-resolves each already-audited invoice against the seeded version and writes a **new** audit run linked via `supersedes_audit_id`. Old runs stay byte-for-byte identical and are marked in the view as `legacy=true`.
+### 3d. `resend-webhook` (POST, public but signature-verified)
+1. `provider.verifyWebhook(headers, rawBody)` — HMAC via `RESEND_WEBHOOK_SECRET`. Reject 401 if invalid.
+2. Insert into `provider_webhook_events` (unique on `provider_event_id`); if conflict → 200 no-op (idempotent).
+3. `provider.normalizeWebhookEvent(payload)` → normalized event.
+4. Look up delivery by `provider_message_id`; if unknown → log to quarantine table row (still 200 so provider stops retrying).
+5. Update delivery: `delivered_at` only on `email.delivered`, not `email.sent` (accepted). Bounce/complaint set suppression flag.
+6. Append matching `customer_invoice_event`.
+7. Never modify QBO/accounting state.
 
----
-
-## 6. Tests — `tests/database/price-book-versioning.test.ts`
-
-Cases (all required):
-
-1. Exact effective-date boundary: version dated Mar 15 resolves for invoices on Mar 15 and later; earlier invoices resolve to prior version.
-2. Future-dated version is ignored for earlier invoices.
-3. Archived version still resolves (status is UI-only).
-4. Same-date multiple revisions: highest `revision` wins.
-5. Backdated import inserted after an audit: does **not** mutate the prior audit row; a re-resolve creates a new run linked via `supersedes_audit_id`.
-6. Duplicate `content_hash` import rejected with a clear error.
-7. Import RPC rolls back entirely if any single item is invalid.
-8. Cross-tenant RLS: user in company A cannot `select`, resolve for, or import into company B.
-9. `UPDATE` and `DELETE` on versions/items/finalized audits are blocked by trigger.
-10. Import retry with same content is idempotent (hash unique); audit retry with same `idempotency_key` returns the existing run without duplicating.
-11. Re-audit creates a new run and sets `supersedes_audit_id`; old run is byte-identical (row hash compared before/after).
-12. Legacy fallback: audit against a fallback version returns matched rows; audit with no items at all returns `no_historical_contract` (never zero).
-13. UOM conversion: matched conversion computes variance; unsupported conversion sets `uom_review_required=true` and does not compute variance.
-14. Variance percent safely handles `expected_unit_cost = 0` (returns `null`, not division-by-zero).
-15. Concurrent same-date imports serialize under `serializable` isolation; both succeed with distinct revisions.
-16. Legacy reporting view `material_invoice_audits_all` continues to return pre-versioning rows unchanged.
+### 3e. `invoice-portal-events` (POST)
+Called by Slice A portal on view/link-click to log `customer_view_previewed`, `payment_link_clicked` etc. Already partially exists — extend.
 
 ---
 
-## 7. Rollout order
+## 4. Secrets required
+- `RESEND_API_KEY` — request via `add_secret`.
+- `RESEND_WEBHOOK_SECRET` — request via `add_secret` (user creates in Resend dashboard, pastes back).
+- `PLATFORM_FALLBACK_FROM_EMAIL` — set via `set_secret` to `invoices@pitch-crm.ai`.
 
-1. Migration (approve first) — creates versioned tables, extends audit tables, installs resolver + import RPC, RLS, immutability triggers, legacy seed rows, and the compatibility view.
-2. Verify migration against real schema (`\d+ material_invoice_audits`, `\d+ supplier_price_book_versions`) and run the acceptance-test suite.
-3. Import pipeline rewrite (all supplier importers routed through `import_supplier_price_book`).
-4. Audit engine rewrite + backfill (re-audit historicals into new runs; old runs untouched).
-5. UI (Price Agreements tabs, import dialog, invoice audit view, re-resolve + non-canonical compare).
-6. Tests + docs (`docs/material-price-book-versioning.md`).
+---
 
-Approve and I'll ship the migration first, then report the migration file path, the extended functions, and passing test results before proceeding.
+## 5. Frontend
+
+### 5a. `src/components/invoices/InvoiceEmailActions.tsx`
+Card added to Project → Invoice detail page. Buttons:
+- Preview Customer View (opens Slice A portal in new tab)
+- Copy Secure Invoice Link
+- Send Invoice Email (opens confirm dialog with recipient shown, warns if ≠ QBO billing email)
+- Resend Invoice (only if a prior sent delivery exists)
+- Revoke Portal Link
+- View Delivery Status (drawer showing timeline)
+- View Customer Activity (drawer with events)
+
+Permission-gated via existing role hooks (`useHasRole('accounting'|'owner'|'admin')` or explicit `invoice.send_email` permission).
+
+### 5b. `src/components/invoices/InvoiceDeliveryTimeline.tsx`
+Reads `invoice_email_deliveries` + `customer_invoice_events` for the invoice; renders status chips, timestamps, recipient. Safe reasons only — no raw payload.
+
+### 5c. `src/hooks/useInvoiceDeliveries.ts`
+Tenant-scoped query hook.
+
+---
+
+## 6. Recipient safety
+- Zod validation for email syntax.
+- Server confirms contact ↔ project ↔ tenant chain.
+- If chosen recipient ≠ QBO customer billing email → return `{ requires_confirmation: true, qbo_email, chosen_email }`. UI prompts staff for explicit override.
+- Suppression list check: if recipient in bounced/complained set for this tenant → block unless override permission + explicit `override_suppression: true` flag.
+
+---
+
+## 7. Idempotency + retries
+- DB unique constraint enforces one delivery per idempotency key.
+- Retry classification in `resend-adapter.classifyProviderFailure`: `transient` (429, 5xx, timeout) vs `permanent` (4xx not-429, invalid_recipient, unverified_sender).
+- Retry loop: max 3 attempts, backoff 2s/8s/30s, all within same delivery row (`retry_count++`). No new delivery row for retries. Explicit resend = new row.
+
+---
+
+## 8. Tests
+`supabase/functions/invoice-email-send/index.test.ts` — Deno tests covering:
+- provider abstraction chosen correctly
+- idempotent double-send
+- tenant isolation (cross-tenant contact rejected, cross-tenant invoice rejected)
+- recipient not on project rejected
+- unverified sender rejected → falls back to platform sender
+- portal URL present, QBO URL absent
+- unauthorized role blocked
+
+`supabase/functions/resend-webhook/index.test.ts`:
+- valid delivered event updates status
+- duplicate event no-ops
+- bounce sets suppression
+- unknown message_id quarantined
+- invalid signature 401
+- cross-tenant collision impossible
+
+---
+
+## 9. Acceptance evidence
+Manual Playwright script hitting staging tenant, running §16 checklist end-to-end. Screenshots saved to `/mnt/documents/phase2-sliceb-evidence/`.
+
+---
+
+## 10. File inventory
+**New:**
+- `supabase/migrations/<ts>_phase2_sliceb_email.sql`
+- `supabase/functions/_shared/email/{types,resend-adapter,index}.ts`
+- `supabase/functions/invoice-email-send/index.ts` (+ test)
+- `supabase/functions/invoice-email-resend/index.ts`
+- `supabase/functions/invoice-portal-revoke/index.ts`
+- `supabase/functions/resend-webhook/index.ts` (+ test)
+- `supabase/functions/_shared/email/templates/invoice-default.ts`
+- `src/components/invoices/InvoiceEmailActions.tsx`
+- `src/components/invoices/InvoiceDeliveryTimeline.tsx`
+- `src/hooks/useInvoiceDeliveries.ts`
+
+**Modified:**
+- Project → Invoice detail page: mount `<InvoiceEmailActions />`
+- `supabase/config.toml`: register new functions with `verify_jwt` per route (send/resend/revoke = true; webhook = false)
+
+## Known limitations to disclose after implementation
+- Requires user to add `RESEND_API_KEY` + `RESEND_WEBHOOK_SECRET` and verify a domain in Resend dashboard before real sends work.
+- Platform fallback sender uses `invoices@pitch-crm.ai`; ensure that domain is verified in Resend.
+- Suppression list is per-tenant, stored in `invoice_email_deliveries` derived query (no separate suppression table this slice).
