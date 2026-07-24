@@ -55,7 +55,10 @@ interface UploadPhotoOptions {
   projectId?: string;
   /** Optional pre-extracted GPS + capture date to avoid double EXIF parse. */
   geo?: { latitude: number | null; longitude: number | null; takenAt: string | null };
+  /** Skip per-photo toast + query invalidation (for batch uploads). */
+  silent?: boolean;
 }
+
 
 export function usePhotos({ contactId, leadId, projectId, enabled = true }: UsePhotosOptions) {
   const queryClient = useQueryClient();
@@ -101,10 +104,11 @@ export function usePhotos({ contactId, leadId, projectId, enabled = true }: UseP
 
   // Upload photo
   const uploadPhoto = useCallback(async (options: UploadPhotoOptions) => {
-    const { file, category = 'general', description } = options;
+    const { file, category = 'general', description, silent = false } = options;
     const entityContactId = options.contactId || contactId;
     const entityLeadId = options.leadId || leadId;
     const entityProjectId = options.projectId || projectId;
+
 
     if (!entityContactId && !entityLeadId && !entityProjectId) {
       throw new Error('At least one entity ID required');
@@ -211,15 +215,17 @@ export function usePhotos({ contactId, leadId, projectId, enabled = true }: UseP
 
       setUploadProgress(100);
 
-      // Invalidate queries
-      queryClient.invalidateQueries({ queryKey });
-
-      toast({
-        title: 'Photo uploaded',
-        description: 'Photo has been uploaded successfully',
-      });
+      // Invalidate queries (unless caller batches many uploads and will invalidate once)
+      if (!silent) {
+        queryClient.invalidateQueries({ queryKey });
+        toast({
+          title: 'Photo uploaded',
+          description: 'Photo has been uploaded successfully',
+        });
+      }
 
       return photoRecord as unknown as CustomerPhoto;
+
     } finally {
       setIsUploading(false);
       setUploadProgress(0);

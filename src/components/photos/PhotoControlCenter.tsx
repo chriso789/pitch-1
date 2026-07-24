@@ -133,11 +133,13 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set());
   const [filterCategory, setFilterCategory] = useState<string>('all');
+  const [sortMode, setSortMode] = useState<'manual' | 'oldest' | 'newest'>('manual');
   const [editingPhoto, setEditingPhoto] = useState<CustomerPhoto | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [pendingPreviews, setPendingPreviews] = useState<PendingPreview[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+
 
   const projectCoords =
     typeof projectLatitude === 'number' &&
@@ -160,7 +162,9 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
     toggleEstimateInclusion,
     estimatePhotos,
     photosByCategory,
+    refetch,
   } = usePhotos({ contactId, leadId, projectId });
+
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -172,9 +176,22 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
   );
 
   // Filter photos
-  const filteredPhotos = filterCategory === 'all' 
-    ? photos 
+  const categoryFiltered = filterCategory === 'all'
+    ? photos
     : photos.filter(p => p.category === filterCategory);
+
+  // Apply user sort mode. `manual` respects display_order from the DB (default).
+  const filteredPhotos = React.useMemo(() => {
+    if (sortMode === 'manual') return categoryFiltered;
+    const timeOf = (p: CustomerPhoto) => {
+      const t = p.taken_at || p.uploaded_at || p.created_at;
+      return t ? new Date(t).getTime() : 0;
+    };
+    const copy = [...categoryFiltered];
+    copy.sort((a, b) => sortMode === 'oldest' ? timeOf(a) - timeOf(b) : timeOf(b) - timeOf(a));
+    return copy;
+  }, [categoryFiltered, sortMode]);
+
 
   // Handle file upload — multi-file with instant previews + geotag prioritization
   const handleFileUpload = useCallback(async (files: FileList | null) => {
@@ -235,8 +252,12 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
       });
     }
 
-    // 4. Upload serially, updating status per item
-    for (const item of queued) {
+    // 4. Upload in parallel with a small concurrency pool so 50+ photos don't
+    // serialize behind each other. Skip per-photo toasts / query invalidations
+    // and refetch once at the end.
+    const CONCURRENCY = 5;
+    let cursor = 0;
+    const runOne = async (item: PendingPreview) => {
       setPendingPreviews((prev) =>
         prev.map((p) => (p.id === item.id ? { ...p, status: 'uploading' } : p))
       );
@@ -247,8 +268,8 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
           leadId,
           projectId,
           geo: item.geo,
+          silent: true,
         });
-        // Remove the preview once the real record lands via query invalidation
         setPendingPreviews((prev) => {
           const rest = prev.filter((p) => p.id !== item.id);
           URL.revokeObjectURL(item.previewUrl);
@@ -265,8 +286,25 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
           variant: 'destructive',
         });
       }
+    };
+    const workers: Promise<void>[] = [];
+    const drain = async () => {
+      while (cursor < queued.length) {
+        const item = queued[cursor++];
+        await runOne(item);
+      }
+    };
+    for (let i = 0; i < Math.min(CONCURRENCY, queued.length); i++) {
+      workers.push(drain());
     }
-  }, [uploadPhoto, contactId, leadId, projectId, projectCoords, onSiteRadiusMeters]);
+    await Promise.all(workers);
+    // Single refetch after the batch so React Query doesn't thrash 50 times.
+    refetch();
+    toast({
+      title: `Uploaded ${queued.length} photo${queued.length !== 1 ? 's' : ''}`,
+    });
+  }, [uploadPhoto, contactId, leadId, projectId, projectCoords, onSiteRadiusMeters, refetch]);
+
 
 
   // Handle drag end
@@ -691,7 +729,22 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
               ))}
             </SelectContent>
           </Select>
+
+          {/* Sort mode — drives both the gallery order and the exported
+              Photo Report, so field crews can hand clients a chronological
+              set with the earliest-taken photos first. */}
+          <Select value={sortMode} onValueChange={(v) => setSortMode(v as typeof sortMode)}>
+            <SelectTrigger className="w-[140px] h-8 text-xs">
+              <SelectValue placeholder="Sort" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="manual">Manual order</SelectItem>
+              <SelectItem value="oldest">Oldest first</SelectItem>
+              <SelectItem value="newest">Newest first</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
+
 
         {/* Pending upload previews — visible instantly while photos upload */}
         {pendingPreviews.length > 0 && (
