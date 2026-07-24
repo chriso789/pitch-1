@@ -729,7 +729,22 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
               ))}
             </SelectContent>
           </Select>
+
+          {/* Sort mode — drives both the gallery order and the exported
+              Photo Report, so field crews can hand clients a chronological
+              set with the earliest-taken photos first. */}
+          <Select value={sortMode} onValueChange={(v) => setSortMode(v as typeof sortMode)}>
+            <SelectTrigger className="w-[140px] h-8 text-xs">
+              <SelectValue placeholder="Sort" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="manual">Manual order</SelectItem>
+              <SelectItem value="oldest">Oldest first</SelectItem>
+              <SelectItem value="newest">Newest first</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
+
 
         {/* Pending upload previews — visible instantly while photos upload */}
         {pendingPreviews.length > 0 && (
