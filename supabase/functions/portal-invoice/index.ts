@@ -171,6 +171,8 @@ Deno.serve(async (req) => {
         metadata: { ip_hash: ipHash, ua: uaSummary },
       });
 
+      notifyStaff(inv.tenant_id, inv.id, "payment_link_clicked");
+
       return json({ ok: true, redirect_url: inv.invoice_link }, 200);
     }
 
