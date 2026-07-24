@@ -1481,6 +1481,63 @@ export type Database = {
           },
         ]
       }
+      accounting_audit_events: {
+        Row: {
+          actor_user_id: string | null
+          correlation_id: string | null
+          created_at: string
+          effective_tenant_id: string | null
+          event_type: string
+          id: string
+          impersonation: boolean
+          intuit_tid: string | null
+          mapping_id: string | null
+          metadata: Json
+          new_value: Json | null
+          old_value: Json | null
+          project_id: string | null
+          project_scope_id: string | null
+          qbo_connection_id: string | null
+          tenant_id: string
+        }
+        Insert: {
+          actor_user_id?: string | null
+          correlation_id?: string | null
+          created_at?: string
+          effective_tenant_id?: string | null
+          event_type: string
+          id?: string
+          impersonation?: boolean
+          intuit_tid?: string | null
+          mapping_id?: string | null
+          metadata?: Json
+          new_value?: Json | null
+          old_value?: Json | null
+          project_id?: string | null
+          project_scope_id?: string | null
+          qbo_connection_id?: string | null
+          tenant_id: string
+        }
+        Update: {
+          actor_user_id?: string | null
+          correlation_id?: string | null
+          created_at?: string
+          effective_tenant_id?: string | null
+          event_type?: string
+          id?: string
+          impersonation?: boolean
+          intuit_tid?: string | null
+          mapping_id?: string | null
+          metadata?: Json
+          new_value?: Json | null
+          old_value?: Json | null
+          project_id?: string | null
+          project_scope_id?: string | null
+          qbo_connection_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       accuracy_regression_log: {
         Row: {
           baseline_value: number | null
@@ -39966,9 +40023,214 @@ export type Database = {
         }
         Relationships: []
       }
+      project_scope_accounting_mappings: {
+        Row: {
+          active: boolean
+          archived_at: string | null
+          created_at: string
+          created_by: string | null
+          customer_memo_template: string | null
+          default_allow_ach: boolean
+          default_allow_credit_card: boolean
+          id: string
+          invoice_template_key: string | null
+          job_type_id: string | null
+          job_type_key: string | null
+          last_validated_at: string | null
+          project_type_id: string
+          qbo_class_id: string | null
+          qbo_class_name_snapshot: string | null
+          qbo_connection_id: string
+          qbo_department_id: string | null
+          qbo_department_name_snapshot: string | null
+          qbo_income_account_id_snapshot: string | null
+          qbo_income_account_name_snapshot: string | null
+          qbo_item_id: string
+          qbo_item_name_snapshot: string | null
+          qbo_item_type_snapshot: string | null
+          qbo_sync_token_snapshot: string | null
+          qbo_tax_code_id: string | null
+          qbo_tax_code_name_snapshot: string | null
+          qbo_terms_id: string | null
+          qbo_terms_name_snapshot: string | null
+          tenant_id: string
+          trade_id: string
+          updated_at: string
+          updated_by: string | null
+          validation_error: string | null
+          validation_status: string
+        }
+        Insert: {
+          active?: boolean
+          archived_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          customer_memo_template?: string | null
+          default_allow_ach?: boolean
+          default_allow_credit_card?: boolean
+          id?: string
+          invoice_template_key?: string | null
+          job_type_id?: string | null
+          job_type_key?: string | null
+          last_validated_at?: string | null
+          project_type_id: string
+          qbo_class_id?: string | null
+          qbo_class_name_snapshot?: string | null
+          qbo_connection_id: string
+          qbo_department_id?: string | null
+          qbo_department_name_snapshot?: string | null
+          qbo_income_account_id_snapshot?: string | null
+          qbo_income_account_name_snapshot?: string | null
+          qbo_item_id: string
+          qbo_item_name_snapshot?: string | null
+          qbo_item_type_snapshot?: string | null
+          qbo_sync_token_snapshot?: string | null
+          qbo_tax_code_id?: string | null
+          qbo_tax_code_name_snapshot?: string | null
+          qbo_terms_id?: string | null
+          qbo_terms_name_snapshot?: string | null
+          tenant_id: string
+          trade_id: string
+          updated_at?: string
+          updated_by?: string | null
+          validation_error?: string | null
+          validation_status?: string
+        }
+        Update: {
+          active?: boolean
+          archived_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          customer_memo_template?: string | null
+          default_allow_ach?: boolean
+          default_allow_credit_card?: boolean
+          id?: string
+          invoice_template_key?: string | null
+          job_type_id?: string | null
+          job_type_key?: string | null
+          last_validated_at?: string | null
+          project_type_id?: string
+          qbo_class_id?: string | null
+          qbo_class_name_snapshot?: string | null
+          qbo_connection_id?: string
+          qbo_department_id?: string | null
+          qbo_department_name_snapshot?: string | null
+          qbo_income_account_id_snapshot?: string | null
+          qbo_income_account_name_snapshot?: string | null
+          qbo_item_id?: string
+          qbo_item_name_snapshot?: string | null
+          qbo_item_type_snapshot?: string | null
+          qbo_sync_token_snapshot?: string | null
+          qbo_tax_code_id?: string | null
+          qbo_tax_code_name_snapshot?: string | null
+          qbo_terms_id?: string | null
+          qbo_terms_name_snapshot?: string | null
+          tenant_id?: string
+          trade_id?: string
+          updated_at?: string
+          updated_by?: string | null
+          validation_error?: string | null
+          validation_status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_scope_accounting_mappings_qbo_connection_id_fkey"
+            columns: ["qbo_connection_id"]
+            isOneToOne: false
+            referencedRelation: "qbo_connections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_scope_accounting_resolutions: {
+        Row: {
+          accounting_snapshot_id: string
+          created_at: string
+          id: string
+          last_validated_at: string | null
+          mapping_id: string | null
+          project_id: string
+          project_scope_id: string
+          qbo_connection_id: string | null
+          resolution_reason: string | null
+          resolution_status: string
+          resolved_at: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          accounting_snapshot_id: string
+          created_at?: string
+          id?: string
+          last_validated_at?: string | null
+          mapping_id?: string | null
+          project_id: string
+          project_scope_id: string
+          qbo_connection_id?: string | null
+          resolution_reason?: string | null
+          resolution_status?: string
+          resolved_at?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          accounting_snapshot_id?: string
+          created_at?: string
+          id?: string
+          last_validated_at?: string | null
+          mapping_id?: string | null
+          project_id?: string
+          project_scope_id?: string
+          qbo_connection_id?: string | null
+          resolution_reason?: string | null
+          resolution_status?: string
+          resolved_at?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_scope_accounting_resolution_accounting_snapshot_id_fkey"
+            columns: ["accounting_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "project_accounting_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_scope_accounting_resolutions_mapping_id_fkey"
+            columns: ["mapping_id"]
+            isOneToOne: false
+            referencedRelation: "project_scope_accounting_mappings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_scope_accounting_resolutions_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_scope_accounting_resolutions_project_scope_id_fkey"
+            columns: ["project_scope_id"]
+            isOneToOne: false
+            referencedRelation: "project_scopes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_scope_accounting_resolutions_qbo_connection_id_fkey"
+            columns: ["qbo_connection_id"]
+            isOneToOne: false
+            referencedRelation: "qbo_connections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_scopes: {
         Row: {
           accounting_snapshot_id: string
+          classification_review_reason: string | null
+          classification_review_required: boolean
           classification_source: Database["public"]["Enums"]["accounting_classification_source"]
           classification_version: number
           created_at: string
@@ -39992,6 +40254,8 @@ export type Database = {
         }
         Insert: {
           accounting_snapshot_id: string
+          classification_review_reason?: string | null
+          classification_review_required?: boolean
           classification_source: Database["public"]["Enums"]["accounting_classification_source"]
           classification_version?: number
           created_at?: string
@@ -40015,6 +40279,8 @@ export type Database = {
         }
         Update: {
           accounting_snapshot_id?: string
+          classification_review_reason?: string | null
+          classification_review_required?: boolean
           classification_source?: Database["public"]["Enums"]["accounting_classification_source"]
           classification_version?: number
           created_at?: string
@@ -41511,6 +41777,80 @@ export type Database = {
           },
         ]
       }
+      qbo_account_cache: {
+        Row: {
+          account_sub_type: string | null
+          account_type: string | null
+          active: boolean
+          classification: string | null
+          created_at: string
+          current_balance: number | null
+          fully_qualified_name: string | null
+          id: string
+          last_synced_at: string
+          metadata: Json
+          name: string | null
+          oauth_app_env: string | null
+          parent_id: string | null
+          qbo_connection_id: string
+          qbo_id: string
+          realm_id: string
+          sync_token: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          account_sub_type?: string | null
+          account_type?: string | null
+          active?: boolean
+          classification?: string | null
+          created_at?: string
+          current_balance?: number | null
+          fully_qualified_name?: string | null
+          id?: string
+          last_synced_at?: string
+          metadata?: Json
+          name?: string | null
+          oauth_app_env?: string | null
+          parent_id?: string | null
+          qbo_connection_id: string
+          qbo_id: string
+          realm_id: string
+          sync_token?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          account_sub_type?: string | null
+          account_type?: string | null
+          active?: boolean
+          classification?: string | null
+          created_at?: string
+          current_balance?: number | null
+          fully_qualified_name?: string | null
+          id?: string
+          last_synced_at?: string
+          metadata?: Json
+          name?: string | null
+          oauth_app_env?: string | null
+          parent_id?: string | null
+          qbo_connection_id?: string
+          qbo_id?: string
+          realm_id?: string
+          sync_token?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qbo_account_cache_qbo_connection_id_fkey"
+            columns: ["qbo_connection_id"]
+            isOneToOne: false
+            referencedRelation: "qbo_connections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       qbo_api_logs: {
         Row: {
           action: string
@@ -41573,6 +41913,68 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: []
+      }
+      qbo_class_cache: {
+        Row: {
+          active: boolean
+          created_at: string
+          fully_qualified_name: string | null
+          id: string
+          last_synced_at: string
+          metadata: Json
+          name: string | null
+          oauth_app_env: string | null
+          parent_id: string | null
+          qbo_connection_id: string
+          qbo_id: string
+          realm_id: string
+          sync_token: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          fully_qualified_name?: string | null
+          id?: string
+          last_synced_at?: string
+          metadata?: Json
+          name?: string | null
+          oauth_app_env?: string | null
+          parent_id?: string | null
+          qbo_connection_id: string
+          qbo_id: string
+          realm_id: string
+          sync_token?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          fully_qualified_name?: string | null
+          id?: string
+          last_synced_at?: string
+          metadata?: Json
+          name?: string | null
+          oauth_app_env?: string | null
+          parent_id?: string | null
+          qbo_connection_id?: string
+          qbo_id?: string
+          realm_id?: string
+          sync_token?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qbo_class_cache_qbo_connection_id_fkey"
+            columns: ["qbo_connection_id"]
+            isOneToOne: false
+            referencedRelation: "qbo_connections"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       qbo_connection_tests: {
         Row: {
@@ -41687,6 +42089,68 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      qbo_department_cache: {
+        Row: {
+          active: boolean
+          created_at: string
+          fully_qualified_name: string | null
+          id: string
+          last_synced_at: string
+          metadata: Json
+          name: string | null
+          oauth_app_env: string | null
+          parent_id: string | null
+          qbo_connection_id: string
+          qbo_id: string
+          realm_id: string
+          sync_token: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          fully_qualified_name?: string | null
+          id?: string
+          last_synced_at?: string
+          metadata?: Json
+          name?: string | null
+          oauth_app_env?: string | null
+          parent_id?: string | null
+          qbo_connection_id: string
+          qbo_id: string
+          realm_id: string
+          sync_token?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          fully_qualified_name?: string | null
+          id?: string
+          last_synced_at?: string
+          metadata?: Json
+          name?: string | null
+          oauth_app_env?: string | null
+          parent_id?: string | null
+          qbo_connection_id?: string
+          qbo_id?: string
+          realm_id?: string
+          sync_token?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qbo_department_cache_qbo_connection_id_fkey"
+            columns: ["qbo_connection_id"]
+            isOneToOne: false
+            referencedRelation: "qbo_connections"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       qbo_entity_mapping: {
         Row: {
@@ -41803,6 +42267,80 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      qbo_item_cache: {
+        Row: {
+          active: boolean
+          created_at: string
+          expense_account_id: string | null
+          fully_qualified_name: string | null
+          id: string
+          income_account_id: string | null
+          income_account_name: string | null
+          item_type: string | null
+          last_synced_at: string
+          metadata: Json
+          name: string | null
+          oauth_app_env: string | null
+          qbo_connection_id: string
+          qbo_id: string
+          realm_id: string
+          sync_token: string | null
+          taxable: boolean | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          expense_account_id?: string | null
+          fully_qualified_name?: string | null
+          id?: string
+          income_account_id?: string | null
+          income_account_name?: string | null
+          item_type?: string | null
+          last_synced_at?: string
+          metadata?: Json
+          name?: string | null
+          oauth_app_env?: string | null
+          qbo_connection_id: string
+          qbo_id: string
+          realm_id: string
+          sync_token?: string | null
+          taxable?: boolean | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          expense_account_id?: string | null
+          fully_qualified_name?: string | null
+          id?: string
+          income_account_id?: string | null
+          income_account_name?: string | null
+          item_type?: string | null
+          last_synced_at?: string
+          metadata?: Json
+          name?: string | null
+          oauth_app_env?: string | null
+          qbo_connection_id?: string
+          qbo_id?: string
+          realm_id?: string
+          sync_token?: string | null
+          taxable?: boolean | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qbo_item_cache_qbo_connection_id_fkey"
+            columns: ["qbo_connection_id"]
+            isOneToOne: false
+            referencedRelation: "qbo_connections"
             referencedColumns: ["id"]
           },
         ]
@@ -42052,6 +42590,130 @@ export type Database = {
           tenant_id?: string
         }
         Relationships: []
+      }
+      qbo_tax_code_cache: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          last_synced_at: string
+          metadata: Json
+          name: string | null
+          oauth_app_env: string | null
+          qbo_connection_id: string
+          qbo_id: string
+          realm_id: string
+          sync_token: string | null
+          taxable: boolean | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          last_synced_at?: string
+          metadata?: Json
+          name?: string | null
+          oauth_app_env?: string | null
+          qbo_connection_id: string
+          qbo_id: string
+          realm_id: string
+          sync_token?: string | null
+          taxable?: boolean | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          last_synced_at?: string
+          metadata?: Json
+          name?: string | null
+          oauth_app_env?: string | null
+          qbo_connection_id?: string
+          qbo_id?: string
+          realm_id?: string
+          sync_token?: string | null
+          taxable?: boolean | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qbo_tax_code_cache_qbo_connection_id_fkey"
+            columns: ["qbo_connection_id"]
+            isOneToOne: false
+            referencedRelation: "qbo_connections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      qbo_terms_cache: {
+        Row: {
+          active: boolean
+          created_at: string
+          discount_days: number | null
+          discount_percent: number | null
+          due_days: number | null
+          id: string
+          last_synced_at: string
+          metadata: Json
+          name: string | null
+          oauth_app_env: string | null
+          qbo_connection_id: string
+          qbo_id: string
+          realm_id: string
+          sync_token: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          discount_days?: number | null
+          discount_percent?: number | null
+          due_days?: number | null
+          id?: string
+          last_synced_at?: string
+          metadata?: Json
+          name?: string | null
+          oauth_app_env?: string | null
+          qbo_connection_id: string
+          qbo_id: string
+          realm_id: string
+          sync_token?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          discount_days?: number | null
+          discount_percent?: number | null
+          due_days?: number | null
+          id?: string
+          last_synced_at?: string
+          metadata?: Json
+          name?: string | null
+          oauth_app_env?: string | null
+          qbo_connection_id?: string
+          qbo_id?: string
+          realm_id?: string
+          sync_token?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qbo_terms_cache_qbo_connection_id_fkey"
+            columns: ["qbo_connection_id"]
+            isOneToOne: false
+            referencedRelation: "qbo_connections"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       qbo_webhook_events: {
         Row: {
@@ -63623,6 +64285,10 @@ export type Database = {
           _supplier_id: string
         }
         Returns: string
+      }
+      resolve_project_accounting: {
+        Args: { p_project_id: string }
+        Returns: Json
       }
       rollback_estimate_to_version: {
         Args: { estimate_id_param: string; version_id_param: string }
