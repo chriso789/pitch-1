@@ -310,10 +310,12 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
 
       toast({
         title: 'File Attached',
-        description: invoiceType === 'overhead'
-          ? 'Enter the charge details and submit when ready.'
-          : 'Enter the invoice details and submit when ready.'
+        description: 'Scanning invoice with AI…'
       });
+
+      // Auto-scan on upload for both labor and overhead invoices so
+      // vendor/amount/date/line items auto-fill without a second click.
+      await parseInvoiceWithAI(fileName);
     } catch (error: any) {
       toast({
         title: 'Upload Failed',
