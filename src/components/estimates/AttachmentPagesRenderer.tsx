@@ -73,31 +73,46 @@ export function AttachmentPagesRenderer({ attachments }: AttachmentPagesRenderer
             file_path: att.file_path,
           });
           
-          // Resolve the correct bucket based on file path
-          const bucket = resolveStorageBucket('company_resource', att.file_path);
-          console.log('[AttachmentPagesRenderer] Using bucket:', bucket);
-          
           // Check download cache first to prevent duplicate downloads
           const cacheKey = `${att.document_id}:${att.file_path}`;
           let arrayBuffer = downloadCache.get(cacheKey);
 
           if (!arrayBuffer) {
-            // Download the PDF from storage (not cached)
-            console.log('[AttachmentPagesRenderer] Downloading:', att.filename);
-            const { data: blob, error } = await supabase.storage
-              .from(bucket)
-              .download(att.file_path);
+            // Request a signed URL from the edge function (bypasses tenant-folder RLS
+            // for shared buckets like company-docs in smartdoc-assets).
+            console.log('[AttachmentPagesRenderer] Requesting signed URL:', att.filename);
+            const { data: signedResp, error: fnError } = await supabase.functions.invoke(
+              'get-document-access-url',
+              { body: { document_id: att.document_id, expires_in: 3600 } }
+            );
 
             if (isAborted) return;
 
-            if (error || !blob) {
-              console.error('[AttachmentPagesRenderer] Download error:', error);
-              loadErrors.push(`Failed to fetch ${att.filename}`);
-              continue;
+            const signedUrl: string | undefined = signedResp?.signedUrl;
+            if (fnError || !signedUrl) {
+              console.error('[AttachmentPagesRenderer] Signed URL error:', fnError, signedResp);
+              // Fallback: try direct download by resolved bucket
+              const bucket = resolveStorageBucket('company_resource', att.file_path);
+              const { data: blob, error } = await supabase.storage
+                .from(bucket)
+                .download(att.file_path);
+              if (error || !blob) {
+                console.error('[AttachmentPagesRenderer] Fallback download error:', error);
+                loadErrors.push(`Failed to fetch ${att.filename}`);
+                continue;
+              }
+              arrayBuffer = await blob.arrayBuffer();
+            } else {
+              const resp = await fetch(signedUrl);
+              if (isAborted) return;
+              if (!resp.ok) {
+                console.error('[AttachmentPagesRenderer] Signed URL fetch failed:', resp.status);
+                loadErrors.push(`Failed to fetch ${att.filename}`);
+                continue;
+              }
+              arrayBuffer = await resp.arrayBuffer();
             }
 
-            // Convert blob to ArrayBuffer and cache it
-            arrayBuffer = await blob.arrayBuffer();
             downloadCache.set(cacheKey, arrayBuffer);
             console.log('[AttachmentPagesRenderer] Downloaded & cached:', att.filename, 'size:', arrayBuffer.byteLength);
           } else {
