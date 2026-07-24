@@ -85,8 +85,10 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
 
   // Invoice builder state — grouped per trade / per change order.
   const [invoiceGroups, setInvoiceGroups] = useState<InvoiceGroup[]>([]);
-  const [invoiceDueDate, setInvoiceDueDate] = useState('');
-  const [invoiceNotes, setInvoiceNotes] = useState('');
+import { Checkbox } from '@/components/ui/checkbox';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
   // QuickBooks / delivery options (UI state — wired for future QBO submission)
   const [qboAllowCreditCard, setQboAllowCreditCard] = useState(true);
   const [qboAllowAch, setQboAllowAch] = useState(true);
