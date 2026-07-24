@@ -310,7 +310,9 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
 
       toast({
         title: 'File Attached',
-        description: 'Enter the invoice details and submit when ready.'
+        description: invoiceType === 'overhead'
+          ? 'Enter the charge details and submit when ready.'
+          : 'Enter the invoice details and submit when ready.'
       });
     } catch (error: any) {
       toast({
@@ -464,7 +466,7 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
                   <X className="h-3 w-3" />
                 </Button>
               </div>
-              {!scanSuccess && (
+              {isLabor && !scanSuccess && (
                 <Button
                   type="button"
                   variant="outline"
