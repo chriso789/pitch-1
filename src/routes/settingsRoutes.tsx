@@ -22,6 +22,8 @@ export default function SettingsRoutes() {
         <Route path="ai-agent" element={<ProtectedRoute><AIAgentSettingsPage /></ProtectedRoute>} />
         <Route path="ai-admin" element={<ProtectedRoute><AIAdminPage /></ProtectedRoute>} />
         <Route path="company-referrals" element={<ProtectedRoute><CompanyReferralSettingsPage /></ProtectedRoute>} />
+        <Route path="quickbooks/mappings" element={<ProtectedRoute><QuickBooksMappingsPage /></ProtectedRoute>} />
+        <Route path="integrations/quickbooks/mappings" element={<ProtectedRoute><QuickBooksMappingsPage /></ProtectedRoute>} />
       </Routes>
     </Suspense>
   );
