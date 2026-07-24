@@ -1873,14 +1873,17 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
                         {statusConfig[inv.status]?.label || inv.status}
                       </Badge>
                       <div onClick={(e) => e.stopPropagation()}>
-                        <InvoiceEmailActions
+                        <InvoiceShareActions
                           invoiceId={inv.id}
                           tenantId={activeTenantId!}
-                          projectId={(inv as any).project_id ?? null}
-                          invoiceLabel={inv.invoice_number}
+                          pipelineEntryId={pipelineEntryId}
+                          invoiceNumber={inv.invoice_number}
+                          defaultEmail={(inv as any).customer_email ?? null}
+                          defaultPhone={(inv as any).customer_phone ?? null}
                           isVoid={inv.status === 'void'}
                         />
                       </div>
+
                       <Button
                         variant="ghost"
                         size="icon"
