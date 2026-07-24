@@ -7,9 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import {
-  AlertCircle, CheckCircle2, RefreshCw, AlertTriangle, Settings2,
-  BookOpen, ExternalLink,
+  AlertCircle, CheckCircle2, RefreshCw, AlertTriangle, Settings2, BookOpen,
 } from "lucide-react";
+
 import { Link } from "react-router-dom";
 
 
