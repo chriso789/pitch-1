@@ -778,6 +778,10 @@ export function PullMeasurementsButton({
     return null;
   }
 
+  if (!featureLoading && !aiMeasurementsEnabled) {
+    return null;
+  }
+
   return (
     <>
       <div className="flex items-center gap-2 flex-wrap">
