@@ -104,10 +104,11 @@ export function usePhotos({ contactId, leadId, projectId, enabled = true }: UseP
 
   // Upload photo
   const uploadPhoto = useCallback(async (options: UploadPhotoOptions) => {
-    const { file, category = 'general', description } = options;
+    const { file, category = 'general', description, silent = false } = options;
     const entityContactId = options.contactId || contactId;
     const entityLeadId = options.leadId || leadId;
     const entityProjectId = options.projectId || projectId;
+
 
     if (!entityContactId && !entityLeadId && !entityProjectId) {
       throw new Error('At least one entity ID required');
