@@ -1063,6 +1063,7 @@ const FirstPage: React.FC<{
   changeOrdersBlock?: React.ReactNode;
   narrativeOverride?: string;
   narrativeContinues?: boolean;
+  compactSignature?: boolean;
 }> = ({
   customerName,
   customerAddress,
@@ -1080,6 +1081,7 @@ const FirstPage: React.FC<{
   changeOrdersBlock,
   narrativeOverride,
   narrativeContinues,
+  compactSignature,
 }) => {
   const narrativeText = narrativeOverride ?? opts.scopeNarrative;
   return (
