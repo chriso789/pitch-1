@@ -349,19 +349,46 @@ Deno.serve(async (req) => {
     }
 
 
-    return new Response(JSON.stringify({ 
+    // Initialize immutable project accounting snapshot (Slice 1). Never blocks
+    // conversion — the Project Accounting Panel can re-run it manually if needed.
+    let accountingInit: any = { attempted: false };
+    try {
+      accountingInit.attempted = true;
+      const acctRes = await fetch(`${supabaseUrl}/functions/v1/initialize-project-accounting`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: authHeader },
+        body: JSON.stringify({ project_id: newProject.id }),
+      });
+      const acctBody = await acctRes.json().catch(() => ({}));
+      accountingInit = {
+        attempted: true,
+        ok: acctRes.ok,
+        status: acctRes.status,
+        snapshot_id: acctBody?.data?.snapshot?.id ?? null,
+        readiness: acctBody?.data?.readiness ?? null,
+        created: acctBody?.data?.created ?? null,
+        error: acctRes.ok ? null : (acctBody?.error ?? 'accounting_init_failed'),
+      };
+      if (!acctRes.ok) {
+        console.error('[api-approve-job-from-lead] accounting init failed', accountingInit);
+      }
+    } catch (acctErr: any) {
+      console.error('[api-approve-job-from-lead] accounting init threw:', acctErr);
+      accountingInit = { attempted: true, ok: false, error: acctErr?.message ?? String(acctErr) };
+    }
+
+    return new Response(JSON.stringify({
       success: true,
       project: newProject,
       project_id: newProject.id,
       project_job_number: newProject.project_number,
       qbo_sync: qboSync,
+      accounting_init: accountingInit,
       message: `Successfully converted lead to project ${newProject.project_number}`
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
 
   } catch (error) {
     console.error('Error in api-approve-job-from-lead:', error);

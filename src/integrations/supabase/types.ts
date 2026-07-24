@@ -38860,6 +38860,120 @@ export type Database = {
           },
         ]
       }
+      project_accounting_snapshots: {
+        Row: {
+          accounting_readiness: Database["public"]["Enums"]["accounting_readiness_state"]
+          accounting_variance_cents: number
+          approved_change_orders_cents: number
+          approved_supplements_cents: number
+          classification_source: Database["public"]["Enums"]["accounting_classification_source"]
+          classification_version: number
+          created_at: string
+          created_by: string | null
+          credits_total_cents: number
+          current_contract_value_cents: number
+          estimate_template_id: string | null
+          id: string
+          invoiced_total_cents: number
+          is_current: boolean
+          original_contract_value_cents: number
+          outstanding_invoice_balance_cents: number
+          paid_total_cents: number
+          primary_job_type_id: string | null
+          primary_job_type_name_snapshot: string | null
+          primary_project_type_id: string | null
+          primary_project_type_name_snapshot: string | null
+          primary_trade_id: string | null
+          primary_trade_name_snapshot: string | null
+          project_id: string
+          refunds_total_cents: number
+          source_estimate_id: string | null
+          source_lead_id: string | null
+          supersedes_snapshot_id: string | null
+          tenant_id: string
+          uninvoiced_contract_balance_cents: number
+        }
+        Insert: {
+          accounting_readiness?: Database["public"]["Enums"]["accounting_readiness_state"]
+          accounting_variance_cents?: number
+          approved_change_orders_cents?: number
+          approved_supplements_cents?: number
+          classification_source: Database["public"]["Enums"]["accounting_classification_source"]
+          classification_version?: number
+          created_at?: string
+          created_by?: string | null
+          credits_total_cents?: number
+          current_contract_value_cents?: number
+          estimate_template_id?: string | null
+          id?: string
+          invoiced_total_cents?: number
+          is_current?: boolean
+          original_contract_value_cents?: number
+          outstanding_invoice_balance_cents?: number
+          paid_total_cents?: number
+          primary_job_type_id?: string | null
+          primary_job_type_name_snapshot?: string | null
+          primary_project_type_id?: string | null
+          primary_project_type_name_snapshot?: string | null
+          primary_trade_id?: string | null
+          primary_trade_name_snapshot?: string | null
+          project_id: string
+          refunds_total_cents?: number
+          source_estimate_id?: string | null
+          source_lead_id?: string | null
+          supersedes_snapshot_id?: string | null
+          tenant_id: string
+          uninvoiced_contract_balance_cents?: number
+        }
+        Update: {
+          accounting_readiness?: Database["public"]["Enums"]["accounting_readiness_state"]
+          accounting_variance_cents?: number
+          approved_change_orders_cents?: number
+          approved_supplements_cents?: number
+          classification_source?: Database["public"]["Enums"]["accounting_classification_source"]
+          classification_version?: number
+          created_at?: string
+          created_by?: string | null
+          credits_total_cents?: number
+          current_contract_value_cents?: number
+          estimate_template_id?: string | null
+          id?: string
+          invoiced_total_cents?: number
+          is_current?: boolean
+          original_contract_value_cents?: number
+          outstanding_invoice_balance_cents?: number
+          paid_total_cents?: number
+          primary_job_type_id?: string | null
+          primary_job_type_name_snapshot?: string | null
+          primary_project_type_id?: string | null
+          primary_project_type_name_snapshot?: string | null
+          primary_trade_id?: string | null
+          primary_trade_name_snapshot?: string | null
+          project_id?: string
+          refunds_total_cents?: number
+          source_estimate_id?: string | null
+          source_lead_id?: string | null
+          supersedes_snapshot_id?: string | null
+          tenant_id?: string
+          uninvoiced_contract_balance_cents?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_accounting_snapshots_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_accounting_snapshots_supersedes_snapshot_id_fkey"
+            columns: ["supersedes_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "project_accounting_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_approval_requests: {
         Row: {
           id: string
@@ -39852,8 +39966,96 @@ export type Database = {
         }
         Relationships: []
       }
+      project_scopes: {
+        Row: {
+          accounting_snapshot_id: string
+          classification_source: Database["public"]["Enums"]["accounting_classification_source"]
+          classification_version: number
+          created_at: string
+          current_contract_amount_cents: number
+          id: string
+          is_primary: boolean
+          job_type_id: string | null
+          job_type_name_snapshot: string | null
+          original_contract_amount_cents: number
+          project_id: string
+          project_type_id: string | null
+          project_type_name_snapshot: string | null
+          source_blueprint_trade_selection_id: string | null
+          source_estimate_id: string | null
+          source_estimate_section_id: string | null
+          status: string
+          tenant_id: string
+          trade_id: string
+          trade_name_snapshot: string | null
+          updated_at: string
+        }
+        Insert: {
+          accounting_snapshot_id: string
+          classification_source: Database["public"]["Enums"]["accounting_classification_source"]
+          classification_version?: number
+          created_at?: string
+          current_contract_amount_cents?: number
+          id?: string
+          is_primary?: boolean
+          job_type_id?: string | null
+          job_type_name_snapshot?: string | null
+          original_contract_amount_cents?: number
+          project_id: string
+          project_type_id?: string | null
+          project_type_name_snapshot?: string | null
+          source_blueprint_trade_selection_id?: string | null
+          source_estimate_id?: string | null
+          source_estimate_section_id?: string | null
+          status?: string
+          tenant_id: string
+          trade_id: string
+          trade_name_snapshot?: string | null
+          updated_at?: string
+        }
+        Update: {
+          accounting_snapshot_id?: string
+          classification_source?: Database["public"]["Enums"]["accounting_classification_source"]
+          classification_version?: number
+          created_at?: string
+          current_contract_amount_cents?: number
+          id?: string
+          is_primary?: boolean
+          job_type_id?: string | null
+          job_type_name_snapshot?: string | null
+          original_contract_amount_cents?: number
+          project_id?: string
+          project_type_id?: string | null
+          project_type_name_snapshot?: string | null
+          source_blueprint_trade_selection_id?: string | null
+          source_estimate_id?: string | null
+          source_estimate_section_id?: string | null
+          status?: string
+          tenant_id?: string
+          trade_id?: string
+          trade_name_snapshot?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_scopes_accounting_snapshot_id_fkey"
+            columns: ["accounting_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "project_accounting_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_scopes_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       projects: {
         Row: {
+          accounting_readiness: Database["public"]["Enums"]["accounting_readiness_state"]
           actual_completion_date: string | null
           budget_data: Json | null
           budget_file_path: string | null
@@ -39863,6 +40065,7 @@ export type Database = {
           contact_number: number | null
           created_at: string | null
           created_by: string | null
+          current_accounting_snapshot_id: string | null
           customer_portal_status: string | null
           description: string | null
           estimated_completion_date: string | null
@@ -39885,6 +40088,7 @@ export type Database = {
           wind_mitigation_eligible: boolean | null
         }
         Insert: {
+          accounting_readiness?: Database["public"]["Enums"]["accounting_readiness_state"]
           actual_completion_date?: string | null
           budget_data?: Json | null
           budget_file_path?: string | null
@@ -39894,6 +40098,7 @@ export type Database = {
           contact_number?: number | null
           created_at?: string | null
           created_by?: string | null
+          current_accounting_snapshot_id?: string | null
           customer_portal_status?: string | null
           description?: string | null
           estimated_completion_date?: string | null
@@ -39916,6 +40121,7 @@ export type Database = {
           wind_mitigation_eligible?: boolean | null
         }
         Update: {
+          accounting_readiness?: Database["public"]["Enums"]["accounting_readiness_state"]
           actual_completion_date?: string | null
           budget_data?: Json | null
           budget_file_path?: string | null
@@ -39925,6 +40131,7 @@ export type Database = {
           contact_number?: number | null
           created_at?: string | null
           created_by?: string | null
+          current_accounting_snapshot_id?: string | null
           customer_portal_status?: string | null
           description?: string | null
           estimated_completion_date?: string | null
@@ -39960,6 +40167,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "user_activity_summary"
             referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "projects_current_accounting_snapshot_id_fkey"
+            columns: ["current_accounting_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "project_accounting_snapshots"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "projects_pipeline_entry_id_fkey"
@@ -64214,6 +64428,20 @@ export type Database = {
       }
     }
     Enums: {
+      accounting_classification_source:
+        | "estimate_multi_trade"
+        | "estimate_single_trade"
+        | "blueprint_accepted_trades"
+        | "lead_selection"
+        | "single_scope_fallback"
+        | "manual_review"
+      accounting_readiness_state:
+        | "pending_classification"
+        | "needs_mapping"
+        | "qbo_not_connected"
+        | "qbo_sync_pending"
+        | "qbo_sync_error"
+        | "ready"
       achievement_tier: "bronze" | "silver" | "gold" | "platinum" | "diamond"
       achievement_type: "milestone" | "skill" | "streak" | "special"
       app_role:
@@ -64638,6 +64866,22 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      accounting_classification_source: [
+        "estimate_multi_trade",
+        "estimate_single_trade",
+        "blueprint_accepted_trades",
+        "lead_selection",
+        "single_scope_fallback",
+        "manual_review",
+      ],
+      accounting_readiness_state: [
+        "pending_classification",
+        "needs_mapping",
+        "qbo_not_connected",
+        "qbo_sync_pending",
+        "qbo_sync_error",
+        "ready",
+      ],
       achievement_tier: ["bronze", "silver", "gold", "platinum", "diamond"],
       achievement_type: ["milestone", "skill", "streak", "special"],
       app_role: [
