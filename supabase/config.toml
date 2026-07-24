@@ -363,7 +363,7 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.invoice-create]
-verify_jwt = true
+verify_jwt = false
 
 [functions.scrape-county-permits]
 verify_jwt = true
