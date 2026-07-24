@@ -712,6 +712,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
         estimateName={estimateName}
         narrativeOverride={useNarrativeSplit ? narrativeChunks[0] : undefined}
         narrativeContinues={useNarrativeSplit && narrativeChunks.length > 1}
+        compactSignature={narrativeFitsInline}
       />
     );
     for (let i = 1; i < itemChunks.length; i++) {
