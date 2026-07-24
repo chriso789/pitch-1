@@ -87,6 +87,17 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   const [invoiceGroups, setInvoiceGroups] = useState<InvoiceGroup[]>([]);
   const [invoiceDueDate, setInvoiceDueDate] = useState('');
   const [invoiceNotes, setInvoiceNotes] = useState('');
+  // QuickBooks / delivery options (UI state — wired for future QBO submission)
+  const [qboAllowCreditCard, setQboAllowCreditCard] = useState(true);
+  const [qboAllowAch, setQboAllowAch] = useState(true);
+  const [qboRequireDeposit, setQboRequireDeposit] = useState(false);
+  const [qboEmailViaQbo, setQboEmailViaQbo] = useState(false);
+  const [sendFromPitchEmail, setSendFromPitchEmail] = useState(false);
+  const [createPitchPortalLink, setCreatePitchPortalLink] = useState(false);
+  const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [invoiceTerms, setInvoiceTerms] = useState<'due_on_receipt' | 'net_15' | 'net_30' | 'custom'>('due_on_receipt');
+  const [invoiceCustomTerms, setInvoiceCustomTerms] = useState('');
+  const [customerMemo, setCustomerMemo] = useState('');
   const [showLineDetails, setShowLineDetails] = useState(false);
   // Pass-through credit-card processing fee (added on top of the invoice
   // total; collected from the homeowner so it does not deduct from the
