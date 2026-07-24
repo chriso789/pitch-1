@@ -680,7 +680,17 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     const narrativeChunks = useNarrativeSplit
       ? chunkNarrative(opts.scopeNarrative!, 5200, 5200)
       : [];
-    const firstPageHasTerms = !useNarrativeSplit && itemChunks.length <= 1 && opts.showTermsAndConditions && !skipWarrantyAndTerms;
+    // When the narrative is short enough to co-exist with the pricing summary,
+    // terms & conditions, fine print, and the signature block on ONE page, do
+    // that instead of forcing a dedicated summary page. Threshold chosen to
+    // leave room for a moderately long terms block + signature lines.
+    const narrativeFitsInline =
+      useNarrativeSplit &&
+      narrativeChunks.length === 1 &&
+      (narrativeChunks[0]?.length ?? 0) <= 2400;
+    const firstPageHasTerms =
+      (!useNarrativeSplit && itemChunks.length <= 1 && opts.showTermsAndConditions && !skipWarrantyAndTerms) ||
+      (narrativeFitsInline && opts.showTermsAndConditions && !skipWarrantyAndTerms);
     if (firstPageHasTerms && opts.showSignatureBlock) {
       estimateSignatureRelIdx = estimateNodes.length;
     }
@@ -693,7 +703,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
         customerEmail={customerEmail}
         items={itemChunks[0] || []}
         blocks={blockChunks[0] || []}
-        isOnlyChunk={!useNarrativeSplit && itemChunks.length <= 1}
+        isOnlyChunk={!useNarrativeSplit ? itemChunks.length <= 1 : narrativeFitsInline}
         breakdown={breakdown}
         config={config}
         opts={opts}
@@ -725,10 +735,9 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
       );
     }
 
-    // Narrative mode: emit continuation pages for any overflow, then always
-    // append a dedicated summary page so PCO + totals + signature are never
-    // clipped by a tall narrative.
-    if (useNarrativeSplit) {
+    // Narrative mode: emit continuation pages for any overflow, then append a
+    // dedicated summary page IF the narrative did not fit inline on page 1.
+    if (useNarrativeSplit && !narrativeFitsInline) {
       for (let i = 1; i < narrativeChunks.length; i++) {
         estimateNodes.push(
           <NarrativeContinuationPage
@@ -753,6 +762,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
         />
       );
     }
+
 
     if (changeOrderItems.length > 0) {
       const changeOrdersBlock = <ChangeOrdersBlock items={changeOrderItems} />;
