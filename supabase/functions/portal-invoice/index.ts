@@ -16,6 +16,19 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+// Fire-and-forget notifier so customer response is never blocked.
+function notifyStaff(tenant_id: string, pitch_invoice_id: string, event_type: string) {
+  try {
+    fetch(`${SUPABASE_URL}/functions/v1/invoice-notify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SERVICE_ROLE}` },
+      body: JSON.stringify({ tenant_id, pitch_invoice_id, event_type }),
+    }).catch((e) => console.error("[portal-invoice] notify failed", e));
+  } catch (e) {
+    console.error("[portal-invoice] notify threw", e);
+  }
+}
+
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
