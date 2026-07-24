@@ -1136,13 +1136,13 @@ const FirstPage: React.FC<{
       {/* Potential Change Orders rendered ABOVE the price totals */}
       {!opts.showOnlyTotal && isOnlyChunk && changeOrdersBlock}
 
-      {/* Summary (only show if this is the only/last items page) */}
-      {!opts.showOnlyTotal && isOnlyChunk && (
+      {/* Summary (skip when compactSignature merges price into the signature row) */}
+      {!opts.showOnlyTotal && isOnlyChunk && !compactSignature && (
         <PricingSummary breakdown={breakdown} config={config} opts={opts} />
       )}
 
       {/* Terms & Fine Print (only if fits on first page) */}
-      {showTerms && <TermsSection finePrintContent={finePrintContent} opts={opts} breakdown={breakdown} />}
+      {showTerms && <TermsSection finePrintContent={finePrintContent} opts={opts} breakdown={breakdown} compact={compactSignature} />}
     </div>
   );
 };
