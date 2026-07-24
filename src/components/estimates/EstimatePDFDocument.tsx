@@ -1386,7 +1386,8 @@ const TermsSection: React.FC<{
   finePrintContent?: string;
   opts: PDFComponentOptions;
   breakdown?: EstimatePDFDocumentProps['breakdown'];
-}> = ({ finePrintContent, opts, breakdown }) => {
+  compact?: boolean;
+}> = ({ finePrintContent, opts, breakdown, compact }) => {
   return (
     <div className="space-y-3 mt-3">
       {opts.showTermsAndConditions && (
@@ -1404,30 +1405,61 @@ const TermsSection: React.FC<{
 
       {opts.showSignatureBlock && (
         <div className="mt-4 pt-3 border-t border-gray-200" data-signature-block="true">
-          {breakdown && (
-            <div className="flex items-center justify-between mb-3 px-2 py-1.5 bg-blue-50 rounded">
-              <span className="text-xs font-semibold text-gray-700">Total Investment (signing for)</span>
-              <span className="text-sm font-bold text-blue-600">{formatCurrency(breakdown.sellingPrice)}</span>
+          {compact && breakdown ? (
+            // Compact: signatures flank a centered price so everything fits one page
+            <div className="grid grid-cols-[1fr_auto_1fr] gap-6 items-end">
+              <div>
+                <p className="text-xs text-gray-500 mb-10">Customer Signature</p>
+                <div className="h-5 border-b border-gray-400" data-signature-line="customer"></div>
+                <p className="text-xs text-gray-500 mt-2 flex items-end gap-1">
+                  <span>Date:</span>
+                  <span className="inline-block border-b border-gray-400 flex-1 h-4" data-date-line="customer"></span>
+                </p>
+              </div>
+              <div className="text-center px-4 pb-2">
+                <p className="text-[10px] uppercase tracking-wide text-gray-500 mb-0.5">Your Investment</p>
+                <div className="text-xl font-bold text-blue-600 whitespace-nowrap">
+                  {formatCurrency(breakdown.sellingPrice)}
+                </div>
+                <p className="text-[8px] text-gray-400 mt-0.5">Price includes applicable sales tax</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-10">Company Representative</p>
+                <div className="h-5 border-b border-gray-400" data-signature-line="company"></div>
+                <p className="text-xs text-gray-500 mt-2 flex items-end gap-1">
+                  <span>Date:</span>
+                  <span className="inline-block border-b border-gray-400 flex-1 h-4" data-date-line="company"></span>
+                </p>
+              </div>
             </div>
+          ) : (
+            <>
+              {breakdown && (
+                <div className="flex items-center justify-between mb-3 px-2 py-1.5 bg-blue-50 rounded">
+                  <span className="text-xs font-semibold text-gray-700">Total Investment (signing for)</span>
+                  <span className="text-sm font-bold text-blue-600">{formatCurrency(breakdown.sellingPrice)}</span>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-8">
+                <div>
+                  <p className="text-xs text-gray-500 mb-10">Customer Signature</p>
+                  <div className="h-5 border-b border-gray-400" data-signature-line="customer"></div>
+                  <p className="text-xs text-gray-500 mt-10 flex items-end gap-1">
+                    <span>Date:</span>
+                    <span className="inline-block border-b border-gray-400 flex-1 h-4" data-date-line="customer"></span>
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 mb-10">Company Representative</p>
+                  <div className="h-5 border-b border-gray-400" data-signature-line="company"></div>
+                  <p className="text-xs text-gray-500 mt-10 flex items-end gap-1">
+                    <span>Date:</span>
+                    <span className="inline-block border-b border-gray-400 flex-1 h-4" data-date-line="company"></span>
+                  </p>
+                </div>
+              </div>
+            </>
           )}
-          <div className="grid grid-cols-2 gap-8">
-            <div>
-              <p className="text-xs text-gray-500 mb-10">Customer Signature</p>
-              <div className="h-5 border-b border-gray-400" data-signature-line="customer"></div>
-              <p className="text-xs text-gray-500 mt-10 flex items-end gap-1">
-                <span>Date:</span>
-                <span className="inline-block border-b border-gray-400 flex-1 h-4" data-date-line="customer"></span>
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500 mb-10">Company Representative</p>
-              <div className="h-5 border-b border-gray-400" data-signature-line="company"></div>
-              <p className="text-xs text-gray-500 mt-10 flex items-end gap-1">
-                <span>Date:</span>
-                <span className="inline-block border-b border-gray-400 flex-1 h-4" data-date-line="company"></span>
-              </p>
-            </div>
-          </div>
         </div>
       )}
     </div>
