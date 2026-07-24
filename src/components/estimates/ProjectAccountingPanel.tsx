@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -5,8 +6,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { AlertCircle, CheckCircle2, RefreshCw, AlertTriangle, Settings2 } from "lucide-react";
+import {
+  AlertCircle, CheckCircle2, RefreshCw, AlertTriangle, Settings2, BookOpen,
+} from "lucide-react";
+
 import { Link } from "react-router-dom";
+
+
 
 interface Props {
   projectId: string;
@@ -65,9 +71,13 @@ const readinessLabel: Record<
   needs_mapping: { label: "Needs QBO Mapping", tone: "outline" },
   qbo_not_connected: { label: "QBO Not Connected", tone: "destructive" },
   qbo_sync_pending: { label: "Ready to Sync", tone: "default" },
+  qbo_sync_queued: { label: "Queued for QuickBooks", tone: "secondary" },
+  qbo_sync_in_progress: { label: "Creating in QuickBooks", tone: "secondary" },
   qbo_sync_error: { label: "QBO Sync Error", tone: "destructive" },
+  qbo_duplicate_review_required: { label: "Duplicate in QuickBooks", tone: "destructive" },
   ready: { label: "Ready", tone: "default" },
 };
+
 
 const resolutionLabel: Record<
   string,
@@ -143,6 +153,64 @@ export default function ProjectAccountingPanel({ projectId }: Props) {
     onError: (e: any) => toast.error(e?.message ?? "Failed to refresh mapping"),
   });
 
+  const { data: qboMapping, refetch: refetchMapping } = useQuery({
+    queryKey: ["project-qbo-mapping", projectId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("project_qbo_mappings")
+        .select("id, qbo_connection_id, qbo_customer_id, qbo_display_name, sync_status, last_error, last_synced_at, last_verified_at, is_active")
+        .eq("pitch_project_id", projectId)
+        .eq("is_active", true)
+        .maybeSingle();
+      return data as {
+        id: string;
+        qbo_connection_id: string;
+        qbo_customer_id: string | null;
+        qbo_display_name: string | null;
+        sync_status: string;
+        last_error: string | null;
+        last_synced_at: string | null;
+        last_verified_at: string | null;
+        is_active: boolean;
+      } | null;
+    },
+  });
+
+  const syncMut = useMutation({
+    mutationFn: async (trigger: "auto" | "manual") => {
+      const { data, error } = await supabase.functions.invoke("qbo-project-sync", {
+        body: { project_id: projectId, trigger },
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (res: any, trigger) => {
+      if (res?.ok) {
+        if (trigger === "manual") {
+          toast.success(`QuickBooks customer ready: ${res?.data?.qbo_display_name ?? "created"}`);
+        }
+      } else {
+        toast.error(res?.error ?? "QuickBooks sync failed");
+      }
+      qc.invalidateQueries({ queryKey: ["project-accounting-snapshot", projectId] });
+      refetchMapping();
+    },
+    onError: (e: any) => toast.error(e?.message ?? "QuickBooks sync failed"),
+  });
+
+  // Auto-trigger: once mappings resolve to qbo_sync_pending, kick off the customer
+  // creation exactly once per mount.
+  const autoTriggeredRef = useRef(false);
+  useEffect(() => {
+    if (autoTriggeredRef.current) return;
+    const readiness = data?.snapshot?.accounting_readiness;
+    if (readiness === "qbo_sync_pending" && !syncMut.isPending) {
+      autoTriggeredRef.current = true;
+      syncMut.mutate("auto");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data?.snapshot?.accounting_readiness]);
+
   if (isLoading) {
     return (
       <Card>
@@ -151,6 +219,8 @@ export default function ProjectAccountingPanel({ projectId }: Props) {
       </Card>
     );
   }
+
+
 
   const snap = data?.snapshot;
   const scopes = data?.scopes ?? [];
@@ -224,7 +294,28 @@ export default function ProjectAccountingPanel({ projectId }: Props) {
             )}
             Refresh Mapping
           </Button>
+          {(snap.accounting_readiness === "qbo_sync_pending" ||
+            snap.accounting_readiness === "qbo_sync_error" ||
+            snap.accounting_readiness === "qbo_duplicate_review_required" ||
+            (snap.accounting_readiness === "ready" && !qboMapping?.qbo_customer_id)) && (
+            <Button
+              size="sm"
+              onClick={() => syncMut.mutate("manual")}
+              disabled={syncMut.isPending}
+            >
+              {syncMut.isPending ? (
+                <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <BookOpen className="h-4 w-4 mr-1" />
+              )}
+              {snap.accounting_readiness === "qbo_sync_error" ||
+              snap.accounting_readiness === "qbo_duplicate_review_required"
+                ? "Retry QuickBooks Sync"
+                : "Create in QuickBooks"}
+            </Button>
+          )}
         </div>
+
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
@@ -248,6 +339,33 @@ export default function ProjectAccountingPanel({ projectId }: Props) {
             </span>
           </div>
         )}
+
+        <div className="rounded-md border p-2 text-xs flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2 min-w-0">
+            <BookOpen className="h-4 w-4 flex-shrink-0" />
+            <span className="font-medium">QuickBooks Customer</span>
+            {qboMapping?.qbo_customer_id ? (
+              <>
+                <Badge variant="default" className="text-[10px]">
+                  {qboMapping.sync_status === "ready" ? "Linked" : qboMapping.sync_status}
+                </Badge>
+                <span className="truncate text-muted-foreground">
+                  {qboMapping.qbo_display_name} · ID {qboMapping.qbo_customer_id}
+                </span>
+              </>
+            ) : qboMapping ? (
+              <Badge variant="outline" className="text-[10px]">{qboMapping.sync_status}</Badge>
+            ) : (
+              <Badge variant="outline" className="text-[10px]">Not created</Badge>
+            )}
+          </div>
+          {qboMapping?.last_error && (
+            <span className="text-destructive text-[11px] truncate max-w-full">
+              {qboMapping.last_error}
+            </span>
+          )}
+        </div>
+
 
         <div className="border-t pt-3">
           <div className="text-xs uppercase text-muted-foreground mb-2">Scopes &amp; QBO Mapping</div>

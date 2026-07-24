@@ -40023,6 +40023,90 @@ export type Database = {
         }
         Relationships: []
       }
+      project_qbo_mappings: {
+        Row: {
+          correlation_id: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          last_error: string | null
+          last_intuit_tid: string | null
+          last_synced_at: string | null
+          last_verified_at: string | null
+          pitch_contact_id: string | null
+          pitch_project_id: string
+          qbo_connection_id: string
+          qbo_customer_id: string | null
+          qbo_display_name: string | null
+          qbo_project_id: string | null
+          qbo_subcustomer_id: string | null
+          qbo_sync_token: string | null
+          representation_strategy: string
+          sync_status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          correlation_id?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          last_error?: string | null
+          last_intuit_tid?: string | null
+          last_synced_at?: string | null
+          last_verified_at?: string | null
+          pitch_contact_id?: string | null
+          pitch_project_id: string
+          qbo_connection_id: string
+          qbo_customer_id?: string | null
+          qbo_display_name?: string | null
+          qbo_project_id?: string | null
+          qbo_subcustomer_id?: string | null
+          qbo_sync_token?: string | null
+          representation_strategy?: string
+          sync_status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          correlation_id?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          last_error?: string | null
+          last_intuit_tid?: string | null
+          last_synced_at?: string | null
+          last_verified_at?: string | null
+          pitch_contact_id?: string | null
+          pitch_project_id?: string
+          qbo_connection_id?: string
+          qbo_customer_id?: string | null
+          qbo_display_name?: string | null
+          qbo_project_id?: string | null
+          qbo_subcustomer_id?: string | null
+          qbo_sync_token?: string | null
+          representation_strategy?: string
+          sync_status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_qbo_mappings_pitch_project_id_fkey"
+            columns: ["pitch_project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_qbo_mappings_qbo_connection_id_fkey"
+            columns: ["qbo_connection_id"]
+            isOneToOne: false
+            referencedRelation: "qbo_connections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_scope_accounting_mappings: {
         Row: {
           active: boolean
@@ -65269,6 +65353,9 @@ export type Database = {
         | "qbo_sync_pending"
         | "qbo_sync_error"
         | "ready"
+        | "qbo_sync_queued"
+        | "qbo_sync_in_progress"
+        | "qbo_duplicate_review_required"
       achievement_tier: "bronze" | "silver" | "gold" | "platinum" | "diamond"
       achievement_type: "milestone" | "skill" | "streak" | "special"
       app_role:
@@ -65708,6 +65795,9 @@ export const Constants = {
         "qbo_sync_pending",
         "qbo_sync_error",
         "ready",
+        "qbo_sync_queued",
+        "qbo_sync_in_progress",
+        "qbo_duplicate_review_required",
       ],
       achievement_tier: ["bronze", "silver", "gold", "platinum", "diamond"],
       achievement_type: ["milestone", "skill", "streak", "special"],
