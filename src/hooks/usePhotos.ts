@@ -55,7 +55,10 @@ interface UploadPhotoOptions {
   projectId?: string;
   /** Optional pre-extracted GPS + capture date to avoid double EXIF parse. */
   geo?: { latitude: number | null; longitude: number | null; takenAt: string | null };
+  /** Skip per-photo toast + query invalidation (for batch uploads). */
+  silent?: boolean;
 }
+
 
 export function usePhotos({ contactId, leadId, projectId, enabled = true }: UsePhotosOptions) {
   const queryClient = useQueryClient();
