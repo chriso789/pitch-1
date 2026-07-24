@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -5,8 +6,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { AlertCircle, CheckCircle2, RefreshCw, AlertTriangle, Settings2 } from "lucide-react";
+import {
+  AlertCircle, CheckCircle2, RefreshCw, AlertTriangle, Settings2,
+  BookOpen, ExternalLink,
+} from "lucide-react";
 import { Link } from "react-router-dom";
+
+
 
 interface Props {
   projectId: string;
