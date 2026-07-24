@@ -220,13 +220,7 @@ export default function ProjectAccountingPanel({ projectId }: Props) {
     );
   }
 
-    return (
-      <Card>
-        <CardHeader><CardTitle>Project Accounting</CardTitle></CardHeader>
-        <CardContent><Skeleton className="h-32 w-full" /></CardContent>
-      </Card>
-    );
-  }
+
 
   const snap = data?.snapshot;
   const scopes = data?.scopes ?? [];
