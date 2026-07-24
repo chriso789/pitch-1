@@ -25,6 +25,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 
 import EstimateHyperlinkBar from '@/components/estimates/EstimateHyperlinkBar';
 import ProfitCenterPanel from '@/components/estimates/ProfitCenterPanel';
+import ProjectAccountingPanel from '@/components/estimates/ProjectAccountingPanel';
 import { CompactCommunicationHub, ActivityItem } from '@/components/communication/CompactCommunicationHub';
 import MeasurementGating from '@/components/estimates/MeasurementGating';
 import { EnhancedEstimateBuilder } from '@/components/EnhancedEstimateBuilder';
