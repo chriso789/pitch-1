@@ -252,8 +252,12 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
       });
     }
 
-    // 4. Upload serially, updating status per item
-    for (const item of queued) {
+    // 4. Upload in parallel with a small concurrency pool so 50+ photos don't
+    // serialize behind each other. Skip per-photo toasts / query invalidations
+    // and refetch once at the end.
+    const CONCURRENCY = 5;
+    let cursor = 0;
+    const runOne = async (item: PendingPreview) => {
       setPendingPreviews((prev) =>
         prev.map((p) => (p.id === item.id ? { ...p, status: 'uploading' } : p))
       );
@@ -264,8 +268,8 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
           leadId,
           projectId,
           geo: item.geo,
+          silent: true,
         });
-        // Remove the preview once the real record lands via query invalidation
         setPendingPreviews((prev) => {
           const rest = prev.filter((p) => p.id !== item.id);
           URL.revokeObjectURL(item.previewUrl);
@@ -282,8 +286,25 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
           variant: 'destructive',
         });
       }
+    };
+    const workers: Promise<void>[] = [];
+    const drain = async () => {
+      while (cursor < queued.length) {
+        const item = queued[cursor++];
+        await runOne(item);
+      }
+    };
+    for (let i = 0; i < Math.min(CONCURRENCY, queued.length); i++) {
+      workers.push(drain());
     }
-  }, [uploadPhoto, contactId, leadId, projectId, projectCoords, onSiteRadiusMeters]);
+    await Promise.all(workers);
+    // Single refetch after the batch so React Query doesn't thrash 50 times.
+    refetch();
+    toast({
+      title: `Uploaded ${queued.length} photo${queued.length !== 1 ? 's' : ''}`,
+    });
+  }, [uploadPhoto, contactId, leadId, projectId, projectCoords, onSiteRadiusMeters, refetch]);
+
 
 
   // Handle drag end
