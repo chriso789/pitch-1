@@ -303,6 +303,8 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
   onEstimateCreated
 }) => {
   const { toast } = useToast();
+  const { hasFeature } = useFeatureAccess();
+  const aiMeasurementsEnabled = hasFeature('measurements');
   const [searchParams] = useSearchParams();
   const { profile } = useUserProfile();
   const { fetchLivePricing, applyLivePricing, refreshing: livePricingRefreshing } = useLivePricing();
