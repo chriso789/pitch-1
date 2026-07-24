@@ -176,9 +176,22 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
   );
 
   // Filter photos
-  const filteredPhotos = filterCategory === 'all' 
-    ? photos 
+  const categoryFiltered = filterCategory === 'all'
+    ? photos
     : photos.filter(p => p.category === filterCategory);
+
+  // Apply user sort mode. `manual` respects display_order from the DB (default).
+  const filteredPhotos = React.useMemo(() => {
+    if (sortMode === 'manual') return categoryFiltered;
+    const timeOf = (p: CustomerPhoto) => {
+      const t = p.taken_at || p.uploaded_at || p.created_at;
+      return t ? new Date(t).getTime() : 0;
+    };
+    const copy = [...categoryFiltered];
+    copy.sort((a, b) => sortMode === 'oldest' ? timeOf(a) - timeOf(b) : timeOf(b) - timeOf(a));
+    return copy;
+  }, [categoryFiltered, sortMode]);
+
 
   // Handle file upload — multi-file with instant previews + geotag prioritization
   const handleFileUpload = useCallback(async (files: FileList | null) => {
