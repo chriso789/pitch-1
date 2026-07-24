@@ -368,6 +368,10 @@ verify_jwt = true
 [functions.invoice-create]
 verify_jwt = false
 
+[functions.invoice-share]
+verify_jwt = true
+
+
 [functions.scrape-county-permits]
 verify_jwt = true
 
