@@ -9,6 +9,8 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger 
@@ -87,6 +89,17 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   const [invoiceGroups, setInvoiceGroups] = useState<InvoiceGroup[]>([]);
   const [invoiceDueDate, setInvoiceDueDate] = useState('');
   const [invoiceNotes, setInvoiceNotes] = useState('');
+  // QuickBooks / delivery options (UI state — wired for future QBO submission)
+  const [qboAllowCreditCard, setQboAllowCreditCard] = useState(true);
+  const [qboAllowAch, setQboAllowAch] = useState(true);
+  const [qboRequireDeposit, setQboRequireDeposit] = useState(false);
+  const [qboEmailViaQbo, setQboEmailViaQbo] = useState(false);
+  const [sendFromPitchEmail, setSendFromPitchEmail] = useState(false);
+  const [createPitchPortalLink, setCreatePitchPortalLink] = useState(false);
+  const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [invoiceTerms, setInvoiceTerms] = useState<'due_on_receipt' | 'net_15' | 'net_30' | 'custom'>('due_on_receipt');
+  const [invoiceCustomTerms, setInvoiceCustomTerms] = useState('');
+  const [customerMemo, setCustomerMemo] = useState('');
   const [showLineDetails, setShowLineDetails] = useState(false);
   // Pass-through credit-card processing fee (added on top of the invoice
   // total; collected from the homeowner so it does not deduct from the
@@ -1380,17 +1393,97 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <Separator />
+
+              {/* QuickBooks Payment Options */}
+              <div className="rounded-md border bg-muted/20 p-3 space-y-3">
+                <Label className="text-sm font-semibold flex items-center gap-2">
+                  <CreditCard className="h-4 w-4" />
+                  QuickBooks Payment Options
+                </Label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {[
+                    { id: 'qbo-cc', checked: qboAllowCreditCard, set: setQboAllowCreditCard, label: 'Allow Credit Card Payments' },
+                    { id: 'qbo-ach', checked: qboAllowAch, set: setQboAllowAch, label: 'Allow ACH / Bank Transfer' },
+                    { id: 'qbo-deposit', checked: qboRequireDeposit, set: setQboRequireDeposit, label: 'Require Deposit Before Work Begins' },
+                    { id: 'qbo-email', checked: qboEmailViaQbo, set: setQboEmailViaQbo, label: 'Automatically Email Invoice via QuickBooks' },
+                    { id: 'pitch-email', checked: sendFromPitchEmail, set: setSendFromPitchEmail, label: 'Send from Pitch Email' },
+                    { id: 'pitch-portal', checked: createPitchPortalLink, set: setCreatePitchPortalLink, label: 'Create Secure Pitch Portal Link' },
+                  ].map(opt => (
+                    <label key={opt.id} htmlFor={opt.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                      <Checkbox
+                        id={opt.id}
+                        checked={opt.checked}
+                        onCheckedChange={(v) => opt.set(!!v)}
+                      />
+                      {opt.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Invoice Number + Terms */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <Label>Invoice Number</Label>
+                  <Input
+                    value={invoiceNumber}
+                    onChange={e => setInvoiceNumber(e.target.value)}
+                    placeholder="(QBO Auto Numbering)"
+                  />
+                </div>
+                <div>
+                  <Label>Terms</Label>
+                  <RadioGroup
+                    value={invoiceTerms}
+                    onValueChange={(v) => setInvoiceTerms(v as typeof invoiceTerms)}
+                    className="grid grid-cols-2 gap-1 mt-1"
+                  >
+                    {[
+                      { v: 'due_on_receipt', l: 'Due on Receipt' },
+                      { v: 'net_15', l: 'Net 15' },
+                      { v: 'net_30', l: 'Net 30' },
+                      { v: 'custom', l: 'Custom' },
+                    ].map(t => (
+                      <label key={t.v} className="flex items-center gap-2 text-sm cursor-pointer">
+                        <RadioGroupItem value={t.v} id={`terms-${t.v}`} />
+                        {t.l}
+                      </label>
+                    ))}
+                  </RadioGroup>
+                  {invoiceTerms === 'custom' && (
+                    <Input
+                      className="mt-2"
+                      value={invoiceCustomTerms}
+                      onChange={e => setInvoiceCustomTerms(e.target.value)}
+                      placeholder="e.g. Net 45, 50% deposit due at signing"
+                    />
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label>Due Date</Label>
                   <Input type="date" value={invoiceDueDate} onChange={e => setInvoiceDueDate(e.target.value)} />
                 </div>
                 <div>
-                  <Label>Notes</Label>
-                  <Input value={invoiceNotes} onChange={e => setInvoiceNotes(e.target.value)} placeholder="Optional notes" />
+                  <Label>Internal Notes</Label>
+                  <Input value={invoiceNotes} onChange={e => setInvoiceNotes(e.target.value)} placeholder="Optional internal notes" />
                 </div>
               </div>
+
+              <div>
+                <Label>Customer Memo</Label>
+                <Textarea
+                  value={customerMemo}
+                  onChange={e => setCustomerMemo(e.target.value)}
+                  placeholder="Message shown to the customer on the invoice"
+                  rows={4}
+                />
+              </div>
             </div>
+
 
             {/* Remaining-balance override gate */}
             {!remainingValidation.ok && (
