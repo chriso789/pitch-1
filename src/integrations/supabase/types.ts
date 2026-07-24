@@ -64233,6 +64233,17 @@ export type Database = {
           id: string
         }[]
       }
+      list_projects_using_mapping: {
+        Args: { p_mapping_id: string }
+        Returns: {
+          contract_amount_cents: number
+          last_validated_at: string
+          project_id: string
+          project_scope_id: string
+          resolution_status: string
+          trade_name: string
+        }[]
+      }
       log_company_activity: {
         Args: {
           p_action_description: string
@@ -64265,6 +64276,14 @@ export type Database = {
         Returns: string
       }
       longtransactionsenabled: { Args: never; Returns: boolean }
+      mark_qbo_cache_stale: {
+        Args: {
+          p_connection_id: string
+          p_entity_kind: string
+          p_seen_ids: string[]
+        }
+        Returns: number
+      }
       nearby_buildings: {
         Args: {
           p_lat: number
@@ -64402,7 +64421,7 @@ export type Database = {
       }
       reresolve_projects_for_mapping: {
         Args: { p_mapping_id: string }
-        Returns: Json
+        Returns: number
       }
       resolve_invoice_portal_token: {
         Args: {
@@ -65225,6 +65244,14 @@ export type Database = {
       validate_presentation_token: {
         Args: { p_presentation_id: string; p_token: string }
         Returns: string
+      }
+      validate_scope_mapping: {
+        Args: { p_mapping_id: string }
+        Returns: {
+          mapping_id: string
+          validation_error: string
+          validation_status: string
+        }[]
       }
     }
     Enums: {
