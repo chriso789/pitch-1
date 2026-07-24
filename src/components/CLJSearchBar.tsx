@@ -65,12 +65,25 @@ const formatCljForType = (
   type: 'contact' | 'lead' | 'job'
 ): string => {
   if (!clj) return '';
-  const match = clj.match(/C(\d+)-L(\d+)-J(\d+)/);
-  if (!match) return clj; // non-standard format (e.g. legacy WC-0783-01-00)
-  const [, c, l, j] = match;
-  if (type === 'lead') return `L${l}`;
-  if (type === 'job') return `J${j}`;
-  return `C${c}`;
+  // Canonical form: C123-L45-J06 → show only the token for the entity type.
+  const canonical = clj.match(/C(\d+)-L(\d+)-J(\d+)/);
+  if (canonical) {
+    const [, c, l, j] = canonical;
+    if (type === 'lead') return `L${l}`;
+    if (type === 'job') return `J${j}`;
+    return `C${c}`;
+  }
+  // Display form: {PREFIX}-{contact}-{lead}-{job}  e.g. EC-0001-04-01.
+  // Collapse to just the segment for this entity so leads/jobs don't show
+  // the entire chain in the search dropdown.
+  const display = clj.match(/^([A-Z]+)-(\d+)-(\d+)-(\d+)$/);
+  if (display) {
+    const [, prefix, c, l, j] = display;
+    if (type === 'lead') return `${prefix}-L${l}`;
+    if (type === 'job') return `${prefix}-J${j}`;
+    return `${prefix}-C${c}`;
+  }
+  return clj;
 };
 
 const MAX_RECENTS = 5;
