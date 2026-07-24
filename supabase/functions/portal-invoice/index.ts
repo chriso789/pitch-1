@@ -97,6 +97,12 @@ Deno.serve(async (req) => {
         // Uniform response — never leak whether the invoice exists.
         return json({ ok: false, error: "invalid_token" }, 404);
       }
+      // Portal view logged inside resolve_invoice_portal_token as
+      // 'invoice_viewed'. Fire staff notification (SMS + bell).
+      const viewedPayload = data as { tenant?: { id?: string }; invoice?: { id?: string } };
+      if (viewedPayload?.tenant?.id && viewedPayload?.invoice?.id) {
+        notifyStaff(viewedPayload.tenant.id, viewedPayload.invoice.id, "invoice_viewed");
+      }
       return json(data, 200);
     }
 
