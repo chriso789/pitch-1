@@ -2218,6 +2218,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                 )}
                 
                 <div className="mt-2">
+                  {aiMeasurementsEnabled && (
                     <PullMeasurementsButton
                       propertyId={pipelineEntryId || ''}
                       lat={coordinates?.lat || 0}
@@ -2235,7 +2236,9 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                         });
                       }}
                     />
-                  </div>
+                  )}
+                </div>
+
 
                   {solarMeasurementData && (
                     <div className="border rounded-lg p-3 space-y-2 mt-3 bg-muted/50">
