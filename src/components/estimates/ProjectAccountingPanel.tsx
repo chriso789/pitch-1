@@ -71,9 +71,13 @@ const readinessLabel: Record<
   needs_mapping: { label: "Needs QBO Mapping", tone: "outline" },
   qbo_not_connected: { label: "QBO Not Connected", tone: "destructive" },
   qbo_sync_pending: { label: "Ready to Sync", tone: "default" },
+  qbo_sync_queued: { label: "Queued for QuickBooks", tone: "secondary" },
+  qbo_sync_in_progress: { label: "Creating in QuickBooks", tone: "secondary" },
   qbo_sync_error: { label: "QBO Sync Error", tone: "destructive" },
+  qbo_duplicate_review_required: { label: "Duplicate in QuickBooks", tone: "destructive" },
   ready: { label: "Ready", tone: "default" },
 };
+
 
 const resolutionLabel: Record<
   string,
