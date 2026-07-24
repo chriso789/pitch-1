@@ -29,6 +29,8 @@ import { useCompanyInfo } from '@/hooks/useCompanyInfo';
 import { generateAndSaveInvoicePdf } from '@/lib/invoices/invoicePdfGenerator';
 import { useSearchParams } from 'react-router-dom';
 import { InvoiceEmailActions } from '@/components/invoices/InvoiceEmailActions';
+import { InvoiceShareActions } from '@/components/invoices/InvoiceShareActions';
+
 import {
   computeRemainingInvoiceBalance,
   scaleGroupsToInvoiceBalance as scaleGroupsToInvoiceBalanceShared,
