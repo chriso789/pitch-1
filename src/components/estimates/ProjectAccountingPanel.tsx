@@ -294,7 +294,28 @@ export default function ProjectAccountingPanel({ projectId }: Props) {
             )}
             Refresh Mapping
           </Button>
+          {(snap.accounting_readiness === "qbo_sync_pending" ||
+            snap.accounting_readiness === "qbo_sync_error" ||
+            snap.accounting_readiness === "qbo_duplicate_review_required" ||
+            (snap.accounting_readiness === "ready" && !qboMapping?.qbo_customer_id)) && (
+            <Button
+              size="sm"
+              onClick={() => syncMut.mutate("manual")}
+              disabled={syncMut.isPending}
+            >
+              {syncMut.isPending ? (
+                <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <BookOpen className="h-4 w-4 mr-1" />
+              )}
+              {snap.accounting_readiness === "qbo_sync_error" ||
+              snap.accounting_readiness === "qbo_duplicate_review_required"
+                ? "Retry QuickBooks Sync"
+                : "Create in QuickBooks"}
+            </Button>
+          )}
         </div>
+
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
