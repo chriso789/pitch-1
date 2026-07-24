@@ -348,6 +348,9 @@ const PageHeader: React.FC<{
               {companyInfo?.phone && companyInfo?.email && <span> • </span>}
               {companyInfo?.email && <span>{companyInfo.email}</span>}
             </div>
+            {companyInfo?.license_number && (
+              <p className="text-[10px] text-gray-500 mt-0.5">License #{companyInfo.license_number}</p>
+            )}
           </div>
         )}
       </div>
