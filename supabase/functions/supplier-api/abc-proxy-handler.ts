@@ -1033,10 +1033,46 @@ export const handle = async (req) => {
         }
       }
 
+      // Persist the sweep. The dump is the catalog of record for mapping
+      // proposals, so it must land in `abc_catalog_items` — not just return to
+      // the browser. Catalog-only: the per-SKU identity/mapping pass is 5+
+      // round-trips per item and would blow the runtime before anything wrote.
+      const { data: dumpConnRow } = await supabase
+        .from("abc_connections")
+        .select("id")
+        .eq("tenant_id", tenant_id)
+        .eq("environment", env)
+        .maybeSingle();
+
+      let ingestSummary: unknown = null;
+      let ingestError: string | null = null;
+      if (merged.length) {
+        try {
+          ingestSummary = await ingestAbcCatalogItems(supabase, merged, {
+            tenantId: tenant_id,
+            supplierConnectionId: (dumpConnRow as any)?.id ?? null,
+            branchCode: branchNumber || null,
+            createdBy: userId ?? null,
+            environment: env,
+            catalogOnly: true,
+          });
+        } catch (e) {
+          ingestError = String((e as Error)?.message ?? e);
+        }
+      }
+
+      // Keep the connection row in sync with the branch/ship-to actually used.
+      if ((dumpConnRow as any)?.id && (branchNumber || shipToNumber)) {
+        const patch: Record<string, unknown> = { setup_completed_at: new Date().toISOString() };
+        if (branchNumber) patch.selected_branch_number = branchNumber;
+        if (shipToNumber) patch.selected_ship_to_number = shipToNumber;
+        await supabase.from("abc_connections").update(patch).eq("id", (dumpConnRow as any).id);
+      }
+
       await auditCall(supabase, {
         tenant_id, environment: env, action, endpoint: `${cfg.apiBase}/product/v1/search/items (sweep)`,
         request_body_redacted: { branchNumber, shipToNumber, includePricing, maxItems, seeds: seeds.length },
-        status_code: 200, response_body: { count: merged.length, stoppedReason, seedStats },
+        status_code: 200, response_body: { count: merged.length, stoppedReason, seedStats, ingestSummary, ingestError },
         error_code: null, duration_ms: Date.now() - startedAt, created_by: userId,
       });
 
@@ -1050,8 +1086,71 @@ export const handle = async (req) => {
         prices,
         stoppedReason,
         seedStats,
+        ingest: ingestSummary,
+        ingest_error: ingestError,
       });
     }
+
+    // ---------------- ingest_catalog ----------------
+    // Reads the already-cached `abc_catalog_items` rows for this tenant/branch
+    // and runs the canonical identity + `supplier_item_mappings` (pending) pass.
+    // Split from `dump_catalog` so neither half can starve the other of runtime.
+    if (action === "ingest_catalog") {
+      const branchNumber = str(body.branchNumber) ?? (await selectedBranch(supabase, tenant_id, env));
+      const { data: connRow } = await supabase
+        .from("abc_connections")
+        .select("id")
+        .eq("tenant_id", tenant_id)
+        .eq("environment", env)
+        .maybeSingle();
+
+      let cachedQ = supabase
+        .from("abc_catalog_items")
+        .select("raw_payload, item_number")
+        .eq("tenant_id", tenant_id)
+        .eq("environment", env)
+        .limit(3000);
+      cachedQ = branchNumber ? cachedQ.eq("branch_number", branchNumber) : cachedQ.is("branch_number", null);
+      const { data: cachedRows, error: cachedErr } = await cachedQ;
+      if (cachedErr) {
+        return json({ success: false, error: "catalog_read_failed", message: cachedErr.message }, 500);
+      }
+      const items = ((cachedRows ?? []) as any[])
+        .map((r) => r.raw_payload)
+        .filter((p) => p && typeof p === "object");
+      if (!items.length) {
+        return json({
+          success: false,
+          error: "catalog_empty",
+          message: "No cached ABC catalog rows for this branch. Run \"Dump entire branch catalog\" first.",
+        }, 409);
+      }
+
+      let summary;
+      try {
+        summary = await ingestAbcCatalogItems(supabase, items, {
+          tenantId: tenant_id,
+          supplierConnectionId: (connRow as any)?.id ?? null,
+          branchCode: branchNumber || null,
+          createdBy: userId ?? null,
+          environment: env,
+          // Partial progress is kept; re-running resumes (idempotent).
+          identityDeadlineMs: Date.now() + 45_000,
+        });
+      } catch (e) {
+        return json({ success: false, error: "ingest_failed", message: String((e as Error)?.message ?? e) }, 500);
+      }
+
+      await auditCall(supabase, {
+        tenant_id, environment: env, action, endpoint: "abc_catalog_items (cached) → identity + mappings",
+        request_body_redacted: { branchNumber, cached: items.length },
+        status_code: 200, response_body: summary as any,
+        error_code: null, duration_ms: Date.now() - startedAt, created_by: userId,
+      });
+
+      return json({ success: true, environment: env, branchNumber, summary });
+    }
+
 
 
 
