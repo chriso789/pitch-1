@@ -516,7 +516,9 @@ export const AbcCatalogBrowser: React.FC = () => {
       setError(e?.message || 'Could not ingest ABC catalog.');
     } finally {
       setIngesting(false);
+      setIngestProgress(null);
     }
+
   };
 
 
