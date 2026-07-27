@@ -16,7 +16,10 @@ export interface AbcIngestOptions {
   supplierConnectionId?: string | null;
   branchCode?: string | null;
   createdBy?: string | null;
+  /** sandbox | staging | production — catalog rows are environment scoped. */
+  environment?: string | null;
 }
+
 
 export interface AbcIngestSummary {
   items_seen: number;
