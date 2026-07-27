@@ -103,9 +103,8 @@ export function AbcTenantConnectCard() {
         body: {
           action: 'start_oauth',
           tenant_id: tenantId,
-          // Tenant OAuth always uses production myABCsupply; sandbox is
-          // developer-tools-only and would reject real customer credentials.
-          environment: 'production',
+          environment,
+
           return_origin: window.location.origin,
         },
       });
