@@ -1252,10 +1252,44 @@ export const handle = async (req) => {
         }
       }
 
+      // Persist the sweep: the dump is the catalog of record for mapping
+      // proposals, so it must land in `abc_catalog_items` + identity +
+      // `supplier_item_mappings` (pending), not just return to the browser.
+      const { data: dumpConnRow } = await supabase
+        .from("abc_connections")
+        .select("id")
+        .eq("tenant_id", tenant_id)
+        .eq("environment", env)
+        .maybeSingle();
+
+      let ingestSummary: unknown = null;
+      let ingestError: string | null = null;
+      if (merged.length) {
+        try {
+          ingestSummary = await ingestAbcCatalogItems(supabase, merged, {
+            tenantId: tenant_id,
+            supplierConnectionId: (dumpConnRow as any)?.id ?? null,
+            branchCode: branchNumber || null,
+            createdBy: userId ?? null,
+            environment: env,
+          });
+        } catch (e) {
+          ingestError = String((e as Error)?.message ?? e);
+        }
+      }
+
+      // Keep the connection row in sync with the branch/ship-to actually used.
+      if ((dumpConnRow as any)?.id && (branchNumber || shipToNumber)) {
+        const patch: Record<string, unknown> = { setup_completed_at: new Date().toISOString() };
+        if (branchNumber) patch.selected_branch_number = branchNumber;
+        if (shipToNumber) patch.selected_ship_to_number = shipToNumber;
+        await supabase.from("abc_connections").update(patch).eq("id", (dumpConnRow as any).id);
+      }
+
       await auditCall(supabase, {
         tenant_id, environment: env, action, endpoint: `${cfg.apiBase}/product/v1/search/items (sweep)`,
         request_body_redacted: { branchNumber, shipToNumber, includePricing, maxItems, seeds: seeds.length },
-        status_code: 200, response_body: { count: merged.length, stoppedReason, seedStats },
+        status_code: 200, response_body: { count: merged.length, stoppedReason, seedStats, ingestSummary, ingestError },
         error_code: null, duration_ms: Date.now() - startedAt, created_by: userId,
       });
 
@@ -1269,7 +1303,10 @@ export const handle = async (req) => {
         prices,
         stoppedReason,
         seedStats,
+        ingest: ingestSummary,
+        ingest_error: ingestError,
       });
+
     }
 
     // ---------------- ingest_catalog ----------------

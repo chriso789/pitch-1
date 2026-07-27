@@ -419,12 +419,20 @@ export const AbcCatalogBrowser: React.FC = () => {
       }
       setDumpMode(true);
       setDumpMeta({ count: merged.length, stoppedReason: data.stoppedReason ?? null });
+      const ing = data.ingest as { catalog_upserted?: number; mappings_created?: number } | null;
       toast({
         title: 'Full ABC branch catalog loaded',
         description: `Pulled ${merged.length} unique items from branch ${branchNumber}${
           data.stoppedReason ? ` (stopped: ${data.stoppedReason})` : ''
-        }.`,
+        }.${
+          data.ingest_error
+            ? ` Cache write failed: ${data.ingest_error}`
+            : ing
+              ? ` Cached ${ing.catalog_upserted ?? 0} items, ${ing.mappings_created ?? 0} pending mapping proposals.`
+              : ''
+        }`,
       });
+
     } catch (e: any) {
       setError(e?.message || 'Could not dump ABC catalog.');
     } finally {
