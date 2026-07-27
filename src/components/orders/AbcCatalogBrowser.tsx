@@ -224,6 +224,14 @@ export const AbcCatalogBrowser: React.FC = () => {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
+  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pagedItems = useMemo(
+    () => items.slice((currentPage - 1) * pageSize, currentPage * pageSize),
+    [items, currentPage, pageSize],
+  );
+  useEffect(() => { setPage(1); }, [items, pageSize]);
+
   const allowSandboxFallback = effectiveEnvironment === 'sandbox';
   // Resolve ship-to / branch (connected account → sandbox fallback only in sandbox).
   const shipToNumber = shipTos[0]?.ship_to_number || (allowSandboxFallback ? SANDBOX_SHIP_TO : '');
