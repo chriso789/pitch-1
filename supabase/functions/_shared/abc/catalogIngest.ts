@@ -23,6 +23,8 @@ export interface AbcIngestOptions {
 
 export interface AbcIngestSummary {
   items_seen: number;
+  family_children_expanded: number;
+
   catalog_upserted: number;
   manufacturers_created: number;
   product_lines_created: number;
