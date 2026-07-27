@@ -36,6 +36,7 @@ import {
   createSupabaseDataSource,
   persistAbcProductionOrder,
 } from "../_shared/abc/orderProduction.ts";
+import { ingestAbcCatalogItems } from "../_shared/abc/catalogIngest.ts";
 
 function firstTrimmedString(...values: unknown[]): string | null {
   for (const value of values) {
@@ -1096,7 +1097,7 @@ export const handle = async (req) => {
     // and runs the canonical identity + `supplier_item_mappings` (pending) pass.
     // Split from `dump_catalog` so neither half can starve the other of runtime.
     if (action === "ingest_catalog") {
-      const branchNumber = str(body.branchNumber) ?? (await selectedBranch(supabase, tenant_id, env));
+      const branchNumber = String(body.branchNumber || "").trim();
       const { data: connRow } = await supabase
         .from("abc_connections")
         .select("id")
@@ -1106,7 +1107,7 @@ export const handle = async (req) => {
 
       let cachedQ = supabase
         .from("abc_catalog_items")
-        .select("raw_payload, item_number")
+        .select("raw, item_number")
         .eq("tenant_id", tenant_id)
         .eq("environment", env)
         .limit(3000);
@@ -1116,7 +1117,7 @@ export const handle = async (req) => {
         return json({ success: false, error: "catalog_read_failed", message: cachedErr.message }, 500);
       }
       const items = ((cachedRows ?? []) as any[])
-        .map((r) => r.raw_payload)
+        .map((r) => r.raw)
         .filter((p) => p && typeof p === "object");
       if (!items.length) {
         return json({
