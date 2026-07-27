@@ -20,6 +20,12 @@ export interface AbcIngestOptions {
   environment?: string | null;
   /** Persist the catalog cache only; skip the slow identity/mapping pass. */
   catalogOnly?: boolean;
+  /**
+   * Skip the catalog cache write entirely. Used by `ingest_catalog`, which
+   * reads rows that are ALREADY cached — re-upserting them one-by-one ate the
+   * whole identity budget and produced 0 mapping proposals.
+   */
+  skipCatalogWrite?: boolean;
   /** Epoch ms budget for the identity pass (partial progress is kept). */
   identityDeadlineMs?: number | null;
 }
