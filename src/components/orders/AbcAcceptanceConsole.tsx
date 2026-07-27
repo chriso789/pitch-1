@@ -105,6 +105,41 @@ function roleOf(m: ApprovedMapping): Role {
   return 'field';
 }
 
+interface ShipToOption {
+  id: string;
+  ship_to_number: string;
+  name: string | null;
+  address_line1: string | null;
+  address_line2: string | null;
+  city: string | null;
+  state: string | null;
+  postal_code: string | null;
+  is_default: boolean | null;
+  active: boolean;
+  status_label: string;
+  branch_numbers: string[];
+}
+
+function formatShipToAddress(s: ShipToOption) {
+  const street = [s.address_line1, s.address_line2].filter(Boolean).join(' ');
+  const region = [s.city, s.state].filter(Boolean).join(', ');
+  return [street, [region, s.postal_code].filter(Boolean).join(' ')]
+    .filter((p) => p && p.trim())
+    .join(', ');
+}
+
+function shipToLabel(s: ShipToOption) {
+  const addr = formatShipToAddress(s);
+  const branchPart = s.branch_numbers.length
+    ? `Branch ${s.branch_numbers.slice(0, 3).join('/')}${s.branch_numbers.length > 3 ? '…' : ''}`
+    : 'No branches synced';
+  return [s.ship_to_number, s.name || 'Unnamed account', addr || 'No address on file', branchPart]
+    .join(' — ');
+}
+
+const SHIP_TO_STORAGE_PREFIX = 'abc.acceptance.shipTo.';
+const BRANCH_STORAGE_PREFIX = 'abc.acceptance.branch.';
+
 export default function AbcAcceptanceConsole() {
   const tenantId = useEffectiveTenantId();
   const { toast } = useToast();
@@ -117,6 +152,11 @@ export default function AbcAcceptanceConsole() {
   const [resolving, setResolving] = useState(false);
   const [pricing, setPricing] = useState(false);
   const [preparing, setPreparing] = useState(false);
+  const [validating, setValidating] = useState(false);
+  const [validation, setValidation] = useState<
+    | { shipTo: string; branch: string; valid: boolean; message: string; error_code?: string }
+    | null
+  >(null);
 
   const [resolved, setResolved] = useState<ResolvedLine[] | null>(null);
   const [priceRows, setPriceRows] = useState<any[] | null>(null);
@@ -139,28 +179,144 @@ export default function AbcAcceptanceConsole() {
           .maybeSingle(),
         supabase
           .from('abc_ship_to_accounts')
-          .select('ship_to_number, name, city, state')
+          .select('id, ship_to_number, name, address_line1, address_line2, city, state, postal_code, is_default, raw')
           .eq('tenant_id', tenantId as string)
           .order('ship_to_number')
           .limit(200),
         supabase
           .from('abc_account_branches')
-          .select('branch_number, name, city, state')
+          .select('branch_number, name, city, state, ship_to_id, is_home_branch')
           .eq('tenant_id', tenantId as string)
           .order('branch_number')
-          .limit(200),
+          .limit(500),
       ]);
-      return {
-        connection: conn.data ?? null,
-        shipTos: ships.data ?? [],
-        branches: branches.data ?? [],
-      };
+
+      const branchRows = (branches.data ?? []) as any[];
+      const branchesByShipTo = new Map<string, string[]>();
+      for (const b of branchRows) {
+        if (!b.ship_to_id) continue;
+        const list = branchesByShipTo.get(b.ship_to_id) ?? [];
+        list.push(String(b.branch_number));
+        branchesByShipTo.set(b.ship_to_id, list);
+      }
+
+      const shipTos: ShipToOption[] = ((ships.data ?? []) as any[]).map((s) => {
+        const rawStatus = s.raw?.shipTo?.status ?? s.raw?.status ?? null;
+        const active = typeof rawStatus === 'string' ? !/inactive|closed|suspend/i.test(rawStatus) : true;
+        return {
+          id: s.id,
+          ship_to_number: s.ship_to_number,
+          name: s.name,
+          address_line1: s.address_line1,
+          address_line2: s.address_line2,
+          city: s.city,
+          state: s.state,
+          postal_code: s.postal_code,
+          is_default: s.is_default,
+          active,
+          status_label: typeof rawStatus === 'string' && rawStatus ? rawStatus : active ? 'Active' : 'Inactive',
+          branch_numbers: branchesByShipTo.get(s.id) ?? [],
+        };
+      });
+
+      // De-duplicate the branch dropdown while keeping full metadata.
+      const seen = new Set<string>();
+      const branchOptions = branchRows.filter((b) => {
+        const key = String(b.branch_number);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      return { connection: conn.data ?? null, shipTos, branches: branchOptions };
     },
   });
 
   const connection = ctx?.connection ?? null;
+
+  // Restore the last selection for this tenant so a reload never silently
+  // changes which ABC account an acceptance test runs against.
+  useEffect(() => {
+    if (!tenantId) return;
+    const savedShipTo = localStorage.getItem(SHIP_TO_STORAGE_PREFIX + tenantId);
+    const savedBranch = localStorage.getItem(BRANCH_STORAGE_PREFIX + tenantId);
+    if (savedShipTo) setShipTo(savedShipTo);
+    if (savedBranch) setBranch(savedBranch);
+  }, [tenantId]);
+
   const effectiveBranch = branch || connection?.selected_branch_number || '';
   const effectiveShipTo = shipTo || connection?.selected_ship_to_number || '';
+
+  const shipToOptions = ctx?.shipTos ?? [];
+  const selectedShipTo = shipToOptions.find((s) => s.ship_to_number === effectiveShipTo) ?? null;
+
+  // Recommend the ship-to that is actually authorized for the selected branch.
+  const recommendedShipTo = useMemo(() => {
+    if (!effectiveBranch) return null;
+    const compatible = shipToOptions.filter(
+      (s) => s.active && s.branch_numbers.includes(effectiveBranch),
+    );
+    if (!compatible.length) return null;
+    return compatible.find((s) => s.is_default) ?? compatible[0];
+  }, [shipToOptions, effectiveBranch]);
+
+  const pairingLooksValid =
+    !!selectedShipTo && !!effectiveBranch && selectedShipTo.branch_numbers.includes(effectiveBranch);
+
+  const validationMatchesSelection =
+    !!validation && validation.shipTo === effectiveShipTo && validation.branch === effectiveBranch;
+  const serverValidated = validationMatchesSelection && validation!.valid;
+
+  const persistShipTo = (v: string) => {
+    setShipTo(v);
+    if (tenantId) localStorage.setItem(SHIP_TO_STORAGE_PREFIX + tenantId, v);
+    setValidation(null);
+  };
+  const persistBranch = (v: string) => {
+    setBranch(v);
+    if (tenantId) localStorage.setItem(BRANCH_STORAGE_PREFIX + tenantId, v);
+    setValidation(null);
+  };
+
+  // Server-side gate — must pass before pricing or payload preparation.
+  const runValidation = async (probeItemNumber?: string | null): Promise<boolean> => {
+    if (!effectiveShipTo || !effectiveBranch) {
+      toast({ title: 'Select a ship-to and a branch first', variant: 'destructive' });
+      return false;
+    }
+    setValidating(true);
+    const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
+      body: {
+        action: 'validate_ship_to_branch',
+        tenant_id: tenantId,
+        environment: connection?.environment ?? 'sandbox',
+        shipToNumber: effectiveShipTo,
+        branchNumber: effectiveBranch,
+        probeItemNumber: probeItemNumber ?? null,
+      },
+    });
+    setValidating(false);
+    if (error) {
+      setValidation({ shipTo: effectiveShipTo, branch: effectiveBranch, valid: false, message: error.message });
+      toast({ title: 'Validation failed', description: error.message, variant: 'destructive' });
+      return false;
+    }
+    const valid = !!data?.valid;
+    setValidation({
+      shipTo: effectiveShipTo,
+      branch: effectiveBranch,
+      valid,
+      message: data?.message ?? (valid ? 'Validated.' : 'Ship-to/branch pairing rejected.'),
+      error_code: data?.error_code,
+    });
+    toast({
+      title: valid ? 'Ship-to validated' : 'Ship-to/branch rejected',
+      description: data?.message,
+      variant: valid ? 'default' : 'destructive',
+    });
+    return valid;
+  };
+
 
   // ---- approved mappings (the only orderable source) ---------------------
   const { data: mappings = [], isLoading: loadingMappings, refetch } = useQuery({
