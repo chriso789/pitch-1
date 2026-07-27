@@ -1379,7 +1379,9 @@ export const handle = async (req) => {
           branchCode: branchNumber || null,
           createdBy: userId ?? null,
           environment: env,
-
+          // Keep partial progress if the identity pass runs out of runtime;
+          // re-running the action resumes where it stopped (idempotent).
+          identityDeadlineMs: Date.now() + 45_000,
         });
       } catch (e) {
         return json({ success: false, error: "ingest_failed", message: String((e as Error)?.message ?? e) }, 500);
