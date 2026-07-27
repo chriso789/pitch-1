@@ -264,8 +264,9 @@ export function ShareEstimateDialog({
           },
         });
 
-        if (error) throw error;
+        if (error) throw new Error(describeEdgeFunctionError('email-api', error, data).toastMessage);
         if (!data?.success) throw new Error(data?.error || 'Failed to send email');
+
 
         setIsSent(true);
         toast({
