@@ -104,6 +104,7 @@ export default function SupplierMappingApprovalPanel({ supplier = 'abc' }: Props
         .from('supplier_item_mappings')
         .update({
           approval_state: next,
+          status: next === 'approved' ? 'active' : undefined,
           approved_by: next === 'approved' ? auth?.user?.id ?? null : null,
           approved_at: next === 'approved' ? new Date().toISOString() : null,
         })
@@ -114,7 +115,7 @@ export default function SupplierMappingApprovalPanel({ supplier = 'abc' }: Props
     },
     onSuccess: (count, vars) => {
       toast({
-        title: vars.next === 'approved' ? 'Mappings approved' : 'Mappings rejected',
+        title: vars.next === 'approved' ? 'Mappings approved / revalidated' : 'Mappings rejected',
         description: `${count} ${supplier.toUpperCase()} mapping${count === 1 ? '' : 's'} moved to ${vars.next}.`,
       });
       queryClient.invalidateQueries({ queryKey: ['supplier-item-mappings'] });
@@ -246,6 +247,15 @@ export default function SupplierMappingApprovalPanel({ supplier = 'abc' }: Props
                             <XCircle className="h-4 w-4" />
                           </Button>
                         </div>
+                      ) : state === 'approved' && needsRevalidation(r) ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => decide.mutate({ ids: [r.id], next: 'approved' })}
+                          disabled={decide.isPending}
+                        >
+                          Revalidate
+                        </Button>
                       ) : (
                         <Badge variant={state === 'approved' ? 'default' : 'destructive'}>{state}</Badge>
                       )}
