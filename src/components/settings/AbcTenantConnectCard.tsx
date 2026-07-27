@@ -73,6 +73,14 @@ export function AbcTenantConnectCard() {
   const { toast } = useToast();
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  // ABC production OAuth is only usable once ABC approves the production Okta
+  // app for this redirect URI. Until a production connection exists for the
+  // tenant, default to the environment that is actually provisioned so the
+  // user is not dropped on ABC's 400 Bad Request page.
+  const [environment, setEnvironment] = useState<'sandbox' | 'production'>(
+    status.environment === 'production' ? 'production' : 'sandbox',
+  );
+
 
   const isConnected = status.state === 'connected';
 
