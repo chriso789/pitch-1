@@ -1335,6 +1335,8 @@ export const handle = async (req) => {
           supplierConnectionId: (connRow as any)?.id ?? null,
           branchCode: branchNumber || null,
           createdBy: userId ?? null,
+          environment: env,
+
         });
       } catch (e) {
         return json({ success: false, error: "ingest_failed", message: String((e as Error)?.message ?? e) }, 500);
