@@ -14,6 +14,7 @@ import {
   searchAbcCatalog,
   getAbcCatalogItem,
 } from "../_shared/abc/catalogService.ts";
+import { ingestAbcCatalogItems } from "../_shared/abc/catalogIngest.ts";
 import {
   priceItems as priceItemsService,
   validatePricingRequest,
