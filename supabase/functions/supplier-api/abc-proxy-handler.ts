@@ -1098,6 +1098,11 @@ export const handle = async (req) => {
     // Split from `dump_catalog` so neither half can starve the other of runtime.
     if (action === "ingest_catalog") {
       const branchNumber = String(body.branchNumber || "").trim();
+      // Chunked + resumable: identity/mapping upserts are one-row-at-a-time, so
+      // a full 2000-item sweep blows the gateway budget and surfaces as a 500.
+      // The client loops on `next_offset` until `done`.
+      const offset = Math.max(0, Number((body as any).offset) || 0);
+      const pageSize = Math.min(400, Math.max(50, Number((body as any).pageSize) || 250));
       const { data: connRow } = await supabase
         .from("abc_connections")
         .select("id")
@@ -1110,16 +1115,19 @@ export const handle = async (req) => {
         .select("raw, item_number")
         .eq("tenant_id", tenant_id)
         .eq("environment", env)
-        .limit(3000);
+        .order("item_number", { ascending: true })
+        .range(offset, offset + pageSize - 1);
       cachedQ = branchNumber ? cachedQ.eq("branch_number", branchNumber) : cachedQ.is("branch_number", null);
       const { data: cachedRows, error: cachedErr } = await cachedQ;
       if (cachedErr) {
         return json({ success: false, error: "catalog_read_failed", message: cachedErr.message }, 500);
       }
-      const items = ((cachedRows ?? []) as any[])
-        .map((r) => r.raw)
-        .filter((p) => p && typeof p === "object");
+      const rows = (cachedRows ?? []) as any[];
+      const items = rows.map((r) => r.raw).filter((p) => p && typeof p === "object");
       if (!items.length) {
+        if (offset > 0) {
+          return json({ success: true, environment: env, branchNumber, done: true, next_offset: null, summary: {} });
+        }
         return json({
           success: false,
           error: "catalog_empty",
@@ -1135,22 +1143,31 @@ export const handle = async (req) => {
           branchCode: branchNumber || null,
           createdBy: userId ?? null,
           environment: env,
-          // Partial progress is kept; re-running resumes (idempotent).
-          identityDeadlineMs: Date.now() + 45_000,
+          // Stay well inside the gateway budget; the client resumes the rest.
+          identityDeadlineMs: Date.now() + 20_000,
         });
       } catch (e) {
         return json({ success: false, error: "ingest_failed", message: String((e as Error)?.message ?? e) }, 500);
       }
 
+      const done = rows.length < pageSize;
       await auditCall(supabase, {
         tenant_id, environment: env, action, endpoint: "abc_catalog_items (cached) → identity + mappings",
-        request_body_redacted: { branchNumber, cached: items.length },
+        request_body_redacted: { branchNumber, offset, pageSize, cached: items.length },
         status_code: 200, response_body: summary as any,
         error_code: null, duration_ms: Date.now() - startedAt, created_by: userId,
       });
 
-      return json({ success: true, environment: env, branchNumber, summary });
+      return json({
+        success: true,
+        environment: env,
+        branchNumber,
+        done,
+        next_offset: done ? null : offset + rows.length,
+        summary,
+      });
     }
+
 
 
 
