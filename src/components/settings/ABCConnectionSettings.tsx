@@ -40,6 +40,7 @@ import { useSupplierDeveloperMode } from '@/lib/supplierAccess';
 import { AbcWebhookPanel } from '@/components/settings/abc/AbcWebhookPanel';
 import { AbcCatalogBrowser } from '@/components/orders/AbcCatalogBrowser';
 import SupplierMappingApprovalPanel from '@/components/orders/SupplierMappingApprovalPanel';
+import AbcAcceptanceConsole from '@/components/orders/AbcAcceptanceConsole';
 
 import { useAbcConnectionStatus } from '@/hooks/useAbcConnectionStatus';
 import { AbcTenantConnectCard } from './AbcTenantConnectCard';
@@ -1509,6 +1510,7 @@ export function ABCConnectionSettings() {
         <AbcTenantConnectCard />
         {abcConnected && <AbcCatalogBrowser />}
         {abcConnected && <SupplierMappingApprovalPanel supplier="abc" />}
+        {abcConnected && <AbcAcceptanceConsole />}
       </div>
     );
   }
@@ -1526,6 +1528,7 @@ export function ABCConnectionSettings() {
           "missing" to anyone who didn't scroll the full page. */}
       <AbcCatalogBrowser />
       <SupplierMappingApprovalPanel supplier="abc" />
+      <AbcAcceptanceConsole />
 
       {DemoWorkflowCard}
       {TestConsoleCard}
