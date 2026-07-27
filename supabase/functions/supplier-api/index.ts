@@ -608,19 +608,42 @@ app.post("/orders/reconcile", async (c) => {
 });
 
 
-// Supabase delivers requests with the function name as the first path segment
-// (e.g. `/supplier-api/abc/proxy`). Strip it so Hono routes defined as
-// `/abc/proxy` match correctly. Root invokes (via supabase.functions.invoke)
-// arrive as `/` or `/supplier-api` and pass through unchanged.
-Deno.serve((req) => {
+// Supabase SDK invokes grouped functions at the root/function path and passes
+// the intended route via x-route / __route. Legacy shims may also call a real
+// path like `/supplier-api/abc/proxy`. Normalize both forms before Hono sees it.
+Deno.serve(async (req) => {
   const url = new URL(req.url);
+
   if (url.pathname.startsWith("/supplier-api/")) {
     url.pathname = url.pathname.slice("/supplier-api".length) || "/";
     return app.fetch(new Request(url.toString(), req));
   }
-  if (url.pathname === "/supplier-api") {
-    url.pathname = "/";
-    return app.fetch(new Request(url.toString(), req));
+
+  const isRootInvoke = url.pathname === "/" || url.pathname === "" || url.pathname === "/supplier-api";
+  if (!isRootInvoke || req.method === "OPTIONS") return app.fetch(req);
+
+  let route = req.headers.get("x-route") ?? "";
+  let bodyBytes: Uint8Array | null = null;
+
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    bodyBytes = new Uint8Array(await req.arrayBuffer());
+    if (!route) {
+      try {
+        const parsed = JSON.parse(new TextDecoder().decode(bodyBytes));
+        if (typeof parsed?.__route === "string") route = parsed.__route;
+      } catch { /* non-json body */ }
+    }
   }
-  return app.fetch(req);
+
+  if (route) {
+    url.pathname = route.startsWith("/") ? route : `/${route}`;
+  } else if (url.pathname === "/supplier-api") {
+    url.pathname = "/";
+  }
+
+  return app.fetch(new Request(url.toString(), {
+    method: req.method,
+    headers: req.headers,
+    body: bodyBytes ?? undefined,
+  }));
 });
