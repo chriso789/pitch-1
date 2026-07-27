@@ -423,7 +423,13 @@ export default function AbcAcceptanceConsole() {
       toast({ title: 'Ship-to and branch are required', variant: 'destructive' });
       return;
     }
+    // Server-side gate: the pairing must be validated before ABC pricing runs.
+    if (!serverValidated) {
+      const ok = await runValidation(okLines[0]?.supplier_item_number ?? null);
+      if (!ok) return;
+    }
     setPricing(true);
+
     const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
       body: {
         action: 'price_items',
