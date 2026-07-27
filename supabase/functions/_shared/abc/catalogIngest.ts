@@ -116,20 +116,31 @@ export async function ingestAbcCatalogItems(
   const colorCache = new Map<string, string>();
   const variantCache = new Map<string, string>();
 
+  // Select-then-insert: several identity tables are guarded by expression
+  // unique indexes (COALESCE(...)), which PostgREST upsert cannot target.
   const upsertOne = async (
     table: string,
     row: Rec,
-    onConflict: string,
+    _onConflict: string,
     matcher: Rec,
   ): Promise<string | null> => {
-    const { error } = await supabase.from(table).upsert(row, { onConflict, ignoreDuplicates: true });
-    if (error && !/duplicate key/i.test(error.message ?? "")) throw new Error(`${table}: ${error.message}`);
-    let q = supabase.from(table).select("id").limit(1);
-    for (const [k, v] of Object.entries(matcher)) q = v === null ? q.is(k, null) : q.eq(k, v);
-    const { data, error: selErr } = await q.maybeSingle();
-    if (selErr) throw new Error(`${table} lookup: ${selErr.message}`);
-    return data?.id ?? null;
+    const lookup = async () => {
+      let q = supabase.from(table).select("id").limit(1);
+      for (const [k, v] of Object.entries(matcher)) q = v === null ? q.is(k, null) : q.eq(k, v);
+      const { data, error } = await q.maybeSingle();
+      if (error) throw new Error(`${table} lookup: ${error.message}`);
+      return data?.id ?? null;
+    };
+    const found = await lookup();
+    if (found) return found;
+    const { data, error } = await supabase.from(table).insert(row).select("id").maybeSingle();
+    if (!error && data?.id) return data.id;
+    if (error && !/duplicate key|unique constraint/i.test(error.message ?? "")) {
+      throw new Error(`${table}: ${error.message}`);
+    }
+    return await lookup();
   };
+
 
   const catalogRows: Rec[] = [];
 
