@@ -239,7 +239,13 @@ export async function ingestAbcCatalogItems(
   const items = flattenAbcFamilyItems(rawItems);
   // Pass 2 work list — identity/mapping is 5+ round-trips per SKU, so it never
   // runs before the catalog cache is durably written.
-  const identityQueue: Array<{ item: Rec; itemNumber: string; fingerprint: string; nowIso: string }> = [];
+  const identityQueue: Array<{
+    item: Rec;
+    itemNumber: string;
+    parentItemNumber: string | null;
+    fingerprint: string;
+    nowIso: string;
+  }> = [];
 
   for (const raw of items) {
     if (!raw || typeof raw !== "object") continue;
@@ -314,7 +320,7 @@ export async function ingestAbcCatalogItems(
       continue;
     }
 
-    identityQueue.push({ item, itemNumber, fingerprint, nowIso });
+    identityQueue.push({ item, itemNumber, parentItemNumber, fingerprint, nowIso });
   }
 
   // ---- catalog cache persistence -------------------------------------------
@@ -361,7 +367,7 @@ export async function ingestAbcCatalogItems(
       summary.skipped.push({ itemNumber: "(remaining)", reason: "identity_time_budget" });
       break;
     }
-    const { item, itemNumber, fingerprint, nowIso } = entry;
+    const { item, itemNumber, parentItemNumber, fingerprint, nowIso } = entry;
     const h = hierarchy(item);
     const color = (item.color as Rec | undefined) ?? {};
     const colorName = str(color.name);
