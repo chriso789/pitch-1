@@ -39,6 +39,8 @@ import { AbcDiagnosticsPanel } from './AbcDiagnosticsPanel';
 import { useSupplierDeveloperMode } from '@/lib/supplierAccess';
 import { AbcWebhookPanel } from '@/components/settings/abc/AbcWebhookPanel';
 import { AbcCatalogBrowser } from '@/components/orders/AbcCatalogBrowser';
+import SupplierMappingApprovalPanel from '@/components/orders/SupplierMappingApprovalPanel';
+
 import { useAbcConnectionStatus } from '@/hooks/useAbcConnectionStatus';
 import { AbcTenantConnectCard } from './AbcTenantConnectCard';
 
@@ -1506,6 +1508,7 @@ export function ABCConnectionSettings() {
       <div className="space-y-6">
         <AbcTenantConnectCard />
         {abcConnected && <AbcCatalogBrowser />}
+        {abcConnected && <SupplierMappingApprovalPanel supplier="abc" />}
       </div>
     );
   }
@@ -1522,6 +1525,8 @@ export function ABCConnectionSettings() {
           it was buried below the Submit Diagnostics card and appeared
           "missing" to anyone who didn't scroll the full page. */}
       <AbcCatalogBrowser />
+      <SupplierMappingApprovalPanel supplier="abc" />
+
       {DemoWorkflowCard}
       {TestConsoleCard}
       {LatestResultCard}

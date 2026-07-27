@@ -117,9 +117,11 @@ function clampPageNumber(v: unknown): number {
  * before sending it (both handlers do).
  */
 export function buildSearchProductsPayload(input: SearchAbcCatalogInput): {
+  familyItems: boolean;
   filters: Array<Record<string, unknown>>;
   pagination: { itemsPerPage: number; pageNumber: number };
 } {
+
   const filters: Array<Record<string, unknown>> = [];
   const itemNumber = trim(input?.itemNumber);
   const query = trim(input?.query);
@@ -151,6 +153,10 @@ export function buildSearchProductsPayload(input: SearchAbcCatalogInput): {
   }
 
   return {
+    // ABC only returns color-specific child SKUs when family expansion is
+    // requested. Without this the search yields family parents that are not
+    // orderable, so colors can never resolve to an exact item number.
+    familyItems: true,
     filters,
     pagination: {
       itemsPerPage: clampItemsPerPage(input?.itemsPerPage),
@@ -158,6 +164,7 @@ export function buildSearchProductsPayload(input: SearchAbcCatalogInput): {
     },
   };
 }
+
 
 export async function searchAbcCatalog(
   deps: AbcCatalogHttpDeps,
