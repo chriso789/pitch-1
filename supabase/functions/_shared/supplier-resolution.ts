@@ -429,6 +429,9 @@ export async function resolveSupplierLines(
       supplier_uom: upper(m.supplier_uom),
       validated_at: m.validated_at,
       catalog_fingerprint: m.catalog_fingerprint,
+      mapping_source: (m as any).mapping_source ?? null,
+      approval_state: m.approval_state ?? null,
+
     };
   });
 }
