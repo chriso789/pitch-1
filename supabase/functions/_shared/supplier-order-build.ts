@@ -550,8 +550,6 @@ export async function buildSupplierOrderPreview(
     .eq("idempotency_key", idempotencyKey)
     .maybeSingle();
 
-  stages.push(stage("preview_snapshot", true, { detail: existing ? "existing snapshot reused" : "snapshot created" }));
-
   const common = {
     ok: true as const,
     reused: !!existing,
@@ -569,6 +567,7 @@ export async function buildSupplierOrderPreview(
   };
 
   if (existing) {
+    stages.push(stage("preview_snapshot", true, { detail: "existing snapshot reused" }));
     return { ...common, submission_id: existing.id };
   }
 
@@ -611,5 +610,6 @@ export async function buildSupplierOrderPreview(
     return fail("preview_snapshot", insErr.message, "Retry — the preview snapshot could not be saved.");
   }
 
+  stages.push(stage("preview_snapshot", true, { detail: "snapshot created" }));
   return { ...common, submission_id: inserted.id };
 }
