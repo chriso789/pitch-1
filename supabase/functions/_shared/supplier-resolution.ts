@@ -154,6 +154,8 @@ interface MappingRow {
   effective_to: string | null;
   validated_at: string | null;
   catalog_fingerprint: string | null;
+  mapping_source: string | null;
+
   revision: number;
 }
 
