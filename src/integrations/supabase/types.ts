@@ -30344,6 +30344,218 @@ export type Database = {
           },
         ]
       }
+      mfr_colors: {
+        Row: {
+          canonical_name: string
+          created_at: string
+          hex_value: string | null
+          id: string
+          is_active: boolean
+          manufacturer_color_code: string | null
+          manufacturer_id: string
+          product_line_id: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          canonical_name: string
+          created_at?: string
+          hex_value?: string | null
+          id?: string
+          is_active?: boolean
+          manufacturer_color_code?: string | null
+          manufacturer_id: string
+          product_line_id: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Update: {
+          canonical_name?: string
+          created_at?: string
+          hex_value?: string | null
+          id?: string
+          is_active?: boolean
+          manufacturer_color_code?: string | null
+          manufacturer_id?: string
+          product_line_id?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mfr_colors_manufacturer_id_fkey"
+            columns: ["manufacturer_id"]
+            isOneToOne: false
+            referencedRelation: "mfr_manufacturers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mfr_colors_product_line_id_fkey"
+            columns: ["product_line_id"]
+            isOneToOne: false
+            referencedRelation: "mfr_product_lines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mfr_manufacturers: {
+        Row: {
+          code: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          code?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Update: {
+          code?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      mfr_product_lines: {
+        Row: {
+          category: string | null
+          code: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          manufacturer_id: string
+          name: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          category?: string | null
+          code?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          manufacturer_id: string
+          name: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string | null
+          code?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          manufacturer_id?: string
+          name?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mfr_product_lines_manufacturer_id_fkey"
+            columns: ["manufacturer_id"]
+            isOneToOne: false
+            referencedRelation: "mfr_manufacturers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mfr_product_variants: {
+        Row: {
+          accessory_kind: string | null
+          attributes: Json
+          canonical_uom: string
+          created_at: string
+          dimensions: string | null
+          gauge: string | null
+          id: string
+          is_accessory: boolean
+          is_active: boolean
+          length_uom: string | null
+          length_value: number | null
+          manufacturer_id: string
+          material_id: string | null
+          packaging: string | null
+          product_line_id: string
+          profile: string | null
+          requires_color: boolean
+          tenant_id: string
+          updated_at: string
+          variant_name: string
+        }
+        Insert: {
+          accessory_kind?: string | null
+          attributes?: Json
+          canonical_uom: string
+          created_at?: string
+          dimensions?: string | null
+          gauge?: string | null
+          id?: string
+          is_accessory?: boolean
+          is_active?: boolean
+          length_uom?: string | null
+          length_value?: number | null
+          manufacturer_id: string
+          material_id?: string | null
+          packaging?: string | null
+          product_line_id: string
+          profile?: string | null
+          requires_color?: boolean
+          tenant_id?: string
+          updated_at?: string
+          variant_name: string
+        }
+        Update: {
+          accessory_kind?: string | null
+          attributes?: Json
+          canonical_uom?: string
+          created_at?: string
+          dimensions?: string | null
+          gauge?: string | null
+          id?: string
+          is_accessory?: boolean
+          is_active?: boolean
+          length_uom?: string | null
+          length_value?: number | null
+          manufacturer_id?: string
+          material_id?: string | null
+          packaging?: string | null
+          product_line_id?: string
+          profile?: string | null
+          requires_color?: boolean
+          tenant_id?: string
+          updated_at?: string
+          variant_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mfr_product_variants_manufacturer_id_fkey"
+            columns: ["manufacturer_id"]
+            isOneToOne: false
+            referencedRelation: "mfr_manufacturers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mfr_product_variants_product_line_id_fkey"
+            columns: ["product_line_id"]
+            isOneToOne: false
+            referencedRelation: "mfr_product_lines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       mobile_activity_logs: {
         Row: {
           activity_type: string
@@ -55912,6 +56124,258 @@ export type Database = {
         }
         Relationships: []
       }
+      supplier_item_mapping_revisions: {
+        Row: {
+          change_kind: string
+          changed_by: string | null
+          created_at: string
+          id: string
+          mapping_id: string
+          next_state: Json | null
+          previous_state: Json | null
+          reason: string | null
+          revision: number
+          tenant_id: string
+        }
+        Insert: {
+          change_kind: string
+          changed_by?: string | null
+          created_at?: string
+          id?: string
+          mapping_id: string
+          next_state?: Json | null
+          previous_state?: Json | null
+          reason?: string | null
+          revision: number
+          tenant_id: string
+        }
+        Update: {
+          change_kind?: string
+          changed_by?: string | null
+          created_at?: string
+          id?: string
+          mapping_id?: string
+          next_state?: Json | null
+          previous_state?: Json | null
+          reason?: string | null
+          revision?: number
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_item_mapping_revisions_mapping_id_fkey"
+            columns: ["mapping_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_item_mappings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      supplier_item_mappings: {
+        Row: {
+          approval_state: Database["public"]["Enums"]["supplier_mapping_approval"]
+          approved_at: string | null
+          approved_by: string | null
+          branch_code: string | null
+          catalog_fingerprint: string | null
+          catalog_payload: Json | null
+          color_id: string | null
+          created_at: string
+          created_by: string | null
+          effective_from: string
+          effective_to: string | null
+          id: string
+          mapping_source: Database["public"]["Enums"]["supplier_mapping_source"]
+          notes: string | null
+          revision: number
+          status: Database["public"]["Enums"]["supplier_mapping_status"]
+          superseded_by: string | null
+          supplier: Database["public"]["Enums"]["supplier_kind"]
+          supplier_account_number: string | null
+          supplier_catalog_item_id: string | null
+          supplier_color_name: string | null
+          supplier_connection_id: string | null
+          supplier_description: string | null
+          supplier_item_number: string
+          supplier_uom: string
+          tenant_id: string
+          updated_at: string
+          validated_at: string | null
+          variant_id: string
+        }
+        Insert: {
+          approval_state?: Database["public"]["Enums"]["supplier_mapping_approval"]
+          approved_at?: string | null
+          approved_by?: string | null
+          branch_code?: string | null
+          catalog_fingerprint?: string | null
+          catalog_payload?: Json | null
+          color_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          effective_from?: string
+          effective_to?: string | null
+          id?: string
+          mapping_source: Database["public"]["Enums"]["supplier_mapping_source"]
+          notes?: string | null
+          revision?: number
+          status?: Database["public"]["Enums"]["supplier_mapping_status"]
+          superseded_by?: string | null
+          supplier: Database["public"]["Enums"]["supplier_kind"]
+          supplier_account_number?: string | null
+          supplier_catalog_item_id?: string | null
+          supplier_color_name?: string | null
+          supplier_connection_id?: string | null
+          supplier_description?: string | null
+          supplier_item_number: string
+          supplier_uom: string
+          tenant_id?: string
+          updated_at?: string
+          validated_at?: string | null
+          variant_id: string
+        }
+        Update: {
+          approval_state?: Database["public"]["Enums"]["supplier_mapping_approval"]
+          approved_at?: string | null
+          approved_by?: string | null
+          branch_code?: string | null
+          catalog_fingerprint?: string | null
+          catalog_payload?: Json | null
+          color_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          effective_from?: string
+          effective_to?: string | null
+          id?: string
+          mapping_source?: Database["public"]["Enums"]["supplier_mapping_source"]
+          notes?: string | null
+          revision?: number
+          status?: Database["public"]["Enums"]["supplier_mapping_status"]
+          superseded_by?: string | null
+          supplier?: Database["public"]["Enums"]["supplier_kind"]
+          supplier_account_number?: string | null
+          supplier_catalog_item_id?: string | null
+          supplier_color_name?: string | null
+          supplier_connection_id?: string | null
+          supplier_description?: string | null
+          supplier_item_number?: string
+          supplier_uom?: string
+          tenant_id?: string
+          updated_at?: string
+          validated_at?: string | null
+          variant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_item_mappings_color_id_fkey"
+            columns: ["color_id"]
+            isOneToOne: false
+            referencedRelation: "mfr_colors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_item_mappings_superseded_by_fkey"
+            columns: ["superseded_by"]
+            isOneToOne: false
+            referencedRelation: "supplier_item_mappings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_item_mappings_variant_id_fkey"
+            columns: ["variant_id"]
+            isOneToOne: false
+            referencedRelation: "mfr_product_variants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      supplier_order_submissions: {
+        Row: {
+          branch_code: string | null
+          created_at: string
+          estimate_id: string | null
+          failure_reason: string | null
+          id: string
+          idempotency_key: string
+          line_results: Json
+          mapping_revisions: Json
+          material_order_id: string | null
+          order_version: number
+          outbound_payload: Json
+          payload_hash: string
+          project_id: string | null
+          reconciled_at: string | null
+          resolved_lines: Json
+          state: Database["public"]["Enums"]["supplier_submission_state"]
+          submitted_at: string | null
+          submitted_by: string | null
+          supplier: Database["public"]["Enums"]["supplier_kind"]
+          supplier_account_number: string | null
+          supplier_connection_id: string | null
+          supplier_order_id: string | null
+          supplier_request_id: string | null
+          supplier_response_redacted: Json | null
+          tenant_id: string
+          user_selections: Json
+        }
+        Insert: {
+          branch_code?: string | null
+          created_at?: string
+          estimate_id?: string | null
+          failure_reason?: string | null
+          id?: string
+          idempotency_key: string
+          line_results?: Json
+          mapping_revisions?: Json
+          material_order_id?: string | null
+          order_version?: number
+          outbound_payload: Json
+          payload_hash: string
+          project_id?: string | null
+          reconciled_at?: string | null
+          resolved_lines?: Json
+          state?: Database["public"]["Enums"]["supplier_submission_state"]
+          submitted_at?: string | null
+          submitted_by?: string | null
+          supplier: Database["public"]["Enums"]["supplier_kind"]
+          supplier_account_number?: string | null
+          supplier_connection_id?: string | null
+          supplier_order_id?: string | null
+          supplier_request_id?: string | null
+          supplier_response_redacted?: Json | null
+          tenant_id: string
+          user_selections?: Json
+        }
+        Update: {
+          branch_code?: string | null
+          created_at?: string
+          estimate_id?: string | null
+          failure_reason?: string | null
+          id?: string
+          idempotency_key?: string
+          line_results?: Json
+          mapping_revisions?: Json
+          material_order_id?: string | null
+          order_version?: number
+          outbound_payload?: Json
+          payload_hash?: string
+          project_id?: string | null
+          reconciled_at?: string | null
+          resolved_lines?: Json
+          state?: Database["public"]["Enums"]["supplier_submission_state"]
+          submitted_at?: string | null
+          submitted_by?: string | null
+          supplier?: Database["public"]["Enums"]["supplier_kind"]
+          supplier_account_number?: string | null
+          supplier_connection_id?: string | null
+          supplier_order_id?: string | null
+          supplier_request_id?: string | null
+          supplier_response_redacted?: Json | null
+          tenant_id?: string
+          user_selections?: Json
+        }
+        Relationships: []
+      }
       supplier_price_book_items: {
         Row: {
           color: string | null
@@ -65638,6 +66102,22 @@ export type Database = {
       smartdoc_sign_status: "PENDING" | "COMPLETED" | "DECLINED" | "VOID"
       smartdoc_status: "DRAFT" | "PUBLISHED" | "ARCHIVED"
       smartdoc_template_type: "DOCUMENT" | "EMAIL" | "PRINT"
+      supplier_kind: "abc" | "srs" | "qxo" | "other"
+      supplier_mapping_approval: "pending" | "approved" | "rejected"
+      supplier_mapping_source: "api" | "catalog_import" | "manual_approved"
+      supplier_mapping_status:
+        | "active"
+        | "inactive"
+        | "discontinued"
+        | "superseded"
+      supplier_submission_state:
+        | "prepared"
+        | "submitted"
+        | "accepted"
+        | "rejected"
+        | "verified"
+        | "mismatch"
+        | "failed"
       workflow_phase:
         | "planning"
         | "implementation"
@@ -66112,6 +66592,24 @@ export const Constants = {
       smartdoc_sign_status: ["PENDING", "COMPLETED", "DECLINED", "VOID"],
       smartdoc_status: ["DRAFT", "PUBLISHED", "ARCHIVED"],
       smartdoc_template_type: ["DOCUMENT", "EMAIL", "PRINT"],
+      supplier_kind: ["abc", "srs", "qxo", "other"],
+      supplier_mapping_approval: ["pending", "approved", "rejected"],
+      supplier_mapping_source: ["api", "catalog_import", "manual_approved"],
+      supplier_mapping_status: [
+        "active",
+        "inactive",
+        "discontinued",
+        "superseded",
+      ],
+      supplier_submission_state: [
+        "prepared",
+        "submitted",
+        "accepted",
+        "rejected",
+        "verified",
+        "mismatch",
+        "failed",
+      ],
       workflow_phase: [
         "planning",
         "implementation",

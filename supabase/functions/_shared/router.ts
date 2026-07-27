@@ -148,8 +148,17 @@ export function serveRouter(app: Hono<RouterEnv>) {
 export function jsonOk<T>(c: Context<RouterEnv>, data: T, status = 200) {
   return c.json({ ok: true, data, requestId: c.get("requestId") }, status);
 }
-export function jsonErr(c: Context<RouterEnv>, code: string, message: string, status = 400) {
-  return c.json({ ok: false, error: message, code, requestId: c.get("requestId") }, status);
+export function jsonErr(
+  c: Context<RouterEnv>,
+  code: string,
+  message: string,
+  status = 400,
+  details?: unknown,
+) {
+  return c.json(
+    { ok: false, error: message, code, ...(details === undefined ? {} : { details }), requestId: c.get("requestId") },
+    status,
+  );
 }
 
 // ---- supabase clients ----
