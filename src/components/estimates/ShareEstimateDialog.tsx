@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { describeEdgeFunctionError } from '@/lib/describeEdgeError';
+
 import {
   Dialog,
   DialogContent,
@@ -264,8 +266,9 @@ export function ShareEstimateDialog({
           },
         });
 
-        if (error) throw error;
+        if (error) throw new Error(describeEdgeFunctionError('email-api', error, data).toastMessage);
         if (!data?.success) throw new Error(data?.error || 'Failed to send email');
+
 
         setIsSent(true);
         toast({
