@@ -701,7 +701,7 @@ export const AbcCatalogBrowser: React.FC = () => {
                     </TableRow>
                   )}
                   {items.length > 0 && (
-                    items.map((item, idx) => {
+                    pagedItems.map((item, idx) => {
                       const p = prices[item.itemNumber];
                       return (
                         <TableRow key={`${item.itemNumber}-${idx}`}>
