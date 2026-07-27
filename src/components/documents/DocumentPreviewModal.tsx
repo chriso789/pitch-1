@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Download, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, FileText, Loader2, AlertCircle, ExternalLink, Printer, Share2, Check } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { resolveStorageBucket } from '@/lib/documents/resolveStorageBucket';
+import { resolveStorageBucket, extractStorageRef } from '@/lib/documents/resolveStorageBucket';
 import { loadPDFFromArrayBuffer, renderPageToDataUrl, PDFDocumentProxy, RenderedPage, clearPageCache } from '@/lib/pdfRenderer';
 import { ShareDocumentDialog } from './ShareDocumentDialog';
 
