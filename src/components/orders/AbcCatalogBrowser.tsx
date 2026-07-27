@@ -202,10 +202,10 @@ function fmtPrice(p?: AbcPrice): string {
 
 export const AbcCatalogBrowser: React.FC = () => {
   const tenantId = useEffectiveTenantId();
-  const { defaultBranchCode, isConnected, environment } = useAbcConnectionStatus();
+  const { defaultBranchCode, isConnected, environment, loading: connectionLoading } = useAbcConnectionStatus();
   const { toast } = useToast();
   const [syncing, setSyncing] = useState(false);
-  const effectiveEnvironment = environment || 'production';
+  const effectiveEnvironment = environment || 'sandbox';
   const { branches, shipTos, refetch: refetchCatalog } = useAbcCatalog(tenantId, effectiveEnvironment);
   const [searchTerm, setSearchTerm] = useState('shingle');
   const [debounced, setDebounced] = useState('shingle');
@@ -233,7 +233,7 @@ export const AbcCatalogBrowser: React.FC = () => {
 
   // Product search.
   useEffect(() => {
-    if (!tenantId) return;
+    if (!tenantId || connectionLoading || !environment) return;
     if (debounced.length < 2) {
       setItems([]);
       setPrices({});
@@ -260,7 +260,8 @@ export const AbcCatalogBrowser: React.FC = () => {
         if (invokeErr) throw new Error(invokeErr.message || 'ABC search failed');
         if (!data?.success) {
           throw new Error(
-            data?.error_code ||
+                data?.message ||
+              data?.error_code ||
               data?.body?.message ||
               data?.error ||
               'ABC search failed',
@@ -276,11 +277,11 @@ export const AbcCatalogBrowser: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [tenantId, debounced, branchNumber, effectiveEnvironment]);
+  }, [tenantId, debounced, branchNumber, effectiveEnvironment, connectionLoading, environment]);
 
   // Batch price fetch for the visible items.
   useEffect(() => {
-    if (!tenantId || !items.length || !shipToNumber || !branchNumber) {
+    if (!tenantId || connectionLoading || !environment || !items.length || !shipToNumber || !branchNumber) {
       setPrices({});
       return;
     }
@@ -332,7 +333,7 @@ export const AbcCatalogBrowser: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [tenantId, items, shipToNumber, branchNumber, effectiveEnvironment]);
+  }, [tenantId, items, shipToNumber, branchNumber, effectiveEnvironment, connectionLoading, environment]);
 
   const subtitle = useMemo(() => {
     const parts: string[] = [];
@@ -470,7 +471,26 @@ export const AbcCatalogBrowser: React.FC = () => {
             pageSize: 60,
           },
         });
-        if (error) throw new Error(error.message);
+        if (error) {
+          let detail = error.message;
+          const context = (error as any)?.context;
+          if (context?.clone) {
+            try {
+              const text = await context.clone().text();
+              if (text) {
+                try {
+                  const parsed = JSON.parse(text);
+                  detail = parsed?.message || parsed?.error || text;
+                } catch {
+                  detail = text;
+                }
+              }
+            } catch {
+              // Keep Supabase's default message if the response body is unavailable.
+            }
+          }
+          throw new Error(detail || 'ingest_catalog failed');
+        }
         if (!data?.success) throw new Error(data?.message || data?.error || 'ingest_catalog failed');
         const s = data.summary || {};
         for (const k of ['items_seen', 'catalog_upserted', 'variants_created', 'colors_created', 'mappings_created', 'mappings_updated']) {
