@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { describeEdgeFunctionError } from '@/lib/describeEdgeError';
+
 import {
   Dialog,
   DialogContent,
