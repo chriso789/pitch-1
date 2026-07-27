@@ -17,6 +17,11 @@ import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { useAbcConnectionStatus } from '@/hooks/useAbcConnectionStatus';
 import { useAbcCatalog } from '@/hooks/useAbcCatalog';
 import {
+  preflightSupplierOrder as preflightSupplierOrderApi,
+  type PreflightResult,
+} from '@/lib/suppliers/resolution';
+import { SupplierResolutionPreview } from './SupplierResolutionPreview';
+import {
   AbcCatalogSearchPopover,
   AbcPriceButton,
   AbcPriceCell,
@@ -48,6 +53,10 @@ interface MaterialItem extends AbcLineState {
   requires_color?: boolean;
   abc_branch?: string | null;
   abc_ship_to?: string | null;
+  // Canonical identity (Phase A). Present once the line is bound to a
+  // manufacturer variant + color; required for authoritative resolution.
+  variant_id?: string | null;
+  color_id?: string | null;
 }
 
 interface Props {
@@ -169,20 +178,24 @@ const bestSrsCatalogMatch = (item: MaterialItem, catalog: any[]) => {
   return best ? { ...best, ambiguous } : null;
 };
 
+// SUGGESTION ONLY. Fuzzy catalog scoring may never write an orderable item
+// code onto a line. It returns candidates the user must explicitly pick, and
+// the authoritative code is re-resolved server-side before submission.
 const autoFillSrsCatalogSkus = (base: MaterialItem[], catalog: any[]) => {
   let matchedCount = 0;
-  const items = base.map((item) => {
-    if (item.srs_item_code) return item;
+  const suggestions: Record<number, string> = {};
+  base.forEach((item, i) => {
+    if (item.srs_item_code) return;
     const best = bestSrsCatalogMatch(item, catalog);
     const productId = best?.product?.productId ?? best?.product?.productNumber;
     if (productId && best.score >= 0.72 && !best.ambiguous) {
       matchedCount += 1;
-      return { ...item, srs_item_code: String(productId) };
+      suggestions[i] = String(productId);
     }
-    return item;
   });
-  return { items, matchedCount };
+  return { items: base, matchedCount, suggestions };
 };
+
 
 export function PushToSupplierDialog({
   open, onOpenChange, projectId, estimateId, jobNumber,
@@ -191,6 +204,7 @@ export function PushToSupplierDialog({
   const { toast } = useToast();
   const tenantId = useEffectiveTenantId();
   const abcConnection = useAbcConnectionStatus();
+  const [preflight, setPreflight] = useState<PreflightResult | null>(null);
   const abcCatalog = useAbcCatalog(tenantId, abcConnection.environment);
   const [loadingSuppliers, setLoadingSuppliers] = useState(false);
   const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
@@ -562,10 +576,12 @@ export function PushToSupplierDialog({
     }
   };
 
-  // Resolve per-supplier SKUs via vendor_products map. Overwrites srs_item_code
-  // with the SKU for the currently selected supplier so downstream submit code
-  // (which already reads srs_item_code) works for SRS / ABC / QXO alike.
+  // Fetch *suggested* SKUs from the fuzzy matcher. These are candidates only —
+  // they are surfaced for the user to confirm and can never authorize an order
+  // line on their own. Authoritative codes come from supplier-api
+  // `/catalog/resolve` against approved supplier_item_mappings.
   const [resolvingSkus, setResolvingSkus] = useState(false);
+  const [suggestedSkus, setSuggestedSkus] = useState<Record<string, string>>({});
   const resolveSkusFor = async (key: SupplierKey, base: MaterialItem[]) => {
     if (!tenantId || !base.length) return base;
     setResolvingSkus(true);
@@ -578,16 +594,15 @@ export function PushToSupplierDialog({
         },
       });
       if (error) throw error;
-      const map = new Map<string, string | null>(
-        (data?.items || []).map((r: any) => [String(r.key), r.vendor_sku as string | null]),
-      );
-      return base.map((it, i) => ({
-        ...it,
-        // Never erase a SKU the user already typed/saved just because the resolver
-        // has no vendor_products match yet. That empty mapping is why SRS was being
-        // blocked with "Saved as draft — no SRS SKUs".
-        srs_item_code: map.get(String(i)) || it.srs_item_code || null,
-      }));
+      const suggestions: Record<string, string> = {};
+      (data?.items || []).forEach((r: any) => {
+        const sku = r?.suggested_vendor_sku as string | null;
+        if (sku) suggestions[String(r.key)] = sku;
+      });
+      setSuggestedSkus(suggestions);
+      // Only user-confirmed / persisted codes stay on the line.
+      return base;
+
     } catch (e) {
       console.warn('[PushToSupplier] SKU resolution failed', e);
       return base;
@@ -691,7 +706,38 @@ export function PushToSupplierDialog({
       return;
     }
 
+    // HARD GATE: authoritative server-side resolution. Nothing is submitted
+    // unless every line resolves to an approved supplier item code for this
+    // supplier + connection + branch. Fuzzy suggestions can never satisfy this.
+    if (editableItems.some((i) => i.variant_id)) {
+      const { data: pre, error: preErr } = await preflightSupplierOrderApi(
+        { supplier: selected as any, supplier_connection_id: selected === 'abc' ? abcConnection.row?.id ?? undefined : undefined, branch_code: branchCode.trim() || undefined },
+        editableItems.map((i, idx) => ({
+          key: String(idx),
+          variant_id: i.variant_id!,
+          color_id: i.color_id ?? null,
+          uom: i.unit || undefined,
+          quantity: Number(i.quantity || 0),
+        })),
+      );
+      if (preErr || !pre) {
+        toast({ title: 'Resolution check failed', description: preErr || 'Could not verify supplier item codes.', variant: 'destructive' });
+        return;
+      }
+      setPreflight(pre);
+      if (!pre.ok) {
+        toast({
+          title: 'Order blocked — unresolved supplier items',
+          description: `${pre.blocking.length} line(s) have no approved ${sel?.label} item code. Review the resolution table below.`,
+          variant: 'destructive',
+        });
+        return;
+      }
+    }
+
+
     setSubmitting(true);
+
     try {
       // Remember this branch as the user's default for this supplier.
       try {
@@ -1372,6 +1418,18 @@ export function PushToSupplierDialog({
                       </tbody>
                     </table>
                   </div>
+                  {preflight && (
+                    <div className="mt-3">
+                      <SupplierResolutionPreview
+                        supplierLabel={suppliers.find((x) => x.key === selected)?.label || String(selected)}
+                        branchLabel={branchCode.trim() || null}
+                        lines={preflight.lines}
+                        pitchProductNames={Object.fromEntries(editableItems.map((it, i) => [String(i), it.item_name]))}
+                      />
+
+                    </div>
+                  )}
+
                   {editableItems.some(i => i.requires_color && !(i.color_specs && i.color_specs.trim())) && (
                     <p className="mt-2 flex items-center gap-1 text-xs text-destructive">
                       <AlertCircle className="h-3 w-3" />

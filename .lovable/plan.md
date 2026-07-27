@@ -1,172 +1,56 @@
-# Phase 2 Slice B — Invoice Email Delivery + Staff Actions
+## Audit: current state (what I found)
 
-## Scope
-Enable authorized staff to send Pitch-branded invoice emails via Resend, pointing to the secure Slice A portal (never raw QBO URLs). Full delivery lifecycle, webhook status sync, idempotency, bounce/complaint safety, RLS-hardened.
+**Flow today (Push to Supplier):**
+`estimate_line_items` → `ProjectMaterialsTab` maps rows to `{item_name, description, quantity, unit, unit_cost, srs_item_code}` → `PushToSupplierDialog` → client builds `srs_order_items` rows → `srs-api-proxy` submits.
 
-## Out of scope (do NOT build)
-SMS, auto-reminders, auto-closeout, warranty gen, native card/ACH, financing, marketing email.
+**Confirmed defects — every place the selected color can be lost or guessed:**
 
----
+1. `supabase/functions/resolve-supplier-skus/index.ts` — Jaccard fuzzy match at **score ≥ 0.5** returns an orderable `vendor_sku`. Color is never an input. This alone can order the wrong color.
+2. `src/components/orders/PushToSupplierDialog.tsx` `autoFillSrsCatalogSkus` — accepts a catalog hit at **score ≥ 0.72** and writes it as `srs_item_code`. Description-based guessing.
+3. `src/components/orders/catalogMatching.ts` — token/synonym scoring used as an authorization path, not a suggestion path.
+4. Color is **free text**: `color_specs` is hydrated by string-scanning the item name/notes against `shingleBrandColors.ts`. No manufacturer ID, product-line ID, color ID, profile, dimensions or packaging exist anywhere.
+5. `ProjectMaterialsTab` drops color entirely — the item list handed to the dialog has no color field.
+6. **Client builds the payload**: the browser inserts `srs_order_items` (`srs_product_id`, `product_option`, `product_color`) and then invokes the proxy. Item code, color, UOM and account are all client-supplied and overridable.
+7. Color reaches SRS as a **string** appended to the description plus `product_option`/`product_color` text — not a catalog-resolved variant.
+8. No branch/location scoping on any mapping; ABC and SRS codes are stored in the **same** `srs_item_code` field, so a resolution for one supplier is reused for the other.
+9. `material_supplier_skus` uniqueness is `(tenant, material, supplier, supplier_item_number)` — it cannot distinguish product line / color / profile / UOM, and has no branch, active-state, effective-dating or approval workflow.
+10. No preflight gate, no pre-send resolution preview, no immutable submission snapshot, no response reconciliation.
+11. UOM defaults to `'EA'` in `ProjectMaterialsTab`.
 
-## 1. Database migrations
+## Plan
 
-### 1a. `tenant_email_settings` (create or extend)
-Columns: `tenant_id` (PK), `provider` ('resend' default), `from_name`, `from_email`, `reply_to`, `sending_enabled` bool, `verified_domain_status` ('unverified'|'pending'|'verified'), `invoice_template_version` int default 1, `platform_sender_fallback_enabled` bool default true, timestamps.
-- RLS: tenant admins can read/write own row; service_role full.
-- **No** provider API key column — API key lives only in edge function env (`RESEND_API_KEY` secret).
+### Phase A — Canonical identity + mapping model (migration)
+New tenant-scoped tables:
+- `mfr_manufacturers`, `mfr_product_lines`, `mfr_product_variants` (profile, dimensions, packaging, canonical UOM), `mfr_colors` (manufacturer color code + canonical name, scoped to product line).
+- `supplier_item_mappings` — the authoritative mapping. Unique on `(tenant_id, supplier, supplier_connection_id, branch_code, variant_id, color_id, supplier_uom)`. Columns: supplier item number, supplier catalog item id, supplier description/color as returned, status (`active|inactive|discontinued|superseded`), `superseded_by`, `mapping_source` (`api|catalog_import|manual_approved`), approval state + approver, `effective_from/to`, `catalog_fingerprint`, `validated_at`, revision number.
+- `supplier_item_mapping_revisions` — history.
+- `supplier_order_submissions` — immutable snapshot (selections, resolved codes, mapping revisions, payload, payload hash, idempotency key, redacted response, line results).
+RLS: tenant + connection isolation, service_role for edge functions.
 
-### 1b. `invoice_email_deliveries`
-Full spec column set from prompt §7. Status enum: `queued|accepted|sent|delivered|delayed|bounced|complained|failed`.
-- Unique index on `(tenant_id, idempotency_key)` for dedupe.
-- Index on `provider_message_id` (nullable, unique per provider).
-- RLS: tenant-scoped read for authorized roles; **no** direct client insert/update — writes only via edge functions with service role + explicit `tenant_id` filter.
+### Phase B — Server-side resolver
+New route in `supplier-api`: `POST /resolve` taking `{supplier, connection_id, branch_code, lines:[{variant_id, color_id, uom, qty}]}`. Returns exact match or a typed failure: `no_mapping | ambiguous | inactive | uom_mismatch | branch_mismatch | stale_validation`. **No fuzzy path.** Fuzzy scoring is demoted to `POST /suggest` for admin review only. `resolve-supplier-skus` becomes suggestion-only.
 
-### 1c. `customer_invoice_events` (create if missing, else reuse)
-Append-only event log: `id, tenant_id, project_id, pitch_invoice_id, portal_access_grant_id, delivery_id, event_type, event_data jsonb, actor_user_id, created_at`.
-- Event types from prompt §12.
-- RLS: read for tenant authorized staff; insert only via service role.
+### Phase C — Order-line persistence
+Material order lines store the full canonical tuple (manufacturer/line/variant/color/UOM/qty) plus the resolved supplier mapping id + revision. Changing supplier, branch, account, color, variant or UOM invalidates the resolution and forces re-resolve. Accessories (ridge cap, drip edge, valley metal, boots, vents, closures, trims) each resolve independently; template color propagation sets the color, never the SKU.
 
-### 1d. `provider_webhook_events` (dedupe table)
-`provider, provider_event_id (unique), received_at, processed_at, payload_hash`.
-Used to reject duplicate Resend webhook deliveries.
+### Phase D — UI
+Cascading Manufacturer → Product line → Variant → Color selectors in the material-order page. Per-line resolved supplier item number, supplier description/color, UOM, availability. Pre-send **resolution preview table** (Pitch product / manufacturer / line / color / supplier / item code / supplier description+color / branch / qty / UOM / status). Send disabled until every line is verified.
 
----
+### Phase E — Preflight gate + server payload build
+`POST /orders/preflight` runs all 13 checks; submission refuses unless all lines pass. Payload is assembled server-side from saved validated lines only — the browser cannot supply item code, account, branch, color, UOM, price or validation result. Internal traceability fields persisted alongside the outbound payload.
 
-## 2. Provider abstraction
+### Phase F — Reconciliation
+After submit, refresh the supplier order, compare returned item codes/qty/UOM/branch against the snapshot, re-query the catalog when the response omits color, and only then mark `verified`.
 
-`supabase/functions/_shared/email/types.ts` — interfaces:
-- `TransactionalEmailProvider` with `sendInvoiceEmail`, `normalizeWebhookEvent`, `classifyProviderFailure`, `verifyWebhook`, `getProviderMessageId`.
-- `NormalizedEmailEvent`, `SendInvoiceEmailInput`, `SendResult`.
+### Phase G — Tests
+Vitest suite covering all 23 listed cases (cross-manufacturer and cross-product-line color collisions, supplier switch invalidation, branch invalidation, field vs ridge cap, template propagation, each blocking failure mode, tenant/connection/location isolation, client payload tampering, stale validation, outbound fixture assertions, idempotency, reconciliation mismatch). GAF Timberline HDZ and OC Duration fixtures built from real sandbox catalog responses only.
 
-`supabase/functions/_shared/email/resend-adapter.ts` — Resend implementation. Uses `RESEND_API_KEY` from env. Invoice/portal code imports only the interface.
+### Phase H — Acceptance orders
+ABC sandbox order prepared and shown as a resolution table + redacted payload for your approval before any submit. Equivalent controlled SRS test after that. Neither is sent without explicit approval.
 
-`supabase/functions/_shared/email/index.ts` — `getEmailProvider(providerName)` factory.
+## Technical notes
+- Fuzzy matching survives only as an admin suggestion surface; it can never authorize a line.
+- ABC and SRS codes get separate mapping rows — `srs_item_code` on estimate lines is deprecated to a display-only legacy field.
+- Real item numbers are only ever written from live catalog responses or an approved manual mapping; no invented codes in fixtures used for production mappings.
 
----
-
-## 3. Edge functions
-
-### 3a. `invoice-email-send` (POST)
-1. Auth: verify JWT, resolve user + tenant server-side.
-2. Load Pitch invoice by ID; verify `tenant_id` matches.
-3. Verify caller role (accounting/owner/admin/permitted).
-4. Load recipient contact; verify belongs to project & tenant.
-5. Resolve or create portal grant (Slice A helper).
-6. Compute idempotency key = `hash(tenant_id | invoice_id | recipient_email | template_version | send_request_id)`.
-7. Insert delivery row `status=queued` with `ON CONFLICT (tenant_id, idempotency_key) DO NOTHING`. If existing row within N seconds and not explicit resend → return existing.
-8. Resolve sender: verified tenant domain OR platform fallback with tenant display name.
-9. Render HTML + text template (default from §6). CTA = Pitch portal URL (`/invoice/<token>`). **Never** QBO URL.
-10. Call `provider.sendInvoiceEmail`. On success: update delivery `status=accepted`, store `provider_message_id`. On classified transient failure: schedule retry (bounded backoff). On hard failure: `status=failed`.
-11. Append `invoice_email_queued`, `invoice_email_accepted` events.
-12. Return safe result (no provider raw).
-
-### 3b. `invoice-email-resend` (POST)
-Explicit resend: generates new `send_request_id`, new idempotency key, new delivery row. Blocks if recipient is on bounce/complaint suppression unless caller has override permission.
-
-### 3c. `invoice-portal-revoke` (POST)
-Revokes portal grant, appends `portal_link_revoked` event.
-
-### 3d. `resend-webhook` (POST, public but signature-verified)
-1. `provider.verifyWebhook(headers, rawBody)` — HMAC via `RESEND_WEBHOOK_SECRET`. Reject 401 if invalid.
-2. Insert into `provider_webhook_events` (unique on `provider_event_id`); if conflict → 200 no-op (idempotent).
-3. `provider.normalizeWebhookEvent(payload)` → normalized event.
-4. Look up delivery by `provider_message_id`; if unknown → log to quarantine table row (still 200 so provider stops retrying).
-5. Update delivery: `delivered_at` only on `email.delivered`, not `email.sent` (accepted). Bounce/complaint set suppression flag.
-6. Append matching `customer_invoice_event`.
-7. Never modify QBO/accounting state.
-
-### 3e. `invoice-portal-events` (POST)
-Called by Slice A portal on view/link-click to log `customer_view_previewed`, `payment_link_clicked` etc. Already partially exists — extend.
-
----
-
-## 4. Secrets required
-- `RESEND_API_KEY` — request via `add_secret`.
-- `RESEND_WEBHOOK_SECRET` — request via `add_secret` (user creates in Resend dashboard, pastes back).
-- `PLATFORM_FALLBACK_FROM_EMAIL` — set via `set_secret` to `invoices@pitch-crm.ai`.
-
----
-
-## 5. Frontend
-
-### 5a. `src/components/invoices/InvoiceEmailActions.tsx`
-Card added to Project → Invoice detail page. Buttons:
-- Preview Customer View (opens Slice A portal in new tab)
-- Copy Secure Invoice Link
-- Send Invoice Email (opens confirm dialog with recipient shown, warns if ≠ QBO billing email)
-- Resend Invoice (only if a prior sent delivery exists)
-- Revoke Portal Link
-- View Delivery Status (drawer showing timeline)
-- View Customer Activity (drawer with events)
-
-Permission-gated via existing role hooks (`useHasRole('accounting'|'owner'|'admin')` or explicit `invoice.send_email` permission).
-
-### 5b. `src/components/invoices/InvoiceDeliveryTimeline.tsx`
-Reads `invoice_email_deliveries` + `customer_invoice_events` for the invoice; renders status chips, timestamps, recipient. Safe reasons only — no raw payload.
-
-### 5c. `src/hooks/useInvoiceDeliveries.ts`
-Tenant-scoped query hook.
-
----
-
-## 6. Recipient safety
-- Zod validation for email syntax.
-- Server confirms contact ↔ project ↔ tenant chain.
-- If chosen recipient ≠ QBO customer billing email → return `{ requires_confirmation: true, qbo_email, chosen_email }`. UI prompts staff for explicit override.
-- Suppression list check: if recipient in bounced/complained set for this tenant → block unless override permission + explicit `override_suppression: true` flag.
-
----
-
-## 7. Idempotency + retries
-- DB unique constraint enforces one delivery per idempotency key.
-- Retry classification in `resend-adapter.classifyProviderFailure`: `transient` (429, 5xx, timeout) vs `permanent` (4xx not-429, invalid_recipient, unverified_sender).
-- Retry loop: max 3 attempts, backoff 2s/8s/30s, all within same delivery row (`retry_count++`). No new delivery row for retries. Explicit resend = new row.
-
----
-
-## 8. Tests
-`supabase/functions/invoice-email-send/index.test.ts` — Deno tests covering:
-- provider abstraction chosen correctly
-- idempotent double-send
-- tenant isolation (cross-tenant contact rejected, cross-tenant invoice rejected)
-- recipient not on project rejected
-- unverified sender rejected → falls back to platform sender
-- portal URL present, QBO URL absent
-- unauthorized role blocked
-
-`supabase/functions/resend-webhook/index.test.ts`:
-- valid delivered event updates status
-- duplicate event no-ops
-- bounce sets suppression
-- unknown message_id quarantined
-- invalid signature 401
-- cross-tenant collision impossible
-
----
-
-## 9. Acceptance evidence
-Manual Playwright script hitting staging tenant, running §16 checklist end-to-end. Screenshots saved to `/mnt/documents/phase2-sliceb-evidence/`.
-
----
-
-## 10. File inventory
-**New:**
-- `supabase/migrations/<ts>_phase2_sliceb_email.sql`
-- `supabase/functions/_shared/email/{types,resend-adapter,index}.ts`
-- `supabase/functions/invoice-email-send/index.ts` (+ test)
-- `supabase/functions/invoice-email-resend/index.ts`
-- `supabase/functions/invoice-portal-revoke/index.ts`
-- `supabase/functions/resend-webhook/index.ts` (+ test)
-- `supabase/functions/_shared/email/templates/invoice-default.ts`
-- `src/components/invoices/InvoiceEmailActions.tsx`
-- `src/components/invoices/InvoiceDeliveryTimeline.tsx`
-- `src/hooks/useInvoiceDeliveries.ts`
-
-**Modified:**
-- Project → Invoice detail page: mount `<InvoiceEmailActions />`
-- `supabase/config.toml`: register new functions with `verify_jwt` per route (send/resend/revoke = true; webhook = false)
-
-## Known limitations to disclose after implementation
-- Requires user to add `RESEND_API_KEY` + `RESEND_WEBHOOK_SECRET` and verify a domain in Resend dashboard before real sends work.
-- Platform fallback sender uses `invoices@pitch-crm.ai`; ensure that domain is verified in Resend.
-- Suppression list is per-tenant, stored in `invoice_email_deliveries` derived query (no separate suppression table this slice).
+I'd like to start with Phase A + B, since the migration needs your approval anyway and everything else depends on it.

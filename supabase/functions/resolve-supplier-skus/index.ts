@@ -1,24 +1,10 @@
-// Resolves a vendor SKU for each line item against the multi-supplier
-// vendor_products map. Used by Push-to-Supplier and the SKU mapping UI.
+// SUGGESTION-ONLY vendor SKU matcher.
 //
-// Input:
-//   {
-//     tenant_id: uuid,
-//     supplier_key: 'srs' | 'abc' | 'qxo',
-//     items: [{ key?: string, product_id?: uuid, name: string, description?: string }]
-//   }
-//
-// Output:
-//   {
-//     vendor_id: uuid | null,
-//     items: [{
-//       key, name,
-//       vendor_sku: string | null,
-//       product_id: uuid | null,
-//       matched_via: 'product_id' | 'vendor_sku_exact' | 'product_name' | 'invoice_rule' | 'none',
-//       confidence: number
-//     }]
-//   }
+// This function performs FUZZY description matching. Its output can NEVER
+// authorize an order line. Orderable supplier item codes come exclusively from
+// `supplier-api` `/catalog/resolve`, which reads approved rows in
+// `supplier_item_mappings`. Everything returned here is a candidate for
+// administrative review and is flagged `authoritative: false`.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -99,11 +85,13 @@ Deno.serve(async (req) => {
     if (!vendorId) {
       return new Response(
         JSON.stringify({
+          authoritative: false,
           vendor_id: null,
           items: (items as InItem[]).map((it) => ({
             key: it.key ?? it.name,
             name: it.name,
-            vendor_sku: null,
+            suggested_vendor_sku: null,
+            requires_review: true,
             product_id: it.product_id ?? null,
             matched_via: "none",
             confidence: 0,
@@ -149,7 +137,8 @@ Deno.serve(async (req) => {
           return {
             key: it.key ?? it.name,
             name: it.name,
-            vendor_sku: hit.vendor_sku,
+            suggested_vendor_sku: hit.vendor_sku,
+            requires_review: true,
             product_id: it.product_id,
             matched_via: "product_id",
             confidence: hit.confidence ?? 1,
@@ -169,7 +158,8 @@ Deno.serve(async (req) => {
           return {
             key: it.key ?? it.name,
             name: it.name,
-            vendor_sku: hit.vendor_sku,
+            suggested_vendor_sku: hit.vendor_sku,
+            requires_review: true,
             product_id: bestProduct.id,
             matched_via: "product_name",
             confidence: Math.min(0.95, bestProduct.score),
@@ -180,7 +170,8 @@ Deno.serve(async (req) => {
       return {
         key: it.key ?? it.name,
         name: it.name,
-        vendor_sku: null,
+        suggested_vendor_sku: null,
+            requires_review: true,
         product_id: bestProduct?.id ?? it.product_id ?? null,
         matched_via: "none",
         confidence: 0,
@@ -188,7 +179,7 @@ Deno.serve(async (req) => {
     });
 
     return new Response(
-      JSON.stringify({ vendor_id: vendorId, items: resolved }),
+      JSON.stringify({ authoritative: false, vendor_id: vendorId, items: resolved }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e: any) {

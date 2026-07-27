@@ -2,6 +2,14 @@
 // Legacy ABC/QXO/SRS/Billtrust supplier functions forward here.
 
 import { createRouter, jsonOk, jsonErr, requireAuth, requireTenant, serviceClient } from "../_shared/router.ts";
+import {
+  resolveSupplierLines,
+  preflightSupplierOrder,
+  hashPayload,
+  buildIdempotencyKey,
+  type SupplierKind,
+} from "../_shared/supplier-resolution.ts";
+import { buildOrderPayload, reconcileSupplierOrder } from "../_shared/supplier-payload.ts";
 import { handle as abcProxyHandle } from "./abc-proxy-handler.ts";
 import { handle as billtrustAuthHandle } from "./billtrust-auth-handler.ts";
 import { handle as billtrustPricingHandle } from "./billtrust-pricing-handler.ts";
@@ -356,6 +364,248 @@ app.post("/templates/cost-refresh", async (c) => {
   });
 });
 
+// ===========================================================================
+// Exact supplier item-code resolution (authoritative)
+//
+// Auth mode for every route below: AUTHENTICATED TENANT ROUTE.
+// tenant_id is taken from the JWT-resolved context (`c.get("tenantId")`) and
+// NEVER from the request body. Supplier item codes, accounts, branches,
+// colors, UOMs and validation results are resolved server-side only.
+// ===========================================================================
+
+app.post("/catalog/resolve", async (c) => {
+  const tenantId = c.get("tenantId") as string;
+  let body: any;
+  try { body = await c.req.json(); } catch { return jsonErr(c, "invalid_json", "Body must be JSON", 400); }
+
+  const supplier = String(body?.supplier ?? "").toLowerCase();
+  if (!["abc", "srs", "qxo", "other"].includes(supplier)) {
+    return jsonErr(c, "invalid_supplier", "supplier must be abc|srs|qxo|other", 400);
+  }
+  if (!Array.isArray(body?.lines) || !body.lines.length) {
+    return jsonErr(c, "missing_lines", "lines[] is required", 400);
+  }
+
+  const lines = body.lines.map((l: any, i: number) => ({
+    key: String(l?.key ?? i),
+    variant_id: String(l?.variant_id ?? ""),
+    color_id: l?.color_id ? String(l.color_id) : null,
+    uom: String(l?.uom ?? ""),
+    quantity: Number(l?.quantity ?? 0),
+  }));
+  if (lines.some((l: any) => !l.variant_id || !l.uom)) {
+    return jsonErr(c, "invalid_line", "Each line requires variant_id and uom", 400);
+  }
+
+  const resolved = await resolveSupplierLines(serviceClient(), tenantId, {
+    supplier: supplier as SupplierKind,
+    supplier_connection_id: body?.supplier_connection_id ?? null,
+    supplier_account_number: body?.supplier_account_number ?? null,
+    branch_code: body?.branch_code ?? null,
+    lines,
+  });
+
+  return jsonOk(c, {
+    supplier,
+    branch_code: body?.branch_code ?? null,
+    lines: resolved,
+    unresolved_count: resolved.filter((l) => !l.ok).length,
+  });
+});
+
+app.post("/orders/preflight", async (c) => {
+  const tenantId = c.get("tenantId") as string;
+  let body: any;
+  try { body = await c.req.json(); } catch { return jsonErr(c, "invalid_json", "Body must be JSON", 400); }
+
+  const supplier = String(body?.supplier ?? "").toLowerCase();
+  if (!["abc", "srs"].includes(supplier)) {
+    return jsonErr(c, "invalid_supplier", "Ordering preflight supports abc|srs", 400);
+  }
+
+  const result = await preflightSupplierOrder(serviceClient(), tenantId, {
+    supplier: supplier as SupplierKind,
+    supplier_connection_id: body?.supplier_connection_id ?? null,
+    supplier_account_number: body?.supplier_account_number ?? null,
+    branch_code: body?.branch_code ?? null,
+    lines: (body?.lines ?? []).map((l: any, i: number) => ({
+      key: String(l?.key ?? i),
+      variant_id: String(l?.variant_id ?? ""),
+      color_id: l?.color_id ? String(l.color_id) : null,
+      uom: String(l?.uom ?? ""),
+      quantity: Number(l?.quantity ?? 0),
+    })),
+  });
+
+  return jsonOk(c, result);
+});
+
+// Prepares (but does not transmit) the outbound payload so the user can approve
+// the exact codes and colors first. Returns the immutable snapshot id.
+app.post("/orders/prepare", async (c) => {
+  const tenantId = c.get("tenantId") as string;
+  const userId = c.get("userId") as string;
+  const svc = serviceClient();
+  let body: any;
+  try { body = await c.req.json(); } catch { return jsonErr(c, "invalid_json", "Body must be JSON", 400); }
+
+  const supplier = String(body?.supplier ?? "").toLowerCase();
+  if (!["abc", "srs"].includes(supplier)) {
+    return jsonErr(c, "invalid_supplier", "Ordering supports abc|srs", 400);
+  }
+
+  const branchCode = body?.branch_code ?? null;
+  const request = {
+    supplier: supplier as SupplierKind,
+    supplier_connection_id: body?.supplier_connection_id ?? null,
+    supplier_account_number: body?.supplier_account_number ?? null,
+    branch_code: branchCode,
+    lines: (body?.lines ?? []).map((l: any, i: number) => ({
+      key: String(l?.key ?? i),
+      variant_id: String(l?.variant_id ?? ""),
+      color_id: l?.color_id ? String(l.color_id) : null,
+      uom: String(l?.uom ?? ""),
+      quantity: Number(l?.quantity ?? 0),
+    })),
+  };
+
+  const pre = await preflightSupplierOrder(svc, tenantId, request);
+  if (!pre.ok) {
+    return jsonErr(c, "preflight_failed", "One or more lines could not be resolved to an exact supplier item code.", 422, {
+      blocking: pre.blocking,
+      lines: pre.lines,
+    });
+  }
+
+  const orderVersion = Number(body?.order_version ?? 1);
+  let payload: unknown;
+  try {
+    payload = buildOrderPayload(supplier as SupplierKind, pre.lines, {
+      po_number: body?.po_number ?? null,
+      job_number: body?.job_number ?? null,
+      customer_name: body?.customer_name ?? null,
+      delivery_address: body?.delivery_address ?? null,
+      requested_delivery_date: body?.requested_delivery_date ?? null,
+      notes: body?.notes ?? null,
+      ship_to_number: body?.ship_to_number ?? null,
+      branch_code: branchCode,
+      account_number: body?.supplier_account_number ?? null,
+    });
+  } catch (e: any) {
+    return jsonErr(c, "payload_build_failed", String(e?.message ?? e), 422);
+  }
+
+  const payloadHash = await hashPayload(payload);
+  const idempotencyKey = buildIdempotencyKey({
+    tenantId,
+    supplier: supplier as SupplierKind,
+    materialOrderId: body?.material_order_id ?? null,
+    orderVersion,
+    payloadHash,
+  });
+
+  const { data: existing } = await svc
+    .from("supplier_order_submissions")
+    .select("id, state, payload_hash")
+    .eq("tenant_id", tenantId)
+    .eq("supplier", supplier)
+    .eq("idempotency_key", idempotencyKey)
+    .maybeSingle();
+
+  if (existing) {
+    return jsonOk(c, {
+      submission_id: existing.id,
+      idempotency_key: idempotencyKey,
+      payload_hash: payloadHash,
+      reused: true,
+      state: existing.state,
+      lines: pre.lines,
+      payload,
+    });
+  }
+
+  const { data: inserted, error } = await svc
+    .from("supplier_order_submissions")
+    .insert({
+      tenant_id: tenantId,
+      supplier,
+      supplier_connection_id: body?.supplier_connection_id ?? null,
+      supplier_account_number: body?.supplier_account_number ?? null,
+      branch_code: branchCode,
+      project_id: body?.project_id ?? null,
+      estimate_id: body?.estimate_id ?? null,
+      material_order_id: body?.material_order_id ?? null,
+      order_version: orderVersion,
+      user_selections: request.lines,
+      resolved_lines: pre.lines,
+      mapping_revisions: pre.lines.map((l) => ({
+        mapping_id: l.mapping_id,
+        revision: l.mapping_revision,
+        catalog_fingerprint: l.catalog_fingerprint,
+        validated_at: l.validated_at,
+      })),
+      outbound_payload: payload,
+      payload_hash: payloadHash,
+      idempotency_key: idempotencyKey,
+      state: "prepared",
+      submitted_by: userId,
+    })
+    .select("id")
+    .single();
+
+  if (error) return jsonErr(c, "snapshot_failed", error.message, 500);
+
+  return jsonOk(c, {
+    submission_id: inserted.id,
+    idempotency_key: idempotencyKey,
+    payload_hash: payloadHash,
+    reused: false,
+    state: "prepared",
+    lines: pre.lines,
+    payload,
+  });
+});
+
+// Reconciles a supplier's returned order against the immutable snapshot.
+app.post("/orders/reconcile", async (c) => {
+  const tenantId = c.get("tenantId") as string;
+  const svc = serviceClient();
+  let body: any;
+  try { body = await c.req.json(); } catch { return jsonErr(c, "invalid_json", "Body must be JSON", 400); }
+
+  const submissionId = String(body?.submission_id ?? "");
+  if (!submissionId) return jsonErr(c, "missing_submission_id", "submission_id required", 400);
+
+  const { data: snap, error } = await svc
+    .from("supplier_order_submissions")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .eq("id", submissionId)
+    .maybeSingle();
+  if (error) return jsonErr(c, "snapshot_read_failed", error.message, 500);
+  if (!snap) return jsonErr(c, "snapshot_not_found", "Submission snapshot not found", 404);
+
+  const result = reconcileSupplierOrder(
+    (snap.resolved_lines ?? []) as any[],
+    Array.isArray(body?.returned_lines) ? body.returned_lines : [],
+    snap.branch_code ?? null,
+    body?.returned_branch_code ?? null,
+  );
+
+  const { error: updErr } = await svc
+    .from("supplier_order_submissions")
+    .update({
+      state: result.verified ? "verified" : "mismatch",
+      line_results: result.lines,
+      reconciled_at: new Date().toISOString(),
+      failure_reason: result.verified ? null : "supplier_response_mismatch",
+    })
+    .eq("tenant_id", tenantId)
+    .eq("id", submissionId);
+  if (updErr) return jsonErr(c, "snapshot_update_failed", updErr.message, 500);
+
+  return jsonOk(c, result);
+});
 
 
 // Supabase delivers requests with the function name as the first path segment
