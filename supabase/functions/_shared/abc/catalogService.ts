@@ -117,9 +117,11 @@ function clampPageNumber(v: unknown): number {
  * before sending it (both handlers do).
  */
 export function buildSearchProductsPayload(input: SearchAbcCatalogInput): {
+  familyItems: boolean;
   filters: Array<Record<string, unknown>>;
   pagination: { itemsPerPage: number; pageNumber: number };
 } {
+
   const filters: Array<Record<string, unknown>> = [];
   const itemNumber = trim(input?.itemNumber);
   const query = trim(input?.query);
