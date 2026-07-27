@@ -586,7 +586,7 @@ export const AbcCatalogBrowser: React.FC = () => {
                   ) : (
                     <Download className="h-3.5 w-3.5 mr-1" />
                   )}
-                  Ingest → mapping proposals
+                  {ingesting ? `Ingesting… ${ingestProgress ?? ''}` : 'Ingest → mapping proposals'}
                 </Button>
               )}
 
