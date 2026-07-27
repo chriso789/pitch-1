@@ -218,7 +218,16 @@ export default function SupplierMappingApprovalPanel({ supplier = 'abc' }: Props
                       <div>{statusBadge(r.status)}</div>
                     </TableCell>
                     <TableCell className="text-right whitespace-nowrap">
-                      {needsRevalidation(r) ? (
+                      {state === 'approved' && needsRevalidation(r) ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => decide.mutate({ ids: [r.id], next: 'approved' })}
+                          disabled={decide.isPending}
+                        >
+                          Revalidate
+                        </Button>
+                      ) : needsRevalidation(r) ? (
                         <span className="inline-flex items-center text-xs text-muted-foreground">
                           <ShieldAlert className="h-3.5 w-3.5 mr-1" />
                           Review required
@@ -247,15 +256,6 @@ export default function SupplierMappingApprovalPanel({ supplier = 'abc' }: Props
                             <XCircle className="h-4 w-4" />
                           </Button>
                         </div>
-                      ) : state === 'approved' && needsRevalidation(r) ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => decide.mutate({ ids: [r.id], next: 'approved' })}
-                          disabled={decide.isPending}
-                        >
-                          Revalidate
-                        </Button>
                       ) : (
                         <Badge variant={state === 'approved' ? 'default' : 'destructive'}>{state}</Badge>
                       )}
