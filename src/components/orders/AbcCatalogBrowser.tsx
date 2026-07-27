@@ -217,6 +217,8 @@ export const AbcCatalogBrowser: React.FC = () => {
   const [priceError, setPriceError] = useState<string | null>(null);
   const [dumping, setDumping] = useState(false);
   const [ingesting, setIngesting] = useState(false);
+  const [ingestProgress, setIngestProgress] = useState<string | null>(null);
+
   const [dumpMode, setDumpMode] = useState(false);
   const [dumpMeta, setDumpMeta] = useState<{ count: number; stoppedReason: string | null } | null>(null);
 
