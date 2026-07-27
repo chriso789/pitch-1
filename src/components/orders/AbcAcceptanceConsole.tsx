@@ -466,7 +466,12 @@ export default function AbcAcceptanceConsole() {
       toast({ title: 'Resolve lines first', variant: 'destructive' });
       return;
     }
+    if (!serverValidated) {
+      const ok = await runValidation(null);
+      if (!ok) return;
+    }
     setPreparing(true);
+
     const { data, error } = await edgeApi<any>('supplier-api', '/orders/prepare', {
       supplier: 'abc',
       supplier_connection_id: connection?.id ?? null,
