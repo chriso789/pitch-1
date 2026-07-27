@@ -406,8 +406,8 @@ export async function ingestAbcCatalogItems(
     }
 
     // --- supplier mapping proposal ---------------------------------------
-    const fingerprint = await fingerprintItem(item);
-    const nowIso = new Date().toISOString();
+    // fingerprint / nowIso computed above with the catalog row.
+
 
     let existingQ = supabase
       .from("supplier_item_mappings")
