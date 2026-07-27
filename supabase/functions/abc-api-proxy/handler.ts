@@ -1321,17 +1321,24 @@ export const handle = async (req) => {
       }
 
       const items = Object.values(collected);
+      const { data: connRow } = await supabase
+        .from("abc_connections")
+        .select("id")
+        .eq("tenant_id", tenant_id)
+        .eq("environment", env)
+        .maybeSingle();
       let summary;
       try {
         summary = await ingestAbcCatalogItems(supabase, items, {
           tenantId: tenant_id,
-          supplierConnectionId: connectionId ?? null,
+          supplierConnectionId: (connRow as any)?.id ?? null,
           branchCode: branchNumber || null,
           createdBy: userId ?? null,
         });
       } catch (e) {
         return json({ success: false, error: "ingest_failed", message: String((e as Error)?.message ?? e) }, 500);
       }
+
 
       await auditCall(supabase, {
         tenant_id, environment: env, action,
