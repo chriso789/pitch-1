@@ -304,12 +304,66 @@ export async function ingestAbcCatalogItems(
       continue;
     }
 
+    identityQueue.push({ item, itemNumber, fingerprint, nowIso });
+  }
+
+  // ---- catalog cache persistence -------------------------------------------
+  // Runs BEFORE the identity pass: the sweep is worthless if a timeout in the
+  // per-SKU mapping work throws away the whole cached catalog.
+  for (let i = 0; i < catalogRows.length; i += 100) {
+    const chunk = catalogRows.slice(i, i + 100);
+    const numbers = chunk.map((r) => r.item_number as string);
+    let existingQ = supabase
+      .from("abc_catalog_items")
+      .select("id, item_number")
+      .eq("tenant_id", opts.tenantId)
+      .eq("environment", environment)
+      .in("item_number", numbers);
+    existingQ = branchNumber ? existingQ.eq("branch_number", branchNumber) : existingQ.is("branch_number", null);
+    const { data: existingRows } = await existingQ;
+    const byNumber = new Map<string, string>(
+      ((existingRows ?? []) as Rec[]).map((r) => [r.item_number as string, r.id as string]),
+    );
+
+    const inserts = chunk.filter((r) => !byNumber.has(r.item_number as string));
+    if (inserts.length) {
+      const { error } = await supabase.from("abc_catalog_items").insert(inserts);
+      if (!error) summary.catalog_upserted += inserts.length;
+      else summary.skipped.push({ itemNumber: "(chunk)", reason: `catalog_insert_failed:${error.message}` });
+    }
+    for (const row of chunk) {
+      const id = byNumber.get(row.item_number as string);
+      if (!id) continue;
+      const { error } = await supabase.from("abc_catalog_items").update(row).eq("id", id);
+      if (!error) summary.catalog_upserted += 1;
+    }
+  }
+
+  // Catalog-only sweeps stop here; mapping proposals are produced by the
+  // dedicated "Ingest → mapping proposals" action, which has its own budget.
+  if (opts.catalogOnly) return summary;
+
+  // ---- identity + mapping proposals ----------------------------------------
+  const identityDeadline = opts.identityDeadlineMs ?? null;
+  for (const entry of identityQueue) {
+    if (identityDeadline && Date.now() > identityDeadline) {
+      summary.skipped.push({ itemNumber: "(remaining)", reason: "identity_time_budget" });
+      break;
+    }
+    const { item, itemNumber, fingerprint, nowIso } = entry;
+    const h = hierarchy(item);
+    const color = (item.color as Rec | undefined) ?? {};
+    const colorName = str(color.name);
+    const colorCode = str(color.code);
+    const uoms = abcUoms(item);
+    const description =
+      str(item.itemDescription) ?? str(item.description) ?? str(item.familyName) ?? itemNumber;
+    const cls = classifyAbcProduct(h.productType, description);
+
     const manufacturerName = str(item.supplierName) ?? (h.brandLine ? h.brandLine.split(" ")[0] : null);
     const productLineName = h.brandLine ?? str(item.familyName);
     const variantName = str(item.familyName) ?? description;
     const canonicalUom = uoms.order;
-
-
 
     if (!manufacturerName || !productLineName || !variantName || !canonicalUom) {
       summary.skipped.push({ itemNumber, reason: "missing_canonical_identity_fields" });
