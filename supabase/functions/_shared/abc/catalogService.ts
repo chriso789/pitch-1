@@ -151,6 +151,10 @@ export function buildSearchProductsPayload(input: SearchAbcCatalogInput): {
   }
 
   return {
+    // ABC only returns color-specific child SKUs when family expansion is
+    // requested. Without this the search yields family parents that are not
+    // orderable, so colors can never resolve to an exact item number.
+    familyItems: true,
     filters,
     pagination: {
       itemsPerPage: clampItemsPerPage(input?.itemsPerPage),
@@ -158,6 +162,7 @@ export function buildSearchProductsPayload(input: SearchAbcCatalogInput): {
     },
   };
 }
+
 
 export async function searchAbcCatalog(
   deps: AbcCatalogHttpDeps,
