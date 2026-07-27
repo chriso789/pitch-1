@@ -39,6 +39,8 @@ import { AbcDiagnosticsPanel } from './AbcDiagnosticsPanel';
 import { useSupplierDeveloperMode } from '@/lib/supplierAccess';
 import { AbcWebhookPanel } from '@/components/settings/abc/AbcWebhookPanel';
 import { AbcCatalogBrowser } from '@/components/orders/AbcCatalogBrowser';
+import SupplierMappingApprovalPanel from '@/components/orders/SupplierMappingApprovalPanel';
+
 import { useAbcConnectionStatus } from '@/hooks/useAbcConnectionStatus';
 import { AbcTenantConnectCard } from './AbcTenantConnectCard';
 
