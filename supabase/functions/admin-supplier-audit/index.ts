@@ -94,6 +94,52 @@ Deno.serve(async (req) => {
       source: "supplier_audit_log",
     }));
 
+    // ABC writes its request/response trail to abc_api_audit (not
+    // supplier_audit_log), so merge it in for the ABC payload feed.
+    if (supplier === "abc") {
+      let aq = admin
+        .from("abc_api_audit")
+        .select(
+          "id, tenant_id, environment, action, endpoint, request_body_redacted, status_code, response_body, error_code, duration_ms, created_by, created_at",
+        )
+        .order("created_at", { ascending: false })
+        .limit(limit);
+      if (tenantId) aq = aq.eq("tenant_id", tenantId);
+      if (actionFilter) aq = aq.ilike("action", `%${actionFilter}%`);
+      const { data: abcRows } = await aq;
+
+      for (const a of abcRows ?? []) {
+        merged.push({
+          id: a.id,
+          created_at: a.created_at,
+          supplier: "abc",
+          action: a.action,
+          result: a.error_code
+            ? "error"
+            : a.status_code && a.status_code >= 400
+              ? `http_${a.status_code}`
+              : "ok",
+          tenant_id: a.tenant_id,
+          request_id: null,
+          metadata: {
+            environment: a.environment,
+            endpoint: a.endpoint,
+            status_code: a.status_code,
+            duration_ms: a.duration_ms,
+            error_code: a.error_code,
+            request: a.request_body_redacted,
+            response: a.response_body,
+          },
+          user_id: a.created_by,
+          source: "abc_api_audit",
+        });
+      }
+
+      merged.sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
+      merged = merged.slice(0, limit);
+    }
+
+
     // For QBO, also surface webhook + reconciliation trails which live in
     // dedicated tables (qbo_webhook_events, invoice_reconciliation_events).
     if (supplier === "qbo") {
