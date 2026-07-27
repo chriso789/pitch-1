@@ -18,6 +18,8 @@ import { DocumentScannerDialog } from '@/components/documents/DocumentScannerDia
 import { useToast } from '@/hooks/use-toast';
 import { formatDistanceToNow, isAfter, isBefore, startOfDay, endOfDay } from 'date-fns';
 import { DocumentPreviewModal } from '@/components/documents/DocumentPreviewModal';
+import { resolveStorageBucket, extractStorageRef } from '@/lib/documents/resolveStorageBucket';
+
 import { DocumentRenameDialog } from '@/features/documents/components/DocumentRenameDialog';
 import { DocumentSearchFilters } from '@/components/documents/DocumentSearchFilters';
 import { AddSmartDocToProjectDialog } from '@/components/documents/AddSmartDocToProjectDialog';
