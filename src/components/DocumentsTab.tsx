@@ -623,9 +623,12 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
 
   const handleDownload = async (doc: Document) => {
     try {
-      const isExternalUrl = doc.file_path.startsWith('http://') || 
-                           doc.file_path.startsWith('https://') || 
-                           doc.file_path.startsWith('data:');
+      const isExternalUrl = !extractStorageRef(doc.file_path) && (
+        doc.file_path.startsWith('http://') ||
+        doc.file_path.startsWith('https://') ||
+        doc.file_path.startsWith('data:')
+      );
+
       
       if (isExternalUrl) {
         const a = document.createElement('a');
