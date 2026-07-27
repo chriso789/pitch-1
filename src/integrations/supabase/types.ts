@@ -30625,6 +30625,86 @@ export type Database = {
           },
         ]
       }
+      mfr_system_compatibility: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          companion_color_id: string | null
+          companion_variant_id: string
+          created_at: string
+          evidence_reference: string | null
+          evidence_source: string
+          field_color_id: string | null
+          field_variant_id: string
+          id: string
+          is_active: boolean
+          relationship: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          companion_color_id?: string | null
+          companion_variant_id: string
+          created_at?: string
+          evidence_reference?: string | null
+          evidence_source?: string
+          field_color_id?: string | null
+          field_variant_id: string
+          id?: string
+          is_active?: boolean
+          relationship?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          companion_color_id?: string | null
+          companion_variant_id?: string
+          created_at?: string
+          evidence_reference?: string | null
+          evidence_source?: string
+          field_color_id?: string | null
+          field_variant_id?: string
+          id?: string
+          is_active?: boolean
+          relationship?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mfr_system_compatibility_companion_color_id_fkey"
+            columns: ["companion_color_id"]
+            isOneToOne: false
+            referencedRelation: "mfr_colors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mfr_system_compatibility_companion_variant_id_fkey"
+            columns: ["companion_variant_id"]
+            isOneToOne: false
+            referencedRelation: "mfr_product_variants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mfr_system_compatibility_field_color_id_fkey"
+            columns: ["field_color_id"]
+            isOneToOne: false
+            referencedRelation: "mfr_colors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mfr_system_compatibility_field_variant_id_fkey"
+            columns: ["field_variant_id"]
+            isOneToOne: false
+            referencedRelation: "mfr_product_variants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       mobile_activity_logs: {
         Row: {
           activity_type: string
@@ -56487,6 +56567,7 @@ export type Database = {
       supplier_order_submissions: {
         Row: {
           branch_code: string | null
+          compatibility_evidence: Json | null
           created_at: string
           estimate_id: string | null
           failure_reason: string | null
@@ -56495,12 +56576,17 @@ export type Database = {
           line_results: Json
           mapping_revisions: Json
           material_order_id: string | null
+          order_context: Json | null
           order_version: number
           outbound_payload: Json
           payload_hash: string
+          preview_generated_at: string | null
+          preview_generated_by: string | null
+          pricing_snapshot: Json | null
           project_id: string | null
           reconciled_at: string | null
           resolved_lines: Json
+          stage_results: Json | null
           state: Database["public"]["Enums"]["supplier_submission_state"]
           submitted_at: string | null
           submitted_by: string | null
@@ -56515,6 +56601,7 @@ export type Database = {
         }
         Insert: {
           branch_code?: string | null
+          compatibility_evidence?: Json | null
           created_at?: string
           estimate_id?: string | null
           failure_reason?: string | null
@@ -56523,12 +56610,17 @@ export type Database = {
           line_results?: Json
           mapping_revisions?: Json
           material_order_id?: string | null
+          order_context?: Json | null
           order_version?: number
           outbound_payload: Json
           payload_hash: string
+          preview_generated_at?: string | null
+          preview_generated_by?: string | null
+          pricing_snapshot?: Json | null
           project_id?: string | null
           reconciled_at?: string | null
           resolved_lines?: Json
+          stage_results?: Json | null
           state?: Database["public"]["Enums"]["supplier_submission_state"]
           submitted_at?: string | null
           submitted_by?: string | null
@@ -56543,6 +56635,7 @@ export type Database = {
         }
         Update: {
           branch_code?: string | null
+          compatibility_evidence?: Json | null
           created_at?: string
           estimate_id?: string | null
           failure_reason?: string | null
@@ -56551,12 +56644,17 @@ export type Database = {
           line_results?: Json
           mapping_revisions?: Json
           material_order_id?: string | null
+          order_context?: Json | null
           order_version?: number
           outbound_payload?: Json
           payload_hash?: string
+          preview_generated_at?: string | null
+          preview_generated_by?: string | null
+          pricing_snapshot?: Json | null
           project_id?: string | null
           reconciled_at?: string | null
           resolved_lines?: Json
+          stage_results?: Json | null
           state?: Database["public"]["Enums"]["supplier_submission_state"]
           submitted_at?: string | null
           submitted_by?: string | null
@@ -56568,6 +56666,36 @@ export type Database = {
           supplier_response_redacted?: Json | null
           tenant_id?: string
           user_selections?: Json
+        }
+        Relationships: []
+      }
+      supplier_po_sequences: {
+        Row: {
+          created_at: string
+          id: string
+          last_number: number
+          prefix: string
+          supplier: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_number?: number
+          prefix?: string
+          supplier: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_number?: number
+          prefix?: string
+          supplier?: string
+          tenant_id?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -65054,6 +65182,10 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      next_supplier_po_number: {
+        Args: { _supplier: string; _tenant_id: string }
+        Returns: string
       }
       normalize_email: { Args: { email_text: string }; Returns: string }
       normalize_material_description: {
