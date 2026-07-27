@@ -15,9 +15,23 @@ const json = (body: Record<string, unknown>, status = 200) =>
 const isUuid = (value: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
+function extractStorageRef(value?: string | null): { bucket: string; path: string } | null {
+  if (!value || !/^https?:\/\//i.test(value)) return null;
+  const match = value.match(
+    /\/storage\/v1\/object\/(?:public|sign|authenticated)\/([^/?]+)\/(.+?)(?:\?|$)/,
+  );
+  if (!match) return null;
+  return { bucket: match[1], path: decodeURIComponent(match[2]) };
+}
+
 function resolveStorageBucket(documentType?: string | null, filePath?: string | null): string {
+  const fromUrl = extractStorageRef(filePath);
+  if (fromUrl) return fromUrl.bucket;
   if (documentType === "company_resource") return "smartdoc-assets";
   if (filePath?.startsWith("company-docs/")) return "smartdoc-assets";
+  if (documentType?.startsWith("invoice_") || documentType === "supplier_quote") {
+    return "project-invoices";
+  }
   if (
     documentType === "photo" ||
     documentType === "inspection_photo" ||
@@ -28,6 +42,7 @@ function resolveStorageBucket(documentType?: string | null, filePath?: string | 
   }
   return "documents";
 }
+
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
