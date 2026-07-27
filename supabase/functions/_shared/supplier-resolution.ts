@@ -465,11 +465,27 @@ export async function preflightSupplierOrder(
 
 /** Stable fingerprint of an outbound payload, used for the immutable snapshot. */
 export async function hashPayload(payload: unknown): Promise<string> {
-  const json = JSON.stringify(payload, Object.keys(payload as object).sort());
+  // Recursively key-sorted serialization. A top-level key allowlist would drop
+  // every nested field (item codes, colors, quantities) from the digest, which
+  // would let two materially different orders share one idempotency key.
+  const stable = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(stable);
+    if (v && typeof v === "object") {
+      return Object.keys(v as Record<string, unknown>)
+        .sort()
+        .reduce((acc: Record<string, unknown>, k) => {
+          acc[k] = stable((v as Record<string, unknown>)[k]);
+          return acc;
+        }, {});
+    }
+    return v;
+  };
+  const json = JSON.stringify(stable(payload));
   const bytes = new TextEncoder().encode(json);
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
+
 
 /** Deterministic idempotency key so a retry can never place a duplicate order. */
 export function buildIdempotencyKey(parts: {
