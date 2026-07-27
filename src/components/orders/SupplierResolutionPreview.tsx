@@ -90,8 +90,10 @@ export function SupplierResolutionPreview({
                 <th className="p-2 text-left">Branch</th>
                 <th className="p-2 text-right">Qty</th>
                 <th className="p-2 text-left">UOM</th>
-                <th className="p-2 text-left">Status</th>
+                <th className="p-2 text-left">Resolution source</th>
+                <th className="p-2 text-left">Validation status</th>
               </tr>
+
             </thead>
             <tbody>
               {lines.length === 0 ? (
