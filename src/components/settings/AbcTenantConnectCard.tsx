@@ -224,8 +224,6 @@ export function AbcTenantConnectCard() {
                 400 Bad Request, switch back to Sandbox.
               </p>
             )}
-
-            </Button>
           </div>
         )}
 
