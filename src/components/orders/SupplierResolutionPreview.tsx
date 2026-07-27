@@ -98,7 +98,7 @@ export function SupplierResolutionPreview({
             <tbody>
               {lines.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="p-4 text-center text-muted-foreground">
+                  <td colSpan={12} className="p-4 text-center text-muted-foreground">
                     No material lines to resolve.
                   </td>
                 </tr>
