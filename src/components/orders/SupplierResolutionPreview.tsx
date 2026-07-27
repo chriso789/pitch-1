@@ -5,6 +5,12 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
 import { FAILURE_LABELS, type ResolvedLine } from '@/lib/suppliers/resolution';
 
+const SOURCE_LABELS: Record<string, string> = {
+  api: 'Supplier API catalog',
+  catalog_import: 'Catalog import',
+  manual_approved: 'Manually approved',
+};
+
 interface Props {
   supplierLabel: string;
   branchLabel?: string | null;
