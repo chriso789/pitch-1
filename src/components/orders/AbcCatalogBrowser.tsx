@@ -431,6 +431,44 @@ export const AbcCatalogBrowser: React.FC = () => {
     }
   };
 
+  // Sweep ABC → cache items → canonical identity → PENDING mapping proposals.
+  // Nothing auto-approves; the strict resolver still blocks unreviewed rows.
+  const ingestCatalog = async () => {
+    if (!tenantId || !branchNumber) {
+      toast({
+        title: 'Branch required',
+        description: 'Sync a Ship-To + Branch first so mappings are branch-scoped.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setIngesting(true);
+    setError(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
+        body: {
+          action: 'ingest_catalog',
+          tenant_id: tenantId,
+          environment: effectiveEnvironment,
+          branchNumber,
+          maxItems: 1500,
+        },
+      });
+      if (error) throw new Error(error.message);
+      if (!data?.success) throw new Error(data?.message || data?.error || 'ingest_catalog failed');
+      const s = data.summary || {};
+      toast({
+        title: 'ABC catalog ingested',
+        description: `${s.catalog_upserted ?? 0} items cached · ${s.variants_created ?? 0} variants · ${s.colors_created ?? 0} colors · ${s.mappings_created ?? 0} new mappings (${s.mappings_updated ?? 0} re-flagged) awaiting approval.`,
+      });
+    } catch (e: any) {
+      setError(e?.message || 'Could not ingest ABC catalog.');
+    } finally {
+      setIngesting(false);
+    }
+  };
+
+
   return (
     <Card>
       <CardHeader>
