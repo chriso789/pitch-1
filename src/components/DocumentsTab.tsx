@@ -18,6 +18,8 @@ import { DocumentScannerDialog } from '@/components/documents/DocumentScannerDia
 import { useToast } from '@/hooks/use-toast';
 import { formatDistanceToNow, isAfter, isBefore, startOfDay, endOfDay } from 'date-fns';
 import { DocumentPreviewModal } from '@/components/documents/DocumentPreviewModal';
+import { resolveStorageBucket, extractStorageRef } from '@/lib/documents/resolveStorageBucket';
+
 import { DocumentRenameDialog } from '@/features/documents/components/DocumentRenameDialog';
 import { DocumentSearchFilters } from '@/components/documents/DocumentSearchFilters';
 import { AddSmartDocToProjectDialog } from '@/components/documents/AddSmartDocToProjectDialog';
@@ -94,23 +96,26 @@ const DocumentThumbnail: React.FC<{
   
   useEffect(() => {
     if (isImage && doc.file_path) {
-      // Check if it's already a full URL (external)
-      const isExternalUrl = doc.file_path.startsWith('http://') || 
-                           doc.file_path.startsWith('https://') || 
-                           doc.file_path.startsWith('data:');
-      
+      const storageRef = extractStorageRef(doc.file_path);
+      const isExternalUrl = !storageRef && (
+        doc.file_path.startsWith('http://') ||
+        doc.file_path.startsWith('https://') ||
+        doc.file_path.startsWith('data:')
+      );
+
       if (isExternalUrl) {
         setThumbUrl(doc.file_path);
       } else {
-        // Get public URL from storage
-        const bucket = doc.document_type === 'photo' ? 'customer-photos' : 'documents';
-        const { data } = supabase.storage.from(bucket).getPublicUrl(doc.file_path);
+        const bucket = storageRef?.bucket ?? resolveStorageBucket(doc.document_type, doc.file_path);
+        const path = storageRef?.path ?? doc.file_path;
+        const { data } = supabase.storage.from(bucket).getPublicUrl(path);
         if (data?.publicUrl) {
           setThumbUrl(data.publicUrl);
         }
       }
     }
   }, [doc.file_path, isImage, doc.document_type]);
+
   
   if (isImage && thumbUrl && !loadError) {
     return (
@@ -618,9 +623,12 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
 
   const handleDownload = async (doc: Document) => {
     try {
-      const isExternalUrl = doc.file_path.startsWith('http://') || 
-                           doc.file_path.startsWith('https://') || 
-                           doc.file_path.startsWith('data:');
+      const isExternalUrl = !extractStorageRef(doc.file_path) && (
+        doc.file_path.startsWith('http://') ||
+        doc.file_path.startsWith('https://') ||
+        doc.file_path.startsWith('data:')
+      );
+
       
       if (isExternalUrl) {
         const a = document.createElement('a');

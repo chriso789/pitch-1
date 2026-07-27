@@ -15,9 +15,23 @@ const json = (body: Record<string, unknown>, status = 200) =>
 const isUuid = (value: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
+function extractStorageRef(value?: string | null): { bucket: string; path: string } | null {
+  if (!value || !/^https?:\/\//i.test(value)) return null;
+  const match = value.match(
+    /\/storage\/v1\/object\/(?:public|sign|authenticated)\/([^/?]+)\/(.+?)(?:\?|$)/,
+  );
+  if (!match) return null;
+  return { bucket: match[1], path: decodeURIComponent(match[2]) };
+}
+
 function resolveStorageBucket(documentType?: string | null, filePath?: string | null): string {
+  const fromUrl = extractStorageRef(filePath);
+  if (fromUrl) return fromUrl.bucket;
   if (documentType === "company_resource") return "smartdoc-assets";
   if (filePath?.startsWith("company-docs/")) return "smartdoc-assets";
+  if (documentType?.startsWith("invoice_") || documentType === "supplier_quote") {
+    return "project-invoices";
+  }
   if (
     documentType === "photo" ||
     documentType === "inspection_photo" ||
@@ -28,6 +42,7 @@ function resolveStorageBucket(documentType?: string | null, filePath?: string | 
   }
   return "documents";
 }
+
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -93,28 +108,35 @@ Deno.serve(async (req: Request) => {
     }
     if (!allowed) return json({ error: "forbidden" }, 403);
 
+    const storageRef = extractStorageRef(doc.file_path);
     const bucket = resolveStorageBucket(doc.document_type, doc.file_path);
-    const candidatePaths = new Set<string>([doc.file_path]);
+    const basePath = storageRef?.path ?? doc.file_path;
 
-    if (bucket === "documents" && doc.tenant_id && doc.file_path) {
-      const parts = doc.file_path.split("/").filter(Boolean);
+    // (bucket, path) candidates — stored URLs, raw paths, and legacy tenant-prefixed paths
+    const candidates: Array<{ bucket: string; path: string }> = [{ bucket, path: basePath }];
+
+    if (doc.tenant_id && basePath) {
+      const parts = basePath.split("/").filter(Boolean);
       const first = parts[0];
       if (first && isUuid(first) && first !== doc.tenant_id && doc.pipeline_entry_id && first === doc.pipeline_entry_id) {
-        candidatePaths.add(`${doc.tenant_id}/${doc.file_path}`);
+        candidates.push({ bucket, path: `${doc.tenant_id}/${basePath}` });
       }
     }
 
-    let resolvedPath: string | null = null;
-    for (const path of candidatePaths) {
+    // Fallback buckets in case the document row was written with a stale bucket mapping
+    for (const fallback of ["documents", "project-invoices", "customer-photos", "smartdoc-assets"]) {
+      if (fallback !== bucket) candidates.push({ bucket: fallback, path: basePath });
+    }
+
+    for (const candidate of candidates) {
       const { data: signed, error: signedError } = await admin.storage
-        .from(bucket)
-        .createSignedUrl(path, Number(expires_in) || 3600);
+        .from(candidate.bucket)
+        .createSignedUrl(candidate.path, Number(expires_in) || 3600);
       if (!signedError && signed?.signedUrl) {
-        resolvedPath = path;
         return json({
           signedUrl: signed.signedUrl,
-          bucket,
-          path,
+          bucket: candidate.bucket,
+          path: candidate.path,
           filename: doc.filename,
           mime_type: doc.mime_type,
         });
@@ -124,9 +146,10 @@ Deno.serve(async (req: Request) => {
     console.warn("[get-document-access-url] no accessible storage object", {
       document_id,
       bucket,
-      paths: Array.from(candidatePaths),
+      candidates,
     });
-    return json({ error: "storage_object_not_found", bucket, path: resolvedPath ?? doc.file_path }, 404);
+    return json({ error: "storage_object_not_found", bucket, path: basePath }, 404);
+
   } catch (error) {
     console.error("[get-document-access-url] unexpected error", error);
     return json({ error: "unexpected_error" }, 500);
