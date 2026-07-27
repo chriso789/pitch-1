@@ -73,6 +73,14 @@ export function AbcTenantConnectCard() {
   const { toast } = useToast();
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  // ABC production OAuth is only usable once ABC approves the production Okta
+  // app for this redirect URI. Until a production connection exists for the
+  // tenant, default to the environment that is actually provisioned so the
+  // user is not dropped on ABC's 400 Bad Request page.
+  const [environment, setEnvironment] = useState<'sandbox' | 'production'>(
+    status.environment === 'production' ? 'production' : 'sandbox',
+  );
+
 
   const isConnected = status.state === 'connected';
 
@@ -95,9 +103,8 @@ export function AbcTenantConnectCard() {
         body: {
           action: 'start_oauth',
           tenant_id: tenantId,
-          // Tenant OAuth always uses production myABCsupply; sandbox is
-          // developer-tools-only and would reject real customer credentials.
-          environment: 'production',
+          environment,
+
           return_origin: window.location.origin,
         },
       });
@@ -136,7 +143,7 @@ export function AbcTenantConnectCard() {
         body: {
           action: 'disconnect',
           tenant_id: tenantId,
-          environment: status.environment || 'production',
+          environment: status.environment || environment,
         },
       });
       if (error) throw error;
@@ -183,16 +190,40 @@ export function AbcTenantConnectCard() {
               and ship-to locations will populate automatically — no account numbers or branch
               codes to type.
             </p>
-            <Button onClick={handleConnect} disabled={connecting || !tenantId}>
-              {connecting ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <ExternalLink className="h-4 w-4 mr-2" />
-              )}
-              {status.state === 'expired' || status.state === 'error'
-                ? 'Reconnect ABC Account'
-                : 'Connect ABC Account'}
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button onClick={handleConnect} disabled={connecting || !tenantId}>
+                {connecting ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                )}
+                {status.state === 'expired' || status.state === 'error'
+                  ? 'Reconnect ABC Account'
+                  : 'Connect ABC Account'}
+              </Button>
+              <div className="inline-flex rounded-md border p-0.5">
+                {(['sandbox', 'production'] as const).map((envOption) => (
+                  <button
+                    key={envOption}
+                    type="button"
+                    onClick={() => setEnvironment(envOption)}
+                    className={`px-2.5 py-1 text-xs rounded-sm capitalize transition-colors ${
+                      environment === envOption
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {envOption}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {environment === 'production' && (
+              <p className="text-xs text-muted-foreground">
+                Production requires ABC to have approved this app's redirect URI. If ABC shows a
+                400 Bad Request, switch back to Sandbox.
+              </p>
+            )}
           </div>
         )}
 
