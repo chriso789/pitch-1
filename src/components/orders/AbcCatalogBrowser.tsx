@@ -509,7 +509,7 @@ export const AbcCatalogBrowser: React.FC = () => {
       }
       toast({
         title: completed ? 'ABC catalog ingested' : 'ABC catalog ingest paused',
-        description: `${totals.items_seen ?? 0} items scanned · ${totals.variants_created ?? 0} variants · ${totals.colors_created ?? 0} colors · ${totals.mappings_created ?? 0} new mappings (${totals.mappings_updated ?? 0} re-flagged) awaiting approval.${completed ? '' : ' Run it again to continue where it stopped.'}`,
+        description: `${totals.items_seen ?? 0} items scanned · ${totals.variants_created ?? 0} variants · ${totals.colors_created ?? 0} colors · ${totals.mappings_created ?? 0} new mappings · ${totals.mappings_updated ?? 0} existing mappings updated without deleting approvals.${completed ? '' : ' Run it again to continue where it stopped.'}`,
       });
 
     } catch (e: any) {
