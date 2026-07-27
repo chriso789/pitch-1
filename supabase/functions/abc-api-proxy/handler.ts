@@ -1271,6 +1271,79 @@ export const handle = async (req) => {
       });
     }
 
+    // ---------------- ingest_catalog ----------------
+    // Live ABC search sweep → abc_catalog_items cache + canonical identity
+    // (manufacturer / product line / color / variant) + supplier_item_mappings
+    // proposals (mapping_source='api', approval_state='pending'). Nothing is
+    // auto-approved: the strict resolver still refuses unreviewed mappings.
+    if (action === "ingest_catalog") {
+      const branchNumber = String(body.branchNumber || "").trim();
+      const queries: string[] = Array.isArray(body.queries) && body.queries.length
+        ? body.queries.map((q: unknown) => String(q).trim()).filter(Boolean)
+        : ["shingle", "underlayment", "ridge", "starter", "drip edge", "nail", "vent", "pipe boot", "ice", "valley", "coil", "sealant"];
+      const perPage = Math.min(Math.max(Number(body.itemsPerPage) || 100, 25), 100);
+      const maxPagesPerQuery = Math.min(Math.max(Number(body.maxPagesPerQuery) || 5, 1), 20);
+      const maxItems = Math.min(Math.max(Number(body.maxItems) || 1500, 25), 5000);
+      const deadline = Date.now() + 45_000;
+
+      const collected: Record<string, unknown> = {};
+      const queryStats: Array<{ query: string; pages: number; added: number }> = [];
+      let stoppedReason: string | null = null;
+
+      queryLoop:
+      for (const q of queries) {
+        if (Date.now() > deadline) { stoppedReason = "time_budget"; break; }
+        if (Object.keys(collected).length >= maxItems) { stoppedReason = "max_items"; break; }
+        let pages = 0;
+        let added = 0;
+        for (let page = 1; page <= maxPagesPerQuery; page++) {
+          if (Date.now() > deadline) { stoppedReason = "time_budget"; break queryLoop; }
+          const result = await searchAbcCatalog(
+            { apiBase: cfg.apiBase, token: tok.token, callAbc, mapAbcError },
+            { query: q, branchNumber: branchNumber || undefined, itemsPerPage: perPage, pageNumber: page },
+          );
+          pages++;
+          if (!result.success) { stoppedReason = stoppedReason || `abc_error:${result.error_code || result.status}`; break; }
+          const bodyAny = result.body as any;
+          const raw = bodyAny?.items || bodyAny?.data || bodyAny?.results || bodyAny?.searchResults || [];
+          if (!Array.isArray(raw) || raw.length === 0) break;
+          for (const it of raw) {
+            const num = String((it as any)?.itemNumber || (it as any)?.item_number || "").trim();
+            if (!num || collected[num]) continue;
+            collected[num] = it;
+            added++;
+            if (Object.keys(collected).length >= maxItems) { stoppedReason = "max_items"; break; }
+          }
+          if (Object.keys(collected).length >= maxItems) break;
+          if (raw.length < perPage) break;
+        }
+        queryStats.push({ query: q, pages, added });
+      }
+
+      const items = Object.values(collected);
+      let summary;
+      try {
+        summary = await ingestAbcCatalogItems(supabase, items, {
+          tenantId: tenant_id,
+          supplierConnectionId: connectionId ?? null,
+          branchCode: branchNumber || null,
+          createdBy: userId ?? null,
+        });
+      } catch (e) {
+        return json({ success: false, error: "ingest_failed", message: String((e as Error)?.message ?? e) }, 500);
+      }
+
+      await auditCall(supabase, {
+        tenant_id, environment: env, action,
+        endpoint: `${cfg.apiBase}/product/v1/search/items (ingest sweep)`,
+        request_body_redacted: { branchNumber, queries, perPage, maxItems },
+        status_code: 200, response_body: { ...summary, stoppedReason, queryStats },
+        error_code: null, duration_ms: Date.now() - startedAt, created_by: userId,
+      });
+
+      return json({ success: true, environment: env, branchNumber, stoppedReason, queryStats, summary });
+    }
+
 
     if (action === "get_item") {
       const itm = (body.itemNumber || "").toString().trim();
