@@ -608,6 +608,252 @@ app.post("/orders/reconcile", async (c) => {
   return jsonOk(c, result);
 });
 
+// ===========================================================================
+// ONE-BUTTON ORCHESTRATED ORDER BUILD
+//
+// Auth mode: AUTHENTICATED TENANT ROUTE.
+// `/orders/build` runs resolve → mapping verification → manufacturer
+// compatibility → branch/Ship-To validation → ABC pricing → payload build →
+// immutable preview snapshot as ONE server operation. The browser cannot chain
+// trusted results and cannot supply item codes, UOMs, prices, branch values,
+// mapping IDs or payload fields — all of those are ignored if present.
+// NOTHING here ever calls the supplier "place order" endpoint.
+// ===========================================================================
+
+function parseBuildRequest(body: any): BuildRequest {
+  const lines = (Array.isArray(body?.lines) ? body.lines : []).map((l: any, i: number) => ({
+    key: String(l?.key ?? i),
+    role: (["field", "ridge", "starter", "accessory"].includes(String(l?.role)) ? String(l.role) : "accessory") as any,
+    variant_id: String(l?.variant_id ?? ""),
+    color_id: l?.color_id ? String(l.color_id) : null,
+    uom: String(l?.uom ?? ""),
+    quantity: Number(l?.quantity ?? 0),
+  }));
+  const ctx = body?.order_context ?? {};
+  const addr = ctx?.delivery_address ?? null;
+  return {
+    supplier: "abc",
+    supplier_connection_id: body?.supplier_connection_id ?? null,
+    supplier_account_number: body?.supplier_account_number ?? null,
+    branch_code: body?.branch_code ?? null,
+    ship_to_number: body?.ship_to_number ?? null,
+    project_id: body?.project_id ?? null,
+    estimate_id: body?.estimate_id ?? null,
+    material_order_id: body?.material_order_id ?? null,
+    order_version: Number(body?.order_version ?? 1),
+    lines,
+    order_context: {
+      po_number: ctx?.po_number ? String(ctx.po_number) : null,
+      job_name: ctx?.job_name ?? null,
+      customer_name: ctx?.customer_name ?? null,
+      delivery_address: addr
+        ? {
+          line1: addr.line1 ?? null,
+          line2: addr.line2 ?? null,
+          city: addr.city ?? null,
+          state: addr.state ?? null,
+          postal_code: addr.postal_code ?? null,
+        }
+        : null,
+      requested_delivery_date: ctx?.requested_delivery_date ?? null,
+      delivery_date_tbd: ctx?.delivery_date_tbd === true,
+      delivery_method: ctx?.delivery_method ?? null,
+      contact_name: ctx?.contact_name ?? null,
+      contact_phone: ctx?.contact_phone ?? null,
+      notes: ctx?.notes ?? null,
+    },
+  };
+}
+
+function abcActionCaller(c: any, tenantId: string, environment: string) {
+  return async (payload: Record<string, unknown>) => {
+    const res = await abcProxyHandle(
+      new Request("https://internal/abc/proxy", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: c.req.header("authorization") ?? "",
+          apikey: c.req.header("apikey") ?? "",
+        },
+        body: JSON.stringify({ ...payload, tenant_id: tenantId, environment }),
+      }),
+    );
+    try {
+      return await res.json();
+    } catch {
+      throw new Error(`ABC proxy returned a non-JSON response (HTTP ${res.status}).`);
+    }
+  };
+}
+
+app.post("/orders/build", async (c) => {
+  const tenantId = c.get("tenantId") as string;
+  const userId = c.get("userId") as string;
+  const svc = serviceClient();
+  let body: any;
+  try { body = await c.req.json(); } catch { return jsonErr(c, "invalid_json", "Body must be JSON", 400); }
+
+  const req = parseBuildRequest(body);
+
+  const { data: conn } = await svc
+    .from("abc_connections")
+    .select("id, environment, account_number")
+    .eq("tenant_id", tenantId)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  // Connection identity is server-resolved; the client may only *select* it.
+  if (conn?.id) {
+    req.supplier_connection_id = conn.id;
+    req.supplier_account_number = conn.account_number ?? null;
+  }
+  const environment = String(conn?.environment ?? "sandbox");
+
+  const result = await buildSupplierOrderPreview(
+    { svc, tenantId, userId, callAbcAction: abcActionCaller(c, tenantId, environment) },
+    req,
+  );
+
+  // Audit every attempt, pass or fail.
+  await svc.from("abc_api_audit").insert({
+    tenant_id: tenantId,
+    environment,
+    action: "orders_build_preview",
+    endpoint: "/orders/build",
+    status_code: result.ok ? 200 : 422,
+    error_code: result.ok ? null : result.failed_stage,
+    response_body: result.ok
+      ? { submission_id: result.submission_id, payload_hash: result.payload_hash, reused: result.reused }
+      : { failed_stage: result.failed_stage, reason: result.reason, line_key: result.line_key },
+    created_by: userId,
+  }).then(() => {}, () => {});
+
+  if (!result.ok) {
+    return jsonErr(c, result.failed_stage, result.reason, 422, {
+      failed_stage: result.failed_stage,
+      stage_label: result.stage_label,
+      line_key: result.line_key,
+      correction: result.correction,
+      stages: result.stages,
+    });
+  }
+  return jsonOk(c, { ...result, environment });
+});
+
+// Restores a saved preview without re-running ABC pricing.
+app.get("/orders/preview", async (c) => {
+  const tenantId = c.get("tenantId") as string;
+  const svc = serviceClient();
+  const materialOrderId = c.req.query("material_order_id") ?? null;
+  const submissionId = c.req.query("submission_id") ?? null;
+
+  let q = svc
+    .from("supplier_order_submissions")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .eq("supplier", "abc")
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (submissionId) q = q.eq("id", submissionId);
+  else if (materialOrderId) q = q.eq("material_order_id", materialOrderId);
+  else q = q.is("material_order_id", null);
+
+  const { data, error } = await q.maybeSingle();
+  if (error) return jsonErr(c, "preview_read_failed", error.message, 500);
+  return jsonOk(c, { preview: data ?? null });
+});
+
+// Separate, explicitly-approved submission action. Re-validates server-side and
+// refuses when the order changed after the preview was generated.
+app.post("/orders/submit", async (c) => {
+  const tenantId = c.get("tenantId") as string;
+  const userId = c.get("userId") as string;
+  const svc = serviceClient();
+  let body: any;
+  try { body = await c.req.json(); } catch { return jsonErr(c, "invalid_json", "Body must be JSON", 400); }
+
+  const submissionId = String(body?.submission_id ?? "");
+  const approvedHash = String(body?.approved_payload_hash ?? "");
+  if (!submissionId || !approvedHash) {
+    return jsonErr(c, "missing_approval", "submission_id and approved_payload_hash are required", 400);
+  }
+
+  // Role gate — only owners/admins/managers may transmit a supplier order.
+  const { data: roles } = await svc
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", userId);
+  const allowed = (roles ?? []).some((r: any) =>
+    ["master", "owner", "admin", "manager"].includes(String(r.role))
+  );
+  if (!allowed) {
+    return jsonErr(c, "not_authorized", "Your role is not permitted to submit supplier orders.", 403);
+  }
+
+  const { data: snap, error } = await svc
+    .from("supplier_order_submissions")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .eq("id", submissionId)
+    .maybeSingle();
+  if (error) return jsonErr(c, "snapshot_read_failed", error.message, 500);
+  if (!snap) return jsonErr(c, "snapshot_not_found", "Preview snapshot not found", 404);
+  if (snap.payload_hash !== approvedHash) {
+    return jsonErr(c, "payload_hash_mismatch",
+      "The order changed after the preview was approved. Run Validate & Build ABC Order again.", 409);
+  }
+  if (snap.state !== "prepared") {
+    return jsonErr(c, "invalid_state", `Snapshot is in state '${snap.state}' and cannot be submitted.`, 409);
+  }
+
+  // Rebuild server-side from the saved order and compare the hash again.
+  const { data: conn } = await svc
+    .from("abc_connections")
+    .select("id, environment, account_number")
+    .eq("tenant_id", tenantId)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const environment = String(conn?.environment ?? "sandbox");
+
+  const rebuilt = await buildSupplierOrderPreview(
+    { svc, tenantId, userId, callAbcAction: abcActionCaller(c, tenantId, environment) },
+    {
+      supplier: "abc",
+      supplier_connection_id: snap.supplier_connection_id,
+      supplier_account_number: snap.supplier_account_number,
+      branch_code: snap.branch_code,
+      ship_to_number: (snap.order_context as any)?.ship_to_number ?? (snap.outbound_payload as any)?.shipToNumber ?? null,
+      project_id: snap.project_id,
+      estimate_id: snap.estimate_id,
+      material_order_id: snap.material_order_id,
+      order_version: snap.order_version,
+      lines: (snap.user_selections ?? []) as any[],
+      order_context: (snap.order_context ?? {}) as any,
+    },
+  );
+
+  if (!rebuilt.ok) {
+    return jsonErr(c, "revalidation_failed", rebuilt.reason, 422, {
+      failed_stage: rebuilt.failed_stage,
+      line_key: rebuilt.line_key,
+      correction: rebuilt.correction,
+    });
+  }
+  if (rebuilt.payload_hash !== approvedHash) {
+    return jsonErr(c, "payload_hash_mismatch",
+      "Server revalidation produced a different order. Run Validate & Build ABC Order again.", 409);
+  }
+
+  // The ABC "place order" endpoint is not enabled for this tenant yet. The
+  // order is fully validated but intentionally NOT transmitted.
+  return jsonErr(c, "submission_endpoint_unavailable",
+    "Order revalidated successfully, but ABC order transmission is not enabled for this account yet. No order was submitted.",
+    501,
+    { submission_id: submissionId, payload_hash: approvedHash });
+});
+
 
 // Supabase SDK invokes grouped functions at the root/function path and passes
 // the intended route via x-route / __route. Legacy shims may also call a real
