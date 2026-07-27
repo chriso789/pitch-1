@@ -56068,6 +56068,60 @@ export type Database = {
           },
         ]
       }
+      supplier_catalog_audit_events: {
+        Row: {
+          actor_user_id: string | null
+          after_state: Json | null
+          before_state: Json | null
+          branch_code: string | null
+          created_at: string
+          entity_id: string | null
+          entity_table: string
+          environment: string | null
+          event_type: string
+          id: string
+          metadata: Json
+          reason: string | null
+          supplier: Database["public"]["Enums"]["supplier_kind"] | null
+          supplier_connection_id: string | null
+          tenant_id: string
+        }
+        Insert: {
+          actor_user_id?: string | null
+          after_state?: Json | null
+          before_state?: Json | null
+          branch_code?: string | null
+          created_at?: string
+          entity_id?: string | null
+          entity_table: string
+          environment?: string | null
+          event_type: string
+          id?: string
+          metadata?: Json
+          reason?: string | null
+          supplier?: Database["public"]["Enums"]["supplier_kind"] | null
+          supplier_connection_id?: string | null
+          tenant_id: string
+        }
+        Update: {
+          actor_user_id?: string | null
+          after_state?: Json | null
+          before_state?: Json | null
+          branch_code?: string | null
+          created_at?: string
+          entity_id?: string | null
+          entity_table?: string
+          environment?: string | null
+          event_type?: string
+          id?: string
+          metadata?: Json
+          reason?: string | null
+          supplier?: Database["public"]["Enums"]["supplier_kind"] | null
+          supplier_connection_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       supplier_catalog_items: {
         Row: {
           active: boolean | null
@@ -56126,6 +56180,78 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      supplier_catalog_sync_runs: {
+        Row: {
+          branch_code: string | null
+          completed_at: string | null
+          created_by: string | null
+          environment: string
+          error_code: string | null
+          error_message: string | null
+          evidence: Json
+          fingerprint: string | null
+          id: string
+          items_marked_inactive: number
+          items_seen: number
+          items_upserted: number
+          mappings_created: number
+          mappings_updated: number
+          ship_to_number: string | null
+          started_at: string
+          status: string
+          supplier: Database["public"]["Enums"]["supplier_kind"]
+          supplier_connection_id: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          branch_code?: string | null
+          completed_at?: string | null
+          created_by?: string | null
+          environment?: string
+          error_code?: string | null
+          error_message?: string | null
+          evidence?: Json
+          fingerprint?: string | null
+          id?: string
+          items_marked_inactive?: number
+          items_seen?: number
+          items_upserted?: number
+          mappings_created?: number
+          mappings_updated?: number
+          ship_to_number?: string | null
+          started_at?: string
+          status?: string
+          supplier: Database["public"]["Enums"]["supplier_kind"]
+          supplier_connection_id?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          branch_code?: string | null
+          completed_at?: string | null
+          created_by?: string | null
+          environment?: string
+          error_code?: string | null
+          error_message?: string | null
+          evidence?: Json
+          fingerprint?: string | null
+          id?: string
+          items_marked_inactive?: number
+          items_seen?: number
+          items_upserted?: number
+          mappings_created?: number
+          mappings_updated?: number
+          ship_to_number?: string | null
+          started_at?: string
+          status?: string
+          supplier?: Database["public"]["Enums"]["supplier_kind"]
+          supplier_connection_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       supplier_catalogs: {
         Row: {
@@ -66179,6 +66305,10 @@ export type Database = {
         | "inactive"
         | "discontinued"
         | "superseded"
+        | "revalidation_required"
+        | "stale"
+        | "inactive_supplier_item"
+        | "catalog_conflict"
       supplier_submission_state:
         | "prepared"
         | "submitted"
@@ -66669,6 +66799,10 @@ export const Constants = {
         "inactive",
         "discontinued",
         "superseded",
+        "revalidation_required",
+        "stale",
+        "inactive_supplier_item",
+        "catalog_conflict",
       ],
       supplier_submission_state: [
         "prepared",
