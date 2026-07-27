@@ -217,6 +217,8 @@ export const AbcCatalogBrowser: React.FC = () => {
   const [priceError, setPriceError] = useState<string | null>(null);
   const [dumping, setDumping] = useState(false);
   const [ingesting, setIngesting] = useState(false);
+  const [ingestProgress, setIngestProgress] = useState<string | null>(null);
+
   const [dumpMode, setDumpMode] = useState(false);
   const [dumpMeta, setDumpMeta] = useState<{ count: number; stoppedReason: string | null } | null>(null);
 
@@ -453,6 +455,7 @@ export const AbcCatalogBrowser: React.FC = () => {
       return;
     }
     setIngesting(true);
+    setIngestProgress('starting…');
     setError(null);
     try {
       // Resumable chunked sweep — the edge function returns next_offset until done.
@@ -460,7 +463,12 @@ export const AbcCatalogBrowser: React.FC = () => {
       // that a page finishes inside the function's identity budget.
       const totals: Record<string, number> = {};
       let offset = 0;
-      for (let page = 0; page < 60; page++) {
+      let completed = false;
+      const startedAt = Date.now();
+      const MAX_MS = 4 * 60 * 1000;
+      for (let page = 0; page < 40; page++) {
+        if (Date.now() - startedAt > MAX_MS) break;
+        setIngestProgress(`${totals.items_seen ?? 0} scanned…`);
         const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
           body: {
             action: 'ingest_catalog',
@@ -468,7 +476,7 @@ export const AbcCatalogBrowser: React.FC = () => {
             environment: effectiveEnvironment,
             branchNumber,
             offset,
-            pageSize: 60,
+            pageSize: 40,
           },
         });
         if (error) {
@@ -496,18 +504,21 @@ export const AbcCatalogBrowser: React.FC = () => {
         for (const k of ['items_seen', 'catalog_upserted', 'variants_created', 'colors_created', 'mappings_created', 'mappings_updated']) {
           totals[k] = (totals[k] ?? 0) + (Number(s[k]) || 0);
         }
-        if (data.done || data.next_offset == null) break;
+        if (data.done || data.next_offset == null) { completed = true; break; }
         offset = data.next_offset;
       }
       toast({
-        title: 'ABC catalog ingested',
-        description: `${totals.items_seen ?? 0} items scanned · ${totals.variants_created ?? 0} variants · ${totals.colors_created ?? 0} colors · ${totals.mappings_created ?? 0} new mappings (${totals.mappings_updated ?? 0} re-flagged) awaiting approval.`,
+        title: completed ? 'ABC catalog ingested' : 'ABC catalog ingest paused',
+        description: `${totals.items_seen ?? 0} items scanned · ${totals.variants_created ?? 0} variants · ${totals.colors_created ?? 0} colors · ${totals.mappings_created ?? 0} new mappings (${totals.mappings_updated ?? 0} re-flagged) awaiting approval.${completed ? '' : ' Run it again to continue where it stopped.'}`,
       });
+
     } catch (e: any) {
       setError(e?.message || 'Could not ingest ABC catalog.');
     } finally {
       setIngesting(false);
+      setIngestProgress(null);
     }
+
   };
 
 
@@ -575,7 +586,7 @@ export const AbcCatalogBrowser: React.FC = () => {
                   ) : (
                     <Download className="h-3.5 w-3.5 mr-1" />
                   )}
-                  Ingest → mapping proposals
+                  {ingesting ? `Ingesting… ${ingestProgress ?? ''}` : 'Ingest → mapping proposals'}
                 </Button>
               )}
 
