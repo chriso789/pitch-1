@@ -18,6 +18,10 @@ export interface AbcIngestOptions {
   createdBy?: string | null;
   /** sandbox | staging | production — catalog rows are environment scoped. */
   environment?: string | null;
+  /** Persist the catalog cache only; skip the slow identity/mapping pass. */
+  catalogOnly?: boolean;
+  /** Epoch ms budget for the identity pass (partial progress is kept). */
+  identityDeadlineMs?: number | null;
 }
 
 
