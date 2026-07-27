@@ -216,6 +216,7 @@ export const AbcCatalogBrowser: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [priceError, setPriceError] = useState<string | null>(null);
   const [dumping, setDumping] = useState(false);
+  const [ingesting, setIngesting] = useState(false);
   const [dumpMode, setDumpMode] = useState(false);
   const [dumpMeta, setDumpMeta] = useState<{ count: number; stoppedReason: string | null } | null>(null);
 
@@ -431,6 +432,44 @@ export const AbcCatalogBrowser: React.FC = () => {
     }
   };
 
+  // Sweep ABC → cache items → canonical identity → PENDING mapping proposals.
+  // Nothing auto-approves; the strict resolver still blocks unreviewed rows.
+  const ingestCatalog = async () => {
+    if (!tenantId || !branchNumber) {
+      toast({
+        title: 'Branch required',
+        description: 'Sync a Ship-To + Branch first so mappings are branch-scoped.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setIngesting(true);
+    setError(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
+        body: {
+          action: 'ingest_catalog',
+          tenant_id: tenantId,
+          environment: effectiveEnvironment,
+          branchNumber,
+          maxItems: 1500,
+        },
+      });
+      if (error) throw new Error(error.message);
+      if (!data?.success) throw new Error(data?.message || data?.error || 'ingest_catalog failed');
+      const s = data.summary || {};
+      toast({
+        title: 'ABC catalog ingested',
+        description: `${s.catalog_upserted ?? 0} items cached · ${s.variants_created ?? 0} variants · ${s.colors_created ?? 0} colors · ${s.mappings_created ?? 0} new mappings (${s.mappings_updated ?? 0} re-flagged) awaiting approval.`,
+      });
+    } catch (e: any) {
+      setError(e?.message || 'Could not ingest ABC catalog.');
+    } finally {
+      setIngesting(false);
+    }
+  };
+
+
   return (
     <Card>
       <CardHeader>
@@ -481,6 +520,23 @@ export const AbcCatalogBrowser: React.FC = () => {
                   Dump entire branch catalog
                 </Button>
               )}
+              {isConnected && branchNumber && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={ingestCatalog}
+                  disabled={ingesting}
+                  title="Sweep ABC, cache the catalog, and create canonical manufacturer/color/variant identity plus pending supplier item-code mappings."
+                >
+                  {ingesting ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                  ) : (
+                    <Download className="h-3.5 w-3.5 mr-1" />
+                  )}
+                  Ingest → mapping proposals
+                </Button>
+              )}
+
               <Badge variant="secondary">
                 {loading || dumping ? '…' : `${items.length} items${dumpMode ? ' (full dump)' : ''}`}
               </Badge>
