@@ -228,62 +228,131 @@ export type Database = {
       }
       abc_catalog_items: {
         Row: {
+          branch_number: string | null
+          branch_numbers: Json
+          branch_validated: boolean
+          branch_validation_note: string | null
+          catalog_source: string
           color_code: string | null
           color_name: string | null
+          connection_id: string | null
           costing_uom: string | null
           created_at: string
           dimensions: Json | null
+          environment: string
           family_id: string | null
           family_name: string | null
+          id: string
+          is_accessory: boolean
           is_active: boolean
           is_dimensional: boolean
+          is_family_parent: boolean
+          is_field_shingle: boolean
+          is_hip_and_ridge: boolean
           item_description: string
           item_number: string
           last_modified_at: string | null
+          manufacturer: string | null
+          orderable: boolean
+          parent_item_number: string | null
+          product_category: string | null
+          product_group: string | null
+          product_line: string | null
+          product_line_code: string | null
+          product_type: string | null
           raw: Json | null
+          raw_fingerprint: string | null
           search_tsv: unknown
           specifications: Json | null
           stocking_uom: string | null
+          synced_at: string
+          tenant_id: string
           uoms: Json | null
           updated_at: string
         }
         Insert: {
+          branch_number?: string | null
+          branch_numbers?: Json
+          branch_validated?: boolean
+          branch_validation_note?: string | null
+          catalog_source?: string
           color_code?: string | null
           color_name?: string | null
+          connection_id?: string | null
           costing_uom?: string | null
           created_at?: string
           dimensions?: Json | null
+          environment?: string
           family_id?: string | null
           family_name?: string | null
+          id?: string
+          is_accessory?: boolean
           is_active?: boolean
           is_dimensional?: boolean
+          is_family_parent?: boolean
+          is_field_shingle?: boolean
+          is_hip_and_ridge?: boolean
           item_description: string
           item_number: string
           last_modified_at?: string | null
+          manufacturer?: string | null
+          orderable?: boolean
+          parent_item_number?: string | null
+          product_category?: string | null
+          product_group?: string | null
+          product_line?: string | null
+          product_line_code?: string | null
+          product_type?: string | null
           raw?: Json | null
+          raw_fingerprint?: string | null
           search_tsv?: unknown
           specifications?: Json | null
           stocking_uom?: string | null
+          synced_at?: string
+          tenant_id: string
           uoms?: Json | null
           updated_at?: string
         }
         Update: {
+          branch_number?: string | null
+          branch_numbers?: Json
+          branch_validated?: boolean
+          branch_validation_note?: string | null
+          catalog_source?: string
           color_code?: string | null
           color_name?: string | null
+          connection_id?: string | null
           costing_uom?: string | null
           created_at?: string
           dimensions?: Json | null
+          environment?: string
           family_id?: string | null
           family_name?: string | null
+          id?: string
+          is_accessory?: boolean
           is_active?: boolean
           is_dimensional?: boolean
+          is_family_parent?: boolean
+          is_field_shingle?: boolean
+          is_hip_and_ridge?: boolean
           item_description?: string
           item_number?: string
           last_modified_at?: string | null
+          manufacturer?: string | null
+          orderable?: boolean
+          parent_item_number?: string | null
+          product_category?: string | null
+          product_group?: string | null
+          product_line?: string | null
+          product_line_code?: string | null
+          product_type?: string | null
           raw?: Json | null
+          raw_fingerprint?: string | null
           search_tsv?: unknown
           specifications?: Json | null
           stocking_uom?: string | null
+          synced_at?: string
+          tenant_id?: string
           uoms?: Json | null
           updated_at?: string
         }
