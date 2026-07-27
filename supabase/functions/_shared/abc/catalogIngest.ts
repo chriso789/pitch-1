@@ -180,6 +180,8 @@ export async function ingestAbcCatalogItems(
 ): Promise<AbcIngestSummary> {
   const summary: AbcIngestSummary = {
     items_seen: 0,
+    family_children_expanded: 0,
+
     catalog_upserted: 0,
     manufacturers_created: 0,
     product_lines_created: 0,
