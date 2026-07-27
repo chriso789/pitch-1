@@ -89,6 +89,11 @@ export interface ResolvedLine {
   supplier_uom: string | null;
   validated_at: string | null;
   catalog_fingerprint: string | null;
+  /** How the mapping was established: api | catalog_import | manual_approved. Never fuzzy. */
+  mapping_source: string | null;
+  /** Mapping approval state as stored (approved lines only ever resolve ok). */
+  approval_state: string | null;
+
 
   /** Candidate item numbers when the failure is `ambiguous`, for manager review. */
   candidates?: Array<{ mapping_id: string; supplier_item_number: string; supplier_description: string | null }>;
