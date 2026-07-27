@@ -62,6 +62,11 @@ export interface ResolvedLine {
   supplier_color_name: string | null;
   supplier_uom: string | null;
   validated_at: string | null;
+  catalog_fingerprint?: string | null;
+  /** api | catalog_import | manual_approved — never a fuzzy suggestion. */
+  mapping_source?: string | null;
+  approval_state?: string | null;
+
 
   candidates?: Array<{
     mapping_id: string;
