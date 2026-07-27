@@ -219,14 +219,21 @@ export async function ingestAbcCatalogItems(
   };
 
 
+  const environment = (str(opts.environment) ?? "sandbox").toLowerCase();
+  const branchNumber = str(opts.branchCode);
   const catalogRows: Rec[] = [];
+  const items = flattenAbcFamilyItems(rawItems);
 
-  for (const raw of rawItems) {
+  for (const raw of items) {
     if (!raw || typeof raw !== "object") continue;
     const item = raw as Rec;
     const itemNumber = str(item.itemNumber) ?? str(item.item_number);
     if (!itemNumber) continue;
     summary.items_seen++;
+
+    const isFamilyParent = item.__isFamilyParent === true;
+    const parentItemNumber = str(item.__parentItemNumber);
+    if (parentItemNumber) summary.family_children_expanded++;
 
     const h = hierarchy(item);
     const color = (item.color as Rec | undefined) ?? {};
@@ -234,12 +241,40 @@ export async function ingestAbcCatalogItems(
     const colorCode = str(color.code);
     const uoms = abcUoms(item);
     const description = str(item.itemDescription) ?? str(item.description) ?? str(item.familyName) ?? itemNumber;
+    const cls = classifyAbcProduct(h.productType, description);
+    const branchNums = branchNumbersOf(item);
+    const branchValidated = branchNumber ? branchNums.includes(branchNumber) : branchNums.length > 0;
+    const fingerprint = await fingerprintItem(item);
+    const nowIso = new Date().toISOString();
 
     catalogRows.push({
+      tenant_id: opts.tenantId,
+      connection_id: opts.supplierConnectionId ?? null,
+      environment,
+      branch_number: branchNumber,
+      branch_numbers: branchNums,
+      branch_validated: branchValidated,
+      branch_validation_note: branchValidated
+        ? null
+        : branchNumber
+          ? `ABC response did not list branch ${branchNumber} for this item`
+          : "no branch selected at ingest time",
       item_number: itemNumber,
       item_description: description,
       family_id: str(item.familyId),
       family_name: str(item.familyName),
+      parent_item_number: parentItemNumber,
+      is_family_parent: isFamilyParent,
+      orderable: !isFamilyParent,
+      manufacturer: str(item.supplierName) ?? (h.brandLine ? h.brandLine.split(" ")[0] : null),
+      product_line: h.brandLine ?? str(item.familyName),
+      product_line_code: h.brandLineCode,
+      product_type: h.productType,
+      product_category: h.category,
+      product_group: h.group,
+      is_hip_and_ridge: cls.isHipAndRidge,
+      is_field_shingle: cls.isFieldShingle,
+      is_accessory: cls.isAccessory,
       color_name: colorName,
       color_code: colorCode,
       uoms: item.uoms ?? null,
@@ -249,14 +284,25 @@ export async function ingestAbcCatalogItems(
       specifications: item.specifications ?? null,
       is_active: (str(item.status) ?? "Active").toLowerCase() === "active",
       is_dimensional: item.isDimensional === true,
+      catalog_source: "abc_product_search",
+      raw_fingerprint: fingerprint,
+      synced_at: nowIso,
       raw: item,
-      updated_at: new Date().toISOString(),
+      updated_at: nowIso,
     });
+
+    // A family parent is a grouping row, never an orderable SKU: no mapping.
+    if (isFamilyParent) {
+      summary.skipped.push({ itemNumber, reason: "family_parent_not_orderable" });
+      continue;
+    }
 
     const manufacturerName = str(item.supplierName) ?? (h.brandLine ? h.brandLine.split(" ")[0] : null);
     const productLineName = h.brandLine ?? str(item.familyName);
     const variantName = str(item.familyName) ?? description;
     const canonicalUom = uoms.order;
+
+
 
     if (!manufacturerName || !productLineName || !variantName || !canonicalUom) {
       summary.skipped.push({ itemNumber, reason: "missing_canonical_identity_fields" });
