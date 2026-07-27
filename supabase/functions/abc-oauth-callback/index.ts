@@ -408,7 +408,12 @@ Deno.serve(async (req) => {
       console.error("abc-oauth-callback post-OAuth sync scheduling failed", e);
     }
 
-    return htmlSuccessPage(environment, returnTo + "connected");
+    // Send the browser straight back into Pitch (302). Some browsers render the
+    // callback HTML body as plain text, so never rely on an HTML/JS success page.
+    return htmlRedirect(
+      returnTo + "connected&env=" + encodeURIComponent(environment),
+      "Connected."
+    );
   } catch (e) {
     console.error("abc-oauth-callback error:", e);
     return htmlRedirect(
