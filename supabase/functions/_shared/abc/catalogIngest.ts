@@ -461,12 +461,39 @@ export async function ingestAbcCatalogItems(
     }
   }
 
-  // Catalog cache upsert in chunks (global table, keyed by item_number).
-  for (let i = 0; i < catalogRows.length; i += 200) {
-    const chunk = catalogRows.slice(i, i + 200);
-    const { error } = await supabase.from("abc_catalog_items").upsert(chunk, { onConflict: "item_number" });
-    if (!error) summary.catalog_upserted += chunk.length;
+  // Catalog cache persistence. The identity index is expression-based
+  // (COALESCE(branch_number,'')), which PostgREST upsert cannot target, so we
+  // diff explicitly: same tenant + environment + branch + item number updates
+  // in place, everything else inserts. Re-running a sweep is idempotent.
+  for (let i = 0; i < catalogRows.length; i += 100) {
+    const chunk = catalogRows.slice(i, i + 100);
+    const numbers = chunk.map((r) => r.item_number as string);
+    let existingQ = supabase
+      .from("abc_catalog_items")
+      .select("id, item_number")
+      .eq("tenant_id", opts.tenantId)
+      .eq("environment", environment)
+      .in("item_number", numbers);
+    existingQ = branchNumber ? existingQ.eq("branch_number", branchNumber) : existingQ.is("branch_number", null);
+    const { data: existingRows } = await existingQ;
+    const byNumber = new Map<string, string>(
+      ((existingRows ?? []) as Rec[]).map((r) => [r.item_number as string, r.id as string]),
+    );
+
+    const inserts = chunk.filter((r) => !byNumber.has(r.item_number as string));
+    if (inserts.length) {
+      const { error } = await supabase.from("abc_catalog_items").insert(inserts);
+      if (!error) summary.catalog_upserted += inserts.length;
+      else summary.skipped.push({ itemNumber: "(chunk)", reason: `catalog_insert_failed:${error.message}` });
+    }
+    for (const row of chunk) {
+      const id = byNumber.get(row.item_number as string);
+      if (!id) continue;
+      const { error } = await supabase.from("abc_catalog_items").update(row).eq("id", id);
+      if (!error) summary.catalog_upserted += 1;
+    }
   }
+
 
   return summary;
 }
