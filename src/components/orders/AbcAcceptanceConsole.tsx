@@ -536,32 +536,119 @@ export default function AbcAcceptanceConsole() {
 
         {/* Context */}
         <div className="grid gap-4 md:grid-cols-3">
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 md:col-span-2">
             <Label>Ship-to</Label>
-            <Select value={effectiveShipTo} onValueChange={(v) => { setShipTo(v); invalidate('Ship-to changed — re-resolve required.'); }}>
-              <SelectTrigger><SelectValue placeholder="Select ship-to" /></SelectTrigger>
-              <SelectContent>
-                {(ctx?.shipTos ?? []).map((s: any) => (
-                  <SelectItem key={s.ship_to_number} value={s.ship_to_number}>
-                    {s.ship_to_number} — {s.name ?? ''}
-                  </SelectItem>
-                ))}
+            <Select
+              value={effectiveShipTo}
+              onValueChange={(v) => { persistShipTo(v); invalidate('Ship-to changed — re-validate and re-resolve required.'); }}
+            >
+              <SelectTrigger className="h-auto py-2 text-left">
+                <SelectValue placeholder="Select ship-to" />
+              </SelectTrigger>
+              <SelectContent className="max-w-[680px]">
+                {shipToOptions.map((s) => {
+                  const compatible = !effectiveBranch || s.branch_numbers.includes(effectiveBranch);
+                  return (
+                    <SelectItem key={s.ship_to_number} value={s.ship_to_number}>
+                      <div className="flex flex-col gap-0.5 py-0.5">
+                        <span className="font-medium">
+                          {s.ship_to_number} — {s.name || 'Unnamed account'}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {formatShipToAddress(s) || 'No address on file'}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {s.active ? 'Active' : `Inactive (${s.status_label})`} ·{' '}
+                          {s.branch_numbers.length
+                            ? `Branches ${s.branch_numbers.join(', ')}`
+                            : 'No authorized branches synced'}
+                          {effectiveBranch && !compatible ? ` · not valid for branch ${effectiveBranch}` : ''}
+                          {s.is_default ? ' · default' : ''}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
+            {selectedShipTo && (
+              <p className="text-xs text-muted-foreground">
+                {shipToLabel(selectedShipTo)}
+              </p>
+            )}
+            {recommendedShipTo && recommendedShipTo.ship_to_number !== effectiveShipTo && (
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-muted-foreground">
+                  Recommended for branch {effectiveBranch}: {recommendedShipTo.ship_to_number}
+                </span>
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0 text-xs"
+                  onClick={() => {
+                    persistShipTo(recommendedShipTo.ship_to_number);
+                    invalidate('Ship-to changed — re-validate and re-resolve required.');
+                  }}
+                >
+                  Use it
+                </Button>
+              </div>
+            )}
           </div>
           <div className="space-y-1.5">
             <Label>Branch</Label>
-            <Select value={effectiveBranch} onValueChange={(v) => { setBranch(v); invalidate('Branch changed — previous validation invalidated.'); }}>
+            <Select
+              value={effectiveBranch}
+              onValueChange={(v) => { persistBranch(v); invalidate('Branch changed — previous validation invalidated.'); }}
+            >
               <SelectTrigger><SelectValue placeholder="Select branch" /></SelectTrigger>
               <SelectContent>
                 {(ctx?.branches ?? []).map((b: any) => (
                   <SelectItem key={b.branch_number} value={b.branch_number}>
                     {b.branch_number} — {b.name ?? ''}
+                    {b.city ? ` (${[b.city, b.state].filter(Boolean).join(', ')})` : ''}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
+        </div>
+
+        {/* Server-side ship-to / branch validation gate */}
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => runValidation(null)}
+            disabled={validating || !effectiveShipTo || !effectiveBranch}
+          >
+            {validating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
+            Validate ship-to against branch
+          </Button>
+          {serverValidated ? (
+            <Badge variant="outline" className="border-primary text-primary">
+              Validated: {effectiveShipTo} · branch {effectiveBranch}
+            </Badge>
+          ) : validationMatchesSelection ? (
+            <Badge variant="destructive">{validation?.error_code ?? 'invalid'}</Badge>
+          ) : (
+            <Badge variant="secondary">Not validated</Badge>
+          )}
+          {!pairingLooksValid && effectiveShipTo && effectiveBranch && (
+            <span className="text-xs text-muted-foreground">
+              Synced records do not list branch {effectiveBranch} on ship-to {effectiveShipTo}.
+            </span>
+          )}
+        </div>
+        {validationMatchesSelection && validation?.message && (
+          <Alert variant={validation.valid ? 'default' : 'destructive'}>
+            {validation.valid ? <ShieldCheck className="h-4 w-4" /> : <ShieldAlert className="h-4 w-4" />}
+            <AlertTitle>{validation.valid ? 'Ship-to / branch validated' : 'Ship-to / branch rejected'}</AlertTitle>
+            <AlertDescription>{validation.message}</AlertDescription>
+          </Alert>
+        )}
+        <div className="grid gap-4 md:grid-cols-3">
+
           <div className="space-y-1.5">
             <Label>PO number</Label>
             <Input value={poNumber} onChange={(e) => { setPoNumber(e.target.value); setPreview(null); }} />
