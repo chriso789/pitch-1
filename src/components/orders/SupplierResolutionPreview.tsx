@@ -5,6 +5,12 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
 import { FAILURE_LABELS, type ResolvedLine } from '@/lib/suppliers/resolution';
 
+const SOURCE_LABELS: Record<string, string> = {
+  api: 'Supplier API catalog',
+  catalog_import: 'Catalog import',
+  manual_approved: 'Manually approved',
+};
+
 interface Props {
   supplierLabel: string;
   branchLabel?: string | null;
@@ -90,13 +96,15 @@ export function SupplierResolutionPreview({
                 <th className="p-2 text-left">Branch</th>
                 <th className="p-2 text-right">Qty</th>
                 <th className="p-2 text-left">UOM</th>
-                <th className="p-2 text-left">Status</th>
+                <th className="p-2 text-left">Resolution source</th>
+                <th className="p-2 text-left">Validation status</th>
               </tr>
+
             </thead>
             <tbody>
               {lines.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="p-4 text-center text-muted-foreground">
+                  <td colSpan={12} className="p-4 text-center text-muted-foreground">
                     No material lines to resolve.
                   </td>
                 </tr>
@@ -126,6 +134,18 @@ export function SupplierResolutionPreview({
                     <td className="p-2 text-right">{l.quantity}</td>
                     <td className="p-2">{l.supplier_uom ?? l.requested_uom}</td>
                     <td className="p-2">
+                      {l.mapping_source ? (
+                        <Badge variant="outline">{SOURCE_LABELS[l.mapping_source] ?? l.mapping_source}</Badge>
+                      ) : (
+                        '—'
+                      )}
+                      {l.validated_at ? (
+                        <div className="text-muted-foreground">
+                          Validated {new Date(l.validated_at).toLocaleDateString()}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td className="p-2">
                       {l.ok ? (
                         <Badge variant="outline" className="border-emerald-500 text-emerald-600">
                           Verified
@@ -136,6 +156,7 @@ export function SupplierResolutionPreview({
                         </Badge>
                       )}
                     </td>
+
                   </tr>
                 ))
               )}
