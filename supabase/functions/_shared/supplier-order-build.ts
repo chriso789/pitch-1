@@ -511,7 +511,12 @@ export async function buildSupplierOrderPreview(
     poNumber = String(seq);
   }
 
-  const orderContext: OrderContextInput = { ...req.order_context, po_number: poNumber };
+  const orderContext: OrderContextInput & { ship_to_number?: string | null; branch_code?: string | null } = {
+    ...req.order_context,
+    po_number: poNumber,
+    ship_to_number: req.ship_to_number ?? null,
+    branch_code: req.branch_code ?? null,
+  };
 
   let payload: unknown;
   try {
