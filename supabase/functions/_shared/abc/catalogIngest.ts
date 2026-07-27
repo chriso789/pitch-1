@@ -227,6 +227,9 @@ export async function ingestAbcCatalogItems(
   const branchNumber = str(opts.branchCode);
   const catalogRows: Rec[] = [];
   const items = flattenAbcFamilyItems(rawItems);
+  // Pass 2 work list — identity/mapping is 5+ round-trips per SKU, so it never
+  // runs before the catalog cache is durably written.
+  const identityQueue: Array<{ item: Rec; itemNumber: string; fingerprint: string; nowIso: string }> = [];
 
   for (const raw of items) {
     if (!raw || typeof raw !== "object") continue;
