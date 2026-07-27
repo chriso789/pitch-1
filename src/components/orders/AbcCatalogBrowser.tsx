@@ -473,7 +473,7 @@ export const AbcCatalogBrowser: React.FC = () => {
         if (error) throw new Error(error.message);
         if (!data?.success) throw new Error(data?.message || data?.error || 'ingest_catalog failed');
         const s = data.summary || {};
-        for (const k of ['catalog_upserted', 'variants_created', 'colors_created', 'mappings_created', 'mappings_updated']) {
+        for (const k of ['items_seen', 'catalog_upserted', 'variants_created', 'colors_created', 'mappings_created', 'mappings_updated']) {
           totals[k] = (totals[k] ?? 0) + (Number(s[k]) || 0);
         }
         if (data.done || data.next_offset == null) break;
@@ -481,7 +481,7 @@ export const AbcCatalogBrowser: React.FC = () => {
       }
       toast({
         title: 'ABC catalog ingested',
-        description: `${totals.catalog_upserted ?? 0} items cached · ${totals.variants_created ?? 0} variants · ${totals.colors_created ?? 0} colors · ${totals.mappings_created ?? 0} new mappings (${totals.mappings_updated ?? 0} re-flagged) awaiting approval.`,
+        description: `${totals.items_seen ?? 0} items scanned · ${totals.variants_created ?? 0} variants · ${totals.colors_created ?? 0} colors · ${totals.mappings_created ?? 0} new mappings (${totals.mappings_updated ?? 0} re-flagged) awaiting approval.`,
       });
     } catch (e: any) {
       setError(e?.message || 'Could not ingest ABC catalog.');
