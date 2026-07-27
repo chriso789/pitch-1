@@ -128,6 +128,18 @@ export function SupplierResolutionPreview({
                     <td className="p-2 text-right">{l.quantity}</td>
                     <td className="p-2">{l.supplier_uom ?? l.requested_uom}</td>
                     <td className="p-2">
+                      {l.mapping_source ? (
+                        <Badge variant="outline">{SOURCE_LABELS[l.mapping_source] ?? l.mapping_source}</Badge>
+                      ) : (
+                        '—'
+                      )}
+                      {l.validated_at ? (
+                        <div className="text-muted-foreground">
+                          Validated {new Date(l.validated_at).toLocaleDateString()}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td className="p-2">
                       {l.ok ? (
                         <Badge variant="outline" className="border-emerald-500 text-emerald-600">
                           Verified
@@ -138,6 +150,7 @@ export function SupplierResolutionPreview({
                         </Badge>
                       )}
                     </td>
+
                   </tr>
                 ))
               )}
