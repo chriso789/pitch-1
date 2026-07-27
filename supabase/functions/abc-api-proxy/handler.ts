@@ -1275,6 +1275,9 @@ export const handle = async (req) => {
             branchCode: branchNumber || null,
             createdBy: userId ?? null,
             environment: env,
+            // Cache the catalog fast; mapping proposals are produced by the
+            // dedicated ingest_catalog action so the sweep can't time out.
+            catalogOnly: true,
           });
         } catch (e) {
           ingestError = String((e as Error)?.message ?? e);
