@@ -247,6 +247,9 @@ export async function resolveSupplierLines(
       supplier_uom: null,
       validated_at: null,
       catalog_fingerprint: null,
+      mapping_source: null,
+      approval_state: null,
+
     };
 
     const variant = variants.get(line.variant_id);
