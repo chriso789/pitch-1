@@ -434,6 +434,9 @@ export async function ingestAbcCatalogItems(
       supplier_catalog_item_id: str(item.familyId),
       supplier_description: description,
       supplier_color_name: colorName,
+      // Must be written: the identity lookup above matches on supplier_uom,
+      // and the strict resolver refuses a mapping with no supplier UOM.
+      supplier_uom: canonicalUom,
       catalog_fingerprint: fingerprint,
       catalog_payload: item,
       validated_at: nowIso,
@@ -441,6 +444,7 @@ export async function ingestAbcCatalogItems(
       status: "active",
       updated_at: nowIso,
     };
+
 
     if (existing?.id) {
       if (existing.catalog_fingerprint === fingerprint) continue;
