@@ -102,7 +102,8 @@ function roleOf(m: ApprovedMapping): Role {
   if (v?.is_accessory) return 'accessory';
   const text = `${v?.variant_name ?? ''} ${m.supplier_description ?? ''}`.toLowerCase();
   if (/(hip|ridge|seal-?a-?ridge|timbertex|z ?ridge)/.test(text)) return 'ridge';
-  return 'field';
+  if (/(shingle|timberline|hdz|architectural|starter|weathered wood|shake|slate|gaf)/.test(text)) return 'field';
+  return 'accessory';
 }
 
 interface ShipToOption {
