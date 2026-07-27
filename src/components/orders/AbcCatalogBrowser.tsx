@@ -454,21 +454,32 @@ export const AbcCatalogBrowser: React.FC = () => {
     setIngesting(true);
     setError(null);
     try {
-      const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
-        body: {
-          action: 'ingest_catalog',
-          tenant_id: tenantId,
-          environment: effectiveEnvironment,
-          branchNumber,
-          maxItems: 1500,
-        },
-      });
-      if (error) throw new Error(error.message);
-      if (!data?.success) throw new Error(data?.message || data?.error || 'ingest_catalog failed');
-      const s = data.summary || {};
+      // Resumable chunked sweep — the edge function returns next_offset until done.
+      const totals: Record<string, number> = {};
+      let offset = 0;
+      for (let page = 0; page < 20; page++) {
+        const { data, error } = await supabase.functions.invoke('abc-api-proxy', {
+          body: {
+            action: 'ingest_catalog',
+            tenant_id: tenantId,
+            environment: effectiveEnvironment,
+            branchNumber,
+            offset,
+            pageSize: 250,
+          },
+        });
+        if (error) throw new Error(error.message);
+        if (!data?.success) throw new Error(data?.message || data?.error || 'ingest_catalog failed');
+        const s = data.summary || {};
+        for (const k of ['catalog_upserted', 'variants_created', 'colors_created', 'mappings_created', 'mappings_updated']) {
+          totals[k] = (totals[k] ?? 0) + (Number(s[k]) || 0);
+        }
+        if (data.done || data.next_offset == null) break;
+        offset = data.next_offset;
+      }
       toast({
         title: 'ABC catalog ingested',
-        description: `${s.catalog_upserted ?? 0} items cached · ${s.variants_created ?? 0} variants · ${s.colors_created ?? 0} colors · ${s.mappings_created ?? 0} new mappings (${s.mappings_updated ?? 0} re-flagged) awaiting approval.`,
+        description: `${totals.catalog_upserted ?? 0} items cached · ${totals.variants_created ?? 0} variants · ${totals.colors_created ?? 0} colors · ${totals.mappings_created ?? 0} new mappings (${totals.mappings_updated ?? 0} re-flagged) awaiting approval.`,
       });
     } catch (e: any) {
       setError(e?.message || 'Could not ingest ABC catalog.');
@@ -476,6 +487,7 @@ export const AbcCatalogBrowser: React.FC = () => {
       setIngesting(false);
     }
   };
+
 
 
   return (
