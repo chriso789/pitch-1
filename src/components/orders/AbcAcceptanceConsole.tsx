@@ -102,7 +102,8 @@ function roleOf(m: ApprovedMapping): Role {
   if (v?.is_accessory) return 'accessory';
   const text = `${v?.variant_name ?? ''} ${m.supplier_description ?? ''}`.toLowerCase();
   if (/(hip|ridge|seal-?a-?ridge|timbertex|z ?ridge)/.test(text)) return 'ridge';
-  return 'field';
+  if (/(shingle|timberline|hdz|architectural|starter|weathered wood|shake|slate|gaf)/.test(text)) return 'field';
+  return 'accessory';
 }
 
 interface ShipToOption {
@@ -319,21 +320,27 @@ export default function AbcAcceptanceConsole() {
 
 
   // ---- approved mappings (the only orderable source) ---------------------
-  const { data: mappings = [], isLoading: loadingMappings, refetch } = useQuery({
-    queryKey: ['abc-approved-mappings', tenantId],
+  const { data: mappings = [], isLoading: loadingMappings, error: mappingsError, refetch } = useQuery({
+    queryKey: ['abc-approved-mappings', tenantId, effectiveBranch || 'all-branches'],
     enabled: !!tenantId,
     queryFn: async (): Promise<ApprovedMapping[]> => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('supplier_item_mappings')
         .select(
-          'id, variant_id, color_id, branch_code, supplier_item_number, supplier_description, supplier_color_name, supplier_uom, validated_at, mapping_source, catalog_fingerprint, variant:mfr_product_variants(id, variant_name, is_accessory, accessory_kind, canonical_uom, manufacturer_id, product_line_id, mfr_manufacturers(name), mfr_product_lines(name)), color:mfr_colors(id, canonical_name, manufacturer_color_code)',
+          'id, variant_id, color_id, branch_code, supplier_item_number, supplier_description, supplier_color_name, supplier_uom, validated_at, mapping_source, catalog_fingerprint',
         )
         .eq('tenant_id', tenantId as string)
         .eq('supplier', 'abc')
         .eq('approval_state', 'approved')
         .eq('status', 'active')
         .order('supplier_description')
-        .limit(1000);
+        .limit(2000);
+
+      if (effectiveBranch) {
+        query = query.eq('branch_code', effectiveBranch);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       return (data ?? []) as unknown as ApprovedMapping[];
     },
