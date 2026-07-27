@@ -741,6 +741,32 @@ export const AbcCatalogBrowser: React.FC = () => {
                 </TableBody>
               </Table>
             </div>
+            {items.length > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-3 text-sm">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <span>Rows per page</span>
+                  <select
+                    className="h-8 rounded-md border bg-background px-2 text-sm"
+                    value={pageSize}
+                    onChange={(e) => setPageSize(Number(e.target.value))}
+                  >
+                    {[10, 25, 50, 100, 250].map((n) => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select>
+                  <span>
+                    {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, items.length)} of {items.length}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" disabled={currentPage <= 1} onClick={() => setPage(1)}>First</Button>
+                  <Button variant="outline" size="sm" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Prev</Button>
+                  <span className="text-muted-foreground">Page {currentPage} of {totalPages}</span>
+                  <Button variant="outline" size="sm" disabled={currentPage >= totalPages} onClick={() => setPage(currentPage + 1)}>Next</Button>
+                  <Button variant="outline" size="sm" disabled={currentPage >= totalPages} onClick={() => setPage(totalPages)}>Last</Button>
+                </div>
+              </div>
+            )}
           </>
         )}
       </CardContent>
