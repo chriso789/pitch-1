@@ -147,7 +147,9 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
       setLoadError(null);
       setZoom(1);
 
-      const isExternal = currentDoc.file_path.startsWith('http') || currentDoc.file_path.startsWith('data:');
+      const isExternal = !extractStorageRef(currentDoc.file_path) &&
+        (currentDoc.file_path.startsWith('http') || currentDoc.file_path.startsWith('data:'));
+
       
       if (isExternal) {
         setPreviewUrl(currentDoc.file_path);
