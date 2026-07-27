@@ -277,7 +277,7 @@ export default function AbcAcceptanceConsole() {
       900,
     );
 
-    const { data, error, details } = await edgeApi<any>('supplier-api', '/orders/build', {
+    const { data, error, raw } = await edgeApi<any>('supplier-api', '/orders/build', {
       branch_code: effectiveBranch || null,
       ship_to_number: effectiveShipTo || null,
       order_version: 1,
