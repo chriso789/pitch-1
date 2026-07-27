@@ -737,9 +737,9 @@ export const handle = async (req) => {
     }
 
     // ---------------- revoke_connection ----------------
-    // Clears stored ABC OAuth records + selected Ship-To/branch data for this
-    // tenant/environment. This must run before token lookup because disconnect
-    // is valid even when the token is expired or already missing.
+    // Archives stored ABC OAuth records for this tenant/environment. Catalog,
+    // Ship-To, branch, and approved mapping history are durable business data;
+    // disconnect/reconnect must not cascade-delete them.
     if (action === "revoke_connection" || action === "disconnect") {
       if (!tenant_id) return json({ success: false, error: "no_tenant" }, 400);
       try {
@@ -758,12 +758,20 @@ export const handle = async (req) => {
         }
         await supabase
           .from("abc_user_connections")
-          .delete()
+          .update({
+            status: "revoked",
+            last_error: null,
+            updated_at: new Date().toISOString(),
+          })
           .eq("tenant_id", tenant_id)
           .eq("environment", env);
         await supabase
           .from("abc_connections")
-          .delete()
+          .update({
+            connection_status: "disconnected",
+            setup_completed_at: null,
+            updated_at: new Date().toISOString(),
+          })
           .eq("tenant_id", tenant_id)
           .eq("environment", env);
         await supabase

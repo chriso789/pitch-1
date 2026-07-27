@@ -21,6 +21,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { CheckCircle2, XCircle, RefreshCw, ShieldAlert } from 'lucide-react';
 
 type ApprovalState = 'pending' | 'approved' | 'rejected';
+type MappingStatus =
+  | 'active'
+  | 'inactive'
+  | 'discontinued'
+  | 'superseded'
+  | 'revalidation_required'
+  | 'stale'
+  | 'inactive_supplier_item'
+  | 'catalog_conflict';
 
 interface MappingRow {
   id: string;
@@ -49,13 +58,13 @@ export default function SupplierMappingApprovalPanel({ supplier = 'abc' }: Props
   const [state, setState] = useState<ApprovalState>('pending');
   const [search, setSearch] = useState('');
 
-  const queryKey = ['supplier-item-mappings', tenantId, supplier, state];
+  const queryKey = ['supplier-item-mappings', tenantId, supplier, state, search.trim()];
 
   const { data: rows = [], isLoading, refetch, isFetching } = useQuery({
     queryKey,
     enabled: !!tenantId,
     queryFn: async (): Promise<MappingRow[]> => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('supplier_item_mappings')
         .select(
           'id, supplier, supplier_item_number, supplier_description, supplier_color_name, supplier_uom, branch_code, mapping_source, approval_state, status, catalog_fingerprint, validated_at, approved_at',
@@ -64,7 +73,15 @@ export default function SupplierMappingApprovalPanel({ supplier = 'abc' }: Props
         .eq('supplier', supplier)
         .eq('approval_state', state)
         .order('supplier_description', { ascending: true })
-        .limit(500);
+        .limit(2000);
+      const q = search.trim();
+      if (q) {
+        const escaped = q.replace(/[%_]/g, '\\$&');
+        query = query.or(
+          `supplier_item_number.ilike.%${escaped}%,supplier_description.ilike.%${escaped}%,supplier_color_name.ilike.%${escaped}%,branch_code.ilike.%${escaped}%`,
+        );
+      }
+      const { data, error } = await query;
       if (error) throw error;
       return (data ?? []) as MappingRow[];
     },
@@ -87,6 +104,7 @@ export default function SupplierMappingApprovalPanel({ supplier = 'abc' }: Props
         .from('supplier_item_mappings')
         .update({
           approval_state: next,
+          status: next === 'approved' ? 'active' : undefined,
           approved_by: next === 'approved' ? auth?.user?.id ?? null : null,
           approved_at: next === 'approved' ? new Date().toISOString() : null,
         })
@@ -97,7 +115,7 @@ export default function SupplierMappingApprovalPanel({ supplier = 'abc' }: Props
     },
     onSuccess: (count, vars) => {
       toast({
-        title: vars.next === 'approved' ? 'Mappings approved' : 'Mappings rejected',
+        title: vars.next === 'approved' ? 'Mappings approved / revalidated' : 'Mappings rejected',
         description: `${count} ${supplier.toUpperCase()} mapping${count === 1 ? '' : 's'} moved to ${vars.next}.`,
       });
       queryClient.invalidateQueries({ queryKey: ['supplier-item-mappings'] });
@@ -107,6 +125,17 @@ export default function SupplierMappingApprovalPanel({ supplier = 'abc' }: Props
   });
 
   const missingEvidence = (r: MappingRow) => !r.supplier_item_number || !r.supplier_uom || !r.branch_code;
+  const needsRevalidation = (r: MappingRow) =>
+    ['revalidation_required', 'stale', 'inactive_supplier_item', 'catalog_conflict'].includes(String(r.status));
+
+  const statusBadge = (status: string | null) => {
+    const value = (status || 'active') as MappingStatus;
+    if (value === 'active') return <Badge variant="secondary">active</Badge>;
+    if (value === 'revalidation_required' || value === 'stale') return <Badge variant="outline">revalidate</Badge>;
+    if (value === 'catalog_conflict') return <Badge variant="destructive">catalog conflict</Badge>;
+    if (value === 'inactive_supplier_item') return <Badge variant="destructive">inactive item</Badge>;
+    return <Badge variant="outline">{value}</Badge>;
+  };
 
   return (
     <Card>
@@ -155,7 +184,7 @@ export default function SupplierMappingApprovalPanel({ supplier = 'abc' }: Props
           <p className="text-sm text-muted-foreground py-6 text-center">Loading mappings…</p>
         ) : filtered.length === 0 ? (
           <p className="text-sm text-muted-foreground py-6 text-center">
-            No {state} {supplier.toUpperCase()} mappings. Run a catalog ingest to propose matches.
+            No {state} {supplier.toUpperCase()} mappings matched this view. If the catalog exists, widen the filter or check branch / connection scope before re-ingesting.
           </p>
         ) : (
           <ScrollArea className="h-[420px]">
@@ -184,11 +213,26 @@ export default function SupplierMappingApprovalPanel({ supplier = 'abc' }: Props
                     <TableCell className="font-mono text-xs">{r.supplier_item_number ?? '—'}</TableCell>
                     <TableCell>{r.supplier_uom ?? '—'}</TableCell>
                     <TableCell>{r.branch_code ?? <span className="text-muted-foreground">unscoped</span>}</TableCell>
-                    <TableCell>
+                    <TableCell className="space-y-1">
                       <Badge variant="secondary">{r.mapping_source ?? 'unknown'}</Badge>
+                      <div>{statusBadge(r.status)}</div>
                     </TableCell>
                     <TableCell className="text-right whitespace-nowrap">
-                      {missingEvidence(r) ? (
+                      {state === 'approved' && needsRevalidation(r) ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => decide.mutate({ ids: [r.id], next: 'approved' })}
+                          disabled={decide.isPending}
+                        >
+                          Revalidate
+                        </Button>
+                      ) : needsRevalidation(r) ? (
+                        <span className="inline-flex items-center text-xs text-muted-foreground">
+                          <ShieldAlert className="h-3.5 w-3.5 mr-1" />
+                          Review required
+                        </span>
+                      ) : missingEvidence(r) ? (
                         <span className="inline-flex items-center text-xs text-destructive">
                           <ShieldAlert className="h-3.5 w-3.5 mr-1" />
                           Incomplete evidence

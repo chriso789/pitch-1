@@ -383,6 +383,13 @@ export async function resolveSupplierLines(
     if (!active.length) {
       const worst = approved[0];
       const code: ResolutionFailureCode =
+        worst.status === "revalidation_required" ||
+        worst.status === "stale" ||
+        worst.status === "catalog_conflict"
+          ? "stale_validation"
+          : worst.status === "inactive_supplier_item"
+          ? "inactive"
+          :
         worst.status === "discontinued"
           ? "discontinued"
           : worst.status === "superseded"

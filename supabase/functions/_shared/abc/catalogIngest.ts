@@ -8,6 +8,11 @@
 //      approval_state='pending' — nothing auto-approves, so the strict
 //      resolver still refuses to order from an unreviewed mapping.
 //
+// Persistence invariant: a catalog re-ingest must NEVER demote a human-approved
+// mapping back to pending. If catalog evidence changes, keep the approval
+// evidence and mark the mapping status `revalidation_required` so ordering is
+// blocked until a person reviews it again.
+//
 // Deliberately does NOT fuzzy match: every mapping carries the exact ABC item
 // number, UOM and color returned by ABC, plus the raw payload + fingerprint.
 
@@ -493,7 +498,7 @@ export async function ingestAbcCatalogItems(
 
     let existingQ = supabase
       .from("supplier_item_mappings")
-      .select("id, catalog_fingerprint, approval_state")
+      .select("id, catalog_fingerprint, approval_state, status")
       .eq("tenant_id", opts.tenantId)
       .eq("supplier", "abc")
       .eq("variant_id", variantId)
@@ -522,10 +527,22 @@ export async function ingestAbcCatalogItems(
 
     if (existing?.id) {
       if (existing.catalog_fingerprint === fingerprint) continue;
-      // Catalog drift: refresh the proof and force re-approval.
+      // Catalog drift: refresh the proof, but DO NOT erase approvals. Approved
+      // mappings become non-orderable through status=revalidation_required;
+      // pending/rejected mappings keep their current approval state.
+      const existingStatus = typeof existing.status === "string" ? existing.status : "active";
+      const nextStatus = existing.approval_state === "approved"
+        ? "revalidation_required"
+        : existingStatus;
       const { error } = await supabase
         .from("supplier_item_mappings")
-        .update({ ...base, approval_state: "pending", approved_by: null, approved_at: null })
+        .update({
+          ...base,
+          status: nextStatus,
+          notes: existing.approval_state === "approved"
+            ? "Catalog fingerprint changed during ingest; approved mapping requires revalidation."
+            : undefined,
+        })
         .eq("id", existing.id);
       if (error) { summary.skipped.push({ itemNumber, reason: `mapping_update_failed:${error.message}` }); continue; }
       summary.mappings_updated++;
