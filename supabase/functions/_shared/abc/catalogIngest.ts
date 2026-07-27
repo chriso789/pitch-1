@@ -96,6 +96,80 @@ export async function fingerprintItem(item: unknown): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+/**
+ * ABC returns color families as a parent row with `familyItems[]` children.
+ * Each child is its own orderable SKU with its own itemNumber — children NEVER
+ * inherit the parent's item number. Hierarchy/UOM metadata may legitimately be
+ * absent on a child, so we inherit those descriptive fields only.
+ */
+export function flattenAbcFamilyItems(rawItems: unknown[]): Rec[] {
+  const out: Rec[] = [];
+  const seen = new Set<string>();
+
+  const push = (item: Rec, extra: Rec) => {
+    const num = str(item.itemNumber) ?? str(item.item_number);
+    if (!num) return;
+    const key = `${num}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ ...item, ...extra });
+  };
+
+  for (const raw of rawItems) {
+    if (!raw || typeof raw !== "object") continue;
+    const item = raw as Rec;
+    const children = Array.isArray(item.familyItems)
+      ? (item.familyItems as unknown[])
+      : Array.isArray(item.family_items)
+        ? (item.family_items as unknown[])
+        : [];
+
+    push(item, { __isFamilyParent: children.length > 0 });
+
+    for (const c of children) {
+      if (!c || typeof c !== "object") continue;
+      const child = c as Rec;
+      push(
+        {
+          // descriptive inheritance only — identity fields stay the child's own
+          hierarchy: child.hierarchy ?? item.hierarchy,
+          supplierName: child.supplierName ?? item.supplierName,
+          uoms: child.uoms ?? item.uoms,
+          familyId: child.familyId ?? item.familyId,
+          familyName: child.familyName ?? item.familyName,
+          ...child,
+        },
+        {
+          __isFamilyParent: false,
+          __parentItemNumber: str(item.itemNumber) ?? str(item.item_number),
+        },
+      );
+    }
+  }
+  return out;
+}
+
+/** Field shingle vs hip-and-ridge vs accessory — never conflate the two. */
+export function classifyAbcProduct(
+  productType: string | null,
+  description: string | null,
+): { isHipAndRidge: boolean; isFieldShingle: boolean; isAccessory: boolean } {
+  const hay = `${productType ?? ""} ${description ?? ""}`.toLowerCase();
+  const isHipAndRidge = /(hip\s*(&|and|\/)?\s*ridge|ridge\s*cap|seal-?a-?ridge|timbertex|z\s*ridge)/.test(hay);
+  const isFieldShingle = !isHipAndRidge && /shingle/.test(hay);
+  const isAccessory = !isHipAndRidge && !isFieldShingle;
+  return { isHipAndRidge, isFieldShingle, isAccessory };
+}
+
+function branchNumbersOf(item: Rec): string[] {
+  const list = Array.isArray(item.branches) ? (item.branches as Rec[]) : [];
+  const nums = list
+    .map((b) => str(b.branchNumber) ?? str(b.branch_number) ?? str(b.number))
+    .filter((v): v is string => !!v);
+  return [...new Set(nums)];
+}
+
+
 export async function ingestAbcCatalogItems(
   // deno-lint-ignore no-explicit-any
   supabase: any,
