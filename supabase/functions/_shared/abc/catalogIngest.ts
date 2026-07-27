@@ -387,14 +387,18 @@ export async function ingestAbcCatalogItems(
           variant_name: variantName,
           canonical_uom: canonicalUom,
           requires_color: !!colorName,
-          is_accessory: false,
+          is_accessory: cls.isAccessory,
           is_active: true,
           attributes: {
             abc_product_type: h.productType,
             abc_category: h.category,
             abc_group: h.group,
             abc_family_id: str(item.familyId),
+            abc_is_hip_and_ridge: cls.isHipAndRidge,
+            abc_is_field_shingle: cls.isFieldShingle,
+            abc_parent_item_number: parentItemNumber,
           },
+
         },
         "tenant_id,product_line_id,variant_name,canonical_uom",
         {
