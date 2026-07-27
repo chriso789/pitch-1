@@ -1151,9 +1151,9 @@ export const handle = async (req) => {
       const maxItems = Math.min(Math.max(Number(body.maxItems) || 3000, 100), 5000);
       const perPage = 100;
       const maxPagesPerSeed = 20; // 20 * 100 = 2000 per seed hard cap
-      // 30s soft deadline for the sweep + pricing so the persistence pass
+      // 20s soft deadline for the sweep + pricing so the persistence pass
       // (catalog cache + identity + mapping proposals) still has runtime left.
-      const deadline = Date.now() + 30_000;
+      const deadline = Date.now() + 20_000;
 
       // Sweep seeds — every ABC roofing SKU description contains at least one
       // of these. We dedupe after so hitting the same SKU twice is harmless.
