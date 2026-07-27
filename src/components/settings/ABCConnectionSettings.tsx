@@ -1506,6 +1506,7 @@ export function ABCConnectionSettings() {
       <div className="space-y-6">
         <AbcTenantConnectCard />
         {abcConnected && <AbcCatalogBrowser />}
+        {abcConnected && <SupplierMappingApprovalPanel supplier="abc" />}
       </div>
     );
   }
@@ -1522,6 +1523,8 @@ export function ABCConnectionSettings() {
           it was buried below the Submit Diagnostics card and appeared
           "missing" to anyone who didn't scroll the full page. */}
       <AbcCatalogBrowser />
+      <SupplierMappingApprovalPanel supplier="abc" />
+
       {DemoWorkflowCard}
       {TestConsoleCard}
       {LatestResultCard}
