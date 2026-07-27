@@ -481,6 +481,23 @@ export const AbcCatalogBrowser: React.FC = () => {
                   Dump entire branch catalog
                 </Button>
               )}
+              {isConnected && branchNumber && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={ingestCatalog}
+                  disabled={ingesting}
+                  title="Sweep ABC, cache the catalog, and create canonical manufacturer/color/variant identity plus pending supplier item-code mappings."
+                >
+                  {ingesting ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                  ) : (
+                    <Download className="h-3.5 w-3.5 mr-1" />
+                  )}
+                  Ingest → mapping proposals
+                </Button>
+              )}
+
               <Badge variant="secondary">
                 {loading || dumping ? '…' : `${items.length} items${dumpMode ? ' (full dump)' : ''}`}
               </Badge>
