@@ -897,6 +897,112 @@ export const handle = async (req) => {
       return json({ success: r.ok, environment: env, endpoint, status: r.status, body: r.json ?? r.text, error_code });
     }
 
+    // ---------------- validate_ship_to_branch ----------------
+    // Authenticated tenant route. Server-side gate that must pass BEFORE any
+    // pricing preflight or order preparation. Never trusts a client-supplied
+    // tenant: `tenant_id` is already resolved from the caller's JWT above, and
+    // every query below is filtered by it.
+    if (action === "validate_ship_to_branch") {
+      const stn = String(body.shipToNumber || "").trim();
+      const bn = String(body.branchNumber || "").trim();
+      if (!stn || !bn) {
+        return json({ success: false, valid: false, error_code: "missing_parameters", message: "shipToNumber and branchNumber are required." }, 400);
+      }
+
+      const { data: shipToRow } = await supabase
+        .from("abc_ship_to_accounts")
+        .select("id, ship_to_number, name, address_line1, address_line2, city, state, postal_code, is_default, raw")
+        .eq("tenant_id", tenant_id!)
+        .eq("ship_to_number", stn)
+        .maybeSingle();
+
+      if (!shipToRow) {
+        return json({
+          success: true, valid: false, environment: env,
+          error_code: "ship_to_not_found",
+          message: `Ship-to ${stn} is not present in this tenant's synced ABC accounts. Run "Sync accounts" first.`,
+        });
+      }
+
+      const { data: branchRows } = await supabase
+        .from("abc_account_branches")
+        .select("branch_number, name, city, state, postal_code, is_home_branch, is_default")
+        .eq("tenant_id", tenant_id!)
+        .eq("ship_to_id", (shipToRow as any).id)
+        .order("branch_number");
+
+      const branches = (branchRows ?? []) as any[];
+      const paired = branches.some((b) => String(b.branch_number) === bn);
+      const rawStatus = ((shipToRow as any).raw?.shipTo?.status ?? (shipToRow as any).raw?.status ?? null);
+      const activeFlag = typeof rawStatus === "string" ? !/inactive|closed|suspend/i.test(rawStatus) : true;
+
+      if (!paired) {
+        return json({
+          success: true, valid: false, environment: env,
+          error_code: "branch_not_authorized_for_ship_to",
+          message: `Branch ${bn} is not authorized for ship-to ${stn}. Authorized: ${branches.map((b) => b.branch_number).join(", ") || "none synced"}.`,
+          ship_to: shipToRow, branches, active: activeFlag,
+        });
+      }
+
+      if (!activeFlag) {
+        return json({
+          success: true, valid: false, environment: env,
+          error_code: "ship_to_inactive",
+          message: `Ship-to ${stn} is not active (${rawStatus}).`,
+          ship_to: shipToRow, branches, active: false,
+        });
+      }
+
+      // Optional live ABC confirmation: a single-item ordering price probe is
+      // the only ABC call that actually rejects a bad ship-to/branch pairing.
+      let live: any = null;
+      const probeItem = String(body.probeItemNumber || "").trim();
+      if (probeItem) {
+        const probeReq: AbcPricingServiceRequest = {
+          shipToNumber: stn,
+          branchNumber: bn,
+          purpose: "ordering" as any,
+          lines: [{ itemNumber: probeItem, quantity: 1 }],
+        };
+        const invalidProbe = validatePricingRequest(probeReq);
+        if (!invalidProbe) {
+          const result = await priceItemsService(
+            { apiBase: cfg.apiBase, token: tok.token, callAbc, mapAbcError },
+            probeReq,
+          );
+          live = {
+            ok: result.success,
+            status: result.status,
+            error_code: result.error_code,
+            endpoint: result.endpoint,
+          };
+          await auditCall(supabase, {
+            tenant_id, environment: env, action, endpoint: result.endpoint,
+            request_body_redacted: result.request,
+            status_code: result.status, response_body: result.body, error_code: result.error_code,
+            duration_ms: Date.now() - startedAt, created_by: userId,
+          });
+          if (!result.success && (result.status === 401 || result.status === 403)) {
+            return json({
+              success: true, valid: false, environment: env,
+              error_code: "abc_rejected_pairing",
+              message: `ABC rejected ship-to ${stn} with branch ${bn} (HTTP ${result.status}).`,
+              ship_to: shipToRow, branches, active: true, live,
+            });
+          }
+        }
+      }
+
+      return json({
+        success: true, valid: true, environment: env,
+        ship_to: shipToRow, branches, active: true, live,
+        message: `Ship-to ${stn} is valid for branch ${bn}.`,
+      });
+    }
+
+
+
     // ---------------- search_products / get_item ----------------
     // Delegates payload construction + response normalization to the shared
     // ABC catalog service (Phase 1B Slice 1). Wire contract and audit shape
