@@ -1143,8 +1143,11 @@ export const handle = async (req) => {
           branchCode: branchNumber || null,
           createdBy: userId ?? null,
           environment: env,
+          // Rows are already cached — re-upserting them ate the whole budget
+          // and produced zero mapping proposals.
+          skipCatalogWrite: true,
           // Stay well inside the gateway budget; the client resumes the rest.
-          identityDeadlineMs: Date.now() + 20_000,
+          identityDeadlineMs: Date.now() + 30_000,
         });
       } catch (e) {
         return json({ success: false, error: "ingest_failed", message: String((e as Error)?.message ?? e) }, 500);
