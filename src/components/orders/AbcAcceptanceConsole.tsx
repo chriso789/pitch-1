@@ -299,7 +299,7 @@ export default function AbcAcceptanceConsole() {
     setRunning(false);
 
     if (error) {
-      const d = (details ?? {}) as any;
+      const d = ((raw as any)?.details ?? {}) as any;
       setStageIdx(-1);
       setFailure({
         failed_stage: d.failed_stage ?? 'order_loaded',
