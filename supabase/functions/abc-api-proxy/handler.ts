@@ -683,8 +683,9 @@ export const handle = async (req) => {
     }
 
     // ---------------- revoke_connection ----------------
-    // Clears stored ABC OAuth tokens + selected ship-to/branch for this tenant+env.
-    // Safe to call even if nothing is stored. Does not attempt remote token revoke.
+    // Archives stored ABC OAuth tokens for this tenant+env. Ship-To/branch
+    // rows, cached catalog, and approved mappings are durable and must survive
+    // disconnect/reconnect cycles.
     if (action === "revoke_connection" || action === "disconnect") {
       if (!tenant_id) return json({ success: false, error: "no_tenant" }, 400);
       try {
@@ -701,17 +702,22 @@ export const handle = async (req) => {
             .eq("integration_id", (integration as any).id)
             .eq("tenant_id", tenant_id);
         }
-        // Ship-To/accounts cascade from abc_user_connections. Do not issue a
-        // tenant-wide delete here or disconnecting production will wipe sandbox
-        // account rows for the same tenant.
         await supabase
           .from("abc_user_connections")
-          .delete()
+          .update({
+            status: "revoked",
+            last_error: null,
+            updated_at: new Date().toISOString(),
+          })
           .eq("tenant_id", tenant_id)
           .eq("environment", env);
         await supabase
           .from("abc_connections")
-          .delete()
+          .update({
+            connection_status: "disconnected",
+            setup_completed_at: null,
+            updated_at: new Date().toISOString(),
+          })
           .eq("tenant_id", tenant_id)
           .eq("environment", env);
         await supabase
@@ -970,10 +976,9 @@ export const handle = async (req) => {
       }
 
       // 3) Upsert abc_ship_to_accounts (connection_id + ship_to_number unique).
-      //
-      // Per Sandy's required setup flow: a Ship-To with NO branches[] cannot
-      // be used for pricing (no branchNumber to send). Skip persisting these
-      // entirely so the setup wizard / /accounts surface never offers them.
+      // Persist all Ship-Tos. A transient response with no branches must not
+      // hide or erase account evidence; pricing/order validation separately
+      // requires a branch-scoped selection.
       const shipToNumbersWithBranches = new Set<string>(
         accountBranchRows.map((r) => r.ship_to_number),
       );
@@ -981,7 +986,6 @@ export const handle = async (req) => {
         (r) => !shipToNumbersWithBranches.has(r.ship_to_number),
       ).length;
       const shipToUpserts = shipToRows
-        .filter((r) => shipToNumbersWithBranches.has(r.ship_to_number))
         .map(({ ship_to_number, payload }) => {
           const st = payload?.shipTo ?? payload ?? {};
           const addr = st?.address ?? st?.shippingAddress ?? {};

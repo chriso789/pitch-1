@@ -65,12 +65,7 @@ export function useAbcCatalog(
           .eq('tenant_id', tenantId)
           .order('is_default', { ascending: false })
           .order('ship_to_number');
-        if (environment) {
-          if (connectionIds.length === 0) {
-            setBranches([]);
-            setShipTos([]);
-            return;
-          }
+        if (environment && connectionIds.length > 0) {
           shipToQuery = shipToQuery.in('connection_id', connectionIds);
         }
 
