@@ -221,6 +221,8 @@ export const AbcCatalogBrowser: React.FC = () => {
 
   const [dumpMode, setDumpMode] = useState(false);
   const [dumpMeta, setDumpMeta] = useState<{ count: number; stoppedReason: string | null } | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const allowSandboxFallback = effectiveEnvironment === 'sandbox';
   // Resolve ship-to / branch (connected account → sandbox fallback only in sandbox).
