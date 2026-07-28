@@ -942,70 +942,9 @@ export function ABCConnectionSettings() {
   );
 
   // ────────────────────────────────────────────────────────────────────
-  // D. Demo Workflow (sandbox only)
+  // D. (removed) Sandbox Demo Workflow — superseded by AbcAcceptanceConsole
   // ────────────────────────────────────────────────────────────────────
-  const stepStatus = {
-    connect: isConnected,
-    search: searchHits.length > 0,
-    price: latestAction === 'price_items' && (latestResult?.success ?? false),
-    submit: !!orderResult?.success,
-  };
 
-  const StepperPill = ({ n, label, done }: { n: number; label: string; done: boolean }) => (
-    <div className="flex items-center gap-2">
-      <div
-        className={`h-6 w-6 rounded-full flex items-center justify-center text-[11px] font-semibold ${
-          done
-            ? 'bg-emerald-500 text-white'
-            : 'bg-muted text-muted-foreground border'
-        }`}
-      >
-        {done ? <CheckCircle className="h-3.5 w-3.5" /> : n}
-      </div>
-      <span className={`text-xs ${done ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>{label}</span>
-    </div>
-  );
-
-  const DemoWorkflowCard = environment === 'sandbox' && allowSandboxDefaults && (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-lg">Sandbox Demo Workflow</CardTitle>
-        <CardDescription>
-          Sandy-approved sandbox defaults are pre-filled. Item Number is intentionally blank — run product search first
-          and pick a real item at branch {SANDBOX_DEFAULTS.branch}.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <StepperPill n={1} label="Connect" done={stepStatus.connect} />
-          <ChevronRight className="h-3 w-3 text-muted-foreground" />
-          <StepperPill n={2} label="Search" done={stepStatus.search} />
-          <ChevronRight className="h-3 w-3 text-muted-foreground" />
-          <StepperPill n={3} label="Price" done={stepStatus.price} />
-          <ChevronRight className="h-3 w-3 text-muted-foreground" />
-          <StepperPill n={4} label="Submit / Track" done={stepStatus.submit} />
-        </div>
-        <div className="grid gap-3 md:grid-cols-3">
-          <div className="space-y-1">
-            <Label className="text-xs">Ship-To Number</Label>
-            <Input value={shipToNumber} onChange={(e) => setShipToNumber(e.target.value)} placeholder={allowSandboxDefaults ? SANDBOX_DEFAULTS.shipTo : 'Ship-To #'} />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Branch Number</Label>
-            <Input value={branchNumber} onChange={(e) => setBranchNumber(e.target.value)} placeholder={allowSandboxDefaults ? SANDBOX_DEFAULTS.branch : 'Branch #'} />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Item Number</Label>
-            <Input
-              value={itemNumber}
-              onChange={(e) => setItemNumber(e.target.value)}
-              placeholder="Run product search first"
-            />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
 
   // ────────────────────────────────────────────────────────────────────
   // E. Sandbox Test Console
