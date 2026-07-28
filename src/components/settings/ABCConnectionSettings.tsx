@@ -942,83 +942,23 @@ export function ABCConnectionSettings() {
   );
 
   // ────────────────────────────────────────────────────────────────────
-  // D. Demo Workflow (sandbox only)
+  // D. (removed) Sandbox Demo Workflow — superseded by AbcAcceptanceConsole
   // ────────────────────────────────────────────────────────────────────
-  const stepStatus = {
-    connect: isConnected,
-    search: searchHits.length > 0,
-    price: latestAction === 'price_items' && (latestResult?.success ?? false),
-    submit: !!orderResult?.success,
-  };
 
-  const StepperPill = ({ n, label, done }: { n: number; label: string; done: boolean }) => (
-    <div className="flex items-center gap-2">
-      <div
-        className={`h-6 w-6 rounded-full flex items-center justify-center text-[11px] font-semibold ${
-          done
-            ? 'bg-emerald-500 text-white'
-            : 'bg-muted text-muted-foreground border'
-        }`}
-      >
-        {done ? <CheckCircle className="h-3.5 w-3.5" /> : n}
-      </div>
-      <span className={`text-xs ${done ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>{label}</span>
-    </div>
-  );
-
-  const DemoWorkflowCard = environment === 'sandbox' && allowSandboxDefaults && (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-lg">Sandbox Demo Workflow</CardTitle>
-        <CardDescription>
-          Sandy-approved sandbox defaults are pre-filled. Item Number is intentionally blank — run product search first
-          and pick a real item at branch {SANDBOX_DEFAULTS.branch}.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <StepperPill n={1} label="Connect" done={stepStatus.connect} />
-          <ChevronRight className="h-3 w-3 text-muted-foreground" />
-          <StepperPill n={2} label="Search" done={stepStatus.search} />
-          <ChevronRight className="h-3 w-3 text-muted-foreground" />
-          <StepperPill n={3} label="Price" done={stepStatus.price} />
-          <ChevronRight className="h-3 w-3 text-muted-foreground" />
-          <StepperPill n={4} label="Submit / Track" done={stepStatus.submit} />
-        </div>
-        <div className="grid gap-3 md:grid-cols-3">
-          <div className="space-y-1">
-            <Label className="text-xs">Ship-To Number</Label>
-            <Input value={shipToNumber} onChange={(e) => setShipToNumber(e.target.value)} placeholder={allowSandboxDefaults ? SANDBOX_DEFAULTS.shipTo : 'Ship-To #'} />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Branch Number</Label>
-            <Input value={branchNumber} onChange={(e) => setBranchNumber(e.target.value)} placeholder={allowSandboxDefaults ? SANDBOX_DEFAULTS.branch : 'Branch #'} />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Item Number</Label>
-            <Input
-              value={itemNumber}
-              onChange={(e) => setItemNumber(e.target.value)}
-              placeholder="Run product search first"
-            />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
 
   // ────────────────────────────────────────────────────────────────────
-  // E. Sandbox Test Console
+  // E. ABC API diagnostics (search / price / track) — ordering lives in
+  //    the ABC order validation console, not here.
   // ────────────────────────────────────────────────────────────────────
   const TestConsoleCard = (
     <Card>
       <CardHeader>
-        <CardTitle className="text-lg">Sandbox Test Console</CardTitle>
+        <CardTitle className="text-lg">ABC API diagnostics</CardTitle>
         <CardDescription>
-          {environment === 'sandbox'
-            ? 'Submits a non-production ABC sandbox order to ABC QA.'
-            : 'Production mode — submitting test orders is disabled.'}
+          Raw Product / Price Items / Order Status calls for troubleshooting. Order building and submission happen in
+          the ABC order validation console above.
         </CardDescription>
+
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Product Search */}
@@ -1148,147 +1088,8 @@ export function ABCConnectionSettings() {
         </div>
 
 
-        {/* Submit Test Order */}
-        <div className="rounded-md border p-3 space-y-3">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <Send className="h-4 w-4" /> Submit Sandbox Test Order
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Sandy contract: itemNumber + UOM must come from Product API; jobsite DC contact required;
-            Price Items echo is the price source unless an explicit override + reason is supplied.
-          </p>
 
-          <div className="grid gap-3 md:grid-cols-4">
-            <div className="space-y-1">
-              <Label className="text-xs">Item # (from Product Search)</Label>
-              <Input value={itemNumber} onChange={(e) => setItemNumber(e.target.value)} placeholder="e.g. 02OCTDUMP" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">UOM (from Product API)</Label>
-              <Input value={orderUom} onChange={(e) => setOrderUom(e.target.value)} placeholder="e.g. PC / BX" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Quantity</Label>
-              <Input type="number" min={1} value={orderQty} onChange={(e) => setOrderQty(e.target.value)} />
-            </div>
-            <div className="space-y-1 flex items-end">
-              <label className="flex items-center gap-2 text-xs">
-                <input
-                  type="checkbox"
-                  checked={sandboxDemoFallback}
-                  onChange={(e) => setSandboxDemoFallback(e.target.checked)}
-                  disabled={environment !== 'sandbox'}
-                />
-                Use sandbox demo Ship-To/Branch fallback (2010466-2 / 1209)
-              </label>
-            </div>
-          </div>
 
-          <div className="grid gap-3 md:grid-cols-3">
-            <div className="space-y-1">
-              <Label className="text-xs">Jobsite Contact Name (DC)</Label>
-              <Input value={jobsiteName} onChange={(e) => setJobsiteName(e.target.value)} />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Jobsite Contact Email</Label>
-              <Input value={jobsiteEmail} onChange={(e) => setJobsiteEmail(e.target.value)} />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Jobsite Contact Phone</Label>
-              <Input value={jobsitePhone} onChange={(e) => setJobsitePhone(e.target.value)} />
-            </div>
-          </div>
-
-          <div className="rounded border bg-muted/30 p-2 space-y-2">
-            <label className="flex items-center gap-2 text-xs">
-              <input
-                type="checkbox"
-                checked={overrideEnabled}
-                onChange={(e) => setOverrideEnabled(e.target.checked)}
-              />
-              Override ABC Price Items unit price (requires reason)
-            </label>
-            {overrideEnabled && (
-              <div className="grid gap-2 md:grid-cols-2">
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={overridePrice}
-                  onChange={(e) => setOverridePrice(e.target.value)}
-                  placeholder="Override unit price"
-                />
-                <Input
-                  value={overrideReason}
-                  onChange={(e) => setOverrideReason(e.target.value)}
-                  placeholder="Reason (required, persisted on line)"
-                />
-              </div>
-            )}
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              onClick={handleValidatePayloadOnly}
-              disabled={submittingOrder || !canSubmitOrder || environment !== 'sandbox'}
-              title="Run Sandy contract validations and build the exact ABC payload — does NOT send to ABC."
-            >
-              {submittingOrder ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-              Validate Payload Only
-            </Button>
-            <Button
-              onClick={handleSubmitTestOrder}
-              disabled={submittingOrder || !canSubmitOrder || environment !== 'sandbox'}
-            >
-              {submittingOrder ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
-              Submit Test Order
-            </Button>
-          </div>
-
-          {orderResult && (
-            <div className="space-y-2">
-              {orderResult.sandboxWarning && (
-                <div className="rounded border border-yellow-500/40 bg-yellow-500/10 p-2 text-xs text-yellow-900 dark:text-yellow-100">
-                  ⚠️ {orderResult.sandboxWarning}
-                </div>
-              )}
-              <div
-                className={`rounded border p-2 text-xs ${
-                  orderResult.validation === 'PASS' || orderResult.success
-                    ? 'border-emerald-500/40 bg-emerald-500/10'
-                    : 'border-destructive/40 bg-destructive/10'
-                }`}
-              >
-                <div className="font-medium">
-                  {orderResult.validation === 'PASS' && !orderResult.sentToAbc
-                    ? 'Validate Payload Only: PASS (ABC not contacted)'
-                    : orderResult.success
-                      ? 'Submit Test Order: ABC accepted'
-                      : `Result: ${orderResult.validation || 'FAIL'} — ${orderResult.error || orderResult.error_code || 'see details'}`}
-                </div>
-                {Array.isArray(orderResult.missing) && orderResult.missing.length > 0 && (
-                  <div className="mt-1">Missing fields: {orderResult.missing.join(', ')}</div>
-                )}
-              </div>
-              {orderResult.payloadProof && (
-                <details className="rounded border p-2 text-xs" open>
-                  <summary className="cursor-pointer font-medium">Final ABC payload proof</summary>
-                  <pre className="font-mono text-[10px] bg-muted/40 p-2 rounded overflow-x-auto mt-2">
-                    {JSON.stringify(orderResult.payloadProof, null, 2)}
-                  </pre>
-                </details>
-              )}
-              {orderResult.orderRequest && (
-                <details className="rounded border p-2 text-xs">
-                  <summary className="cursor-pointer font-medium">Full outgoing ABC order JSON</summary>
-                  <pre className="font-mono text-[10px] bg-muted/40 p-2 rounded overflow-x-auto mt-2">
-                    {JSON.stringify(orderResult.orderRequest, null, 2)}
-                  </pre>
-                </details>
-              )}
-            </div>
-          )}
-        </div>
 
 
 
@@ -1530,7 +1331,7 @@ export function ABCConnectionSettings() {
       <SupplierMappingApprovalPanel supplier="abc" />
       <AbcAcceptanceConsole />
 
-      {DemoWorkflowCard}
+      
       {TestConsoleCard}
       {LatestResultCard}
       {DiagnosticsCard}
