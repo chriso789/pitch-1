@@ -947,17 +947,18 @@ export function ABCConnectionSettings() {
 
 
   // ────────────────────────────────────────────────────────────────────
-  // E. Sandbox Test Console
+  // E. ABC API diagnostics (search / price / track) — ordering lives in
+  //    the ABC order validation console, not here.
   // ────────────────────────────────────────────────────────────────────
   const TestConsoleCard = (
     <Card>
       <CardHeader>
-        <CardTitle className="text-lg">Sandbox Test Console</CardTitle>
+        <CardTitle className="text-lg">ABC API diagnostics</CardTitle>
         <CardDescription>
-          {environment === 'sandbox'
-            ? 'Submits a non-production ABC sandbox order to ABC QA.'
-            : 'Production mode — submitting test orders is disabled.'}
+          Raw Product / Price Items / Order Status calls for troubleshooting. Order building and submission happen in
+          the ABC order validation console above.
         </CardDescription>
+
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Product Search */}
