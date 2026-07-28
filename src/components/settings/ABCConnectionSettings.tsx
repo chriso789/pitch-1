@@ -1469,7 +1469,7 @@ export function ABCConnectionSettings() {
       <SupplierMappingApprovalPanel supplier="abc" />
       <AbcAcceptanceConsole />
 
-      {DemoWorkflowCard}
+      
       {TestConsoleCard}
       {LatestResultCard}
       {DiagnosticsCard}
