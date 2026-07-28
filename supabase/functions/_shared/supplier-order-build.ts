@@ -189,6 +189,11 @@ export function validateOrderContext(ctx: OrderContextInput): { ok: boolean; rea
   return { ok: true };
 }
 
+/** Pure: collapse naming/spacing/punctuation differences ("Weathered Wood" ≡ "Weatheredwood"). */
+export function normalizeToken(value?: string | null): string {
+  return (value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
 /** Pure: given compatibility records, decide whether companion lines are approved. */
 export function evaluateCompatibility(
   lines: BuildLineInput[],
