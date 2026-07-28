@@ -241,6 +241,31 @@ export function evaluateCompatibility(
     );
 
     if (!hit) {
+      // Fallback: same manufacturer + equivalent color naming ("Weatheredwood"
+      // vs "Weathered Wood") is a manufacturer-consistent system pairing.
+      const sameMfr =
+        !!fieldRes?.manufacturer_id && !!compRes?.manufacturer_id
+          ? fieldRes.manufacturer_id === compRes.manufacturer_id
+          : normalizeToken(fieldRes?.manufacturer_name) !== "" &&
+            normalizeToken(fieldRes?.manufacturer_name) === normalizeToken(compRes?.manufacturer_name);
+      const sameColor =
+        (normalizeToken(fieldRes?.color_name) !== "" &&
+          normalizeToken(fieldRes?.color_name) === normalizeToken(compRes?.color_name)) ||
+        (!!fieldRes?.manufacturer_color_code &&
+          normalizeToken(fieldRes.manufacturer_color_code) === normalizeToken(compRes?.manufacturer_color_code));
+
+      if (sameMfr && sameColor) {
+        evidence.push({
+          field_key: field.key,
+          companion_key: comp.key,
+          relationship: "manufacturer_color_match",
+          compatibility_id: "derived:manufacturer_color_match",
+          evidence_source: "manufacturer_color_match",
+          evidence_reference: `${fieldRes?.manufacturer_name ?? "manufacturer"} · ${fieldRes?.color_name ?? ""} ≡ ${compRes?.color_name ?? ""}`,
+        });
+        continue;
+      }
+
       return {
         ok: false,
         evidence,
@@ -251,6 +276,7 @@ export function evaluateCompatibility(
         },
       };
     }
+
 
     evidence.push({
       field_key: field.key,
