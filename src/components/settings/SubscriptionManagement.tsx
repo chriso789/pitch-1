@@ -21,6 +21,8 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useCompanySwitcher } from '@/hooks/useCompanySwitcher';
+import { useSupplierDeveloperMode } from '@/hooks/useSupplierDeveloperMode';
+import { MembershipBillingPanel } from '@/components/settings/MembershipBillingPanel';
 
 interface SubscriptionData {
   subscription_tier: string;
