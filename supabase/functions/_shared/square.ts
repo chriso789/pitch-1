@@ -57,14 +57,14 @@ export async function getTenantSquareAccount(
   const { data, error } = await service
     .from("tenant_square_accounts")
     .select(
-      "tenant_id, environment, access_token, refresh_token, access_token_expires_at, merchant_id, merchant_name, selected_location_id, status",
-    )
-    .select(
       "tenant_id, environment, access_token, refresh_token, access_token_expires_at, merchant_id, merchant_name, selected_location_id, selected_location_name, scopes, status",
     )
     .eq("tenant_id", tenantId)
     .maybeSingle();
 
+  if (error) {
+    console.error("[square] failed to load tenant account", error.message);
+    return null;
   }
   return (data as TenantSquareAccount | null) ?? null;
 }
