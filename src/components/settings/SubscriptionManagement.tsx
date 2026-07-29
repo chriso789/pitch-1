@@ -235,6 +235,9 @@ export const SubscriptionManagement = () => {
                 ${currentConfig.price}
                 <span className="text-sm font-normal text-muted-foreground">{currentConfig.priceSuffix}</span>
               </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {currentConfig.audience} · Crew logins ${currentConfig.crewPrice}/login/mo
+              </p>
             </div>
             <Button variant="outline" className="gap-2">
               <CreditCard className="h-4 w-4" />
