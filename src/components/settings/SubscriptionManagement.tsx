@@ -21,6 +21,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useCompanySwitcher } from '@/hooks/useCompanySwitcher';
+import { useEffectiveTenantId, useEffectiveTenantIdLoading } from '@/hooks/useEffectiveTenantId';
 import { TenantCardAndSeatsPanel } from '@/components/settings/TenantCardAndSeatsPanel';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -95,19 +96,27 @@ export const SubscriptionManagement = () => {
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
   const { activeCompanyId, activeCompany } = useCompanySwitcher();
+  const effectiveTenantId = useEffectiveTenantId();
+  const tenantLoading = useEffectiveTenantIdLoading();
 
   useEffect(() => {
-    if (activeCompanyId) {
-      fetchSubscription();
+    if (effectiveTenantId) {
+      void fetchSubscription(effectiveTenantId);
+      return;
     }
-  }, [activeCompanyId]);
+    if (!tenantLoading) {
+      setSubscription(null);
+      setLoading(false);
+    }
+  }, [effectiveTenantId, tenantLoading]);
 
-  const fetchSubscription = async () => {
+  const fetchSubscription = async (tenantId: string) => {
+    setLoading(true);
     try {
       const { data, error } = await supabase
         .from('tenants')
         .select('subscription_tier, subscription_status, subscription_expires_at, features_enabled, billing_email')
-        .eq('id', activeCompanyId)
+        .eq('id', tenantId)
         .single();
 
       if (error) throw error;
@@ -176,7 +185,7 @@ export const SubscriptionManagement = () => {
       </TabsList>
 
       <TabsContent value="payment" className="space-y-6">
-        <TenantCardAndSeatsPanel />
+        <TenantCardAndSeatsPanel tenantId={effectiveTenantId} />
       </TabsContent>
 
       <TabsContent value="plan" className="space-y-6">
