@@ -23,6 +23,8 @@ import { useToast } from '@/hooks/use-toast';
 import { useCompanySwitcher } from '@/hooks/useCompanySwitcher';
 import { useSupplierDeveloperMode } from '@/hooks/useSupplierDeveloperMode';
 import { MembershipBillingPanel } from '@/components/settings/MembershipBillingPanel';
+import { TenantCardAndSeatsPanel } from '@/components/settings/TenantCardAndSeatsPanel';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface SubscriptionData {
   subscription_tier: string;
@@ -176,9 +178,26 @@ export const SubscriptionManagement = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <Tabs defaultValue="plan" className="space-y-6">
+      <TabsList>
+        <TabsTrigger value="plan" className="gap-2">
+          <Crown className="h-4 w-4" />
+          Plan
+        </TabsTrigger>
+        <TabsTrigger value="payment" className="gap-2">
+          <CreditCard className="h-4 w-4" />
+          Payment &amp; Seats
+        </TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="payment" className="space-y-6">
+        <TenantCardAndSeatsPanel />
+      </TabsContent>
+
+      <TabsContent value="plan" className="space-y-6">
       {/* Current Subscription Overview */}
       <Card className={`${currentConfig.bgColor} ${currentConfig.borderColor} border-2`}>
+
         <CardHeader>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -327,6 +346,8 @@ export const SubscriptionManagement = () => {
           </div>
         </CardContent>
       </Card>
-    </div>
+      </TabsContent>
+    </Tabs>
+
   );
 };
