@@ -4,8 +4,7 @@
 // amount or tenant_id; it posts an invoice_id + provider, and this function
 // resolves tenant / project / contact / balance server-side.
 
-import { createRouter, jsonOk, jsonErr, requireAuth, requireTenant, serviceClient } from "../_shared/router.ts";
-import { requireMaster } from "../_shared/system-audit.ts";
+import { createRouter, jsonOk, jsonErr, requireAuth, requireTenant, serviceClient, serveRouter } from "../_shared/router.ts";
 import {
   platformStripe,
   stripeMode,
@@ -1303,6 +1302,6 @@ app.post("/membership/seats/sync", async (c) => {
   }
 });
 
-Deno.serve(app.fetch);
+serveRouter(app);
 
 
