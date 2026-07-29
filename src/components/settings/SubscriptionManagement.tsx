@@ -95,7 +95,7 @@ export const SubscriptionManagement = () => {
   const [subscription, setSubscription] = useState<SubscriptionData | null>(null);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
-  const { activeCompanyId, activeCompany } = useCompanySwitcher();
+  const { activeCompany } = useCompanySwitcher();
   const effectiveTenantId = useEffectiveTenantId();
   const tenantLoading = useEffectiveTenantIdLoading();
 
