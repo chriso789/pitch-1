@@ -108,6 +108,7 @@ export const SubscriptionManagement = () => {
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
   const { activeCompanyId, activeCompany } = useCompanySwitcher();
+  const { isMaster } = useSupplierDeveloperMode();
 
   useEffect(() => {
     if (activeCompanyId) {
