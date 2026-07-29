@@ -219,10 +219,10 @@ export const TenantCardAndSeatsPanel = () => {
           <div>
             <CardTitle className="text-base flex items-center gap-2">
               <Users className="h-4 w-4" />
-              User logins &amp; monthly seats
+              Staff &amp; crew monthly seats
             </CardTitle>
             <CardDescription>
-              Your monthly charge is based on the number of active user logins set up for this company.
+              Staff seats are $50–$80/mo; crew logins are $10/mo. Total is based on active logins for this company.
             </CardDescription>
           </div>
           <Button size="sm" variant="outline" onClick={syncSeats} disabled={busy === "seats" || !sub}>
@@ -234,25 +234,49 @@ export const TenantCardAndSeatsPanel = () => {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="rounded-lg border p-3 text-center">
               <div className="text-2xl font-bold">{seats?.billable_seats ?? 0}</div>
-              <div className="text-xs text-muted-foreground mt-1">Billable seats</div>
+              <div className="text-xs text-muted-foreground mt-1">Staff seats</div>
             </div>
             <div className="rounded-lg border p-3 text-center">
               <div className="text-2xl font-bold text-green-600 flex items-center justify-center gap-1">
                 <UserCheck className="h-4 w-4" />
                 {seats?.activated_logins ?? 0}
               </div>
-              <div className="text-xs text-muted-foreground mt-1">Activated logins</div>
+              <div className="text-xs text-muted-foreground mt-1">Staff activated</div>
             </div>
             <div className="rounded-lg border p-3 text-center">
               <div className="text-2xl font-bold text-amber-600 flex items-center justify-center gap-1">
                 <UserX className="h-4 w-4" />
                 {seats?.pending_logins ?? 0}
               </div>
-              <div className="text-xs text-muted-foreground mt-1">Invited, not logged in</div>
+              <div className="text-xs text-muted-foreground mt-1">Invited staff</div>
             </div>
             <div className="rounded-lg border p-3 text-center">
               <div className="text-2xl font-bold">{sub?.quantity ?? "—"}</div>
-              <div className="text-xs text-muted-foreground mt-1">Seats billed in Stripe</div>
+              <div className="text-xs text-muted-foreground mt-1">Staff billed in Stripe</div>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="rounded-lg border p-3 text-center">
+              <div className="text-2xl font-bold">0</div>
+              <div className="text-xs text-muted-foreground mt-1">Crew seats</div>
+            </div>
+            <div className="rounded-lg border p-3 text-center">
+              <div className="text-2xl font-bold text-green-600 flex items-center justify-center gap-1">
+                <UserCheck className="h-4 w-4" />
+                0
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">Crew activated</div>
+            </div>
+            <div className="rounded-lg border p-3 text-center">
+              <div className="text-2xl font-bold text-amber-600 flex items-center justify-center gap-1">
+                <UserX className="h-4 w-4" />
+                0
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">Invited crew</div>
+            </div>
+            <div className="rounded-lg border p-3 text-center">
+              <div className="text-2xl font-bold">—</div>
+              <div className="text-xs text-muted-foreground mt-1">Crew billed in Stripe</div>
             </div>
           </div>
 
