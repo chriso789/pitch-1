@@ -1024,6 +1024,33 @@ app.post("/membership/plans/list", async (c) => {
   return jsonOk(c, { mode: stripeMode(), plans: data ?? [] });
 });
 
+
+// Returns the tenant's app origin for Stripe redirects. Stripe must send users
+// back to the environment they started in (preview, custom domain, etc.), not a
+// hardcoded production URL — otherwise the redirect lands on a dead page.
+function returnBase(raw: unknown): string {
+  if (typeof raw === "string" && /^https?:\/\//i.test(raw)) {
+    try {
+      const u = new URL(raw);
+      const host = u.hostname;
+      const allowed =
+        host === "localhost" ||
+        host.endsWith("pitch-crm.ai") ||
+        host.endsWith("lovable.app") ||
+        host.endsWith("lovableproject.com");
+      if (allowed) return u.origin;
+    } catch { /* fall through */ }
+  }
+  return MEMBERSHIP_APP_URL;
+}
+
+// Memberships bill on the 1st of the month: anchor every new subscription to
+// the first of the upcoming month and prorate the partial first period.
+function firstOfNextMonthUnix(): number {
+  const now = new Date();
+  return Math.floor(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 12, 0, 0) / 1000);
+}
+
 app.post("/membership/checkout", async (c) => {
   const tenantId = c.get("tenantId")!;
   const claims = c.get("claims") as Record<string, unknown> | undefined;
@@ -1055,12 +1082,14 @@ app.post("/membership/checkout", async (c) => {
       billing_address_collection: "required",
       client_reference_id: tenantId,
       subscription_data: {
-        ...(plan.trial_days ? { trial_period_days: Number(plan.trial_days) } : {}),
+        ...(plan.trial_days
+          ? { trial_period_days: Number(plan.trial_days) }
+          : { billing_cycle_anchor: firstOfNextMonthUnix(), proration_behavior: "create_prorations" }),
         metadata: { pitch_tenant_id: tenantId, pitch_plan_slug: slug, pitch_interval: interval },
       },
       metadata: { pitch_tenant_id: tenantId, pitch_plan_slug: slug, pitch_interval: interval, pitch_product: "crm_membership" },
-      success_url: `${MEMBERSHIP_APP_URL}/settings?tab=subscription&membership=success&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${MEMBERSHIP_APP_URL}/settings?tab=subscription&membership=canceled`,
+      success_url: `${returnBase(body?.return_url)}/settings?tab=subscription&membership=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${returnBase(body?.return_url)}/settings?tab=subscription&membership=canceled`,
     });
     return jsonOk(c, { mode: stripeMode(), url: session.url, session_id: session.id });
   } catch (e) {
@@ -1119,13 +1148,14 @@ app.post("/membership/checkout/confirm", async (c) => {
 app.post("/membership/portal", async (c) => {
   const tenantId = c.get("tenantId")!;
   const claims = c.get("claims") as Record<string, unknown> | undefined;
+  const body = await c.req.json().catch(() => ({}));
   try {
     const svc = serviceClient();
     const stripe = platformStripe();
     const { customerId } = await resolveTenantCustomer(svc, stripe, tenantId, (claims?.email as string) ?? null);
     const portal = await stripe.billingPortal.sessions.create({
       customer: customerId,
-      return_url: `${MEMBERSHIP_APP_URL}/settings?tab=subscription`,
+      return_url: `${returnBase(body?.return_url)}/settings?tab=subscription`,
     });
     return jsonOk(c, { url: portal.url });
   } catch (e) {
@@ -1231,7 +1261,13 @@ app.post("/membership/billing/overview", async (c) => {
       .select("slug,name,tier,description,price_monthly,price_yearly,features,sort_order")
       .eq("is_active", true)
       .order("sort_order", { ascending: true });
-    const plan = (plans ?? []).find((p) => p.slug === activeSlug) ?? null;
+    // Legacy tiers (e.g. "pro") aren't in the catalog — fall back to the base
+    // CRM plan so pricing always renders from the canonical catalog.
+    const plan =
+      (plans ?? []).find((p) => p.slug === activeSlug) ??
+      (plans ?? []).find((p) => p.slug === "crm") ??
+      (plans ?? []).find((p) => p.slug !== "crew_login") ??
+      null;
     const crewPlan = (plans ?? []).find((p) => p.slug === "crew_login") ?? null;
 
     return jsonOk(c, {
@@ -1260,6 +1296,7 @@ app.post("/membership/billing/overview", async (c) => {
       upcoming,
       plan,
       crew_plan: crewPlan,
+      next_billing_anchor: firstOfNextMonthUnix(),
       plans: plans ?? [],
     });
   } catch (e) {
@@ -1272,6 +1309,7 @@ app.post("/membership/billing/overview", async (c) => {
 app.post("/membership/payment-method/setup", async (c) => {
   const tenantId = c.get("tenantId")!;
   const claims = c.get("claims") as Record<string, unknown> | undefined;
+  const body = await c.req.json().catch(() => ({}));
   try {
     const svc = serviceClient();
     const stripe = platformStripe();
@@ -1282,8 +1320,8 @@ app.post("/membership/payment-method/setup", async (c) => {
       payment_method_types: ["card"],
       client_reference_id: tenantId,
       metadata: { pitch_tenant_id: tenantId, pitch_product: "crm_membership_card" },
-      success_url: `${MEMBERSHIP_APP_URL}/settings?tab=subscription&card=saved&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${MEMBERSHIP_APP_URL}/settings?tab=subscription&card=canceled`,
+      success_url: `${returnBase(body?.return_url)}/settings?tab=subscription&card=saved&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${returnBase(body?.return_url)}/settings?tab=subscription&card=canceled`,
     });
     return jsonOk(c, { url: session.url, session_id: session.id });
   } catch (e) {
@@ -1442,6 +1480,7 @@ app.post("/membership/subscription/change-plan", async (c) => {
     const updated = await stripe.subscriptions.update(current.id, {
       items: [{ id: item.id, price: priceId, quantity: item.quantity ?? 1 }],
       proration_behavior: "create_prorations",
+      billing_cycle_anchor: "unchanged",
       metadata: { ...(current.metadata ?? {}), pitch_plan_slug: slug, pitch_interval: interval },
     });
     await svc.from("tenants").update({ subscription_tier: slug, subscription_status: updated.status }).eq("id", tenantId);
