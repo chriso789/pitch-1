@@ -133,7 +133,7 @@ const TAB_TO_CATEGORY: Record<string, string> = {
   cache: "system",
   "platform-admin": "platform",
   "demo-requests": "platform",
-  subscription: "platform",
+  subscription: "business",
   "quality-monitoring": "platform",
   "company-activity": "platform",
   "roof-training": "platform",
@@ -286,7 +286,7 @@ export const Settings = () => {
 
   const masterBackendTabs = [
     'platform-admin', 'developer', 'health', 'edge-functions', 
-    'subscription', 'security', 'pricing', 'quality-monitoring', 'demo-requests',
+    'security', 'pricing', 'quality-monitoring', 'demo-requests',
     'company-activity', 'reports', 'ai-admin', 'cache', 'roof-training'
   ];
 
