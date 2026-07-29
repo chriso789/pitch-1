@@ -1138,20 +1138,32 @@ app.post("/membership/portal", async (c) => {
 // Card on file + seat (login) counting for per-user monthly billing.
 // ------------------------------------------------------------------
 
+const CREW_ROLES = new Set(["crew", "crew_member", "crew_lead", "field_crew", "installer"]);
+
 async function countTenantSeats(svc: ReturnType<typeof serviceClient>, tenantId: string) {
   const { data, error } = await svc
     .from("profiles")
-    .select("id,is_active,is_suspended,is_ghost_account,is_hidden,password_set_at")
+    .select("id,role,is_active,is_suspended,is_ghost_account,is_hidden,password_set_at")
     .eq("tenant_id", tenantId);
   if (error) throw new Error(error.message);
   const rows = (data ?? []).filter(
     (p) => p.is_active !== false && p.is_suspended !== true && p.is_ghost_account !== true && p.is_hidden !== true,
   );
+  const isCrew = (p: { role?: string | null }) => CREW_ROLES.has(String(p.role ?? "").toLowerCase());
+  const staff = rows.filter((p) => !isCrew(p));
+  const crew = rows.filter(isCrew);
+  const bucket = (list: typeof rows) => ({
+    seats: list.length,
+    activated: list.filter((p) => !!p.password_set_at).length,
+    pending: list.filter((p) => !p.password_set_at).length,
+  });
   return {
-    billable_seats: rows.length,
-    activated_logins: rows.filter((p) => !!p.password_set_at).length,
-    pending_logins: rows.filter((p) => !p.password_set_at).length,
+    billable_seats: staff.length,
+    activated_logins: staff.filter((p) => !!p.password_set_at).length,
+    pending_logins: staff.filter((p) => !p.password_set_at).length,
     total_profiles: (data ?? []).length,
+    staff: bucket(staff),
+    crew: bucket(crew),
   };
 }
 
