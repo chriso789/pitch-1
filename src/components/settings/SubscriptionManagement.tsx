@@ -93,7 +93,7 @@ const FEATURE_LIST = [
 
 export const SubscriptionManagement = () => {
   const [subscription, setSubscription] = useState<SubscriptionData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const { toast } = useToast();
   const { activeCompanyId, activeCompany } = useCompanySwitcher();
   const effectiveTenantId = useEffectiveTenantId();
@@ -106,7 +106,6 @@ export const SubscriptionManagement = () => {
     }
     if (!tenantLoading) {
       setSubscription(null);
-      setLoading(false);
     }
   }, [effectiveTenantId, tenantLoading]);
 
@@ -123,6 +122,13 @@ export const SubscriptionManagement = () => {
       setSubscription(data);
     } catch (error: any) {
       console.error('Error fetching subscription:', error);
+      setSubscription({
+        subscription_tier: 'crm',
+        subscription_status: 'active',
+        subscription_expires_at: null,
+        features_enabled: [],
+        billing_email: null,
+      });
     } finally {
       setLoading(false);
     }
@@ -157,19 +163,6 @@ export const SubscriptionManagement = () => {
     }
     return <span className="font-medium">{value.toLocaleString()}</span>;
   };
-
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <div className="h-32 bg-muted animate-pulse rounded-lg" />
-        <div className="grid md:grid-cols-2 gap-4">
-          {[1, 2].map(i => (
-            <div key={i} className="h-96 bg-muted animate-pulse rounded-lg" />
-          ))}
-        </div>
-      </div>
-    );
-  }
 
   return (
     <Tabs defaultValue="plan" className="space-y-6">
@@ -206,6 +199,7 @@ export const SubscriptionManagement = () => {
               </div>
             </div>
             <div className="text-right">
+              {loading && <Badge variant="secondary" className="mb-2">Refreshing…</Badge>}
               {getStatusBadge(subscription?.subscription_status || 'active')}
               {subscription?.subscription_expires_at && (
                 <p className="text-sm text-muted-foreground mt-1">
