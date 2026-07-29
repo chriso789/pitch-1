@@ -1377,8 +1377,9 @@ app.post("/membership/invoices", async (c) => {
 });
 
 // Cancel at period end / resume a scheduled cancellation.
-async function setCancelAtPeriodEnd(c: Parameters<Parameters<typeof app.post>[1]>[0], cancel: boolean) {
-  const tenantId = (c as unknown as { get: (k: string) => string }).get("tenantId");
+// deno-lint-ignore no-explicit-any
+async function setCancelAtPeriodEnd(c: any, cancel: boolean) {
+  const tenantId = c.get("tenantId") as string;
   try {
     const svc = serviceClient();
     const stripe = platformStripe();
