@@ -21,8 +21,6 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useCompanySwitcher } from '@/hooks/useCompanySwitcher';
-import { useSupplierDeveloperMode } from '@/hooks/useSupplierDeveloperMode';
-import { MembershipBillingPanel } from '@/components/settings/MembershipBillingPanel';
 import { TenantCardAndSeatsPanel } from '@/components/settings/TenantCardAndSeatsPanel';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -34,13 +32,15 @@ interface SubscriptionData {
   billing_email: string | null;
 }
 
+const CREW_LOGIN_PRICE = 10;
+
 const TIER_CONFIG = {
-  starter: {
+  crm: {
     name: 'CRM',
     price: 50,
     priceSuffix: '/user/mo',
     audience: 'Employees, sales reps, production & owners',
-    crewPrice: 10,
+    crewPrice: CREW_LOGIN_PRICE,
     icon: Star,
     color: 'text-blue-500',
     bgColor: 'bg-blue-500/10',
@@ -56,33 +56,12 @@ const TIER_CONFIG = {
       prioritySupport: false,
     }
   },
-  crew: {
-    name: 'Crew Login',
-    price: 10,
-    priceSuffix: '/login/mo',
-    audience: 'Field crew members',
-    crewPrice: 10,
-    icon: Crown,
-    color: 'text-primary',
-    bgColor: 'bg-primary/10',
-    borderColor: 'border-primary/30',
-    features: {
-      users: 'Per login',
-      contacts: 'View only',
-      measurements: '—',
-      smartDocs: 'Basic',
-      powerDialer: '—',
-      apiAccess: false,
-      whiteLabel: false,
-      prioritySupport: false,
-    }
-  },
-  enterprise: {
+  crm_ai: {
     name: 'CRM + AI Measuring',
     price: 80,
     priceSuffix: '/user/mo',
-    audience: 'Employees, sales reps & owners (crew logins stay $10)',
-    crewPrice: 10,
+    audience: 'Employees, sales reps, production & owners',
+    crewPrice: CREW_LOGIN_PRICE,
     icon: Rocket,
     color: 'text-amber-500',
     bgColor: 'bg-amber-500/10',
@@ -116,7 +95,6 @@ export const SubscriptionManagement = () => {
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
   const { activeCompanyId, activeCompany } = useCompanySwitcher();
-  const { isMaster } = useSupplierDeveloperMode();
 
   useEffect(() => {
     if (activeCompanyId) {
@@ -141,8 +119,9 @@ export const SubscriptionManagement = () => {
     }
   };
 
-  const currentTier = subscription?.subscription_tier || 'starter';
-  const currentConfig = TIER_CONFIG[currentTier as keyof typeof TIER_CONFIG] || TIER_CONFIG.starter;
+  const rawTier = subscription?.subscription_tier || 'crm';
+  const currentTier = rawTier in TIER_CONFIG ? rawTier : 'crm';
+  const currentConfig = TIER_CONFIG[currentTier as keyof typeof TIER_CONFIG];
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -174,8 +153,8 @@ export const SubscriptionManagement = () => {
     return (
       <div className="space-y-6">
         <div className="h-32 bg-muted animate-pulse rounded-lg" />
-        <div className="grid md:grid-cols-3 gap-4">
-          {[1, 2, 3].map(i => (
+        <div className="grid md:grid-cols-2 gap-4">
+          {[1, 2].map(i => (
             <div key={i} className="h-96 bg-muted animate-pulse rounded-lg" />
           ))}
         </div>
@@ -250,7 +229,7 @@ export const SubscriptionManagement = () => {
       {/* Tier Comparison */}
       <div>
         <h3 className="text-lg font-semibold mb-4">Compare Plans</h3>
-        <div className="grid md:grid-cols-3 gap-4">
+        <div className="grid md:grid-cols-2 gap-4">
           {Object.entries(TIER_CONFIG).map(([tierKey, config]) => {
             const isCurrentTier = tierKey === currentTier;
             const TierIcon = config.icon;
@@ -299,16 +278,9 @@ export const SubscriptionManagement = () => {
                     <Button variant="outline" className="w-full" disabled>
                       Current Plan
                     </Button>
-                  ) : tierKey === 'enterprise' ? (
-                    <Button variant="outline" className="w-full">
-                      Contact Sales
-                    </Button>
                   ) : (
-                    <Button 
-                      className="w-full"
-                      variant={tierKey === 'professional' ? 'default' : 'outline'}
-                    >
-                      {currentTier === 'starter' && tierKey === 'professional' ? 'Upgrade' : 'Switch Plan'}
+                    <Button className="w-full" variant="outline">
+                      Switch Plan
                     </Button>
                   )}
                 </CardContent>
@@ -318,7 +290,21 @@ export const SubscriptionManagement = () => {
         </div>
       </div>
 
-      <MembershipBillingPanel isMaster={isMaster} />
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-primary/10">
+              <Crown className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <CardTitle className="text-base">Crew Logins — ${CREW_LOGIN_PRICE}/login/mo</CardTitle>
+              <CardDescription>
+                Available on every plan. Field crew members are billed per login, not per user seat.
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+      </Card>
 
       {/* Usage Stats (placeholder) */}
 
