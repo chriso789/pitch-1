@@ -1349,6 +1349,108 @@ app.post("/membership/seats/sync", async (c) => {
   }
 });
 
+// Stripe invoice history for the tenant's platform customer.
+app.post("/membership/invoices", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const claims = c.get("claims") as Record<string, unknown> | undefined;
+  try {
+    const svc = serviceClient();
+    const stripe = platformStripe();
+    const { customerId } = await resolveTenantCustomer(svc, stripe, tenantId, (claims?.email as string) ?? null);
+    const list = await stripe.invoices.list({ customer: customerId, limit: 12 });
+    return jsonOk(c, {
+      invoices: list.data.map((inv) => ({
+        number: inv.number ?? inv.id,
+        created: inv.created,
+        amount_due: inv.amount_due,
+        amount_paid: inv.amount_paid,
+        currency: inv.currency,
+        status: inv.status,
+        hosted_invoice_url: inv.hosted_invoice_url ?? null,
+        invoice_pdf: inv.invoice_pdf ?? null,
+      })),
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return jsonErr(c, "invoices_failed", msg, 502);
+  }
+});
+
+// Cancel at period end / resume a scheduled cancellation.
+async function setCancelAtPeriodEnd(c: Parameters<Parameters<typeof app.post>[1]>[0], cancel: boolean) {
+  const tenantId = (c as unknown as { get: (k: string) => string }).get("tenantId");
+  try {
+    const svc = serviceClient();
+    const stripe = platformStripe();
+    const { data: tenant } = await svc
+      .from("tenants")
+      .select("stripe_subscription_id")
+      .eq("id", tenantId)
+      .maybeSingle();
+    if (!tenant?.stripe_subscription_id) {
+      return jsonErr(c, "no_subscription", "No active membership subscription.", 409);
+    }
+    const sub = await stripe.subscriptions.update(tenant.stripe_subscription_id as string, {
+      cancel_at_period_end: cancel,
+    });
+    await svc
+      .from("tenants")
+      .update({ subscription_status: cancel ? "canceling" : sub.status })
+      .eq("id", tenantId);
+    return jsonOk(c, { cancel_at_period_end: sub.cancel_at_period_end, status: sub.status });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return jsonErr(c, "subscription_update_failed", msg, 502);
+  }
+}
+
+app.post("/membership/subscription/cancel", (c) => setCancelAtPeriodEnd(c, true));
+app.post("/membership/subscription/resume", (c) => setCancelAtPeriodEnd(c, false));
+
+// Switch the existing subscription to another catalog plan (upgrade/downgrade).
+app.post("/membership/subscription/change-plan", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const body = await c.req.json().catch(() => ({}));
+  const slug = typeof body?.plan_slug === "string" ? body.plan_slug : "";
+  const interval = body?.interval === "yearly" ? "yearly" : "monthly";
+  if (!slug) return jsonErr(c, "invalid_request", "plan_slug is required", 400);
+  try {
+    const svc = serviceClient();
+    const stripe = platformStripe();
+    const { data: plan } = await svc
+      .from("subscription_plans")
+      .select("slug,stripe_price_id_monthly,stripe_price_id_yearly")
+      .eq("slug", slug)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (!plan) return jsonErr(c, "plan_not_found", `No active plan '${slug}'.`, 404);
+    const priceId = interval === "yearly" ? plan.stripe_price_id_yearly : plan.stripe_price_id_monthly;
+    if (!priceId) return jsonErr(c, "price_not_mapped", `Plan '${slug}' has no ${interval} price mapped.`, 409);
+
+    const { data: tenant } = await svc
+      .from("tenants")
+      .select("stripe_subscription_id")
+      .eq("id", tenantId)
+      .maybeSingle();
+    if (!tenant?.stripe_subscription_id) {
+      return jsonErr(c, "no_subscription", "Start a membership from the plans page first.", 409);
+    }
+    const current = await stripe.subscriptions.retrieve(tenant.stripe_subscription_id as string);
+    const item = current.items.data[0];
+    if (!item) return jsonErr(c, "no_subscription_item", "Subscription has no billable item.", 409);
+    const updated = await stripe.subscriptions.update(current.id, {
+      items: [{ id: item.id, price: priceId, quantity: item.quantity ?? 1 }],
+      proration_behavior: "create_prorations",
+      metadata: { ...(current.metadata ?? {}), pitch_plan_slug: slug, pitch_interval: interval },
+    });
+    await svc.from("tenants").update({ subscription_tier: slug, subscription_status: updated.status }).eq("id", tenantId);
+    return jsonOk(c, { plan_slug: slug, status: updated.status });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return jsonErr(c, "change_plan_failed", msg, 502);
+  }
+});
+
 serveRouter(app);
 
 
