@@ -9,9 +9,13 @@ import { WebsiteIntegration } from "./WebsiteIntegration";
 import { SLAPolicyManager } from "./SLAPolicyManager";
 import { RoutingRulesManager } from "./RoutingRulesManager";
 import { MetaCAPISettings } from "./MetaCAPISettings";
-import { Github, BarChart3, Phone, Shield, Key, Globe, Clock, Route, Facebook } from "lucide-react";
+import { MembershipBillingPanel } from "./MembershipBillingPanel";
+import { useSupplierDeveloperMode } from "@/hooks/useSupplierDeveloperMode";
+import { Github, BarChart3, Phone, Shield, Key, Globe, Clock, Route, Facebook, CreditCard } from "lucide-react";
 
 export const IntegrationsSettings = () => {
+  const { isMaster } = useSupplierDeveloperMode();
+
   return (
     <div className="space-y-6">
       <div>
@@ -55,6 +59,10 @@ export const IntegrationsSettings = () => {
             <Github className="h-4 w-4" />
             GitHub
           </TabsTrigger>
+          <TabsTrigger value="membership-stripe" className="flex items-center gap-2">
+            <CreditCard className="h-4 w-4" />
+            Membership Billing
+          </TabsTrigger>
           <TabsTrigger value="session-activity" className="flex items-center gap-2">
             <Shield className="h-4 w-4" />
             Session Activity
@@ -92,6 +100,10 @@ export const IntegrationsSettings = () => {
 
         <TabsContent value="github" className="space-y-6">
           <GitHubConnectionGuide />
+        </TabsContent>
+
+        <TabsContent value="membership-stripe" className="space-y-6">
+          <MembershipBillingPanel isMaster={isMaster} />
         </TabsContent>
 
         <TabsContent value="session-activity" className="space-y-6">
