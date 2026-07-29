@@ -23,6 +23,8 @@ import { useToast } from '@/hooks/use-toast';
 import { useCompanySwitcher } from '@/hooks/useCompanySwitcher';
 import { useSupplierDeveloperMode } from '@/hooks/useSupplierDeveloperMode';
 import { MembershipBillingPanel } from '@/components/settings/MembershipBillingPanel';
+import { TenantCardAndSeatsPanel } from '@/components/settings/TenantCardAndSeatsPanel';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface SubscriptionData {
   subscription_tier: string;
