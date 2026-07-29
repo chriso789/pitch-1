@@ -1138,20 +1138,32 @@ app.post("/membership/portal", async (c) => {
 // Card on file + seat (login) counting for per-user monthly billing.
 // ------------------------------------------------------------------
 
+const CREW_ROLES = new Set(["crew", "crew_member", "crew_lead", "field_crew", "installer"]);
+
 async function countTenantSeats(svc: ReturnType<typeof serviceClient>, tenantId: string) {
   const { data, error } = await svc
     .from("profiles")
-    .select("id,is_active,is_suspended,is_ghost_account,is_hidden,password_set_at")
+    .select("id,role,is_active,is_suspended,is_ghost_account,is_hidden,password_set_at")
     .eq("tenant_id", tenantId);
   if (error) throw new Error(error.message);
   const rows = (data ?? []).filter(
     (p) => p.is_active !== false && p.is_suspended !== true && p.is_ghost_account !== true && p.is_hidden !== true,
   );
+  const isCrew = (p: { role?: string | null }) => CREW_ROLES.has(String(p.role ?? "").toLowerCase());
+  const staff = rows.filter((p) => !isCrew(p));
+  const crew = rows.filter(isCrew);
+  const bucket = (list: typeof rows) => ({
+    seats: list.length,
+    activated: list.filter((p) => !!p.password_set_at).length,
+    pending: list.filter((p) => !p.password_set_at).length,
+  });
   return {
-    billable_seats: rows.length,
-    activated_logins: rows.filter((p) => !!p.password_set_at).length,
-    pending_logins: rows.filter((p) => !p.password_set_at).length,
+    billable_seats: staff.length,
+    activated_logins: staff.filter((p) => !!p.password_set_at).length,
+    pending_logins: staff.filter((p) => !p.password_set_at).length,
     total_profiles: (data ?? []).length,
+    staff: bucket(staff),
+    crew: bucket(crew),
   };
 }
 
@@ -1181,6 +1193,7 @@ app.post("/membership/billing/overview", async (c) => {
       .maybeSingle();
 
     let subscription: Record<string, unknown> | null = null;
+    let upcoming: Record<string, unknown> | null = null;
     if (tenant?.stripe_subscription_id) {
       try {
         const sub = await stripe.subscriptions.retrieve(tenant.stripe_subscription_id as string);
@@ -1194,16 +1207,38 @@ app.post("/membership/billing/overview", async (c) => {
           interval: item?.price?.recurring?.interval ?? null,
           current_period_end: (sub as { current_period_end?: number }).current_period_end ?? null,
           cancel_at_period_end: sub.cancel_at_period_end,
+          plan_slug: (sub.metadata?.pitch_plan_slug as string) ?? null,
         };
       } catch { /* subscription may not exist in this mode */ }
+      try {
+        const inv = await (stripe.invoices as unknown as {
+          retrieveUpcoming: (a: Record<string, unknown>) => Promise<Stripe.Invoice>;
+        }).retrieveUpcoming({ customer: customerId });
+        upcoming = {
+          amount_due: inv.amount_due,
+          currency: inv.currency,
+          period_end: inv.period_end ?? null,
+          next_payment_attempt: inv.next_payment_attempt ?? null,
+        };
+      } catch { /* no upcoming invoice yet */ }
     }
+
+    // Pricing comes exclusively from the canonical membership catalog
+    // (public.subscription_plans, seeded by _shared/membership-billing.ts).
+    const activeSlug = (subscription?.plan_slug as string) ?? (tenant?.subscription_tier as string) ?? null;
+    const { data: plans } = await svc
+      .from("subscription_plans")
+      .select("slug,name,tier,description,price_monthly,price_yearly,features,sort_order")
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true });
+    const plan = (plans ?? []).find((p) => p.slug === activeSlug) ?? null;
+    const crewPlan = (plans ?? []).find((p) => p.slug === "crew_login") ?? null;
 
     return jsonOk(c, {
       mode: stripeMode(),
       seats,
       payment_method: primary
         ? {
-            id: primary.id,
             brand: primary.card?.brand ?? null,
             last4: primary.card?.last4 ?? null,
             exp_month: primary.card?.exp_month ?? null,
@@ -1212,8 +1247,20 @@ app.post("/membership/billing/overview", async (c) => {
           }
         : null,
       card_count: methods.data.length,
-      tenant: tenant ?? null,
+      customer_exists: true,
+      tenant: tenant
+        ? {
+            subscription_tier: tenant.subscription_tier,
+            subscription_status: tenant.subscription_status,
+            subscription_expires_at: tenant.subscription_expires_at,
+            billing_email: tenant.billing_email,
+          }
+        : null,
       subscription,
+      upcoming,
+      plan,
+      crew_plan: crewPlan,
+      plans: plans ?? [],
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -1299,6 +1346,109 @@ app.post("/membership/seats/sync", async (c) => {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return jsonErr(c, "seat_sync_failed", msg, 502);
+  }
+});
+
+// Stripe invoice history for the tenant's platform customer.
+app.post("/membership/invoices", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const claims = c.get("claims") as Record<string, unknown> | undefined;
+  try {
+    const svc = serviceClient();
+    const stripe = platformStripe();
+    const { customerId } = await resolveTenantCustomer(svc, stripe, tenantId, (claims?.email as string) ?? null);
+    const list = await stripe.invoices.list({ customer: customerId, limit: 12 });
+    return jsonOk(c, {
+      invoices: list.data.map((inv) => ({
+        number: inv.number ?? inv.id,
+        created: inv.created,
+        amount_due: inv.amount_due,
+        amount_paid: inv.amount_paid,
+        currency: inv.currency,
+        status: inv.status,
+        hosted_invoice_url: inv.hosted_invoice_url ?? null,
+        invoice_pdf: inv.invoice_pdf ?? null,
+      })),
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return jsonErr(c, "invoices_failed", msg, 502);
+  }
+});
+
+// Cancel at period end / resume a scheduled cancellation.
+// deno-lint-ignore no-explicit-any
+async function setCancelAtPeriodEnd(c: any, cancel: boolean) {
+  const tenantId = c.get("tenantId") as string;
+  try {
+    const svc = serviceClient();
+    const stripe = platformStripe();
+    const { data: tenant } = await svc
+      .from("tenants")
+      .select("stripe_subscription_id")
+      .eq("id", tenantId)
+      .maybeSingle();
+    if (!tenant?.stripe_subscription_id) {
+      return jsonErr(c, "no_subscription", "No active membership subscription.", 409);
+    }
+    const sub = await stripe.subscriptions.update(tenant.stripe_subscription_id as string, {
+      cancel_at_period_end: cancel,
+    });
+    await svc
+      .from("tenants")
+      .update({ subscription_status: cancel ? "canceling" : sub.status })
+      .eq("id", tenantId);
+    return jsonOk(c, { cancel_at_period_end: sub.cancel_at_period_end, status: sub.status });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return jsonErr(c, "subscription_update_failed", msg, 502);
+  }
+}
+
+app.post("/membership/subscription/cancel", (c) => setCancelAtPeriodEnd(c, true));
+app.post("/membership/subscription/resume", (c) => setCancelAtPeriodEnd(c, false));
+
+// Switch the existing subscription to another catalog plan (upgrade/downgrade).
+app.post("/membership/subscription/change-plan", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const body = await c.req.json().catch(() => ({}));
+  const slug = typeof body?.plan_slug === "string" ? body.plan_slug : "";
+  const interval = body?.interval === "yearly" ? "yearly" : "monthly";
+  if (!slug) return jsonErr(c, "invalid_request", "plan_slug is required", 400);
+  try {
+    const svc = serviceClient();
+    const stripe = platformStripe();
+    const { data: plan } = await svc
+      .from("subscription_plans")
+      .select("slug,stripe_price_id_monthly,stripe_price_id_yearly")
+      .eq("slug", slug)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (!plan) return jsonErr(c, "plan_not_found", `No active plan '${slug}'.`, 404);
+    const priceId = interval === "yearly" ? plan.stripe_price_id_yearly : plan.stripe_price_id_monthly;
+    if (!priceId) return jsonErr(c, "price_not_mapped", `Plan '${slug}' has no ${interval} price mapped.`, 409);
+
+    const { data: tenant } = await svc
+      .from("tenants")
+      .select("stripe_subscription_id")
+      .eq("id", tenantId)
+      .maybeSingle();
+    if (!tenant?.stripe_subscription_id) {
+      return jsonErr(c, "no_subscription", "Start a membership from the plans page first.", 409);
+    }
+    const current = await stripe.subscriptions.retrieve(tenant.stripe_subscription_id as string);
+    const item = current.items.data[0];
+    if (!item) return jsonErr(c, "no_subscription_item", "Subscription has no billable item.", 409);
+    const updated = await stripe.subscriptions.update(current.id, {
+      items: [{ id: item.id, price: priceId, quantity: item.quantity ?? 1 }],
+      proration_behavior: "create_prorations",
+      metadata: { ...(current.metadata ?? {}), pitch_plan_slug: slug, pitch_interval: interval },
+    });
+    await svc.from("tenants").update({ subscription_tier: slug, subscription_status: updated.status }).eq("id", tenantId);
+    return jsonOk(c, { plan_slug: slug, status: updated.status });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return jsonErr(c, "change_plan_failed", msg, 502);
   }
 });
 
