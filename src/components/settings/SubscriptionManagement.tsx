@@ -21,6 +21,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useCompanySwitcher } from '@/hooks/useCompanySwitcher';
+import { useEffectiveTenantId, useEffectiveTenantIdLoading } from '@/hooks/useEffectiveTenantId';
 import { TenantCardAndSeatsPanel } from '@/components/settings/TenantCardAndSeatsPanel';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -92,28 +93,42 @@ const FEATURE_LIST = [
 
 export const SubscriptionManagement = () => {
   const [subscription, setSubscription] = useState<SubscriptionData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const { toast } = useToast();
-  const { activeCompanyId, activeCompany } = useCompanySwitcher();
+  const { activeCompany } = useCompanySwitcher();
+  const effectiveTenantId = useEffectiveTenantId();
+  const tenantLoading = useEffectiveTenantIdLoading();
 
   useEffect(() => {
-    if (activeCompanyId) {
-      fetchSubscription();
+    if (effectiveTenantId) {
+      void fetchSubscription(effectiveTenantId);
+      return;
     }
-  }, [activeCompanyId]);
+    if (!tenantLoading) {
+      setSubscription(null);
+    }
+  }, [effectiveTenantId, tenantLoading]);
 
-  const fetchSubscription = async () => {
+  const fetchSubscription = async (tenantId: string) => {
+    setLoading(true);
     try {
       const { data, error } = await supabase
         .from('tenants')
         .select('subscription_tier, subscription_status, subscription_expires_at, features_enabled, billing_email')
-        .eq('id', activeCompanyId)
+        .eq('id', tenantId)
         .single();
 
       if (error) throw error;
       setSubscription(data);
     } catch (error: any) {
       console.error('Error fetching subscription:', error);
+      setSubscription({
+        subscription_tier: 'crm',
+        subscription_status: 'active',
+        subscription_expires_at: null,
+        features_enabled: [],
+        billing_email: null,
+      });
     } finally {
       setLoading(false);
     }
@@ -149,19 +164,6 @@ export const SubscriptionManagement = () => {
     return <span className="font-medium">{value.toLocaleString()}</span>;
   };
 
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <div className="h-32 bg-muted animate-pulse rounded-lg" />
-        <div className="grid md:grid-cols-2 gap-4">
-          {[1, 2].map(i => (
-            <div key={i} className="h-96 bg-muted animate-pulse rounded-lg" />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
   return (
     <Tabs defaultValue="plan" className="space-y-6">
       <TabsList>
@@ -176,7 +178,7 @@ export const SubscriptionManagement = () => {
       </TabsList>
 
       <TabsContent value="payment" className="space-y-6">
-        <TenantCardAndSeatsPanel />
+        <TenantCardAndSeatsPanel tenantId={effectiveTenantId} />
       </TabsContent>
 
       <TabsContent value="plan" className="space-y-6">
@@ -197,6 +199,7 @@ export const SubscriptionManagement = () => {
               </div>
             </div>
             <div className="text-right">
+              {loading && <Badge variant="secondary" className="mb-2">Refreshing…</Badge>}
               {getStatusBadge(subscription?.subscription_status || 'active')}
               {subscription?.subscription_expires_at && (
                 <p className="text-sm text-muted-foreground mt-1">
