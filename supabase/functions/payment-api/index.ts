@@ -1193,6 +1193,7 @@ app.post("/membership/billing/overview", async (c) => {
       .maybeSingle();
 
     let subscription: Record<string, unknown> | null = null;
+    let upcoming: Record<string, unknown> | null = null;
     if (tenant?.stripe_subscription_id) {
       try {
         const sub = await stripe.subscriptions.retrieve(tenant.stripe_subscription_id as string);
@@ -1206,16 +1207,38 @@ app.post("/membership/billing/overview", async (c) => {
           interval: item?.price?.recurring?.interval ?? null,
           current_period_end: (sub as { current_period_end?: number }).current_period_end ?? null,
           cancel_at_period_end: sub.cancel_at_period_end,
+          plan_slug: (sub.metadata?.pitch_plan_slug as string) ?? null,
         };
       } catch { /* subscription may not exist in this mode */ }
+      try {
+        const inv = await (stripe.invoices as unknown as {
+          retrieveUpcoming: (a: Record<string, unknown>) => Promise<Stripe.Invoice>;
+        }).retrieveUpcoming({ customer: customerId });
+        upcoming = {
+          amount_due: inv.amount_due,
+          currency: inv.currency,
+          period_end: inv.period_end ?? null,
+          next_payment_attempt: inv.next_payment_attempt ?? null,
+        };
+      } catch { /* no upcoming invoice yet */ }
     }
+
+    // Pricing comes exclusively from the canonical membership catalog
+    // (public.subscription_plans, seeded by _shared/membership-billing.ts).
+    const activeSlug = (subscription?.plan_slug as string) ?? (tenant?.subscription_tier as string) ?? null;
+    const { data: plans } = await svc
+      .from("subscription_plans")
+      .select("slug,name,tier,description,price_monthly,price_yearly,features,sort_order")
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true });
+    const plan = (plans ?? []).find((p) => p.slug === activeSlug) ?? null;
+    const crewPlan = (plans ?? []).find((p) => p.slug === "crew_login") ?? null;
 
     return jsonOk(c, {
       mode: stripeMode(),
       seats,
       payment_method: primary
         ? {
-            id: primary.id,
             brand: primary.card?.brand ?? null,
             last4: primary.card?.last4 ?? null,
             exp_month: primary.card?.exp_month ?? null,
@@ -1224,8 +1247,20 @@ app.post("/membership/billing/overview", async (c) => {
           }
         : null,
       card_count: methods.data.length,
-      tenant: tenant ?? null,
+      customer_exists: true,
+      tenant: tenant
+        ? {
+            subscription_tier: tenant.subscription_tier,
+            subscription_status: tenant.subscription_status,
+            subscription_expires_at: tenant.subscription_expires_at,
+            billing_email: tenant.billing_email,
+          }
+        : null,
       subscription,
+      upcoming,
+      plan,
+      crew_plan: crewPlan,
+      plans: plans ?? [],
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
