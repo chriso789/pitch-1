@@ -286,7 +286,7 @@ export const Settings = () => {
 
   const masterBackendTabs = [
     'platform-admin', 'developer', 'health', 'edge-functions', 
-    'subscription', 'security', 'pricing', 'quality-monitoring', 'demo-requests',
+    'security', 'pricing', 'quality-monitoring', 'demo-requests',
     'company-activity', 'reports', 'ai-admin', 'cache', 'roof-training'
   ];
 
