@@ -1070,6 +1070,53 @@ app.post("/membership/checkout", async (c) => {
   }
 });
 
+// Post-redirect confirmation: retrieve the Checkout Session, verify it belongs
+// to this tenant, and mirror the resulting subscription onto the tenant row.
+app.post("/membership/checkout/confirm", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const body = await c.req.json().catch(() => ({}));
+  const sessionId = typeof body?.session_id === "string" ? body.session_id : "";
+  if (!sessionId) return jsonErr(c, "invalid_request", "session_id is required", 400);
+
+  try {
+    const stripe = platformStripe();
+    const svc = serviceClient();
+    const session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ["subscription"] });
+    const sessionTenant = (session.metadata?.pitch_tenant_id as string) || session.client_reference_id || "";
+    if (sessionTenant !== tenantId) return jsonErr(c, "forbidden", "Checkout session belongs to another tenant.", 403);
+
+    const sub = typeof session.subscription === "object" ? session.subscription : null;
+    const planSlug = (session.metadata?.pitch_plan_slug as string) ?? null;
+    const status = sub?.status ?? (session.payment_status === "paid" ? "active" : "incomplete");
+
+    if (sub) {
+      const periodEnd = (sub as { current_period_end?: number }).current_period_end;
+      await svc
+        .from("tenants")
+        .update({
+          stripe_customer_id: typeof session.customer === "string" ? session.customer : undefined,
+          stripe_subscription_id: sub.id,
+          subscription_status: status,
+          ...(planSlug ? { subscription_tier: planSlug } : {}),
+          ...(periodEnd ? { subscription_expires_at: new Date(periodEnd * 1000).toISOString() } : {}),
+        })
+        .eq("id", tenantId);
+    }
+
+    return jsonOk(c, {
+      mode: stripeMode(),
+      session_status: session.status,
+      payment_status: session.payment_status,
+      subscription_id: sub?.id ?? null,
+      subscription_status: status,
+      plan_slug: planSlug,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return jsonErr(c, "confirm_failed", msg, 502);
+  }
+});
+
 app.post("/membership/portal", async (c) => {
   const tenantId = c.get("tenantId")!;
   const claims = c.get("claims") as Record<string, unknown> | undefined;
