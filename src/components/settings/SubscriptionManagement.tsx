@@ -344,6 +344,8 @@ export const SubscriptionManagement = () => {
           </div>
         </CardContent>
       </Card>
-    </div>
+      </TabsContent>
+    </Tabs>
+
   );
 };
