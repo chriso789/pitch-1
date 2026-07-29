@@ -210,6 +210,10 @@ export const TenantCardAndSeatsPanel = ({ tenantId }: { tenantId: string | null 
     if (!tenantId) {
       return toast({ title: "Select a company", description: "Choose a company before adding a payment method.", variant: "destructive" });
     }
+    const checkoutTab = window.open("", "_blank");
+    if (checkoutTab) {
+      checkoutTab.document.write("<p style='font-family: system-ui, sans-serif; padding: 24px;'>Opening secure Stripe card form…</p>");
+    }
     setBusy("card");
     const { data: res, error } = await edgeApi<{ url: string }>("payment-api", "/membership/payment-method/setup", {
       return_url: window.location.origin,
@@ -218,9 +222,15 @@ export const TenantCardAndSeatsPanel = ({ tenantId }: { tenantId: string | null 
     });
     setBusy(null);
     if (error || !res?.url) {
+      checkoutTab?.close();
       return toast({ title: "Could not open card form", description: error ?? "No setup URL", variant: "destructive" });
     }
-    window.location.href = res.url;
+    if (checkoutTab) {
+      checkoutTab.opener = null;
+      checkoutTab.location.href = res.url;
+      return;
+    }
+    window.location.assign(res.url);
   };
 
   const openPortal = async () => {

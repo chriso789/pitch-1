@@ -94,6 +94,10 @@ const FEATURE_LIST = [
 export const SubscriptionManagement = () => {
   const [subscription, setSubscription] = useState<SubscriptionData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [billingTab, setBillingTab] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('billing') === 'payment' || params.has('card') ? 'payment' : 'plan';
+  });
   const { toast } = useToast();
   const { activeCompany } = useCompanySwitcher();
   const effectiveTenantId = useEffectiveTenantId();
@@ -108,6 +112,13 @@ export const SubscriptionManagement = () => {
       setSubscription(null);
     }
   }, [effectiveTenantId, tenantLoading]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('billing') === 'payment' || params.has('card')) {
+      setBillingTab('payment');
+    }
+  }, []);
 
   const fetchSubscription = async (tenantId: string) => {
     setLoading(true);
@@ -165,7 +176,7 @@ export const SubscriptionManagement = () => {
   };
 
   return (
-    <Tabs defaultValue="plan" className="space-y-6">
+    <Tabs value={billingTab} onValueChange={setBillingTab} className="space-y-6">
       <TabsList>
         <TabsTrigger value="plan" className="gap-2">
           <Crown className="h-4 w-4" />
@@ -221,7 +232,7 @@ export const SubscriptionManagement = () => {
                 {currentConfig.audience} · Crew logins ${currentConfig.crewPrice}/login/mo
               </p>
             </div>
-            <Button variant="outline" className="gap-2">
+            <Button variant="outline" className="gap-2" onClick={() => setBillingTab('payment')}>
               <CreditCard className="h-4 w-4" />
               Manage Billing
             </Button>

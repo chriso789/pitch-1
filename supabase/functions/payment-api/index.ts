@@ -1088,7 +1088,7 @@ app.post("/membership/checkout", async (c) => {
         metadata: { pitch_tenant_id: tenantId, pitch_plan_slug: slug, pitch_interval: interval },
       },
       metadata: { pitch_tenant_id: tenantId, pitch_plan_slug: slug, pitch_interval: interval, pitch_product: "crm_membership" },
-      success_url: `${returnBase(body?.return_url)}/settings?tab=subscription&membership=success&session_id={CHECKOUT_SESSION_ID}`,
+      success_url: `${returnBase(body?.return_url)}/settings?tab=subscription&billing=payment&membership=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${returnBase(body?.return_url)}/settings?tab=subscription&membership=canceled`,
     });
     return jsonOk(c, { mode: stripeMode(), url: session.url, session_id: session.id });
@@ -1155,7 +1155,7 @@ app.post("/membership/portal", async (c) => {
     const { customerId } = await resolveTenantCustomer(svc, stripe, tenantId, (claims?.email as string) ?? null);
     const portal = await stripe.billingPortal.sessions.create({
       customer: customerId,
-      return_url: `${returnBase(body?.return_url)}/settings?tab=subscription`,
+      return_url: `${returnBase(body?.return_url)}/settings?tab=subscription&billing=payment`,
     });
     return jsonOk(c, { url: portal.url });
   } catch (e) {
@@ -1320,8 +1320,8 @@ app.post("/membership/payment-method/setup", async (c) => {
       payment_method_types: ["card"],
       client_reference_id: tenantId,
       metadata: { pitch_tenant_id: tenantId, pitch_product: "crm_membership_card" },
-      success_url: `${returnBase(body?.return_url)}/settings?tab=subscription&card=saved&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${returnBase(body?.return_url)}/settings?tab=subscription&card=canceled`,
+      success_url: `${returnBase(body?.return_url)}/settings?tab=subscription&billing=payment&card=saved&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${returnBase(body?.return_url)}/settings?tab=subscription&billing=payment&card=canceled`,
     });
     return jsonOk(c, { url: session.url, session_id: session.id });
   } catch (e) {
