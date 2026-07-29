@@ -26,6 +26,7 @@ export const MembershipBillingPanel = ({ isMaster = false }: { isMaster?: boolea
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [interval, setInterval] = useState<"monthly" | "yearly">("monthly");
+  const [status, setStatus] = useState<{ subscription_status: string; plan_slug: string | null } | null>(null);
 
   const loadPlans = async () => {
     setLoading(true);
@@ -40,6 +41,40 @@ export const MembershipBillingPanel = ({ isMaster = false }: { isMaster?: boolea
   };
 
   useEffect(() => { loadPlans(); }, []);
+
+  // Complete the checkout flow after Stripe redirects back with ?membership=success
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("membership") === "canceled") {
+      toast({ title: "Checkout canceled", description: "No subscription was started." });
+      params.delete("membership");
+      window.history.replaceState({}, "", `${window.location.pathname}?${params.toString()}`);
+      return;
+    }
+    const sessionId = params.get("session_id");
+    if (params.get("membership") !== "success" || !sessionId) return;
+
+    (async () => {
+      setBusy("confirm");
+      const { data, error } = await edgeApi<{ subscription_status: string; plan_slug: string | null }>(
+        "payment-api",
+        "/membership/checkout/confirm",
+        { session_id: sessionId },
+      );
+      setBusy(null);
+      if (error) {
+        toast({ title: "Could not confirm subscription", description: error, variant: "destructive" });
+      } else if (data) {
+        setStatus(data);
+        toast({ title: "Subscription active", description: `${data.plan_slug ?? "Membership"} — ${data.subscription_status}` });
+      }
+      params.delete("membership");
+      params.delete("session_id");
+      const qs = params.toString();
+      window.history.replaceState({}, "", window.location.pathname + (qs ? `?${qs}` : ""));
+    })();
+  }, []);
+
 
   const syncCatalog = async () => {
     setBusy("sync");
@@ -88,6 +123,11 @@ export const MembershipBillingPanel = ({ isMaster = false }: { isMaster?: boolea
           <CardDescription>
             Billed on the Pitch platform Stripe account. Tenant-connected Stripe accounts are never used for membership charges.
           </CardDescription>
+          {status && (
+            <p className="text-xs mt-2">
+              Current: <span className="font-medium">{status.plan_slug ?? "membership"}</span> — {status.subscription_status}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" onClick={() => setInterval(interval === "monthly" ? "yearly" : "monthly")}>
