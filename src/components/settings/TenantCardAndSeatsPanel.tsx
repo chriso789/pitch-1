@@ -142,7 +142,7 @@ const Row = ({ label, value }: { label: string; value: React.ReactNode }) => (
   </div>
 );
 
-export const TenantCardAndSeatsPanel = () => {
+export const TenantCardAndSeatsPanel = ({ tenantId }: { tenantId: string | null }) => {
   const { toast } = useToast();
   const [data, setData] = useState<Overview | null>(null);
   const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
@@ -150,16 +150,23 @@ export const TenantCardAndSeatsPanel = () => {
   const [busy, setBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    if (!tenantId) {
+      setData(null);
+      setInvoices([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
+    const tenantHeaders = { "x-tenant-id": tenantId };
     // The overview route resolves (and creates, if missing) the tenant's single
     // platform Stripe customer, so simply opening this tab is enough.
-    const { data: res, error } = await edgeApi<Overview>("payment-api", "/membership/billing/overview");
+    const { data: res, error } = await edgeApi<Overview>("payment-api", "/membership/billing/overview", {}, { headers: tenantHeaders });
     if (error) toast({ title: "Could not load billing details", description: error, variant: "destructive" });
     setData(res ?? null);
     setLoading(false);
-    const { data: inv } = await edgeApi<{ invoices: InvoiceRow[] }>("payment-api", "/membership/invoices");
+    const { data: inv } = await edgeApi<{ invoices: InvoiceRow[] }>("payment-api", "/membership/invoices", {}, { headers: tenantHeaders });
     setInvoices(inv?.invoices ?? []);
-  }, [toast]);
+  }, [tenantId, toast]);
 
   useEffect(() => {
     void load();
@@ -183,8 +190,12 @@ export const TenantCardAndSeatsPanel = () => {
       return;
     }
     (async () => {
+      if (!tenantId) {
+        clean();
+        return;
+      }
       setBusy("confirm");
-      const { error } = await edgeApi("payment-api", "/membership/payment-method/confirm", { session_id: sessionId });
+      const { error } = await edgeApi("payment-api", "/membership/payment-method/confirm", { session_id: sessionId }, { headers: { "x-tenant-id": tenantId } });
       clean();
       setBusy(null);
       if (error) toast({ title: "Could not save card", description: error, variant: "destructive" });
@@ -193,12 +204,17 @@ export const TenantCardAndSeatsPanel = () => {
         void load();
       }
     })();
-  }, [load, toast]);
+  }, [load, tenantId, toast]);
 
   const addCard = async () => {
+    if (!tenantId) {
+      return toast({ title: "Select a company", description: "Choose a company before adding a payment method.", variant: "destructive" });
+    }
     setBusy("card");
     const { data: res, error } = await edgeApi<{ url: string }>("payment-api", "/membership/payment-method/setup", {
       return_url: window.location.origin,
+    }, {
+      headers: { "x-tenant-id": tenantId },
     });
     setBusy(null);
     if (error || !res?.url) {
@@ -208,9 +224,14 @@ export const TenantCardAndSeatsPanel = () => {
   };
 
   const openPortal = async () => {
+    if (!tenantId) {
+      return toast({ title: "Select a company", description: "Choose a company before opening billing.", variant: "destructive" });
+    }
     setBusy("portal");
     const { data: res, error } = await edgeApi<{ url: string }>("payment-api", "/membership/portal", {
       return_url: window.location.origin,
+    }, {
+      headers: { "x-tenant-id": tenantId },
     });
     setBusy(null);
     if (error || !res?.url) {
@@ -220,8 +241,9 @@ export const TenantCardAndSeatsPanel = () => {
   };
 
   const syncSeats = async () => {
+    if (!tenantId) return;
     setBusy("seats");
-    const { error } = await edgeApi("payment-api", "/membership/seats/sync");
+    const { error } = await edgeApi("payment-api", "/membership/seats/sync", {}, { headers: { "x-tenant-id": tenantId } });
     setBusy(null);
     if (error) return toast({ title: "Seat sync failed", description: error, variant: "destructive" });
     toast({ title: "Seats synced", description: "Stripe now bills the current active user count." });
@@ -229,8 +251,9 @@ export const TenantCardAndSeatsPanel = () => {
   };
 
   const changePlan = async (slug: string, label: string) => {
+    if (!tenantId) return;
     setBusy(`plan:${slug}`);
-    const { error } = await edgeApi("payment-api", "/membership/subscription/change-plan", { plan_slug: slug });
+    const { error } = await edgeApi("payment-api", "/membership/subscription/change-plan", { plan_slug: slug }, { headers: { "x-tenant-id": tenantId } });
     setBusy(null);
     if (error) return toast({ title: `${label} failed`, description: error, variant: "destructive" });
     toast({ title: `${label} complete`, description: "Stripe prorated the change on your next invoice." });
@@ -238,10 +261,13 @@ export const TenantCardAndSeatsPanel = () => {
   };
 
   const setCancel = async (cancel: boolean) => {
+    if (!tenantId) return;
     setBusy(cancel ? "cancel" : "resume");
     const { error } = await edgeApi(
       "payment-api",
       cancel ? "/membership/subscription/cancel" : "/membership/subscription/resume",
+      {},
+      { headers: { "x-tenant-id": tenantId } },
     );
     setBusy(null);
     if (error) {
