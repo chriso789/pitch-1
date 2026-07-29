@@ -5,6 +5,14 @@
 // resolves tenant / project / contact / balance server-side.
 
 import { createRouter, jsonOk, jsonErr, requireAuth, requireTenant, serviceClient } from "../_shared/router.ts";
+import { requireMaster } from "../_shared/system-audit.ts";
+import {
+  platformStripe,
+  stripeMode,
+  syncPlanCatalog,
+  resolveTenantCustomer,
+  APP_URL as MEMBERSHIP_APP_URL,
+} from "../_shared/membership-billing.ts";
 import Stripe from "npm:stripe@14.21.0";
 import {
   createSquareInvoicePaymentLink,
@@ -982,5 +990,104 @@ app.post("/centz/upsert-site-setup", (c) => jsonErr(c, "not_implemented", "Phase
 // Sync worker route — will live in payment-worker, not payment-api.
 app.post("/centz/sync-invoices", (c) => jsonErr(c, "not_implemented", "Phase 2B — moves to payment-worker.", 501));
 
+// ==================================================================
+// Pitch CRM membership subscriptions (PLATFORM Stripe account only).
+// Authenticated tenant routes; /membership/plans/sync is master-only.
+// ==================================================================
+
+app.post("/membership/plans/sync", async (c) => {
+  const userId = c.get("userId");
+  const denied = await requireMaster(userId);
+  if (denied) return jsonErr(c, denied, "Master role required to sync the membership catalog.", 403);
+
+  const body = await c.req.json().catch(() => ({}));
+  const mode = stripeMode();
+  if (mode === "live" && body?.allow_live !== true) {
+    return jsonErr(c, "live_mode_blocked", "STRIPE_SECRET_KEY is a live key. Pass allow_live:true to sync live prices.", 400);
+  }
+  try {
+    const plans = await syncPlanCatalog(serviceClient());
+    return jsonOk(c, { mode, plans });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return jsonErr(c, "plan_sync_failed", msg, 502);
+  }
+});
+
+app.post("/membership/plans/list", async (c) => {
+  const svc = serviceClient();
+  const { data, error } = await svc
+    .from("subscription_plans")
+    .select("slug,name,tier,description,price_monthly,price_yearly,trial_days,features,limits,stripe_price_id_monthly,stripe_price_id_yearly,sort_order")
+    .eq("is_active", true)
+    .order("sort_order", { ascending: true });
+  if (error) return jsonErr(c, "plans_read_failed", error.message, 500);
+  return jsonOk(c, { mode: stripeMode(), plans: data ?? [] });
+});
+
+app.post("/membership/checkout", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const claims = c.get("claims") as Record<string, unknown> | undefined;
+  const body = await c.req.json().catch(() => ({}));
+  const slug = typeof body?.plan_slug === "string" ? body.plan_slug : "";
+  const interval = body?.interval === "yearly" ? "yearly" : "monthly";
+  if (!slug) return jsonErr(c, "invalid_request", "plan_slug is required", 400);
+
+  const svc = serviceClient();
+  const { data: plan } = await svc
+    .from("subscription_plans")
+    .select("slug,name,tier,trial_days,stripe_price_id_monthly,stripe_price_id_yearly")
+    .eq("slug", slug)
+    .eq("is_active", true)
+    .maybeSingle();
+  if (!plan) return jsonErr(c, "plan_not_found", `No active plan '${slug}'. Run /membership/plans/sync first.`, 404);
+
+  const priceId = interval === "yearly" ? plan.stripe_price_id_yearly : plan.stripe_price_id_monthly;
+  if (!priceId) return jsonErr(c, "price_not_mapped", `Plan '${slug}' has no ${interval} Stripe price mapped.`, 409);
+
+  try {
+    const stripe = platformStripe();
+    const { customerId } = await resolveTenantCustomer(svc, stripe, tenantId, (claims?.email as string) ?? null);
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      customer: customerId,
+      line_items: [{ price: priceId, quantity: 1 }],
+      allow_promotion_codes: true,
+      billing_address_collection: "required",
+      client_reference_id: tenantId,
+      subscription_data: {
+        ...(plan.trial_days ? { trial_period_days: Number(plan.trial_days) } : {}),
+        metadata: { pitch_tenant_id: tenantId, pitch_plan_slug: slug, pitch_interval: interval },
+      },
+      metadata: { pitch_tenant_id: tenantId, pitch_plan_slug: slug, pitch_interval: interval, pitch_product: "crm_membership" },
+      success_url: `${MEMBERSHIP_APP_URL}/settings?tab=subscription&membership=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${MEMBERSHIP_APP_URL}/settings?tab=subscription&membership=canceled`,
+    });
+    return jsonOk(c, { mode: stripeMode(), url: session.url, session_id: session.id });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return jsonErr(c, "checkout_failed", msg, 502);
+  }
+});
+
+app.post("/membership/portal", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const claims = c.get("claims") as Record<string, unknown> | undefined;
+  try {
+    const svc = serviceClient();
+    const stripe = platformStripe();
+    const { customerId } = await resolveTenantCustomer(svc, stripe, tenantId, (claims?.email as string) ?? null);
+    const portal = await stripe.billingPortal.sessions.create({
+      customer: customerId,
+      return_url: `${MEMBERSHIP_APP_URL}/settings?tab=subscription`,
+    });
+    return jsonOk(c, { url: portal.url });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return jsonErr(c, "portal_failed", msg, 502);
+  }
+});
+
 Deno.serve(app.fetch);
+
 
