@@ -37,8 +37,10 @@ interface SubscriptionData {
 const TIER_CONFIG = {
   starter: {
     name: 'CRM',
-    price: 40,
+    price: 50,
     priceSuffix: '/user/mo',
+    audience: 'Employees, sales reps, production & owners',
+    crewPrice: 10,
     icon: Star,
     color: 'text-blue-500',
     bgColor: 'bg-blue-500/10',
@@ -54,29 +56,33 @@ const TIER_CONFIG = {
       prioritySupport: false,
     }
   },
-  professional: {
-    name: 'CRM + Live Canvass',
-    price: 75,
-    priceSuffix: '/user/mo',
+  crew: {
+    name: 'Crew Login',
+    price: 10,
+    priceSuffix: '/login/mo',
+    audience: 'Field crew members',
+    crewPrice: 10,
     icon: Crown,
     color: 'text-primary',
     bgColor: 'bg-primary/10',
     borderColor: 'border-primary/30',
     features: {
-      users: 'Unlimited',
-      contacts: 'Unlimited',
+      users: 'Per login',
+      contacts: 'View only',
       measurements: '—',
-      smartDocs: 'Advanced',
-      powerDialer: '2,500 min/mo',
-      apiAccess: true,
+      smartDocs: 'Basic',
+      powerDialer: '—',
+      apiAccess: false,
       whiteLabel: false,
-      prioritySupport: true,
+      prioritySupport: false,
     }
   },
   enterprise: {
     name: 'CRM + AI Measuring',
-    price: 100,
+    price: 80,
     priceSuffix: '/user/mo',
+    audience: 'Employees, sales reps & owners (crew logins stay $10)',
+    crewPrice: 10,
     icon: Rocket,
     color: 'text-amber-500',
     bgColor: 'bg-amber-500/10',
@@ -229,6 +235,9 @@ export const SubscriptionManagement = () => {
                 ${currentConfig.price}
                 <span className="text-sm font-normal text-muted-foreground">{currentConfig.priceSuffix}</span>
               </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {currentConfig.audience} · Crew logins ${currentConfig.crewPrice}/login/mo
+              </p>
             </div>
             <Button variant="outline" className="gap-2">
               <CreditCard className="h-4 w-4" />
@@ -267,6 +276,7 @@ export const SubscriptionManagement = () => {
                     ${config.price}
                     <span className="text-sm font-normal text-muted-foreground">{config.priceSuffix}</span>
                   </div>
+                  <p className="text-xs text-muted-foreground mt-1">{config.audience}</p>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <Separator />
