@@ -273,6 +273,7 @@ export const SubscriptionManagement = () => {
                     ${config.price}
                     <span className="text-sm font-normal text-muted-foreground">{config.priceSuffix}</span>
                   </div>
+                  <p className="text-xs text-muted-foreground mt-1">{config.audience}</p>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <Separator />
