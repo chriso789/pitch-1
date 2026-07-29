@@ -78,6 +78,7 @@ type Overview = {
   } | null;
   plan: PlanRow | null;
   crew_plan: PlanRow | null;
+  next_billing_anchor: number | null;
   plans: PlanRow[];
 };
 
@@ -196,7 +197,9 @@ export const TenantCardAndSeatsPanel = () => {
 
   const addCard = async () => {
     setBusy("card");
-    const { data: res, error } = await edgeApi<{ url: string }>("payment-api", "/membership/payment-method/setup");
+    const { data: res, error } = await edgeApi<{ url: string }>("payment-api", "/membership/payment-method/setup", {
+      return_url: window.location.origin,
+    });
     setBusy(null);
     if (error || !res?.url) {
       return toast({ title: "Could not open card form", description: error ?? "No setup URL", variant: "destructive" });
@@ -206,7 +209,9 @@ export const TenantCardAndSeatsPanel = () => {
 
   const openPortal = async () => {
     setBusy("portal");
-    const { data: res, error } = await edgeApi<{ url: string }>("payment-api", "/membership/portal");
+    const { data: res, error } = await edgeApi<{ url: string }>("payment-api", "/membership/portal", {
+      return_url: window.location.origin,
+    });
     setBusy(null);
     if (error || !res?.url) {
       return toast({ title: "Billing portal unavailable", description: error ?? "No portal URL", variant: "destructive" });
@@ -272,6 +277,13 @@ export const TenantCardAndSeatsPanel = () => {
     data?.upcoming?.amount_due ??
     (sub?.unit_amount != null && seats ? sub.unit_amount * Math.max(1, seats.staff.seats) : null);
 
+  const staffSeats = sub?.quantity ?? seats?.staff.seats ?? 0;
+  const crewSeats = seats?.crew.seats ?? 0;
+  // Catalog-driven monthly cost (used until Stripe reports an invoice).
+  const catalogMonthly =
+    staffMonthly != null ? staffMonthly * staffSeats + (crewMonthly ?? 0) * crewSeats : null;
+  const nextBilling = sub?.current_period_end ?? data?.next_billing_anchor ?? null;
+
   const alternatePlans = (data?.plans ?? []).filter((p) => p.slug !== "crew_login" && p.slug !== plan?.slug);
 
   return (
@@ -301,16 +313,17 @@ export const TenantCardAndSeatsPanel = () => {
               label="Monthly price"
               value={staffMonthly != null ? `${dollars(staffMonthly)} / user` : "—"}
             />
-            <Row label="Billing frequency" value={sub?.interval ? `Every ${sub.interval}` : "Monthly"} />
-            <Row label="Current seats" value={sub?.quantity ?? seats?.staff.seats ?? 0} />
+            <Row label="Billing frequency" value={sub?.interval ? `Every ${sub.interval}` : "Monthly (1st of month)"} />
+            <Row label="Current seats" value={staffSeats} />
+            <Row label="Monthly subscription cost" value={dollars(catalogMonthly)} />
           </div>
           <div className="divide-y">
-            <Row label="Included seats" value={sub?.quantity ?? "—"} />
+            <Row label="Included seats" value={sub?.quantity ?? staffSeats} />
             <Row
               label="Additional seat cost"
               value={staffMonthly != null ? `${dollars(staffMonthly)} / staff · ${dollars(crewMonthly)} / crew` : "—"}
             />
-            <Row label="Next billing date" value={dateFrom(sub?.current_period_end)} />
+            <Row label="Next billing date" value={dateFrom(nextBilling)} />
             <Row
               label="Subscription status"
               value={
@@ -404,13 +417,22 @@ export const TenantCardAndSeatsPanel = () => {
             <Row label="Current plan" value={plan?.name ?? "—"} />
             <Row
               label="Current billing amount"
-              value={sub?.unit_amount != null ? `${money(sub.unit_amount, sub.currency)} × ${sub.quantity}` : "—"}
+              value={
+                sub?.unit_amount != null
+                  ? `${money(sub.unit_amount, sub.currency)} × ${sub.quantity}`
+                  : staffMonthly != null
+                    ? `${dollars(staffMonthly)} × ${staffSeats}`
+                    : "—"
+              }
             />
-            <Row label="Seat count" value={sub?.quantity ?? seats?.staff.seats ?? 0} />
+            <Row label="Seat count" value={staffSeats} />
           </div>
           <div className="divide-y">
-            <Row label="Upcoming invoice" value={money(projected, sub?.currency ?? "usd")} />
-            <Row label="Renewal date" value={dateFrom(data?.upcoming?.period_end ?? sub?.current_period_end)} />
+            <Row
+              label="Upcoming invoice"
+              value={projected != null ? money(projected, sub?.currency ?? "usd") : dollars(catalogMonthly)}
+            />
+            <Row label="Renewal date" value={dateFrom(data?.upcoming?.period_end ?? nextBilling)} />
             <Row
               label="Payment status"
               value={<Badge variant={statusTone(sub?.status)}>{sub?.status ?? "no subscription"}</Badge>}
