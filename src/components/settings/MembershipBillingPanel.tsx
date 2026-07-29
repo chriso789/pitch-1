@@ -123,6 +123,11 @@ export const MembershipBillingPanel = ({ isMaster = false }: { isMaster?: boolea
           <CardDescription>
             Billed on the Pitch platform Stripe account. Tenant-connected Stripe accounts are never used for membership charges.
           </CardDescription>
+          {status && (
+            <p className="text-xs mt-2">
+              Current: <span className="font-medium">{status.plan_slug ?? "membership"}</span> — {status.subscription_status}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" onClick={() => setInterval(interval === "monthly" ? "yearly" : "monthly")}>
