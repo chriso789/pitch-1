@@ -1135,6 +1135,174 @@ app.post("/membership/portal", async (c) => {
   }
 });
 
+// ------------------------------------------------------------------
+// Card on file + seat (login) counting for per-user monthly billing.
+// ------------------------------------------------------------------
+
+async function countTenantSeats(svc: ReturnType<typeof serviceClient>, tenantId: string) {
+  const { data, error } = await svc
+    .from("profiles")
+    .select("id,is_active,is_suspended,is_ghost_account,is_hidden,password_set_at")
+    .eq("tenant_id", tenantId);
+  if (error) throw new Error(error.message);
+  const rows = (data ?? []).filter(
+    (p) => p.is_active !== false && p.is_suspended !== true && p.is_ghost_account !== true && p.is_hidden !== true,
+  );
+  return {
+    billable_seats: rows.length,
+    activated_logins: rows.filter((p) => !!p.password_set_at).length,
+    pending_logins: rows.filter((p) => !p.password_set_at).length,
+    total_profiles: (data ?? []).length,
+  };
+}
+
+app.post("/membership/billing/overview", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const claims = c.get("claims") as Record<string, unknown> | undefined;
+  const svc = serviceClient();
+  try {
+    const seats = await countTenantSeats(svc, tenantId);
+    const stripe = platformStripe();
+    const { customerId } = await resolveTenantCustomer(svc, stripe, tenantId, (claims?.email as string) ?? null);
+
+    const customer = await stripe.customers.retrieve(customerId, {
+      expand: ["invoice_settings.default_payment_method"],
+    });
+    const methods = await stripe.paymentMethods.list({ customer: customerId, type: "card", limit: 5 });
+    const defaultPm =
+      typeof customer !== "string" && !("deleted" in customer && customer.deleted)
+        ? (customer.invoice_settings?.default_payment_method as Stripe.PaymentMethod | null)
+        : null;
+    const primary = defaultPm ?? methods.data[0] ?? null;
+
+    const { data: tenant } = await svc
+      .from("tenants")
+      .select("subscription_tier,subscription_status,subscription_expires_at,stripe_subscription_id,billing_email")
+      .eq("id", tenantId)
+      .maybeSingle();
+
+    let subscription: Record<string, unknown> | null = null;
+    if (tenant?.stripe_subscription_id) {
+      try {
+        const sub = await stripe.subscriptions.retrieve(tenant.stripe_subscription_id as string);
+        const item = sub.items.data[0];
+        subscription = {
+          id: sub.id,
+          status: sub.status,
+          quantity: item?.quantity ?? 1,
+          unit_amount: item?.price?.unit_amount ?? null,
+          currency: sub.currency,
+          interval: item?.price?.recurring?.interval ?? null,
+          current_period_end: (sub as { current_period_end?: number }).current_period_end ?? null,
+          cancel_at_period_end: sub.cancel_at_period_end,
+        };
+      } catch { /* subscription may not exist in this mode */ }
+    }
+
+    return jsonOk(c, {
+      mode: stripeMode(),
+      seats,
+      payment_method: primary
+        ? {
+            id: primary.id,
+            brand: primary.card?.brand ?? null,
+            last4: primary.card?.last4 ?? null,
+            exp_month: primary.card?.exp_month ?? null,
+            exp_year: primary.card?.exp_year ?? null,
+            is_default: !!defaultPm && defaultPm.id === primary.id,
+          }
+        : null,
+      card_count: methods.data.length,
+      tenant: tenant ?? null,
+      subscription,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return jsonErr(c, "billing_overview_failed", msg, 502);
+  }
+});
+
+// Save a card without charging: Stripe Checkout in setup mode.
+app.post("/membership/payment-method/setup", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const claims = c.get("claims") as Record<string, unknown> | undefined;
+  try {
+    const svc = serviceClient();
+    const stripe = platformStripe();
+    const { customerId } = await resolveTenantCustomer(svc, stripe, tenantId, (claims?.email as string) ?? null);
+    const session = await stripe.checkout.sessions.create({
+      mode: "setup",
+      customer: customerId,
+      payment_method_types: ["card"],
+      client_reference_id: tenantId,
+      metadata: { pitch_tenant_id: tenantId, pitch_product: "crm_membership_card" },
+      success_url: `${MEMBERSHIP_APP_URL}/settings?tab=subscription&card=saved&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${MEMBERSHIP_APP_URL}/settings?tab=subscription&card=canceled`,
+    });
+    return jsonOk(c, { url: session.url, session_id: session.id });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return jsonErr(c, "setup_failed", msg, 502);
+  }
+});
+
+// After the setup redirect: attach the new card as the default for future charges.
+app.post("/membership/payment-method/confirm", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  const body = await c.req.json().catch(() => ({}));
+  const sessionId = typeof body?.session_id === "string" ? body.session_id : "";
+  if (!sessionId) return jsonErr(c, "invalid_request", "session_id is required", 400);
+  try {
+    const stripe = platformStripe();
+    const session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ["setup_intent"] });
+    const sessionTenant = (session.metadata?.pitch_tenant_id as string) || session.client_reference_id || "";
+    if (sessionTenant !== tenantId) return jsonErr(c, "forbidden", "Setup session belongs to another tenant.", 403);
+
+    const si = typeof session.setup_intent === "object" ? session.setup_intent : null;
+    const pmId = typeof si?.payment_method === "string" ? si.payment_method : si?.payment_method?.id;
+    const customerId = typeof session.customer === "string" ? session.customer : session.customer?.id;
+    if (!pmId || !customerId) return jsonErr(c, "no_payment_method", "No card was saved.", 409);
+
+    await stripe.customers.update(customerId, { invoice_settings: { default_payment_method: pmId } });
+    const pm = await stripe.paymentMethods.retrieve(pmId);
+    return jsonOk(c, {
+      payment_method: { id: pm.id, brand: pm.card?.brand ?? null, last4: pm.card?.last4 ?? null },
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return jsonErr(c, "confirm_card_failed", msg, 502);
+  }
+});
+
+// Align the Stripe subscription quantity with the tenant's active seat count.
+app.post("/membership/seats/sync", async (c) => {
+  const tenantId = c.get("tenantId")!;
+  try {
+    const svc = serviceClient();
+    const stripe = platformStripe();
+    const seats = await countTenantSeats(svc, tenantId);
+    const { data: tenant } = await svc
+      .from("tenants")
+      .select("stripe_subscription_id")
+      .eq("id", tenantId)
+      .maybeSingle();
+    if (!tenant?.stripe_subscription_id) {
+      return jsonErr(c, "no_subscription", "No active membership subscription to update.", 409);
+    }
+    const sub = await stripe.subscriptions.retrieve(tenant.stripe_subscription_id as string);
+    const item = sub.items.data[0];
+    if (!item) return jsonErr(c, "no_subscription_item", "Subscription has no billable item.", 409);
+    const updated = await stripe.subscriptions.update(sub.id, {
+      items: [{ id: item.id, quantity: Math.max(1, seats.billable_seats) }],
+      proration_behavior: "create_prorations",
+    });
+    return jsonOk(c, { seats, quantity: updated.items.data[0]?.quantity ?? null });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return jsonErr(c, "seat_sync_failed", msg, 502);
+  }
+});
+
 Deno.serve(app.fetch);
 
 
