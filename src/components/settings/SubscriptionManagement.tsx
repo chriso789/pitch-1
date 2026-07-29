@@ -286,7 +286,10 @@ export const SubscriptionManagement = () => {
         </div>
       </div>
 
+      <MembershipBillingPanel isMaster={isMaster} />
+
       {/* Usage Stats (placeholder) */}
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Usage This Month</CardTitle>
