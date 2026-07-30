@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Loader2, CreditCard, RefreshCw, ExternalLink, Check } from "lucide-react";
 import { edgeApi } from "@/lib/edgeApi";
 import { useToast } from "@/hooks/use-toast";
@@ -27,6 +28,9 @@ export const MembershipBillingPanel = ({ isMaster = false, tenantId = null }: { 
   const [busy, setBusy] = useState<string | null>(null);
   const [interval, setInterval] = useState<"monthly" | "yearly">("monthly");
   const [status, setStatus] = useState<{ subscription_status: string; plan_slug: string | null } | null>(null);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
+  const [checkoutLabel, setCheckoutLabel] = useState("Stripe checkout");
 
   const loadPlans = async () => {
     setLoading(true);
@@ -59,10 +63,12 @@ export const MembershipBillingPanel = ({ isMaster = false, tenantId = null }: { 
 
     (async () => {
       setBusy("confirm");
+      const tenantHeaders = tenantId ? { "x-tenant-id": tenantId } : undefined;
       const { data, error } = await edgeApi<{ subscription_status: string; plan_slug: string | null }>(
         "payment-api",
         "/membership/checkout/confirm",
         { session_id: sessionId },
+        tenantHeaders ? { headers: tenantHeaders } : undefined,
       );
       setBusy(null);
       if (error) {
@@ -97,6 +103,10 @@ export const MembershipBillingPanel = ({ isMaster = false, tenantId = null }: { 
 
 
   const startCheckout = async (slug: string) => {
+    const plan = plans.find((p) => p.slug === slug);
+    setCheckoutLabel(plan?.name ?? "Stripe checkout");
+    setCheckoutOpen(true);
+    setCheckoutUrl(null);
     setBusy(slug);
     const tenantHeaders = tenantId ? { "x-tenant-id": tenantId } : undefined;
     const { data, error } = await edgeApi<{ url: string }>("payment-api", "/membership/checkout", {
@@ -108,7 +118,12 @@ export const MembershipBillingPanel = ({ isMaster = false, tenantId = null }: { 
     if (error || !data?.url) {
       return toast({ title: "Checkout failed", description: error ?? "No checkout URL returned", variant: "destructive" });
     }
-    window.open(data.url, "_blank", "noopener,noreferrer");
+    setCheckoutUrl(data.url);
+  };
+
+  const openCheckout = () => {
+    if (!checkoutUrl) return;
+    window.open(checkoutUrl, "_blank", "noopener,noreferrer");
   };
 
   const openPortal = async () => {
@@ -125,8 +140,37 @@ export const MembershipBillingPanel = ({ isMaster = false, tenantId = null }: { 
   };
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-4">
+    <>
+      <Dialog open={checkoutOpen} onOpenChange={setCheckoutOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Secure Stripe checkout</DialogTitle>
+            <DialogDescription>
+              Start the {checkoutLabel} membership subscription through Stripe, then return here after payment.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground">
+            {busy && busy !== "portal" && !checkoutUrl ? (
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" /> Preparing the secure Stripe checkout…
+              </div>
+            ) : checkoutUrl ? (
+              <p>Stripe checkout is ready. Open it in a secure tab to add the payment method and activate billing.</p>
+            ) : (
+              <p>Stripe did not return a checkout link. Close this window and try again.</p>
+            )}
+          </div>
+          <DialogFooter className="gap-2 sm:justify-between">
+            <Button variant="outline" onClick={() => setCheckoutOpen(false)}>Close</Button>
+            <Button onClick={openCheckout} disabled={!checkoutUrl || !!(busy && busy !== "portal")}>
+              <ExternalLink className="h-4 w-4 mr-2" /> Open Stripe checkout
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Card>
+        <CardHeader className="flex flex-row items-start justify-between gap-4">
         <div>
           <CardTitle className="text-base flex items-center gap-2">
             <CreditCard className="h-4 w-4" />
@@ -157,8 +201,8 @@ export const MembershipBillingPanel = ({ isMaster = false, tenantId = null }: { 
             <span className="ml-2">Billing portal</span>
           </Button>
         </div>
-      </CardHeader>
-      <CardContent>
+        </CardHeader>
+        <CardContent>
         {loading ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading plans…
@@ -204,8 +248,9 @@ export const MembershipBillingPanel = ({ isMaster = false, tenantId = null }: { 
             })}
           </div>
         )}
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </>
   );
 };
 
