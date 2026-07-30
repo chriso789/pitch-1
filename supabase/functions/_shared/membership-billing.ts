@@ -41,7 +41,7 @@ export const PLAN_CATALOG: PlanSeed[] = [
     description: "Full CRM per user — employees, sales reps, production and owners.",
     price_monthly: 50,
     price_yearly: 500,
-    trial_days: 14,
+    trial_days: 0,
     sort_order: 1,
     features: ["CRM & pipeline", "Estimates & invoices", "Smart documents (basic)", "Power dialer 500 min/mo"],
     limits: { sms_monthly: 2000, ai_prompts_monthly: 1500, storage_mb: 25000, roof_reports_monthly: 0 },
@@ -53,7 +53,7 @@ export const PLAN_CATALOG: PlanSeed[] = [
     description: "Everything in CRM plus unlimited AI roof measuring, per user.",
     price_monthly: 80,
     price_yearly: 800,
-    trial_days: 14,
+    trial_days: 0,
     sort_order: 2,
     features: ["Everything in CRM", "Unlimited AI measurements", "API access", "White label", "Priority support"],
     limits: { sms_monthly: 10000, ai_prompts_monthly: 10000, storage_mb: 100000, roof_reports_monthly: -1 },
@@ -169,6 +169,7 @@ async function ensurePrice(
     unit_amount: unitAmount,
     recurring: { interval },
     lookup_key: lookupKey,
+    nickname: slug,
     metadata: { pitch_plan_slug: slug, pitch_interval: interval },
   });
 }

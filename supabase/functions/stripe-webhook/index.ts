@@ -27,7 +27,7 @@ const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const INTERNAL_WORKER_SECRET = Deno.env.get("INTERNAL_WORKER_SECRET") ?? "";
 
 const stripe = new Stripe(STRIPE_SECRET, {
-  apiVersion: "2023-10-16",
+  apiVersion: "2024-06-20",
   httpClient: Stripe.createFetchHttpClient(),
 });
 
@@ -60,7 +60,7 @@ Deno.serve(async (req) => {
   const service = createClient(SUPABASE_URL, SERVICE_ROLE);
   const obj = event.data.object as Record<string, unknown>;
   const metadata = ((obj as { metadata?: Record<string, string> }).metadata) ?? {};
-  const tenantId = metadata.tenant_id ?? metadata.company_id ?? null;
+  const tenantId = metadata.tenant_id ?? metadata.company_id ?? metadata.pitch_tenant_id ?? null;
 
   // Idempotency — unique (event_id) prevents double-processing.
   const dedup = await service
@@ -208,7 +208,7 @@ async function resolveCompanyId(
   hints: { metadata?: Stripe.Metadata | Record<string, string> | null; customerId?: string | null; subscriptionId?: string | null },
 ): Promise<string | null> {
   const md = hints.metadata ?? {};
-  const direct = (md as Record<string, string>).company_id || (md as Record<string, string>).tenant_id || null;
+  const direct = (md as Record<string, string>).company_id || (md as Record<string, string>).tenant_id || (md as Record<string, string>).pitch_tenant_id || null;
   if (direct) return direct;
 
   if (hints.customerId) {
@@ -271,8 +271,9 @@ async function handleSubscriptionLifecycle(
       updated_at: new Date().toISOString(),
     };
     if (expiresAtSec) update.subscription_expires_at = new Date(expiresAtSec * 1000).toISOString();
-    const priceNickname = sub.items?.data?.[0]?.price?.nickname;
-    if (priceNickname) update.subscription_tier = priceNickname;
+    const primaryItem = sub.items?.data?.find((item) => item.price?.metadata?.pitch_plan_slug !== "crew_login") ?? sub.items?.data?.[0];
+    const planSlug = sub.metadata?.pitch_plan_slug || primaryItem?.price?.metadata?.pitch_plan_slug || primaryItem?.price?.nickname;
+    if (planSlug) update.subscription_tier = planSlug;
     await service.from("tenants").update(update).eq("id", companyId);
   }
 
@@ -331,6 +332,16 @@ async function dispatchSubscriptionStatus(
     stripe_event_id: args.stripeEventId,
     stripe_event_type: args.stripeEventType,
   });
+
+  await service
+    .from("tenants")
+    .update({
+      ...(args.customerId ? { stripe_customer_id: args.customerId } : {}),
+      ...(args.subscriptionId ? { stripe_subscription_id: args.subscriptionId } : {}),
+      subscription_status: args.status,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", companyId);
 
   return {
     companyId,

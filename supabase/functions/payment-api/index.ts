@@ -1016,13 +1016,36 @@ app.post("/membership/plans/sync", async (c) => {
 
 app.post("/membership/plans/list", async (c) => {
   const svc = serviceClient();
-  const { data, error } = await svc
+  const readPlans = () => svc
     .from("subscription_plans")
     .select("slug,name,tier,description,price_monthly,price_yearly,trial_days,features,limits,stripe_price_id_monthly,stripe_price_id_yearly,sort_order")
     .eq("is_active", true)
     .order("sort_order", { ascending: true });
+
+  let { data, error } = await readPlans();
   if (error) return jsonErr(c, "plans_read_failed", error.message, 500);
-  return jsonOk(c, { mode: stripeMode(), plans: data ?? [] });
+
+  const missingStripeMappings = !data?.length || data.some((p) => !p.stripe_price_id_monthly || !p.stripe_price_id_yearly);
+  if (missingStripeMappings) {
+    try {
+      await syncPlanCatalog(svc);
+      const retry = await readPlans();
+      data = retry.data;
+      error = retry.error;
+      if (error) return jsonErr(c, "plans_read_failed", error.message, 500);
+    } catch (e) {
+      console.warn("[payment-api] membership plan auto-sync failed", e instanceof Error ? e.message : e);
+    }
+  }
+
+  const plans = data?.length
+    ? data
+    : PLAN_CATALOG.map((p) => ({
+      ...p,
+      stripe_price_id_monthly: null,
+      stripe_price_id_yearly: null,
+    }));
+  return jsonOk(c, { mode: stripeMode(), plans });
 });
 
 
@@ -1059,17 +1082,27 @@ app.post("/membership/checkout", async (c) => {
   const slug = typeof body?.plan_slug === "string" ? body.plan_slug : "";
   const interval = body?.interval === "yearly" ? "yearly" : "monthly";
   if (!slug) return jsonErr(c, "invalid_request", "plan_slug is required", 400);
+  if (slug === "crew_login") return jsonErr(c, "invalid_plan", "Crew logins are billed as an add-on to CRM or CRM + AI Measuring.", 400);
 
   const svc = serviceClient();
-  const loadPlan = async () =>
+  const loadPlan = async (planSlug: string) =>
     (await svc
       .from("subscription_plans")
       .select("slug,name,tier,trial_days,stripe_price_id_monthly,stripe_price_id_yearly")
-      .eq("slug", slug)
+      .eq("slug", planSlug)
       .eq("is_active", true)
       .maybeSingle()).data;
 
-  let plan = await loadPlan();
+  let plan = await loadPlan(slug);
+  if (!plan) {
+    try {
+      await syncPlanCatalog(svc);
+      plan = await loadPlan(slug);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return jsonErr(c, "plan_sync_failed", `Stripe catalog sync failed: ${msg}`, 502);
+    }
+  }
   if (!plan) return jsonErr(c, "plan_not_found", `No active plan '${slug}'.`, 404);
 
   let priceId = interval === "yearly" ? plan.stripe_price_id_yearly : plan.stripe_price_id_monthly;
@@ -1079,7 +1112,7 @@ app.post("/membership/checkout", async (c) => {
     // without a separate master-only sync step.
     try {
       await syncPlanCatalog(svc);
-      plan = await loadPlan();
+      plan = await loadPlan(slug);
       priceId = interval === "yearly" ? plan?.stripe_price_id_yearly : plan?.stripe_price_id_monthly;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -1092,20 +1125,34 @@ app.post("/membership/checkout", async (c) => {
   try {
     const stripe = platformStripe();
     const { customerId } = await resolveTenantCustomer(svc, stripe, tenantId, (claims?.email as string) ?? null);
+    const seats = await countTenantSeats(svc, tenantId);
+    const staffQuantity = Math.max(1, seats.billable_seats);
+    const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [{ price: priceId, quantity: staffQuantity }];
+
+    if (seats.crew.seats > 0) {
+      let crewPlan = await loadPlan("crew_login");
+      let crewPriceId = interval === "yearly" ? crewPlan?.stripe_price_id_yearly : crewPlan?.stripe_price_id_monthly;
+      if (!crewPriceId) {
+        await syncPlanCatalog(svc);
+        crewPlan = await loadPlan("crew_login");
+        crewPriceId = interval === "yearly" ? crewPlan?.stripe_price_id_yearly : crewPlan?.stripe_price_id_monthly;
+      }
+      if (crewPriceId) lineItems.push({ price: crewPriceId, quantity: seats.crew.seats });
+    }
+
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: customerId,
-      line_items: [{ price: priceId, quantity: 1 }],
+      line_items: lineItems,
       allow_promotion_codes: true,
       billing_address_collection: "required",
       client_reference_id: tenantId,
       subscription_data: {
-        ...(plan?.trial_days
-          ? { trial_period_days: Number(plan.trial_days) }
-          : { billing_cycle_anchor: firstOfNextMonthUnix(), proration_behavior: "create_prorations" }),
-        metadata: { pitch_tenant_id: tenantId, pitch_plan_slug: slug, pitch_interval: interval },
+        billing_cycle_anchor: firstOfNextMonthUnix(),
+        proration_behavior: "create_prorations",
+        metadata: { tenant_id: tenantId, company_id: tenantId, pitch_tenant_id: tenantId, pitch_plan_slug: slug, pitch_interval: interval },
       },
-      metadata: { pitch_tenant_id: tenantId, pitch_plan_slug: slug, pitch_interval: interval, pitch_product: "crm_membership" },
+      metadata: { tenant_id: tenantId, company_id: tenantId, pitch_tenant_id: tenantId, pitch_plan_slug: slug, pitch_interval: interval, pitch_product: "crm_membership" },
       success_url: `${returnBase(body?.return_url)}/settings?tab=subscription&billing=payment&membership=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${returnBase(body?.return_url)}/settings?tab=subscription&membership=canceled`,
     });
@@ -1128,7 +1175,7 @@ app.post("/membership/checkout/confirm", async (c) => {
     const stripe = platformStripe();
     const svc = serviceClient();
     const session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ["subscription"] });
-    const sessionTenant = (session.metadata?.pitch_tenant_id as string) || session.client_reference_id || "";
+    const sessionTenant = (session.metadata?.tenant_id as string) || (session.metadata?.pitch_tenant_id as string) || session.client_reference_id || "";
     if (sessionTenant !== tenantId) return jsonErr(c, "forbidden", "Checkout session belongs to another tenant.", 403);
 
     const sub = typeof session.subscription === "object" ? session.subscription : null;
@@ -1403,13 +1450,14 @@ app.post("/membership/seats/sync", async (c) => {
       return jsonErr(c, "no_subscription", "No active membership subscription to update.", 409);
     }
     const sub = await stripe.subscriptions.retrieve(tenant.stripe_subscription_id as string);
-    const item = sub.items.data[0];
-    if (!item) return jsonErr(c, "no_subscription_item", "Subscription has no billable item.", 409);
+    const staffItem = sub.items.data.find((item) => item.price.metadata?.pitch_plan_slug !== "crew_login") ?? sub.items.data[0];
+    if (!staffItem) return jsonErr(c, "no_subscription_item", "Subscription has no billable item.", 409);
     const updated = await stripe.subscriptions.update(sub.id, {
-      items: [{ id: item.id, quantity: Math.max(1, seats.billable_seats) }],
+      items: [{ id: staffItem.id, quantity: Math.max(1, seats.billable_seats) }],
       proration_behavior: "create_prorations",
     });
-    return jsonOk(c, { seats, quantity: updated.items.data[0]?.quantity ?? null });
+    const updatedStaff = updated.items.data.find((item) => item.price.metadata?.pitch_plan_slug !== "crew_login") ?? updated.items.data[0];
+    return jsonOk(c, { seats, quantity: updatedStaff?.quantity ?? null });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return jsonErr(c, "seat_sync_failed", msg, 502);
@@ -1504,7 +1552,7 @@ app.post("/membership/subscription/change-plan", async (c) => {
       return jsonErr(c, "no_subscription", "Start a membership from the plans page first.", 409);
     }
     const current = await stripe.subscriptions.retrieve(tenant.stripe_subscription_id as string);
-    const item = current.items.data[0];
+    const item = current.items.data.find((subItem) => subItem.price.metadata?.pitch_plan_slug !== "crew_login") ?? current.items.data[0];
     if (!item) return jsonErr(c, "no_subscription_item", "Subscription has no billable item.", 409);
     const updated = await stripe.subscriptions.update(current.id, {
       items: [{ id: item.id, price: priceId, quantity: item.quantity ?? 1 }],

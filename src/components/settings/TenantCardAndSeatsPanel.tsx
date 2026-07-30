@@ -319,6 +319,7 @@ export const TenantCardAndSeatsPanel = ({ tenantId }: { tenantId: string | null 
   const catalogMonthly =
     staffMonthly != null ? staffMonthly * staffSeats + (crewMonthly ?? 0) * crewSeats : null;
   const nextBilling = sub?.current_period_end ?? data?.next_billing_anchor ?? null;
+  const projectedInvoiceLabel = projected != null ? money(projected, sub?.currency ?? "usd") : dollars(catalogMonthly);
 
   const alternatePlans = (data?.plans ?? []).filter((p) => p.slug !== "crew_login" && p.slug !== plan?.slug);
 
@@ -545,7 +546,7 @@ export const TenantCardAndSeatsPanel = ({ tenantId }: { tenantId: string | null 
             <div>
               <p className="text-sm text-muted-foreground">Projected next invoice</p>
               <p className="text-3xl font-bold">
-                {money(projected, sub?.currency ?? "usd")}
+                {projectedInvoiceLabel}
                 <span className="text-sm font-normal text-muted-foreground">
                   {sub?.interval ? `/${sub.interval}` : ""}
                 </span>
