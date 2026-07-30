@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { Resend } from "npm:resend@2.0.0";
 import { createSetupToken } from "../_shared/setup-tokens.ts";
+import { ensureTenantStripeCustomer } from "../_shared/membership-billing.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -620,7 +621,7 @@ Deno.serve(async (req) => {
       const stripeCustomerId = await ensureTenantStripeCustomer(
         supabase as any,
         tenant_id,
-        (tenant as any)?.billing_email ?? null,
+        (tenant as any)?.owner_email ?? null,
       );
       results.stripe_customer_id = stripeCustomerId;
     } catch (stripeError: any) {
