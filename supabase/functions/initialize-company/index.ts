@@ -615,6 +615,21 @@ Deno.serve(async (req) => {
       console.log('[initialize-company] No owner_email set, skipping owner provisioning');
     }
 
+    // Provision the platform Stripe customer for membership billing (idempotent, non-fatal)
+    try {
+      const stripeCustomerId = await ensureTenantStripeCustomer(
+        supabase as any,
+        tenant_id,
+        (tenant as any)?.billing_email ?? null,
+      );
+      results.stripe_customer_id = stripeCustomerId;
+    } catch (stripeError: any) {
+      console.error('[initialize-company] Stripe customer provisioning error:', stripeError?.message ?? stripeError);
+      results.stripe_customer_error = stripeError?.message ?? String(stripeError);
+    }
+
+
+
     // Log activity
     try {
       await supabase.from('company_activity_log').insert({
