@@ -133,7 +133,7 @@ const TAB_TO_CATEGORY: Record<string, string> = {
   cache: "system",
   "platform-admin": "platform",
   "demo-requests": "platform",
-  subscription: "business",
+  subscription: "general",
   "quality-monitoring": "platform",
   "company-activity": "platform",
   "roof-training": "platform",
