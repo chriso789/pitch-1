@@ -192,6 +192,21 @@ export async function resolveTenantCustomer(
     return { customerId: tenant.stripe_customer_id as string, tenantName: (tenant.name as string) ?? null };
   }
 
+  // Reuse an existing platform customer for this tenant before creating a duplicate.
+  try {
+    const found = await stripe.customers.search({
+      query: `metadata['pitch_tenant_id']:'${tenantId}'`,
+      limit: 1,
+    });
+    const existing = found.data?.[0];
+    if (existing) {
+      await svc.from("tenants").update({ stripe_customer_id: existing.id }).eq("id", tenantId);
+      return { customerId: existing.id, tenantName: (tenant.name as string) ?? null };
+    }
+  } catch (_e) {
+    // Search is unavailable on brand-new accounts; fall through to create.
+  }
+
   const customer = await stripe.customers.create({
     name: (tenant.name as string) ?? undefined,
     email: (tenant.billing_email as string) ?? fallbackEmail ?? undefined,
@@ -200,3 +215,23 @@ export async function resolveTenantCustomer(
   await svc.from("tenants").update({ stripe_customer_id: customer.id }).eq("id", tenantId);
   return { customerId: customer.id, tenantName: (tenant.name as string) ?? null };
 }
+
+/**
+ * Best-effort provisioning of the platform Stripe customer for a tenant.
+ * Never throws — company creation must not fail because Stripe is unreachable.
+ */
+export async function ensureTenantStripeCustomer(
+  svc: SupabaseClient,
+  tenantId: string,
+  fallbackEmail?: string | null,
+): Promise<string | null> {
+  try {
+    const stripe = platformStripe();
+    const { customerId } = await resolveTenantCustomer(svc, stripe, tenantId, fallbackEmail);
+    return customerId;
+  } catch (e) {
+    console.warn("[membership-billing] ensureTenantStripeCustomer failed", tenantId, e instanceof Error ? e.message : e);
+    return null;
+  }
+}
+
