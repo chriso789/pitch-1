@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   CreditCard,
   Loader2,
@@ -148,6 +149,8 @@ export const TenantCardAndSeatsPanel = ({ tenantId }: { tenantId: string | null 
   const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [cardSetupOpen, setCardSetupOpen] = useState(false);
+  const [cardSetupUrl, setCardSetupUrl] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!tenantId) {
@@ -210,10 +213,8 @@ export const TenantCardAndSeatsPanel = ({ tenantId }: { tenantId: string | null 
     if (!tenantId) {
       return toast({ title: "Select a company", description: "Choose a company before adding a payment method.", variant: "destructive" });
     }
-    const checkoutTab = window.open("", "_blank");
-    if (checkoutTab) {
-      checkoutTab.document.write("<p style='font-family: system-ui, sans-serif; padding: 24px;'>Opening secure Stripe card form…</p>");
-    }
+    setCardSetupOpen(true);
+    setCardSetupUrl(null);
     setBusy("card");
     const { data: res, error } = await edgeApi<{ url: string }>("payment-api", "/membership/payment-method/setup", {
       return_url: window.location.origin,
@@ -222,15 +223,14 @@ export const TenantCardAndSeatsPanel = ({ tenantId }: { tenantId: string | null 
     });
     setBusy(null);
     if (error || !res?.url) {
-      checkoutTab?.close();
       return toast({ title: "Could not open card form", description: error ?? "No setup URL", variant: "destructive" });
     }
-    if (checkoutTab) {
-      checkoutTab.opener = null;
-      checkoutTab.location.href = res.url;
-      return;
-    }
-    window.location.assign(res.url);
+    setCardSetupUrl(res.url);
+  };
+
+  const openCardSetup = () => {
+    if (!cardSetupUrl) return;
+    window.open(cardSetupUrl, "_blank", "noopener,noreferrer");
   };
 
   const openPortal = async () => {
@@ -305,6 +305,7 @@ export const TenantCardAndSeatsPanel = ({ tenantId }: { tenantId: string | null 
   const plan = data?.plan;
   const crewPlan = data?.crew_plan;
   const hasCard = !!data?.payment_method;
+  const paymentMethod = data?.payment_method ?? null;
 
   // Pricing is read from the membership catalog; never recomputed here.
   const staffMonthly = plan?.price_monthly ?? null;
@@ -325,6 +326,34 @@ export const TenantCardAndSeatsPanel = ({ tenantId }: { tenantId: string | null 
 
   return (
     <div className="space-y-6">
+      <Dialog open={cardSetupOpen} onOpenChange={setCardSetupOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Secure Stripe card setup</DialogTitle>
+            <DialogDescription>
+              Save the company card through Stripe, then return here to confirm monthly CRM billing.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground">
+            {busy === "card" ? (
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" /> Preparing the secure Stripe form…
+              </div>
+            ) : cardSetupUrl ? (
+              <p>The Stripe form is ready. Open it in a secure tab to save or update the card on file.</p>
+            ) : (
+              <p>Stripe did not return a setup link. Close this window and try again.</p>
+            )}
+          </div>
+          <DialogFooter className="gap-2 sm:justify-between">
+            <Button variant="outline" onClick={() => setCardSetupOpen(false)}>Close</Button>
+            <Button onClick={openCardSetup} disabled={!cardSetupUrl || busy === "card"}>
+              <ExternalLink className="h-4 w-4 mr-2" /> Open Stripe card form
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ---------------- Current membership ---------------- */}
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-4">
@@ -399,7 +428,7 @@ export const TenantCardAndSeatsPanel = ({ tenantId }: { tenantId: string | null 
           )}
         </CardHeader>
         <CardContent>
-          {hasCard ? (
+          {paymentMethod ? (
             <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border p-4">
               <div className="flex items-center gap-3">
                 <div className="rounded-md bg-muted p-2">
@@ -407,18 +436,18 @@ export const TenantCardAndSeatsPanel = ({ tenantId }: { tenantId: string | null 
                 </div>
                 <div>
                   <p className="font-medium capitalize">
-                    {data!.payment_method!.brand ?? "Card"} •••• {data!.payment_method!.last4 ?? "----"}
+                    {paymentMethod.brand ?? "Card"} •••• {paymentMethod.last4 ?? "----"}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Expires {data!.payment_method!.exp_month}/{data!.payment_method!.exp_year}
-                    {data!.card_count > 1 ? ` · ${data!.card_count} cards on file` : ""}
+                    Expires {paymentMethod.exp_month}/{paymentMethod.exp_year}
+                    {(data?.card_count ?? 0) > 1 ? ` · ${data?.card_count ?? 0} cards on file` : ""}
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Badge variant={data!.payment_method!.is_default ? "secondary" : "outline"} className="gap-1">
+                <Badge variant={paymentMethod.is_default ? "secondary" : "outline"} className="gap-1">
                   <ShieldCheck className="h-3 w-3" />
-                  {data!.payment_method!.is_default ? "Default payment method" : "Saved"}
+                  {paymentMethod.is_default ? "Default payment method" : "Saved"}
                 </Badge>
                 <Button size="sm" variant="outline" onClick={addCard} disabled={busy === "card"}>
                   {busy === "card" ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
