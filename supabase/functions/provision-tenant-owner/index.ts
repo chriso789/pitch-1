@@ -82,6 +82,14 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Ensure the company exists as a Stripe customer for membership billing (non-fatal)
+    try {
+      await ensureTenantStripeCustomer(supabase as any, tenant_id, tenant.owner_email ?? null);
+    } catch (stripeError: any) {
+      console.error("[provision-tenant-owner] Stripe customer provisioning failed:", stripeError?.message ?? stripeError);
+    }
+
+
     const ownerEmail = tenant.owner_email;
     if (!ownerEmail) {
       return new Response(
