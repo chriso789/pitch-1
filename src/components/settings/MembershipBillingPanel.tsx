@@ -96,6 +96,7 @@ export const MembershipBillingPanel = ({ isMaster = false }: { isMaster?: boolea
     const { data, error } = await edgeApi<{ url: string }>("payment-api", "/membership/checkout", {
       plan_slug: slug,
       interval,
+      return_url: window.location.origin,
     });
     setBusy(null);
     if (error || !data?.url) {
@@ -159,7 +160,7 @@ export const MembershipBillingPanel = ({ isMaster = false }: { isMaster?: boolea
           </p>
         ) : (
           <div className="grid gap-4 md:grid-cols-3">
-            {plans.map((plan) => {
+            {plans.filter((plan) => plan.slug !== "crew_login").map((plan) => {
               const price = interval === "yearly" ? plan.price_yearly : plan.price_monthly;
               const mapped = interval === "yearly" ? plan.stripe_price_id_yearly : plan.stripe_price_id_monthly;
               return (
@@ -183,11 +184,11 @@ export const MembershipBillingPanel = ({ isMaster = false }: { isMaster?: boolea
                   <Button
                     className="w-full"
                     size="sm"
-                    disabled={!mapped || busy === plan.slug}
+                    disabled={busy === plan.slug}
                     onClick={() => startCheckout(plan.slug)}
                   >
                     {busy === plan.slug ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                    <span className="ml-2">{mapped ? `Subscribe${plan.trial_days ? ` — ${plan.trial_days}-day trial` : ""}` : "Price not mapped"}</span>
+                    <span className="ml-2">{mapped ? "Subscribe" : "Subscribe — map price now"}</span>
                   </Button>
                 </div>
               );
