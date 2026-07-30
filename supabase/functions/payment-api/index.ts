@@ -1292,7 +1292,7 @@ app.post("/membership/billing/overview", async (c) => {
     if (tenant?.stripe_subscription_id) {
       try {
         const sub = await stripe.subscriptions.retrieve(tenant.stripe_subscription_id as string);
-        const item = sub.items.data[0];
+        const item = sub.items.data.find((subItem) => subItem.price.metadata?.pitch_plan_slug !== "crew_login") ?? sub.items.data[0];
         subscription = {
           id: sub.id,
           status: sub.status,
@@ -1451,9 +1451,43 @@ app.post("/membership/seats/sync", async (c) => {
     }
     const sub = await stripe.subscriptions.retrieve(tenant.stripe_subscription_id as string);
     const staffItem = sub.items.data.find((item) => item.price.metadata?.pitch_plan_slug !== "crew_login") ?? sub.items.data[0];
+    const crewItem = sub.items.data.find((item) => item.price.metadata?.pitch_plan_slug === "crew_login") ?? null;
     if (!staffItem) return jsonErr(c, "no_subscription_item", "Subscription has no billable item.", 409);
+
+    const updateItems: Stripe.SubscriptionUpdateParams.Item[] = [
+      { id: staffItem.id, quantity: Math.max(1, seats.billable_seats) },
+    ];
+
+    if (seats.crew.seats > 0) {
+      if (crewItem) {
+        updateItems.push({ id: crewItem.id, quantity: seats.crew.seats });
+      } else {
+        const interval = staffItem.price.recurring?.interval === "year" ? "yearly" : "monthly";
+        const { data: crewPlan } = await svc
+          .from("subscription_plans")
+          .select("stripe_price_id_monthly,stripe_price_id_yearly")
+          .eq("slug", "crew_login")
+          .eq("is_active", true)
+          .maybeSingle();
+        let crewPriceId = interval === "yearly" ? crewPlan?.stripe_price_id_yearly : crewPlan?.stripe_price_id_monthly;
+        if (!crewPriceId) {
+          await syncPlanCatalog(svc);
+          const { data: syncedCrewPlan } = await svc
+            .from("subscription_plans")
+            .select("stripe_price_id_monthly,stripe_price_id_yearly")
+            .eq("slug", "crew_login")
+            .eq("is_active", true)
+            .maybeSingle();
+          crewPriceId = interval === "yearly" ? syncedCrewPlan?.stripe_price_id_yearly : syncedCrewPlan?.stripe_price_id_monthly;
+        }
+        if (crewPriceId) updateItems.push({ price: crewPriceId, quantity: seats.crew.seats });
+      }
+    } else if (crewItem) {
+      updateItems.push({ id: crewItem.id, deleted: true });
+    }
+
     const updated = await stripe.subscriptions.update(sub.id, {
-      items: [{ id: staffItem.id, quantity: Math.max(1, seats.billable_seats) }],
+      items: updateItems,
       proration_behavior: "create_prorations",
     });
     const updatedStaff = updated.items.data.find((item) => item.price.metadata?.pitch_plan_slug !== "crew_login") ?? updated.items.data[0];
