@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
+import { ensureTenantStripeCustomer } from "../_shared/membership-billing.ts";
 import { Resend } from "npm:resend@2.0.0";
 import { createSetupToken } from "../_shared/setup-tokens.ts";
 
