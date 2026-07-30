@@ -1061,16 +1061,33 @@ app.post("/membership/checkout", async (c) => {
   if (!slug) return jsonErr(c, "invalid_request", "plan_slug is required", 400);
 
   const svc = serviceClient();
-  const { data: plan } = await svc
-    .from("subscription_plans")
-    .select("slug,name,tier,trial_days,stripe_price_id_monthly,stripe_price_id_yearly")
-    .eq("slug", slug)
-    .eq("is_active", true)
-    .maybeSingle();
-  if (!plan) return jsonErr(c, "plan_not_found", `No active plan '${slug}'. Run /membership/plans/sync first.`, 404);
+  const loadPlan = async () =>
+    (await svc
+      .from("subscription_plans")
+      .select("slug,name,tier,trial_days,stripe_price_id_monthly,stripe_price_id_yearly")
+      .eq("slug", slug)
+      .eq("is_active", true)
+      .maybeSingle()).data;
 
-  const priceId = interval === "yearly" ? plan.stripe_price_id_yearly : plan.stripe_price_id_monthly;
+  let plan = await loadPlan();
+  if (!plan) return jsonErr(c, "plan_not_found", `No active plan '${slug}'.`, 404);
+
+  let priceId = interval === "yearly" ? plan.stripe_price_id_yearly : plan.stripe_price_id_monthly;
+  if (!priceId) {
+    // Self-heal: the catalog has never been pushed to Stripe. Create the
+    // products/prices on the platform account now so checkout can proceed
+    // without a separate master-only sync step.
+    try {
+      await syncPlanCatalog(svc);
+      plan = await loadPlan();
+      priceId = interval === "yearly" ? plan?.stripe_price_id_yearly : plan?.stripe_price_id_monthly;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return jsonErr(c, "plan_sync_failed", `Stripe catalog sync failed: ${msg}`, 502);
+    }
+  }
   if (!priceId) return jsonErr(c, "price_not_mapped", `Plan '${slug}' has no ${interval} Stripe price mapped.`, 409);
+
 
   try {
     const stripe = platformStripe();
@@ -1083,7 +1100,7 @@ app.post("/membership/checkout", async (c) => {
       billing_address_collection: "required",
       client_reference_id: tenantId,
       subscription_data: {
-        ...(plan.trial_days
+        ...(plan?.trial_days
           ? { trial_period_days: Number(plan.trial_days) }
           : { billing_cycle_anchor: firstOfNextMonthUnix(), proration_behavior: "create_prorations" }),
         metadata: { pitch_tenant_id: tenantId, pitch_plan_slug: slug, pitch_interval: interval },
