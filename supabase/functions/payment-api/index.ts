@@ -10,6 +10,7 @@ import {
   stripeMode,
   syncPlanCatalog,
   resolveTenantCustomer,
+  ensureTenantStripeCustomer,
   PLAN_CATALOG,
   APP_URL as MEMBERSHIP_APP_URL,
 } from "../_shared/membership-billing.ts";
