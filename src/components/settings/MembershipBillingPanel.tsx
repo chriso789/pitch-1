@@ -196,6 +196,13 @@ export const MembershipBillingPanel = ({ isMaster = false, tenantId = null }: { 
               <span className="ml-2">Sync Stripe catalog</span>
             </Button>
           )}
+          {isMaster && (
+            <Button size="sm" variant="outline" onClick={backfillCustomers} disabled={busy === "backfill"}>
+              {busy === "backfill" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              <span className="ml-2">Push companies to Stripe</span>
+            </Button>
+          )}
+
           <Button size="sm" variant="ghost" onClick={openPortal} disabled={busy === "portal"}>
             {busy === "portal" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
             <span className="ml-2">Billing portal</span>
