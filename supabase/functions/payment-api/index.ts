@@ -1100,7 +1100,7 @@ app.post("/membership/checkout", async (c) => {
       billing_address_collection: "required",
       client_reference_id: tenantId,
       subscription_data: {
-        ...(plan.trial_days
+        ...(plan?.trial_days
           ? { trial_period_days: Number(plan.trial_days) }
           : { billing_cycle_anchor: firstOfNextMonthUnix(), proration_behavior: "create_prorations" }),
         metadata: { pitch_tenant_id: tenantId, pitch_plan_slug: slug, pitch_interval: interval },
