@@ -10,6 +10,7 @@ import {
   stripeMode,
   syncPlanCatalog,
   resolveTenantCustomer,
+  PLAN_CATALOG,
   APP_URL as MEMBERSHIP_APP_URL,
 } from "../_shared/membership-billing.ts";
 import Stripe from "npm:stripe@14.21.0";
@@ -1256,19 +1257,30 @@ app.post("/membership/billing/overview", async (c) => {
     // Pricing comes exclusively from the canonical membership catalog
     // (public.subscription_plans, seeded by _shared/membership-billing.ts).
     const activeSlug = (subscription?.plan_slug as string) ?? (tenant?.subscription_tier as string) ?? null;
-    const { data: plans } = await svc
+    const { data: dbPlans } = await svc
       .from("subscription_plans")
       .select("slug,name,tier,description,price_monthly,price_yearly,features,sort_order")
       .eq("is_active", true)
       .order("sort_order", { ascending: true });
+    const catalogPlans = PLAN_CATALOG.map((p) => ({
+      slug: p.slug,
+      name: p.name,
+      tier: p.tier,
+      description: p.description,
+      price_monthly: p.price_monthly,
+      price_yearly: p.price_yearly,
+      features: p.features,
+      sort_order: p.sort_order,
+    }));
+    const plans = dbPlans?.length ? dbPlans : catalogPlans;
     // Legacy tiers (e.g. "pro") aren't in the catalog — fall back to the base
     // CRM plan so pricing always renders from the canonical catalog.
     const plan =
-      (plans ?? []).find((p) => p.slug === activeSlug) ??
-      (plans ?? []).find((p) => p.slug === "crm") ??
-      (plans ?? []).find((p) => p.slug !== "crew_login") ??
+      plans.find((p) => p.slug === activeSlug) ??
+      plans.find((p) => p.slug === "crm") ??
+      plans.find((p) => p.slug !== "crew_login") ??
       null;
-    const crewPlan = (plans ?? []).find((p) => p.slug === "crew_login") ?? null;
+    const crewPlan = plans.find((p) => p.slug === "crew_login") ?? null;
 
     return jsonOk(c, {
       mode: stripeMode(),
@@ -1297,7 +1309,7 @@ app.post("/membership/billing/overview", async (c) => {
       plan,
       crew_plan: crewPlan,
       next_billing_anchor: firstOfNextMonthUnix(),
-      plans: plans ?? [],
+      plans,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
