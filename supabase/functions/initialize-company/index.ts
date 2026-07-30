@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { Resend } from "npm:resend@2.0.0";
 import { createSetupToken } from "../_shared/setup-tokens.ts";
+import { ensureTenantStripeCustomer } from "../_shared/membership-billing.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -614,6 +615,21 @@ Deno.serve(async (req) => {
     } else {
       console.log('[initialize-company] No owner_email set, skipping owner provisioning');
     }
+
+    // Provision the platform Stripe customer for membership billing (idempotent, non-fatal)
+    try {
+      const stripeCustomerId = await ensureTenantStripeCustomer(
+        supabase as any,
+        tenant_id,
+        (tenant as any)?.owner_email ?? null,
+      );
+      results.stripe_customer_id = stripeCustomerId;
+    } catch (stripeError: any) {
+      console.error('[initialize-company] Stripe customer provisioning error:', stripeError?.message ?? stripeError);
+      results.stripe_customer_error = stripeError?.message ?? String(stripeError);
+    }
+
+
 
     // Log activity
     try {

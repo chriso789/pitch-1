@@ -10,6 +10,7 @@ import {
   stripeMode,
   syncPlanCatalog,
   resolveTenantCustomer,
+  ensureTenantStripeCustomer,
   PLAN_CATALOG,
   APP_URL as MEMBERSHIP_APP_URL,
 } from "../_shared/membership-billing.ts";
@@ -995,11 +996,7 @@ app.post("/centz/sync-invoices", (c) => jsonErr(c, "not_implemented", "Phase 2B 
 // Authenticated tenant routes; /membership/plans/sync is master-only.
 // ==================================================================
 
-app.post("/membership/plans/sync", async (c) => {
-  const userId = c.get("userId");
-  const denied = await requireMaster(userId);
-  if (denied) return jsonErr(c, denied, "Master role required to sync the membership catalog.", 403);
-
+app.post("/membership/plans/sync", requireMaster, async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const mode = stripeMode();
   if (mode === "live" && body?.allow_live !== true) {
@@ -1013,6 +1010,53 @@ app.post("/membership/plans/sync", async (c) => {
     return jsonErr(c, "plan_sync_failed", msg, 502);
   }
 });
+
+// Master-only: push every Pitch company into the platform Stripe account as a
+// Customer. Idempotent — tenants that already carry a stripe_customer_id are
+// skipped, and Stripe metadata search prevents duplicates.
+app.post("/membership/customers/backfill", requireMaster, async (c) => {
+  const body = await c.req.json().catch(() => ({} as Record<string, unknown>));
+  const excludeRaw = Array.isArray(body?.exclude_names) ? body.exclude_names as string[] : ["o'brien", "obrien"];
+  const exclude = excludeRaw.map((n) => String(n).toLowerCase());
+  const svc = serviceClient();
+
+  const { data: tenants, error } = await svc
+    .from("tenants")
+    .select("id,name,billing_email,stripe_customer_id")
+    .order("created_at", { ascending: true });
+  if (error) return jsonErr(c, "tenants_read_failed", error.message, 500);
+
+  const results: Array<Record<string, unknown>> = [];
+  for (const t of tenants ?? []) {
+    const name = String((t as any).name ?? "");
+    const normalized = name.toLowerCase().replace(/[’']/g, "'");
+    if (exclude.some((x) => normalized.includes(x))) {
+      results.push({ tenant_id: t.id, name, status: "excluded" });
+      continue;
+    }
+    if ((t as any).stripe_customer_id) {
+      results.push({ tenant_id: t.id, name, status: "already_linked", customer_id: (t as any).stripe_customer_id });
+      continue;
+    }
+    const customerId = await ensureTenantStripeCustomer(svc, t.id as string, (t as any).billing_email ?? null);
+    results.push({
+      tenant_id: t.id,
+      name,
+      status: customerId ? "created" : "failed",
+      customer_id: customerId,
+    });
+  }
+
+  const summary = {
+    total: results.length,
+    created: results.filter((r) => r.status === "created").length,
+    already_linked: results.filter((r) => r.status === "already_linked").length,
+    excluded: results.filter((r) => r.status === "excluded").length,
+    failed: results.filter((r) => r.status === "failed").length,
+  };
+  return jsonOk(c, { mode: stripeMode(), summary, results });
+});
+
 
 app.post("/membership/plans/list", async (c) => {
   const svc = serviceClient();

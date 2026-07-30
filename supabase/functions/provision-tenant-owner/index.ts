@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
+import { ensureTenantStripeCustomer } from "../_shared/membership-billing.ts";
 import { Resend } from "npm:resend@2.0.0";
 import { createSetupToken } from "../_shared/setup-tokens.ts";
 
@@ -81,6 +82,14 @@ Deno.serve(async (req) => {
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    // Ensure the company exists as a Stripe customer for membership billing (non-fatal)
+    try {
+      await ensureTenantStripeCustomer(supabase as any, tenant_id, tenant.owner_email ?? null);
+    } catch (stripeError: any) {
+      console.error("[provision-tenant-owner] Stripe customer provisioning failed:", stripeError?.message ?? stripeError);
+    }
+
 
     const ownerEmail = tenant.owner_email;
     if (!ownerEmail) {

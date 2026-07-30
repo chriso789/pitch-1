@@ -101,6 +101,28 @@ export const MembershipBillingPanel = ({ isMaster = false, tenantId = null }: { 
     loadPlans();
   };
 
+  // Master-only: create a Stripe customer for every Pitch company (excludes O'Brien Contracting).
+  const backfillCustomers = async () => {
+    setBusy("backfill");
+    const tenantHeaders = tenantId ? { "x-tenant-id": tenantId } : undefined;
+    const { data, error } = await edgeApi<{
+      summary: { total: number; created: number; already_linked: number; excluded: number; failed: number };
+    }>(
+      "payment-api",
+      "/membership/customers/backfill",
+      {},
+      tenantHeaders ? { headers: tenantHeaders } : undefined,
+    );
+    setBusy(null);
+    if (error) return toast({ title: "Stripe customer sync failed", description: error, variant: "destructive" });
+    const s = data?.summary;
+    toast({
+      title: "Companies pushed to Stripe",
+      description: `${s?.created ?? 0} created · ${s?.already_linked ?? 0} already linked · ${s?.excluded ?? 0} excluded · ${s?.failed ?? 0} failed`,
+    });
+  };
+
+
 
   const startCheckout = async (slug: string) => {
     const plan = plans.find((p) => p.slug === slug);
@@ -196,6 +218,13 @@ export const MembershipBillingPanel = ({ isMaster = false, tenantId = null }: { 
               <span className="ml-2">Sync Stripe catalog</span>
             </Button>
           )}
+          {isMaster && (
+            <Button size="sm" variant="outline" onClick={backfillCustomers} disabled={busy === "backfill"}>
+              {busy === "backfill" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              <span className="ml-2">Push companies to Stripe</span>
+            </Button>
+          )}
+
           <Button size="sm" variant="ghost" onClick={openPortal} disabled={busy === "portal"}>
             {busy === "portal" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
             <span className="ml-2">Billing portal</span>
