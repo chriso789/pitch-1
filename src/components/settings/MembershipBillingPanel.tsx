@@ -19,7 +19,7 @@ type Plan = {
   stripe_price_id_yearly: string | null;
 };
 
-export const MembershipBillingPanel = ({ isMaster = false }: { isMaster?: boolean }) => {
+export const MembershipBillingPanel = ({ isMaster = false, tenantId = null }: { isMaster?: boolean; tenantId?: string | null }) => {
   const { toast } = useToast();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [mode, setMode] = useState<"test" | "live">("test");
@@ -30,9 +30,12 @@ export const MembershipBillingPanel = ({ isMaster = false }: { isMaster?: boolea
 
   const loadPlans = async () => {
     setLoading(true);
+    const tenantHeaders = tenantId ? { "x-tenant-id": tenantId } : undefined;
     const { data, error } = await edgeApi<{ mode: "test" | "live"; plans: Plan[] }>(
       "payment-api",
       "/membership/plans/list",
+      {},
+      tenantHeaders ? { headers: tenantHeaders } : undefined,
     );
     if (error) toast({ title: "Could not load plans", description: error, variant: "destructive" });
     setPlans(data?.plans ?? []);
@@ -40,7 +43,7 @@ export const MembershipBillingPanel = ({ isMaster = false }: { isMaster?: boolea
     setLoading(false);
   };
 
-  useEffect(() => { loadPlans(); }, []);
+  useEffect(() => { loadPlans(); }, [tenantId]);
 
   // Complete the checkout flow after Stripe redirects back with ?membership=success
   useEffect(() => {
@@ -78,11 +81,13 @@ export const MembershipBillingPanel = ({ isMaster = false }: { isMaster?: boolea
 
   const syncCatalog = async () => {
     setBusy("sync");
+    const tenantHeaders = tenantId ? { "x-tenant-id": tenantId } : undefined;
     const { data, error } = await edgeApi<{ mode: string; plans: unknown[] }>(
       "payment-api",
       "/membership/plans/sync",
       // Live keys require explicit opt-in server-side before real prices are created.
       { allow_live: mode === "live" },
+      tenantHeaders ? { headers: tenantHeaders } : undefined,
     );
     setBusy(null);
     if (error) return toast({ title: "Catalog sync failed", description: error, variant: "destructive" });
@@ -93,11 +98,12 @@ export const MembershipBillingPanel = ({ isMaster = false }: { isMaster?: boolea
 
   const startCheckout = async (slug: string) => {
     setBusy(slug);
+    const tenantHeaders = tenantId ? { "x-tenant-id": tenantId } : undefined;
     const { data, error } = await edgeApi<{ url: string }>("payment-api", "/membership/checkout", {
       plan_slug: slug,
       interval,
       return_url: window.location.origin,
-    });
+    }, tenantHeaders ? { headers: tenantHeaders } : undefined);
     setBusy(null);
     if (error || !data?.url) {
       return toast({ title: "Checkout failed", description: error ?? "No checkout URL returned", variant: "destructive" });
@@ -107,7 +113,10 @@ export const MembershipBillingPanel = ({ isMaster = false }: { isMaster?: boolea
 
   const openPortal = async () => {
     setBusy("portal");
-    const { data, error } = await edgeApi<{ url: string }>("payment-api", "/membership/portal");
+    const tenantHeaders = tenantId ? { "x-tenant-id": tenantId } : undefined;
+    const { data, error } = await edgeApi<{ url: string }>("payment-api", "/membership/portal", {
+      return_url: window.location.origin,
+    }, tenantHeaders ? { headers: tenantHeaders } : undefined);
     setBusy(null);
     if (error || !data?.url) {
       return toast({ title: "Billing portal unavailable", description: error ?? "No portal URL", variant: "destructive" });

@@ -1424,6 +1424,17 @@ app.post("/membership/payment-method/confirm", async (c) => {
     if (!pmId || !customerId) return jsonErr(c, "no_payment_method", "No card was saved.", 409);
 
     await stripe.customers.update(customerId, { invoice_settings: { default_payment_method: pmId } });
+    const svc = serviceClient();
+    const { data: tenant } = await svc
+      .from("tenants")
+      .select("stripe_subscription_id")
+      .eq("id", tenantId)
+      .maybeSingle();
+    if (tenant?.stripe_subscription_id) {
+      await stripe.subscriptions.update(tenant.stripe_subscription_id as string, {
+        default_payment_method: pmId,
+      });
+    }
     const pm = await stripe.paymentMethods.retrieve(pmId);
     return jsonOk(c, {
       payment_method: { id: pm.id, brand: pm.card?.brand ?? null, last4: pm.card?.last4 ?? null },
