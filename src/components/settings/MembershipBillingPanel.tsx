@@ -81,12 +81,15 @@ export const MembershipBillingPanel = ({ isMaster = false }: { isMaster?: boolea
     const { data, error } = await edgeApi<{ mode: string; plans: unknown[] }>(
       "payment-api",
       "/membership/plans/sync",
+      // Live keys require explicit opt-in server-side before real prices are created.
+      { allow_live: mode === "live" },
     );
     setBusy(null);
     if (error) return toast({ title: "Catalog sync failed", description: error, variant: "destructive" });
     toast({ title: "Stripe catalog synced", description: `${data?.plans?.length ?? 0} plans mapped in ${data?.mode} mode.` });
     loadPlans();
   };
+
 
   const startCheckout = async (slug: string) => {
     setBusy(slug);
