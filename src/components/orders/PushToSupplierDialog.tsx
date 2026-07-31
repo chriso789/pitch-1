@@ -1424,6 +1424,19 @@ export function PushToSupplierDialog({
                                           value={current === ' ' ? '' : current}
                                           autoFocus
                                           onChange={(e) => updateItem(i, { color_specs: e.target.value })}
+                                          onBlur={(e) => {
+                                            const v = e.target.value.trim();
+                                            if (!v) return;
+                                            persistSupplierLine(it, { color_specs: v, abc_color: v });
+                                            if (isFieldShingle(it.item_name)) {
+                                              editableItems.forEach((other) => {
+                                                if (isRidgeCap(other.item_name)) {
+                                                  persistSupplierLine(other, { color_specs: v, abc_color: v });
+                                                }
+                                              });
+                                            }
+                                          }}
+
                                           placeholder="Custom color"
                                           className={`h-7 w-40 ${colorMissing ? 'border-destructive' : ''}`}
                                         />
