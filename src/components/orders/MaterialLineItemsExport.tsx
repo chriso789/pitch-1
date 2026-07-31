@@ -204,7 +204,8 @@ export function MaterialLineItemsExport({
         }
 
         const itemName = truncate(item.item_name || '', 32);
-        const colorSpec = (item.notes || item.color_specs || '').trim();
+        const rawSpec: unknown = item.notes ?? item.color_specs ?? '';
+        const colorSpec = (typeof rawSpec === 'string' ? rawSpec : String(rawSpec ?? '')).trim();
 
         // Item name
         doc.setTextColor(0, 0, 0);
