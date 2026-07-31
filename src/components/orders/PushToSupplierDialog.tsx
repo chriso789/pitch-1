@@ -129,11 +129,26 @@ const skuAcronym = (value: string | null | undefined) =>
     .map((token) => token[0])
     .join('');
 
+const asStr = (v: unknown): string =>
+  typeof v === 'string' ? v : v == null ? '' : String(v);
+
+const isFieldShingle = (name?: unknown) => {
+  const n = asStr(name).toLowerCase();
+  if (!n.includes('shingle')) return false;
+  return !/(ridge|hip|cap|starter)/.test(n);
+};
+
+const isRidgeCap = (name?: unknown) => {
+  const n = asStr(name).toLowerCase();
+  return /(ridge|hip)/.test(n) && /(cap|shingle|seal-?a-?ridge|decoridge|shadow ?ridge)/.test(n);
+};
+
 const tokenMatches = (needle: string, haystack: Set<string>) => {
   if (haystack.has(needle)) return true;
   const aliases = SKU_SYNONYMS[needle] || [];
   return aliases.some((alias) => haystack.has(singularSkuToken(alias)));
 };
+
 
 const productText = (p: any) =>
   `${p.productId ?? p.productNumber ?? ''} ${p.productName ?? p.description ?? ''} ${p.option ?? ''} ${p.uom ?? ''}`;
