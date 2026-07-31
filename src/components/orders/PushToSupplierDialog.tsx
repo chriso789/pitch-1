@@ -270,13 +270,29 @@ export function PushToSupplierDialog({
     // popover). This keeps the Push-to-Supplier color dropdown in sync with
     // whatever color was already picked upstream on the estimate.
     const hydrated = items.map((it) => {
-      if (it.color_specs && it.color_specs.trim()) return it;
-      const { colors } = colorsForItem(it.item_name);
-      const haystack = `${(it as any).notes || ''} ${it.description || ''}`.toLowerCase();
+      // Coerce any non-string color/description values coming from JSON line
+      // items — otherwise .trim() throws and crashes the dialog.
+      const safe = {
+        ...it,
+        item_name: asStr(it.item_name),
+        description: asStr(it.description),
+        color_specs: asStr(it.color_specs),
+      };
+      if (safe.color_specs.trim()) return safe;
+      const { colors } = colorsForItem(safe.item_name);
+      const haystack = `${asStr((it as any).notes)} ${safe.description}`.toLowerCase();
       const matched = colors.find((c) => haystack.includes(c.toLowerCase()));
-      return matched ? { ...it, color_specs: matched } : it;
+      return matched ? { ...safe, color_specs: matched } : safe;
     });
-    setEditableItems(hydrated);
+    // Ridge/hip cap inherits the field shingle color when it has none.
+    const fieldColor = asStr(
+      hydrated.find((i) => isFieldShingle(i.item_name) && asStr(i.color_specs).trim())?.color_specs,
+    ).trim();
+    const withCaps = fieldColor
+      ? hydrated.map((i) => (isRidgeCap(i.item_name) ? { ...i, color_specs: fieldColor } : i))
+      : hydrated;
+    setEditableItems(withCaps);
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
