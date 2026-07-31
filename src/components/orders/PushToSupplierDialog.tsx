@@ -1394,8 +1394,18 @@ export function PushToSupplierDialog({
                                             updateItem(i, { color_specs: current && !inList ? current : ' ' });
                                           } else {
                                             updateItem(i, { color_specs: v });
+                                            // Persist the picked color so it survives dialog close.
+                                            persistSupplierLine(it, { color_specs: v, abc_color: v });
+                                            if (isFieldShingle(it.item_name)) {
+                                              editableItems.forEach((other) => {
+                                                if (isRidgeCap(other.item_name)) {
+                                                  persistSupplierLine(other, { color_specs: v, abc_color: v });
+                                                }
+                                              });
+                                            }
                                           }
                                         }}
+
                                       >
                                         <SelectTrigger
                                           className={`h-7 w-40 ${colorMissing ? 'border-destructive' : ''}`}
