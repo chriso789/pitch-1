@@ -437,8 +437,21 @@ export function PushToSupplierDialog({
   );
 
   const updateItem = (idx: number, patch: Partial<MaterialItem>) => {
-    setEditableItems(prev => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
+    setEditableItems(prev => {
+      const next = prev.map((it, i) => (i === idx ? { ...it, ...patch } : it));
+      // Ridge/hip cap must always match the field shingle color.
+      if ('color_specs' in patch && isFieldShingle(next[idx]?.item_name)) {
+        const color = asStr(patch.color_specs).trim();
+        if (color) {
+          return next.map((it) =>
+            isRidgeCap(it.item_name) ? { ...it, color_specs: color } : it,
+          );
+        }
+      }
+      return next;
+    });
   };
+
 
   const resolveSrsCatalogSkus = async (base: MaterialItem[], branch: string) => {
     if (!tenantId || !branch.trim()) return base;
