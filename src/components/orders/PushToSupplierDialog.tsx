@@ -129,11 +129,26 @@ const skuAcronym = (value: string | null | undefined) =>
     .map((token) => token[0])
     .join('');
 
+const asStr = (v: unknown): string =>
+  typeof v === 'string' ? v : v == null ? '' : String(v);
+
+const isFieldShingle = (name?: unknown) => {
+  const n = asStr(name).toLowerCase();
+  if (!n.includes('shingle')) return false;
+  return !/(ridge|hip|cap|starter)/.test(n);
+};
+
+const isRidgeCap = (name?: unknown) => {
+  const n = asStr(name).toLowerCase();
+  return /(ridge|hip)/.test(n) && /(cap|shingle|seal-?a-?ridge|decoridge|shadow ?ridge)/.test(n);
+};
+
 const tokenMatches = (needle: string, haystack: Set<string>) => {
   if (haystack.has(needle)) return true;
   const aliases = SKU_SYNONYMS[needle] || [];
   return aliases.some((alias) => haystack.has(singularSkuToken(alias)));
 };
+
 
 const productText = (p: any) =>
   `${p.productId ?? p.productNumber ?? ''} ${p.productName ?? p.description ?? ''} ${p.option ?? ''} ${p.uom ?? ''}`;
@@ -255,13 +270,29 @@ export function PushToSupplierDialog({
     // popover). This keeps the Push-to-Supplier color dropdown in sync with
     // whatever color was already picked upstream on the estimate.
     const hydrated = items.map((it) => {
-      if (it.color_specs && it.color_specs.trim()) return it;
-      const { colors } = colorsForItem(it.item_name);
-      const haystack = `${(it as any).notes || ''} ${it.description || ''}`.toLowerCase();
+      // Coerce any non-string color/description values coming from JSON line
+      // items — otherwise .trim() throws and crashes the dialog.
+      const safe = {
+        ...it,
+        item_name: asStr(it.item_name),
+        description: asStr(it.description),
+        color_specs: asStr(it.color_specs),
+      };
+      if (safe.color_specs.trim()) return safe;
+      const { colors } = colorsForItem(safe.item_name);
+      const haystack = `${asStr((it as any).notes)} ${safe.description}`.toLowerCase();
       const matched = colors.find((c) => haystack.includes(c.toLowerCase()));
-      return matched ? { ...it, color_specs: matched } : it;
+      return matched ? { ...safe, color_specs: matched } : safe;
     });
-    setEditableItems(hydrated);
+    // Ridge/hip cap inherits the field shingle color when it has none.
+    const fieldColor = asStr(
+      hydrated.find((i) => isFieldShingle(i.item_name) && asStr(i.color_specs).trim())?.color_specs,
+    ).trim();
+    const withCaps = fieldColor
+      ? hydrated.map((i) => (isRidgeCap(i.item_name) ? { ...i, color_specs: fieldColor } : i))
+      : hydrated;
+    setEditableItems(withCaps);
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -437,8 +468,21 @@ export function PushToSupplierDialog({
   );
 
   const updateItem = (idx: number, patch: Partial<MaterialItem>) => {
-    setEditableItems(prev => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
+    setEditableItems(prev => {
+      const next = prev.map((it, i) => (i === idx ? { ...it, ...patch } : it));
+      // Ridge/hip cap must always match the field shingle color.
+      if ('color_specs' in patch && isFieldShingle(next[idx]?.item_name)) {
+        const color = asStr(patch.color_specs).trim();
+        if (color) {
+          return next.map((it) =>
+            isRidgeCap(it.item_name) ? { ...it, color_specs: color } : it,
+          );
+        }
+      }
+      return next;
+    });
   };
+
 
   const resolveSrsCatalogSkus = async (base: MaterialItem[], branch: string) => {
     if (!tenantId || !branch.trim()) return base;
@@ -1350,8 +1394,18 @@ export function PushToSupplierDialog({
                                             updateItem(i, { color_specs: current && !inList ? current : ' ' });
                                           } else {
                                             updateItem(i, { color_specs: v });
+                                            // Persist the picked color so it survives dialog close.
+                                            persistSupplierLine(it, { color_specs: v, abc_color: v });
+                                            if (isFieldShingle(it.item_name)) {
+                                              editableItems.forEach((other) => {
+                                                if (isRidgeCap(other.item_name)) {
+                                                  persistSupplierLine(other, { color_specs: v, abc_color: v });
+                                                }
+                                              });
+                                            }
                                           }
                                         }}
+
                                       >
                                         <SelectTrigger
                                           className={`h-7 w-40 ${colorMissing ? 'border-destructive' : ''}`}
@@ -1370,6 +1424,19 @@ export function PushToSupplierDialog({
                                           value={current === ' ' ? '' : current}
                                           autoFocus
                                           onChange={(e) => updateItem(i, { color_specs: e.target.value })}
+                                          onBlur={(e) => {
+                                            const v = e.target.value.trim();
+                                            if (!v) return;
+                                            persistSupplierLine(it, { color_specs: v, abc_color: v });
+                                            if (isFieldShingle(it.item_name)) {
+                                              editableItems.forEach((other) => {
+                                                if (isRidgeCap(other.item_name)) {
+                                                  persistSupplierLine(other, { color_specs: v, abc_color: v });
+                                                }
+                                              });
+                                            }
+                                          }}
+
                                           placeholder="Custom color"
                                           className={`h-7 w-40 ${colorMissing ? 'border-destructive' : ''}`}
                                         />
