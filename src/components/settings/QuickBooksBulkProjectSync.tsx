@@ -65,7 +65,7 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
           .from("pipeline_entries")
           .select("id")
           .eq("tenant_id", tenantId)
-          .eq("status", "project")
+          .in("status", ["project", "completed", "closed", "capped_out", "final_payment", "production"])
           .in("id", pipelineEntryIds);
         if (convertedError) throw convertedError;
         convertedEntryIds = new Set((convertedEntries ?? []).map((entry) => entry.id));
@@ -97,13 +97,15 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
   const unsynced = data?.unsynced ?? [];
   const synced = data?.synced ?? [];
   const total = unsynced.length;
-  const pct = useMemo(() => (total ? Math.round((done / total) * 100) : 0), [done, total]);
+  const [runTotal, setRunTotal] = useState(0);
+  const pct = useMemo(() => (runTotal ? Math.round((done / runTotal) * 100) : 0), [done, runTotal]);
 
 
-  const runSync = async (projects: ProjectRow[], successLabel: string) => {
+  const runSync = async (projects: ProjectRow[], successLabel: string, force = false) => {
     if (!projects.length) return;
     setRunning(true);
     setDone(0);
+    setRunTotal(projects.length);
     setFailed([]);
     const failures: string[] = [];
 
@@ -111,8 +113,9 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
       const label = project.clj_formatted_number || project.project_number || project.name || project.id.slice(0, 8);
       try {
         const { data: res, error } = await supabase.functions.invoke("qbo-project-sync", {
-          body: { project_id: project.id, trigger: "manual" },
+          body: { project_id: project.id, trigger: "manual", force },
         });
+
         if (error || !(res as any)?.ok) {
           const message = (res as any)?.error ?? (error ? await getFunctionErrorMessage(error) : "sync failed");
           failures.push(`${label}: ${message}`);
@@ -135,8 +138,10 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
     }
   };
 
-  const runBulkPush = () => runSync(unsynced, "Pushed");
-  const runRename = () => runSync(synced, "Updated names for");
+  const allJobs = data?.all ?? [];
+  const pushTargets = total ? unsynced : allJobs;
+  const runBulkPush = () => runSync(pushTargets, total ? "Pushed" : "Re-synced", !total);
+  const runRename = () => runSync(synced, "Updated names for", true);
 
 
   return (
@@ -144,9 +149,10 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
       <CardHeader>
         <div className="flex items-center justify-between gap-3">
           <div>
-            <CardTitle className="text-base">Push converted jobs to QuickBooks</CardTitle>
+            <CardTitle className="text-base">Push jobs to QuickBooks</CardTitle>
             <CardDescription>
-              Creates a QuickBooks customer record for every converted job that isn't linked yet.
+              Creates the QuickBooks customer (person) + job sub-customer for every active, completed
+              and closed job. Already-linked jobs can be re-synced to repair names or missing sub-customers.
             </CardDescription>
           </div>
           <Badge variant={total ? "secondary" : "outline"}>
@@ -156,9 +162,17 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={runBulkPush} disabled={running || isLoading || !total} className="gap-2">
+          <Button
+            onClick={runBulkPush}
+            disabled={running || isLoading || !pushTargets.length}
+            className="gap-2"
+          >
             {running ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-            {running ? `Pushing ${done}/${total}…` : `Push ${total || 0} job${total === 1 ? "" : "s"} to QuickBooks`}
+            {running
+              ? `Syncing ${done}/${pushTargets.length}…`
+              : total
+                ? `Push ${total} job${total === 1 ? "" : "s"} to QuickBooks`
+                : `Re-sync all ${pushTargets.length} job${pushTargets.length === 1 ? "" : "s"}`}
           </Button>
           <Button
             variant="secondary"
@@ -176,7 +190,7 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
           </Button>
 
           <span className="text-xs text-muted-foreground">
-            {data?.all?.length ?? 0} converted jobs total
+            {allJobs.length} jobs total
           </span>
         </div>
 
@@ -185,9 +199,10 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
         {!running && !total && !isLoading && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <CheckCircle2 className="h-4 w-4 text-green-600" />
-            All converted jobs are linked to QuickBooks.
+            All jobs are linked to QuickBooks.
           </div>
         )}
+
 
         {failed.length > 0 && (
           <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 space-y-1">

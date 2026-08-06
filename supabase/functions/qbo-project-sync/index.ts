@@ -30,6 +30,8 @@ const corsHeaders = {
 type ReqBody = {
   project_id?: string;
   trigger?: "auto" | "manual";
+  /** When true, re-run the full create/repair path even if the mapping looks ready. */
+  force?: boolean;
 };
 
 function json(status: number, body: unknown, requestId: string) {
@@ -160,6 +162,7 @@ Deno.serve(async (req) => {
   try { body = (await req.json()) as ReqBody; } catch { return json(400, { ok: false, error: "invalid_json" }, requestId); }
   if (!body.project_id) return json(400, { ok: false, error: "project_id_required" }, requestId);
   const trigger = body.trigger === "manual" ? "manual" : "auto";
+  const force = body.force === true;
   const projectId = body.project_id;
 
   // Load project (authoritative tenant).
@@ -363,7 +366,7 @@ Deno.serve(async (req) => {
   let mappingId: string;
   if (existing) {
     mappingId = existing.id;
-    if (existing.sync_status === "ready" && existing.qbo_subcustomer_id) {
+    if (!force && existing.sync_status === "ready" && existing.qbo_subcustomer_id) {
       await admin.from("project_qbo_mappings").update({
         last_verified_at: new Date().toISOString(),
         correlation_id: correlationId,
