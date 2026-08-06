@@ -1,4 +1,7 @@
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import jsPDF from "jspdf";
@@ -43,6 +46,7 @@ export function MaterialLineItemsExport({
   jobNumber,
 }: MaterialLineItemsExportProps) {
   const { toast } = useToast();
+  const [hideCosts, setHideCosts] = useState(false);
 
   const loadImageAsDataUrl = async (url: string): Promise<{ dataUrl: string; format: 'PNG' | 'JPEG' } | null> => {
     try {
@@ -173,8 +177,8 @@ export function MaterialLineItemsExport({
       // Column X positions (dedicated Color/Specs column)
       const colItemX = margin + 2;
       const colColorX = margin + 60;   // Color / Specs column
-      const colQtyX = pageWidth - 100;
-      const colUnitX = pageWidth - 80;
+      const colQtyX = hideCosts ? pageWidth - 60 : pageWidth - 100;
+      const colUnitX = hideCosts ? pageWidth - 35 : pageWidth - 80;
       const colCostX = pageWidth - 55;
       const colTotalX = pageWidth - 30;
 
@@ -187,8 +191,10 @@ export function MaterialLineItemsExport({
       doc.text('Color / Specs', colColorX, yPos);
       doc.text('Qty', colQtyX, yPos);
       doc.text('Unit', colUnitX, yPos);
-      doc.text('Unit Cost', colCostX, yPos);
-      doc.text('Total', colTotalX, yPos);
+      if (!hideCosts) {
+        doc.text('Unit Cost', colCostX, yPos);
+        doc.text('Total', colTotalX, yPos);
+      }
       yPos += 10;
 
       // Helper to truncate text to fit column width
@@ -226,8 +232,10 @@ export function MaterialLineItemsExport({
 
         doc.text(item.qty.toFixed(1), colQtyX, yPos);
         doc.text(item.unit, colUnitX, yPos);
-        doc.text(`$${item.unit_cost.toFixed(2)}`, colCostX, yPos);
-        doc.text(`$${item.line_total.toFixed(2)}`, colTotalX, yPos);
+        if (!hideCosts) {
+          doc.text(`$${item.unit_cost.toFixed(2)}`, colCostX, yPos);
+          doc.text(`$${item.line_total.toFixed(2)}`, colTotalX, yPos);
+        }
 
         // If color text was truncated, print the full value on a wrapped line
         if (colorSpec && colorSpec.length > 22) {
@@ -243,15 +251,17 @@ export function MaterialLineItemsExport({
       });
 
       // Total
-      yPos += 5;
-      doc.setDrawColor(229, 231, 235);
-      doc.line(margin, yPos, pageWidth - margin, yPos);
-      yPos += 10;
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(12);
-      doc.text('Total Material Cost:', pageWidth - 80, yPos);
-      doc.setTextColor(59, 130, 246); // Blue for materials
-      doc.text(`$${totalAmount.toFixed(2)}`, pageWidth - 30, yPos);
+      if (!hideCosts) {
+        yPos += 5;
+        doc.setDrawColor(229, 231, 235);
+        doc.line(margin, yPos, pageWidth - margin, yPos);
+        yPos += 10;
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(12);
+        doc.text('Total Material Cost:', pageWidth - 80, yPos);
+        doc.setTextColor(59, 130, 246); // Blue for materials
+        doc.text(`$${totalAmount.toFixed(2)}`, pageWidth - 30, yPos);
+      }
 
       // Footer
       const footerY = doc.internal.pageSize.getHeight() - 20;
@@ -287,15 +297,27 @@ export function MaterialLineItemsExport({
   };
 
   return (
-    <Button
-      variant="outline"
-      size="sm"
-      onClick={handleDownloadPDF}
-      className="gap-2"
-      disabled={materialItems.length === 0}
-    >
-      <Download className="h-4 w-4" />
-      Export Material Order
-    </Button>
+    <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
+        <Checkbox
+          id="hide-material-costs"
+          checked={hideCosts}
+          onCheckedChange={(v) => setHideCosts(v === true)}
+        />
+        <Label htmlFor="hide-material-costs" className="text-sm font-normal cursor-pointer">
+          Hide costs
+        </Label>
+      </div>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={handleDownloadPDF}
+        className="gap-2"
+        disabled={materialItems.length === 0}
+      >
+        <Download className="h-4 w-4" />
+        Export Material Order
+      </Button>
+    </div>
   );
 }
