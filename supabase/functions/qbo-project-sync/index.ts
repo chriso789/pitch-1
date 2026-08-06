@@ -162,6 +162,7 @@ Deno.serve(async (req) => {
   try { body = (await req.json()) as ReqBody; } catch { return json(400, { ok: false, error: "invalid_json" }, requestId); }
   if (!body.project_id) return json(400, { ok: false, error: "project_id_required" }, requestId);
   const trigger = body.trigger === "manual" ? "manual" : "auto";
+  const force = body.force === true;
   const projectId = body.project_id;
 
   // Load project (authoritative tenant).
