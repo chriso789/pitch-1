@@ -10,6 +10,8 @@ import { Building2, CheckCircle2, XCircle, RefreshCw, Unplug, AlertTriangle, Shi
 import { QuickBooksSyncErrors } from "./QuickBooksSyncErrors";
 import { QuickBooksConnectDialog } from "./QuickBooksConnectDialog";
 import { QuickBooksWebhookEvents } from "./QuickBooksWebhookEvents";
+import { QuickBooksBulkProjectSync } from "./QuickBooksBulkProjectSync";
+
 import { formatDistanceToNow } from "date-fns";
 
 const JOB_TYPES = [
