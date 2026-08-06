@@ -260,18 +260,31 @@ Deno.serve(async (req) => {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // AccuLynx-style representation:
+  //   Parent QBO Customer = the person (contact name only)
+  //   Sub-customer (Job)  = the job number, billed with parent, carries invoices
+  // ---------------------------------------------------------------------------
   const contactName =
-    contact?.company_name ||
     [contact?.first_name, contact?.last_name].filter(Boolean).join(" ").trim() ||
+    contact?.company_name ||
     null;
   const addressShort = shortAddress(contact?.address_street, contact?.address_city);
-  const displayName = buildDisplayName({
-    project_name: project.name as string | null,
-    job_number: project.project_number as string | null,
-    fallback_name: contactName,
-    fallback_address: contact?.address_street ?? null,
-  });
 
+  const parentName = (
+    contactName ||
+    (isPlaceholderName((project.name as string) ?? "") ? null : (project.name as string)) ||
+    addressShort ||
+    "Pitch Customer"
+  ).slice(0, 100);
+
+  const jobNumber = (
+    (project.project_number as string | null) ||
+    (project.clj_formatted_number as string | null) ||
+    ""
+  ).trim();
+  const jobBaseName = (jobNumber || `Job ${String(projectId).slice(0, 8)}`).slice(0, 100);
+  const displayName = jobBaseName;
 
   // Load or create mapping row.
   const { data: existing } = await admin
@@ -284,82 +297,103 @@ Deno.serve(async (req) => {
 
   const correlationId = crypto.randomUUID();
 
+  const realm = connection.realm_id;
+  const escapeQ = (s: string) => s.replace(/'/g, "''");
+
+  async function qboJson(path: string, init: RequestInit, op: string) {
+    const { response, intuit_tid } = await qboFetch(
+      admin,
+      connection as any,
+      path,
+      init,
+      {
+        action: "qbo_project_sync", op, tenant_id: tenantId,
+        connection_id: connId, user_id: userId, qbo_entity: "Customer",
+      },
+    );
+    const text = await response.text();
+    let parsed: any = null;
+    try { parsed = JSON.parse(text); } catch { /* non-json */ }
+    return { ok: response.ok, status: response.status, body: parsed, text, intuit_tid };
+  }
+
+  async function findCustomerByName(name: string): Promise<any | null> {
+    const q = `select * from Customer where DisplayName = '${escapeQ(name)}'`;
+    const res = await qboJson(
+      `/v3/company/${realm}/query?minorversion=73&query=${encodeURIComponent(q)}`,
+      { method: "GET", headers: { Accept: "application/json" } },
+      "customer.query",
+    );
+    if (!res.ok) return null;
+    const rows = res.body?.QueryResponse?.Customer;
+    return Array.isArray(rows) && rows.length ? rows[0] : null;
+  }
+
+  async function createCustomer(payload: Record<string, unknown>, op: string) {
+    return await qboJson(
+      `/v3/company/${realm}/customer?minorversion=73`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+      op,
+    );
+  }
+
+  const isDuplicateErr = (t: string) =>
+    /DisplayNameExists|6240|Duplicate Name Exists/i.test(t);
+
+  async function failMapping(mappingId: string, msg: string, tid: string | null, status: number) {
+    await admin.from("project_qbo_mappings").update({
+      sync_status: "sync_error",
+      last_error: msg.slice(0, 500),
+      last_intuit_tid: tid,
+    }).eq("id", mappingId);
+    await emitAudit(admin, {
+      tenant_id: tenantId, event_type: "qbo_project_creation_failed",
+      project_id: projectId, qbo_connection_id: connId, actor_user_id: userId,
+      metadata: { trigger, correlation_id: correlationId, intuit_tid: tid, http_status: status, error: msg.slice(0, 500) },
+    });
+    await setReadiness(admin, projectId, project.current_accounting_snapshot_id,
+      "qbo_sync_error", tenantId, connId, userId, "qbo_sync_in_progress",
+      { correlation_id: correlationId });
+  }
+
   let mappingId: string;
   if (existing) {
     mappingId = existing.id;
-    // If already ready & customer verified, short-circuit as a verification pass.
-    if (existing.sync_status === "ready" && existing.qbo_customer_id) {
-      let renamed = false;
-      if ((existing.qbo_display_name ?? "") !== displayName) {
-        try {
-          const { response: getRes } = await qboFetch(
-            admin,
-            connection as any,
-            `/v3/company/${connection.realm_id}/customer/${existing.qbo_customer_id}?minorversion=73`,
-            { method: "GET", headers: { Accept: "application/json" } },
-            {
-              action: "qbo_project_sync", op: "customer.read", tenant_id: tenantId,
-              connection_id: connId, user_id: userId, qbo_entity: "Customer",
-            },
-          );
-          if (getRes.ok) {
-            const current = await getRes.json();
-            const syncToken = current?.Customer?.SyncToken;
-            if (syncToken !== undefined) {
-              const { response: updRes } = await qboFetch(
-                admin,
-                connection as any,
-                `/v3/company/${connection.realm_id}/customer?minorversion=73`,
-                {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    Id: String(existing.qbo_customer_id),
-                    SyncToken: String(syncToken),
-                    sparse: true,
-                    DisplayName: displayName,
-                  }),
-                },
-                {
-                  action: "qbo_project_sync", op: "customer.rename", tenant_id: tenantId,
-                  connection_id: connId, user_id: userId, qbo_entity: "Customer",
-                },
-              );
-              renamed = updRes.ok;
-              if (!updRes.ok) await updRes.text();
-            }
-          }
-        } catch (_e) {
-          renamed = false;
-        }
-      }
-
+    if (existing.sync_status === "ready" && existing.qbo_subcustomer_id) {
       await admin.from("project_qbo_mappings").update({
         last_verified_at: new Date().toISOString(),
         correlation_id: correlationId,
-        ...(renamed ? { qbo_display_name: displayName } : {}),
       }).eq("id", mappingId);
       await emitAudit(admin, {
         tenant_id: tenantId, event_type: "qbo_project_verified",
         project_id: projectId, qbo_connection_id: connId, actor_user_id: userId,
-        metadata: { trigger, correlation_id: correlationId, qbo_customer_id: existing.qbo_customer_id, renamed, display_name: displayName },
+        metadata: {
+          trigger, correlation_id: correlationId,
+          qbo_customer_id: existing.qbo_customer_id,
+          qbo_subcustomer_id: existing.qbo_subcustomer_id,
+        },
       });
       return json(200, {
         ok: true,
         data: {
           mapping_id: mappingId,
           qbo_customer_id: existing.qbo_customer_id,
+          qbo_subcustomer_id: existing.qbo_subcustomer_id,
+          qbo_display_name: existing.qbo_display_name,
           sync_status: "ready",
           verified: true,
-          renamed,
         },
       }, requestId);
     }
     await admin.from("project_qbo_mappings").update({
       sync_status: "creating",
-
       last_error: null,
       correlation_id: correlationId,
+      representation_strategy: "contact_customer_with_sub",
       qbo_display_name: displayName,
     }).eq("id", mappingId);
   } else {
@@ -370,7 +404,7 @@ Deno.serve(async (req) => {
         qbo_connection_id: connId,
         pitch_project_id: projectId,
         pitch_contact_id: contact?.id ?? null,
-        representation_strategy: "project_as_customer",
+        representation_strategy: "contact_customer_with_sub",
         qbo_display_name: displayName,
         sync_status: "creating",
         correlation_id: correlationId,
@@ -387,146 +421,134 @@ Deno.serve(async (req) => {
     tenant_id: tenantId,
     event_type: trigger === "manual" ? "qbo_project_manual_retry_requested" : "qbo_project_creation_queued",
     project_id: projectId, qbo_connection_id: connId, actor_user_id: userId,
-    metadata: { trigger, correlation_id: correlationId, display_name: displayName },
+    metadata: { trigger, correlation_id: correlationId, parent_name: parentName, job_name: displayName },
   });
 
   await setReadiness(admin, projectId, project.current_accounting_snapshot_id, "qbo_sync_in_progress",
     tenantId, connId, userId, oldReadiness, { trigger, correlation_id: correlationId });
 
-  await emitAudit(admin, {
-    tenant_id: tenantId, event_type: "qbo_project_creation_started",
-    project_id: projectId, qbo_connection_id: connId, actor_user_id: userId,
-    metadata: { trigger, correlation_id: correlationId },
-  });
+  // -------------------------------------------------------------------------
+  // 1) Resolve or create the PARENT customer (the person).
+  // -------------------------------------------------------------------------
+  let parentCustomerId: string | null = null;
+  let intuitTid: string | null = null;
 
-  // Build the QBO Customer payload.
-  const customerPayload: Record<string, unknown> = {
-    DisplayName: displayName,
-    CompanyName: contact?.company_name ?? undefined,
-    GivenName: contact?.first_name ?? undefined,
-    FamilyName: contact?.last_name ?? undefined,
-    Notes: `Pitch Project ${project.clj_formatted_number ?? project.project_number ?? projectId}`,
-  };
-  if (contact?.email) customerPayload.PrimaryEmailAddr = { Address: contact.email };
-  if (contact?.phone) customerPayload.PrimaryPhone = { FreeFormNumber: contact.phone };
-  if (contact?.address_street || contact?.address_city || contact?.address_zip) {
-    customerPayload.BillAddr = {
-      Line1: contact?.address_street ?? undefined,
-      City: contact?.address_city ?? undefined,
-      CountrySubDivisionCode: contact?.address_state ?? undefined,
-      PostalCode: contact?.address_zip ?? undefined,
-    };
+  // Reuse a parent already mapped for this contact on this connection.
+  if (contact?.id) {
+    const { data: sibling } = await admin
+      .from("project_qbo_mappings")
+      .select("qbo_customer_id")
+      .eq("qbo_connection_id", connId)
+      .eq("pitch_contact_id", contact.id)
+      .eq("is_active", true)
+      .not("qbo_customer_id", "is", null)
+      .limit(1)
+      .maybeSingle();
+    if (sibling?.qbo_customer_id) parentCustomerId = String(sibling.qbo_customer_id);
   }
 
-  const idempotencyKey = `qbo-project-sync:${projectId}:${connId}`;
+  if (!parentCustomerId) {
+    const found = await findCustomerByName(parentName);
+    if (found?.Id) parentCustomerId = String(found.Id);
+  }
 
-  let created: any = null;
-  let intuitTid: string | null = null;
-  let httpStatus = 0;
-  let errorBody = "";
-
-  try {
-    const { response, intuit_tid } = await qboFetch(
-      admin,
-      connection as any,
-      `/v3/company/${connection.realm_id}/customer?minorversion=73`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Request-Id": idempotencyKey,
-        },
-        body: JSON.stringify(customerPayload),
-      },
-      {
-        action: "qbo_project_sync",
-        op: "customer.create",
-        tenant_id: tenantId,
-        connection_id: connId,
-        user_id: userId,
-        qbo_entity: "Customer",
-      },
-    );
-    intuitTid = intuit_tid;
-    httpStatus = response.status;
-    const text = await response.text();
-    if (!response.ok) {
-      errorBody = text;
-      throw new Error(`qbo_customer_create_failed [${response.status}]: ${text.slice(0, 500)}`);
+  if (!parentCustomerId) {
+    const parentPayload: Record<string, unknown> = {
+      DisplayName: parentName,
+      GivenName: contact?.first_name ?? undefined,
+      FamilyName: contact?.last_name ?? undefined,
+      CompanyName: contact?.company_name ?? undefined,
+    };
+    if (contact?.email) parentPayload.PrimaryEmailAddr = { Address: contact.email };
+    if (contact?.phone) parentPayload.PrimaryPhone = { FreeFormNumber: contact.phone };
+    if (contact?.address_street || contact?.address_city || contact?.address_zip) {
+      parentPayload.BillAddr = {
+        Line1: contact?.address_street ?? undefined,
+        City: contact?.address_city ?? undefined,
+        CountrySubDivisionCode: contact?.address_state ?? undefined,
+        PostalCode: contact?.address_zip ?? undefined,
+      };
     }
-    try { created = JSON.parse(text); } catch { created = null; }
-  } catch (e) {
-    const msg = (e as Error).message ?? String(e);
-    const isDuplicate =
-      /DisplayNameExists|6240|Duplicate Name Exists/i.test(errorBody) ||
-      /DisplayNameExists|6240|Duplicate Name Exists/i.test(msg);
-
-    if (isDuplicate) {
-      await admin.from("project_qbo_mappings").update({
-        sync_status: "duplicate_review_required",
-        last_error: msg.slice(0, 500),
-        last_intuit_tid: intuitTid,
-      }).eq("id", mappingId);
-      await emitAudit(admin, {
-        tenant_id: tenantId, event_type: "qbo_project_duplicate_review_required",
-        project_id: projectId, qbo_connection_id: connId, actor_user_id: userId,
-        metadata: { trigger, correlation_id: correlationId, intuit_tid: intuitTid, display_name: displayName },
-      });
-      await setReadiness(admin, projectId, project.current_accounting_snapshot_id,
-        "qbo_duplicate_review_required", tenantId, connId, userId, "qbo_sync_in_progress",
-        { correlation_id: correlationId });
-      return json(409, {
+    const res = await createCustomer(parentPayload, "customer.create.parent");
+    intuitTid = res.intuit_tid;
+    if (res.ok && res.body?.Customer?.Id) {
+      parentCustomerId = String(res.body.Customer.Id);
+    } else if (isDuplicateErr(res.text)) {
+      const found = await findCustomerByName(parentName);
+      if (found?.Id) parentCustomerId = String(found.Id);
+    }
+    if (!parentCustomerId) {
+      await failMapping(mappingId, `qbo_parent_customer_failed: ${res.text.slice(0, 400)}`, intuitTid, res.status);
+      return json(502, {
         ok: false,
-        error: "qbo_duplicate_review_required",
-        details: { display_name: displayName, intuit_tid: intuitTid },
+        error: "qbo_parent_customer_failed",
+        details: { parent_name: parentName, intuit_tid: intuitTid, http_status: res.status },
       }, requestId);
     }
-
-    await admin.from("project_qbo_mappings").update({
-      sync_status: "sync_error",
-      last_error: msg.slice(0, 500),
-      last_intuit_tid: intuitTid,
-    }).eq("id", mappingId);
-    await emitAudit(admin, {
-      tenant_id: tenantId, event_type: "qbo_project_creation_failed",
-      project_id: projectId, qbo_connection_id: connId, actor_user_id: userId,
-      metadata: { trigger, correlation_id: correlationId, intuit_tid: intuitTid, http_status: httpStatus, error: msg.slice(0, 500) },
-    });
-    await setReadiness(admin, projectId, project.current_accounting_snapshot_id,
-      "qbo_sync_error", tenantId, connId, userId, "qbo_sync_in_progress",
-      { correlation_id: correlationId });
-    return json(502, { ok: false, error: "qbo_customer_create_failed", details: { intuit_tid: intuitTid, http_status: httpStatus, message: msg.slice(0, 500) } }, requestId);
-  }
-
-  const customer = created?.Customer;
-  const qboCustomerId = customer?.Id ?? null;
-  const syncToken = customer?.SyncToken ?? "0";
-
-  if (!qboCustomerId) {
-    await admin.from("project_qbo_mappings").update({
-      sync_status: "sync_error",
-      last_error: "qbo_customer_create_returned_no_id",
-      last_intuit_tid: intuitTid,
-    }).eq("id", mappingId);
-    await setReadiness(admin, projectId, project.current_accounting_snapshot_id,
-      "qbo_sync_error", tenantId, connId, userId, "qbo_sync_in_progress");
-    return json(502, { ok: false, error: "qbo_customer_create_returned_no_id" }, requestId);
   }
 
   await emitAudit(admin, {
     tenant_id: tenantId, event_type: "qbo_project_customer_created",
     project_id: projectId, qbo_connection_id: connId, actor_user_id: userId,
-    metadata: {
-      trigger, correlation_id: correlationId, intuit_tid: intuitTid,
-      qbo_customer_id: qboCustomerId, display_name: displayName,
-    },
+    metadata: { trigger, correlation_id: correlationId, qbo_customer_id: parentCustomerId, display_name: parentName, role: "parent" },
   });
 
+  // -------------------------------------------------------------------------
+  // 2) Create the SUB-CUSTOMER (job) under that parent.
+  // -------------------------------------------------------------------------
+  const buildJobPayload = (name: string) => ({
+    DisplayName: name,
+    Job: true,
+    BillWithParent: true,
+    ParentRef: { value: String(parentCustomerId) },
+    Notes: `Pitch Project ${project.clj_formatted_number ?? project.project_number ?? projectId}`,
+    ...(addressShort
+      ? {
+        ShipAddr: {
+          Line1: contact?.address_street ?? undefined,
+          City: contact?.address_city ?? undefined,
+          CountrySubDivisionCode: contact?.address_state ?? undefined,
+          PostalCode: contact?.address_zip ?? undefined,
+        },
+      }
+      : {}),
+  });
+
+  let jobName = jobBaseName;
+  let jobRes = await createCustomer(buildJobPayload(jobName), "customer.create.job");
+  intuitTid = jobRes.intuit_tid ?? intuitTid;
+
+  if (!jobRes.ok && isDuplicateErr(jobRes.text)) {
+    // Try to reuse an existing sub-customer with this exact name under the parent.
+    const found = await findCustomerByName(jobName);
+    if (found?.Id && String(found?.ParentRef?.value ?? "") === String(parentCustomerId)) {
+      jobRes = { ok: true, status: 200, body: { Customer: found }, text: "", intuit_tid: intuitTid };
+    } else {
+      jobName = `${jobBaseName} - ${parentName}`.slice(0, 100);
+      jobRes = await createCustomer(buildJobPayload(jobName), "customer.create.job.retry");
+      intuitTid = jobRes.intuit_tid ?? intuitTid;
+    }
+  }
+
+  const jobCustomerId = jobRes.ok ? (jobRes.body?.Customer?.Id ?? null) : null;
+  if (!jobCustomerId) {
+    await failMapping(mappingId, `qbo_job_create_failed: ${jobRes.text.slice(0, 400)}`, intuitTid, jobRes.status);
+    return json(502, {
+      ok: false,
+      error: "qbo_job_create_failed",
+      details: { job_name: jobName, parent_name: parentName, intuit_tid: intuitTid, http_status: jobRes.status },
+    }, requestId);
+  }
+
+  const syncToken = jobRes.body?.Customer?.SyncToken ?? "0";
   const now = new Date().toISOString();
+
   await admin.from("project_qbo_mappings").update({
-    qbo_customer_id: qboCustomerId,
-    qbo_sync_token: syncToken,
-    qbo_display_name: displayName,
+    qbo_customer_id: String(parentCustomerId),
+    qbo_subcustomer_id: String(jobCustomerId),
+    qbo_sync_token: String(syncToken),
+    qbo_display_name: jobName,
+    representation_strategy: "contact_customer_with_sub",
     sync_status: "ready",
     last_synced_at: now,
     last_verified_at: now,
@@ -537,32 +559,19 @@ Deno.serve(async (req) => {
   await emitAudit(admin, {
     tenant_id: tenantId, event_type: "qbo_project_mapping_persisted",
     project_id: projectId, qbo_connection_id: connId, actor_user_id: userId,
-    metadata: { trigger, correlation_id: correlationId, qbo_customer_id: qboCustomerId },
+    metadata: {
+      trigger, correlation_id: correlationId,
+      qbo_customer_id: parentCustomerId, qbo_subcustomer_id: jobCustomerId,
+      parent_name: parentName, job_name: jobName,
+    },
   });
-
-  // Verification read.
-  try {
-    const { response: vRes, intuit_tid: vTid } = await qboFetch(
-      admin, connection as any,
-      `/v3/company/${connection.realm_id}/customer/${qboCustomerId}?minorversion=73`,
-      { method: "GET", headers: { Accept: "application/json" } },
-      { action: "qbo_project_sync", op: "customer.verify", tenant_id: tenantId, connection_id: connId, user_id: userId, qbo_entity: "Customer", qbo_entity_id: qboCustomerId },
-    );
-    if (vRes.ok) {
-      await emitAudit(admin, {
-        tenant_id: tenantId, event_type: "qbo_project_verified",
-        project_id: projectId, qbo_connection_id: connId, actor_user_id: userId,
-        metadata: { trigger, correlation_id: correlationId, qbo_customer_id: qboCustomerId, intuit_tid: vTid },
-      });
-    }
-  } catch (_e) { /* verification is best-effort */ }
 
   const finalReadiness = oldReadiness === "pending_classification" || oldReadiness === "needs_mapping"
     ? oldReadiness
     : "ready";
   await setReadiness(admin, projectId, project.current_accounting_snapshot_id, finalReadiness,
     tenantId, connId, userId, "qbo_sync_in_progress",
-    { correlation_id: correlationId, qbo_customer_id: qboCustomerId });
+    { correlation_id: correlationId, qbo_customer_id: parentCustomerId, qbo_subcustomer_id: jobCustomerId });
 
   try {
     await admin.from("audit_log").insert({
@@ -573,7 +582,8 @@ Deno.serve(async (req) => {
       metadata: {
         tenant_id: tenantId,
         qbo_connection_id: connId,
-        qbo_customer_id: qboCustomerId,
+        qbo_customer_id: parentCustomerId,
+        qbo_subcustomer_id: jobCustomerId,
         trigger,
         correlation_id: correlationId,
         intuit_tid: intuitTid,
@@ -582,16 +592,18 @@ Deno.serve(async (req) => {
     });
   } catch (_e) { /* audit is best-effort */ }
 
-
   return json(200, {
     ok: true,
     data: {
       mapping_id: mappingId,
-      qbo_customer_id: qboCustomerId,
+      qbo_customer_id: parentCustomerId,
+      qbo_subcustomer_id: jobCustomerId,
       qbo_sync_token: syncToken,
-      qbo_display_name: displayName,
+      qbo_display_name: jobName,
+      parent_display_name: parentName,
       sync_status: "ready",
       accounting_readiness: finalReadiness,
     },
   }, requestId);
 });
+
