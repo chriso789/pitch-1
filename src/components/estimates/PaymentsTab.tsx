@@ -951,6 +951,86 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
     onError: (err: Error) => toast.error(err.message || 'Failed to record payment'),
   });
 
+  const invalidatePaymentQueries = () => {
+    queryClient.invalidateQueries({ queryKey: ['project-ar-invoices', pipelineEntryId] });
+    queryClient.invalidateQueries({ queryKey: ['project-ar-payments', pipelineEntryId] });
+    queryClient.invalidateQueries({ queryKey: ['ar-payments'] });
+    queryClient.invalidateQueries({ queryKey: ['ar-invoices'] });
+    queryClient.invalidateQueries({ queryKey: ['ar-projects'] });
+    window.dispatchEvent(new CustomEvent('project-payment-recorded', { detail: { pipelineEntryId } }));
+  };
+
+  // Re-sync a linked invoice's balance/status from all of its payments.
+  const resyncInvoiceBalance = async (invoiceId: string | null | undefined) => {
+    if (!invoiceId) return;
+    const invoice = (invoices || []).find((i: any) => i.id === invoiceId) as any;
+    if (!invoice) return;
+    const { data: rows } = await supabase
+      .from('project_payments')
+      .select('amount')
+      .eq('invoice_id', invoiceId);
+    const paid = (rows || []).reduce((s: number, r: any) => s + Number(r.amount || 0), 0);
+    const newBalance = Math.max(0, Number(invoice.amount || 0) - paid);
+    const newStatus = newBalance === 0 ? 'paid' : paid > 0 ? 'partial' : 'sent';
+    await supabase.from('project_invoices')
+      .update({ balance: newBalance, status: newStatus })
+      .eq('id', invoiceId);
+  };
+
+  const updatePaymentMutation = useMutation({
+    mutationFn: async () => {
+      if (!editingPayment) throw new Error('No payment selected');
+      if (!canEditPayments) throw new Error('Only an owner or developer can edit payment history');
+      const amount = parseFloat(editPaymentAmount);
+      if (isNaN(amount) || amount <= 0) throw new Error('Invalid amount');
+
+      const { error } = await supabase
+        .from('project_payments')
+        .update({
+          amount,
+          payment_method: editPaymentMethod,
+          reference_number: editPaymentRef || null,
+          payment_date: editPaymentDate,
+          notes: editPaymentNotes || null,
+        } as any)
+        .eq('id', editingPayment.id);
+      if (error) throw new Error(error.message || 'Failed to update payment');
+
+      await resyncInvoiceBalance(editingPayment.invoice_id);
+    },
+    onSuccess: () => {
+      invalidatePaymentQueries();
+      setEditingPayment(null);
+      toast.success('Payment updated');
+    },
+    onError: (err: Error) => toast.error(err.message || 'Failed to update payment'),
+  });
+
+  const deletePaymentMutation = useMutation({
+    mutationFn: async (pmt: any) => {
+      if (!canEditPayments) throw new Error('Only an owner or developer can delete payments');
+      const { error } = await supabase.from('project_payments').delete().eq('id', pmt.id);
+      if (error) throw new Error(error.message || 'Failed to delete payment');
+      await resyncInvoiceBalance(pmt.invoice_id);
+    },
+    onSuccess: () => {
+      invalidatePaymentQueries();
+      setEditingPayment(null);
+      toast.success('Payment deleted');
+    },
+    onError: (err: Error) => toast.error(err.message || 'Failed to delete payment'),
+  });
+
+  const openEditPayment = (pmt: any) => {
+    setEditingPayment(pmt);
+    setEditPaymentAmount(String(Number(pmt.amount ?? 0)));
+    setEditPaymentMethod(pmt.payment_method || 'check');
+    setEditPaymentRef(pmt.reference_number || '');
+    setEditPaymentDate(format(new Date(pmt.payment_date), 'yyyy-MM-dd'));
+    setEditPaymentNotes(pmt.notes || '');
+  };
+
+
   const toggleGroupSelected = (gIdx: number) => {
     setInvoiceGroups((prev) =>
       prev.map((g, i) => (i === gIdx ? { ...g, selected: !g.selected } : g))
