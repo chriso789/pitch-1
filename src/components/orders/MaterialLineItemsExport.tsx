@@ -232,8 +232,10 @@ export function MaterialLineItemsExport({
 
         doc.text(item.qty.toFixed(1), colQtyX, yPos);
         doc.text(item.unit, colUnitX, yPos);
-        doc.text(`$${item.unit_cost.toFixed(2)}`, colCostX, yPos);
-        doc.text(`$${item.line_total.toFixed(2)}`, colTotalX, yPos);
+        if (!hideCosts) {
+          doc.text(`$${item.unit_cost.toFixed(2)}`, colCostX, yPos);
+          doc.text(`$${item.line_total.toFixed(2)}`, colTotalX, yPos);
+        }
 
         // If color text was truncated, print the full value on a wrapped line
         if (colorSpec && colorSpec.length > 22) {
@@ -249,15 +251,17 @@ export function MaterialLineItemsExport({
       });
 
       // Total
-      yPos += 5;
-      doc.setDrawColor(229, 231, 235);
-      doc.line(margin, yPos, pageWidth - margin, yPos);
-      yPos += 10;
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(12);
-      doc.text('Total Material Cost:', pageWidth - 80, yPos);
-      doc.setTextColor(59, 130, 246); // Blue for materials
-      doc.text(`$${totalAmount.toFixed(2)}`, pageWidth - 30, yPos);
+      if (!hideCosts) {
+        yPos += 5;
+        doc.setDrawColor(229, 231, 235);
+        doc.line(margin, yPos, pageWidth - margin, yPos);
+        yPos += 10;
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(12);
+        doc.text('Total Material Cost:', pageWidth - 80, yPos);
+        doc.setTextColor(59, 130, 246); // Blue for materials
+        doc.text(`$${totalAmount.toFixed(2)}`, pageWidth - 30, yPos);
+      }
 
       // Footer
       const footerY = doc.internal.pageSize.getHeight() - 20;
