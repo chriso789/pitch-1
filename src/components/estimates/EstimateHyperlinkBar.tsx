@@ -305,10 +305,14 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
   };
 
   // Effective values: when combine mode is on, sum across selected estimates
-  const effectiveSalePrice = isCombined ? combinedTotals!.selling_price : (hyperlinkData?.sale_price || 0);
-  const effectiveMaterials = isCombined ? combinedTotals!.materials : (hyperlinkData?.materials || 0);
-  const effectiveLabor = isCombined ? combinedTotals!.labor : (hyperlinkData?.labor || 0);
+  // (change-order budget/spend is layered on top in either mode)
+  const effectiveSalePrice = isCombined
+    ? combinedTotals!.selling_price + (hyperlinkData?.change_orders_total || 0)
+    : (hyperlinkData?.sale_price || 0);
+  const effectiveMaterials = isCombined ? combinedTotals!.materials + coMaterialCost : (hyperlinkData?.materials || 0);
+  const effectiveLabor = isCombined ? combinedTotals!.labor + coLaborCost : (hyperlinkData?.labor || 0);
   const effectiveOverheadFromEstimate = isCombined ? combinedTotals!.overhead : 0;
+
 
   // Build links from the new RPC response structure
   const links = hyperlinkData ? [
