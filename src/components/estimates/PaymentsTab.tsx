@@ -61,6 +61,18 @@ interface InvoiceGroup {
   children: (InvoiceLineItem & { selected: boolean })[];
 }
 
+interface EditablePayment {
+  id: string;
+  invoice_id: string | null;
+  amount: number | string;
+  payment_method: string | null;
+  reference_number: string | null;
+  payment_date: string;
+  notes: string | null;
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount);
 
@@ -77,7 +89,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   const { activeTenantId, profile } = useActiveTenantId();
   // Only company owners and the platform master (developer) may alter payment history.
   const canEditPayments = profile?.role === 'owner' || profile?.role === 'master';
-  const [editingPayment, setEditingPayment] = useState<any | null>(null);
+  const [editingPayment, setEditingPayment] = useState<EditablePayment | null>(null);
   const [editPaymentAmount, setEditPaymentAmount] = useState('');
   const [editPaymentMethod, setEditPaymentMethod] = useState('check');
   const [editPaymentRef, setEditPaymentRef] = useState('');
@@ -978,13 +990,14 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   };
 
   const updatePaymentMutation = useMutation({
-    mutationFn: async () => {
-      if (!editingPayment) throw new Error('No payment selected');
+    mutationFn: async (payment: EditablePayment) => {
       if (!canEditPayments) throw new Error('Only an owner or developer can edit payment history');
+      if (!UUID_PATTERN.test(payment.id)) throw new Error('This payment could not be identified. Refresh the page and try again.');
       const amount = parseFloat(editPaymentAmount);
       if (isNaN(amount) || amount <= 0) throw new Error('Invalid amount');
+      if (!editPaymentDate) throw new Error('Payment date is required');
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('project_payments')
         .update({
           amount,
@@ -993,10 +1006,14 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
           payment_date: editPaymentDate,
           notes: editPaymentNotes || null,
         } as any)
-        .eq('id', editingPayment.id);
+        .eq('id', payment.id)
+        .eq('pipeline_entry_id', pipelineEntryId)
+        .select('id')
+        .single();
       if (error) throw new Error(error.message || 'Failed to update payment');
+      if (!data?.id) throw new Error('Payment was not updated');
 
-      await resyncInvoiceBalance(editingPayment.invoice_id);
+      await resyncInvoiceBalance(payment.invoice_id);
     },
     onSuccess: () => {
       invalidatePaymentQueries();
@@ -1007,10 +1024,18 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   });
 
   const deletePaymentMutation = useMutation({
-    mutationFn: async (pmt: any) => {
+    mutationFn: async (pmt: EditablePayment) => {
       if (!canEditPayments) throw new Error('Only an owner or developer can delete payments');
-      const { error } = await supabase.from('project_payments').delete().eq('id', pmt.id);
+      if (!UUID_PATTERN.test(pmt.id)) throw new Error('This payment could not be identified. Refresh the page and try again.');
+      const { data, error } = await supabase
+        .from('project_payments')
+        .delete()
+        .eq('id', pmt.id)
+        .eq('pipeline_entry_id', pipelineEntryId)
+        .select('id')
+        .single();
       if (error) throw new Error(error.message || 'Failed to delete payment');
+      if (!data?.id) throw new Error('Payment was not deleted');
       await resyncInvoiceBalance(pmt.invoice_id);
     },
     onSuccess: () => {
@@ -1021,7 +1046,11 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
     onError: (err: Error) => toast.error(err.message || 'Failed to delete payment'),
   });
 
-  const openEditPayment = (pmt: any) => {
+  const openEditPayment = (pmt: EditablePayment) => {
+    if (!pmt?.id || !UUID_PATTERN.test(pmt.id)) {
+      toast.error('This payment could not be identified. Refresh the page and try again.');
+      return;
+    }
     let dateStr = '';
     try {
       const d = new Date(pmt?.payment_date);
@@ -2179,8 +2208,8 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
               Delete
             </Button>
             <Button
-              onClick={() => updatePaymentMutation.mutate()}
-              disabled={updatePaymentMutation.isPending}
+              onClick={() => editingPayment && updatePaymentMutation.mutate(editingPayment)}
+              disabled={!editingPayment || updatePaymentMutation.isPending || deletePaymentMutation.isPending}
             >
               {updatePaymentMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
               Save Changes
