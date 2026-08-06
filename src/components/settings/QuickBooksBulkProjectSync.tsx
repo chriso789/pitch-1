@@ -100,14 +100,14 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
   const pct = useMemo(() => (total ? Math.round((done / total) * 100) : 0), [done, total]);
 
 
-  const runBulkPush = async () => {
-    if (!total) return;
+  const runSync = async (projects: ProjectRow[], successLabel: string) => {
+    if (!projects.length) return;
     setRunning(true);
     setDone(0);
     setFailed([]);
     const failures: string[] = [];
 
-    for (const project of unsynced) {
+    for (const project of projects) {
       const label = project.clj_formatted_number || project.project_number || project.name || project.id.slice(0, 8);
       try {
         const { data: res, error } = await supabase.functions.invoke("qbo-project-sync", {
@@ -127,12 +127,17 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
     setRunning(false);
     await refetch();
 
+    const count = projects.length;
     if (!failures.length) {
-      toast.success(`Pushed ${total} converted job${total === 1 ? "" : "s"} to QuickBooks`);
+      toast.success(`${successLabel} ${count} job${count === 1 ? "" : "s"}`);
     } else {
-      toast.warning(`${total - failures.length} of ${total} pushed — ${failures.length} failed`);
+      toast.warning(`${count - failures.length} of ${count} succeeded — ${failures.length} failed`);
     }
   };
+
+  const runBulkPush = () => runSync(unsynced, "Pushed");
+  const runRename = () => runSync(synced, "Updated names for");
+
 
   return (
     <Card>
