@@ -88,14 +88,17 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
       return {
         all: convertedProjects,
         unsynced: convertedProjects.filter((project) => !mappedIds.has(project.id)),
+        synced: convertedProjects.filter((project) => mappedIds.has(project.id)),
       };
     },
     enabled: !!tenantId,
   });
 
   const unsynced = data?.unsynced ?? [];
+  const synced = data?.synced ?? [];
   const total = unsynced.length;
   const pct = useMemo(() => (total ? Math.round((done / total) * 100) : 0), [done, total]);
+
 
   const runBulkPush = async () => {
     if (!total) return;
