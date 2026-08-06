@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useActiveTenantId } from '@/hooks/useActiveTenantId';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -87,6 +88,7 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, sellingPrice }) => {
   const queryClient = useQueryClient();
   const { activeTenantId, profile } = useActiveTenantId();
+  const effectiveTenantId = useEffectiveTenantId();
   // Only company owners and the platform master (developer) may alter payment history.
   const canEditPayments = profile?.role === 'owner' || profile?.role === 'master';
   const [editingPayment, setEditingPayment] = useState<EditablePayment | null>(null);
@@ -370,16 +372,19 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   });
 
   const { data: payments, isLoading: loadingPayments } = useQuery({
-    queryKey: ['project-ar-payments', pipelineEntryId],
+    queryKey: ['project-ar-payment-details', pipelineEntryId, effectiveTenantId],
     queryFn: async () => {
+      if (!effectiveTenantId) return [];
       const { data, error } = await supabase
         .from('project_payments')
         .select('*')
         .eq('pipeline_entry_id', pipelineEntryId)
+        .eq('tenant_id', effectiveTenantId)
         .order('payment_date', { ascending: false });
       if (error) throw error;
       return data || [];
     },
+    enabled: !!pipelineEntryId && !!effectiveTenantId,
   });
 
   // Fetch Zelle payment links for this pipeline entry
@@ -948,6 +953,8 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project-ar-invoices', pipelineEntryId] });
       queryClient.invalidateQueries({ queryKey: ['project-ar-payments', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['project-ar-payment-details', pipelineEntryId, effectiveTenantId] });
+      queryClient.invalidateQueries({ queryKey: ['project-ar-payment-summary', pipelineEntryId, effectiveTenantId] });
       // Notify the AR dashboard (and any other live listeners) to refresh immediately
       queryClient.invalidateQueries({ queryKey: ['ar-payments'] });
       queryClient.invalidateQueries({ queryKey: ['ar-invoices'] });
@@ -966,6 +973,8 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   const invalidatePaymentQueries = () => {
     queryClient.invalidateQueries({ queryKey: ['project-ar-invoices', pipelineEntryId] });
     queryClient.invalidateQueries({ queryKey: ['project-ar-payments', pipelineEntryId] });
+    queryClient.invalidateQueries({ queryKey: ['project-ar-payment-details', pipelineEntryId, effectiveTenantId] });
+    queryClient.invalidateQueries({ queryKey: ['project-ar-payment-summary', pipelineEntryId, effectiveTenantId] });
     queryClient.invalidateQueries({ queryKey: ['ar-payments'] });
     queryClient.invalidateQueries({ queryKey: ['ar-invoices'] });
     queryClient.invalidateQueries({ queryKey: ['ar-projects'] });
@@ -974,24 +983,27 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
 
   // Re-sync a linked invoice's balance/status from all of its payments.
   const resyncInvoiceBalance = async (invoiceId: string | null | undefined) => {
-    if (!invoiceId) return;
+    if (!invoiceId || !UUID_PATTERN.test(invoiceId) || !effectiveTenantId) return;
     const invoice = (invoices || []).find((i: any) => i.id === invoiceId) as any;
     if (!invoice) return;
     const { data: rows } = await supabase
       .from('project_payments')
       .select('amount')
-      .eq('invoice_id', invoiceId);
+      .eq('invoice_id', invoiceId)
+      .eq('tenant_id', effectiveTenantId);
     const paid = (rows || []).reduce((s: number, r: any) => s + Number(r.amount || 0), 0);
     const newBalance = Math.max(0, Number(invoice.amount || 0) - paid);
     const newStatus = newBalance === 0 ? 'paid' : paid > 0 ? 'partial' : 'sent';
     await supabase.from('project_invoices')
       .update({ balance: newBalance, status: newStatus })
-      .eq('id', invoiceId);
+      .eq('id', invoiceId)
+      .eq('tenant_id', effectiveTenantId);
   };
 
   const updatePaymentMutation = useMutation({
     mutationFn: async (payment: EditablePayment) => {
       if (!canEditPayments) throw new Error('Only an owner or developer can edit payment history');
+      if (!effectiveTenantId) throw new Error('Company access is still loading. Try again.');
       if (!UUID_PATTERN.test(payment.id)) throw new Error('This payment could not be identified. Refresh the page and try again.');
       const amount = parseFloat(editPaymentAmount);
       if (isNaN(amount) || amount <= 0) throw new Error('Invalid amount');
@@ -1008,8 +1020,9 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
         } as any)
         .eq('id', payment.id)
         .eq('pipeline_entry_id', pipelineEntryId)
+        .eq('tenant_id', effectiveTenantId)
         .select('id')
-        .single();
+        .maybeSingle();
       if (error) throw new Error(error.message || 'Failed to update payment');
       if (!data?.id) throw new Error('Payment was not updated');
 
@@ -1026,14 +1039,16 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   const deletePaymentMutation = useMutation({
     mutationFn: async (pmt: EditablePayment) => {
       if (!canEditPayments) throw new Error('Only an owner or developer can delete payments');
+      if (!effectiveTenantId) throw new Error('Company access is still loading. Try again.');
       if (!UUID_PATTERN.test(pmt.id)) throw new Error('This payment could not be identified. Refresh the page and try again.');
       const { data, error } = await supabase
         .from('project_payments')
         .delete()
         .eq('id', pmt.id)
         .eq('pipeline_entry_id', pipelineEntryId)
+        .eq('tenant_id', effectiveTenantId)
         .select('id')
-        .single();
+        .maybeSingle();
       if (error) throw new Error(error.message || 'Failed to delete payment');
       if (!data?.id) throw new Error('Payment was not deleted');
       await resyncInvoiceBalance(pmt.invoice_id);
@@ -1287,6 +1302,8 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
 
       queryClient.invalidateQueries({ queryKey: ['project-ar-invoices', pipelineEntryId] });
       queryClient.invalidateQueries({ queryKey: ['project-ar-payments', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['project-ar-payment-details', pipelineEntryId, effectiveTenantId] });
+      queryClient.invalidateQueries({ queryKey: ['project-ar-payment-summary', pipelineEntryId, effectiveTenantId] });
       queryClient.invalidateQueries({ queryKey: ['zelle-payment-links', pipelineEntryId] });
       queryClient.invalidateQueries({ queryKey: ['ar-payments'] });
       queryClient.invalidateQueries({ queryKey: ['ar-invoices'] });
