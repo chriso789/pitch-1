@@ -327,9 +327,11 @@ async function upsertQboCustomer(
   const { access_token } = await getValidAccessToken(service, ctx.tenantId);
 
   const payload: Record<string, unknown> = {
+    // AccuLynx model: the QBO Customer is the person. Jobs hang off it as
+    // sub-customers named by job number.
     DisplayName:
-      contact.company_name ||
       `${contact.first_name ?? ""} ${contact.last_name ?? ""}`.trim() ||
+      contact.company_name ||
       "Unknown Customer",
     GivenName: contact.first_name ?? undefined,
     FamilyName: contact.last_name ?? undefined,
@@ -428,7 +430,7 @@ async function upsertProjectOrJob(
     return {
       id: row.qbo_entity_id,
       mode: (row.mapping_mode ?? (row.qbo_entity_type === "Project" ? "native_project" : "sub_customer_job")) as any,
-      display_name: `[${projectNumber}] — ${project.name ?? ""}`.trim(),
+      display_name: String(projectNumber).trim(),
     };
   }
 
@@ -439,7 +441,9 @@ async function upsertProjectOrJob(
     throw new Error("native_project_not_yet_supported: enable auto or sub_customer_job in tenant_qbo_settings");
   }
 
-  const displayName = `[${projectNumber}] — ${(contact.first_name ?? "").trim()} ${(contact.last_name ?? "").trim()}`.trim();
+  // Sub-customer (job) is named by the job number only — the parent customer
+  // already carries the person's name (AccuLynx-style Customer:Job).
+  const displayName = String(projectNumber).trim();
 
   const { access_token } = await getValidAccessToken(service, ctx.tenantId);
   const payload = {
