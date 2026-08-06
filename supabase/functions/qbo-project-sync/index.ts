@@ -30,6 +30,8 @@ const corsHeaders = {
 type ReqBody = {
   project_id?: string;
   trigger?: "auto" | "manual";
+  /** When true, re-run the full create/repair path even if the mapping looks ready. */
+  force?: boolean;
 };
 
 function json(status: number, body: unknown, requestId: string) {
