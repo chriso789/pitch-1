@@ -495,21 +495,24 @@ Deno.serve(async (req) => {
     tenantId, connId, userId, "qbo_sync_in_progress",
     { correlation_id: correlationId, qbo_customer_id: qboCustomerId });
 
-  await admin.from("audit_log").insert({
-    action: "qbo_project_sync.completed",
-    resource_type: "project",
-    resource_id: projectId,
-    user_id: userId,
-    metadata: {
-      tenant_id: tenantId,
-      qbo_connection_id: connId,
-      qbo_customer_id: qboCustomerId,
-      trigger,
-      correlation_id: correlationId,
-      intuit_tid: intuitTid,
-      request_id: requestId,
-    },
-  }).catch(() => {});
+  try {
+    await admin.from("audit_log").insert({
+      action: "qbo_project_sync.completed",
+      resource_type: "project",
+      resource_id: projectId,
+      user_id: userId,
+      metadata: {
+        tenant_id: tenantId,
+        qbo_connection_id: connId,
+        qbo_customer_id: qboCustomerId,
+        trigger,
+        correlation_id: correlationId,
+        intuit_tid: intuitTid,
+        request_id: requestId,
+      },
+    });
+  } catch (_e) { /* audit is best-effort */ }
+
 
   return json(200, {
     ok: true,
