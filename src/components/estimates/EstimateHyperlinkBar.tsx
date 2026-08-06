@@ -105,18 +105,24 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
     enabled: !!pipelineEntryId,
   });
 
+  // Approved change-order costs (turnkey): budget is already added to sale price by the RPC,
+  // spend must land on the cost side so margin doesn't get overstated.
+  const coMaterialCost = hyperlinkData?.change_orders_material || 0;
+  const coLaborCost = hyperlinkData?.change_orders_labor || 0;
+
   // Calculate actual costs from invoices
-  const actualMaterialCost = actualInvoices
+  const actualMaterialCost = (actualInvoices
     ?.filter(inv => inv.invoice_type === 'material')
-    .reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0) ?? 0;
-  const actualLaborCost = actualInvoices
+    .reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0) ?? 0) + coMaterialCost;
+  const actualLaborCost = (actualInvoices
     ?.filter(inv => inv.invoice_type === 'labor')
-    .reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0) ?? 0;
+    .reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0) ?? 0) + coLaborCost;
   const otherChargesTotal = actualInvoices
     ?.filter(inv => inv.invoice_type === 'overhead')
     .reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0) ?? 0;
   const hasActualMaterials = actualMaterialCost > 0;
   const hasActualLabor = actualLaborCost > 0;
+
 
   // Fetch cost lock status
   const { data: lockStatus } = useQuery({
