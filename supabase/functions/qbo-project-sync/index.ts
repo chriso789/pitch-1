@@ -46,16 +46,34 @@ function shortAddress(street?: string | null, city?: string | null): string | nu
   return s || c || null;
 }
 
+const PLACEHOLDER_PROJECT_NAMES = [
+  "project from pipeline entry",
+  "new project",
+  "untitled project",
+];
+
+function isPlaceholderName(name: string): boolean {
+  return !name || PLACEHOLDER_PROJECT_NAMES.includes(name.toLowerCase());
+}
+
 function buildDisplayName(opts: {
   project_name?: string | null;
   job_number?: string | null;
+  fallback_name?: string | null;
+  fallback_address?: string | null;
 }): string {
-  const projectName = (opts.project_name ?? "").trim();
+  let projectName = (opts.project_name ?? "").trim();
+  if (isPlaceholderName(projectName)) {
+    const person = (opts.fallback_name ?? "").trim();
+    const addr = (opts.fallback_address ?? "").trim();
+    projectName = [person, addr].filter(Boolean).join(" - ").trim();
+  }
   const jobNumber = (opts.job_number ?? "").trim();
   const dn = [projectName, jobNumber].filter(Boolean).join(" — ").trim();
   // QBO DisplayName max is 100 chars.
   return dn.length > 100 ? dn.slice(0, 100) : dn || "Pitch Project";
 }
+
 
 async function emitAudit(
   admin: SupabaseClient,
