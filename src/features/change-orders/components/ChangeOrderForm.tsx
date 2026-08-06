@@ -40,7 +40,7 @@ const formSchema = z.object({
   description: z.string().optional(),
   reason: z.string().min(1, 'Reason is required'),
   original_scope: z.string().optional(),
-  new_scope: z.string().min(1, 'New scope is required'),
+  new_scope: z.string().optional(),
   time_impact_days: z.string().optional(),
 });
 
@@ -721,19 +721,8 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId, editingC
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="new_scope"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>New Scope</FormLabel>
-                  <FormControl>
-                    <Textarea placeholder="What will be done instead?" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+
+
 
             <FormField
               control={form.control}
