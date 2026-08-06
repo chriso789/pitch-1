@@ -293,11 +293,11 @@ Deno.serve(async (req) => {
     "Pitch Customer"
   ).slice(0, 100);
 
-  const jobNumber = (
-    (project.project_number as string | null) ||
-    (project.clj_formatted_number as string | null) ||
-    ""
-  ).trim();
+  const jobNumber = cljJobLabel(
+    project.clj_formatted_number as string | null,
+    project.project_number as string | null,
+  );
+
   const jobBaseName = (jobNumber || `Job ${String(projectId).slice(0, 8)}`).slice(0, 100);
   const displayName = jobBaseName;
 
