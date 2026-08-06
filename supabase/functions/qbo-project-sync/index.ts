@@ -289,14 +289,60 @@ Deno.serve(async (req) => {
     mappingId = existing.id;
     // If already ready & customer verified, short-circuit as a verification pass.
     if (existing.sync_status === "ready" && existing.qbo_customer_id) {
+      let renamed = false;
+      if ((existing.qbo_display_name ?? "") !== displayName) {
+        try {
+          const { response: getRes } = await qboFetch(
+            admin,
+            connection as any,
+            `/v3/company/${connection.realm_id}/customer/${existing.qbo_customer_id}?minorversion=73`,
+            { method: "GET", headers: { Accept: "application/json" } },
+            {
+              action: "qbo_project_sync", op: "customer.read", tenant_id: tenantId,
+              connection_id: connId, user_id: userId, qbo_entity: "Customer",
+            },
+          );
+          if (getRes.ok) {
+            const current = await getRes.json();
+            const syncToken = current?.Customer?.SyncToken;
+            if (syncToken !== undefined) {
+              const { response: updRes } = await qboFetch(
+                admin,
+                connection as any,
+                `/v3/company/${connection.realm_id}/customer?minorversion=73`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    Id: String(existing.qbo_customer_id),
+                    SyncToken: String(syncToken),
+                    sparse: true,
+                    DisplayName: displayName,
+                  }),
+                },
+                {
+                  action: "qbo_project_sync", op: "customer.rename", tenant_id: tenantId,
+                  connection_id: connId, user_id: userId, qbo_entity: "Customer",
+                },
+              );
+              renamed = updRes.ok;
+              if (!updRes.ok) await updRes.text();
+            }
+          }
+        } catch (_e) {
+          renamed = false;
+        }
+      }
+
       await admin.from("project_qbo_mappings").update({
         last_verified_at: new Date().toISOString(),
         correlation_id: correlationId,
+        ...(renamed ? { qbo_display_name: displayName } : {}),
       }).eq("id", mappingId);
       await emitAudit(admin, {
         tenant_id: tenantId, event_type: "qbo_project_verified",
         project_id: projectId, qbo_connection_id: connId, actor_user_id: userId,
-        metadata: { trigger, correlation_id: correlationId, qbo_customer_id: existing.qbo_customer_id },
+        metadata: { trigger, correlation_id: correlationId, qbo_customer_id: existing.qbo_customer_id, renamed, display_name: displayName },
       });
       return json(200, {
         ok: true,
@@ -305,11 +351,13 @@ Deno.serve(async (req) => {
           qbo_customer_id: existing.qbo_customer_id,
           sync_status: "ready",
           verified: true,
+          renamed,
         },
       }, requestId);
     }
     await admin.from("project_qbo_mappings").update({
       sync_status: "creating",
+
       last_error: null,
       correlation_id: correlationId,
       qbo_display_name: displayName,
