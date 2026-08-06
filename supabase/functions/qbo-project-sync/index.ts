@@ -47,17 +47,12 @@ function shortAddress(street?: string | null, city?: string | null): string | nu
 }
 
 function buildDisplayName(opts: {
-  project_number?: string | null;
-  clj?: string | null;
-  contact_name?: string | null;
-  address_short?: string | null;
+  project_name?: string | null;
+  job_number?: string | null;
 }): string {
-  const parts: string[] = [];
-  const projLabel = opts.project_number ?? opts.clj ?? null;
-  if (projLabel) parts.push(String(projLabel));
-  if (opts.contact_name) parts.push(opts.contact_name);
-  if (opts.address_short) parts.push(opts.address_short);
-  const dn = parts.join(" — ").trim();
+  const projectName = (opts.project_name ?? "").trim();
+  const jobNumber = (opts.job_number ?? "").trim();
+  const dn = [projectName, jobNumber].filter(Boolean).join(" — ").trim();
   // QBO DisplayName max is 100 chars.
   return dn.length > 100 ? dn.slice(0, 100) : dn || "Pitch Project";
 }
@@ -181,7 +176,8 @@ Deno.serve(async (req) => {
       .from("user_company_access")
       .select("id")
       .eq("user_id", userId)
-      .eq("company_id", tenantId)
+      .eq("tenant_id", tenantId)
+      .eq("is_active", true)
       .limit(1)
       .maybeSingle();
     hasAccess = !!access;
@@ -252,10 +248,8 @@ Deno.serve(async (req) => {
     null;
   const addressShort = shortAddress(contact?.address_street, contact?.address_city);
   const displayName = buildDisplayName({
-    project_number: project.project_number as string | null,
-    clj: project.clj_formatted_number as string | null,
-    contact_name: contactName,
-    address_short: addressShort,
+    project_name: project.name as string | null,
+    job_number: project.project_number as string | null,
   });
 
   // Load or create mapping row.
@@ -297,6 +291,7 @@ Deno.serve(async (req) => {
       sync_status: "creating",
       last_error: null,
       correlation_id: correlationId,
+      qbo_display_name: displayName,
     }).eq("id", mappingId);
   } else {
     const { data: inserted, error: insErr } = await admin
