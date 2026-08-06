@@ -125,54 +125,39 @@ export function MaterialLineItemsExport({
       const dateText = `Date: ${new Date().toLocaleDateString()}`;
       doc.text(dateText, pageWidth - margin - 4 - doc.getTextWidth(dateText), yPos + 20);
 
-      yPos += bannerHeight + 10;
+      yPos += bannerHeight + 8;
       doc.setTextColor(0, 0, 0);
-      
-      // Project Info
+
+      // Combined project / job-site block (single address, no duplication)
       if (customerName || projectAddress) {
-        doc.setFontSize(14);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Project Information', margin, yPos);
-        yPos += 10;
+        const blockH = customerName && projectAddress ? 18 : 12;
+        doc.setFillColor(239, 246, 255);
+        doc.rect(margin, yPos, pageWidth - 2 * margin, blockH, 'F');
+        doc.setDrawColor(59, 130, 246);
+        doc.rect(margin, yPos, pageWidth - 2 * margin, blockH, 'S');
+
+        let infoY = yPos + 7;
         doc.setFontSize(10);
-        doc.setFont('helvetica', 'normal');
         if (customerName) {
-          doc.text(`Customer: ${customerName}`, margin, yPos);
-          yPos += 6;
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(30, 64, 175);
+          doc.text(customerName, margin + 5, infoY);
+          infoY += 6;
         }
         if (projectAddress) {
-          doc.text(`Address: ${projectAddress}`, margin, yPos);
-          yPos += 6;
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(30, 64, 175);
+          doc.text(`Job Site: ${projectAddress}`, margin + 5, infoY);
         }
-        yPos += 10;
-      }
-
-      // Job Site Address - PROMINENT SECTION
-      if (projectAddress) {
-        doc.setFontSize(14);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Job Site Address', margin, yPos);
-        yPos += 8;
-
-        doc.setFillColor(239, 246, 255); // Light blue background
-        doc.rect(margin, yPos - 4, pageWidth - 2 * margin, 16, 'F');
-        doc.setDrawColor(59, 130, 246); // Blue border
-        doc.rect(margin, yPos - 4, pageWidth - 2 * margin, 16, 'S');
-        
-        doc.setFontSize(11);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(30, 64, 175); // Dark blue text
-        doc.text(projectAddress, margin + 5, yPos + 5);
-        doc.setTextColor(0, 0, 0); // Reset text color
-        
-        yPos += 22;
+        doc.setTextColor(0, 0, 0);
+        yPos += blockH + 8;
       }
 
       // Material Items Table
-      doc.setFontSize(14);
+      doc.setFontSize(13);
       doc.setFont('helvetica', 'bold');
       doc.text('Material Items', margin, yPos);
-      yPos += 10;
+      yPos += 8;
 
       // Column X positions (dedicated Color/Specs column)
       const colItemX = margin + 2;
@@ -182,10 +167,17 @@ export function MaterialLineItemsExport({
       const colCostX = pageWidth - 55;
       const colTotalX = pageWidth - 30;
 
+      // Fit-to-one-page sizing
+      const pageBottom = doc.internal.pageSize.getHeight() - 32;
+      const available = pageBottom - yPos - 18; // reserve space for total
+      const count = Math.max(materialItems.length, 1);
+      const rowH = Math.max(4.2, Math.min(7, available / count));
+      const bodyFont = rowH < 5.4 ? 8 : rowH < 6.2 ? 9 : 10;
+
       // Table headers
       doc.setFillColor(249, 250, 251);
       doc.rect(margin, yPos - 5, pageWidth - 2 * margin, 8, 'F');
-      doc.setFontSize(10);
+      doc.setFontSize(bodyFont);
       doc.setFont('helvetica', 'bold');
       doc.text('Item', colItemX, yPos);
       doc.text('Color / Specs', colColorX, yPos);
@@ -195,7 +187,7 @@ export function MaterialLineItemsExport({
         doc.text('Unit Cost', colCostX, yPos);
         doc.text('Total', colTotalX, yPos);
       }
-      yPos += 10;
+      yPos += rowH + 2;
 
       // Helper to truncate text to fit column width
       const truncate = (txt: string, max: number) =>
@@ -203,13 +195,14 @@ export function MaterialLineItemsExport({
 
       // Table rows
       doc.setFont('helvetica', 'normal');
+      doc.setFontSize(bodyFont);
       materialItems.forEach((item) => {
-        if (yPos > 260) {
+        if (yPos > pageBottom) {
           doc.addPage();
           yPos = 20;
         }
 
-        const itemName = truncate(item.item_name || '', 32);
+        const itemName = truncate(item.item_name || '', 34);
         const rawSpec: unknown = item.notes ?? item.color_specs ?? '';
         const colorSpec = (typeof rawSpec === 'string' ? rawSpec : String(rawSpec ?? '')).trim();
 
@@ -221,7 +214,7 @@ export function MaterialLineItemsExport({
         if (colorSpec) {
           doc.setFont('helvetica', 'bold');
           doc.setTextColor(180, 83, 9);
-          doc.text(truncate(colorSpec, 22), colColorX, yPos);
+          doc.text(truncate(colorSpec, 26), colColorX, yPos);
           doc.setFont('helvetica', 'normal');
           doc.setTextColor(0, 0, 0);
         } else {
@@ -237,18 +230,9 @@ export function MaterialLineItemsExport({
           doc.text(`$${item.line_total.toFixed(2)}`, colTotalX, yPos);
         }
 
-        // If color text was truncated, print the full value on a wrapped line
-        if (colorSpec && colorSpec.length > 22) {
-          yPos += 5;
-          doc.setFontSize(9);
-          doc.setTextColor(180, 83, 9);
-          doc.text(`Color/Specs: ${colorSpec}`, colItemX + 2, yPos);
-          doc.setTextColor(0, 0, 0);
-          doc.setFontSize(10);
-        }
-
-        yPos += 8;
+        yPos += rowH;
       });
+
 
       // Total
       if (!hideCosts) {
