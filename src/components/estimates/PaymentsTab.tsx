@@ -2079,6 +2079,89 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
           </div>
         )}
       </div>
+      {/* Edit Payment Dialog — owner/master only */}
+      <Dialog open={!!editingPayment} onOpenChange={(open) => !open && setEditingPayment(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Payment</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Amount</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={editPaymentAmount}
+                  onChange={(e) => setEditPaymentAmount(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Date</Label>
+                <Input
+                  type="date"
+                  value={editPaymentDate}
+                  onChange={(e) => setEditPaymentDate(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Method</Label>
+                <Select value={editPaymentMethod} onValueChange={setEditPaymentMethod}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="check">Check</SelectItem>
+                    <SelectItem value="cash">Cash</SelectItem>
+                    <SelectItem value="credit_card">Credit Card</SelectItem>
+                    <SelectItem value="ach">ACH / Bank Transfer</SelectItem>
+                    <SelectItem value="zelle">Zelle</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Reference #</Label>
+                <Input
+                  value={editPaymentRef}
+                  onChange={(e) => setEditPaymentRef(e.target.value)}
+                  placeholder="Check / confirmation #"
+                />
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs">Notes</Label>
+              <Textarea
+                value={editPaymentNotes}
+                onChange={(e) => setEditPaymentNotes(e.target.value)}
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter className="flex-row justify-between sm:justify-between">
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (editingPayment && window.confirm('Delete this payment? This cannot be undone.')) {
+                  deletePaymentMutation.mutate(editingPayment);
+                }
+              }}
+              disabled={deletePaymentMutation.isPending}
+            >
+              <Trash2 className="h-4 w-4 mr-1" />
+              Delete
+            </Button>
+            <Button
+              onClick={() => updatePaymentMutation.mutate()}
+              disabled={updatePaymentMutation.isPending}
+            >
+              {updatePaymentMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Edit Invoice Dialog */}
       <Dialog open={!!editingInvoice} onOpenChange={(open) => !open && setEditingInvoice(null)}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
