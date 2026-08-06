@@ -1,4 +1,6 @@
-// TEMPORARY SHIM — delete after references are migrated and logs are quiet for 14 days.
-// Forwards legacy `admin-create-user` invocations to the grouped `admin-api` route `/user/create`.
-import { forward } from "../_shared/shim.ts";
-Deno.serve((req) => forward(req, "admin-api", "/user/create", "admin-create-user"));
+// admin-create-user — serves its own handler directly.
+// (Previously forwarded to `admin-api`, which cannot bundle cross-function
+// imports and is therefore not deployed — that caused "edge function failed".)
+import { handle } from "./handler.ts";
+
+Deno.serve((req) => handle(req));
