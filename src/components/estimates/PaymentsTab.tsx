@@ -74,7 +74,15 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 
 export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, sellingPrice }) => {
   const queryClient = useQueryClient();
-  const { activeTenantId } = useActiveTenantId();
+  const { activeTenantId, profile } = useActiveTenantId();
+  // Only company owners and the platform master (developer) may alter payment history.
+  const canEditPayments = profile?.role === 'owner' || profile?.role === 'master';
+  const [editingPayment, setEditingPayment] = useState<any | null>(null);
+  const [editPaymentAmount, setEditPaymentAmount] = useState('');
+  const [editPaymentMethod, setEditPaymentMethod] = useState('check');
+  const [editPaymentRef, setEditPaymentRef] = useState('');
+  const [editPaymentDate, setEditPaymentDate] = useState('');
+  const [editPaymentNotes, setEditPaymentNotes] = useState('');
   const { data: companyInfo } = useCompanyInfo();
   const [showInvoiceDialog, setShowInvoiceDialog] = useState(false);
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
