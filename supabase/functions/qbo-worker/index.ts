@@ -413,7 +413,10 @@ async function upsertProjectOrJob(
 ): Promise<{ id: string; mode: "native_project" | "sub_customer_job"; display_name: string }> {
   const realmId = connection.realm_id as string;
   const projectNumber = project.clj_formatted_number ?? project.project_number ?? project.id;
-  const desiredMode: string = settings?.project_mapping_mode ?? "auto";
+  // Uniform across ALL tenants: AccuLynx-style Customer:Job (person parent + job sub-customer).
+  // Per-tenant overrides are intentionally ignored so every tenant syncs identically.
+  const desiredMode = "sub_customer_job";
+  void settings;
 
   // Check for existing mapping (Project or SubCustomerJob)
   const { data: existingRows } = await service
@@ -434,12 +437,10 @@ async function upsertProjectOrJob(
     };
   }
 
-  // For this pass: SubCustomerJob fallback is the deterministic path.
-  // Native Project API (GraphQL) is behind Intuit entitlement; if user selects it explicitly,
-  // fail loudly rather than assume access.
-  if (desiredMode === "native_project") {
-    throw new Error("native_project_not_yet_supported: enable auto or sub_customer_job in tenant_qbo_settings");
-  }
+  // Native Project API (GraphQL) is behind Intuit entitlement and is never used;
+  // sub-customer job is the single deterministic path for every tenant.
+
+
 
   // Sub-customer (job) is named by the job number only — the parent customer
   // already carries the person's name (AccuLynx-style Customer:Job).
