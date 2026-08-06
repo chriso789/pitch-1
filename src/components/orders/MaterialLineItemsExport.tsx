@@ -46,6 +46,7 @@ export function MaterialLineItemsExport({
   jobNumber,
 }: MaterialLineItemsExportProps) {
   const { toast } = useToast();
+  const [hideCosts, setHideCosts] = useState(false);
 
   const loadImageAsDataUrl = async (url: string): Promise<{ dataUrl: string; format: 'PNG' | 'JPEG' } | null> => {
     try {
