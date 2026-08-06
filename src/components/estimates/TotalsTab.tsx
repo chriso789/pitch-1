@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useActiveTenantId } from '@/hooks/useActiveTenantId';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -60,6 +61,7 @@ interface CloseoutDoc {
 
 export const TotalsTab: React.FC<TotalsTabProps> = ({ pipelineEntryId }) => {
   const { activeTenantId } = useActiveTenantId();
+  const effectiveTenantId = useEffectiveTenantId();
   const { data: companyInfo } = useCompanyInfo();
   const queryClient = useQueryClient();
 
@@ -91,16 +93,18 @@ export const TotalsTab: React.FC<TotalsTabProps> = ({ pipelineEntryId }) => {
   });
 
   const { data: payments } = useQuery({
-    queryKey: ['project-ar-payments', pipelineEntryId],
+    queryKey: ['project-ar-payment-summary', pipelineEntryId, effectiveTenantId],
     queryFn: async () => {
+      if (!effectiveTenantId) return [];
       const { data, error } = await supabase
         .from('project_payments')
         .select('amount, payment_date, payment_method, reference_number')
-        .eq('pipeline_entry_id', pipelineEntryId);
+        .eq('pipeline_entry_id', pipelineEntryId)
+        .eq('tenant_id', effectiveTenantId);
       if (error) throw error;
       return data || [];
     },
-    enabled: !!pipelineEntryId,
+    enabled: !!pipelineEntryId && !!effectiveTenantId,
   });
 
   const { data: changeOrders } = useQuery({
