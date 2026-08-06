@@ -140,8 +140,8 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
 
   const allJobs = data?.all ?? [];
   const pushTargets = total ? unsynced : allJobs;
-  const runBulkPush = () => runSync(pushTargets, total ? "Pushed" : "Re-synced");
-  const runRename = () => runSync(synced, "Updated names for");
+  const runBulkPush = () => runSync(pushTargets, total ? "Pushed" : "Re-synced", !total);
+  const runRename = () => runSync(synced, "Updated names for", true);
 
 
   return (
