@@ -413,7 +413,10 @@ async function upsertProjectOrJob(
 ): Promise<{ id: string; mode: "native_project" | "sub_customer_job"; display_name: string }> {
   const realmId = connection.realm_id as string;
   const projectNumber = project.clj_formatted_number ?? project.project_number ?? project.id;
-  const desiredMode: string = settings?.project_mapping_mode ?? "auto";
+  // Uniform across ALL tenants: AccuLynx-style Customer:Job (person parent + job sub-customer).
+  // Per-tenant overrides are intentionally ignored so every tenant syncs identically.
+  const desiredMode = "sub_customer_job";
+  void settings;
 
   // Check for existing mapping (Project or SubCustomerJob)
   const { data: existingRows } = await service
