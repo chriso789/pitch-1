@@ -17,6 +17,23 @@ interface ProjectRow {
   clj_formatted_number: string | null;
   project_number: string | null;
   name: string | null;
+  pipeline_entry_id?: string | null;
+}
+
+async function getFunctionErrorMessage(error: unknown): Promise<string> {
+  const fallback = error instanceof Error ? error.message : "sync failed";
+  const context = (error as { context?: Response } | null)?.context;
+  if (!context) return fallback;
+  try {
+    const payload = await context.clone().json() as {
+      error?: string;
+      details?: { message?: string } | string;
+    };
+    const detail = typeof payload.details === "string" ? payload.details : payload.details?.message;
+    return [payload.error, detail].filter(Boolean).join(": ") || fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 /**
@@ -39,7 +56,25 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
         .order("created_at", { ascending: false });
       if (error) throw error;
 
-      const ids = (projects ?? []).map((p: any) => p.id);
+      const pipelineEntryIds = (projects ?? [])
+        .map((project) => project.pipeline_entry_id)
+        .filter((id): id is string => Boolean(id));
+      let convertedEntryIds = new Set<string>();
+      if (pipelineEntryIds.length) {
+        const { data: convertedEntries, error: convertedError } = await supabase
+          .from("pipeline_entries")
+          .select("id")
+          .eq("tenant_id", tenantId)
+          .eq("status", "project")
+          .in("id", pipelineEntryIds);
+        if (convertedError) throw convertedError;
+        convertedEntryIds = new Set((convertedEntries ?? []).map((entry) => entry.id));
+      }
+
+      const convertedProjects = ((projects ?? []) as ProjectRow[]).filter(
+        (project) => project.pipeline_entry_id && convertedEntryIds.has(project.pipeline_entry_id),
+      );
+      const ids = convertedProjects.map((project) => project.id);
       let mappedIds = new Set<string>();
       if (ids.length) {
         const { data: mappings } = await supabase
@@ -51,8 +86,8 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
       }
 
       return {
-        all: (projects ?? []) as ProjectRow[],
-        unsynced: ((projects ?? []) as ProjectRow[]).filter((p) => !mappedIds.has(p.id)),
+        all: convertedProjects,
+        unsynced: convertedProjects.filter((project) => !mappedIds.has(project.id)),
       };
     },
     enabled: !!tenantId,
@@ -76,7 +111,8 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
           body: { project_id: project.id, trigger: "manual" },
         });
         if (error || !(res as any)?.ok) {
-          failures.push(`${label}: ${(res as any)?.error ?? error?.message ?? "sync failed"}`);
+          const message = (res as any)?.error ?? (error ? await getFunctionErrorMessage(error) : "sync failed");
+          failures.push(`${label}: ${message}`);
         }
       } catch (e: any) {
         failures.push(`${label}: ${e?.message ?? "sync failed"}`);

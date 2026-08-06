@@ -192,6 +192,10 @@ Deno.serve(async (req) => {
 
   // Readiness gate — must have mappings resolved.
   const allowedGate = new Set([
+    // Customer/job identity can be created before account classification is
+    // complete. These states still remain unresolved after the QBO link is made.
+    "pending_classification",
+    "needs_mapping",
     "qbo_sync_pending",
     "qbo_sync_queued",
     "qbo_sync_in_progress",
@@ -489,7 +493,10 @@ Deno.serve(async (req) => {
     }
   } catch (_e) { /* verification is best-effort */ }
 
-  await setReadiness(admin, projectId, project.current_accounting_snapshot_id, "ready",
+  const finalReadiness = oldReadiness === "pending_classification" || oldReadiness === "needs_mapping"
+    ? oldReadiness
+    : "ready";
+  await setReadiness(admin, projectId, project.current_accounting_snapshot_id, finalReadiness,
     tenantId, connId, userId, "qbo_sync_in_progress",
     { correlation_id: correlationId, qbo_customer_id: qboCustomerId });
 
@@ -517,7 +524,7 @@ Deno.serve(async (req) => {
       qbo_sync_token: syncToken,
       qbo_display_name: displayName,
       sync_status: "ready",
-      accounting_readiness: "ready",
+      accounting_readiness: finalReadiness,
     },
   }, requestId);
 });
