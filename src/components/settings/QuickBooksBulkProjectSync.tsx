@@ -65,7 +65,7 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
           .from("pipeline_entries")
           .select("id")
           .eq("tenant_id", tenantId)
-          .eq("status", "project")
+          .in("status", ["project", "completed", "closed", "final_payment", "production"])
           .in("id", pipelineEntryIds);
         if (convertedError) throw convertedError;
         convertedEntryIds = new Set((convertedEntries ?? []).map((entry) => entry.id));
