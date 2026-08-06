@@ -2058,9 +2058,22 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
                     {pmt.reference_number && ` · Ref: ${pmt.reference_number}`}
                   </p>
                 </div>
-                {pmt.notes && (
-                  <p className="text-xs text-muted-foreground max-w-[150px] truncate">{pmt.notes}</p>
-                )}
+                <div className="flex items-center gap-2">
+                  {pmt.notes && (
+                    <p className="text-xs text-muted-foreground max-w-[150px] truncate">{pmt.notes}</p>
+                  )}
+                  {canEditPayments && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2"
+                      onClick={() => openEditPayment(pmt)}
+                      aria-label="Edit payment"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
