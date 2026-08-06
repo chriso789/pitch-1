@@ -297,15 +297,27 @@ export function MaterialLineItemsExport({
   };
 
   return (
-    <Button
-      variant="outline"
-      size="sm"
-      onClick={handleDownloadPDF}
-      className="gap-2"
-      disabled={materialItems.length === 0}
-    >
-      <Download className="h-4 w-4" />
-      Export Material Order
-    </Button>
+    <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
+        <Checkbox
+          id="hide-material-costs"
+          checked={hideCosts}
+          onCheckedChange={(v) => setHideCosts(v === true)}
+        />
+        <Label htmlFor="hide-material-costs" className="text-sm font-normal cursor-pointer">
+          Hide costs
+        </Label>
+      </div>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={handleDownloadPDF}
+        className="gap-2"
+        disabled={materialItems.length === 0}
+      >
+        <Download className="h-4 w-4" />
+        Export Material Order
+      </Button>
+    </div>
   );
 }
