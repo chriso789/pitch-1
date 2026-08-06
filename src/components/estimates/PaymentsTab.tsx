@@ -953,6 +953,8 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project-ar-invoices', pipelineEntryId] });
       queryClient.invalidateQueries({ queryKey: ['project-ar-payments', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['project-ar-payment-details', pipelineEntryId, effectiveTenantId] });
+      queryClient.invalidateQueries({ queryKey: ['project-ar-payment-summary', pipelineEntryId, effectiveTenantId] });
       // Notify the AR dashboard (and any other live listeners) to refresh immediately
       queryClient.invalidateQueries({ queryKey: ['ar-payments'] });
       queryClient.invalidateQueries({ queryKey: ['ar-invoices'] });
@@ -972,6 +974,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
     queryClient.invalidateQueries({ queryKey: ['project-ar-invoices', pipelineEntryId] });
     queryClient.invalidateQueries({ queryKey: ['project-ar-payments', pipelineEntryId] });
     queryClient.invalidateQueries({ queryKey: ['project-ar-payment-details', pipelineEntryId, effectiveTenantId] });
+    queryClient.invalidateQueries({ queryKey: ['project-ar-payment-summary', pipelineEntryId, effectiveTenantId] });
     queryClient.invalidateQueries({ queryKey: ['ar-payments'] });
     queryClient.invalidateQueries({ queryKey: ['ar-invoices'] });
     queryClient.invalidateQueries({ queryKey: ['ar-projects'] });
@@ -1019,7 +1022,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
         .eq('pipeline_entry_id', pipelineEntryId)
         .eq('tenant_id', effectiveTenantId)
         .select('id')
-        .single();
+        .maybeSingle();
       if (error) throw new Error(error.message || 'Failed to update payment');
       if (!data?.id) throw new Error('Payment was not updated');
 
@@ -1045,7 +1048,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
         .eq('pipeline_entry_id', pipelineEntryId)
         .eq('tenant_id', effectiveTenantId)
         .select('id')
-        .single();
+        .maybeSingle();
       if (error) throw new Error(error.message || 'Failed to delete payment');
       if (!data?.id) throw new Error('Payment was not deleted');
       await resyncInvoiceBalance(pmt.invoice_id);
@@ -1299,6 +1302,8 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
 
       queryClient.invalidateQueries({ queryKey: ['project-ar-invoices', pipelineEntryId] });
       queryClient.invalidateQueries({ queryKey: ['project-ar-payments', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['project-ar-payment-details', pipelineEntryId, effectiveTenantId] });
+      queryClient.invalidateQueries({ queryKey: ['project-ar-payment-summary', pipelineEntryId, effectiveTenantId] });
       queryClient.invalidateQueries({ queryKey: ['zelle-payment-links', pipelineEntryId] });
       queryClient.invalidateQueries({ queryKey: ['ar-payments'] });
       queryClient.invalidateQueries({ queryKey: ['ar-invoices'] });
