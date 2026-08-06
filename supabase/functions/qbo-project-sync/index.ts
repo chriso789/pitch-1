@@ -58,6 +58,18 @@ function isPlaceholderName(name: string): boolean {
   return !name || PLACEHOLDER_PROJECT_NAMES.includes(name.toLowerCase());
 }
 
+/**
+ * Location-scoped job label, e.g. "WC-0000-00-30" -> "WC-J30".
+ * Falls back to the raw value when it is not a CLJ number.
+ */
+function cljJobLabel(clj?: string | null, fallback?: string | null): string {
+  const raw = (clj ?? "").trim();
+  const m = raw.match(/^([A-Za-z0-9]+)-(\d+)-(\d+)-(\d+)$/);
+  if (m) return `${m[1].toUpperCase()}-J${String(Number(m[4]))}`;
+  return raw || (fallback ?? "").trim();
+}
+
+
 function buildDisplayName(opts: {
   project_name?: string | null;
   job_number?: string | null;
@@ -281,11 +293,11 @@ Deno.serve(async (req) => {
     "Pitch Customer"
   ).slice(0, 100);
 
-  const jobNumber = (
-    (project.project_number as string | null) ||
-    (project.clj_formatted_number as string | null) ||
-    ""
-  ).trim();
+  const jobNumber = cljJobLabel(
+    project.clj_formatted_number as string | null,
+    project.project_number as string | null,
+  );
+
   const jobBaseName = (jobNumber || `Job ${String(projectId).slice(0, 8)}`).slice(0, 100);
   const displayName = jobBaseName;
 

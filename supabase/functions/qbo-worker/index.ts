@@ -402,6 +402,13 @@ async function upsertQboCustomer(
 // =============================================================
 // Shared: resolve or create Project (native or SubCustomerJob)
 // =============================================================
+function cljJobLabel(clj?: string | null, fallback?: string | null): string {
+  const raw = (clj ?? "").trim();
+  const m = raw.match(/^([A-Za-z0-9]+)-(\d+)-(\d+)-(\d+)$/);
+  if (m) return `${m[1].toUpperCase()}-J${String(Number(m[4]))}`;
+  return raw || (fallback ?? "").trim();
+}
+
 async function upsertProjectOrJob(
   service: SupabaseClient,
   ctx: Ctx,
@@ -412,7 +419,7 @@ async function upsertProjectOrJob(
   settings: any,
 ): Promise<{ id: string; mode: "native_project" | "sub_customer_job"; display_name: string }> {
   const realmId = connection.realm_id as string;
-  const projectNumber = project.clj_formatted_number ?? project.project_number ?? project.id;
+  const projectNumber = cljJobLabel(project.clj_formatted_number, project.project_number) || project.id;
   // Uniform across ALL tenants: AccuLynx-style Customer:Job (person parent + job sub-customer).
   // Per-tenant overrides are intentionally ignored so every tenant syncs identically.
   const desiredMode = "sub_customer_job";
@@ -552,7 +559,7 @@ async function opSyncProject(ctx: Ctx, args: any): Promise<Response> {
 
     return ok({
       pitch_project_id: project.id,
-      pitch_project_number: project.clj_formatted_number ?? project.project_number ?? project.id,
+      pitch_project_number: cljJobLabel(project.clj_formatted_number, project.project_number) || project.id,
       qbo_customer_id: customerId,
       qbo_project_or_job_id: projMap.id,
       mapping_mode: projMap.mode,
@@ -639,7 +646,7 @@ async function opCreateInvoice(ctx: Ctx, args: any): Promise<Response> {
   const defaultDeptId = settings?.default_department_id ?? null;
 
   // Build lines
-  const projectNumber = project.clj_formatted_number ?? project.project_number ?? project.id;
+  const projectNumber = cljJobLabel(project.clj_formatted_number, project.project_number) || project.id;
   const rawLines: any[] = Array.isArray(estimate.line_items) ? estimate.line_items : [];
   const lines: any[] = [];
   const unmapped: string[] = [];
