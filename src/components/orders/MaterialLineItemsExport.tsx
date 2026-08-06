@@ -190,9 +190,17 @@ export function MaterialLineItemsExport({
       }
       yPos += rowH + 2;
 
-      // Helper to truncate text to fit column width
-      const truncate = (txt: string, max: number) =>
-        txt.length > max ? txt.substring(0, max - 1) + '…' : txt;
+      // Width-aware truncation so columns never overlap
+      const itemColW = colColorX - colItemX - 4;
+      const colorColW = colQtyX - colColorX - 4;
+      const fit = (txt: string, maxW: number) => {
+        if (doc.getTextWidth(txt) <= maxW) return txt;
+        let out = txt;
+        while (out.length > 1 && doc.getTextWidth(out + '…') > maxW) {
+          out = out.slice(0, -1);
+        }
+        return out + '…';
+      };
 
       // Table rows
       doc.setFont('helvetica', 'normal');
@@ -203,19 +211,19 @@ export function MaterialLineItemsExport({
           yPos = 20;
         }
 
-        const itemName = truncate(item.item_name || '', 34);
         const rawSpec: unknown = item.notes ?? item.color_specs ?? '';
         const colorSpec = (typeof rawSpec === 'string' ? rawSpec : String(rawSpec ?? '')).trim();
 
         // Item name
+        doc.setFont('helvetica', 'normal');
         doc.setTextColor(0, 0, 0);
-        doc.text(itemName, colItemX, yPos);
+        doc.text(fit(item.item_name || '', itemColW), colItemX, yPos);
 
         // Color / Specs (dedicated column, bold + amber when present)
         if (colorSpec) {
           doc.setFont('helvetica', 'bold');
           doc.setTextColor(180, 83, 9);
-          doc.text(truncate(colorSpec, 26), colColorX, yPos);
+          doc.text(fit(colorSpec, colorColW), colColorX, yPos);
           doc.setFont('helvetica', 'normal');
           doc.setTextColor(0, 0, 0);
         } else {
@@ -223,6 +231,7 @@ export function MaterialLineItemsExport({
           doc.text('—', colColorX, yPos);
           doc.setTextColor(0, 0, 0);
         }
+
 
         doc.text(item.qty.toFixed(1), colQtyX, yPos);
         doc.text(item.unit, colUnitX, yPos);
