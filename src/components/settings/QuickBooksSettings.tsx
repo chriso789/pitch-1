@@ -352,6 +352,12 @@ export default function QuickBooksSettings() {
       {connection && (
         <QuickBooksSyncErrors tenantId={connection.tenant_id} />
       )}
+
+      {/* Bulk push converted jobs */}
+      {connection?.is_active && (
+        <QuickBooksBulkProjectSync tenantId={connection.tenant_id} />
+      )}
+
       
       {/* Connection Status */}
       <Card>
