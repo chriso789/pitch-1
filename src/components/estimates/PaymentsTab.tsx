@@ -1559,7 +1559,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
               </div>
             )}
 
-            <DialogFooter>
+            <DialogFooter className="sticky bottom-0 z-10 -mx-6 mt-2 border-t bg-background px-6 py-3">
               <Button
                 onClick={() => createInvoiceMutation.mutate()}
                 disabled={
