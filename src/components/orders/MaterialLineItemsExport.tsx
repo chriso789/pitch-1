@@ -108,24 +108,25 @@ export function MaterialLineItemsExport({
       doc.line(margin, yPos + headerHeight - 2, pageWidth - margin, yPos + headerHeight - 2);
       yPos += headerHeight + 4;
 
-      // Header - Blue color for materials
-      const bannerHeight = 28;
+      // Header - Blue color for materials (slim banner, single line)
+      const bannerHeight = 14;
       doc.setFillColor(59, 130, 246);
       doc.rect(margin, yPos, pageWidth - margin * 2, bannerHeight, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(18);
-      doc.text('MATERIAL ORDER', margin + 4, yPos + 11);
+      doc.setFontSize(13);
+      doc.text('MATERIAL ORDER', margin + 4, yPos + 9.5);
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(10);
+      doc.setFontSize(9);
       const jobLine = jobNumber
         ? `Job #${jobNumber}   |   Estimate #${estimateId.slice(-8).toUpperCase()}`
         : `Estimate #${estimateId.slice(-8).toUpperCase()}`;
-      doc.text(jobLine, margin + 4, yPos + 20);
       const dateText = `Date: ${new Date().toLocaleDateString()}`;
-      doc.text(dateText, pageWidth - margin - 4 - doc.getTextWidth(dateText), yPos + 20);
+      const rightText = `${jobLine}   |   ${dateText}`;
+      doc.text(rightText, pageWidth - margin - 4 - doc.getTextWidth(rightText), yPos + 9.5);
 
       yPos += bannerHeight + 8;
+
       doc.setTextColor(0, 0, 0);
 
       // Combined project / job-site block (single address, no duplication)
