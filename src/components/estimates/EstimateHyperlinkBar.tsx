@@ -26,6 +26,9 @@ interface HyperlinkBarData {
   sale_price: number;
   margin_pct: number;
   mode: string;
+  change_orders_total?: number;
+  change_orders_material?: number;
+  change_orders_labor?: number;
   sections: {
     contract: { status: string };
     estimate: { status: string };
@@ -34,6 +37,7 @@ interface HyperlinkBarData {
   };
   selected_estimate_id: string | null;
 }
+
 
 interface EstimateCalculations {
   measurements?: {
@@ -101,18 +105,24 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
     enabled: !!pipelineEntryId,
   });
 
+  // Approved change-order costs (turnkey): budget is already added to sale price by the RPC,
+  // spend must land on the cost side so margin doesn't get overstated.
+  const coMaterialCost = hyperlinkData?.change_orders_material || 0;
+  const coLaborCost = hyperlinkData?.change_orders_labor || 0;
+
   // Calculate actual costs from invoices
-  const actualMaterialCost = actualInvoices
+  const actualMaterialCost = (actualInvoices
     ?.filter(inv => inv.invoice_type === 'material')
-    .reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0) ?? 0;
-  const actualLaborCost = actualInvoices
+    .reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0) ?? 0) + coMaterialCost;
+  const actualLaborCost = (actualInvoices
     ?.filter(inv => inv.invoice_type === 'labor')
-    .reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0) ?? 0;
+    .reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0) ?? 0) + coLaborCost;
   const otherChargesTotal = actualInvoices
     ?.filter(inv => inv.invoice_type === 'overhead')
     .reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0) ?? 0;
   const hasActualMaterials = actualMaterialCost > 0;
   const hasActualLabor = actualLaborCost > 0;
+
 
   // Fetch cost lock status
   const { data: lockStatus } = useQuery({
@@ -295,10 +305,14 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
   };
 
   // Effective values: when combine mode is on, sum across selected estimates
-  const effectiveSalePrice = isCombined ? combinedTotals!.selling_price : (hyperlinkData?.sale_price || 0);
-  const effectiveMaterials = isCombined ? combinedTotals!.materials : (hyperlinkData?.materials || 0);
-  const effectiveLabor = isCombined ? combinedTotals!.labor : (hyperlinkData?.labor || 0);
+  // (change-order budget/spend is layered on top in either mode)
+  const effectiveSalePrice = isCombined
+    ? combinedTotals!.selling_price + (hyperlinkData?.change_orders_total || 0)
+    : (hyperlinkData?.sale_price || 0);
+  const effectiveMaterials = isCombined ? combinedTotals!.materials + coMaterialCost : (hyperlinkData?.materials || 0);
+  const effectiveLabor = isCombined ? combinedTotals!.labor + coLaborCost : (hyperlinkData?.labor || 0);
   const effectiveOverheadFromEstimate = isCombined ? combinedTotals!.overhead : 0;
+
 
   // Build links from the new RPC response structure
   const links = hyperlinkData ? [
