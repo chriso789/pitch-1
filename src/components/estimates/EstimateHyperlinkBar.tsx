@@ -26,6 +26,9 @@ interface HyperlinkBarData {
   sale_price: number;
   margin_pct: number;
   mode: string;
+  change_orders_total?: number;
+  change_orders_material?: number;
+  change_orders_labor?: number;
   sections: {
     contract: { status: string };
     estimate: { status: string };
@@ -34,6 +37,7 @@ interface HyperlinkBarData {
   };
   selected_estimate_id: string | null;
 }
+
 
 interface EstimateCalculations {
   measurements?: {
