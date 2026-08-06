@@ -13,6 +13,13 @@ interface SendDocumentSmsRequest {
   message?: string;
 }
 
+function resolveStorageBucket(documentType?: string | null, filePath?: string | null): string {
+  if (documentType === "company_resource") return "smartdoc-assets";
+  if (filePath?.startsWith("company-docs/")) return "smartdoc-assets";
+  if (filePath?.includes("/leads/")) return "customer-photos";
+  return "documents";
+}
+
 async function verifyTenantMembership(admin: any, userId: string, tenantId: string): Promise<boolean> {
   const { data: profile } = await admin
     .from("profiles")
