@@ -141,8 +141,9 @@ const handler = async (req: Request) => {
     // Fallback link is always included in the body in case the carrier strips media.
     let mediaUrls: string[] = [];
     if (doc.file_path) {
+      const bucket = resolveStorageBucket(doc.document_type, doc.file_path);
       const { data: signed, error: signErr } = await admin.storage
-        .from("documents")
+        .from(bucket)
         .createSignedUrl(doc.file_path, 60 * 60 * 24 * 30); // 30 days
       if (signErr) {
         console.warn("[send-document-sms] signed url failed:", signErr);
