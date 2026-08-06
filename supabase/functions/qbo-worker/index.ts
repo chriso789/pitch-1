@@ -437,12 +437,10 @@ async function upsertProjectOrJob(
     };
   }
 
-  // For this pass: SubCustomerJob fallback is the deterministic path.
-  // Native Project API (GraphQL) is behind Intuit entitlement; if user selects it explicitly,
-  // fail loudly rather than assume access.
-  if (desiredMode === "native_project") {
-    throw new Error("native_project_not_yet_supported: enable auto or sub_customer_job in tenant_qbo_settings");
-  }
+  // Native Project API (GraphQL) is behind Intuit entitlement and is never used;
+  // sub-customer job is the single deterministic path for every tenant.
+
+
 
   // Sub-customer (job) is named by the job number only — the parent customer
   // already carries the person's name (AccuLynx-style Customer:Job).
