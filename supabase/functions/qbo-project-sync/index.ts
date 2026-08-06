@@ -366,7 +366,7 @@ Deno.serve(async (req) => {
   let mappingId: string;
   if (existing) {
     mappingId = existing.id;
-    if (existing.sync_status === "ready" && existing.qbo_subcustomer_id) {
+    if (!force && existing.sync_status === "ready" && existing.qbo_subcustomer_id) {
       await admin.from("project_qbo_mappings").update({
         last_verified_at: new Date().toISOString(),
         correlation_id: correlationId,
