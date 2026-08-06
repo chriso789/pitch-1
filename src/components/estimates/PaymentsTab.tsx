@@ -74,7 +74,15 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 
 export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, sellingPrice }) => {
   const queryClient = useQueryClient();
-  const { activeTenantId } = useActiveTenantId();
+  const { activeTenantId, profile } = useActiveTenantId();
+  // Only company owners and the platform master (developer) may alter payment history.
+  const canEditPayments = profile?.role === 'owner' || profile?.role === 'master';
+  const [editingPayment, setEditingPayment] = useState<any | null>(null);
+  const [editPaymentAmount, setEditPaymentAmount] = useState('');
+  const [editPaymentMethod, setEditPaymentMethod] = useState('check');
+  const [editPaymentRef, setEditPaymentRef] = useState('');
+  const [editPaymentDate, setEditPaymentDate] = useState('');
+  const [editPaymentNotes, setEditPaymentNotes] = useState('');
   const { data: companyInfo } = useCompanyInfo();
   const [showInvoiceDialog, setShowInvoiceDialog] = useState(false);
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
@@ -942,6 +950,86 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
     },
     onError: (err: Error) => toast.error(err.message || 'Failed to record payment'),
   });
+
+  const invalidatePaymentQueries = () => {
+    queryClient.invalidateQueries({ queryKey: ['project-ar-invoices', pipelineEntryId] });
+    queryClient.invalidateQueries({ queryKey: ['project-ar-payments', pipelineEntryId] });
+    queryClient.invalidateQueries({ queryKey: ['ar-payments'] });
+    queryClient.invalidateQueries({ queryKey: ['ar-invoices'] });
+    queryClient.invalidateQueries({ queryKey: ['ar-projects'] });
+    window.dispatchEvent(new CustomEvent('project-payment-recorded', { detail: { pipelineEntryId } }));
+  };
+
+  // Re-sync a linked invoice's balance/status from all of its payments.
+  const resyncInvoiceBalance = async (invoiceId: string | null | undefined) => {
+    if (!invoiceId) return;
+    const invoice = (invoices || []).find((i: any) => i.id === invoiceId) as any;
+    if (!invoice) return;
+    const { data: rows } = await supabase
+      .from('project_payments')
+      .select('amount')
+      .eq('invoice_id', invoiceId);
+    const paid = (rows || []).reduce((s: number, r: any) => s + Number(r.amount || 0), 0);
+    const newBalance = Math.max(0, Number(invoice.amount || 0) - paid);
+    const newStatus = newBalance === 0 ? 'paid' : paid > 0 ? 'partial' : 'sent';
+    await supabase.from('project_invoices')
+      .update({ balance: newBalance, status: newStatus })
+      .eq('id', invoiceId);
+  };
+
+  const updatePaymentMutation = useMutation({
+    mutationFn: async () => {
+      if (!editingPayment) throw new Error('No payment selected');
+      if (!canEditPayments) throw new Error('Only an owner or developer can edit payment history');
+      const amount = parseFloat(editPaymentAmount);
+      if (isNaN(amount) || amount <= 0) throw new Error('Invalid amount');
+
+      const { error } = await supabase
+        .from('project_payments')
+        .update({
+          amount,
+          payment_method: editPaymentMethod,
+          reference_number: editPaymentRef || null,
+          payment_date: editPaymentDate,
+          notes: editPaymentNotes || null,
+        } as any)
+        .eq('id', editingPayment.id);
+      if (error) throw new Error(error.message || 'Failed to update payment');
+
+      await resyncInvoiceBalance(editingPayment.invoice_id);
+    },
+    onSuccess: () => {
+      invalidatePaymentQueries();
+      setEditingPayment(null);
+      toast.success('Payment updated');
+    },
+    onError: (err: Error) => toast.error(err.message || 'Failed to update payment'),
+  });
+
+  const deletePaymentMutation = useMutation({
+    mutationFn: async (pmt: any) => {
+      if (!canEditPayments) throw new Error('Only an owner or developer can delete payments');
+      const { error } = await supabase.from('project_payments').delete().eq('id', pmt.id);
+      if (error) throw new Error(error.message || 'Failed to delete payment');
+      await resyncInvoiceBalance(pmt.invoice_id);
+    },
+    onSuccess: () => {
+      invalidatePaymentQueries();
+      setEditingPayment(null);
+      toast.success('Payment deleted');
+    },
+    onError: (err: Error) => toast.error(err.message || 'Failed to delete payment'),
+  });
+
+  const openEditPayment = (pmt: any) => {
+    setEditingPayment(pmt);
+    setEditPaymentAmount(String(Number(pmt.amount ?? 0)));
+    setEditPaymentMethod(pmt.payment_method || 'check');
+    setEditPaymentRef(pmt.reference_number || '');
+    setEditPaymentDate(format(new Date(pmt.payment_date), 'yyyy-MM-dd'));
+    setEditPaymentNotes(pmt.notes || '');
+  };
+
 
   const toggleGroupSelected = (gIdx: number) => {
     setInvoiceGroups((prev) =>
@@ -1970,14 +2058,110 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
                     {pmt.reference_number && ` · Ref: ${pmt.reference_number}`}
                   </p>
                 </div>
-                {pmt.notes && (
-                  <p className="text-xs text-muted-foreground max-w-[150px] truncate">{pmt.notes}</p>
-                )}
+                <div className="flex items-center gap-2">
+                  {pmt.notes && (
+                    <p className="text-xs text-muted-foreground max-w-[150px] truncate">{pmt.notes}</p>
+                  )}
+                  {canEditPayments && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2"
+                      onClick={() => openEditPayment(pmt)}
+                      aria-label="Edit payment"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
         )}
       </div>
+      {/* Edit Payment Dialog — owner/master only */}
+      <Dialog open={!!editingPayment} onOpenChange={(open) => !open && setEditingPayment(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Payment</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Amount</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={editPaymentAmount}
+                  onChange={(e) => setEditPaymentAmount(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Date</Label>
+                <Input
+                  type="date"
+                  value={editPaymentDate}
+                  onChange={(e) => setEditPaymentDate(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Method</Label>
+                <Select value={editPaymentMethod} onValueChange={setEditPaymentMethod}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="check">Check</SelectItem>
+                    <SelectItem value="cash">Cash</SelectItem>
+                    <SelectItem value="credit_card">Credit Card</SelectItem>
+                    <SelectItem value="ach">ACH / Bank Transfer</SelectItem>
+                    <SelectItem value="zelle">Zelle</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Reference #</Label>
+                <Input
+                  value={editPaymentRef}
+                  onChange={(e) => setEditPaymentRef(e.target.value)}
+                  placeholder="Check / confirmation #"
+                />
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs">Notes</Label>
+              <Textarea
+                value={editPaymentNotes}
+                onChange={(e) => setEditPaymentNotes(e.target.value)}
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter className="flex-row justify-between sm:justify-between">
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (editingPayment && window.confirm('Delete this payment? This cannot be undone.')) {
+                  deletePaymentMutation.mutate(editingPayment);
+                }
+              }}
+              disabled={deletePaymentMutation.isPending}
+            >
+              <Trash2 className="h-4 w-4 mr-1" />
+              Delete
+            </Button>
+            <Button
+              onClick={() => updatePaymentMutation.mutate()}
+              disabled={updatePaymentMutation.isPending}
+            >
+              {updatePaymentMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Edit Invoice Dialog */}
       <Dialog open={!!editingInvoice} onOpenChange={(open) => !open && setEditingInvoice(null)}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
