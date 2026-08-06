@@ -177,8 +177,8 @@ export function MaterialLineItemsExport({
       // Column X positions (dedicated Color/Specs column)
       const colItemX = margin + 2;
       const colColorX = margin + 60;   // Color / Specs column
-      const colQtyX = pageWidth - 100;
-      const colUnitX = pageWidth - 80;
+      const colQtyX = hideCosts ? pageWidth - 60 : pageWidth - 100;
+      const colUnitX = hideCosts ? pageWidth - 35 : pageWidth - 80;
       const colCostX = pageWidth - 55;
       const colTotalX = pageWidth - 30;
 
@@ -191,8 +191,10 @@ export function MaterialLineItemsExport({
       doc.text('Color / Specs', colColorX, yPos);
       doc.text('Qty', colQtyX, yPos);
       doc.text('Unit', colUnitX, yPos);
-      doc.text('Unit Cost', colCostX, yPos);
-      doc.text('Total', colTotalX, yPos);
+      if (!hideCosts) {
+        doc.text('Unit Cost', colCostX, yPos);
+        doc.text('Total', colTotalX, yPos);
+      }
       yPos += 10;
 
       // Helper to truncate text to fit column width
