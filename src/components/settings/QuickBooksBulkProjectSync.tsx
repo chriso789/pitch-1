@@ -97,13 +97,15 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
   const unsynced = data?.unsynced ?? [];
   const synced = data?.synced ?? [];
   const total = unsynced.length;
-  const pct = useMemo(() => (total ? Math.round((done / total) * 100) : 0), [done, total]);
+  const [runTotal, setRunTotal] = useState(0);
+  const pct = useMemo(() => (runTotal ? Math.round((done / runTotal) * 100) : 0), [done, runTotal]);
 
 
-  const runSync = async (projects: ProjectRow[], successLabel: string) => {
+  const runSync = async (projects: ProjectRow[], successLabel: string, force = false) => {
     if (!projects.length) return;
     setRunning(true);
     setDone(0);
+    setRunTotal(projects.length);
     setFailed([]);
     const failures: string[] = [];
 
@@ -111,8 +113,9 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
       const label = project.clj_formatted_number || project.project_number || project.name || project.id.slice(0, 8);
       try {
         const { data: res, error } = await supabase.functions.invoke("qbo-project-sync", {
-          body: { project_id: project.id, trigger: "manual" },
+          body: { project_id: project.id, trigger: "manual", force },
         });
+
         if (error || !(res as any)?.ok) {
           const message = (res as any)?.error ?? (error ? await getFunctionErrorMessage(error) : "sync failed");
           failures.push(`${label}: ${message}`);
