@@ -1022,13 +1022,21 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   });
 
   const openEditPayment = (pmt: any) => {
+    let dateStr = '';
+    try {
+      const d = new Date(pmt?.payment_date);
+      dateStr = isNaN(d.getTime()) ? format(new Date(), 'yyyy-MM-dd') : format(d, 'yyyy-MM-dd');
+    } catch {
+      dateStr = format(new Date(), 'yyyy-MM-dd');
+    }
+    setEditPaymentAmount(String(Number(pmt?.amount ?? 0)));
+    setEditPaymentMethod(pmt?.payment_method || 'check');
+    setEditPaymentRef(pmt?.reference_number || '');
+    setEditPaymentDate(dateStr);
+    setEditPaymentNotes(pmt?.notes || '');
     setEditingPayment(pmt);
-    setEditPaymentAmount(String(Number(pmt.amount ?? 0)));
-    setEditPaymentMethod(pmt.payment_method || 'check');
-    setEditPaymentRef(pmt.reference_number || '');
-    setEditPaymentDate(format(new Date(pmt.payment_date), 'yyyy-MM-dd'));
-    setEditPaymentNotes(pmt.notes || '');
   };
+
 
 
   const toggleGroupSelected = (gIdx: number) => {
