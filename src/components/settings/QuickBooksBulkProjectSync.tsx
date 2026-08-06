@@ -160,10 +160,21 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
             {running ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
             {running ? `Pushing ${done}/${total}…` : `Push ${total || 0} job${total === 1 ? "" : "s"} to QuickBooks`}
           </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={runRename}
+            disabled={running || isLoading || !synced.length}
+            className="gap-2"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Fix {synced.length} job name{synced.length === 1 ? "" : "s"} in QuickBooks
+          </Button>
           <Button variant="outline" size="sm" onClick={() => refetch()} disabled={running} className="gap-2">
             <RefreshCw className="h-4 w-4" />
             Refresh
           </Button>
+
           <span className="text-xs text-muted-foreground">
             {data?.all?.length ?? 0} converted jobs total
           </span>
