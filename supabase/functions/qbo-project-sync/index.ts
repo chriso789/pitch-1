@@ -46,16 +46,34 @@ function shortAddress(street?: string | null, city?: string | null): string | nu
   return s || c || null;
 }
 
+const PLACEHOLDER_PROJECT_NAMES = [
+  "project from pipeline entry",
+  "new project",
+  "untitled project",
+];
+
+function isPlaceholderName(name: string): boolean {
+  return !name || PLACEHOLDER_PROJECT_NAMES.includes(name.toLowerCase());
+}
+
 function buildDisplayName(opts: {
   project_name?: string | null;
   job_number?: string | null;
+  fallback_name?: string | null;
+  fallback_address?: string | null;
 }): string {
-  const projectName = (opts.project_name ?? "").trim();
+  let projectName = (opts.project_name ?? "").trim();
+  if (isPlaceholderName(projectName)) {
+    const person = (opts.fallback_name ?? "").trim();
+    const addr = (opts.fallback_address ?? "").trim();
+    projectName = [person, addr].filter(Boolean).join(" - ").trim();
+  }
   const jobNumber = (opts.job_number ?? "").trim();
   const dn = [projectName, jobNumber].filter(Boolean).join(" — ").trim();
   // QBO DisplayName max is 100 chars.
   return dn.length > 100 ? dn.slice(0, 100) : dn || "Pitch Project";
 }
+
 
 async function emitAudit(
   admin: SupabaseClient,
@@ -250,7 +268,10 @@ Deno.serve(async (req) => {
   const displayName = buildDisplayName({
     project_name: project.name as string | null,
     job_number: project.project_number as string | null,
+    fallback_name: contactName,
+    fallback_address: contact?.address_street ?? null,
   });
+
 
   // Load or create mapping row.
   const { data: existing } = await admin
@@ -268,14 +289,60 @@ Deno.serve(async (req) => {
     mappingId = existing.id;
     // If already ready & customer verified, short-circuit as a verification pass.
     if (existing.sync_status === "ready" && existing.qbo_customer_id) {
+      let renamed = false;
+      if ((existing.qbo_display_name ?? "") !== displayName) {
+        try {
+          const { response: getRes } = await qboFetch(
+            admin,
+            connection as any,
+            `/v3/company/${connection.realm_id}/customer/${existing.qbo_customer_id}?minorversion=73`,
+            { method: "GET", headers: { Accept: "application/json" } },
+            {
+              action: "qbo_project_sync", op: "customer.read", tenant_id: tenantId,
+              connection_id: connId, user_id: userId, qbo_entity: "Customer",
+            },
+          );
+          if (getRes.ok) {
+            const current = await getRes.json();
+            const syncToken = current?.Customer?.SyncToken;
+            if (syncToken !== undefined) {
+              const { response: updRes } = await qboFetch(
+                admin,
+                connection as any,
+                `/v3/company/${connection.realm_id}/customer?minorversion=73`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    Id: String(existing.qbo_customer_id),
+                    SyncToken: String(syncToken),
+                    sparse: true,
+                    DisplayName: displayName,
+                  }),
+                },
+                {
+                  action: "qbo_project_sync", op: "customer.rename", tenant_id: tenantId,
+                  connection_id: connId, user_id: userId, qbo_entity: "Customer",
+                },
+              );
+              renamed = updRes.ok;
+              if (!updRes.ok) await updRes.text();
+            }
+          }
+        } catch (_e) {
+          renamed = false;
+        }
+      }
+
       await admin.from("project_qbo_mappings").update({
         last_verified_at: new Date().toISOString(),
         correlation_id: correlationId,
+        ...(renamed ? { qbo_display_name: displayName } : {}),
       }).eq("id", mappingId);
       await emitAudit(admin, {
         tenant_id: tenantId, event_type: "qbo_project_verified",
         project_id: projectId, qbo_connection_id: connId, actor_user_id: userId,
-        metadata: { trigger, correlation_id: correlationId, qbo_customer_id: existing.qbo_customer_id },
+        metadata: { trigger, correlation_id: correlationId, qbo_customer_id: existing.qbo_customer_id, renamed, display_name: displayName },
       });
       return json(200, {
         ok: true,
@@ -284,11 +351,13 @@ Deno.serve(async (req) => {
           qbo_customer_id: existing.qbo_customer_id,
           sync_status: "ready",
           verified: true,
+          renamed,
         },
       }, requestId);
     }
     await admin.from("project_qbo_mappings").update({
       sync_status: "creating",
+
       last_error: null,
       correlation_id: correlationId,
       qbo_display_name: displayName,

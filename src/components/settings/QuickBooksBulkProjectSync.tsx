@@ -88,23 +88,26 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
       return {
         all: convertedProjects,
         unsynced: convertedProjects.filter((project) => !mappedIds.has(project.id)),
+        synced: convertedProjects.filter((project) => mappedIds.has(project.id)),
       };
     },
     enabled: !!tenantId,
   });
 
   const unsynced = data?.unsynced ?? [];
+  const synced = data?.synced ?? [];
   const total = unsynced.length;
   const pct = useMemo(() => (total ? Math.round((done / total) * 100) : 0), [done, total]);
 
-  const runBulkPush = async () => {
-    if (!total) return;
+
+  const runSync = async (projects: ProjectRow[], successLabel: string) => {
+    if (!projects.length) return;
     setRunning(true);
     setDone(0);
     setFailed([]);
     const failures: string[] = [];
 
-    for (const project of unsynced) {
+    for (const project of projects) {
       const label = project.clj_formatted_number || project.project_number || project.name || project.id.slice(0, 8);
       try {
         const { data: res, error } = await supabase.functions.invoke("qbo-project-sync", {
@@ -124,12 +127,17 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
     setRunning(false);
     await refetch();
 
+    const count = projects.length;
     if (!failures.length) {
-      toast.success(`Pushed ${total} converted job${total === 1 ? "" : "s"} to QuickBooks`);
+      toast.success(`${successLabel} ${count} job${count === 1 ? "" : "s"}`);
     } else {
-      toast.warning(`${total - failures.length} of ${total} pushed — ${failures.length} failed`);
+      toast.warning(`${count - failures.length} of ${count} succeeded — ${failures.length} failed`);
     }
   };
+
+  const runBulkPush = () => runSync(unsynced, "Pushed");
+  const runRename = () => runSync(synced, "Updated names for");
+
 
   return (
     <Card>
@@ -152,10 +160,21 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
             {running ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
             {running ? `Pushing ${done}/${total}…` : `Push ${total || 0} job${total === 1 ? "" : "s"} to QuickBooks`}
           </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={runRename}
+            disabled={running || isLoading || !synced.length}
+            className="gap-2"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Fix {synced.length} job name{synced.length === 1 ? "" : "s"} in QuickBooks
+          </Button>
           <Button variant="outline" size="sm" onClick={() => refetch()} disabled={running} className="gap-2">
             <RefreshCw className="h-4 w-4" />
             Refresh
           </Button>
+
           <span className="text-xs text-muted-foreground">
             {data?.all?.length ?? 0} converted jobs total
           </span>
