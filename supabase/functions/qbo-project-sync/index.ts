@@ -268,7 +268,10 @@ Deno.serve(async (req) => {
   const displayName = buildDisplayName({
     project_name: project.name as string | null,
     job_number: project.project_number as string | null,
+    fallback_name: contactName,
+    fallback_address: contact?.address_street ?? null,
   });
+
 
   // Load or create mapping row.
   const { data: existing } = await admin
