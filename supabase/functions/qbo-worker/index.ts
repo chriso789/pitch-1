@@ -374,11 +374,27 @@ async function upsertQboCustomer(
     success: res.ok,
     request_metadata: { op: "upsertCustomer", pitch_contact_id: contact.id },
   });
+  let j: any;
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`qbo_customer_create_failed [status=${res.status} tid=${tid ?? "none"}]: ${body.slice(0, 300)}`);
+    if (/DisplayNameExists|Duplicate Name Exists|6240/i.test(body)) {
+      const name = String(payload.DisplayName ?? "").replace(/'/g, "''");
+      const query = encodeURIComponent(`select * from Customer where DisplayName = '${name}'`);
+      const foundRes = await fetch(
+        `${qboHost(connection)}/v3/company/${realmId}/query?minorversion=75&query=${query}`,
+        { headers: { Authorization: `Bearer ${access_token}`, Accept: "application/json" } },
+      );
+      const found = foundRes.ok ? (await foundRes.json())?.QueryResponse?.Customer?.[0] : null;
+      if (!found?.Id) {
+        throw new Error(`qbo_customer_duplicate_unresolved [status=${res.status} tid=${tid ?? "none"}]: ${body.slice(0, 300)}`);
+      }
+      j = { Customer: found };
+    } else {
+      throw new Error(`qbo_customer_create_failed [status=${res.status} tid=${tid ?? "none"}]: ${body.slice(0, 300)}`);
+    }
+  } else {
+    j = await res.json();
   }
-  const j = await res.json();
   const qboId = j.Customer.Id as string;
 
   await service.from("qbo_entity_mapping").upsert({
@@ -425,7 +441,10 @@ async function upsertProjectOrJob(
   const desiredMode = "sub_customer_job";
   void settings;
 
-  // Check for existing mapping (Project or SubCustomerJob)
+  const { access_token } = await getValidAccessToken(service, ctx.tenantId);
+
+  // Check for an existing mapping, but never trust the database row alone. Old
+  // mappings may point at a deleted customer or at a legacy non-job customer.
   const { data: existingRows } = await service
     .from("qbo_entity_mapping")
     .select("qbo_entity_id, qbo_entity_type, mapping_mode")
@@ -437,11 +456,32 @@ async function upsertProjectOrJob(
 
   if (existingRows && existingRows.length > 0) {
     const row = existingRows[0];
-    return {
-      id: row.qbo_entity_id,
-      mode: (row.mapping_mode ?? (row.qbo_entity_type === "Project" ? "native_project" : "sub_customer_job")) as any,
-      display_name: String(projectNumber).trim(),
-    };
+    const verify = await fetch(
+      `${qboHost(connection)}/v3/company/${realmId}/customer/${row.qbo_entity_id}?minorversion=75`,
+      { headers: { Authorization: `Bearer ${access_token}`, Accept: "application/json" } },
+    );
+    if (verify.ok) {
+      const verified = (await verify.json())?.Customer;
+      const isCorrectJob = verified?.Job === true &&
+        String(verified?.ParentRef?.value ?? "") === String(parentCustomerId);
+      if (isCorrectJob) {
+        return {
+          id: row.qbo_entity_id,
+          mode: "sub_customer_job",
+          display_name: String(verified.DisplayName ?? projectNumber).trim(),
+        };
+      }
+    }
+
+    // Retire the stale/legacy mapping so the canonical sub-customer can be
+    // persisted under the same unique key below.
+    await service.from("qbo_entity_mapping")
+      .delete()
+      .eq("tenant_id", ctx.tenantId)
+      .eq("realm_id", realmId)
+      .eq("pitch_entity_type", "project")
+      .eq("pitch_entity_id", project.id)
+      .eq("qbo_entity_type", row.qbo_entity_type);
   }
 
   // Native Project API (GraphQL) is behind Intuit entitlement and is never used;
@@ -453,11 +493,11 @@ async function upsertProjectOrJob(
   // already carries the person's name (AccuLynx-style Customer:Job).
   const displayName = String(projectNumber).trim();
 
-  const { access_token } = await getValidAccessToken(service, ctx.tenantId);
   const payload = {
     DisplayName: displayName,
     ParentRef: { value: parentCustomerId },
     Job: true,
+    BillWithParent: true,
     Active: true,
   };
   const res = await fetch(
@@ -486,11 +526,28 @@ async function upsertProjectOrJob(
     success: res.ok,
     request_metadata: { op: "createSubCustomerJob", pitch_project_id: project.id, project_number: projectNumber },
   });
+  let j: any;
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`qbo_sub_customer_create_failed [status=${res.status} tid=${tid ?? "none"}]: ${body.slice(0, 300)}`);
+    if (/DisplayNameExists|Duplicate Name Exists|6240/i.test(body)) {
+      const escaped = displayName.replace(/'/g, "''");
+      const query = encodeURIComponent(`select * from Customer where DisplayName = '${escaped}'`);
+      const foundRes = await fetch(
+        `${qboHost(connection)}/v3/company/${realmId}/query?minorversion=75&query=${query}`,
+        { headers: { Authorization: `Bearer ${access_token}`, Accept: "application/json" } },
+      );
+      const found = foundRes.ok ? (await foundRes.json())?.QueryResponse?.Customer?.[0] : null;
+      if (found?.Job === true && String(found?.ParentRef?.value ?? "") === String(parentCustomerId)) {
+        j = { Customer: found };
+      } else {
+        throw new Error(`qbo_sub_customer_name_conflict [status=${res.status} tid=${tid ?? "none"}]: ${body.slice(0, 300)}`);
+      }
+    } else {
+      throw new Error(`qbo_sub_customer_create_failed [status=${res.status} tid=${tid ?? "none"}]: ${body.slice(0, 300)}`);
+    }
+  } else {
+    j = await res.json();
   }
-  const j = await res.json();
   const qboId = j.Customer.Id as string;
 
   await service.from("qbo_entity_mapping").upsert({
@@ -620,15 +677,26 @@ async function opCreateInvoice(ctx: Ctx, args: any): Promise<Response> {
     return err("customer_or_project_failed", e?.message ?? String(e), ctx.requestId, 502);
   }
 
-  // Load the most recent active/approved estimate for this project
-  const { data: estimates } = await service
-    .from("estimates")
+  // The live estimate builder writes enhanced_estimates. Legacy estimates are
+  // only a fallback for older projects.
+  const { data: enhancedEstimates } = await service
+    .from("enhanced_estimates")
     .select("id, line_items, selling_price, estimate_number, status")
     .eq("tenant_id", ctx.tenantId)
     .eq("project_id", projectId)
     .order("updated_at", { ascending: false })
     .limit(1);
-  const estimate = estimates?.[0];
+  let estimate = enhancedEstimates?.[0] ?? null;
+  if (!estimate) {
+    const { data: legacyEstimates } = await service
+      .from("estimates")
+      .select("id, line_items, selling_price, estimate_number, status")
+      .eq("tenant_id", ctx.tenantId)
+      .eq("project_id", projectId)
+      .order("updated_at", { ascending: false })
+      .limit(1);
+    estimate = legacyEstimates?.[0] ?? null;
+  }
   if (!estimate) return err("no_estimate", "No estimate found for project", ctx.requestId, 400);
 
   // Pull job_type_item_map for tenant×realm
@@ -647,7 +715,12 @@ async function opCreateInvoice(ctx: Ctx, args: any): Promise<Response> {
 
   // Build lines
   const projectNumber = cljJobLabel(project.clj_formatted_number, project.project_number) || project.id;
-  const rawLines: any[] = Array.isArray(estimate.line_items) ? estimate.line_items : [];
+  const lineContainer: any = estimate.line_items;
+  const rawLines: any[] = Array.isArray(lineContainer)
+    ? lineContainer
+    : ["materials", "labor", "turnkey", "items"].flatMap((key) =>
+        Array.isArray(lineContainer?.[key]) ? lineContainer[key] : []
+      );
   const lines: any[] = [];
   const unmapped: string[] = [];
   let lineNum = 1;
@@ -680,9 +753,9 @@ async function opCreateInvoice(ctx: Ctx, args: any): Promise<Response> {
     for (const it of rawLines) {
       pushLine(
         it.description ?? it.name ?? "Line item",
-        Number(it.total ?? it.amount ?? 0),
-        Number(it.quantity ?? 1),
-        Number(it.rate ?? it.unit_price ?? 0),
+        Number(it.line_total ?? it.total ?? it.amount ?? ((it.qty ?? it.quantity ?? 1) * (it.unit_cost ?? it.rate ?? it.unit_price ?? 0))),
+        Number(it.qty ?? it.quantity ?? 1),
+        Number(it.unit_cost ?? it.rate ?? it.unit_price ?? 0),
         it.job_type_code ?? it.jobTypeCode ?? null,
       );
     }
@@ -694,6 +767,25 @@ async function opCreateInvoice(ctx: Ctx, args: any): Promise<Response> {
     return err("unmapped_items", "One or more estimate line items have no QBO Item mapping.", ctx.requestId, 400, {
       unmapped_job_type_codes: unmapped,
       hint: "Configure job_type_item_map or set tenant_qbo_settings.default_item_id.",
+    });
+  }
+
+  // The estimate selling price is canonical. Estimate line_items may still
+  // contain underlying cost values, so proportionally scale the QBO lines to
+  // the approved selling price and pin the final penny to the last line.
+  const targetSellingPrice = Math.round(Number(estimate.selling_price ?? 0) * 100) / 100;
+  const rawLineTotal = lines.reduce((sum, line) => sum + Number(line.Amount ?? 0), 0);
+  if (targetSellingPrice > 0 && rawLineTotal > 0 && Math.abs(targetSellingPrice - rawLineTotal) > 0.009) {
+    const factor = targetSellingPrice / rawLineTotal;
+    let scaledTotal = 0;
+    lines.forEach((line, index) => {
+      const qty = Number(line.SalesItemLineDetail?.Qty ?? 1) || 1;
+      const amount = index === lines.length - 1
+        ? Math.round((targetSellingPrice - scaledTotal) * 100) / 100
+        : Math.round(Number(line.Amount ?? 0) * factor * 100) / 100;
+      line.Amount = amount;
+      line.SalesItemLineDetail.UnitPrice = Math.round((amount / qty) * 100) / 100;
+      scaledTotal += amount;
     });
   }
 
@@ -742,11 +834,43 @@ async function opCreateInvoice(ctx: Ctx, args: any): Promise<Response> {
     estimateId: estimate.id,
   });
 
+  const { data: existingInvoiceMapping } = await service
+    .from("qbo_entity_mapping")
+    .select("qbo_entity_id")
+    .eq("tenant_id", ctx.tenantId)
+    .eq("qbo_connection_id", connection.id)
+    .eq("realm_id", connection.realm_id)
+    .eq("pitch_entity_type", "project")
+    .eq("pitch_entity_id", project.id)
+    .eq("qbo_entity_type", "Invoice")
+    .maybeSingle();
+
+  let invoiceWriteBody = invoicePayload;
+  let invoiceWriteUrl = `${qboHost(connection)}/v3/company/${connection.realm_id}/invoice?minorversion=75`;
+  let invoiceWriteRequestId: string | undefined = requestIdForCreate;
+  if (existingInvoiceMapping?.qbo_entity_id) {
+    const currentResult = await qboFetch({
+      method: "GET",
+      url: `${qboHost(connection)}/v3/company/${connection.realm_id}/invoice/${existingInvoiceMapping.qbo_entity_id}?minorversion=75`,
+      getAccessToken: async () => (await getValidAccessToken(service, ctx.tenantId)).access_token,
+    });
+    const currentInvoice = (currentResult.json as any)?.Invoice;
+    if (currentResult.ok && currentInvoice?.Id && currentInvoice?.SyncToken != null) {
+      invoiceWriteBody = {
+        Id: currentInvoice.Id,
+        SyncToken: currentInvoice.SyncToken,
+        sparse: true,
+        ...invoicePayload,
+      };
+      invoiceWriteRequestId = undefined;
+    }
+  }
+
   const createResult = await qboFetch({
     method: "POST",
-    url: `${qboHost(connection)}/v3/company/${connection.realm_id}/invoice?minorversion=75`,
-    body: invoicePayload,
-    requestId: requestIdForCreate,
+    url: invoiceWriteUrl,
+    body: invoiceWriteBody,
+    requestId: invoiceWriteRequestId,
     getAccessToken: async () => (await getValidAccessToken(service, ctx.tenantId)).access_token,
   });
 
@@ -844,6 +968,85 @@ async function opCreateInvoice(ctx: Ctx, args: any): Promise<Response> {
     intuit_tid: createResult.intuitTid,
     details: { qbo_request_id: requestIdForCreate, doc_number: invoice.DocNumber ?? null },
   });
+
+  // Push completed Pitch payments against the QBO invoice. The mapping makes
+  // this retry-safe: a payment already represented in QBO is never recreated.
+  const { data: pitchPayments } = await service
+    .from("payments")
+    .select("id, amount, payment_method, processed_at, created_at, metadata")
+    .eq("tenant_id", ctx.tenantId)
+    .eq("project_id", project.id)
+    .eq("status", "completed")
+    .order("created_at", { ascending: true });
+
+  let remainingQboBalance = Number(invoice.Balance ?? invoice.TotalAmt ?? 0);
+  for (const payment of pitchPayments ?? []) {
+    if (remainingQboBalance <= 0) break;
+    const { data: existingPaymentMap } = await service
+      .from("qbo_entity_mapping")
+      .select("qbo_entity_id")
+      .eq("tenant_id", ctx.tenantId)
+      .eq("realm_id", connection.realm_id)
+      .eq("pitch_entity_type", "payment")
+      .eq("pitch_entity_id", payment.id)
+      .eq("qbo_entity_type", "Payment")
+      .maybeSingle();
+    if (existingPaymentMap?.qbo_entity_id) continue;
+
+    const fee = Number((payment.metadata as any)?.cc_fee_amount ?? 0);
+    const paymentAmount = Math.min(remainingQboBalance, Math.max(0, Number(payment.amount ?? 0) - fee));
+    if (paymentAmount <= 0) continue;
+    const paymentDate = String(payment.processed_at ?? payment.created_at ?? new Date().toISOString()).slice(0, 10);
+    const paymentRequestId = `pitch-pay-${payment.id}`;
+    const paymentPayload = {
+      CustomerRef: { value: subCustomerId },
+      TotalAmt: paymentAmount,
+      TxnDate: paymentDate,
+      PrivateNote: `Pitch payment ${payment.id}; method ${payment.payment_method ?? "unspecified"}`,
+      Line: [{
+        Amount: paymentAmount,
+        LinkedTxn: [{ TxnId: invoice.Id, TxnType: "Invoice" }],
+      }],
+    };
+    const paymentResult = await qboFetch({
+      method: "POST",
+      url: `${qboHost(connection)}/v3/company/${connection.realm_id}/payment?minorversion=75`,
+      body: paymentPayload,
+      requestId: paymentRequestId,
+      getAccessToken: async () => (await getValidAccessToken(service, ctx.tenantId)).access_token,
+    });
+    if (!paymentResult.ok) {
+      await appendReconciliationEvent(service, {
+        tenant_id: ctx.tenantId,
+        qbo_connection_id: connection.id,
+        realm_id: connection.realm_id,
+        qbo_invoice_id: invoice.Id,
+        event_type: "sync_error",
+        amount_applied: paymentAmount,
+        authoritative_source: "worker_computed",
+        intuit_tid: paymentResult.intuitTid,
+        details: { pitch_payment_id: payment.id, status: paymentResult.status },
+      });
+      continue;
+    }
+    const qboPayment = (paymentResult.json as any)?.Payment;
+    if (!qboPayment?.Id) continue;
+    await service.from("qbo_entity_mapping").upsert({
+      tenant_id: ctx.tenantId,
+      qbo_connection_id: connection.id,
+      realm_id: connection.realm_id,
+      pitch_entity_type: "payment",
+      pitch_entity_id: payment.id,
+      entity_type: "payment",
+      entity_id: payment.id,
+      qbo_entity_type: "Payment",
+      qbo_entity_id: qboPayment.Id,
+      sync_token: qboPayment.SyncToken ?? null,
+      metadata: { qbo_invoice_id: invoice.Id, amount: paymentAmount, request_id: paymentRequestId },
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "tenant_id,qbo_connection_id,realm_id,pitch_entity_type,pitch_entity_id,qbo_entity_type" });
+    remainingQboBalance = Math.max(0, remainingQboBalance - paymentAmount);
+  }
 
   // Enriched re-fetch drives capability persistence + link validation.
   const recon = await reconcileInvoiceFromQbo({
