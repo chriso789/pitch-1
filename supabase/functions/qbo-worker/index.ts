@@ -1616,8 +1616,11 @@ Deno.serve(async (req) => {
       case "backendTemplateStatus":
       case "backend-template-status":
         return await opBackendTemplateStatus(ctx);
+      case "cleanupDuplicateJobs":
+      case "cleanup-duplicate-jobs":
+        return await opCleanupDuplicateJobs(ctx, args);
       default:
-        return err("unknown_op", `Unknown op '${op}'. Supported: preflight, setLocation, syncProject, createInvoiceFromEstimates, toggleOnlinePayments, syncPaymentStatus, refreshAr, backendTemplateStatus`, ctx.requestId, 400);
+        return err("unknown_op", `Unknown op '${op}'. Supported: preflight, setLocation, syncProject, createInvoiceFromEstimates, toggleOnlinePayments, syncPaymentStatus, refreshAr, backendTemplateStatus, cleanupDuplicateJobs`, ctx.requestId, 400);
     }
   } catch (e: any) {
     console.error("[qbo-worker] unhandled error", e);
