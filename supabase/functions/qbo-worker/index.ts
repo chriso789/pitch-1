@@ -902,6 +902,85 @@ async function opCreateInvoice(ctx: Ctx, args: any): Promise<Response> {
     details: { qbo_request_id: requestIdForCreate, doc_number: invoice.DocNumber ?? null },
   });
 
+  // Push completed Pitch payments against the QBO invoice. The mapping makes
+  // this retry-safe: a payment already represented in QBO is never recreated.
+  const { data: pitchPayments } = await service
+    .from("payments")
+    .select("id, amount, payment_method, processed_at, created_at, metadata")
+    .eq("tenant_id", ctx.tenantId)
+    .eq("project_id", project.id)
+    .eq("status", "completed")
+    .order("created_at", { ascending: true });
+
+  let remainingQboBalance = Number(invoice.Balance ?? invoice.TotalAmt ?? 0);
+  for (const payment of pitchPayments ?? []) {
+    if (remainingQboBalance <= 0) break;
+    const { data: existingPaymentMap } = await service
+      .from("qbo_entity_mapping")
+      .select("qbo_entity_id")
+      .eq("tenant_id", ctx.tenantId)
+      .eq("realm_id", connection.realm_id)
+      .eq("pitch_entity_type", "payment")
+      .eq("pitch_entity_id", payment.id)
+      .eq("qbo_entity_type", "Payment")
+      .maybeSingle();
+    if (existingPaymentMap?.qbo_entity_id) continue;
+
+    const fee = Number((payment.metadata as any)?.cc_fee_amount ?? 0);
+    const paymentAmount = Math.min(remainingQboBalance, Math.max(0, Number(payment.amount ?? 0) - fee));
+    if (paymentAmount <= 0) continue;
+    const paymentDate = String(payment.processed_at ?? payment.created_at ?? new Date().toISOString()).slice(0, 10);
+    const paymentRequestId = `pitch-pay-${payment.id}`;
+    const paymentPayload = {
+      CustomerRef: { value: subCustomerId },
+      TotalAmt: paymentAmount,
+      TxnDate: paymentDate,
+      PrivateNote: `Pitch payment ${payment.id}; method ${payment.payment_method ?? "unspecified"}`,
+      Line: [{
+        Amount: paymentAmount,
+        LinkedTxn: [{ TxnId: invoice.Id, TxnType: "Invoice" }],
+      }],
+    };
+    const paymentResult = await qboFetch({
+      method: "POST",
+      url: `${qboHost(connection)}/v3/company/${connection.realm_id}/payment?minorversion=75`,
+      body: paymentPayload,
+      requestId: paymentRequestId,
+      getAccessToken: async () => (await getValidAccessToken(service, ctx.tenantId)).access_token,
+    });
+    if (!paymentResult.ok) {
+      await appendReconciliationEvent(service, {
+        tenant_id: ctx.tenantId,
+        qbo_connection_id: connection.id,
+        realm_id: connection.realm_id,
+        qbo_invoice_id: invoice.Id,
+        event_type: "payment_sync_failed",
+        amount_applied: paymentAmount,
+        authoritative_source: "pitch_payment",
+        intuit_tid: paymentResult.intuitTid,
+        details: { pitch_payment_id: payment.id, status: paymentResult.status },
+      });
+      continue;
+    }
+    const qboPayment = (paymentResult.json as any)?.Payment;
+    if (!qboPayment?.Id) continue;
+    await service.from("qbo_entity_mapping").upsert({
+      tenant_id: ctx.tenantId,
+      qbo_connection_id: connection.id,
+      realm_id: connection.realm_id,
+      pitch_entity_type: "payment",
+      pitch_entity_id: payment.id,
+      entity_type: "payment",
+      entity_id: payment.id,
+      qbo_entity_type: "Payment",
+      qbo_entity_id: qboPayment.Id,
+      sync_token: qboPayment.SyncToken ?? null,
+      metadata: { qbo_invoice_id: invoice.Id, amount: paymentAmount, request_id: paymentRequestId },
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "tenant_id,qbo_connection_id,realm_id,pitch_entity_type,pitch_entity_id,qbo_entity_type" });
+    remainingQboBalance = Math.max(0, remainingQboBalance - paymentAmount);
+  }
+
   // Enriched re-fetch drives capability persistence + link validation.
   const recon = await reconcileInvoiceFromQbo({
     service,
