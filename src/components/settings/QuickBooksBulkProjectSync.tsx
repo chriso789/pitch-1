@@ -185,6 +185,42 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
   const runBulkPush = () => runSync(pushTargets, total ? "Pushed" : "Re-synced", !total);
   const runRename = () => runSync(synced, "Updated names for", true);
 
+  const [cleanup, setCleanup] = useState<{
+    dry_run: boolean;
+    deactivated: string[];
+    kept: string[];
+    needs_manual_merge: string[];
+    duplicate_groups: number;
+  } | null>(null);
+  const [cleaning, setCleaning] = useState(false);
+
+  const runCleanup = async (dryRun: boolean) => {
+    setCleaning(true);
+    try {
+      const { data: res, error } = await supabase.functions.invoke("qbo-worker", {
+        body: { op: "cleanupDuplicateJobs", args: { dry_run: dryRun } },
+        headers: { "x-tenant-id": tenantId },
+      });
+      if (error || (res as any)?.ok === false) {
+        const message = (res as any)?.error ?? (error ? await getFunctionErrorMessage(error) : "cleanup failed");
+        toast.error(message);
+        return;
+      }
+      const payload = ((res as any)?.data ?? res) as any;
+      setCleanup(payload);
+      if (dryRun) {
+        toast.info(`${payload.duplicate_groups} customer${payload.duplicate_groups === 1 ? "" : "s"} with duplicate job numbers found`);
+      } else {
+        toast.success(`Removed ${payload.deactivated.length} duplicate job number${payload.deactivated.length === 1 ? "" : "s"}`);
+      }
+    } catch (e: any) {
+      toast.error(e?.message ?? "cleanup failed");
+    } finally {
+      setCleaning(false);
+    }
+  };
+
+
 
   return (
     <Card>
