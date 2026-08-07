@@ -185,6 +185,42 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
   const runBulkPush = () => runSync(pushTargets, total ? "Pushed" : "Re-synced", !total);
   const runRename = () => runSync(synced, "Updated names for", true);
 
+  const [cleanup, setCleanup] = useState<{
+    dry_run: boolean;
+    deactivated: string[];
+    kept: string[];
+    needs_manual_merge: string[];
+    duplicate_groups: number;
+  } | null>(null);
+  const [cleaning, setCleaning] = useState(false);
+
+  const runCleanup = async (dryRun: boolean) => {
+    setCleaning(true);
+    try {
+      const { data: res, error } = await supabase.functions.invoke("qbo-worker", {
+        body: { op: "cleanupDuplicateJobs", args: { dry_run: dryRun } },
+        headers: { "x-tenant-id": tenantId },
+      });
+      if (error || (res as any)?.ok === false) {
+        const message = (res as any)?.error ?? (error ? await getFunctionErrorMessage(error) : "cleanup failed");
+        toast.error(message);
+        return;
+      }
+      const payload = ((res as any)?.data ?? res) as any;
+      setCleanup(payload);
+      if (dryRun) {
+        toast.info(`${payload.duplicate_groups} customer${payload.duplicate_groups === 1 ? "" : "s"} with duplicate job numbers found`);
+      } else {
+        toast.success(`Removed ${payload.deactivated.length} duplicate job number${payload.deactivated.length === 1 ? "" : "s"}`);
+      }
+    } catch (e: any) {
+      toast.error(e?.message ?? "cleanup failed");
+    } finally {
+      setCleaning(false);
+    }
+  };
+
+
 
   return (
     <Card>
@@ -226,6 +262,16 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
             <RefreshCw className="h-4 w-4" />
             Fix {synced.length} job name{synced.length === 1 ? "" : "s"} in QuickBooks
           </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => runCleanup(true)}
+            disabled={running || cleaning}
+            className="gap-2"
+          >
+            {cleaning ? <RefreshCw className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
+            Find duplicate job numbers
+          </Button>
           <Button variant="outline" size="sm" onClick={() => refetch()} disabled={running} className="gap-2">
             <RefreshCw className="h-4 w-4" />
             Refresh
@@ -244,6 +290,31 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
             All jobs are linked to QuickBooks.
           </div>
         )}
+
+        {cleanup && (
+          <div className="rounded-md border p-3 space-y-2">
+            <div className="text-sm font-medium">
+              {cleanup.duplicate_groups} customer{cleanup.duplicate_groups === 1 ? "" : "s"} with more than one job number
+            </div>
+            {cleanup.deactivated.length > 0 && (
+              <div className="text-xs text-muted-foreground">
+                {cleanup.dry_run ? "Will be removed" : "Removed"}: {cleanup.deactivated.join(", ")}
+              </div>
+            )}
+            {cleanup.needs_manual_merge.length > 0 && (
+              <div className="text-xs text-amber-600">
+                Kept (has transactions — merge manually in QuickBooks): {cleanup.needs_manual_merge.join(", ")}
+              </div>
+            )}
+            {cleanup.dry_run && cleanup.deactivated.length > 0 && (
+              <Button size="sm" variant="destructive" onClick={() => runCleanup(false)} disabled={cleaning}>
+                Remove {cleanup.deactivated.length} duplicate job number{cleanup.deactivated.length === 1 ? "" : "s"}
+              </Button>
+            )}
+          </div>
+        )}
+
+
 
 
         {failed.length > 0 && (
