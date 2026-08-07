@@ -262,6 +262,16 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
             <RefreshCw className="h-4 w-4" />
             Fix {synced.length} job name{synced.length === 1 ? "" : "s"} in QuickBooks
           </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => runCleanup(true)}
+            disabled={running || cleaning}
+            className="gap-2"
+          >
+            {cleaning ? <RefreshCw className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
+            Find duplicate job numbers
+          </Button>
           <Button variant="outline" size="sm" onClick={() => refetch()} disabled={running} className="gap-2">
             <RefreshCw className="h-4 w-4" />
             Refresh
@@ -280,6 +290,31 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
             All jobs are linked to QuickBooks.
           </div>
         )}
+
+        {cleanup && (
+          <div className="rounded-md border p-3 space-y-2">
+            <div className="text-sm font-medium">
+              {cleanup.duplicate_groups} customer{cleanup.duplicate_groups === 1 ? "" : "s"} with more than one job number
+            </div>
+            {cleanup.deactivated.length > 0 && (
+              <div className="text-xs text-muted-foreground">
+                {cleanup.dry_run ? "Will be removed" : "Removed"}: {cleanup.deactivated.join(", ")}
+              </div>
+            )}
+            {cleanup.needs_manual_merge.length > 0 && (
+              <div className="text-xs text-amber-600">
+                Kept (has transactions — merge manually in QuickBooks): {cleanup.needs_manual_merge.join(", ")}
+              </div>
+            )}
+            {cleanup.dry_run && cleanup.deactivated.length > 0 && (
+              <Button size="sm" variant="destructive" onClick={() => runCleanup(false)} disabled={cleaning}>
+                Remove {cleanup.deactivated.length} duplicate job number{cleanup.deactivated.length === 1 ? "" : "s"}
+              </Button>
+            )}
+          </div>
+        )}
+
+
 
 
         {failed.length > 0 && (
