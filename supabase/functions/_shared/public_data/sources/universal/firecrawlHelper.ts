@@ -1,6 +1,9 @@
 // supabase/functions/_shared/public_data/sources/universal/firecrawlHelper.ts
+// Firecrawl REST v2 client used by the live-canvass public data pipeline.
+// Connection mode: direct API (uses_connector_gateway: false) — authenticate
+// with the FIRECRAWL_API_KEY (fc-*) against api.firecrawl.dev.
 
-const FIRECRAWL_BASE = "https://api.firecrawl.dev/v1";
+const FIRECRAWL_BASE = "https://api.firecrawl.dev/v2";
 
 function getApiKey(): string {
   const key = Deno.env.get("FIRECRAWL_API_KEY");
@@ -32,8 +35,16 @@ export interface FirecrawlSearchResult {
   markdown?: string;
 }
 
+/** v2 returns { data: { web: [...], news: [...] } }; v1 returned a flat array. */
+function normalizeSearchPayload(json: any): FirecrawlSearchResult[] {
+  const d = json?.data ?? json?.results ?? [];
+  if (Array.isArray(d)) return d as FirecrawlSearchResult[];
+  const buckets = [d?.web, d?.news, d?.images].filter(Array.isArray);
+  return buckets.flat() as FirecrawlSearchResult[];
+}
+
 /**
- * Search the web via Firecrawl and return top results.
+ * Search the web via Firecrawl v2 and return top results.
  */
 export async function firecrawlSearch(
   query: string,
@@ -47,7 +58,7 @@ export async function firecrawlSearch(
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ query, limit }),
+    body: JSON.stringify({ query, limit, sources: ["web"] }),
   });
 
   if (!res.ok) {
@@ -55,12 +66,11 @@ export async function firecrawlSearch(
     throw new Error(`Firecrawl search failed [${res.status}]: ${text}`);
   }
 
-  const json = await res.json();
-  return (json.data ?? json.results ?? []) as FirecrawlSearchResult[];
+  return normalizeSearchPayload(await res.json());
 }
 
 /**
- * Scrape a URL with JSON extraction via Firecrawl LLM.
+ * Scrape a URL with LLM JSON extraction via Firecrawl v2.
  */
 export async function firecrawlScrapeJson<T = Record<string, unknown>>(
   url: string,
@@ -77,8 +87,7 @@ export async function firecrawlScrapeJson<T = Record<string, unknown>>(
     },
     body: JSON.stringify({
       url,
-      formats: ["json"],
-      jsonOptions: { prompt, schema },
+      formats: [{ type: "json", prompt, schema }],
       onlyMainContent: true,
       waitFor: 3000,
     }),
@@ -90,7 +99,7 @@ export async function firecrawlScrapeJson<T = Record<string, unknown>>(
   }
 
   const json = await res.json();
-  // v1 nests under data.json or data.data.json
-  const extracted = json?.data?.json ?? json?.json ?? null;
+  // v2 may return json at the top level or nested under data
+  const extracted = json?.json ?? json?.data?.json ?? json?.data?.data?.json ?? null;
   return extracted as T | null;
 }
