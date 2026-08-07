@@ -653,12 +653,14 @@ async function opCreateInvoice(ctx: Ctx, args: any): Promise<Response> {
 
   // Locate contact
   let contact: any = null;
+  let pipelineEntry: any = null;
   if (project.pipeline_entry_id) {
     const { data: pe } = await service
       .from("pipeline_entries")
-      .select("contact_id, contacts!pipeline_entries_contact_id_fkey(*)")
+      .select("contact_id, estimated_value, metadata, contacts!pipeline_entries_contact_id_fkey(*)")
       .eq("id", project.pipeline_entry_id)
       .maybeSingle();
+    pipelineEntry = pe;
     contact = (pe as any)?.contacts ?? null;
   }
   if (!contact) return err("no_contact", "No contact associated with project", ctx.requestId, 400);
@@ -681,27 +683,73 @@ async function opCreateInvoice(ctx: Ctx, args: any): Promise<Response> {
     return err("customer_or_project_failed", e?.message ?? String(e), ctx.requestId, 502);
   }
 
-  // The live estimate builder writes enhanced_estimates. Legacy estimates are
-  // only a fallback for older projects.
-  const { data: enhancedEstimates } = await service
+  // Enhanced estimates are canonically attached to the pipeline entry in the
+  // live builder (not the projects row). Resolve the selected estimate first,
+  // then the highest non-zero selling price, matching Pipeline and AR.
+  const estimateColumns = "id, line_items, selling_price, estimate_number, status, updated_at";
+  const { data: projectEstimates } = await service
     .from("enhanced_estimates")
-    .select("id, line_items, selling_price, estimate_number, status")
+    .select(estimateColumns)
     .eq("tenant_id", ctx.tenantId)
-    .eq("project_id", projectId)
-    .order("updated_at", { ascending: false })
-    .limit(1);
-  let estimate = enhancedEstimates?.[0] ?? null;
+    .eq("project_id", projectId);
+  let enhancedEstimates: any[] = projectEstimates ?? [];
+  if (project.pipeline_entry_id) {
+    const { data: pipelineEstimates } = await service
+      .from("enhanced_estimates")
+      .select(estimateColumns)
+      .eq("tenant_id", ctx.tenantId)
+      .eq("pipeline_entry_id", project.pipeline_entry_id);
+    const byId = new Map(enhancedEstimates.map((row) => [row.id, row]));
+    for (const row of pipelineEstimates ?? []) byId.set(row.id, row);
+    enhancedEstimates = [...byId.values()];
+  }
+
+  const metadata = (pipelineEntry?.metadata ?? {}) as Record<string, any>;
+  const selectedIds = Array.isArray(metadata.selected_estimate_ids)
+    ? metadata.selected_estimate_ids.filter((id: unknown): id is string => typeof id === "string")
+    : [];
+  const selectedId = metadata.selected_estimate_id ?? metadata.enhanced_estimate_id ?? null;
+  let estimate: any = null;
+
+  if (metadata.combine_estimates === true && selectedIds.length > 1) {
+    const combined = enhancedEstimates.filter((row) => selectedIds.includes(row.id));
+    if (combined.length) {
+      const sellingPrice = combined.reduce((sum, row) => sum + Number(row.selling_price ?? 0), 0);
+      estimate = {
+        ...combined[0],
+        id: combined.map((row) => row.id).sort().join("+"),
+        estimate_number: combined.map((row) => row.estimate_number).filter(Boolean).join(" + "),
+        selling_price: sellingPrice,
+      };
+    }
+  }
+  if (!estimate && selectedId) estimate = enhancedEstimates.find((row) => row.id === selectedId) ?? null;
+  if (!estimate) {
+    estimate = enhancedEstimates
+      .filter((row) => Number(row.selling_price ?? 0) > 0)
+      .sort((a, b) => Number(b.selling_price ?? 0) - Number(a.selling_price ?? 0))[0] ?? null;
+  }
+  if (!estimate && enhancedEstimates.length) {
+    estimate = enhancedEstimates.sort((a, b) =>
+      String(b.updated_at ?? "").localeCompare(String(a.updated_at ?? ""))
+    )[0];
+  }
   if (!estimate) {
     const { data: legacyEstimates } = await service
       .from("estimates")
-      .select("id, line_items, selling_price, estimate_number, status")
+      .select(estimateColumns)
       .eq("tenant_id", ctx.tenantId)
       .eq("project_id", projectId)
-      .order("updated_at", { ascending: false })
+      .order("selling_price", { ascending: false })
       .limit(1);
     estimate = legacyEstimates?.[0] ?? null;
   }
   if (!estimate) return err("no_estimate", "No estimate found for project", ctx.requestId, 400);
+
+  const targetSellingPrice = Math.round(Number(estimate.selling_price ?? 0) * 100) / 100;
+  if (targetSellingPrice <= 0) {
+    return err("no_selling_price", "Selected estimate has no selling price", ctx.requestId, 400);
+  }
 
   // Pull job_type_item_map for tenant×realm
   const { data: itemMaps } = await service
@@ -717,16 +765,11 @@ async function opCreateInvoice(ctx: Ctx, args: any): Promise<Response> {
   const defaultClassId = settings?.default_class_id ?? null;
   const defaultDeptId = settings?.default_department_id ?? null;
 
-  // Build lines
+  // Build one canonical contract line. Estimate line_items contain internal
+  // material/labor cost detail and must never become the customer invoice
+  // amount. The QBO transaction total is the selected contract selling price.
   const projectNumber = cljJobLabel(project.clj_formatted_number, project.project_number) || project.id;
-  const lineContainer: any = estimate.line_items;
-  const rawLines: any[] = Array.isArray(lineContainer)
-    ? lineContainer
-    : ["materials", "labor", "turnkey", "items"].flatMap((key) =>
-        Array.isArray(lineContainer?.[key]) ? lineContainer[key] : []
-      );
   const lines: any[] = [];
-  const unmapped: string[] = [];
   let lineNum = 1;
 
   const pushLine = (desc: string, amount: number, qty: number, unit: number, code: string | null) => {
@@ -753,44 +796,40 @@ async function opCreateInvoice(ctx: Ctx, args: any): Promise<Response> {
     lines.push(line);
   };
 
-  if (rawLines.length > 0) {
-    for (const it of rawLines) {
-      pushLine(
-        it.description ?? it.name ?? "Line item",
-        Number(it.line_total ?? it.total ?? it.amount ?? ((it.qty ?? it.quantity ?? 1) * (it.unit_cost ?? it.rate ?? it.unit_price ?? 0))),
-        Number(it.qty ?? it.quantity ?? 1),
-        Number(it.unit_cost ?? it.rate ?? it.unit_price ?? 0),
-        it.job_type_code ?? it.jobTypeCode ?? null,
-      );
-    }
-  } else {
-    pushLine(project.name ?? "Job invoice", Number(estimate.selling_price ?? 0), 1, Number(estimate.selling_price ?? 0), null);
+  const projectType = String(
+    metadata.project_subtype ?? metadata.project_type ?? metadata.roof_type ?? ""
+  ).toLowerCase();
+  const preferredCode = projectType.includes("repair")
+    ? "roof_repair"
+    : projectType.includes("roof") || projectType.includes("shingle") || projectType.includes("tile") || projectType.includes("metal")
+      ? "roof_replacement"
+      : projectType.includes("gutter") || projectType.includes("soffit") || projectType.includes("fascia")
+        ? "gutters"
+        : projectType.includes("siding")
+          ? "siding"
+          : projectType.includes("solar")
+            ? "solar"
+            : null;
+  const fallbackMapping = (preferredCode ? mapByCode.get(preferredCode) : null)
+    ?? mapByCode.get("roof_replacement")
+    ?? [...mapByCode.values()][0]
+    ?? null;
+  const contractItemId = fallbackMapping?.qbo_item_id ?? defaultItemId;
+  if (!contractItemId) {
+    return err("unmapped_items", "No QuickBooks Item is configured for contract invoices.", ctx.requestId, 400, {
+      hint: "Configure a job type mapping or set tenant_qbo_settings.default_item_id.",
+    });
   }
+  pushLine(
+    `${project.name ?? "Project"} contract selling price`,
+    targetSellingPrice,
+    1,
+    targetSellingPrice,
+    fallbackMapping?.job_type_code ?? preferredCode,
+  );
 
   if (lines.length === 0) {
-    return err("unmapped_items", "One or more estimate line items have no QBO Item mapping.", ctx.requestId, 400, {
-      unmapped_job_type_codes: unmapped,
-      hint: "Configure job_type_item_map or set tenant_qbo_settings.default_item_id.",
-    });
-  }
-
-  // The estimate selling price is canonical. Estimate line_items may still
-  // contain underlying cost values, so proportionally scale the QBO lines to
-  // the approved selling price and pin the final penny to the last line.
-  const targetSellingPrice = Math.round(Number(estimate.selling_price ?? 0) * 100) / 100;
-  const rawLineTotal = lines.reduce((sum, line) => sum + Number(line.Amount ?? 0), 0);
-  if (targetSellingPrice > 0 && rawLineTotal > 0 && Math.abs(targetSellingPrice - rawLineTotal) > 0.009) {
-    const factor = targetSellingPrice / rawLineTotal;
-    let scaledTotal = 0;
-    lines.forEach((line, index) => {
-      const qty = Number(line.SalesItemLineDetail?.Qty ?? 1) || 1;
-      const amount = index === lines.length - 1
-        ? Math.round((targetSellingPrice - scaledTotal) * 100) / 100
-        : Math.round(Number(line.Amount ?? 0) * factor * 100) / 100;
-      line.Amount = amount;
-      line.SalesItemLineDetail.UnitPrice = Math.round((amount / qty) * 100) / 100;
-      scaledTotal += amount;
-    });
+    return err("unmapped_items", "The contract invoice line could not be mapped to a QuickBooks Item.", ctx.requestId, 400);
   }
 
   // Resolve QBO Department for this project's location, if any

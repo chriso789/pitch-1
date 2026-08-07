@@ -256,6 +256,27 @@ Deno.serve(async (req) => {
         });
     }
 
+    // Keep the project relationship on estimates after lead conversion. The
+    // estimate builder starts from a pipeline entry, while accounting and QBO
+    // operate on projects; persisting both IDs prevents financial sync gaps.
+    const { error: estimateLinkError } = await supabase
+      .from('enhanced_estimates')
+      .update({ project_id: newProject.id })
+      .eq('pipeline_entry_id', pipelineEntryId)
+      .eq('tenant_id', profile.tenant_id);
+    if (estimateLinkError) {
+      console.error('Error linking enhanced estimates to project:', estimateLinkError);
+    }
+
+    const { error: legacyEstimateLinkError } = await supabase
+      .from('estimates')
+      .update({ project_id: newProject.id })
+      .eq('pipeline_entry_id', pipelineEntryId)
+      .eq('tenant_id', profile.tenant_id);
+    if (legacyEstimateLinkError) {
+      console.error('Error linking legacy estimates to project:', legacyEstimateLinkError);
+    }
+
     // Create Pre-Cap and Cap-Out budget snapshots from estimate
     try {
       // Fetch the latest estimate for this pipeline entry

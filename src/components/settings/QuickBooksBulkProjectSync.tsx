@@ -18,6 +18,7 @@ interface ProjectRow {
   project_number: string | null;
   name: string | null;
   pipeline_entry_id?: string | null;
+  sellingPrice?: number;
 }
 
 async function getFunctionErrorMessage(error: unknown): Promise<string> {
@@ -74,7 +75,33 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
       const convertedProjects = ((projects ?? []) as ProjectRow[]).filter(
         (project) => project.pipeline_entry_id && convertedEntryIds.has(project.pipeline_entry_id),
       );
-      const ids = convertedProjects.map((project) => project.id);
+      const convertedPipelineIds = convertedProjects
+        .map((project) => project.pipeline_entry_id)
+        .filter((id): id is string => Boolean(id));
+      const sellingPriceByPipeline = new Map<string, number>();
+      if (convertedPipelineIds.length) {
+        const { data: estimates, error: estimateError } = await supabase
+          .from("enhanced_estimates")
+          .select("pipeline_entry_id, selling_price")
+          .eq("tenant_id", tenantId)
+          .in("pipeline_entry_id", convertedPipelineIds);
+        if (estimateError) throw estimateError;
+        for (const estimate of estimates ?? []) {
+          if (!estimate.pipeline_entry_id) continue;
+          const price = Number(estimate.selling_price ?? 0);
+          sellingPriceByPipeline.set(
+            estimate.pipeline_entry_id,
+            Math.max(sellingPriceByPipeline.get(estimate.pipeline_entry_id) ?? 0, price),
+          );
+        }
+      }
+      const pricedProjects = convertedProjects.map((project) => ({
+        ...project,
+        sellingPrice: project.pipeline_entry_id
+          ? sellingPriceByPipeline.get(project.pipeline_entry_id) ?? 0
+          : 0,
+      }));
+      const ids = pricedProjects.map((project) => project.id);
       let mappedIds = new Set<string>();
       if (ids.length) {
         const { data: mappings } = await supabase
@@ -86,9 +113,9 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
       }
 
       return {
-        all: convertedProjects,
-        unsynced: convertedProjects.filter((project) => !mappedIds.has(project.id)),
-        synced: convertedProjects.filter((project) => mappedIds.has(project.id)),
+        all: pricedProjects,
+        unsynced: pricedProjects.filter((project) => !mappedIds.has(project.id)),
+        synced: pricedProjects.filter((project) => mappedIds.has(project.id)),
       };
     },
     enabled: !!tenantId,
@@ -123,17 +150,16 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
           // The customer/job hierarchy and the financial transaction are one
           // sync operation from the user's perspective. Create/update the QBO
           // invoice from the current selling price after the sub-job exists.
-          const { data: financialRes, error: financialError } = await supabase.functions.invoke("qbo-worker", {
-            body: { op: "createInvoiceFromEstimates", args: { project_id: project.id } },
-            headers: { "x-tenant-id": tenantId },
-          });
-          const financialCode = (financialRes as any)?.code;
-          // A project with no estimate can still have its customer/job synced;
-          // every other financial failure must remain visible in the run.
-          if (financialError || ((financialRes as any)?.ok === false && financialCode !== "no_estimate")) {
-            const message = (financialRes as any)?.error ??
-              (financialError ? await getFunctionErrorMessage(financialError) : "financial sync failed");
-            failures.push(`${label}: customer/job synced, invoice failed: ${message}`);
+          if ((project.sellingPrice ?? 0) > 0) {
+            const { data: financialRes, error: financialError } = await supabase.functions.invoke("qbo-worker", {
+              body: { op: "createInvoiceFromEstimates", args: { project_id: project.id } },
+              headers: { "x-tenant-id": tenantId },
+            });
+            if (financialError || (financialRes as any)?.ok === false) {
+              const message = (financialRes as any)?.error ??
+                (financialError ? await getFunctionErrorMessage(financialError) : "financial sync failed");
+              failures.push(`${label}: customer/job synced, invoice failed: ${message}`);
+            }
           }
         }
       } catch (e: any) {
