@@ -954,9 +954,9 @@ async function opCreateInvoice(ctx: Ctx, args: any): Promise<Response> {
         qbo_connection_id: connection.id,
         realm_id: connection.realm_id,
         qbo_invoice_id: invoice.Id,
-        event_type: "payment_sync_failed",
+        event_type: "sync_error",
         amount_applied: paymentAmount,
-        authoritative_source: "pitch_payment",
+        authoritative_source: "worker_computed",
         intuit_tid: paymentResult.intuitTid,
         details: { pitch_payment_id: payment.id, status: paymentResult.status },
       });
