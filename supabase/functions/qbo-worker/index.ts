@@ -1433,6 +1433,129 @@ async function opBackendTemplateStatus(ctx: Ctx) {
 }
 
 // =============================================================
+// Op: cleanupDuplicateJobs
+// Deactivates legacy duplicate job sub-customers left behind by earlier
+// naming schemes (JOB-0057 / EC-JOB-0016 / EC-J28 under one parent).
+// Never touches a sub-customer that carries a balance or is the mapped one.
+// =============================================================
+const CANONICAL_JOB_RE = /^[A-Z0-9]+-JOB-\d+$/;
+
+async function opCleanupDuplicateJobs(ctx: Ctx, args: any): Promise<Response> {
+  const service = svc();
+  const dryRun = args?.dry_run !== false;
+  const connection = await loadActiveConnection(service, ctx.tenantId);
+  if (!connection) return err("no_active_connection", "No active QuickBooks connection", ctx.requestId, 400);
+  const realmId = connection.realm_id as string;
+  const { access_token } = await getValidAccessToken(service, ctx.tenantId);
+
+  // Pull every active job sub-customer.
+  const jobs: any[] = [];
+  for (let start = 1; start < 2000; start += 100) {
+    const q = encodeURIComponent(
+      `select Id, DisplayName, Job, Active, Balance, SyncToken, ParentRef from Customer where Job = true and Active = true startposition ${start} maxresults 100`,
+    );
+    const res = await fetch(
+      `${qboHost(connection)}/v3/company/${realmId}/query?minorversion=75&query=${q}`,
+      { headers: { Authorization: `Bearer ${access_token}`, Accept: "application/json" } },
+    );
+    if (!res.ok) break;
+    const batch = (await res.json())?.QueryResponse?.Customer ?? [];
+    jobs.push(...batch);
+    if (batch.length < 100) break;
+  }
+
+  const { data: mappings } = await service
+    .from("qbo_entity_mapping")
+    .select("qbo_entity_id")
+    .eq("tenant_id", ctx.tenantId)
+    .eq("realm_id", realmId)
+    .eq("pitch_entity_type", "project")
+    .in("qbo_entity_type", ["Project", "SubCustomerJob"]);
+  const mappedIds = new Set((mappings ?? []).map((m: any) => String(m.qbo_entity_id)));
+
+  const groups = new Map<string, any[]>();
+  for (const j of jobs) {
+    const parent = String(j?.ParentRef?.value ?? "");
+    if (!parent) continue;
+    if (!groups.has(parent)) groups.set(parent, []);
+    groups.get(parent)!.push(j);
+  }
+
+  const deactivated: string[] = [];
+  const kept: string[] = [];
+  const needsManualMerge: string[] = [];
+
+  for (const [, group] of groups) {
+    if (group.length < 2) continue;
+    const score = (j: any) =>
+      (mappedIds.has(String(j.Id)) ? 4 : 0) +
+      (CANONICAL_JOB_RE.test(String(j.DisplayName ?? "").toUpperCase()) ? 2 : 0) +
+      (Number(j.Balance ?? 0) > 0 ? 1 : 0);
+    const sorted = [...group].sort((a, b) => score(b) - score(a));
+    const canonical = sorted[0];
+    kept.push(String(canonical.DisplayName));
+
+    for (const dup of sorted.slice(1)) {
+      if (Number(dup.Balance ?? 0) > 0) {
+        needsManualMerge.push(`${dup.DisplayName} (balance $${Number(dup.Balance).toFixed(2)})`);
+        continue;
+      }
+      if (dryRun) {
+        deactivated.push(String(dup.DisplayName));
+        continue;
+      }
+      const res = await fetch(
+        `${qboHost(connection)}/v3/company/${realmId}/customer?minorversion=75`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${access_token}`,
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({ Id: dup.Id, SyncToken: dup.SyncToken, sparse: true, Active: false }),
+        },
+      );
+      void writeQboApiLog(service, {
+        action: "qbo_worker",
+        tenant_id: ctx.tenantId,
+        connection_id: connection.id,
+        realm_id: realmId,
+        oauth_app_env: connection.oauth_app_env,
+        endpoint: `/v3/company/${realmId}/customer`,
+        method: "POST",
+        http_status: res.status,
+        intuit_tid: getIntuitTid(res),
+        success: res.ok,
+        request_metadata: { op: "deactivateDuplicateJob", qbo_customer_id: dup.Id, display_name: dup.DisplayName },
+      });
+      if (res.ok) {
+        deactivated.push(String(dup.DisplayName));
+        await service.from("qbo_entity_mapping")
+          .delete()
+          .eq("tenant_id", ctx.tenantId)
+          .eq("realm_id", realmId)
+          .eq("qbo_entity_id", String(dup.Id));
+      } else {
+        needsManualMerge.push(`${dup.DisplayName} (deactivate failed)`);
+      }
+    }
+  }
+
+  return ok(
+    {
+      dry_run: dryRun,
+      total_job_subcustomers: jobs.length,
+      duplicate_groups: [...groups.values()].filter((g) => g.length > 1).length,
+      deactivated,
+      kept,
+      needs_manual_merge: needsManualMerge,
+    },
+    ctx.requestId,
+  );
+}
+
+// =============================================================
 // Dispatcher
 // =============================================================
 Deno.serve(async (req) => {
