@@ -220,6 +220,39 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
     }
   };
 
+  const [nameFix, setNameFix] = useState<{
+    dry_run: boolean;
+    scanned: number;
+    renamed: Array<{ from: string; to: string }>;
+    skipped: string[];
+  } | null>(null);
+  const [fixingNames, setFixingNames] = useState(false);
+
+  const runNameNormalize = async (dryRun: boolean) => {
+    setFixingNames(true);
+    try {
+      const { data: res, error } = await supabase.functions.invoke("qbo-worker", {
+        body: { op: "normalizeCustomerNames", args: { dry_run: dryRun } },
+        headers: { "x-tenant-id": tenantId },
+      });
+      if (error || (res as any)?.ok === false) {
+        const message = (res as any)?.error ?? (error ? await getFunctionErrorMessage(error) : "rename failed");
+        toast.error(message);
+        return;
+      }
+      const payload = ((res as any)?.data ?? res) as any;
+      setNameFix(payload);
+      if (dryRun) {
+        toast.info(`${payload.renamed.length} customer name${payload.renamed.length === 1 ? "" : "s"} to clean up`);
+      } else {
+        toast.success(`Renamed ${payload.renamed.length} customer${payload.renamed.length === 1 ? "" : "s"}`);
+      }
+    } catch (e: any) {
+      toast.error(e?.message ?? "rename failed");
+    } finally {
+      setFixingNames(false);
+    }
+  };
 
 
   return (
@@ -272,6 +305,17 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
             {cleaning ? <RefreshCw className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
             Find duplicate job numbers
           </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => runNameNormalize(true)}
+            disabled={running || fixingNames}
+            className="gap-2"
+          >
+            {fixingNames ? <RefreshCw className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
+            Clean up customer names
+          </Button>
+
           <Button variant="outline" size="sm" onClick={() => refetch()} disabled={running} className="gap-2">
             <RefreshCw className="h-4 w-4" />
             Refresh
@@ -314,7 +358,29 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
           </div>
         )}
 
-
+        {nameFix && (
+          <div className="rounded-md border p-3 space-y-2">
+            <div className="text-sm font-medium">
+              {nameFix.renamed.length} customer name{nameFix.renamed.length === 1 ? "" : "s"} with an address or job number attached
+              <span className="text-muted-foreground font-normal"> ({nameFix.scanned} scanned)</span>
+            </div>
+            {nameFix.renamed.length > 0 && (
+              <ul className="text-xs text-muted-foreground space-y-0.5 max-h-40 overflow-y-auto">
+                {nameFix.renamed.map((r, i) => (
+                  <li key={i}>{r.from} → {r.to}</li>
+                ))}
+              </ul>
+            )}
+            {nameFix.skipped.length > 0 && (
+              <div className="text-xs text-amber-600">Skipped: {nameFix.skipped.join(", ")}</div>
+            )}
+            {nameFix.dry_run && nameFix.renamed.length > 0 && (
+              <Button size="sm" onClick={() => runNameNormalize(false)} disabled={fixingNames}>
+                Rename {nameFix.renamed.length} customer{nameFix.renamed.length === 1 ? "" : "s"}
+              </Button>
+            )}
+          </div>
+        )}
 
 
         {failed.length > 0 && (

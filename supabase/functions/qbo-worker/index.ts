@@ -316,6 +316,13 @@ async function upsertQboCustomer(
 ): Promise<string> {
   const realmId = connection.realm_id as string;
 
+  // Parent customer name is the PERSON only — never the address and never the
+  // job number. Those belong on the sub-customer job.
+  const personName =
+    `${contact.first_name ?? ""} ${contact.last_name ?? ""}`.trim() ||
+    contact.company_name ||
+    "Unknown Customer";
+
   // Look up existing mapping using NEW canonical columns
   const { data: existing } = await service
     .from("qbo_entity_mapping")
@@ -326,21 +333,52 @@ async function upsertQboCustomer(
     .eq("pitch_entity_id", contact.id)
     .eq("qbo_entity_type", "Customer")
     .maybeSingle();
-  if (existing?.qbo_entity_id) return existing.qbo_entity_id;
 
   const { access_token } = await getValidAccessToken(service, ctx.tenantId);
 
+  if (existing?.qbo_entity_id) {
+    // Rename legacy parents that still carry "Name - Address — JOB-####".
+    try {
+      const verify = await fetch(
+        `${qboHost(connection)}/v3/company/${realmId}/customer/${existing.qbo_entity_id}?minorversion=75`,
+        { headers: { Authorization: `Bearer ${access_token}`, Accept: "application/json" } },
+      );
+      if (verify.ok) {
+        const cust = (await verify.json())?.Customer;
+        const current = String(cust?.DisplayName ?? "").trim();
+        if (cust?.Id && current && current !== personName) {
+          await fetch(
+            `${qboHost(connection)}/v3/company/${realmId}/customer?minorversion=75`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${access_token}`,
+                "Content-Type": "application/json",
+                Accept: "application/json",
+              },
+              body: JSON.stringify({
+                Id: cust.Id,
+                SyncToken: cust.SyncToken,
+                sparse: true,
+                DisplayName: personName,
+              }),
+            },
+          );
+        }
+      }
+    } catch (_e) { /* renaming is best-effort */ }
+    return existing.qbo_entity_id;
+  }
+
   const payload: Record<string, unknown> = {
     // AccuLynx model: the QBO Customer is the person. Jobs hang off it as
-    // sub-customers named by job number.
-    DisplayName:
-      `${contact.first_name ?? ""} ${contact.last_name ?? ""}`.trim() ||
-      contact.company_name ||
-      "Unknown Customer",
+    // sub-customers named by job number, and the address lives on the job.
+    DisplayName: personName,
     GivenName: contact.first_name ?? undefined,
     FamilyName: contact.last_name ?? undefined,
     CompanyName: contact.company_name ?? undefined,
   };
+
   if (contact.email) (payload as any).PrimaryEmailAddr = { Address: contact.email };
   if (contact.phone) (payload as any).PrimaryPhone = { FreeFormNumber: contact.phone };
   if (contact.address_street) {
@@ -523,13 +561,30 @@ async function upsertProjectOrJob(
   // already carries the person's name (AccuLynx-style Customer:Job).
   const displayName = String(projectNumber).trim();
 
+  // The job address lives on the sub-customer, not on the parent name.
+  const jobStreet = project?.address_street ?? contact?.address_street ?? null;
+  const jobCity = project?.address_city ?? contact?.address_city ?? null;
+  const jobState = project?.address_state ?? contact?.address_state ?? null;
+  const jobZip = project?.address_zip ?? contact?.address_zip ?? null;
+  const jobAddr = jobStreet || jobCity || jobZip
+    ? {
+      Line1: jobStreet ?? undefined,
+      City: jobCity ?? undefined,
+      CountrySubDivisionCode: jobState ?? undefined,
+      PostalCode: jobZip ?? undefined,
+    }
+    : undefined;
+
   const payload = {
     DisplayName: displayName,
     ParentRef: { value: parentCustomerId },
     Job: true,
     BillWithParent: true,
     Active: true,
+    ...(jobAddr ? { ShipAddr: jobAddr, BillAddr: jobAddr } : {}),
+    ...(jobStreet ? { Notes: String(jobStreet) } : {}),
   };
+
   const res = await fetch(
     `${qboHost(connection)}/v3/company/${realmId}/customer?minorversion=75`,
     {
@@ -1556,7 +1611,98 @@ async function opCleanupDuplicateJobs(ctx: Ctx, args: any): Promise<Response> {
 }
 
 // =============================================================
+
+// =============================================================
+// Op: normalizeCustomerNames
+// Legacy parents were created as "Name - Address — JOB-####". The parent must
+// carry ONLY the person/company name; the address + job number belong on the
+// sub-customer job. This renames drifted parents in place (no new records).
+// =============================================================
+function personNameFromLegacyDisplayName(name: string): string {
+  let out = String(name ?? "").trim();
+  // Strip trailing job number segment ("— JOB-0057", "- EC-JOB-0016").
+  out = out.replace(/\s*[—–-]\s*[A-Z0-9]*-?JOB-?\d+\s*$/i, "").trim();
+  // Strip trailing address segment ("Albany Fernandes - 2847 Northeast 2nd Ave").
+  const parts = out.split(/\s+[-–—]\s+/);
+  if (parts.length > 1 && /\d/.test(parts[parts.length - 1])) {
+    out = parts.slice(0, -1).join(" - ").trim();
+  }
+  return out;
+}
+
+async function opNormalizeCustomerNames(ctx: Ctx, args: any): Promise<Response> {
+  const service = svc();
+  const dryRun = args?.dry_run !== false;
+  const connection = await loadActiveConnection(service, ctx.tenantId);
+  if (!connection) return err("no_active_connection", "No active QuickBooks connection", ctx.requestId, 400);
+  const realmId = connection.realm_id as string;
+  const { access_token } = await getValidAccessToken(service, ctx.tenantId);
+
+  const parents: any[] = [];
+  for (let start = 1; start < 2000; start += 100) {
+    const q = encodeURIComponent(
+      `select Id, DisplayName, Job, Active, SyncToken from Customer where Job = false and Active = true startposition ${start} maxresults 100`,
+    );
+    const res = await fetch(
+      `${qboHost(connection)}/v3/company/${realmId}/query?minorversion=75&query=${q}`,
+      { headers: { Authorization: `Bearer ${access_token}`, Accept: "application/json" } },
+    );
+    if (!res.ok) break;
+    const page = (await res.json())?.QueryResponse?.Customer ?? [];
+    parents.push(...page);
+    if (page.length < 100) break;
+  }
+
+  const renamed: Array<{ from: string; to: string }> = [];
+  const skipped: string[] = [];
+
+  for (const p of parents) {
+    const current = String(p.DisplayName ?? "").trim();
+    const target = personNameFromLegacyDisplayName(current);
+    if (!target || target === current) continue;
+    if (parents.some((o) => o.Id !== p.Id && String(o.DisplayName ?? "").trim() === target)) {
+      skipped.push(`${current} (name "${target}" already exists)`);
+      continue;
+    }
+    if (dryRun) {
+      renamed.push({ from: current, to: target });
+      continue;
+    }
+    const res = await fetch(
+      `${qboHost(connection)}/v3/company/${realmId}/customer?minorversion=75`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${access_token}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ Id: p.Id, SyncToken: p.SyncToken, sparse: true, DisplayName: target }),
+      },
+    );
+    void writeQboApiLog(service, {
+      action: "qbo_worker",
+      tenant_id: ctx.tenantId,
+      connection_id: connection.id,
+      realm_id: realmId,
+      oauth_app_env: connection.oauth_app_env,
+      endpoint: `/v3/company/${realmId}/customer`,
+      method: "POST",
+      http_status: res.status,
+      intuit_tid: getIntuitTid(res),
+      success: res.ok,
+      request_metadata: { op: "renameParentCustomer", qbo_customer_id: p.Id, from: current, to: target },
+    });
+    if (res.ok) renamed.push({ from: current, to: target });
+    else skipped.push(`${current} (rename failed)`);
+  }
+
+  return ok({ dry_run: dryRun, scanned: parents.length, renamed, skipped }, ctx.requestId);
+}
+
+// =============================================================
 // Dispatcher
+
 // =============================================================
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -1619,8 +1765,12 @@ Deno.serve(async (req) => {
       case "cleanupDuplicateJobs":
       case "cleanup-duplicate-jobs":
         return await opCleanupDuplicateJobs(ctx, args);
+      case "normalizeCustomerNames":
+      case "normalize-customer-names":
+        return await opNormalizeCustomerNames(ctx, args);
       default:
-        return err("unknown_op", `Unknown op '${op}'. Supported: preflight, setLocation, syncProject, createInvoiceFromEstimates, toggleOnlinePayments, syncPaymentStatus, refreshAr, backendTemplateStatus, cleanupDuplicateJobs`, ctx.requestId, 400);
+        return err("unknown_op", `Unknown op '${op}'. Supported: preflight, setLocation, syncProject, createInvoiceFromEstimates, toggleOnlinePayments, syncPaymentStatus, refreshAr, backendTemplateStatus, cleanupDuplicateJobs, normalizeCustomerNames`, ctx.requestId, 400);
+
     }
   } catch (e: any) {
     console.error("[qbo-worker] unhandled error", e);
