@@ -305,6 +305,17 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
             {cleaning ? <RefreshCw className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
             Find duplicate job numbers
           </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => runNameNormalize(true)}
+            disabled={running || fixingNames}
+            className="gap-2"
+          >
+            {fixingNames ? <RefreshCw className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
+            Clean up customer names
+          </Button>
+
           <Button variant="outline" size="sm" onClick={() => refetch()} disabled={running} className="gap-2">
             <RefreshCw className="h-4 w-4" />
             Refresh
