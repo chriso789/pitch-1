@@ -166,9 +166,9 @@ Deno.serve(async (req) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const { data: claims, error: claimsErr } = await authClient.auth.getClaims(token);
-  if (claimsErr || !claims?.claims?.sub) return json(401, { ok: false, error: "invalid_token" }, requestId);
-  const userId = claims.claims.sub as string;
+  const { data: userData, error: userErr } = await authClient.auth.getUser(token);
+  if (userErr || !userData?.user?.id) return json(401, { ok: false, error: "invalid_token" }, requestId);
+  const userId = userData.user.id;
 
   let body: ReqBody = {};
   try { body = (await req.json()) as ReqBody; } catch { return json(400, { ok: false, error: "invalid_json" }, requestId); }
