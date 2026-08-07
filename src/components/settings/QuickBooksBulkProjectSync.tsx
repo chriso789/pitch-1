@@ -220,6 +220,39 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
     }
   };
 
+  const [nameFix, setNameFix] = useState<{
+    dry_run: boolean;
+    scanned: number;
+    renamed: Array<{ from: string; to: string }>;
+    skipped: string[];
+  } | null>(null);
+  const [fixingNames, setFixingNames] = useState(false);
+
+  const runNameNormalize = async (dryRun: boolean) => {
+    setFixingNames(true);
+    try {
+      const { data: res, error } = await supabase.functions.invoke("qbo-worker", {
+        body: { op: "normalizeCustomerNames", args: { dry_run: dryRun } },
+        headers: { "x-tenant-id": tenantId },
+      });
+      if (error || (res as any)?.ok === false) {
+        const message = (res as any)?.error ?? (error ? await getFunctionErrorMessage(error) : "rename failed");
+        toast.error(message);
+        return;
+      }
+      const payload = ((res as any)?.data ?? res) as any;
+      setNameFix(payload);
+      if (dryRun) {
+        toast.info(`${payload.renamed.length} customer name${payload.renamed.length === 1 ? "" : "s"} to clean up`);
+      } else {
+        toast.success(`Renamed ${payload.renamed.length} customer${payload.renamed.length === 1 ? "" : "s"}`);
+      }
+    } catch (e: any) {
+      toast.error(e?.message ?? "rename failed");
+    } finally {
+      setFixingNames(false);
+    }
+  };
 
 
   return (
