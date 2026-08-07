@@ -472,10 +472,33 @@ async function upsertProjectOrJob(
       const isCorrectJob = verified?.Job === true &&
         String(verified?.ParentRef?.value ?? "") === String(parentCustomerId);
       if (isCorrectJob) {
+        let currentName = String(verified.DisplayName ?? projectNumber).trim();
+        // Rename in place when the canonical job label has changed. Creating a
+        // second sub-customer is what produced duplicate job numbers before.
+        if (currentName !== String(projectNumber).trim()) {
+          const renameRes = await fetch(
+            `${qboHost(connection)}/v3/company/${realmId}/customer?minorversion=75`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${access_token}`,
+                "Content-Type": "application/json",
+                Accept: "application/json",
+              },
+              body: JSON.stringify({
+                Id: verified.Id,
+                SyncToken: verified.SyncToken,
+                sparse: true,
+                DisplayName: String(projectNumber).trim(),
+              }),
+            },
+          );
+          if (renameRes.ok) currentName = String(projectNumber).trim();
+        }
         return {
           id: row.qbo_entity_id,
           mode: "sub_customer_job",
-          display_name: String(verified.DisplayName ?? projectNumber).trim(),
+          display_name: currentName,
         };
       }
     }
