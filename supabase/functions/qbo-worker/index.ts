@@ -97,11 +97,15 @@ async function resolveContext(req: Request): Promise<
     global: { headers: { Authorization: authHeader } },
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const { data: claimsData, error: claimsErr } = await userClient.auth.getClaims(token);
-  if (claimsErr || !claimsData?.claims?.sub) {
+  // getClaims() is not available in every Supabase Edge Runtime SDK build.
+  // getUser(token) validates the bearer against Auth and is supported across
+  // the deployed v2 clients, preventing the request from crashing before CORS
+  // can return a structured response to the browser.
+  const { data: userData, error: userErr } = await userClient.auth.getUser(token);
+  if (userErr || !userData?.user?.id) {
     return { ok: false, res: err("unauthorized", "Invalid token", requestId, 401) };
   }
-  const userId = String(claimsData.claims.sub);
+  const userId = userData.user.id;
 
   const service = svc();
   const requestedTenantId = req.headers.get("x-tenant-id")?.trim() || null;
