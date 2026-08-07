@@ -561,13 +561,30 @@ async function upsertProjectOrJob(
   // already carries the person's name (AccuLynx-style Customer:Job).
   const displayName = String(projectNumber).trim();
 
+  // The job address lives on the sub-customer, not on the parent name.
+  const jobStreet = project?.address_street ?? contact?.address_street ?? null;
+  const jobCity = project?.address_city ?? contact?.address_city ?? null;
+  const jobState = project?.address_state ?? contact?.address_state ?? null;
+  const jobZip = project?.address_zip ?? contact?.address_zip ?? null;
+  const jobAddr = jobStreet || jobCity || jobZip
+    ? {
+      Line1: jobStreet ?? undefined,
+      City: jobCity ?? undefined,
+      CountrySubDivisionCode: jobState ?? undefined,
+      PostalCode: jobZip ?? undefined,
+    }
+    : undefined;
+
   const payload = {
     DisplayName: displayName,
     ParentRef: { value: parentCustomerId },
     Job: true,
     BillWithParent: true,
     Active: true,
+    ...(jobAddr ? { ShipAddr: jobAddr, BillAddr: jobAddr } : {}),
+    ...(jobStreet ? { Notes: String(jobStreet) } : {}),
   };
+
   const res = await fetch(
     `${qboHost(connection)}/v3/company/${realmId}/customer?minorversion=75`,
     {
