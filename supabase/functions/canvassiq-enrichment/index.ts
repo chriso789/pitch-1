@@ -119,7 +119,7 @@ Deno.serve(async (req) => {
 
         const county = property.address?.county?.toLowerCase();
         if (county && countyUrls[county]) {
-          const firecrawlRes = await fetch('https://api.firecrawl.dev/v1/scrape', {
+          const firecrawlRes = await fetch('https://api.firecrawl.dev/v2/scrape', {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${FIRECRAWL_API_KEY}`,
@@ -127,21 +127,30 @@ Deno.serve(async (req) => {
             },
             body: JSON.stringify({
               url: `${countyUrls[county]}/search?address=${encodeURIComponent(property.address?.formatted || '')}`,
-              formats: [{ type: 'json', schema: {
-                owner_name: 'string',
-                mailing_address: 'string',
-                assessed_value: 'number',
-                year_built: 'number'
-              }}],
+              formats: [{
+                type: 'json',
+                prompt: 'Extract the property owner name, owner mailing address, assessed value and year built for this parcel.',
+                schema: {
+                  type: 'object',
+                  properties: {
+                    owner_name: { type: 'string' },
+                    mailing_address: { type: 'string' },
+                    assessed_value: { type: 'number' },
+                    year_built: { type: 'number' }
+                  }
+                }
+              }],
+              onlyMainContent: true,
               waitFor: 3000
             })
           });
 
           if (firecrawlRes.ok) {
             const firecrawlData = await firecrawlRes.json();
-            if (firecrawlData.success && firecrawlData.json) {
-              result.owner_name = firecrawlData.json.owner_name;
-              result.property_data = { ...result.property_data, ...firecrawlData.json };
+            const extracted = firecrawlData?.json ?? firecrawlData?.data?.json ?? null;
+            if (extracted) {
+              result.owner_name = extracted.owner_name;
+              result.property_data = { ...result.property_data, ...extracted };
               result.confidence += 40;
               result.sources.push('firecrawl');
 
