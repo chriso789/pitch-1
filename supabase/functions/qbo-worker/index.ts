@@ -374,11 +374,27 @@ async function upsertQboCustomer(
     success: res.ok,
     request_metadata: { op: "upsertCustomer", pitch_contact_id: contact.id },
   });
+  let j: any;
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`qbo_customer_create_failed [status=${res.status} tid=${tid ?? "none"}]: ${body.slice(0, 300)}`);
+    if (/DisplayNameExists|Duplicate Name Exists|6240/i.test(body)) {
+      const name = String(payload.DisplayName ?? "").replace(/'/g, "''");
+      const query = encodeURIComponent(`select * from Customer where DisplayName = '${name}'`);
+      const foundRes = await fetch(
+        `${qboHost(connection)}/v3/company/${realmId}/query?minorversion=75&query=${query}`,
+        { headers: { Authorization: `Bearer ${access_token}`, Accept: "application/json" } },
+      );
+      const found = foundRes.ok ? (await foundRes.json())?.QueryResponse?.Customer?.[0] : null;
+      if (!found?.Id) {
+        throw new Error(`qbo_customer_duplicate_unresolved [status=${res.status} tid=${tid ?? "none"}]: ${body.slice(0, 300)}`);
+      }
+      j = { Customer: found };
+    } else {
+      throw new Error(`qbo_customer_create_failed [status=${res.status} tid=${tid ?? "none"}]: ${body.slice(0, 300)}`);
+    }
+  } else {
+    j = await res.json();
   }
-  const j = await res.json();
   const qboId = j.Customer.Id as string;
 
   await service.from("qbo_entity_mapping").upsert({

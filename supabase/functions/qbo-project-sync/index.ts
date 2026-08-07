@@ -571,6 +571,41 @@ Deno.serve(async (req) => {
     last_intuit_tid: intuitTid,
   }).eq("id", mappingId);
 
+  // Keep the worker/reconciler's canonical identity map in lock-step with the
+  // project sync table. This prevents the invoice path from trying to recreate
+  // the same QBO parent/job and failing on duplicate names.
+  if (contact?.id) {
+    await admin.from("qbo_entity_mapping").upsert({
+      tenant_id: tenantId,
+      qbo_connection_id: connId,
+      realm_id: realm,
+      pitch_entity_type: "contact",
+      pitch_entity_id: contact.id,
+      entity_type: "contact",
+      entity_id: contact.id,
+      qbo_entity_type: "Customer",
+      qbo_entity_id: String(parentCustomerId),
+      metadata: { display_name: parentName },
+      updated_at: now,
+    }, { onConflict: "tenant_id,qbo_connection_id,realm_id,pitch_entity_type,pitch_entity_id,qbo_entity_type" });
+  }
+  await admin.from("qbo_entity_mapping").upsert({
+    tenant_id: tenantId,
+    qbo_connection_id: connId,
+    realm_id: realm,
+    pitch_entity_type: "project",
+    pitch_entity_id: projectId,
+    entity_type: "project",
+    entity_id: projectId,
+    qbo_entity_type: "SubCustomerJob",
+    qbo_entity_id: String(jobCustomerId),
+    pitch_project_number: jobNumber,
+    mapping_mode: "sub_customer_job",
+    sync_token: String(syncToken),
+    metadata: { display_name: jobName, parent_customer_id: parentCustomerId },
+    updated_at: now,
+  }, { onConflict: "tenant_id,qbo_connection_id,realm_id,pitch_entity_type,pitch_entity_id,qbo_entity_type" });
+
   await emitAudit(admin, {
     tenant_id: tenantId, event_type: "qbo_project_mapping_persisted",
     project_id: projectId, qbo_connection_id: connId, actor_user_id: userId,
