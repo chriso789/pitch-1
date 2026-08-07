@@ -754,6 +754,25 @@ async function opCreateInvoice(ctx: Ctx, args: any): Promise<Response> {
     });
   }
 
+  // The estimate selling price is canonical. Estimate line_items may still
+  // contain underlying cost values, so proportionally scale the QBO lines to
+  // the approved selling price and pin the final penny to the last line.
+  const targetSellingPrice = Math.round(Number(estimate.selling_price ?? 0) * 100) / 100;
+  const rawLineTotal = lines.reduce((sum, line) => sum + Number(line.Amount ?? 0), 0);
+  if (targetSellingPrice > 0 && rawLineTotal > 0 && Math.abs(targetSellingPrice - rawLineTotal) > 0.009) {
+    const factor = targetSellingPrice / rawLineTotal;
+    let scaledTotal = 0;
+    lines.forEach((line, index) => {
+      const qty = Number(line.SalesItemLineDetail?.Qty ?? 1) || 1;
+      const amount = index === lines.length - 1
+        ? Math.round((targetSellingPrice - scaledTotal) * 100) / 100
+        : Math.round(Number(line.Amount ?? 0) * factor * 100) / 100;
+      line.Amount = amount;
+      line.SalesItemLineDetail.UnitPrice = Math.round((amount / qty) * 100) / 100;
+      scaledTotal += amount;
+    });
+  }
+
   // Resolve QBO Department for this project's location, if any
   let departmentRef: string | null = null;
   if (project.location_id) {
@@ -799,11 +818,43 @@ async function opCreateInvoice(ctx: Ctx, args: any): Promise<Response> {
     estimateId: estimate.id,
   });
 
+  const { data: existingInvoiceMapping } = await service
+    .from("qbo_entity_mapping")
+    .select("qbo_entity_id")
+    .eq("tenant_id", ctx.tenantId)
+    .eq("qbo_connection_id", connection.id)
+    .eq("realm_id", connection.realm_id)
+    .eq("pitch_entity_type", "project")
+    .eq("pitch_entity_id", project.id)
+    .eq("qbo_entity_type", "Invoice")
+    .maybeSingle();
+
+  let invoiceWriteBody = invoicePayload;
+  let invoiceWriteUrl = `${qboHost(connection)}/v3/company/${connection.realm_id}/invoice?minorversion=75`;
+  let invoiceWriteRequestId: string | undefined = requestIdForCreate;
+  if (existingInvoiceMapping?.qbo_entity_id) {
+    const currentResult = await qboFetch({
+      method: "GET",
+      url: `${qboHost(connection)}/v3/company/${connection.realm_id}/invoice/${existingInvoiceMapping.qbo_entity_id}?minorversion=75`,
+      getAccessToken: async () => (await getValidAccessToken(service, ctx.tenantId)).access_token,
+    });
+    const currentInvoice = (currentResult.json as any)?.Invoice;
+    if (currentResult.ok && currentInvoice?.Id && currentInvoice?.SyncToken != null) {
+      invoiceWriteBody = {
+        Id: currentInvoice.Id,
+        SyncToken: currentInvoice.SyncToken,
+        sparse: true,
+        ...invoicePayload,
+      };
+      invoiceWriteRequestId = undefined;
+    }
+  }
+
   const createResult = await qboFetch({
     method: "POST",
-    url: `${qboHost(connection)}/v3/company/${connection.realm_id}/invoice?minorversion=75`,
-    body: invoicePayload,
-    requestId: requestIdForCreate,
+    url: invoiceWriteUrl,
+    body: invoiceWriteBody,
+    requestId: invoiceWriteRequestId,
     getAccessToken: async () => (await getValidAccessToken(service, ctx.tenantId)).access_token,
   });
 
