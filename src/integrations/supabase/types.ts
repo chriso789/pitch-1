@@ -40222,6 +40222,33 @@ export type Database = {
           },
         ]
       }
+      project_number_sequences: {
+        Row: {
+          created_at: string
+          id: string
+          last_number: number
+          location_id: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_number?: number
+          location_id?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_number?: number
+          location_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       project_payments: {
         Row: {
           amount: number
@@ -64500,7 +64527,12 @@ export type Database = {
         }
         Returns: string
       }
-      generate_project_job_number: { Args: never; Returns: string }
+      generate_project_job_number:
+        | { Args: never; Returns: string }
+        | {
+            Args: { _location_id: string; _tenant_id: string }
+            Returns: string
+          }
       generate_referral_code: {
         Args: { _contact_id: string; _tenant_id: string }
         Returns: string
