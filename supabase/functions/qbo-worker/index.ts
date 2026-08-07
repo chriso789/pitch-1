@@ -773,6 +773,7 @@ async function opCreateInvoice(ctx: Ctx, args: any): Promise<Response> {
   // amount. The QBO transaction total is the selected contract selling price.
   const projectNumber = cljJobLabel(project.clj_formatted_number, project.project_number) || project.id;
   const lines: any[] = [];
+  const unmapped: string[] = [];
   let lineNum = 1;
 
   const pushLine = (desc: string, amount: number, qty: number, unit: number, code: string | null) => {
