@@ -358,7 +358,29 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
           </div>
         )}
 
-
+        {nameFix && (
+          <div className="rounded-md border p-3 space-y-2">
+            <div className="text-sm font-medium">
+              {nameFix.renamed.length} customer name{nameFix.renamed.length === 1 ? "" : "s"} with an address or job number attached
+              <span className="text-muted-foreground font-normal"> ({nameFix.scanned} scanned)</span>
+            </div>
+            {nameFix.renamed.length > 0 && (
+              <ul className="text-xs text-muted-foreground space-y-0.5 max-h-40 overflow-y-auto">
+                {nameFix.renamed.map((r, i) => (
+                  <li key={i}>{r.from} → {r.to}</li>
+                ))}
+              </ul>
+            )}
+            {nameFix.skipped.length > 0 && (
+              <div className="text-xs text-amber-600">Skipped: {nameFix.skipped.join(", ")}</div>
+            )}
+            {nameFix.dry_run && nameFix.renamed.length > 0 && (
+              <Button size="sm" onClick={() => runNameNormalize(false)} disabled={fixingNames}>
+                Rename {nameFix.renamed.length} customer{nameFix.renamed.length === 1 ? "" : "s"}
+              </Button>
+            )}
+          </div>
+        )}
 
 
         {failed.length > 0 && (
