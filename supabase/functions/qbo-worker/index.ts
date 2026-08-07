@@ -423,10 +423,13 @@ async function upsertQboCustomer(
 // Shared: resolve or create Project (native or SubCustomerJob)
 // =============================================================
 function cljJobLabel(clj?: string | null, fallback?: string | null): string {
+  // Preferred: location-scoped project number, e.g. "EC-JOB-0001".
+  const fb = (fallback ?? "").trim();
+  if (/^[A-Za-z0-9]+-JOB-\d+$/.test(fb)) return fb.toUpperCase();
   const raw = (clj ?? "").trim();
   const m = raw.match(/^([A-Za-z0-9]+)-(\d+)-(\d+)-(\d+)$/);
   if (m) return `${m[1].toUpperCase()}-J${String(Number(m[4]))}`;
-  return raw || (fallback ?? "").trim();
+  return raw || fb;
 }
 
 async function upsertProjectOrJob(
