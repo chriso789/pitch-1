@@ -316,6 +316,13 @@ async function upsertQboCustomer(
 ): Promise<string> {
   const realmId = connection.realm_id as string;
 
+  // Parent customer name is the PERSON only — never the address and never the
+  // job number. Those belong on the sub-customer job.
+  const personName =
+    `${contact.first_name ?? ""} ${contact.last_name ?? ""}`.trim() ||
+    contact.company_name ||
+    "Unknown Customer";
+
   // Look up existing mapping using NEW canonical columns
   const { data: existing } = await service
     .from("qbo_entity_mapping")
@@ -326,21 +333,52 @@ async function upsertQboCustomer(
     .eq("pitch_entity_id", contact.id)
     .eq("qbo_entity_type", "Customer")
     .maybeSingle();
-  if (existing?.qbo_entity_id) return existing.qbo_entity_id;
 
   const { access_token } = await getValidAccessToken(service, ctx.tenantId);
 
+  if (existing?.qbo_entity_id) {
+    // Rename legacy parents that still carry "Name - Address — JOB-####".
+    try {
+      const verify = await fetch(
+        `${qboHost(connection)}/v3/company/${realmId}/customer/${existing.qbo_entity_id}?minorversion=75`,
+        { headers: { Authorization: `Bearer ${access_token}`, Accept: "application/json" } },
+      );
+      if (verify.ok) {
+        const cust = (await verify.json())?.Customer;
+        const current = String(cust?.DisplayName ?? "").trim();
+        if (cust?.Id && current && current !== personName) {
+          await fetch(
+            `${qboHost(connection)}/v3/company/${realmId}/customer?minorversion=75`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${access_token}`,
+                "Content-Type": "application/json",
+                Accept: "application/json",
+              },
+              body: JSON.stringify({
+                Id: cust.Id,
+                SyncToken: cust.SyncToken,
+                sparse: true,
+                DisplayName: personName,
+              }),
+            },
+          );
+        }
+      }
+    } catch (_e) { /* renaming is best-effort */ }
+    return existing.qbo_entity_id;
+  }
+
   const payload: Record<string, unknown> = {
     // AccuLynx model: the QBO Customer is the person. Jobs hang off it as
-    // sub-customers named by job number.
-    DisplayName:
-      `${contact.first_name ?? ""} ${contact.last_name ?? ""}`.trim() ||
-      contact.company_name ||
-      "Unknown Customer",
+    // sub-customers named by job number, and the address lives on the job.
+    DisplayName: personName,
     GivenName: contact.first_name ?? undefined,
     FamilyName: contact.last_name ?? undefined,
     CompanyName: contact.company_name ?? undefined,
   };
+
   if (contact.email) (payload as any).PrimaryEmailAddr = { Address: contact.email };
   if (contact.phone) (payload as any).PrimaryPhone = { FreeFormNumber: contact.phone };
   if (contact.address_street) {
