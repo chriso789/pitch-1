@@ -119,6 +119,22 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
         if (error || !(res as any)?.ok) {
           const message = (res as any)?.error ?? (error ? await getFunctionErrorMessage(error) : "sync failed");
           failures.push(`${label}: ${message}`);
+        } else {
+          // The customer/job hierarchy and the financial transaction are one
+          // sync operation from the user's perspective. Create/update the QBO
+          // invoice from the current selling price after the sub-job exists.
+          const { data: financialRes, error: financialError } = await supabase.functions.invoke("qbo-worker", {
+            body: { op: "createInvoiceFromEstimates", args: { project_id: project.id } },
+            headers: { "x-tenant-id": tenantId },
+          });
+          const financialCode = (financialRes as any)?.code;
+          // A project with no estimate can still have its customer/job synced;
+          // every other financial failure must remain visible in the run.
+          if (financialError || ((financialRes as any)?.ok === false && financialCode !== "no_estimate")) {
+            const message = (financialRes as any)?.error ??
+              (financialError ? await getFunctionErrorMessage(financialError) : "financial sync failed");
+            failures.push(`${label}: customer/job synced, invoice failed: ${message}`);
+          }
         }
       } catch (e: any) {
         failures.push(`${label}: ${e?.message ?? "sync failed"}`);

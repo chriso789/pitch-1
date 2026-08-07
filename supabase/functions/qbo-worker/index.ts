@@ -425,7 +425,10 @@ async function upsertProjectOrJob(
   const desiredMode = "sub_customer_job";
   void settings;
 
-  // Check for existing mapping (Project or SubCustomerJob)
+  const { access_token } = await getValidAccessToken(service, ctx.tenantId);
+
+  // Check for an existing mapping, but never trust the database row alone. Old
+  // mappings may point at a deleted customer or at a legacy non-job customer.
   const { data: existingRows } = await service
     .from("qbo_entity_mapping")
     .select("qbo_entity_id, qbo_entity_type, mapping_mode")
@@ -437,11 +440,32 @@ async function upsertProjectOrJob(
 
   if (existingRows && existingRows.length > 0) {
     const row = existingRows[0];
-    return {
-      id: row.qbo_entity_id,
-      mode: (row.mapping_mode ?? (row.qbo_entity_type === "Project" ? "native_project" : "sub_customer_job")) as any,
-      display_name: String(projectNumber).trim(),
-    };
+    const verify = await fetch(
+      `${qboHost(connection)}/v3/company/${realmId}/customer/${row.qbo_entity_id}?minorversion=75`,
+      { headers: { Authorization: `Bearer ${access_token}`, Accept: "application/json" } },
+    );
+    if (verify.ok) {
+      const verified = (await verify.json())?.Customer;
+      const isCorrectJob = verified?.Job === true &&
+        String(verified?.ParentRef?.value ?? "") === String(parentCustomerId);
+      if (isCorrectJob) {
+        return {
+          id: row.qbo_entity_id,
+          mode: "sub_customer_job",
+          display_name: String(verified.DisplayName ?? projectNumber).trim(),
+        };
+      }
+    }
+
+    // Retire the stale/legacy mapping so the canonical sub-customer can be
+    // persisted under the same unique key below.
+    await service.from("qbo_entity_mapping")
+      .delete()
+      .eq("tenant_id", ctx.tenantId)
+      .eq("realm_id", realmId)
+      .eq("pitch_entity_type", "project")
+      .eq("pitch_entity_id", project.id)
+      .eq("qbo_entity_type", row.qbo_entity_type);
   }
 
   // Native Project API (GraphQL) is behind Intuit entitlement and is never used;
@@ -453,11 +477,11 @@ async function upsertProjectOrJob(
   // already carries the person's name (AccuLynx-style Customer:Job).
   const displayName = String(projectNumber).trim();
 
-  const { access_token } = await getValidAccessToken(service, ctx.tenantId);
   const payload = {
     DisplayName: displayName,
     ParentRef: { value: parentCustomerId },
     Job: true,
+    BillWithParent: true,
     Active: true,
   };
   const res = await fetch(
@@ -486,11 +510,28 @@ async function upsertProjectOrJob(
     success: res.ok,
     request_metadata: { op: "createSubCustomerJob", pitch_project_id: project.id, project_number: projectNumber },
   });
+  let j: any;
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`qbo_sub_customer_create_failed [status=${res.status} tid=${tid ?? "none"}]: ${body.slice(0, 300)}`);
+    if (/DisplayNameExists|Duplicate Name Exists|6240/i.test(body)) {
+      const escaped = displayName.replace(/'/g, "''");
+      const query = encodeURIComponent(`select * from Customer where DisplayName = '${escaped}'`);
+      const foundRes = await fetch(
+        `${qboHost(connection)}/v3/company/${realmId}/query?minorversion=75&query=${query}`,
+        { headers: { Authorization: `Bearer ${access_token}`, Accept: "application/json" } },
+      );
+      const found = foundRes.ok ? (await foundRes.json())?.QueryResponse?.Customer?.[0] : null;
+      if (found?.Job === true && String(found?.ParentRef?.value ?? "") === String(parentCustomerId)) {
+        j = { Customer: found };
+      } else {
+        throw new Error(`qbo_sub_customer_name_conflict [status=${res.status} tid=${tid ?? "none"}]: ${body.slice(0, 300)}`);
+      }
+    } else {
+      throw new Error(`qbo_sub_customer_create_failed [status=${res.status} tid=${tid ?? "none"}]: ${body.slice(0, 300)}`);
+    }
+  } else {
+    j = await res.json();
   }
-  const j = await res.json();
   const qboId = j.Customer.Id as string;
 
   await service.from("qbo_entity_mapping").upsert({
@@ -620,15 +661,26 @@ async function opCreateInvoice(ctx: Ctx, args: any): Promise<Response> {
     return err("customer_or_project_failed", e?.message ?? String(e), ctx.requestId, 502);
   }
 
-  // Load the most recent active/approved estimate for this project
-  const { data: estimates } = await service
-    .from("estimates")
+  // The live estimate builder writes enhanced_estimates. Legacy estimates are
+  // only a fallback for older projects.
+  const { data: enhancedEstimates } = await service
+    .from("enhanced_estimates")
     .select("id, line_items, selling_price, estimate_number, status")
     .eq("tenant_id", ctx.tenantId)
     .eq("project_id", projectId)
     .order("updated_at", { ascending: false })
     .limit(1);
-  const estimate = estimates?.[0];
+  let estimate = enhancedEstimates?.[0] ?? null;
+  if (!estimate) {
+    const { data: legacyEstimates } = await service
+      .from("estimates")
+      .select("id, line_items, selling_price, estimate_number, status")
+      .eq("tenant_id", ctx.tenantId)
+      .eq("project_id", projectId)
+      .order("updated_at", { ascending: false })
+      .limit(1);
+    estimate = legacyEstimates?.[0] ?? null;
+  }
   if (!estimate) return err("no_estimate", "No estimate found for project", ctx.requestId, 400);
 
   // Pull job_type_item_map for tenant×realm
@@ -647,7 +699,12 @@ async function opCreateInvoice(ctx: Ctx, args: any): Promise<Response> {
 
   // Build lines
   const projectNumber = cljJobLabel(project.clj_formatted_number, project.project_number) || project.id;
-  const rawLines: any[] = Array.isArray(estimate.line_items) ? estimate.line_items : [];
+  const lineContainer: any = estimate.line_items;
+  const rawLines: any[] = Array.isArray(lineContainer)
+    ? lineContainer
+    : ["materials", "labor", "turnkey", "items"].flatMap((key) =>
+        Array.isArray(lineContainer?.[key]) ? lineContainer[key] : []
+      );
   const lines: any[] = [];
   const unmapped: string[] = [];
   let lineNum = 1;
@@ -680,9 +737,9 @@ async function opCreateInvoice(ctx: Ctx, args: any): Promise<Response> {
     for (const it of rawLines) {
       pushLine(
         it.description ?? it.name ?? "Line item",
-        Number(it.total ?? it.amount ?? 0),
-        Number(it.quantity ?? 1),
-        Number(it.rate ?? it.unit_price ?? 0),
+        Number(it.line_total ?? it.total ?? it.amount ?? ((it.qty ?? it.quantity ?? 1) * (it.unit_cost ?? it.rate ?? it.unit_price ?? 0))),
+        Number(it.qty ?? it.quantity ?? 1),
+        Number(it.unit_cost ?? it.rate ?? it.unit_price ?? 0),
         it.job_type_code ?? it.jobTypeCode ?? null,
       );
     }
