@@ -303,13 +303,17 @@ export default function PropertyInfoPanel({
     }
   }, [property?.id]);
 
-  // Auto-run FREE public lookup when a new pin is opened
+  // Auto-run FREE public lookup + immediate contact lookup when a new pin is opened
   useEffect(() => {
     if (open && property?.id && publicLookupDoneRef.current !== property.id && !enrichingRef.current) {
       publicLookupDoneRef.current = property.id;
-      handlePublicLookup();
+      (async () => {
+        await handlePublicLookup();
+        await handleSkipTrace();
+      })();
     }
-  }, [open, property?.id, handlePublicLookup]);
+  }, [open, property?.id, handlePublicLookup, handleSkipTrace]);
+
 
   // Calculate property coordinates (before early return for hooks consistency)
   const propertyLat = property?.lat || (typeof property?.address === 'string' 
