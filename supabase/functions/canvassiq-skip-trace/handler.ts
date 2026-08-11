@@ -4,11 +4,12 @@
  * 2. Call BatchData Skip Trace API
  * 3. Cache result + update canvassiq_properties
  *
- * No Firecrawl. No SearchBug. No scraping. No fake data.
+ * Falls back to Firecrawl people-search when BatchData returns nothing.
  */
 
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { batchDataSkipTrace } from "../_shared/public_data/sources/batchdata/skipTrace.ts";
+import { peopleSearch } from "../_shared/public_data/sources/universal/peopleSearch.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -131,17 +132,57 @@ export const handle = async (req) => {
       );
     }
 
+    // Resolve owner name from the property row when the client did not send one
+    let resolvedOwnerName = owner_name || '';
+    if (!resolvedOwnerName) {
+      const { data: propRow } = await supabase
+        .from('canvassiq_properties')
+        .select('owner_name')
+        .eq('id', property_id)
+        .maybeSingle();
+      resolvedOwnerName = propRow?.owner_name || '';
+    }
+
     console.log(`[skip-trace] Calling BatchData: ${street}, ${city} ${state} ${zip}`);
 
-    const result = await batchDataSkipTrace({ street, city, state, zip, timeoutMs: 15000 });
+    let result = null as Awaited<ReturnType<typeof batchDataSkipTrace>>;
+    try {
+      result = await batchDataSkipTrace({ street, city, state, zip, timeoutMs: 15000 });
+    } catch (bdErr) {
+      console.warn('[skip-trace] BatchData failed, will try Firecrawl:', bdErr);
+    }
 
-    const firstName = result?.firstName || null;
-    const lastName = result?.lastName || null;
-    const fullName = [firstName, lastName].filter(Boolean).join(' ') || owner_name || 'Unknown Owner';
-    const phones = result?.phones || [];
-    const emails = result?.emails || [];
-    const age = result?.age || null;
-    const relatives = result?.relatives || [];
+    let firstName = result?.firstName || null;
+    let lastName = result?.lastName || null;
+    let phones = result?.phones || [];
+    let emails = result?.emails || [];
+    let age = result?.age || null;
+    let relatives = result?.relatives || [];
+    let sourceName = result ? 'batchdata' : 'none';
+
+    // ---- Firecrawl fallback (free people-search) ----
+    if (phones.length === 0 && emails.length === 0) {
+      const searchName = [firstName, lastName].filter(Boolean).join(' ') || resolvedOwnerName || '';
+      if (searchName) {
+        console.log('[skip-trace] Falling back to Firecrawl peopleSearch for:', searchName);
+        const fc = await peopleSearch({ ownerName: searchName, city, state });
+        if (fc) {
+          phones = (fc.phones || []).map((p) => ({ number: p.number, type: p.type }));
+          emails = (fc.emails || []).map((e) => e.address);
+          age = age || fc.age;
+          relatives = relatives.length ? relatives : (fc.relatives || []);
+          if (!firstName && !lastName && fc.name) {
+            const parts = fc.name.trim().split(/\s+/);
+            firstName = parts[0] || null;
+            lastName = parts.slice(1).join(' ') || null;
+          }
+          sourceName = result ? 'batchdata+firecrawl' : 'firecrawl';
+        }
+      }
+    }
+
+    const fullName = [firstName, lastName].filter(Boolean).join(' ') || resolvedOwnerName || 'Unknown Owner';
+
 
     // =============================================
     // STEP 3: DNC scrubbing — cache BatchData dnc flags
@@ -193,7 +234,7 @@ export const handle = async (req) => {
     // Update canvassiq_properties with enriched data
     const updatePayload: Record<string, any> = {
       enrichment_last_at: new Date().toISOString(),
-      enrichment_source: ['batchdata'],
+      enrichment_source: [sourceName],
     };
     if (fullName !== 'Unknown Owner') updatePayload.owner_name = fullName;
     if (phones.length > 0) updatePayload.phone_numbers = phones.map(p => p.number);
@@ -206,9 +247,9 @@ export const handle = async (req) => {
       await supabase.from('canvassiq_enrichment_logs').insert({
         property_id,
         tenant_id,
-        provider: 'batchdata',
+        provider: sourceName,
         cost_cents: result ? 15 : 0,
-        success: !!result,
+        success: phones.length > 0 || emails.length > 0 || !!result,
         created_at: new Date().toISOString(),
       });
     } catch { /* table may not exist */ }
@@ -232,7 +273,7 @@ export const handle = async (req) => {
           emails: emails.map(e => ({ address: e, type: 'personal' })),
           relatives,
           enriched_at: new Date().toISOString(),
-          source: result ? 'batchdata' : 'none',
+          source: sourceName,
         },
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
