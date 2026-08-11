@@ -166,7 +166,95 @@ Deno.serve(async (req) => {
       .eq('tenant_id', profile.tenant_id)
       .maybeSingle();
 
+    // ---------------------------------------------------------------
+    // Conversion gates: a project may never be created without a
+    // selling price, and never when an invoice already exists for this
+    // pipeline entry (that means it was already converted/billed).
+    // ---------------------------------------------------------------
+    const { data: preExistingInvoices } = await supabase
+      .from('project_invoices')
+      .select('id, invoice_number, amount')
+      .eq('tenant_id', profile.tenant_id)
+      .eq('pipeline_entry_id', pipelineEntryId)
+      .limit(1);
+
+    if (preExistingInvoices?.length) {
+      return new Response(
+        JSON.stringify({
+          error: 'invoice_already_exists',
+          message: `An invoice (${preExistingInvoices[0].invoice_number}) already exists for this lead. It cannot be converted again.`,
+          invoice_id: preExistingInvoices[0].id,
+          invoice_number: preExistingInvoices[0].invoice_number,
+        }),
+        { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
+    const estimateColumns = 'id, estimate_number, selling_price, updated_at';
+    const { data: pipelineEstimates } = await supabase
+      .from('enhanced_estimates')
+      .select(estimateColumns)
+      .eq('tenant_id', profile.tenant_id)
+      .eq('pipeline_entry_id', pipelineEntryId);
+    let projectEstimates: any[] = [];
+    if (existingProject?.id) {
+      const { data } = await supabase
+        .from('enhanced_estimates')
+        .select(estimateColumns)
+        .eq('tenant_id', profile.tenant_id)
+        .eq('project_id', existingProject.id);
+      projectEstimates = data ?? [];
+    }
+
+    const estimatesById = new Map<string, any>();
+    for (const row of [...(pipelineEstimates ?? []), ...projectEstimates]) {
+      estimatesById.set(row.id, row);
+    }
+    const allEstimates = [...estimatesById.values()];
+
+    const convMeta = (pipelineEntry.metadata ?? {}) as Record<string, any>;
+    const selectedIds: string[] = Array.isArray(convMeta.selected_estimate_ids)
+      ? convMeta.selected_estimate_ids.filter((id: unknown) => typeof id === 'string')
+      : [];
+    const selectedId = convMeta.selected_estimate_id ?? convMeta.enhanced_estimate_id ?? null;
+
+    let sellingPrice = 0;
+    let estimateLabel = '';
+    if (convMeta.combine_estimates === true && selectedIds.length > 1) {
+      const combined = allEstimates.filter((row) => selectedIds.includes(row.id));
+      sellingPrice = combined.reduce((sum, row) => sum + Number(row.selling_price ?? 0), 0);
+      estimateLabel = combined.map((row) => row.estimate_number).filter(Boolean).join(' + ');
+    }
+    if (sellingPrice <= 0 && selectedId) {
+      const picked = allEstimates.find((row) => row.id === selectedId);
+      sellingPrice = Number(picked?.selling_price ?? 0);
+      estimateLabel = picked?.estimate_number ?? '';
+    }
+    if (sellingPrice <= 0) {
+      const best = allEstimates
+        .filter((row) => Number(row.selling_price ?? 0) > 0)
+        .sort((a, b) => Number(b.selling_price ?? 0) - Number(a.selling_price ?? 0))[0];
+      sellingPrice = Number(best?.selling_price ?? 0);
+      estimateLabel = best?.estimate_number ?? '';
+    }
+    if (sellingPrice <= 0) {
+      sellingPrice = Number(pipelineEntry.estimated_value ?? 0);
+    }
+    sellingPrice = Math.round(sellingPrice * 100) / 100;
+
+    if (!(sellingPrice > 0)) {
+      return new Response(
+        JSON.stringify({
+          error: 'missing_selling_price',
+          message: 'This lead has no selling price. Add a priced estimate before converting it to a project.',
+          clj_number: pipelineEntry.clj_formatted_number,
+        }),
+        { status: 412, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
     let newProject: any = existingProject;
+
 
     if (!newProject) {
       const projectData = {
