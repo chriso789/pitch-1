@@ -575,6 +575,52 @@ async function upsertProjectOrJob(
     }
     : undefined;
 
+  // Before creating anything, look for an existing job sub-customer with this
+  // job number under this parent. A new invoice on an existing job must NEVER
+  // spawn a second sub-customer — only a different job number may create one.
+  {
+    const escapedExisting = displayName.replace(/'/g, "''");
+    const existingQuery = encodeURIComponent(
+      `select * from Customer where DisplayName = '${escapedExisting}'`,
+    );
+    const lookupRes = await fetch(
+      `${qboHost(connection)}/v3/company/${realmId}/query?minorversion=75&query=${existingQuery}`,
+      { headers: { Authorization: `Bearer ${access_token}`, Accept: "application/json" } },
+    );
+    const existingJob = lookupRes.ok
+      ? (await lookupRes.json())?.QueryResponse?.Customer?.[0]
+      : null;
+    if (
+      existingJob?.Job === true &&
+      String(existingJob?.ParentRef?.value ?? "") === String(parentCustomerId)
+    ) {
+      await service.from("qbo_entity_mapping").upsert({
+        tenant_id: ctx.tenantId,
+        qbo_connection_id: connection.id,
+        realm_id: realmId,
+        pitch_entity_type: "project",
+        pitch_entity_id: project.id,
+        entity_type: "project",
+        entity_id: project.id,
+        qbo_entity_type: "SubCustomerJob",
+        qbo_entity_id: String(existingJob.Id),
+        pitch_project_number: String(projectNumber ?? ""),
+        mapping_mode: "sub_customer_job",
+        sync_token: existingJob.SyncToken ?? null,
+        metadata: { display_name: displayName, reused_existing: true },
+        updated_at: new Date().toISOString(),
+      }, {
+        onConflict:
+          "tenant_id,qbo_connection_id,realm_id,pitch_entity_type,pitch_entity_id,qbo_entity_type",
+      });
+      return {
+        id: String(existingJob.Id),
+        mode: "sub_customer_job",
+        display_name: displayName,
+      };
+    }
+  }
+
   const payload = {
     DisplayName: displayName,
     ParentRef: { value: parentCustomerId },
@@ -584,6 +630,7 @@ async function upsertProjectOrJob(
     ...(jobAddr ? { ShipAddr: jobAddr, BillAddr: jobAddr } : {}),
     ...(jobStreet ? { Notes: String(jobStreet) } : {}),
   };
+
 
   const res = await fetch(
     `${qboHost(connection)}/v3/company/${realmId}/customer?minorversion=75`,
