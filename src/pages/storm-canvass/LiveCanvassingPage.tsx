@@ -4,7 +4,6 @@ import { ArrowLeft, Crosshair, MapPin } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import GoogleLiveLocationMap from '@/components/storm-canvass/GoogleLiveLocationMap';
 import LiveStatsOverlay from '@/components/storm-canvass/LiveStatsOverlay';
-import MobileDispositionPanel from '@/components/storm-canvass/MobileDispositionPanel';
 import AddressSearchBar from '@/components/storm-canvass/AddressSearchBar';
 import NavigationPanel from '@/components/storm-canvass/NavigationPanel';
 import GPSAcquiringOverlay from '@/components/storm-canvass/GPSAcquiringOverlay';
@@ -620,6 +619,13 @@ export default function LiveCanvassingPage() {
     setShowPropertyPanel(true);
   }, []);
 
+  // Selecting an existing contact/project pin opens its details record
+  const handleContactPinSelect = useCallback((contact: any) => {
+    if (!contact?.id) return;
+    setSelectedContact(contact);
+    navigate(`/contact/${contact.id}`);
+  }, [navigate]);
+
   return (
     <div className="h-[100dvh] w-full relative overflow-hidden bg-background" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
       {/* Full-screen map — only render once we have a location */}
@@ -628,7 +634,7 @@ export default function LiveCanvassingPage() {
           <GoogleLiveLocationMap
             userLocation={userLocation}
             currentAddress={currentAddress}
-            onContactSelect={setSelectedContact}
+            onContactSelect={handleContactPinSelect}
             onParcelSelect={handleParcelSelect}
             routeData={routeData}
             destination={destination}
@@ -774,17 +780,6 @@ export default function LiveCanvassingPage() {
         />
       )}
 
-      {/* Mobile Disposition Panel (for contacts) */}
-      <MobileDispositionPanel
-        contact={selectedContact}
-        userLocation={userLocation || NEUTRAL_FALLBACK}
-        dispositions={dispositions}
-        onClose={() => setSelectedContact(null)}
-        onUpdate={() => {
-          setSelectedContact(null);
-        }}
-        onNavigate={handleNavigateToContact}
-      />
 
 
       {/* Property Info Panel (Bottom Sheet) */}
