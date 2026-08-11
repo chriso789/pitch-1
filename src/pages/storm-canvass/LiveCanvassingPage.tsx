@@ -628,7 +628,7 @@ export default function LiveCanvassingPage() {
           <GoogleLiveLocationMap
             userLocation={userLocation}
             currentAddress={currentAddress}
-            onContactSelect={setSelectedContact}
+            onContactSelect={handleContactPinSelect}
             onParcelSelect={handleParcelSelect}
             routeData={routeData}
             destination={destination}
@@ -774,17 +774,6 @@ export default function LiveCanvassingPage() {
         />
       )}
 
-      {/* Mobile Disposition Panel (for contacts) */}
-      <MobileDispositionPanel
-        contact={selectedContact}
-        userLocation={userLocation || NEUTRAL_FALLBACK}
-        dispositions={dispositions}
-        onClose={() => setSelectedContact(null)}
-        onUpdate={() => {
-          setSelectedContact(null);
-        }}
-        onNavigate={handleNavigateToContact}
-      />
 
 
       {/* Property Info Panel (Bottom Sheet) */}
