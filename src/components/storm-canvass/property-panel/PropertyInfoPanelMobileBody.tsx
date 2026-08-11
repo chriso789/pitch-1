@@ -231,11 +231,11 @@ export default function PropertyInfoPanelMobileBody(props: Props) {
     const emailAddr =
       typeof firstEmail === "string" ? firstEmail : firstEmail?.address || "";
 
-    if (!touchedRef.current.first && ownerFirst) setManualFirstName(ownerFirst);
-    if (!touchedRef.current.last && ownerLast) setManualLastName(ownerLast);
-    if (!touchedRef.current.phone && phoneNum) setManualPhone(phoneNum);
-    if (!touchedRef.current.email && emailAddr) setManualEmail(emailAddr);
-  }, [primaryOwner, phoneNumbers, emails]);
+    if (!touchedRef.current.first) setManualFirstName(ownerFirst || "");
+    if (!touchedRef.current.last) setManualLastName(ownerLast || "");
+    if (!touchedRef.current.phone) setManualPhone(phoneNum || "");
+    if (!touchedRef.current.email) setManualEmail(emailAddr || "");
+  }, [property?.id, primaryOwner, phoneNumbers, emails]);
 
   const hasManualEntry = Boolean(
     manualFirstName.trim() || manualLastName.trim() || manualPhone.trim() || manualEmail.trim(),

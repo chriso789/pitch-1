@@ -377,24 +377,28 @@ export default function PropertyInfoPanel({
     ? JSON.parse(property.homeowner)
     : property.homeowner;
   
-  // Parse enriched data from searchbug_data (use localProperty for up-to-date data)
-  const searchbugData = typeof localProperty.searchbug_data === 'string'
-    ? JSON.parse(localProperty.searchbug_data || '{}')
-    : (localProperty.searchbug_data || {});
+  // During a pin switch, effects have not synced localProperty yet. Never mix
+  // enrichment from the previous pin with the newly selected property.
+  const currentPropertyData = localProperty?.id === property.id ? localProperty : property;
+
+  // Parse enriched data from the active property's data only.
+  const searchbugData = typeof currentPropertyData.searchbug_data === 'string'
+    ? JSON.parse(currentPropertyData.searchbug_data || '{}')
+    : (currentPropertyData.searchbug_data || {});
   
   // Get phone numbers from either searchbug_data or direct column
   const phoneNumbers = searchbugData.phones?.length > 0 
     ? searchbugData.phones 
-    : (typeof localProperty.phone_numbers === 'string'
-        ? JSON.parse(localProperty.phone_numbers || '[]')
-        : (localProperty.phone_numbers || []));
+    : (typeof currentPropertyData.phone_numbers === 'string'
+        ? JSON.parse(currentPropertyData.phone_numbers || '[]')
+        : (currentPropertyData.phone_numbers || []));
   
   // Get emails from either searchbug_data or direct column
   const emails = searchbugData.emails?.length > 0
     ? searchbugData.emails
-    : (typeof localProperty.emails === 'string'
-        ? JSON.parse(localProperty.emails || '[]')
-        : (localProperty.emails || []));
+    : (typeof currentPropertyData.emails === 'string'
+        ? JSON.parse(currentPropertyData.emails || '[]')
+        : (currentPropertyData.emails || []));
 
   // Use enriched owners from API response, then searchbug_data, then fallback
   const storedOwners = searchbugData.owners || [];
@@ -404,7 +408,7 @@ export default function PropertyInfoPanel({
       ? storedOwners 
       : [{ 
           id: '1', 
-          name: validOwner(localProperty.owner_name) || validOwner(homeowner?.name) || 'Primary Owner',
+          name: validOwner(currentPropertyData.owner_name) || validOwner(homeowner?.name) || 'Primary Owner',
           is_primary: true
         }];
 
@@ -416,7 +420,7 @@ export default function PropertyInfoPanel({
     ? ([primaryOwner.first_name, primaryOwner.last_name].filter(Boolean).join(' ') || primaryOwner.name)
     : null;
   const streetAddr = address?.street || address?.formatted || localProperty.address;
-  const ownerName = validOwner(enrichedName) || validOwner(localProperty.owner_name) || validOwner(homeowner?.name) || (streetAddr ? `Homeowner at ${streetAddr}` : 'Unknown Owner');
+  const ownerName = validOwner(enrichedName) || validOwner(currentPropertyData.owner_name) || validOwner(homeowner?.name) || (streetAddr ? `Homeowner at ${streetAddr}` : 'Unknown Owner');
   const fullAddress = address?.formatted || 
     `${address?.street || ''}, ${address?.city || ''} ${address?.state || ''} ${address?.zip || ''}`.trim();
 
