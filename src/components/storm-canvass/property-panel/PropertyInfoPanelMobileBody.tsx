@@ -17,7 +17,7 @@
  *   G. AI strategy + storm reports + score (collapsed accordions)
  *   H. Notes (collapsed by default)
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Phone,
   Mail,
@@ -177,15 +177,53 @@ export default function PropertyInfoPanelMobileBody(props: Props) {
   const [manualLastName, setManualLastName] = useState("");
   const [manualPhone, setManualPhone] = useState("");
   const [manualEmail, setManualEmail] = useState("");
-  const [manualPrefilled, setManualPrefilled] = useState(false);
+  // Tracks fields the rep typed in, so enrichment never overwrites manual entry
+  const touchedRef = useRef<Record<string, boolean>>({});
+  const lastPropertyIdRef = useRef<string | null>(null);
 
-  // Auto-fill homeowner fields once public data returns (owner name / phone / email).
-  // Only prefills empty inputs so a rep's manual entry is never overwritten.
+  // Reset the homeowner form whenever a different pin is opened
   useEffect(() => {
-    if (manualPrefilled) return;
-    const ownerFull: string = primaryOwner?.full_name || primaryOwner?.name || "";
-    const [ownerFirst, ...ownerRest] = ownerFull.trim().split(/\s+/);
-    const ownerLast = ownerRest.join(" ");
+    if (lastPropertyIdRef.current === property?.id) return;
+    lastPropertyIdRef.current = property?.id ?? null;
+    touchedRef.current = {};
+    setManualFirstName("");
+    setManualLastName("");
+    setManualPhone("");
+    setManualEmail("");
+  }, [property?.id]);
+
+  // Auto-fill homeowner fields as public data / skip-trace results arrive.
+  // Only fills fields the rep has not typed into.
+  useEffect(() => {
+    const placeholder = /^(primary owner|unknown owner|homeowner at\b|owner)$/i;
+    const raw: string =
+      primaryOwner?.first_name || primaryOwner?.last_name
+        ? [primaryOwner?.first_name, primaryOwner?.last_name].filter(Boolean).join(" ")
+        : primaryOwner?.full_name || primaryOwner?.name || "";
+    const ownerFull = placeholder.test(raw.trim()) ? "" : raw.trim();
+
+    let ownerFirst = "";
+    let ownerLast = "";
+    if (primaryOwner?.first_name || primaryOwner?.last_name) {
+      ownerFirst = primaryOwner?.first_name || "";
+      ownerLast = primaryOwner?.last_name || "";
+    } else if (ownerFull.includes(",")) {
+      // "LAST, FIRST M"
+      const [last, first] = ownerFull.split(",");
+      ownerLast = (last || "").trim();
+      ownerFirst = (first || "").trim();
+    } else if (ownerFull) {
+      const parts = ownerFull.split(/\s+/);
+      if (parts.length > 1 && ownerFull === ownerFull.toUpperCase()) {
+        // County appraiser format: "LAST FIRST M"
+        ownerLast = parts[0];
+        ownerFirst = parts.slice(1).join(" ");
+      } else {
+        ownerFirst = parts[0];
+        ownerLast = parts.slice(1).join(" ");
+      }
+    }
+
     const firstPhone = phoneNumbers?.[0];
     const phoneNum =
       typeof firstPhone === "string" ? firstPhone : firstPhone?.number || "";
@@ -193,25 +231,11 @@ export default function PropertyInfoPanelMobileBody(props: Props) {
     const emailAddr =
       typeof firstEmail === "string" ? firstEmail : firstEmail?.address || "";
 
-    let didFill = false;
-    if (!manualFirstName && ownerFirst) {
-      setManualFirstName(ownerFirst);
-      didFill = true;
-    }
-    if (!manualLastName && ownerLast) {
-      setManualLastName(ownerLast);
-      didFill = true;
-    }
-    if (!manualPhone && phoneNum) {
-      setManualPhone(phoneNum);
-      didFill = true;
-    }
-    if (!manualEmail && emailAddr) {
-      setManualEmail(emailAddr);
-      didFill = true;
-    }
-    if (didFill) setManualPrefilled(true);
-  }, [primaryOwner, phoneNumbers, emails, manualPrefilled, manualFirstName, manualLastName, manualPhone, manualEmail]);
+    if (!touchedRef.current.first && ownerFirst) setManualFirstName(ownerFirst);
+    if (!touchedRef.current.last && ownerLast) setManualLastName(ownerLast);
+    if (!touchedRef.current.phone && phoneNum) setManualPhone(phoneNum);
+    if (!touchedRef.current.email && emailAddr) setManualEmail(emailAddr);
+  }, [primaryOwner, phoneNumbers, emails]);
 
   const hasManualEntry = Boolean(
     manualFirstName.trim() || manualLastName.trim() || manualPhone.trim() || manualEmail.trim(),
@@ -229,6 +253,7 @@ export default function PropertyInfoPanelMobileBody(props: Props) {
       onAddCustomer();
     }
   };
+
 
   const propData = localProperty?.property_data || {};
   const confidence: number | undefined = propData.confidence_score;
@@ -512,7 +537,7 @@ export default function PropertyInfoPanelMobileBody(props: Props) {
         <div className="mb-4 rounded-lg border bg-card p-3 space-y-2">
           <div className="flex items-center justify-between">
             <p className="text-[11px] font-medium text-muted-foreground">
-              {hasContact || manualPrefilled ? "Homeowner info" : "Enter homeowner info"}
+              {hasContact || hasManualEntry ? "Homeowner info" : "Enter homeowner info"}
             </p>
             <div className="flex items-center gap-2">
               {publicLookupLoading && (
