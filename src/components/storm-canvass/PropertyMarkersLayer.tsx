@@ -73,15 +73,12 @@ interface CrmOverlay {
   ownerName: string;
 }
 
-// Get marker size based on zoom level - always show house numbers at zoom 14+
+// Fixed-size pins — never scale with zoom (prevents overlapping "pill" markers)
 function getMarkerSize(zoom: number): { size: number; showNumber: boolean; fontSize: number } {
-  if (zoom >= 18) return { size: 36, showNumber: true, fontSize: 12 };
-  if (zoom >= 17) return { size: 32, showNumber: true, fontSize: 11 };
-  if (zoom >= 16) return { size: 28, showNumber: true, fontSize: 10 };
-  if (zoom >= 15) return { size: 24, showNumber: true, fontSize: 9 };
-  if (zoom >= 14) return { size: 20, showNumber: true, fontSize: 8 };
+  if (zoom >= 14) return { size: 26, showNumber: true, fontSize: 10 };
   return { size: 10, showNumber: false, fontSize: 0 };
 }
+
 
 // No longer needed - we use map.getBounds() directly
 
