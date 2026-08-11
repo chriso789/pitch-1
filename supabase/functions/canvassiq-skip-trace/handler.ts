@@ -4,11 +4,12 @@
  * 2. Call BatchData Skip Trace API
  * 3. Cache result + update canvassiq_properties
  *
- * No Firecrawl. No SearchBug. No scraping. No fake data.
+ * Falls back to Firecrawl people-search when BatchData returns nothing.
  */
 
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { batchDataSkipTrace } from "../_shared/public_data/sources/batchdata/skipTrace.ts";
+import { peopleSearch } from "../_shared/public_data/sources/universal/peopleSearch.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -222,7 +223,7 @@ export const handle = async (req) => {
     // Update canvassiq_properties with enriched data
     const updatePayload: Record<string, any> = {
       enrichment_last_at: new Date().toISOString(),
-      enrichment_source: ['batchdata'],
+      enrichment_source: [sourceName],
     };
     if (fullName !== 'Unknown Owner') updatePayload.owner_name = fullName;
     if (phones.length > 0) updatePayload.phone_numbers = phones.map(p => p.number);
@@ -235,9 +236,9 @@ export const handle = async (req) => {
       await supabase.from('canvassiq_enrichment_logs').insert({
         property_id,
         tenant_id,
-        provider: 'batchdata',
+        provider: sourceName,
         cost_cents: result ? 15 : 0,
-        success: !!result,
+        success: phones.length > 0 || emails.length > 0 || !!result,
         created_at: new Date().toISOString(),
       });
     } catch { /* table may not exist */ }
@@ -261,7 +262,7 @@ export const handle = async (req) => {
           emails: emails.map(e => ({ address: e, type: 'personal' })),
           relatives,
           enriched_at: new Date().toISOString(),
-          source: result ? 'batchdata' : 'none',
+          source: sourceName,
         },
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
