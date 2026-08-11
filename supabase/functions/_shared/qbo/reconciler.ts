@@ -22,6 +22,8 @@ import { getValidAccessToken } from "../qbo-auth.ts";
 import { writeQboApiLog } from "../qbo-api.ts";
 import { qboFetch } from "./retry.ts";
 import { validateInvoiceLink } from "./invoiceLinkValidator.ts";
+import { mirrorQboPaymentAttachments } from "./paymentAttachments.ts";
+
 
 export interface QboConnectionCtx {
   id: string;
@@ -506,6 +508,17 @@ async function mirrorQboPaymentsIntoPitch(opts: {
       } else {
         await service.from("payments").insert(row);
       }
+
+      // Pull any receipt/check images attached to the payment in QuickBooks.
+      await mirrorQboPaymentAttachments({
+        service,
+        tenantId,
+        connection,
+        qboPaymentId: paymentId,
+        projectId,
+        docNumberRef: invoice.DocNumber ?? qboInvoiceId,
+      });
+
     } catch (e) {
       console.error("qbo_payment_mirror_failed", paymentId, e instanceof Error ? e.message : String(e));
     }
