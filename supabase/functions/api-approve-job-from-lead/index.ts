@@ -166,7 +166,95 @@ Deno.serve(async (req) => {
       .eq('tenant_id', profile.tenant_id)
       .maybeSingle();
 
+    // ---------------------------------------------------------------
+    // Conversion gates: a project may never be created without a
+    // selling price, and never when an invoice already exists for this
+    // pipeline entry (that means it was already converted/billed).
+    // ---------------------------------------------------------------
+    const { data: preExistingInvoices } = await supabase
+      .from('project_invoices')
+      .select('id, invoice_number, amount')
+      .eq('tenant_id', profile.tenant_id)
+      .eq('pipeline_entry_id', pipelineEntryId)
+      .limit(1);
+
+    if (preExistingInvoices?.length) {
+      return new Response(
+        JSON.stringify({
+          error: 'invoice_already_exists',
+          message: `An invoice (${preExistingInvoices[0].invoice_number}) already exists for this lead. It cannot be converted again.`,
+          invoice_id: preExistingInvoices[0].id,
+          invoice_number: preExistingInvoices[0].invoice_number,
+        }),
+        { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
+    const estimateColumns = 'id, estimate_number, selling_price, updated_at';
+    const { data: pipelineEstimates } = await supabase
+      .from('enhanced_estimates')
+      .select(estimateColumns)
+      .eq('tenant_id', profile.tenant_id)
+      .eq('pipeline_entry_id', pipelineEntryId);
+    let projectEstimates: any[] = [];
+    if (existingProject?.id) {
+      const { data } = await supabase
+        .from('enhanced_estimates')
+        .select(estimateColumns)
+        .eq('tenant_id', profile.tenant_id)
+        .eq('project_id', existingProject.id);
+      projectEstimates = data ?? [];
+    }
+
+    const estimatesById = new Map<string, any>();
+    for (const row of [...(pipelineEstimates ?? []), ...projectEstimates]) {
+      estimatesById.set(row.id, row);
+    }
+    const allEstimates = [...estimatesById.values()];
+
+    const convMeta = (pipelineEntry.metadata ?? {}) as Record<string, any>;
+    const selectedIds: string[] = Array.isArray(convMeta.selected_estimate_ids)
+      ? convMeta.selected_estimate_ids.filter((id: unknown) => typeof id === 'string')
+      : [];
+    const selectedId = convMeta.selected_estimate_id ?? convMeta.enhanced_estimate_id ?? null;
+
+    let sellingPrice = 0;
+    let estimateLabel = '';
+    if (convMeta.combine_estimates === true && selectedIds.length > 1) {
+      const combined = allEstimates.filter((row) => selectedIds.includes(row.id));
+      sellingPrice = combined.reduce((sum, row) => sum + Number(row.selling_price ?? 0), 0);
+      estimateLabel = combined.map((row) => row.estimate_number).filter(Boolean).join(' + ');
+    }
+    if (sellingPrice <= 0 && selectedId) {
+      const picked = allEstimates.find((row) => row.id === selectedId);
+      sellingPrice = Number(picked?.selling_price ?? 0);
+      estimateLabel = picked?.estimate_number ?? '';
+    }
+    if (sellingPrice <= 0) {
+      const best = allEstimates
+        .filter((row) => Number(row.selling_price ?? 0) > 0)
+        .sort((a, b) => Number(b.selling_price ?? 0) - Number(a.selling_price ?? 0))[0];
+      sellingPrice = Number(best?.selling_price ?? 0);
+      estimateLabel = best?.estimate_number ?? '';
+    }
+    if (sellingPrice <= 0) {
+      sellingPrice = Number(pipelineEntry.estimated_value ?? 0);
+    }
+    sellingPrice = Math.round(sellingPrice * 100) / 100;
+
+    if (!(sellingPrice > 0)) {
+      return new Response(
+        JSON.stringify({
+          error: 'missing_selling_price',
+          message: 'This lead has no selling price. Add a priced estimate before converting it to a project.',
+          clj_number: pipelineEntry.clj_formatted_number,
+        }),
+        { status: 412, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
     let newProject: any = existingProject;
+
 
     if (!newProject) {
       const projectData = {
@@ -279,74 +367,12 @@ Deno.serve(async (req) => {
 
     // Create the contract invoice for the selling price so the project always
     // carries an invoice amount + invoice number that QuickBooks payments can
-    // be attached to. Idempotent: skipped when an invoice already exists.
+    // be attached to. Price + "no existing invoice" were already enforced by
+    // the conversion gates above.
     let contractInvoice: any = { created: false };
     try {
-      const { data: existingInvoices } = await supabase
-        .from('project_invoices')
-        .select('id, invoice_number, amount')
-        .eq('tenant_id', profile.tenant_id)
-        .eq('pipeline_entry_id', pipelineEntryId)
-        .limit(1);
 
-      if (existingInvoices?.length) {
-        contractInvoice = {
-          created: false,
-          reason: 'invoice_exists',
-          invoice_id: existingInvoices[0].id,
-          invoice_number: existingInvoices[0].invoice_number,
-        };
-      } else {
-        const estimateColumns = 'id, estimate_number, selling_price, updated_at';
-        const { data: pipelineEstimates } = await supabase
-          .from('enhanced_estimates')
-          .select(estimateColumns)
-          .eq('tenant_id', profile.tenant_id)
-          .eq('pipeline_entry_id', pipelineEntryId);
-        const { data: projectEstimates } = await supabase
-          .from('enhanced_estimates')
-          .select(estimateColumns)
-          .eq('tenant_id', profile.tenant_id)
-          .eq('project_id', newProject.id);
 
-        const byId = new Map<string, any>();
-        for (const row of [...(pipelineEstimates ?? []), ...(projectEstimates ?? [])]) {
-          byId.set(row.id, row);
-        }
-        const allEstimates = [...byId.values()];
-
-        const meta = (pipelineEntry.metadata ?? {}) as Record<string, any>;
-        const selectedIds: string[] = Array.isArray(meta.selected_estimate_ids)
-          ? meta.selected_estimate_ids.filter((id: unknown) => typeof id === 'string')
-          : [];
-        const selectedId = meta.selected_estimate_id ?? meta.enhanced_estimate_id ?? null;
-
-        let sellingPrice = 0;
-        let estimateLabel = '';
-        if (meta.combine_estimates === true && selectedIds.length > 1) {
-          const combined = allEstimates.filter((row) => selectedIds.includes(row.id));
-          sellingPrice = combined.reduce((sum, row) => sum + Number(row.selling_price ?? 0), 0);
-          estimateLabel = combined.map((row) => row.estimate_number).filter(Boolean).join(' + ');
-        }
-        if (sellingPrice <= 0 && selectedId) {
-          const picked = allEstimates.find((row) => row.id === selectedId);
-          sellingPrice = Number(picked?.selling_price ?? 0);
-          estimateLabel = picked?.estimate_number ?? '';
-        }
-        if (sellingPrice <= 0) {
-          const best = allEstimates
-            .filter((row) => Number(row.selling_price ?? 0) > 0)
-            .sort((a, b) => Number(b.selling_price ?? 0) - Number(a.selling_price ?? 0))[0];
-          sellingPrice = Number(best?.selling_price ?? 0);
-          estimateLabel = best?.estimate_number ?? '';
-        }
-        if (sellingPrice <= 0) {
-          sellingPrice = Number(pipelineEntry.estimated_value ?? 0);
-        }
-
-        sellingPrice = Math.round(sellingPrice * 100) / 100;
-
-        if (sellingPrice > 0) {
           // Invoice number mirrors the location-scoped job label used as the
           // QuickBooks DocNumber so QBO payments reconcile back to this invoice.
           const cljJobLabel = (clj?: string | null, fallback?: string | null): string => {
@@ -407,11 +433,8 @@ Deno.serve(async (req) => {
               invoice_number: invoiceRow.invoice_number,
               amount: Number(invoiceRow.amount),
             };
-          }
-        } else {
-          contractInvoice = { created: false, reason: 'no_selling_price' };
-        }
       }
+
     } catch (invErr: any) {
       console.error('[api-approve-job-from-lead] contract invoice threw:', invErr);
       contractInvoice = { created: false, error: invErr?.message ?? String(invErr) };
