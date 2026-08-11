@@ -95,6 +95,9 @@ export default function PropertyInfoPanel({
   const enrichingRef = useRef(false);
   const prevPropertyIdRef = useRef<string | null>(null);
   const publicLookupDoneRef = useRef<string | null>(null);
+  // Guards async enrichment results from landing on a different pin
+  const activePropertyIdRef = useRef<string | null>(property?.id ?? null);
+  const [currentDisposition, setCurrentDisposition] = useState<string | null>(property?.disposition ?? null);
 
   // Helper to parse address object from property
   const parseAddr = useCallback(() => {
@@ -111,6 +114,8 @@ export default function PropertyInfoPanel({
   const handlePublicLookup = useCallback(async (forceBypass = false) => {
     if (!property?.id || !profile?.tenant_id) return;
     const addr = parseAddr();
+    const requestPropertyId = property.id;
+    const isStale = () => activePropertyIdRef.current !== requestPropertyId;
 
     setPublicLookupLoading(true);
     try {
@@ -130,6 +135,8 @@ export default function PropertyInfoPanel({
         console.error('[handlePublicLookup] error:', error);
         throw error;
       }
+
+      if (isStale()) return;
 
       const pipelineResult = data?.pipeline || data?.result || data;
       const isAddressMismatch = data?.address_mismatch === true;
@@ -204,6 +211,9 @@ export default function PropertyInfoPanel({
       return;
     }
 
+    const requestPropertyId = property.id;
+    const isStale = () => activePropertyIdRef.current !== requestPropertyId;
+
     setEnriching(true);
     enrichingRef.current = true;
     setSkipTraceError(null);
@@ -227,10 +237,12 @@ export default function PropertyInfoPanel({
         }
       });
 
-      if (skipError) {
+      if (skipError && !isStale()) {
         console.warn('[handleSkipTrace] skip-trace error:', skipError);
         setSkipTraceError('Contact lookup unavailable — API key may need updating');
       }
+
+      if (isStale()) return;
 
       const skipResult = skipData?.data || {};
       const skipOwners = skipResult.owners || [];
@@ -294,18 +306,29 @@ export default function PropertyInfoPanel({
   useEffect(() => {
     if (property?.id && property.id !== prevPropertyIdRef.current) {
       prevPropertyIdRef.current = property.id;
-      if (!enrichingRef.current) {
-        setLocalProperty(property);
-        setEnrichedOwners([]);
-        setSelectedOwner(null);
-        setNotes('');
-        setDoorStrategy(null);
-        setPipelineScores(null);
-        setSkipTraceError(null);
-        publicLookupDoneRef.current = null;
-      }
+      activePropertyIdRef.current = property.id;
+      // Always hard-reset — never carry enrichment from the previously selected pin
+      enrichingRef.current = false;
+      setLocalProperty(property);
+      setEnrichedOwners([]);
+      setSelectedOwner(null);
+      setNotes('');
+      setDoorStrategy(null);
+      setPipelineScores(null);
+      setSkipTraceError(null);
+      setEnriching(false);
+      setPublicLookupLoading(false);
+      setCurrentDisposition(property.disposition ?? null);
+      publicLookupDoneRef.current = null;
     }
   }, [property?.id]);
+
+  // Keep the highlighted disposition in sync when the record refreshes
+  useEffect(() => {
+    if (property?.id && property.id === activePropertyIdRef.current) {
+      setCurrentDisposition((prev) => prev ?? property.disposition ?? null);
+    }
+  }, [property?.id, property?.disposition]);
 
   // Auto-run FREE public lookup + immediate contact lookup when a new pin is opened
   useEffect(() => {
@@ -440,6 +463,7 @@ export default function PropertyInfoPanel({
     if (!profile?.tenant_id || !property.id) return;
 
     // Distance is logged for audit but does not block dispositions
+    setCurrentDisposition(dispositionId);
 
     try {
       const { error } = await supabase
@@ -586,6 +610,7 @@ export default function PropertyInfoPanel({
       onDispositionUpdate();
     } catch (err) {
       console.error('Error updating disposition:', err);
+      setCurrentDisposition(property.disposition ?? null);
       toast.error('Failed to update disposition');
     }
   };
@@ -926,7 +951,7 @@ export default function PropertyInfoPanel({
             fullAddress={fullAddress}
             primaryOwner={primaryOwner}
             localProperty={localProperty}
-            property={property}
+            property={{ ...property, disposition: currentDisposition }}
             propertyLat={propertyLat}
             propertyLng={propertyLng}
             verification={verification as any}
@@ -1039,9 +1064,9 @@ export default function PropertyInfoPanel({
                   {verification.badgeText}
                 </Badge>
               </div>
-              {property.disposition && (
-                <Badge className={cn("text-white text-xs", getDispositionBgColor(property.disposition))}>
-                  {property.disposition.replace(/_/g, ' ')}
+              {currentDisposition && (
+                <Badge className={cn("text-white text-xs", getDispositionBgColor(currentDisposition))}>
+                  {currentDisposition.replace(/_/g, ' ')}
                 </Badge>
               )}
             </div>
@@ -1054,7 +1079,7 @@ export default function PropertyInfoPanel({
               <div className="flex gap-2 pb-2 min-w-max">
                 {DISPOSITIONS.map((disp) => {
                   const Icon = disp.icon;
-                  const isSelected = property.disposition === disp.id;
+                  const isSelected = currentDisposition === disp.id;
                   return (
                     <Button
                       key={disp.id}
