@@ -224,6 +224,7 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
     dry_run: boolean;
     scanned: number;
     renamed: Array<{ from: string; to: string }>;
+    merged?: string[];
     skipped: string[];
   } | null>(null);
   const [fixingNames, setFixingNames] = useState(false);
