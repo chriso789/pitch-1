@@ -527,9 +527,18 @@ async function mirrorQboPaymentsIntoPitch(opts: {
       if (projectError) throw new Error(`project_lookup_failed: ${projectError.message}`);
 
       if (project?.pipeline_entry_id) {
-        const { error: projectPaymentError } = await service
+        const { data: existingProjectPayment, error: projectPaymentLookupError } = await service
           .from("project_payments")
-          .upsert({
+          .select("id")
+          .eq("tenant_id", tenantId)
+          .eq("provider", "quickbooks")
+          .eq("provider_payment_id", paymentId)
+          .maybeSingle();
+        if (projectPaymentLookupError) {
+          throw new Error(`project_payments_lookup_failed: ${projectPaymentLookupError.message}`);
+        }
+
+        const projectPaymentRow = {
             tenant_id: tenantId,
             pipeline_entry_id: project.pipeline_entry_id,
             amount: applied,
@@ -539,9 +548,17 @@ async function mirrorQboPaymentsIntoPitch(opts: {
             notes: `QuickBooks payment on invoice ${invoice.DocNumber ?? qboInvoiceId}`,
             provider: "quickbooks",
             provider_payment_id: paymentId,
-          }, { onConflict: "provider,provider_payment_id" });
+          };
+        const projectPaymentMutation = existingProjectPayment?.id
+          ? service
+              .from("project_payments")
+              .update(projectPaymentRow)
+              .eq("tenant_id", tenantId)
+              .eq("id", existingProjectPayment.id)
+          : service.from("project_payments").insert(projectPaymentRow);
+        const { error: projectPaymentError } = await projectPaymentMutation;
         if (projectPaymentError) {
-          throw new Error(`project_payments_upsert_failed: ${projectPaymentError.message}`);
+          throw new Error(`project_payments_write_failed: ${projectPaymentError.message}`);
         }
       }
 
