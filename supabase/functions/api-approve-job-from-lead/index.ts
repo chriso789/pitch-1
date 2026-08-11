@@ -277,6 +277,147 @@ Deno.serve(async (req) => {
       console.error('Error linking legacy estimates to project:', legacyEstimateLinkError);
     }
 
+    // Create the contract invoice for the selling price so the project always
+    // carries an invoice amount + invoice number that QuickBooks payments can
+    // be attached to. Idempotent: skipped when an invoice already exists.
+    let contractInvoice: any = { created: false };
+    try {
+      const { data: existingInvoices } = await supabase
+        .from('project_invoices')
+        .select('id, invoice_number, amount')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('pipeline_entry_id', pipelineEntryId)
+        .limit(1);
+
+      if (existingInvoices?.length) {
+        contractInvoice = {
+          created: false,
+          reason: 'invoice_exists',
+          invoice_id: existingInvoices[0].id,
+          invoice_number: existingInvoices[0].invoice_number,
+        };
+      } else {
+        const estimateColumns = 'id, estimate_number, selling_price, updated_at';
+        const { data: pipelineEstimates } = await supabase
+          .from('enhanced_estimates')
+          .select(estimateColumns)
+          .eq('tenant_id', profile.tenant_id)
+          .eq('pipeline_entry_id', pipelineEntryId);
+        const { data: projectEstimates } = await supabase
+          .from('enhanced_estimates')
+          .select(estimateColumns)
+          .eq('tenant_id', profile.tenant_id)
+          .eq('project_id', newProject.id);
+
+        const byId = new Map<string, any>();
+        for (const row of [...(pipelineEstimates ?? []), ...(projectEstimates ?? [])]) {
+          byId.set(row.id, row);
+        }
+        const allEstimates = [...byId.values()];
+
+        const meta = (pipelineEntry.metadata ?? {}) as Record<string, any>;
+        const selectedIds: string[] = Array.isArray(meta.selected_estimate_ids)
+          ? meta.selected_estimate_ids.filter((id: unknown) => typeof id === 'string')
+          : [];
+        const selectedId = meta.selected_estimate_id ?? meta.enhanced_estimate_id ?? null;
+
+        let sellingPrice = 0;
+        let estimateLabel = '';
+        if (meta.combine_estimates === true && selectedIds.length > 1) {
+          const combined = allEstimates.filter((row) => selectedIds.includes(row.id));
+          sellingPrice = combined.reduce((sum, row) => sum + Number(row.selling_price ?? 0), 0);
+          estimateLabel = combined.map((row) => row.estimate_number).filter(Boolean).join(' + ');
+        }
+        if (sellingPrice <= 0 && selectedId) {
+          const picked = allEstimates.find((row) => row.id === selectedId);
+          sellingPrice = Number(picked?.selling_price ?? 0);
+          estimateLabel = picked?.estimate_number ?? '';
+        }
+        if (sellingPrice <= 0) {
+          const best = allEstimates
+            .filter((row) => Number(row.selling_price ?? 0) > 0)
+            .sort((a, b) => Number(b.selling_price ?? 0) - Number(a.selling_price ?? 0))[0];
+          sellingPrice = Number(best?.selling_price ?? 0);
+          estimateLabel = best?.estimate_number ?? '';
+        }
+        if (sellingPrice <= 0) {
+          sellingPrice = Number(pipelineEntry.estimated_value ?? 0);
+        }
+
+        sellingPrice = Math.round(sellingPrice * 100) / 100;
+
+        if (sellingPrice > 0) {
+          // Invoice number mirrors the location-scoped job label used as the
+          // QuickBooks DocNumber so QBO payments reconcile back to this invoice.
+          const cljJobLabel = (clj?: string | null, fallback?: string | null): string => {
+            const fb = (fallback ?? '').trim();
+            if (/^[A-Za-z0-9]+-JOB-\d+$/.test(fb)) return fb.toUpperCase();
+            const raw = (clj ?? '').trim();
+            const m = raw.match(/^([A-Za-z0-9]+)-(\d+)-(\d+)-(\d+)$/);
+            if (m) return `${m[1].toUpperCase()}-J${String(Number(m[4]))}`;
+            return raw || fb;
+          };
+          const label =
+            cljJobLabel(newProject.clj_formatted_number, newProject.project_number) ||
+            `INV-${String(newProject.id).slice(0, 6).toUpperCase()}`;
+
+          let invoiceNumber = label;
+          const { count: collisions } = await supabase
+            .from('project_invoices')
+            .select('id', { count: 'exact', head: true })
+            .eq('tenant_id', profile.tenant_id)
+            .eq('invoice_number', label);
+          if ((collisions ?? 0) > 0) {
+            invoiceNumber = `${label}-${String((collisions ?? 0) + 1).padStart(2, '0')}`;
+          }
+
+          const { data: invoiceRow, error: invoiceError } = await supabase
+            .from('project_invoices')
+            .insert({
+              tenant_id: profile.tenant_id,
+              pipeline_entry_id: pipelineEntryId,
+              invoice_number: invoiceNumber,
+              amount: sellingPrice,
+              balance: sellingPrice,
+              status: 'draft',
+              notes: 'Contract invoice created automatically on lead → project conversion.',
+              created_by: user.id,
+              line_items: [
+                {
+                  description: estimateLabel
+                    ? `Contract amount (${estimateLabel})`
+                    : 'Contract amount',
+                  qty: 1,
+                  unit: 'EA',
+                  unit_cost: sellingPrice,
+                  line_total: sellingPrice,
+                },
+              ],
+            })
+            .select('id, invoice_number, amount')
+            .single();
+
+          if (invoiceError) {
+            console.error('[api-approve-job-from-lead] contract invoice insert failed', invoiceError);
+            contractInvoice = { created: false, error: invoiceError.message };
+          } else {
+            contractInvoice = {
+              created: true,
+              invoice_id: invoiceRow.id,
+              invoice_number: invoiceRow.invoice_number,
+              amount: Number(invoiceRow.amount),
+            };
+          }
+        } else {
+          contractInvoice = { created: false, reason: 'no_selling_price' };
+        }
+      }
+    } catch (invErr: any) {
+      console.error('[api-approve-job-from-lead] contract invoice threw:', invErr);
+      contractInvoice = { created: false, error: invErr?.message ?? String(invErr) };
+    }
+
+
     // Create Pre-Cap and Cap-Out budget snapshots from estimate
     try {
       // Fetch the latest estimate for this pipeline entry
@@ -405,6 +546,7 @@ Deno.serve(async (req) => {
       project_job_number: newProject.project_number,
       qbo_sync: qboSync,
       accounting_init: accountingInit,
+      contract_invoice: contractInvoice,
       message: `Successfully converted lead to project ${newProject.project_number}`
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
