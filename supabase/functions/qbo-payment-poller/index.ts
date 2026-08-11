@@ -3,11 +3,15 @@
 // or delayed QBO webhooks. Also invocable manually from the QuickBooks settings UI.
 
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
-import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { qboHost } from "../_shared/qbo-host.ts";
 import { getValidAccessToken } from "../_shared/qbo-auth.ts";
 import { qboFetch } from "../_shared/qbo/retry.ts";
 import { reconcilePaymentFromQbo, type QboConnectionCtx } from "../_shared/qbo/reconciler.ts";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
 
 const DEFAULT_LOOKBACK_HOURS = 48;
 
