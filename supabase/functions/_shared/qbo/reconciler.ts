@@ -220,7 +220,7 @@ export async function reconcileInvoiceFromQbo(
   // 3. Load prior mirror row to detect state transitions.
   const { data: prior } = await service
     .from("invoice_ar_mirror")
-    .select("id, balance, total_amount, paid_at, invoice_link, invoice_link_status, pitch_invoice_id")
+    .select("id, project_id, balance, total_amount, paid_at, invoice_link, invoice_link_status, pitch_invoice_id, reopened_at")
     .eq("tenant_id", tenantId)
     .eq("qbo_connection_id", connection.id)
     .eq("realm_id", connection.realm_id)
@@ -290,7 +290,7 @@ export async function reconcileInvoiceFromQbo(
     qbo_connection_id: connection.id,
     realm_id: connection.realm_id,
     qbo_invoice_id: qboInvoiceId,
-    project_id: (prior as any)?.project_id ?? undefined,
+    project_id: prior?.project_id ?? mapping.pitch_entity_id,
     doc_number: invoice.DocNumber ?? null,
     total_amount: total,
     balance,
@@ -312,7 +312,7 @@ export async function reconcileInvoiceFromQbo(
     last_sync_error: null,
     paid_at: paidAt,
     paid_at_source: paidAtSource,
-    reopened_at: wasPaid && !isPaid ? nowIso : (prior as any)?.reopened_at ?? undefined,
+    reopened_at: wasPaid && !isPaid ? nowIso : prior?.reopened_at ?? undefined,
   }, { onConflict: "tenant_id,qbo_connection_id,realm_id,qbo_invoice_id" });
 
   const mirrorId = prior?.id ?? null;
@@ -417,9 +417,9 @@ export async function reconcileInvoiceFromQbo(
 
 /**
  * Pull every QBO Payment linked to this invoice and mirror it into the Pitch
- * `payments` table (provider_name = 'quickbooks'). Idempotent on
- * provider_payment_id; payments that originated in Pitch are skipped so a
- * push→pull round trip never double-counts.
+ * canonical `payments` ledger and the project-facing `project_payments` table.
+ * Both writes are idempotent on the QuickBooks payment ID; payments that
+ * originated in Pitch are skipped so a push→pull round trip never double-counts.
  */
 async function mirrorQboPaymentsIntoPitch(opts: {
   service: SupabaseClient;
@@ -504,9 +504,45 @@ async function mirrorQboPaymentsIntoPitch(opts: {
       };
 
       if (existing?.id) {
-        await service.from("payments").update(row).eq("id", existing.id);
+        const { error } = await service
+          .from("payments")
+          .update(row)
+          .eq("tenant_id", tenantId)
+          .eq("id", existing.id);
+        if (error) throw new Error(`payments_update_failed: ${error.message}`);
       } else {
-        await service.from("payments").insert(row);
+        const { error } = await service.from("payments").insert(row);
+        if (error) throw new Error(`payments_insert_failed: ${error.message}`);
+      }
+
+      // The Profit Center Payments tab reads project_payments by pipeline entry.
+      // Resolve it from the already tenant-validated project mapping rather than
+      // trusting any client-supplied tenant or project identifiers.
+      const { data: project, error: projectError } = await service
+        .from("projects")
+        .select("pipeline_entry_id")
+        .eq("tenant_id", tenantId)
+        .eq("id", projectId)
+        .maybeSingle();
+      if (projectError) throw new Error(`project_lookup_failed: ${projectError.message}`);
+
+      if (project?.pipeline_entry_id) {
+        const { error: projectPaymentError } = await service
+          .from("project_payments")
+          .upsert({
+            tenant_id: tenantId,
+            pipeline_entry_id: project.pipeline_entry_id,
+            amount: applied,
+            payment_method: method,
+            reference_number: payment.PaymentRefNum ?? `QBO-${paymentId}`,
+            payment_date: payment.TxnDate ?? processedAt.slice(0, 10),
+            notes: `QuickBooks payment on invoice ${invoice.DocNumber ?? qboInvoiceId}`,
+            provider: "quickbooks",
+            provider_payment_id: paymentId,
+          }, { onConflict: "provider,provider_payment_id" });
+        if (projectPaymentError) {
+          throw new Error(`project_payments_upsert_failed: ${projectPaymentError.message}`);
+        }
       }
 
       // Pull any receipt/check images attached to the payment in QuickBooks.
