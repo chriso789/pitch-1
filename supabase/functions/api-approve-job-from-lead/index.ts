@@ -371,8 +371,7 @@ Deno.serve(async (req) => {
     // the conversion gates above.
     let contractInvoice: any = { created: false };
     try {
-      {
-        {
+
 
           // Invoice number mirrors the location-scoped job label used as the
           // QuickBooks DocNumber so QBO payments reconcile back to this invoice.
