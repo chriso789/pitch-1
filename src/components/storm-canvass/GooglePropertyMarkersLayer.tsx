@@ -580,9 +580,9 @@ export default function GooglePropertyMarkersLayer({
     let showStreetName = false;
     
     if (zoom >= 19) {
-      size = 44;
+      // Keep a compact circular pin at high zoom — no street-name pill widening
+      size = 28;
       showNumber = true;
-      showStreetName = true;
       fontSize = 9;
     } else if (zoom >= 17) {
       size = 26;
