@@ -1620,14 +1620,19 @@ async function opCleanupDuplicateJobs(ctx: Ctx, args: any): Promise<Response> {
 // =============================================================
 function personNameFromLegacyDisplayName(name: string): string {
   let out = String(name ?? "").trim();
-  // Strip trailing job number segment ("— JOB-0057", "- EC-JOB-0016").
-  out = out.replace(/\s*[—–-]\s*[A-Z0-9]*-?JOB-?\d+\s*$/i, "").trim();
-  // Strip trailing address segment ("Albany Fernandes - 2847 Northeast 2nd Ave").
+  // Strip trailing job number segment ("— JOB-0057", "- EC-JOB-0016", "EC-J28").
+  out = out.replace(/\s*[—–-]\s*[A-Z]{0,4}-?J(?:OB)?-?\d+\s*$/i, "").trim();
+  // Strip a trailing address segment separated by dash/em-dash ("Name - 2847 NE 2nd Ave").
   const parts = out.split(/\s+[-–—]\s+/);
   if (parts.length > 1 && /\d/.test(parts[parts.length - 1])) {
     out = parts.slice(0, -1).join(" - ").trim();
   }
-  return out;
+  // Trailing address glued without a separator ("Albany Fernandes 2847 Northeast 2nd Avenue").
+  const glued = out.match(
+    /^(.*?)\s+\d+\s+.*\b(ave|avenue|st|street|rd|road|dr|drive|ln|lane|blvd|boulevard|ct|court|way|ter|terrace|pl|place|cir|circle|hwy|highway|pkwy|parkway|trl|trail)\.?$/i,
+  );
+  if (glued && glued[1].trim()) out = glued[1].trim();
+  return out.replace(/[\s,–—-]+$/, "").trim();
 }
 
 async function opNormalizeCustomerNames(ctx: Ctx, args: any): Promise<Response> {
@@ -1638,48 +1643,26 @@ async function opNormalizeCustomerNames(ctx: Ctx, args: any): Promise<Response> 
   const realmId = connection.realm_id as string;
   const { access_token } = await getValidAccessToken(service, ctx.tenantId);
 
-  const parents: any[] = [];
-  for (let start = 1; start < 2000; start += 100) {
-    const q = encodeURIComponent(
-      `select Id, DisplayName, Job, Active, SyncToken from Customer where Job = false and Active = true startposition ${start} maxresults 100`,
-    );
+  const qboQuery = async (query: string) => {
     const res = await fetch(
-      `${qboHost(connection)}/v3/company/${realmId}/query?minorversion=75&query=${q}`,
+      `${qboHost(connection)}/v3/company/${realmId}/query?minorversion=75&query=${encodeURIComponent(query)}`,
       { headers: { Authorization: `Bearer ${access_token}`, Accept: "application/json" } },
     );
-    if (!res.ok) break;
-    const page = (await res.json())?.QueryResponse?.Customer ?? [];
-    parents.push(...page);
-    if (page.length < 100) break;
-  }
+    if (!res.ok) return null;
+    return (await res.json())?.QueryResponse ?? {};
+  };
 
-  const renamed: Array<{ from: string; to: string }> = [];
-  const skipped: string[] = [];
-
-  for (const p of parents) {
-    const current = String(p.DisplayName ?? "").trim();
-    const target = personNameFromLegacyDisplayName(current);
-    if (!target || target === current) continue;
-    if (parents.some((o) => o.Id !== p.Id && String(o.DisplayName ?? "").trim() === target)) {
-      skipped.push(`${current} (name "${target}" already exists)`);
-      continue;
-    }
-    if (dryRun) {
-      renamed.push({ from: current, to: target });
-      continue;
-    }
-    const res = await fetch(
-      `${qboHost(connection)}/v3/company/${realmId}/customer?minorversion=75`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${access_token}`,
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify({ Id: p.Id, SyncToken: p.SyncToken, sparse: true, DisplayName: target }),
+  const postCustomer = async (payload: Record<string, unknown>, logMeta: Record<string, unknown>) => {
+    const res = await fetch(`${qboHost(connection)}/v3/company/${realmId}/customer?minorversion=75`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${access_token}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
       },
-    );
+      body: JSON.stringify(payload),
+    });
+    const text = await res.text();
     void writeQboApiLog(service, {
       action: "qbo_worker",
       tenant_id: ctx.tenantId,
@@ -1691,13 +1674,106 @@ async function opNormalizeCustomerNames(ctx: Ctx, args: any): Promise<Response> 
       http_status: res.status,
       intuit_tid: getIntuitTid(res),
       success: res.ok,
-      request_metadata: { op: "renameParentCustomer", qbo_customer_id: p.Id, from: current, to: target },
+      request_metadata: logMeta,
     });
-    if (res.ok) renamed.push({ from: current, to: target });
-    else skipped.push(`${current} (rename failed)`);
+    let reason = "";
+    if (!res.ok) {
+      try {
+        const j = JSON.parse(text);
+        reason = j?.Fault?.Error?.[0]?.Detail ?? j?.Fault?.Error?.[0]?.Message ?? text.slice(0, 160);
+      } catch {
+        reason = text.slice(0, 160);
+      }
+    }
+    return { ok: res.ok, reason };
+  };
+
+  const parents: any[] = [];
+  for (let start = 1; start < 2000; start += 100) {
+    const qr = await qboQuery(
+      `select Id, DisplayName, CompanyName, PrintOnCheckName, Job, Active, SyncToken from Customer where Job = false and Active = true startposition ${start} maxresults 100`,
+    );
+    if (!qr) break;
+    const page = qr?.Customer ?? [];
+    parents.push(...page);
+    if (page.length < 100) break;
   }
 
-  return ok({ dry_run: dryRun, scanned: parents.length, renamed, skipped }, ctx.requestId);
+  const renamed: Array<{ from: string; to: string }> = [];
+  const merged: string[] = [];
+  const skipped: string[] = [];
+  const byName = new Map<string, any>();
+  for (const p of parents) byName.set(String(p.DisplayName ?? "").trim().toLowerCase(), p);
+
+  for (const p of parents) {
+    const current = String(p.DisplayName ?? "").trim();
+    const target = personNameFromLegacyDisplayName(current);
+    if (!target || target === current) continue;
+
+    const collision = byName.get(target.toLowerCase());
+    if (collision && collision.Id !== p.Id) {
+      // A clean parent already exists — move this parent's sub-jobs under it and retire the drifted record.
+      if (dryRun) {
+        merged.push(`${current} → merge into "${target}"`);
+        continue;
+      }
+      const subs = (await qboQuery(
+        `select Id, DisplayName, SyncToken from Customer where ParentRef = '${p.Id}' maxresults 500`,
+      ))?.Customer ?? [];
+      let moveFailed = false;
+      for (const s of subs) {
+        const r = await postCustomer(
+          { Id: s.Id, SyncToken: s.SyncToken, sparse: true, ParentRef: { value: collision.Id }, Job: true },
+          { op: "reparentSubJob", qbo_customer_id: s.Id, new_parent: collision.Id },
+        );
+        if (!r.ok) {
+          moveFailed = true;
+          skipped.push(`${s.DisplayName} (reparent failed: ${r.reason})`);
+        }
+      }
+      if (!moveFailed) {
+        const d = await postCustomer(
+          { Id: p.Id, SyncToken: p.SyncToken, sparse: true, Active: false },
+          { op: "deactivateDuplicateParent", qbo_customer_id: p.Id, name: current },
+        );
+        if (d.ok) merged.push(`${current} → ${target}`);
+        else skipped.push(`${current} (deactivate failed: ${d.reason})`);
+      }
+      continue;
+    }
+
+    if (dryRun) {
+      renamed.push({ from: current, to: target });
+      continue;
+    }
+
+    const payload: Record<string, unknown> = {
+      Id: p.Id,
+      SyncToken: p.SyncToken,
+      sparse: true,
+      DisplayName: target,
+      PrintOnCheckName: target,
+    };
+    // Only clear CompanyName when it also carries the address/job noise.
+    const company = String(p.CompanyName ?? "").trim();
+    if (company && personNameFromLegacyDisplayName(company) !== company) {
+      payload.CompanyName = personNameFromLegacyDisplayName(company);
+    }
+    const r = await postCustomer(payload, {
+      op: "renameParentCustomer",
+      qbo_customer_id: p.Id,
+      from: current,
+      to: target,
+    });
+    if (r.ok) {
+      renamed.push({ from: current, to: target });
+      byName.set(target.toLowerCase(), { ...p, DisplayName: target });
+    } else {
+      skipped.push(`${current} (rename failed: ${r.reason})`);
+    }
+  }
+
+  return ok({ dry_run: dryRun, scanned: parents.length, renamed, merged, skipped }, ctx.requestId);
 }
 
 // =============================================================
