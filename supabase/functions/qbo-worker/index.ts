@@ -945,8 +945,11 @@ async function opCreateInvoice(ctx: Ctx, args: any): Promise<Response> {
   if (settings?.customer_visible_project_number) {
     invoicePayload.CustomerMemo = { value: `Project ${projectNumber}` };
   }
-  if (settings?.invoice_numbering_mode === "pitch_managed" && estimate.estimate_number) {
-    invoicePayload.DocNumber = String(estimate.estimate_number);
+  // Invoice number ties back to Pitch by default: prefer the project/job label,
+  // fall back to the estimate number. Only "qbo_managed" defers to QBO's counter.
+  const pitchDocNumber = String(projectNumber ?? estimate.estimate_number ?? "").trim().slice(0, 21);
+  if (settings?.invoice_numbering_mode !== "qbo_managed" && pitchDocNumber) {
+    invoicePayload.DocNumber = pitchDocNumber;
   }
   if (departmentRef) invoicePayload.DepartmentRef = { value: departmentRef };
 
