@@ -433,11 +433,8 @@ Deno.serve(async (req) => {
               invoice_number: invoiceRow.invoice_number,
               amount: Number(invoiceRow.amount),
             };
-          }
-        } else {
-          contractInvoice = { created: false, reason: 'no_selling_price' };
-        }
       }
+
     } catch (invErr: any) {
       console.error('[api-approve-job-from-lead] contract invoice threw:', invErr);
       contractInvoice = { created: false, error: invErr?.message ?? String(invErr) };
