@@ -537,7 +537,7 @@ export default function PropertyInfoPanelMobileBody(props: Props) {
         <div className="mb-4 rounded-lg border bg-card p-3 space-y-2">
           <div className="flex items-center justify-between">
             <p className="text-[11px] font-medium text-muted-foreground">
-              {hasContact || manualPrefilled ? "Homeowner info" : "Enter homeowner info"}
+              {hasContact || hasManualEntry ? "Homeowner info" : "Enter homeowner info"}
             </p>
             <div className="flex items-center gap-2">
               {publicLookupLoading && (
