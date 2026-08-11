@@ -133,15 +133,44 @@ export const handle = async (req) => {
 
     console.log(`[skip-trace] Calling BatchData: ${street}, ${city} ${state} ${zip}`);
 
-    const result = await batchDataSkipTrace({ street, city, state, zip, timeoutMs: 15000 });
+    let result = null as Awaited<ReturnType<typeof batchDataSkipTrace>>;
+    try {
+      result = await batchDataSkipTrace({ street, city, state, zip, timeoutMs: 15000 });
+    } catch (bdErr) {
+      console.warn('[skip-trace] BatchData failed, will try Firecrawl:', bdErr);
+    }
 
-    const firstName = result?.firstName || null;
-    const lastName = result?.lastName || null;
+    let firstName = result?.firstName || null;
+    let lastName = result?.lastName || null;
+    let phones = result?.phones || [];
+    let emails = result?.emails || [];
+    let age = result?.age || null;
+    let relatives = result?.relatives || [];
+    let sourceName = result ? 'batchdata' : 'none';
+
+    // ---- Firecrawl fallback (free people-search) ----
+    if (phones.length === 0 && emails.length === 0) {
+      const searchName = [firstName, lastName].filter(Boolean).join(' ') || owner_name || '';
+      if (searchName) {
+        console.log('[skip-trace] Falling back to Firecrawl peopleSearch for:', searchName);
+        const fc = await peopleSearch({ ownerName: searchName, city, state });
+        if (fc) {
+          phones = (fc.phones || []).map((p) => ({ number: p.number, type: p.type }));
+          emails = (fc.emails || []).map((e) => e.address);
+          age = age || fc.age;
+          relatives = relatives.length ? relatives : (fc.relatives || []);
+          if (!firstName && !lastName && fc.name) {
+            const parts = fc.name.trim().split(/\s+/);
+            firstName = parts[0] || null;
+            lastName = parts.slice(1).join(' ') || null;
+          }
+          sourceName = result ? 'batchdata+firecrawl' : 'firecrawl';
+        }
+      }
+    }
+
     const fullName = [firstName, lastName].filter(Boolean).join(' ') || owner_name || 'Unknown Owner';
-    const phones = result?.phones || [];
-    const emails = result?.emails || [];
-    const age = result?.age || null;
-    const relatives = result?.relatives || [];
+
 
     // =============================================
     // STEP 3: DNC scrubbing — cache BatchData dnc flags
