@@ -132,6 +132,17 @@ export const handle = async (req) => {
       );
     }
 
+    // Resolve owner name from the property row when the client did not send one
+    let resolvedOwnerName = owner_name || '';
+    if (!resolvedOwnerName) {
+      const { data: propRow } = await supabase
+        .from('canvassiq_properties')
+        .select('owner_name')
+        .eq('id', property_id)
+        .maybeSingle();
+      resolvedOwnerName = propRow?.owner_name || '';
+    }
+
     console.log(`[skip-trace] Calling BatchData: ${street}, ${city} ${state} ${zip}`);
 
     let result = null as Awaited<ReturnType<typeof batchDataSkipTrace>>;
@@ -151,7 +162,7 @@ export const handle = async (req) => {
 
     // ---- Firecrawl fallback (free people-search) ----
     if (phones.length === 0 && emails.length === 0) {
-      const searchName = [firstName, lastName].filter(Boolean).join(' ') || owner_name || '';
+      const searchName = [firstName, lastName].filter(Boolean).join(' ') || resolvedOwnerName || '';
       if (searchName) {
         console.log('[skip-trace] Falling back to Firecrawl peopleSearch for:', searchName);
         const fc = await peopleSearch({ ownerName: searchName, city, state });
@@ -170,7 +181,7 @@ export const handle = async (req) => {
       }
     }
 
-    const fullName = [firstName, lastName].filter(Boolean).join(' ') || owner_name || 'Unknown Owner';
+    const fullName = [firstName, lastName].filter(Boolean).join(' ') || resolvedOwnerName || 'Unknown Owner';
 
 
     // =============================================
