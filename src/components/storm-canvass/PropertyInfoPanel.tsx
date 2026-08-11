@@ -198,7 +198,7 @@ export default function PropertyInfoPanel({
   }, [property?.id, property?.lat, property?.address, profile?.tenant_id, parseAddr]);
 
   // Step 2 (PAID): BatchData skip trace for phones/emails
-  const handleSkipTrace = useCallback(async () => {
+  const handleSkipTrace = useCallback(async (silent = false) => {
     if (!property?.id || !profile?.tenant_id) {
       toast.error('Missing property data');
       return;
@@ -264,16 +264,20 @@ export default function PropertyInfoPanel({
       const hasPhones = skipPhones.length > 0;
       const hasEmails = skipEmails.length > 0;
 
-      if (skipData?.cached) {
+      if (silent) {
+        if (hasRealOwner || hasPhones || hasEmails) {
+          toast.success('Owner info found — verify before saving');
+        }
+      } else if (skipData?.cached) {
         toast.success('Contact data loaded (cached)');
       } else if (hasRealOwner || hasPhones || hasEmails) {
-        toast.success('Property enriched with BatchData!');
+        toast.success('Contact info found');
       } else {
         toast.warning('No contact data found for this property');
       }
     } catch (err: any) {
       console.error('[handleSkipTrace] Error:', err?.message || err);
-      toast.error(err?.message || 'Failed to get contact info');
+      if (!silent) toast.error(err?.message || 'Failed to get contact info');
     } finally {
       setEnriching(false);
       enrichingRef.current = false;
@@ -309,7 +313,7 @@ export default function PropertyInfoPanel({
       publicLookupDoneRef.current = property.id;
       (async () => {
         await handlePublicLookup();
-        await handleSkipTrace();
+        await handleSkipTrace(true);
       })();
     }
   }, [open, property?.id, handlePublicLookup, handleSkipTrace]);
