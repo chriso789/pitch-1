@@ -165,7 +165,7 @@ export const handle = async (req) => {
       const searchName = [firstName, lastName].filter(Boolean).join(' ') || resolvedOwnerName || '';
       if (searchName) {
         console.log('[skip-trace] Falling back to Firecrawl peopleSearch for:', searchName);
-        const fc = await peopleSearch({ ownerName: searchName, city, state });
+        const fc = await peopleSearch({ ownerName: searchName, city, state, street });
         if (fc) {
           phones = (fc.phones || []).map((p) => ({ number: p.number, type: p.type }));
           emails = (fc.emails || []).map((e) => e.address);

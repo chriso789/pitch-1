@@ -103,3 +103,34 @@ export async function firecrawlScrapeJson<T = Record<string, unknown>>(
   const extracted = json?.json ?? json?.data?.json ?? json?.data?.data?.json ?? null;
   return extracted as T | null;
 }
+
+/**
+ * Scrape a URL and return the raw markdown (used as a regex safety net when
+ * LLM JSON extraction misses phone numbers / emails).
+ */
+export async function firecrawlScrapeMarkdown(url: string): Promise<string | null> {
+  const apiKey = getApiKey();
+
+  const res = await fetchWithRetry(`${FIRECRAWL_BASE}/scrape`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      url,
+      formats: ["markdown"],
+      onlyMainContent: true,
+      waitFor: 2500,
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    console.warn(`[firecrawl] markdown scrape failed [${res.status}]: ${text}`);
+    return null;
+  }
+
+  const json = await res.json();
+  return json?.markdown ?? json?.data?.markdown ?? null;
+}

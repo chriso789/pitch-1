@@ -73,15 +73,12 @@ interface CrmOverlay {
   ownerName: string;
 }
 
-// Get marker size based on zoom level - always show house numbers at zoom 14+
+// Fixed-size pins — never scale with zoom (prevents overlapping "pill" markers)
 function getMarkerSize(zoom: number): { size: number; showNumber: boolean; fontSize: number } {
-  if (zoom >= 18) return { size: 36, showNumber: true, fontSize: 12 };
-  if (zoom >= 17) return { size: 32, showNumber: true, fontSize: 11 };
-  if (zoom >= 16) return { size: 28, showNumber: true, fontSize: 10 };
-  if (zoom >= 15) return { size: 24, showNumber: true, fontSize: 9 };
-  if (zoom >= 14) return { size: 20, showNumber: true, fontSize: 8 };
+  if (zoom >= 14) return { size: 26, showNumber: true, fontSize: 10 };
   return { size: 10, showNumber: false, fontSize: 0 };
 }
+
 
 // No longer needed - we use map.getBounds() directly
 
@@ -252,32 +249,8 @@ export default function PropertyMarkersLayer({
       container.appendChild(dot);
     }
 
-    // CRM status / owner label below pin at zoom 16+
-    if (crm && zoom >= 16) {
-      const label = document.createElement('div');
-      const txt = `${crm.isProject ? 'PROJECT · ' : ''}${formatCrmStatus(crm.status).toUpperCase()}`;
-      label.textContent = txt;
-      label.style.cssText = `
-        margin-top: 2px; font-size: 8px; font-weight: 700;
-        color: #FFFFFF; background: ${color};
-        padding: 1px 4px; border-radius: 3px; white-space: nowrap;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.25);
-      `;
-      container.appendChild(label);
+    // No text labels under the pin — they widened the marker into overlapping pills.
 
-      if (crm.ownerName && zoom >= 17) {
-        const owner = document.createElement('div');
-        owner.textContent = crm.ownerName;
-        owner.style.cssText = `
-          margin-top: 1px; font-size: 8px; font-weight: 600;
-          color: #1F2937; background: rgba(255,255,255,0.9);
-          padding: 0 3px; border-radius: 2px; white-space: nowrap;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        `;
-        container.appendChild(owner);
-      }
-    }
 
     return container;
   }, []);
