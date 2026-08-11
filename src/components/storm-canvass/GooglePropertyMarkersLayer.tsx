@@ -573,11 +573,11 @@ export default function GooglePropertyMarkersLayer({
     const symbols = symbolSettings || DEFAULT_DISPOSITION_SYMBOLS;
     const symbol = symbols[disposition] || '';
     
-    // Size based on zoom level — number-only labels (street name added at zoom ≥ 19)
+    // Pins must remain circular at every zoom level. Only the house number changes
+    // visibility; never append street text or derive width from label length.
     let size = 16;
     let showNumber = false;
     let fontSize = 8;
-    let showStreetName = false;
     
     if (zoom >= 19) {
       // Keep a compact circular pin at high zoom — no street-name pill widening
@@ -594,15 +594,6 @@ export default function GooglePropertyMarkersLayer({
     }
     
     const streetNumber = showNumber ? getStreetNumber(property.address) : '';
-    // At zoom ≥ 19, extract first word of street name for disambiguation
-    let streetLabel = streetNumber;
-    if (showStreetName && streetNumber && property.address) {
-      const parts = getStreetText(property.address).replace(/^\d+\s*/, '').split(/\s+/);
-      const firstWord = parts[0] || '';
-      if (firstWord) {
-        streetLabel = `${streetNumber} ${firstWord}`;
-      }
-    }
     const fillColor = isNotContacted ? '#FFFFFF' : color;
     const strokeColor = isNotContacted ? color : '#FFFFFF';
     const textColor = isNotContacted ? '#1F2937' : '#FFFFFF';
@@ -616,17 +607,13 @@ export default function GooglePropertyMarkersLayer({
     // At low zoom without number, show symbol as primary content
     const showSymbolAsPrimary = !showNumber && symbol && !isNotContacted;
     
-    // For zoom ≥ 19 with street name, use pill shape; otherwise circle
-    const pinWidth = showStreetName && streetLabel.length > 4 ? Math.max(size, streetLabel.length * 7 + 12) : size;
-    const rx = showStreetName ? size / 2 : size / 2;
-    
     const svg = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="${pinWidth}" height="${size}" viewBox="0 0 ${pinWidth} ${size}">
-        <rect x="1" y="1" width="${pinWidth - 2}" height="${size - 2}" rx="${rx}" fill="${fillColor}" stroke="${strokeColor}" stroke-width="2"/>
+      <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+        <circle cx="${size / 2}" cy="${size / 2}" r="${size / 2 - 1}" fill="${fillColor}" stroke="${strokeColor}" stroke-width="2"/>
         ${showSymbolAsPrimary
-          ? `<text x="${pinWidth/2}" y="${size/2 + fontSize/3}" text-anchor="middle" font-size="${fontSize}" fill="${textColor}" font-weight="600" font-family="system-ui, -apple-system, sans-serif">${symbol}</text>`
-          : streetLabel
-            ? `<text x="${pinWidth/2}" y="${size/2 + fontSize/3}" text-anchor="middle" font-size="${fontSize}" fill="${textColor}" font-weight="600" font-family="system-ui, -apple-system, sans-serif">${streetLabel}</text>`
+          ? `<text x="${size/2}" y="${size/2 + fontSize/3}" text-anchor="middle" font-size="${fontSize}" fill="${textColor}" font-weight="600" font-family="system-ui, -apple-system, sans-serif">${symbol}</text>`
+          : streetNumber
+            ? `<text x="${size/2}" y="${size/2 + fontSize/3}" text-anchor="middle" font-size="${fontSize}" fill="${textColor}" font-weight="600" font-family="system-ui, -apple-system, sans-serif">${streetNumber}</text>`
             : ''
         }
         ${symbol && showNumber && !isNotContacted
@@ -639,8 +626,8 @@ export default function GooglePropertyMarkersLayer({
     
     return {
       url: `data:image/svg+xml,${encodeURIComponent(svg)}`,
-      scaledSize: new google.maps.Size(pinWidth, size),
-      anchor: new google.maps.Point(pinWidth / 2, size / 2),
+      scaledSize: new google.maps.Size(size, size),
+      anchor: new google.maps.Point(size / 2, size / 2),
     };
   }, [symbolSettings]);
 
