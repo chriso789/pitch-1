@@ -620,6 +620,13 @@ export default function LiveCanvassingPage() {
     setShowPropertyPanel(true);
   }, []);
 
+  // Selecting an existing contact/project pin opens its details record
+  const handleContactPinSelect = useCallback((contact: any) => {
+    if (!contact?.id) return;
+    setSelectedContact(contact);
+    navigate(`/contact/${contact.id}`);
+  }, [navigate]);
+
   return (
     <div className="h-[100dvh] w-full relative overflow-hidden bg-background" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
       {/* Full-screen map — only render once we have a location */}
