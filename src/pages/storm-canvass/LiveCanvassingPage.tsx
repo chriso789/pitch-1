@@ -784,6 +784,7 @@ export default function LiveCanvassingPage() {
 
       {/* Property Info Panel (Bottom Sheet) */}
       <PropertyInfoPanel
+        key={selectedProperty?.id ?? 'no-property'}
         open={showPropertyPanel}
         onOpenChange={(open) => {
           setShowPropertyPanel(open);
