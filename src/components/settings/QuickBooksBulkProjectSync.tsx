@@ -224,6 +224,7 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
     dry_run: boolean;
     scanned: number;
     renamed: Array<{ from: string; to: string }>;
+    merged?: string[];
     skipped: string[];
   } | null>(null);
   const [fixingNames, setFixingNames] = useState(false);
@@ -371,12 +372,25 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
                 ))}
               </ul>
             )}
+            {(nameFix.merged?.length ?? 0) > 0 && (
+              <div className="space-y-1">
+                <div className="text-xs font-medium">
+                  {nameFix.merged!.length} duplicate parent{nameFix.merged!.length === 1 ? "" : "s"} merged into the clean customer
+                </div>
+                <ul className="text-xs text-muted-foreground space-y-0.5 max-h-32 overflow-y-auto">
+                  {nameFix.merged!.map((m, i) => (
+                    <li key={i}>{m}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {nameFix.skipped.length > 0 && (
               <div className="text-xs text-amber-600">Skipped: {nameFix.skipped.join(", ")}</div>
             )}
-            {nameFix.dry_run && nameFix.renamed.length > 0 && (
+            {nameFix.dry_run && (nameFix.renamed.length > 0 || (nameFix.merged?.length ?? 0) > 0) && (
               <Button size="sm" onClick={() => runNameNormalize(false)} disabled={fixingNames}>
-                Rename {nameFix.renamed.length} customer{nameFix.renamed.length === 1 ? "" : "s"}
+                Clean up {nameFix.renamed.length + (nameFix.merged?.length ?? 0)} customer
+                {nameFix.renamed.length + (nameFix.merged?.length ?? 0) === 1 ? "" : "s"}
               </Button>
             )}
           </div>
