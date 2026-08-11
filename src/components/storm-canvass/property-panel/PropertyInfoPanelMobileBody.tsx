@@ -17,7 +17,7 @@
  *   G. AI strategy + storm reports + score (collapsed accordions)
  *   H. Notes (collapsed by default)
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Phone,
   Mail,
