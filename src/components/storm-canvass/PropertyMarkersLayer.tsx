@@ -251,9 +251,6 @@ export default function PropertyMarkersLayer({
 
     // No text labels under the pin — they widened the marker into overlapping pills.
 
-        container.appendChild(owner);
-      }
-    }
 
     return container;
   }, []);
