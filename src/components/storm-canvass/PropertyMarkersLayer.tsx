@@ -189,10 +189,9 @@ export default function PropertyMarkersLayer({
     const baseColor = getDispositionColor(property.disposition);
     const color = crm ? (CRM_STATUS_COLORS[crm.status] || baseColor) : baseColor;
     const { size, showNumber, fontSize } = getMarkerSize(zoom);
-    const { number: streetNumber, streetName } = getStreetInfo(property.address);
+    const { number: streetNumber } = getStreetInfo(property.address);
     const isNotContacted = !crm && (!property.disposition || property.disposition === 'not_contacted');
     const borderWidth = size >= 24 ? 3 : size >= 16 ? 2 : 1;
-    const showStreetLabel = zoom >= 17 && streetName;
 
     container.className = 'property-marker';
     container.style.cssText = `
@@ -278,18 +277,6 @@ export default function PropertyMarkersLayer({
         `;
         container.appendChild(owner);
       }
-    } else if (showStreetLabel) {
-      const label = document.createElement('div');
-      label.textContent = streetName;
-      label.style.cssText = `
-        margin-top: 1px; font-size: 8px; font-weight: 600;
-        color: #1F2937; background: rgba(255,255,255,0.85);
-        padding: 0px 3px; border-radius: 2px; white-space: nowrap;
-        max-width: 60px; overflow: hidden; text-overflow: ellipsis;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        text-shadow: 0 0 2px white; line-height: 1.2;
-      `;
-      container.appendChild(label);
     }
 
     return container;
