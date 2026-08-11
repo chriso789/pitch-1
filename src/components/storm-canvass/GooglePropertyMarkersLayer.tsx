@@ -573,25 +573,12 @@ export default function GooglePropertyMarkersLayer({
     const symbols = symbolSettings || DEFAULT_DISPOSITION_SYMBOLS;
     const symbol = symbols[disposition] || '';
     
-    // Pins must remain circular at every zoom level. Only the house number changes
-    // visibility; never append street text or derive width from label length.
-    let size = 16;
-    let showNumber = false;
-    let fontSize = 8;
-    
-    if (zoom >= 19) {
-      // Keep a compact circular pin at high zoom — no street-name pill widening
-      size = 28;
-      showNumber = true;
-      fontSize = 9;
-    } else if (zoom >= 17) {
-      size = 26;
-      showNumber = true;
-      fontSize = 9;
-    } else if (zoom >= 15) {
-      size = 20;
-      showNumber = false;
-    }
+    // Pins are a FIXED-SIZE circle at every zoom level. Never scale with zoom and
+    // never append street text — that is what caused the wide overlapping pills.
+    const size = 26;
+    const fontSize = 9;
+    const showNumber = zoom >= 17;
+
     
     const streetNumber = showNumber ? getStreetNumber(property.address) : '';
     const fillColor = isNotContacted ? '#FFFFFF' : color;
