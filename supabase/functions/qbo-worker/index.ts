@@ -994,13 +994,27 @@ async function opCreateInvoice(ctx: Ctx, args: any): Promise<Response> {
     }
   }
 
-  const createResult = await qboFetch({
+  let createResult = await qboFetch({
     method: "POST",
     url: invoiceWriteUrl,
     body: invoiceWriteBody,
     requestId: invoiceWriteRequestId,
     getAccessToken: async () => (await getValidAccessToken(service, ctx.tenantId)).access_token,
   });
+
+  // QBO rejects duplicate DocNumbers (error 6140). Retry once letting QBO assign
+  // the number — the Pitch project number still rides on PrivateNote/memo.
+  if (!createResult.ok && /6140|Duplicate Document Number/i.test(createResult.bodyText ?? "")) {
+    const retryBody: any = { ...(invoiceWriteBody as any) };
+    delete retryBody.DocNumber;
+    createResult = await qboFetch({
+      method: "POST",
+      url: invoiceWriteUrl,
+      body: retryBody,
+      requestId: invoiceWriteRequestId ? `${invoiceWriteRequestId}-nodoc` : undefined,
+      getAccessToken: async () => (await getValidAccessToken(service, ctx.tenantId)).access_token,
+    });
+  }
 
   void writeQboApiLog(service, {
     action: "qbo_worker",
