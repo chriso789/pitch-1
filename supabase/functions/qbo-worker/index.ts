@@ -945,8 +945,11 @@ async function opCreateInvoice(ctx: Ctx, args: any): Promise<Response> {
   if (settings?.customer_visible_project_number) {
     invoicePayload.CustomerMemo = { value: `Project ${projectNumber}` };
   }
-  if (settings?.invoice_numbering_mode === "pitch_managed" && estimate.estimate_number) {
-    invoicePayload.DocNumber = String(estimate.estimate_number);
+  // Invoice number ties back to Pitch by default: prefer the project/job label,
+  // fall back to the estimate number. Only "qbo_managed" defers to QBO's counter.
+  const pitchDocNumber = String(projectNumber ?? estimate.estimate_number ?? "").trim().slice(0, 21);
+  if (settings?.invoice_numbering_mode !== "qbo_managed" && pitchDocNumber) {
+    invoicePayload.DocNumber = pitchDocNumber;
   }
   if (departmentRef) invoicePayload.DepartmentRef = { value: departmentRef };
 
@@ -991,13 +994,27 @@ async function opCreateInvoice(ctx: Ctx, args: any): Promise<Response> {
     }
   }
 
-  const createResult = await qboFetch({
+  let createResult = await qboFetch({
     method: "POST",
     url: invoiceWriteUrl,
     body: invoiceWriteBody,
     requestId: invoiceWriteRequestId,
     getAccessToken: async () => (await getValidAccessToken(service, ctx.tenantId)).access_token,
   });
+
+  // QBO rejects duplicate DocNumbers (error 6140). Retry once letting QBO assign
+  // the number — the Pitch project number still rides on PrivateNote/memo.
+  if (!createResult.ok && /6140|Duplicate Document Number/i.test(createResult.bodyText ?? "")) {
+    const retryBody: any = { ...(invoiceWriteBody as any) };
+    delete retryBody.DocNumber;
+    createResult = await qboFetch({
+      method: "POST",
+      url: invoiceWriteUrl,
+      body: retryBody,
+      requestId: invoiceWriteRequestId ? `${invoiceWriteRequestId}-nodoc` : undefined,
+      getAccessToken: async () => (await getValidAccessToken(service, ctx.tenantId)).access_token,
+    });
+  }
 
   void writeQboApiLog(service, {
     action: "qbo_worker",

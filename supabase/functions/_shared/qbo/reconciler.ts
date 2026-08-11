@@ -388,6 +388,17 @@ export async function reconcileInvoiceFromQbo(
     }
   }
 
+  // 8. Mirror QBO-side payments back into Pitch `payments` so the job's
+  //    Payments tab reflects money received in QuickBooks.
+  await mirrorQboPaymentsIntoPitch({
+    service,
+    tenantId,
+    connection,
+    invoice,
+    qboInvoiceId,
+    projectId: (mapping as any)?.pitch_entity_id ?? null,
+  });
+
   return {
     ok: true,
     status: fetchResult.status,
@@ -401,6 +412,106 @@ export async function reconcileInvoiceFromQbo(
     invoiceLinkSource: linkSource,
   };
 }
+
+/**
+ * Pull every QBO Payment linked to this invoice and mirror it into the Pitch
+ * `payments` table (provider_name = 'quickbooks'). Idempotent on
+ * provider_payment_id; payments that originated in Pitch are skipped so a
+ * push→pull round trip never double-counts.
+ */
+async function mirrorQboPaymentsIntoPitch(opts: {
+  service: SupabaseClient;
+  tenantId: string;
+  connection: QboConnectionCtx;
+  invoice: any;
+  qboInvoiceId: string;
+  projectId: string | null;
+}): Promise<void> {
+  const { service, tenantId, connection, invoice, qboInvoiceId, projectId } = opts;
+  if (!projectId) return;
+
+  const linked = Array.isArray(invoice?.LinkedTxn) ? invoice.LinkedTxn : [];
+  const paymentIds = linked
+    .filter((t: any) => String(t?.TxnType ?? "").toLowerCase() === "payment" && t?.TxnId)
+    .map((t: any) => String(t.TxnId));
+  if (paymentIds.length === 0) return;
+
+  for (const paymentId of paymentIds) {
+    try {
+      // Skip payments Pitch itself pushed to QBO.
+      const { data: pushedMapping } = await service
+        .from("qbo_entity_mapping")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq("realm_id", connection.realm_id)
+        .eq("qbo_entity_type", "Payment")
+        .eq("qbo_entity_id", paymentId)
+        .maybeSingle();
+      if (pushedMapping) continue;
+
+      const { data: existing } = await service
+        .from("payments")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq("provider_name", "quickbooks")
+        .eq("provider_payment_id", paymentId)
+        .maybeSingle();
+
+      const fetched = await qboFetch({
+        method: "GET",
+        url: `${qboHost(connection)}/v3/company/${connection.realm_id}/payment/${paymentId}?minorversion=75`,
+        getAccessToken: async () => (await getValidAccessToken(service, tenantId)).access_token,
+      });
+      if (!fetched.ok) continue;
+      const payment = (fetched.json as any)?.Payment;
+      if (!payment) continue;
+
+      // Amount applied to THIS invoice (handles split payments).
+      let applied = 0;
+      for (const line of Array.isArray(payment.Line) ? payment.Line : []) {
+        const txns = Array.isArray(line?.LinkedTxn) ? line.LinkedTxn : [];
+        if (txns.some((t: any) => String(t?.TxnId) === qboInvoiceId)) {
+          applied += Number(line?.Amount ?? 0);
+        }
+      }
+      if (applied <= 0) applied = Number(payment.TotalAmt ?? 0);
+      if (applied <= 0) continue;
+
+      const processedAt = payment.TxnDate
+        ? new Date(`${payment.TxnDate}T12:00:00Z`).toISOString()
+        : new Date().toISOString();
+      const method = payment.PaymentMethodRef?.name ?? "QuickBooks";
+      const row = {
+        tenant_id: tenantId,
+        project_id: projectId,
+        amount: applied,
+        status: "completed",
+        payment_method: method,
+        provider_name: "quickbooks",
+        provider_payment_id: paymentId,
+        payment_number: payment.PaymentRefNum ?? null,
+        description: `QuickBooks payment on invoice ${invoice.DocNumber ?? qboInvoiceId}`,
+        processed_at: processedAt,
+        metadata: {
+          source: "quickbooks",
+          qbo_payment_id: paymentId,
+          qbo_invoice_id: qboInvoiceId,
+          qbo_doc_number: invoice.DocNumber ?? null,
+          realm_id: connection.realm_id,
+        },
+      };
+
+      if (existing?.id) {
+        await service.from("payments").update(row).eq("id", existing.id);
+      } else {
+        await service.from("payments").insert(row);
+      }
+    } catch (e) {
+      console.error("qbo_payment_mirror_failed", paymentId, e instanceof Error ? e.message : String(e));
+    }
+  }
+}
+
 
 /**
  * Given a QBO Payment ID (from a webhook or manual sync), fetch the authoritative
