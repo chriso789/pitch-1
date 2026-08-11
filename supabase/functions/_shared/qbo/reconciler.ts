@@ -22,6 +22,8 @@ import { getValidAccessToken } from "../qbo-auth.ts";
 import { writeQboApiLog } from "../qbo-api.ts";
 import { qboFetch } from "./retry.ts";
 import { validateInvoiceLink } from "./invoiceLinkValidator.ts";
+import { mirrorQboPaymentAttachments } from "./paymentAttachments.ts";
+
 
 export interface QboConnectionCtx {
   id: string;
