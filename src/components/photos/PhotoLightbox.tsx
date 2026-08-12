@@ -112,6 +112,37 @@ export const PhotoLightbox: React.FC<PhotoLightboxProps> = ({
           <span className="text-xs text-muted-foreground">
             {open ? `${(index as number) + 1} / ${photos.length}` : ''}
           </span>
+          {onSaveDescription && photo && (
+            <Popover open={noteOpen} onOpenChange={setNoteOpen}>
+              <PopoverTrigger asChild>
+                <Button size="sm" variant="outline">
+                  <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                  Note
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80 z-[60]" align="end">
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Photo description</p>
+                  <Textarea
+                    value={noteDraft}
+                    onChange={(e) => setNoteDraft(e.target.value)}
+                    placeholder="Add a note or caption for this photo…"
+                    rows={4}
+                  />
+                  <div className="flex justify-end gap-2">
+                    <Button size="sm" variant="ghost" onClick={() => setNoteOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button size="sm" onClick={handleSaveNote} disabled={savingNote}>
+                      {savingNote && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
+                      Save
+                    </Button>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
+
           <Button size="sm" variant="outline" onClick={handleDownload} disabled={downloading}>
             {downloading ? (
               <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
