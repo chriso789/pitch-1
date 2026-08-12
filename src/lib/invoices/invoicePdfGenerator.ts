@@ -144,7 +144,12 @@ function buildInvoiceHtml(data: InvoicePdfData): string {
 
     <div style="padding:0 32px">
 
-
+      ${data.payUrl ? `
+      <div id="pitch-pay-block" style="margin-top:20px;border:1px solid #bfdbfe;background:#eff6ff;border-radius:8px;padding:16px;text-align:center">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#1d4ed8;margin-bottom:8px">Pay Online</div>
+        <div id="pitch-pay-button" style="display:inline-block;background:#0a2540;color:#ffffff;padding:11px 26px;border-radius:6px;font-size:14px;font-weight:700;letter-spacing:0.5px">PAY THIS INVOICE</div>
+        <div style="font-size:10px;color:#1e3a8a;margin-top:8px;word-break:break-all">${escape(data.payUrl)}</div>
+      </div>` : ''}
 
       ${data.paymentHistory && data.paymentHistory.length > 0 ? `
       <div style="margin-top:24px">
