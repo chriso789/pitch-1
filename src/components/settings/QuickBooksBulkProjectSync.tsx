@@ -57,6 +57,30 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
         .order("created_at", { ascending: false });
       if (error) throw error;
 
+      // Determine which pipeline statuses count as "converted" for this tenant:
+      // the configured conversion-point stage and every active stage after it
+      // (terminal/lost stages excluded).
+      const FALLBACK_STATUSES = [
+        "project", "completed", "closed", "capped_out", "final_payment", "production",
+      ];
+      let eligibleStatuses = FALLBACK_STATUSES;
+      const { data: stages } = await supabase
+        .from("pipeline_stages")
+        .select("key, name, stage_order, is_conversion_point, is_active")
+        .eq("tenant_id", tenantId)
+        .eq("is_active", true)
+        .order("stage_order", { ascending: true });
+      const conversionStage = (stages ?? []).find((stage) => stage.is_conversion_point);
+      if (conversionStage) {
+        const fromConversion = (stages ?? [])
+          .filter((stage) => (stage.stage_order ?? 0) >= (conversionStage.stage_order ?? 0))
+          .map((stage) => stage.key || String(stage.name || "").toLowerCase().replace(/\s+/g, "_"))
+          .filter((key) => key && !/lost|cancel|duplicate|dead/i.test(key));
+        if (fromConversion.length) {
+          eligibleStatuses = Array.from(new Set([...fromConversion, ...FALLBACK_STATUSES]));
+        }
+      }
+
       const pipelineEntryIds = (projects ?? [])
         .map((project) => project.pipeline_entry_id)
         .filter((id): id is string => Boolean(id));
@@ -66,11 +90,12 @@ export function QuickBooksBulkProjectSync({ tenantId }: Props) {
           .from("pipeline_entries")
           .select("id")
           .eq("tenant_id", tenantId)
-          .in("status", ["project", "completed", "closed", "capped_out", "final_payment", "production"])
+          .in("status", eligibleStatuses)
           .in("id", pipelineEntryIds);
         if (convertedError) throw convertedError;
         convertedEntryIds = new Set((convertedEntries ?? []).map((entry) => entry.id));
       }
+
 
       const convertedProjects = ((projects ?? []) as ProjectRow[]).filter(
         (project) => project.pipeline_entry_id && convertedEntryIds.has(project.pipeline_entry_id),
