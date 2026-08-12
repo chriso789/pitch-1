@@ -225,12 +225,19 @@ export const SortablePhotoItem: React.FC<SortablePhotoItemProps> = ({
     >
       {/* Image */}
       <div className="aspect-square relative">
-        <SafeImage
-          src={photo.file_url}
-          alt={photo.description || 'Photo'}
-          className="w-full h-full object-cover"
-          loading={imageLoading}
-        />
+        <button
+          type="button"
+          className="block w-full h-full cursor-zoom-in"
+          onClick={onPreview}
+          aria-label="Open photo preview"
+        >
+          <SafeImage
+            src={photo.file_url}
+            alt={photo.description || 'Photo'}
+            className="w-full h-full object-cover"
+            loading={imageLoading}
+          />
+        </button>
 
         {/* Drag handle & checkbox */}
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors">
