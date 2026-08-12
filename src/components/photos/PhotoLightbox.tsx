@@ -6,6 +6,8 @@ import { ChevronLeft, ChevronRight, Download, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/use-toast';
 import { downloadPhotoAsJpeg } from '@/lib/photos/downloadPhotoJpeg';
+import { SafeImage } from '@/components/ui/safe-image';
+
 import type { CustomerPhoto } from '@/hooks/usePhotos';
 
 interface PhotoLightboxProps {
