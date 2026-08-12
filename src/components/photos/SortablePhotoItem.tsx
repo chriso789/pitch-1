@@ -192,7 +192,7 @@ export const SortablePhotoItem: React.FC<SortablePhotoItemProps> = ({
             </DropdownMenuSub>
             <DropdownMenuSeparator />
             <DropdownMenuItem 
-              onClick={() => window.open(photo.file_url, '_blank')}
+              onClick={() => (onDownload ? onDownload() : window.open(photo.file_url, '_blank'))}
             >
               <Download className="h-4 w-4 mr-2" />
               Download
