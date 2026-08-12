@@ -35,6 +35,8 @@ export interface InvoicePdfData {
   alreadyPaid?: number;
   contractTotal?: number;
   paymentHistory?: InvoicePdfPayment[];
+  /** Hosted "pay this invoice" URL (QuickBooks hosted invoice link or portal link). */
+  payUrl?: string | null;
 }
 
 const escape = (s: any) =>
