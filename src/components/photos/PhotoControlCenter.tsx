@@ -49,6 +49,8 @@ import { pickNativePhotos } from '@/lib/native/pickPhotos';
 import { isNativeApp } from '@/lib/native/appMode';
 import { exportPhotoReport } from '@/lib/photos/exportPhotoReport';
 import { PhotoEmailDialog } from './PhotoEmailDialog';
+import { PhotoLightbox } from './PhotoLightbox';
+import { downloadPhotoAsJpeg, downloadPhotosAsJpeg } from '@/lib/photos/downloadPhotoJpeg';
 import { PdfPreview } from './PdfPreview';
 import { SortablePhotoItem } from './SortablePhotoItem';
 import { PhotoMarkupEditor } from './PhotoMarkupEditor';
@@ -373,6 +375,8 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
 
   const [isExporting, setIsExporting] = useState(false);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [downloadingJpeg, setDownloadingJpeg] = useState(false);
   const [emailPhotos, setEmailPhotos] = useState<CustomerPhoto[]>([]);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -521,6 +525,39 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
     setEmailPhotos(source);
     setEmailDialogOpen(true);
   }, [resolveReportSource]);
+
+  const handleDownloadPhoto = useCallback(async (photo: CustomerPhoto, index: number) => {
+    try {
+      await downloadPhotoAsJpeg(photo, index);
+    } catch (err) {
+      console.error('[PhotoControlCenter] Photo download failed', err);
+      toast({
+        title: 'Download failed',
+        description: err instanceof Error ? err.message : 'Unable to download photo',
+        variant: 'destructive',
+      });
+    }
+  }, []);
+
+  const handleDownloadSelectedJpegs = useCallback(async () => {
+    const source = resolveReportSource();
+    if (source.length === 0) {
+      toast({ title: 'No photos to download', variant: 'destructive' });
+      return;
+    }
+    setDownloadingJpeg(true);
+    try {
+      const { ok, failed } = await downloadPhotosAsJpeg(source);
+      toast({
+        title: failed ? 'Download partially complete' : 'Photos downloaded',
+        description: `${ok} JPEG${ok !== 1 ? 's' : ''} saved${failed ? ` · ${failed} failed` : ''}`,
+        variant: failed && !ok ? 'destructive' : undefined,
+      });
+    } finally {
+      setDownloadingJpeg(false);
+    }
+  }, [resolveReportSource]);
+
 
 
 
@@ -826,6 +863,14 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
               <FileText className="h-3.5 w-3.5 mr-1" />
               Add to Estimate
             </Button>
+            <Button size="sm" variant="ghost" onClick={handleDownloadSelectedJpegs} disabled={downloadingJpeg}>
+              {downloadingJpeg ? (
+                <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+              ) : (
+                <Download className="h-3.5 w-3.5 mr-1" />
+              )}
+              Download JPEGs
+            </Button>
             <Button size="sm" variant="ghost" onClick={handleViewReport} disabled={isExporting}>
               <Eye className="h-3.5 w-3.5 mr-1" />
               View Report
@@ -911,6 +956,8 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
                     onUpdateCategory={async (category) => {
                       await updatePhoto({ photoId: photo.id, category });
                     }}
+                    onPreview={() => setLightboxIndex(index)}
+                    onDownload={() => handleDownloadPhoto(photo, index)}
                   />
                 ))}
               </div>
@@ -967,6 +1014,15 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <PhotoLightbox
+        photos={filteredPhotos}
+        index={lightboxIndex}
+        onIndexChange={setLightboxIndex}
+        onClose={() => setLightboxIndex(null)}
+      />
+
+
 
       <PhotoEmailDialog
         open={emailDialogOpen}

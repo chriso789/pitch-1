@@ -60,6 +60,8 @@ interface SortablePhotoItemProps {
   onToggleEstimate: (include: boolean) => void;
   onDelete: () => void;
   onUpdateCategory: (category: PhotoCategory) => void;
+  onPreview?: () => void;
+  onDownload?: () => void;
   imageLoading?: 'eager' | 'lazy';
 }
 
@@ -73,6 +75,8 @@ export const SortablePhotoItem: React.FC<SortablePhotoItemProps> = ({
   onToggleEstimate,
   onDelete,
   onUpdateCategory,
+  onPreview,
+  onDownload,
   imageLoading = 'lazy',
 }) => {
   const {
@@ -112,14 +116,19 @@ export const SortablePhotoItem: React.FC<SortablePhotoItemProps> = ({
 
         <Checkbox checked={isSelected} onCheckedChange={onSelect} />
 
-        <div className="w-12 h-12 rounded overflow-hidden flex-shrink-0">
+        <button
+          type="button"
+          onClick={onPreview}
+          aria-label="Open photo preview"
+          className="w-12 h-12 rounded overflow-hidden flex-shrink-0 cursor-zoom-in"
+        >
           <SafeImage
             src={photo.file_url}
             alt={photo.description || 'Photo'}
             className="w-full h-full object-cover"
             loading={imageLoading}
           />
-        </div>
+        </button>
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -188,7 +197,7 @@ export const SortablePhotoItem: React.FC<SortablePhotoItemProps> = ({
             </DropdownMenuSub>
             <DropdownMenuSeparator />
             <DropdownMenuItem 
-              onClick={() => window.open(photo.file_url, '_blank')}
+              onClick={() => (onDownload ? onDownload() : window.open(photo.file_url, '_blank'))}
             >
               <Download className="h-4 w-4 mr-2" />
               Download
@@ -221,17 +230,24 @@ export const SortablePhotoItem: React.FC<SortablePhotoItemProps> = ({
     >
       {/* Image */}
       <div className="aspect-square relative">
-        <SafeImage
-          src={photo.file_url}
-          alt={photo.description || 'Photo'}
-          className="w-full h-full object-cover"
-          loading={imageLoading}
-        />
+        <button
+          type="button"
+          className="block w-full h-full cursor-zoom-in"
+          onClick={onPreview}
+          aria-label="Open photo preview"
+        >
+          <SafeImage
+            src={photo.file_url}
+            alt={photo.description || 'Photo'}
+            className="w-full h-full object-cover"
+            loading={imageLoading}
+          />
+        </button>
 
         {/* Drag handle & checkbox */}
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors">
+        <div className="absolute inset-0 pointer-events-none bg-black/0 group-hover:bg-black/20 transition-colors">
           <button
-            className="absolute top-2 left-2 p-1.5 rounded bg-black/60 hover:bg-black/80 text-white cursor-grab active:cursor-grabbing touch-none shadow-md"
+            className="pointer-events-auto absolute top-2 left-2 p-1.5 rounded bg-black/60 hover:bg-black/80 text-white cursor-grab active:cursor-grabbing touch-none shadow-md"
             title="Drag to reorder"
             aria-label="Drag to reorder"
             {...attributes}
@@ -242,7 +258,7 @@ export const SortablePhotoItem: React.FC<SortablePhotoItemProps> = ({
 
           <div 
             className={cn(
-              'absolute top-2 right-2 transition-opacity',
+              'pointer-events-auto absolute top-2 right-2 transition-opacity',
               isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
             )}
           >
@@ -336,7 +352,7 @@ export const SortablePhotoItem: React.FC<SortablePhotoItemProps> = ({
               </DropdownMenuSub>
               <DropdownMenuSeparator />
               <DropdownMenuItem 
-                onClick={() => window.open(photo.file_url, '_blank')}
+                onClick={() => (onDownload ? onDownload() : window.open(photo.file_url, '_blank'))}
               >
                 <Download className="h-4 w-4 mr-2" />
                 Download
