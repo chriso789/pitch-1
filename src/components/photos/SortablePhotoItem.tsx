@@ -240,9 +240,9 @@ export const SortablePhotoItem: React.FC<SortablePhotoItemProps> = ({
         </button>
 
         {/* Drag handle & checkbox */}
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors">
+        <div className="absolute inset-0 pointer-events-none bg-black/0 group-hover:bg-black/20 transition-colors">
           <button
-            className="absolute top-2 left-2 p-1.5 rounded bg-black/60 hover:bg-black/80 text-white cursor-grab active:cursor-grabbing touch-none shadow-md"
+            className="pointer-events-auto absolute top-2 left-2 p-1.5 rounded bg-black/60 hover:bg-black/80 text-white cursor-grab active:cursor-grabbing touch-none shadow-md"
             title="Drag to reorder"
             aria-label="Drag to reorder"
             {...attributes}
