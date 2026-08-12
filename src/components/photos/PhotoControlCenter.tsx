@@ -526,6 +526,39 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
     setEmailDialogOpen(true);
   }, [resolveReportSource]);
 
+  const handleDownloadPhoto = useCallback(async (photo: CustomerPhoto, index: number) => {
+    try {
+      await downloadPhotoAsJpeg(photo, index);
+    } catch (err) {
+      console.error('[PhotoControlCenter] Photo download failed', err);
+      toast({
+        title: 'Download failed',
+        description: err instanceof Error ? err.message : 'Unable to download photo',
+        variant: 'destructive',
+      });
+    }
+  }, []);
+
+  const handleDownloadSelectedJpegs = useCallback(async () => {
+    const source = resolveReportSource();
+    if (source.length === 0) {
+      toast({ title: 'No photos to download', variant: 'destructive' });
+      return;
+    }
+    setDownloadingJpeg(true);
+    try {
+      const { ok, failed } = await downloadPhotosAsJpeg(source);
+      toast({
+        title: failed ? 'Download partially complete' : 'Photos downloaded',
+        description: `${ok} JPEG${ok !== 1 ? 's' : ''} saved${failed ? ` · ${failed} failed` : ''}`,
+        variant: failed && !ok ? 'destructive' : undefined,
+      });
+    } finally {
+      setDownloadingJpeg(false);
+    }
+  }, [resolveReportSource]);
+
+
 
 
   return (
