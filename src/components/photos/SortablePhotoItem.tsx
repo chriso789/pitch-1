@@ -60,6 +60,8 @@ interface SortablePhotoItemProps {
   onToggleEstimate: (include: boolean) => void;
   onDelete: () => void;
   onUpdateCategory: (category: PhotoCategory) => void;
+  onPreview?: () => void;
+  onDownload?: () => void;
   imageLoading?: 'eager' | 'lazy';
 }
 
