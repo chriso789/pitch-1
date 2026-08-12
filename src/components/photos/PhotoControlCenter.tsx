@@ -49,6 +49,8 @@ import { pickNativePhotos } from '@/lib/native/pickPhotos';
 import { isNativeApp } from '@/lib/native/appMode';
 import { exportPhotoReport } from '@/lib/photos/exportPhotoReport';
 import { PhotoEmailDialog } from './PhotoEmailDialog';
+import { PhotoLightbox } from './PhotoLightbox';
+import { downloadPhotoAsJpeg, downloadPhotosAsJpeg } from '@/lib/photos/downloadPhotoJpeg';
 import { PdfPreview } from './PdfPreview';
 import { SortablePhotoItem } from './SortablePhotoItem';
 import { PhotoMarkupEditor } from './PhotoMarkupEditor';
