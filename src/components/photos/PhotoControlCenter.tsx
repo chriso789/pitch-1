@@ -375,6 +375,8 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
 
   const [isExporting, setIsExporting] = useState(false);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [downloadingJpeg, setDownloadingJpeg] = useState(false);
   const [emailPhotos, setEmailPhotos] = useState<CustomerPhoto[]>([]);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
