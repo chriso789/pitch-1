@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useCompanyInfo } from '@/hooks/useCompanyInfo';
 import { generateAndSaveInvoicePdf } from '@/lib/invoices/invoicePdfGenerator';
+import { resolveInvoicePayUrl } from '@/lib/invoices/resolveInvoicePayUrl';
 import { useSearchParams } from 'react-router-dom';
 import { InvoiceEmailActions } from '@/components/invoices/InvoiceEmailActions';
 import { InvoiceShareActions } from '@/components/invoices/InvoiceShareActions';
