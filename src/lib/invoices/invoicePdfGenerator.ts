@@ -35,6 +35,8 @@ export interface InvoicePdfData {
   alreadyPaid?: number;
   contractTotal?: number;
   paymentHistory?: InvoicePdfPayment[];
+  /** Hosted "pay this invoice" URL (QuickBooks hosted invoice link or portal link). */
+  payUrl?: string | null;
 }
 
 const escape = (s: any) =>
@@ -142,7 +144,12 @@ function buildInvoiceHtml(data: InvoicePdfData): string {
 
     <div style="padding:0 32px">
 
-
+      ${data.payUrl ? `
+      <div id="pitch-pay-block" style="margin-top:20px;border:1px solid #bfdbfe;background:#eff6ff;border-radius:8px;padding:16px;text-align:center">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#1d4ed8;margin-bottom:8px">Pay Online</div>
+        <div id="pitch-pay-button" style="display:inline-block;background:#0a2540;color:#ffffff;padding:11px 26px;border-radius:6px;font-size:14px;font-weight:700;letter-spacing:0.5px">PAY THIS INVOICE</div>
+        <div style="font-size:10px;color:#1e3a8a;margin-top:8px;word-break:break-all">${escape(data.payUrl)}</div>
+      </div>` : ''}
 
       ${data.paymentHistory && data.paymentHistory.length > 0 ? `
       <div style="margin-top:24px">
@@ -212,6 +219,23 @@ export async function generateInvoicePdfBlob(
           })
       )
     );
+    // Capture the pay-button geometry (CSS px, relative to the container) so we
+    // can attach a real clickable link annotation over the rasterized image.
+    let payRect: { left: number; top: number; width: number; height: number } | null = null;
+    if (data.payUrl) {
+      const block = container.querySelector('#pitch-pay-block') as HTMLElement | null;
+      if (block) {
+        const cRect = container.getBoundingClientRect();
+        const bRect = block.getBoundingClientRect();
+        payRect = {
+          left: bRect.left - cRect.left,
+          top: bRect.top - cRect.top,
+          width: bRect.width,
+          height: bRect.height,
+        };
+      }
+    }
+
     const canvas = await html2canvas(container, {
       scale: 3,
       useCORS: true,
@@ -230,6 +254,12 @@ export async function generateInvoicePdfBlob(
       const renderHeight = canvas.height * scale;
       const offsetX = (pageWidth - renderWidth) / 2;
       pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', offsetX, 0, renderWidth, renderHeight, undefined, 'SLOW');
+      if (payRect && data.payUrl) {
+        const k = 3 * scale; // css px -> pt
+        pdf.link(offsetX + payRect.left * k, payRect.top * k, payRect.width * k, payRect.height * k, {
+          url: data.payUrl,
+        });
+      }
     } else {
       // Render at full Letter width; slice into additional pages instead of shrinking.
       const imgWidth = pageWidth;
@@ -253,6 +283,22 @@ export async function generateInvoicePdfBlob(
 
         renderedPx += sliceHeightPx;
         pageIndex += 1;
+      }
+
+      if (payRect && data.payUrl) {
+        const ptPerCssPx = imgWidth / RENDER_WIDTH; // 0.75
+        const cssPerPage = pageHeight / ptPerCssPx; // 1056
+        const targetPage = Math.floor(payRect.top / cssPerPage);
+        if (targetPage < pageIndex) {
+          pdf.setPage(targetPage + 1);
+          pdf.link(
+            payRect.left * ptPerCssPx,
+            (payRect.top - targetPage * cssPerPage) * ptPerCssPx,
+            payRect.width * ptPerCssPx,
+            payRect.height * ptPerCssPx,
+            { url: data.payUrl },
+          );
+        }
       }
     }
 

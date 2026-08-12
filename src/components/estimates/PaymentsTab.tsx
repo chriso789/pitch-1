@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useCompanyInfo } from '@/hooks/useCompanyInfo';
 import { generateAndSaveInvoicePdf } from '@/lib/invoices/invoicePdfGenerator';
+import { resolveInvoicePayUrl } from '@/lib/invoices/resolveInvoicePayUrl';
 import { useSearchParams } from 'react-router-dom';
 import { InvoiceEmailActions } from '@/components/invoices/InvoiceEmailActions';
 import { InvoiceShareActions } from '@/components/invoices/InvoiceShareActions';
@@ -669,6 +670,11 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
       try {
         const today = new Date();
         const due = invoiceDueDate ? new Date(invoiceDueDate + 'T00:00:00') : null;
+        const payUrl = await resolveInvoicePayUrl({
+          tenantId: activeTenantId!,
+          pipelineEntryId,
+          invoiceNumber: invoiceNumberForPdf,
+        });
         const result = await generateAndSaveInvoicePdf({
           tenantId: activeTenantId!,
           pipelineEntryId,
@@ -690,6 +696,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
               reference: p.reference_number || '',
             })),
             contractTotal: Number(sellingPrice) || 0,
+            payUrl,
           },
         });
         if (result.error) {
