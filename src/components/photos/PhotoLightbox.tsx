@@ -2,7 +2,9 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ChevronLeft, ChevronRight, Download, Loader2 } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { ChevronLeft, ChevronRight, Download, Loader2, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/use-toast';
 import { downloadPhotoAsJpeg } from '@/lib/photos/downloadPhotoJpeg';
@@ -15,6 +17,7 @@ interface PhotoLightboxProps {
   index: number | null;
   onIndexChange: (index: number) => void;
   onClose: () => void;
+  onSaveDescription?: (photoId: string, description: string) => Promise<void> | void;
 }
 
 export const PhotoLightbox: React.FC<PhotoLightboxProps> = ({
@@ -22,10 +25,38 @@ export const PhotoLightbox: React.FC<PhotoLightboxProps> = ({
   index,
   onIndexChange,
   onClose,
+  onSaveDescription,
 }) => {
   const [downloading, setDownloading] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [noteDraft, setNoteDraft] = useState('');
+  const [savingNote, setSavingNote] = useState(false);
   const open = index !== null && index >= 0 && index < photos.length;
   const photo = open ? photos[index as number] : null;
+
+  useEffect(() => {
+    setNoteDraft(photo?.description || '');
+    setNoteOpen(false);
+  }, [photo?.id]);
+
+  const handleSaveNote = async () => {
+    if (!photo || !onSaveDescription) return;
+    setSavingNote(true);
+    try {
+      await onSaveDescription(photo.id, noteDraft.trim());
+      toast({ title: 'Note saved' });
+      setNoteOpen(false);
+    } catch (err) {
+      toast({
+        title: 'Could not save note',
+        description: err instanceof Error ? err.message : 'Unknown error',
+        variant: 'destructive',
+      });
+    } finally {
+      setSavingNote(false);
+    }
+  };
+
 
   const go = useCallback(
     (delta: number) => {
@@ -81,6 +112,37 @@ export const PhotoLightbox: React.FC<PhotoLightboxProps> = ({
           <span className="text-xs text-muted-foreground">
             {open ? `${(index as number) + 1} / ${photos.length}` : ''}
           </span>
+          {onSaveDescription && photo && (
+            <Popover open={noteOpen} onOpenChange={setNoteOpen}>
+              <PopoverTrigger asChild>
+                <Button size="sm" variant="outline">
+                  <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                  Note
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80 z-[60]" align="end">
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Photo description</p>
+                  <Textarea
+                    value={noteDraft}
+                    onChange={(e) => setNoteDraft(e.target.value)}
+                    placeholder="Add a note or caption for this photo…"
+                    rows={4}
+                  />
+                  <div className="flex justify-end gap-2">
+                    <Button size="sm" variant="ghost" onClick={() => setNoteOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button size="sm" onClick={handleSaveNote} disabled={savingNote}>
+                      {savingNote && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
+                      Save
+                    </Button>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
+
           <Button size="sm" variant="outline" onClick={handleDownload} disabled={downloading}>
             {downloading ? (
               <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
