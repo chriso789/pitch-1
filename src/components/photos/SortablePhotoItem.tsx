@@ -253,7 +253,7 @@ export const SortablePhotoItem: React.FC<SortablePhotoItemProps> = ({
 
           <div 
             className={cn(
-              'absolute top-2 right-2 transition-opacity',
+              'pointer-events-auto absolute top-2 right-2 transition-opacity',
               isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
             )}
           >
