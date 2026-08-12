@@ -1020,7 +1020,11 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
         index={lightboxIndex}
         onIndexChange={setLightboxIndex}
         onClose={() => setLightboxIndex(null)}
+        onSaveDescription={async (photoId, description) => {
+          await updatePhoto({ photoId, description });
+        }}
       />
+
 
 
 
