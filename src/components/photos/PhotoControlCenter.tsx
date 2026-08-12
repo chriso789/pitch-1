@@ -1005,6 +1005,15 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
         </AlertDialogContent>
       </AlertDialog>
 
+      <PhotoLightbox
+        photos={filteredPhotos}
+        index={lightboxIndex}
+        onIndexChange={setLightboxIndex}
+        onClose={() => setLightboxIndex(null)}
+      />
+
+
+
       <PhotoEmailDialog
         open={emailDialogOpen}
         onOpenChange={setEmailDialogOpen}
