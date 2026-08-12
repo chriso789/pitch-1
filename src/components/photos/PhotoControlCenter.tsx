@@ -948,6 +948,8 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
                     onUpdateCategory={async (category) => {
                       await updatePhoto({ photoId: photo.id, category });
                     }}
+                    onPreview={() => setLightboxIndex(index)}
+                    onDownload={() => handleDownloadPhoto(photo, index)}
                   />
                 ))}
               </div>
