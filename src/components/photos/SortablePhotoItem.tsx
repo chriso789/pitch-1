@@ -116,14 +116,19 @@ export const SortablePhotoItem: React.FC<SortablePhotoItemProps> = ({
 
         <Checkbox checked={isSelected} onCheckedChange={onSelect} />
 
-        <div className="w-12 h-12 rounded overflow-hidden flex-shrink-0">
+        <button
+          type="button"
+          onClick={onPreview}
+          aria-label="Open photo preview"
+          className="w-12 h-12 rounded overflow-hidden flex-shrink-0 cursor-zoom-in"
+        >
           <SafeImage
             src={photo.file_url}
             alt={photo.description || 'Photo'}
             className="w-full h-full object-cover"
             loading={imageLoading}
           />
-        </div>
+        </button>
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
