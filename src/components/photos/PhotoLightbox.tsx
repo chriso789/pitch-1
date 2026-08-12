@@ -6,6 +6,8 @@ import { ChevronLeft, ChevronRight, Download, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/use-toast';
 import { downloadPhotoAsJpeg } from '@/lib/photos/downloadPhotoJpeg';
+import { SafeImage } from '@/components/ui/safe-image';
+
 import type { CustomerPhoto } from '@/hooks/usePhotos';
 
 interface PhotoLightboxProps {
@@ -91,13 +93,15 @@ export const PhotoLightbox: React.FC<PhotoLightboxProps> = ({
 
         <div className="relative flex-1 min-h-0 bg-muted/40 flex items-center justify-center">
           {photo && (
-            <img
+            <SafeImage
               key={photo.id}
               src={photo.file_url}
               alt={photo.description || 'Photo preview'}
               className="max-h-full max-w-full object-contain"
+              loading="eager"
             />
           )}
+
 
           {photos.length > 1 && (
             <>
