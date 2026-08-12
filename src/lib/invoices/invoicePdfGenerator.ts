@@ -219,6 +219,23 @@ export async function generateInvoicePdfBlob(
           })
       )
     );
+    // Capture the pay-button geometry (CSS px, relative to the container) so we
+    // can attach a real clickable link annotation over the rasterized image.
+    let payRect: { left: number; top: number; width: number; height: number } | null = null;
+    if (data.payUrl) {
+      const block = container.querySelector('#pitch-pay-block') as HTMLElement | null;
+      if (block) {
+        const cRect = container.getBoundingClientRect();
+        const bRect = block.getBoundingClientRect();
+        payRect = {
+          left: bRect.left - cRect.left,
+          top: bRect.top - cRect.top,
+          width: bRect.width,
+          height: bRect.height,
+        };
+      }
+    }
+
     const canvas = await html2canvas(container, {
       scale: 3,
       useCORS: true,
@@ -237,6 +254,12 @@ export async function generateInvoicePdfBlob(
       const renderHeight = canvas.height * scale;
       const offsetX = (pageWidth - renderWidth) / 2;
       pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', offsetX, 0, renderWidth, renderHeight, undefined, 'SLOW');
+      if (payRect && data.payUrl) {
+        const k = 3 * scale; // css px -> pt
+        pdf.link(offsetX + payRect.left * k, payRect.top * k, payRect.width * k, payRect.height * k, {
+          url: data.payUrl,
+        });
+      }
     } else {
       // Render at full Letter width; slice into additional pages instead of shrinking.
       const imgWidth = pageWidth;
@@ -260,6 +283,22 @@ export async function generateInvoicePdfBlob(
 
         renderedPx += sliceHeightPx;
         pageIndex += 1;
+      }
+
+      if (payRect && data.payUrl) {
+        const ptPerCssPx = imgWidth / RENDER_WIDTH; // 0.75
+        const cssPerPage = pageHeight / ptPerCssPx; // 1056
+        const targetPage = Math.floor(payRect.top / cssPerPage);
+        if (targetPage < pageIndex) {
+          pdf.setPage(targetPage + 1);
+          pdf.link(
+            payRect.left * ptPerCssPx,
+            (payRect.top - targetPage * cssPerPage) * ptPerCssPx,
+            payRect.width * ptPerCssPx,
+            payRect.height * ptPerCssPx,
+            { url: data.payUrl },
+          );
+        }
       }
     }
 
