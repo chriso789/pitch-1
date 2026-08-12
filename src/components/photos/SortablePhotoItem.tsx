@@ -75,6 +75,8 @@ export const SortablePhotoItem: React.FC<SortablePhotoItemProps> = ({
   onToggleEstimate,
   onDelete,
   onUpdateCategory,
+  onPreview,
+  onDownload,
   imageLoading = 'lazy',
 }) => {
   const {
