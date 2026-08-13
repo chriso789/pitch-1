@@ -1,0 +1,1 @@
+UPDATE public.contacts SET is_deleted = false WHERE is_deleted = true AND deleted_at IS NULL;
