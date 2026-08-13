@@ -18,6 +18,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { UserCommissionSettings } from "./UserCommissionSettings";
 import { UserActivityTab } from "./UserActivityTab";
 import MySignaturePanel from "@/features/settings/components/MySignaturePanel";
+import { UserAssignedLocationsCard } from "./UserAssignedLocationsCard";
+
 import { 
   User, 
   Phone, 
@@ -827,7 +829,12 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
               )}
             </CardContent>
           </Card>
+
+          <div className="mt-6">
+            <UserAssignedLocationsCard userId={userId} />
+          </div>
         </TabsContent>
+
 
         <TabsContent value="commission">
           <Card>
