@@ -247,7 +247,7 @@ export function SectionedLineItemsTable({
 
     return (
       <div 
-        className={`flex items-center gap-1 cursor-pointer hover:bg-muted/50 rounded px-1 -mx-1 ${
+        className={`flex items-center justify-end gap-1 cursor-pointer hover:bg-muted/50 rounded px-1 -mx-1 ${
           isOverride ? 'text-amber-600 font-medium' : ''
         }`}
         onClick={() => editable && startEdit(item.id, field, value)}
