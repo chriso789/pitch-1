@@ -419,11 +419,12 @@ export function useLeadDetails(id: string | undefined) {
     staleTime: 300000,
   });
 
-  // Project data - only fetch when status is 'project'
+  // Project data - a pipeline entry becomes a job as soon as a project row
+  // exists (any stage past the tenant's convert point), so always look it up.
   const projectDataQuery = useQuery({
     queryKey: ['lead-project-data', id],
     queryFn: () => fetchProjectData(id!),
-    enabled: !!id && leadStatus === 'project',
+    enabled: !!id,
     staleTime: 30000,
   });
 
@@ -474,7 +475,7 @@ export function useLeadDetails(id: string | undefined) {
       refetchRequirements();
       refetchPhotos();
       productionStageQuery.refetch();
-      if (leadStatus === 'project') projectDataQuery.refetch();
+      projectDataQuery.refetch();
     }
   };
 }
