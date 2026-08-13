@@ -236,29 +236,29 @@ EXTRACTION RULES:
         tool_choice: { type: "function", function: { name: "extract_supplier_quote" } },
         temperature: 0.1,
         max_tokens: 8192,
-      }),
     });
 
     if (res.status === 429) {
-      return new Response(JSON.stringify({ error: "OpenAI rate limited - please try again in a moment" }), {
+      return new Response(JSON.stringify({ error: "AI provider is rate limited — please retry in a few seconds." }), {
         status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    if (res.status === 401 || res.status === 403) {
-      return new Response(JSON.stringify({ error: "OpenAI key invalid or unauthorized - check OPENAI_API_KEY" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    if (res.status === 402) {
+      return new Response(JSON.stringify({ error: "AI credits exhausted — top up your workspace AI credits." }), {
+        status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    if (res.status === 402 || res.status === 429) {
-      return new Response(JSON.stringify({ error: "OpenAI quota exceeded - add funds or raise limits on your OpenAI account" }), {
-        status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    if (res.status === 401 || res.status === 403) {
+      return new Response(JSON.stringify({ error: "AI provider key invalid or unauthorized." }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     if (!res.ok) {
       const txt = await res.text();
-      console.error(`[parse-supplier-quote] OpenAI error ${res.status}: ${txt}`);
-      throw new Error(`OpenAI error ${res.status}`);
+      console.error(`[parse-supplier-quote] AI error ${res.status}: ${txt}`);
+      throw new Error(`AI provider error ${res.status}`);
     }
+
 
     const json = await res.json();
     const toolCall = json?.choices?.[0]?.message?.tool_calls?.[0];
