@@ -223,7 +223,9 @@ export function SectionedLineItemsTable({
     );
 
     if (isEditing) {
+      return (
         <div className="flex items-center justify-end gap-1">
+
 
           <Input
             type="number"
