@@ -72,6 +72,55 @@ function isImage(url: string): boolean {
   return /\.(png|jpe?g|webp|gif)(\?.*)?$/.test(url.toLowerCase());
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Calls the Lovable AI Gateway first (google/gemini-2.5-flash), falling back to
+ * OpenAI when the gateway is unavailable. Retries transient 429/5xx responses.
+ */
+async function callModel(body: Record<string, unknown>): Promise<Response> {
+  const lovableKey = Deno.env.get("LOVABLE_API_KEY");
+  const openaiKey = Deno.env.get("OPENAI_API_KEY");
+
+  const providers: Array<{ name: string; url: string; key: string; model: string }> = [];
+  if (lovableKey) {
+    providers.push({
+      name: "lovable",
+      url: "https://ai.gateway.lovable.dev/v1/chat/completions",
+      key: lovableKey,
+      model: "google/gemini-2.5-flash",
+    });
+  }
+  if (openaiKey) {
+    providers.push({
+      name: "openai",
+      url: "https://api.openai.com/v1/chat/completions",
+      key: openaiKey,
+      model: "gpt-4o-mini",
+    });
+  }
+  if (!providers.length) throw new Error("no_ai_provider_configured");
+
+  let last: Response | null = null;
+  for (const p of providers) {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const res = await fetch(p.url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${p.key}` },
+        body: JSON.stringify({ ...body, model: p.model }),
+      });
+      if (res.ok) return res;
+      last = res;
+      const retryable = res.status === 429 || res.status >= 500;
+      console.error(`[parse-supplier-quote] ${p.name} attempt ${attempt + 1} -> ${res.status}`);
+      if (!retryable) break;
+      if (attempt < 2) await sleep(1200 * (attempt + 1));
+    }
+  }
+  return last as Response;
+}
+
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -84,10 +133,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    const apiKey = Deno.env.get("OPENAI_API_KEY");
-    if (!apiKey) {
+    if (!Deno.env.get("LOVABLE_API_KEY") && !Deno.env.get("OPENAI_API_KEY")) {
       return new Response(
-        JSON.stringify({ error: "OPENAI_API_KEY is not configured on the server. Add it in Supabase secrets." }),
+        JSON.stringify({ error: "No AI provider configured on the server." }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -114,12 +162,9 @@ Deno.serve(async (req) => {
       }
     }
 
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
+    const res = await callModel({
+      messages: [
+
           {
             role: "system",
             content: `You are an expert at extracting MATERIAL LINE ITEMS from MULTI-PAGE supplier quotes for the construction and roofing industry — especially METAL ROOFING quotes from suppliers like Worthouse, Sheffield Metals, McElroy Metal, ABC Supply, Beacon, SRS Distribution, etc.
@@ -191,29 +236,29 @@ EXTRACTION RULES:
         tool_choice: { type: "function", function: { name: "extract_supplier_quote" } },
         temperature: 0.1,
         max_tokens: 8192,
-      }),
     });
 
     if (res.status === 429) {
-      return new Response(JSON.stringify({ error: "OpenAI rate limited - please try again in a moment" }), {
+      return new Response(JSON.stringify({ error: "AI provider is rate limited — please retry in a few seconds." }), {
         status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    if (res.status === 401 || res.status === 403) {
-      return new Response(JSON.stringify({ error: "OpenAI key invalid or unauthorized - check OPENAI_API_KEY" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    if (res.status === 402) {
+      return new Response(JSON.stringify({ error: "AI credits exhausted — top up your workspace AI credits." }), {
+        status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    if (res.status === 402 || res.status === 429) {
-      return new Response(JSON.stringify({ error: "OpenAI quota exceeded - add funds or raise limits on your OpenAI account" }), {
-        status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    if (res.status === 401 || res.status === 403) {
+      return new Response(JSON.stringify({ error: "AI provider key invalid or unauthorized." }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     if (!res.ok) {
       const txt = await res.text();
-      console.error(`[parse-supplier-quote] OpenAI error ${res.status}: ${txt}`);
-      throw new Error(`OpenAI error ${res.status}`);
+      console.error(`[parse-supplier-quote] AI error ${res.status}: ${txt}`);
+      throw new Error(`AI provider error ${res.status}`);
     }
+
 
     const json = await res.json();
     const toolCall = json?.choices?.[0]?.message?.tool_calls?.[0];
