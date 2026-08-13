@@ -827,7 +827,12 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
               )}
             </CardContent>
           </Card>
+
+          <div className="mt-6">
+            <UserAssignedLocationsCard userId={userId} />
+          </div>
         </TabsContent>
+
 
         <TabsContent value="commission">
           <Card>
