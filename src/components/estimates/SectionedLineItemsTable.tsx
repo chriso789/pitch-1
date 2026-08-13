@@ -636,7 +636,7 @@ export function SectionedLineItemsTable({
   return (
     <div className={className}>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleGlobalDragEnd}>
-      <Table>
+      <Table className="table-fixed">
         <TableHeader>
           <TableRow>
             {editable && onReorderItems && <TableHead className="w-8" />}
