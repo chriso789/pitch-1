@@ -410,11 +410,11 @@ export function SectionedLineItemsTable({
             </button>
           </TableCell>
         )}
-        <TableCell className="font-medium">
+        <TableCell className="font-medium align-top">
           <div className="flex items-start gap-1">
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1">
-                <span className="truncate">{safeText(item.item_name)}</span>
+              <div className="flex items-start gap-1 flex-wrap">
+                <span className="break-words whitespace-normal">{safeText(item.item_name)}</span>
                 {item.is_override && (
                   <Badge variant="outline" className="text-xs shrink-0">Modified</Badge>
                 )}
