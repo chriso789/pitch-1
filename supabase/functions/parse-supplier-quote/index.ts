@@ -162,12 +162,9 @@ async function callModel(body: Record<string, unknown>): Promise<Response> {
       }
     }
 
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
+    const res = await callModel({
+      messages: [
+
           {
             role: "system",
             content: `You are an expert at extracting MATERIAL LINE ITEMS from MULTI-PAGE supplier quotes for the construction and roofing industry — especially METAL ROOFING quotes from suppliers like Worthouse, Sheffield Metals, McElroy Metal, ABC Supply, Beacon, SRS Distribution, etc.
