@@ -72,17 +72,6 @@ function isImage(url: string): boolean {
   return /\.(png|jpe?g|webp|gif)(\?.*)?$/.test(url.toLowerCase());
 }
 
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
-
-  try {
-    const { document_url } = await req.json();
-    if (!document_url) {
-      return new Response(JSON.stringify({ error: "document_url is required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
@@ -132,10 +121,21 @@ async function callModel(body: Record<string, unknown>): Promise<Response> {
 }
 
 
-    const apiKey = Deno.env.get("OPENAI_API_KEY");
-    if (!apiKey) {
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  try {
+    const { document_url } = await req.json();
+    if (!document_url) {
+      return new Response(JSON.stringify({ error: "document_url is required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (!Deno.env.get("LOVABLE_API_KEY") && !Deno.env.get("OPENAI_API_KEY")) {
       return new Response(
-        JSON.stringify({ error: "OPENAI_API_KEY is not configured on the server. Add it in Supabase secrets." }),
+        JSON.stringify({ error: "No AI provider configured on the server." }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
