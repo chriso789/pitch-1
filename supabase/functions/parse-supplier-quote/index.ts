@@ -83,6 +83,54 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Calls the Lovable AI Gateway first (google/gemini-2.5-flash), falling back to
+ * OpenAI when the gateway is unavailable. Retries transient 429/5xx responses.
+ */
+async function callModel(body: Record<string, unknown>): Promise<Response> {
+  const lovableKey = Deno.env.get("LOVABLE_API_KEY");
+  const openaiKey = Deno.env.get("OPENAI_API_KEY");
+
+  const providers: Array<{ name: string; url: string; key: string; model: string }> = [];
+  if (lovableKey) {
+    providers.push({
+      name: "lovable",
+      url: "https://ai.gateway.lovable.dev/v1/chat/completions",
+      key: lovableKey,
+      model: "google/gemini-2.5-flash",
+    });
+  }
+  if (openaiKey) {
+    providers.push({
+      name: "openai",
+      url: "https://api.openai.com/v1/chat/completions",
+      key: openaiKey,
+      model: "gpt-4o-mini",
+    });
+  }
+  if (!providers.length) throw new Error("no_ai_provider_configured");
+
+  let last: Response | null = null;
+  for (const p of providers) {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const res = await fetch(p.url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${p.key}` },
+        body: JSON.stringify({ ...body, model: p.model }),
+      });
+      if (res.ok) return res;
+      last = res;
+      const retryable = res.status === 429 || res.status >= 500;
+      console.error(`[parse-supplier-quote] ${p.name} attempt ${attempt + 1} -> ${res.status}`);
+      if (!retryable) break;
+      if (attempt < 2) await sleep(1200 * (attempt + 1));
+    }
+  }
+  return last as Response;
+}
+
 
     const apiKey = Deno.env.get("OPENAI_API_KEY");
     if (!apiKey) {
