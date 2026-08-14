@@ -10,10 +10,17 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { mapCentzPaymentStatus } from "../_shared/centzClient.ts";
+import {
+  unauthorizedResponse,
+  verifyHmacSha256OrThrow,
+  verifySharedSecretOrThrow,
+  WebhookVerificationError,
+} from "../_shared/webhook-verify.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-centz-signature, x-webhook-secret",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
