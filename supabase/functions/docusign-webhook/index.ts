@@ -1,5 +1,10 @@
 import { supabaseService } from '../_shared/supabase.ts';
 import { corsHeaders } from '../_shared/cors.ts';
+import {
+  unauthorizedResponse,
+  verifyHmacSha256OrThrow,
+  WebhookVerificationError,
+} from '../_shared/webhook-verify.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -12,12 +17,27 @@ Deno.serve(async (req) => {
     // Get raw body for HMAC verification
     const rawBody = await req.arrayBuffer();
     const bodyText = new TextDecoder().decode(rawBody);
-    
-    // Verify HMAC signature
-    const hmacSignature = req.headers.get('X-DocuSign-Signature-1');
-    if (!hmacSignature) {
-      console.log('Missing HMAC signature');
-      return new Response('Unauthorized', { status: 401, headers: corsHeaders });
+
+    // Verify the DocuSign Connect HMAC-SHA256 signature over the raw body.
+    // DocuSign may send up to 5 rotating keys as X-DocuSign-Signature-1..5.
+    try {
+      await verifyHmacSha256OrThrow({
+        rawBody: bodyText,
+        secret: Deno.env.get('DOCUSIGN_HMAC_SECRET') ?? '',
+        signatureHeaders: [
+          req.headers.get('X-DocuSign-Signature-1'),
+          req.headers.get('X-DocuSign-Signature-2'),
+          req.headers.get('X-DocuSign-Signature-3'),
+          req.headers.get('X-DocuSign-Signature-4'),
+          req.headers.get('X-DocuSign-Signature-5'),
+        ],
+        secretName: 'DOCUSIGN_HMAC_SECRET',
+      });
+    } catch (e) {
+      console.warn('[docusign-webhook] rejected unverified request', {
+        reason: e instanceof WebhookVerificationError ? e.message : 'verification_error',
+      });
+      return unauthorizedResponse(corsHeaders, 'invalid_signature');
     }
 
     // Parse webhook payload
