@@ -182,3 +182,38 @@ export function unauthorizedResponse(headers: Record<string, string>, message = 
     headers: { ...headers, "Content-Type": "application/json" },
   });
 }
+
+/**
+ * Verify a Twilio X-Twilio-Signature (HMAC-SHA1 over url + sorted POST params).
+ */
+export async function verifyTwilioSignatureOrThrow(opts: {
+  req: Request;
+  params: Record<string, string>;
+  authToken: string | undefined;
+  url?: string;
+}): Promise<void> {
+  const { req, params, authToken } = opts;
+  if (!authToken) {
+    throw new WebhookVerificationError(
+      "TWILIO_AUTH_TOKEN is not configured; refusing to trust unverified webhook",
+    );
+  }
+  const provided = req.headers.get("x-twilio-signature");
+  if (!provided) throw new WebhookVerificationError("Missing X-Twilio-Signature header");
+
+  const url = opts.url ?? req.url;
+  let data = url;
+  for (const key of Object.keys(params).sort()) data += key + params[key];
+
+  const key = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(authToken) as unknown as BufferSource,
+    { name: "HMAC", hash: "SHA-1" },
+    false,
+    ["sign"],
+  );
+  const mac = await crypto.subtle.sign("HMAC", key, enc.encode(data) as unknown as BufferSource);
+  if (!timingSafeEqual(provided, toBase64(mac))) {
+    throw new WebhookVerificationError("Invalid Twilio signature");
+  }
+}
