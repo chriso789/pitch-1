@@ -55,6 +55,9 @@ Deno.serve(async (req) => {
 
       // Telnyx inbound: verify Ed25519 signature before trusting the payload.
       try {
+        if (!Deno.env.get('TELNYX_PUBLIC_KEY')) {
+          throw new Error('TELNYX_PUBLIC_KEY is not configured');
+        }
         await verifyTelnyxSignatureOrThrow(req, body);
       } catch (e) {
         console.warn('[messaging-inbound-webhook] rejected unverified Telnyx request', {
