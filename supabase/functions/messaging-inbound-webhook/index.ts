@@ -1,8 +1,15 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
+import { verifyTelnyxSignatureOrThrow } from "../_shared/security.ts";
+import {
+  unauthorizedResponse,
+  verifyTwilioSignatureOrThrow,
+  WebhookVerificationError,
+} from "../_shared/webhook-verify.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers':
+    'authorization, x-client-info, apikey, content-type, telnyx-signature-ed25519, telnyx-timestamp, x-twilio-signature',
 };
 
 Deno.serve(async (req) => {
@@ -19,11 +26,43 @@ Deno.serve(async (req) => {
     const contentType = req.headers.get('content-type') || '';
     let messageData: any;
     let isTelnyxWebhook = false;
+    let formParams: Record<string, string> | null = null;
+
+    // Read the raw body once so provider signatures can be verified over it.
+    const rawBody = await req.text();
+
+    if (contentType.includes('application/x-www-form-urlencoded')) {
+      formParams = Object.fromEntries(new URLSearchParams(rawBody).entries());
+      // Twilio inbound: verify HMAC-SHA1 signature before trusting the payload.
+      try {
+        await verifyTwilioSignatureOrThrow({
+          req,
+          params: formParams,
+          authToken: Deno.env.get('TWILIO_AUTH_TOKEN') ?? '',
+        });
+      } catch (e) {
+        console.warn('[messaging-inbound-webhook] rejected unverified Twilio request', {
+          reason: e instanceof WebhookVerificationError ? e.message : 'verification_error',
+        });
+        return unauthorizedResponse(corsHeaders, 'invalid_signature');
+      }
+    }
 
     // Check if this is a Telnyx webhook (JSON with data.event_type)
     if (contentType.includes('application/json')) {
-      const body = await req.text();
+      const body = rawBody;
       const parsed = JSON.parse(body);
+
+      // Telnyx inbound: verify Ed25519 signature before trusting the payload.
+      try {
+        await verifyTelnyxSignatureOrThrow(req, body);
+      } catch (e) {
+        console.warn('[messaging-inbound-webhook] rejected unverified Telnyx request', {
+          reason: e instanceof Error ? e.message : 'verification_error',
+        });
+        return unauthorizedResponse(corsHeaders, 'invalid_signature');
+      }
+
       
       // Telnyx message webhooks have data.event_type starting with 'message.'
       if (parsed.data?.event_type?.startsWith('message.')) {
