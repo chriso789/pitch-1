@@ -1,0 +1,1 @@
+REVOKE ALL ON TABLE public.spatial_ref_sys FROM anon, authenticated;
