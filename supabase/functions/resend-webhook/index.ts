@@ -41,12 +41,29 @@ Deno.serve(async (req: Request) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const rawBody = await req.text();
+
+  // Fail-closed Svix signature verification before trusting any event.
+  try {
+    await verifySvixOrThrow({
+      req,
+      rawBody,
+      secret: Deno.env.get("RESEND_WEBHOOK_SECRET") ?? "",
+      secretName: "RESEND_WEBHOOK_SECRET",
+    });
+  } catch (e) {
+    console.warn("[resend-webhook] rejected unverified request", {
+      reason: e instanceof WebhookVerificationError ? e.message : "verification_error",
+    });
+    return unauthorizedResponse(corsHeaders, "invalid_signature");
+  }
+
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const payload: ResendWebhookPayload = await req.json();
+    const payload: ResendWebhookPayload = JSON.parse(rawBody);
     console.log("Resend webhook received:", payload.type, payload.data?.email_id);
 
     const emailId = payload.data?.email_id;
