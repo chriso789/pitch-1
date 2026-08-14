@@ -1,13 +1,33 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
+import {
+  unauthorizedResponse,
+  verifySharedSecretOrThrow,
+  WebhookVerificationError,
+} from "../_shared/webhook-verify.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-webhook-secret',
 };
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  // Fail-closed: only the configured telephony bridge may post inbound calls.
+  try {
+    verifySharedSecretOrThrow({
+      req,
+      secret: Deno.env.get('ASTERISK_WEBHOOK_SECRET') ?? '',
+      secretName: 'ASTERISK_WEBHOOK_SECRET',
+      headerNames: ['x-webhook-secret', 'x-asterisk-secret'],
+    });
+  } catch (e) {
+    console.warn('[asterisk-call-inbound] rejected unverified request', {
+      reason: e instanceof WebhookVerificationError ? e.message : 'verification_error',
+    });
+    return unauthorizedResponse(corsHeaders, 'invalid_signature');
   }
 
   try {

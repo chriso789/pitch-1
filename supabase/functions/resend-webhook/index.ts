@@ -1,4 +1,9 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
+import {
+  unauthorizedResponse,
+  verifySvixOrThrow,
+  WebhookVerificationError,
+} from "../_shared/webhook-verify.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
