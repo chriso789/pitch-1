@@ -10,10 +10,17 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { mapCentzPaymentStatus } from "../_shared/centzClient.ts";
+import {
+  unauthorizedResponse,
+  verifyHmacSha256OrThrow,
+  verifySharedSecretOrThrow,
+  WebhookVerificationError,
+} from "../_shared/webhook-verify.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-centz-signature, x-webhook-secret",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -56,6 +63,37 @@ Deno.serve(async (req) => {
   }
 
   const rawBody = await req.text();
+
+  // Fail-closed authenticity check before any payload is trusted.
+  // Prefer an HMAC signature; fall back to a shared-secret header if Centz
+  // is configured to send one instead.
+  const centzSecret = Deno.env.get("CENTZ_WEBHOOK_SECRET") ?? "";
+  const signatureHeader =
+    req.headers.get("x-centz-signature") ?? req.headers.get("centz-signature");
+  try {
+    if (signatureHeader) {
+      await verifyHmacSha256OrThrow({
+        rawBody,
+        secret: centzSecret,
+        signatureHeaders: [signatureHeader],
+        secretName: "CENTZ_WEBHOOK_SECRET",
+      });
+    } else {
+      verifySharedSecretOrThrow({
+        req,
+        secret: centzSecret,
+        secretName: "CENTZ_WEBHOOK_SECRET",
+        headerNames: ["x-webhook-secret", "x-centz-secret"],
+      });
+    }
+  } catch (e) {
+    console.warn("[centz-webhook] rejected unverified request", {
+      reason: e instanceof WebhookVerificationError ? e.message : "verification_error",
+    });
+    return unauthorizedResponse(corsHeaders, "invalid_signature");
+  }
+
+
   let payload: Record<string, unknown> = {};
   try { payload = JSON.parse(rawBody); } catch { /* keep empty; raw saved */ }
 
