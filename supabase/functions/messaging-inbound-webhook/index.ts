@@ -137,16 +137,16 @@ Deno.serve(async (req) => {
     }
 
     // Handle Twilio webhook (form-urlencoded)
-    if (!isTelnyxWebhook && contentType.includes('application/x-www-form-urlencoded')) {
-      const formData = await req.formData();
+    if (!isTelnyxWebhook && formParams) {
       messageData = {
-        from: formData.get('From'),
-        to: formData.get('To'),
-        body: formData.get('Body'),
-        messageSid: formData.get('MessageSid'),
+        from: formParams['From'],
+        to: formParams['To'],
+        body: formParams['Body'],
+        messageSid: formParams['MessageSid'],
         type: 'sms',
         provider: 'twilio',
       };
+
 
       // Route inbound message
       const routing = await routeInboundMessage(supabaseClient, messageData.to);
