@@ -244,7 +244,9 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
         body: {
           target_user_id: userId,
           commission_type: commissionType,
-          commission_rate: commissionRate,
+          commission_rate: isContractType ? selfGeneratedRate : commissionRate,
+          commission_rate_self_generated: isContractType ? selfGeneratedRate : null,
+          commission_rate_company_generated: isContractType ? companyGeneratedRate : null,
           rep_overhead_rate: repOverheadRate,
           manager_override_rate: isManager ? managerOverrideRate : undefined,
           reports_to_manager_id: !isManager ? reportsToManagerId : undefined,
