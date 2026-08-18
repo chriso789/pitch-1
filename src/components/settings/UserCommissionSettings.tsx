@@ -30,6 +30,10 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
   const [saving, setSaving] = useState(false);
   const [commissionType, setCommissionType] = useState<string>('profit_split');
   const [commissionRate, setCommissionRate] = useState<number>(10);
+  const [selfGeneratedRate, setSelfGeneratedRate] = useState<number>(10);
+  const [companyGeneratedRate, setCompanyGeneratedRate] = useState<number>(10);
+  const [previewLeadType, setPreviewLeadType] = useState<'self_generated' | 'company_generated'>('self_generated');
+
   const [repOverheadRate, setRepOverheadRate] = useState<number>(15);
   const [managerOverrideRate, setManagerOverrideRate] = useState<number>(0);
   const [reportsToManagerId, setReportsToManagerId] = useState<string | null>(null);
