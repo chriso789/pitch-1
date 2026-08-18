@@ -201,7 +201,11 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
 
       if (userPlan?.commission_plans) {
         const plan = userPlan.commission_plans;
-        const planConfig = plan.plan_config as { commission_rate?: number } | null;
+        const planConfig = plan.plan_config as {
+          commission_rate?: number;
+          commission_rate_self_generated?: number | null;
+          commission_rate_company_generated?: number | null;
+        } | null;
         setExistingPlanId(plan.id);
         // Map database types to our simplified types
         if (plan.commission_type === 'gross_percent' || plan.payment_method === 'percentage_selling_price') {
