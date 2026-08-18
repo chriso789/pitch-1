@@ -35991,6 +35991,7 @@ export type Database = {
           id: string
           is_deleted: boolean | null
           last_status_change_reason: string | null
+          lead_generation_type: string | null
           lead_name: string | null
           lead_number: number | null
           lead_quality_score: number | null
@@ -36038,6 +36039,7 @@ export type Database = {
           id?: string
           is_deleted?: boolean | null
           last_status_change_reason?: string | null
+          lead_generation_type?: string | null
           lead_name?: string | null
           lead_number?: number | null
           lead_quality_score?: number | null
@@ -36085,6 +36087,7 @@ export type Database = {
           id?: string
           is_deleted?: boolean | null
           last_status_change_reason?: string | null
+          lead_generation_type?: string | null
           lead_name?: string | null
           lead_number?: number | null
           lead_quality_score?: number | null
@@ -39049,6 +39052,8 @@ export type Database = {
           avatar_url: string | null
           can_manage_all_companies: boolean | null
           commission_rate: number | null
+          commission_rate_company_generated: number | null
+          commission_rate_self_generated: number | null
           commission_structure: string | null
           company_email: string | null
           company_name: string | null
@@ -39103,6 +39108,8 @@ export type Database = {
           avatar_url?: string | null
           can_manage_all_companies?: boolean | null
           commission_rate?: number | null
+          commission_rate_company_generated?: number | null
+          commission_rate_self_generated?: number | null
           commission_structure?: string | null
           company_email?: string | null
           company_name?: string | null
@@ -39157,6 +39164,8 @@ export type Database = {
           avatar_url?: string | null
           can_manage_all_companies?: boolean | null
           commission_rate?: number | null
+          commission_rate_company_generated?: number | null
+          commission_rate_self_generated?: number | null
           commission_structure?: string | null
           company_email?: string | null
           company_name?: string | null
