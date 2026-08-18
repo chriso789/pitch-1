@@ -235,6 +235,8 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
     }
   };
 
+  const isContractType = commissionType === 'percentage_contract_price';
+
   const saveCommissionSettings = async () => {
     try {
       setSaving(true);
