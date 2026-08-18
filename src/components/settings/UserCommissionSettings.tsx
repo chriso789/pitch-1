@@ -773,7 +773,10 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
             
             <div className="flex justify-between">
               <span className="text-muted-foreground">Commission Rate:</span>
-              <span className="font-medium">{commissionRate}%</span>
+              <span className="font-medium">
+                {effectiveRate}%{isContractType ? (previewLeadType === 'self_generated' ? ' (Self Generated)' : ' (Company Generated)') : ''}
+              </span>
+
             </div>
             <p className="text-xs text-muted-foreground italic">
               ({commissionRate}% of ${breakdown.commissionBase.toLocaleString()} {commissionType === 'profit_split' ? 'Net Profit' : 'Contract Value'})
