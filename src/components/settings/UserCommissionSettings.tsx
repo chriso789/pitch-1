@@ -380,20 +380,85 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
           </p>
         </div>
 
-        {/* Commission Rate */}
-        <div className="space-y-2">
-          <Label htmlFor="commission-rate">Commission Rate (%)</Label>
-          <Input
-            id="commission-rate"
-            type="number"
-            step="0.5"
-            min="0"
-            max="100"
-            value={commissionRate}
-            onChange={(e) => setCommissionRate(parseFloat(e.target.value) || 0)}
-            disabled={!canEdit}
-          />
-        </div>
+        {/* Commission Rate — single rate for profit split */}
+        {!isContractType && (
+          <div className="space-y-2">
+            <Label htmlFor="commission-rate">Commission Rate (%)</Label>
+            <Input
+              id="commission-rate"
+              type="number"
+              step="0.5"
+              min="0"
+              max="100"
+              value={commissionRate}
+              onChange={(e) => setCommissionRate(parseFloat(e.target.value) || 0)}
+              disabled={!canEdit}
+            />
+          </div>
+        )}
+
+        {/* Commission Rates by lead source — Percent of Contract Price */}
+        {isContractType && (
+          <Card className="border-primary/20 bg-primary/5">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Calculator className="h-4 w-4" />
+                Commission Rates by Lead Source
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="self-generated-rate">Self Generated Rate (%)</Label>
+                  <Input
+                    id="self-generated-rate"
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    max="100"
+                    value={selfGeneratedRate}
+                    onChange={(e) => setSelfGeneratedRate(parseFloat(e.target.value) || 0)}
+                    disabled={!canEdit}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Applied when the sales rep created the contact and the lead.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="company-generated-rate">Company Generated Rate (%)</Label>
+                  <Input
+                    id="company-generated-rate"
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    max="100"
+                    value={companyGeneratedRate}
+                    onChange={(e) => setCompanyGeneratedRate(parseFloat(e.target.value) || 0)}
+                    disabled={!canEdit}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Applied when a manager created the contact and the lead for the rep.
+                  </p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Preview Example For</Label>
+                <Select
+                  value={previewLeadType}
+                  onValueChange={(v) => setPreviewLeadType(v as 'self_generated' | 'company_generated')}
+                >
+                  <SelectTrigger className="max-w-[260px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="self_generated">Self Generated Lead</SelectItem>
+                    <SelectItem value="company_generated">Company Generated Lead</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Rep Overhead Rate - only for profit split */}
         {commissionType === 'profit_split' && (
