@@ -169,6 +169,12 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
         if (profile.manager_override_location_id) {
           setOverrideLocationId(profile.manager_override_location_id);
         }
+        if (profile.commission_rate_self_generated !== null && profile.commission_rate_self_generated !== undefined) {
+          setSelfGeneratedRate(Number(profile.commission_rate_self_generated));
+        }
+        if (profile.commission_rate_company_generated !== null && profile.commission_rate_company_generated !== undefined) {
+          setCompanyGeneratedRate(Number(profile.commission_rate_company_generated));
+        }
       }
       
       // Load user's commission plan from user_commission_plans
