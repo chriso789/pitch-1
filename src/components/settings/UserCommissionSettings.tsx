@@ -320,13 +320,13 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
     // Commission based on type
     let commission: number;
     let commissionBase: number;
-    
-    if (commissionType === 'percentage_contract_price') {
+
+    if (isContractType) {
       commissionBase = exampleContractValue;
-      commission = (exampleContractValue * commissionRate) / 100;
+      commission = (exampleContractValue * effectiveRate) / 100;
     } else {
       commissionBase = netProfit;
-      commission = (netProfit * commissionRate) / 100;
+      commission = (netProfit * effectiveRate) / 100;
     }
     
     return {
