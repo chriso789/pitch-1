@@ -6,7 +6,7 @@ import { TrendingUp, DollarSign, Calculator, Info, Loader2, Users } from 'lucide
 import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { calculateCommission } from '@/lib/commission-calculator';
+import { calculateCommission, resolveContractCommissionRate, type LeadGenerationType } from '@/lib/commission-calculator';
 
 interface RepProfitBreakdownProps {
   pipelineEntryId?: string;
@@ -22,12 +22,15 @@ interface RepProfile {
   personal_overhead_rate: number | null;
   commission_rate: number | null;
   commission_structure: 'profit_split' | 'percentage_contract_price' | null;
+  commission_rate_self_generated: number | null;
+  commission_rate_company_generated: number | null;
   first_name: string | null;
   last_name: string | null;
 }
 
 interface PipelineRepData {
   assigned_to: string | null;
+  lead_generation_type: LeadGenerationType | null;
   secondary_assigned_to: string | null;
   primary_rep_split_percent: number | null;
   profiles: RepProfile | null;
@@ -52,13 +55,16 @@ const RepProfitBreakdown: React.FC<RepProfitBreakdownProps> = ({
           assigned_to,
           secondary_assigned_to,
           primary_rep_split_percent,
+          lead_generation_type,
           profiles!pipeline_entries_assigned_to_fkey(
             first_name,
             last_name,
             overhead_rate,
             personal_overhead_rate,
             commission_rate,
-            commission_structure
+            commission_structure,
+            commission_rate_self_generated,
+            commission_rate_company_generated
           ),
           secondary_rep:profiles!pipeline_entries_secondary_assigned_to_fkey(
             first_name,
@@ -66,7 +72,9 @@ const RepProfitBreakdown: React.FC<RepProfitBreakdownProps> = ({
             overhead_rate,
             personal_overhead_rate,
             commission_rate,
-            commission_structure
+            commission_structure,
+            commission_rate_self_generated,
+            commission_rate_company_generated
           )
         `)
         .eq('id', pipelineEntryId!)
@@ -94,7 +102,15 @@ const RepProfitBreakdown: React.FC<RepProfitBreakdownProps> = ({
   const primaryPersonalOH = primaryRep?.personal_overhead_rate ?? 0;
   const primaryBaseOH = primaryRep?.overhead_rate ?? 10;
   const primaryOverheadRate = primaryPersonalOH > 0 ? primaryPersonalOH : primaryBaseOH;
-  const primaryCommissionRate = primaryRep?.commission_rate ?? 50;
+  const leadGenerationType = repData?.lead_generation_type ?? null;
+  const primaryCommissionStructureRaw = primaryRep?.commission_structure || 'profit_split';
+  const primaryCommissionRate = primaryCommissionStructureRaw === 'percentage_contract_price'
+    ? resolveContractCommissionRate({
+        commissionRate: primaryRep?.commission_rate ?? 50,
+        selfGeneratedRate: primaryRep?.commission_rate_self_generated,
+        companyGeneratedRate: primaryRep?.commission_rate_company_generated,
+      }, leadGenerationType)
+    : (primaryRep?.commission_rate ?? 50);
   const primaryCommissionStructure = primaryRep?.commission_structure || 'profit_split';
   const primaryRepName = primaryRep 
     ? `${primaryRep.first_name || ''} ${primaryRep.last_name || ''}`.trim() 
@@ -106,7 +122,14 @@ const RepProfitBreakdown: React.FC<RepProfitBreakdownProps> = ({
   const secondaryPersonalOH = secondaryRep?.personal_overhead_rate ?? 0;
   const secondaryBaseOH = secondaryRep?.overhead_rate ?? 10;
   const secondaryOverheadRate = secondaryPersonalOH > 0 ? secondaryPersonalOH : secondaryBaseOH;
-  const secondaryCommissionRate = secondaryRep?.commission_rate ?? 50;
+  const secondaryCommissionStructureRaw = secondaryRep?.commission_structure || 'profit_split';
+  const secondaryCommissionRate = secondaryCommissionStructureRaw === 'percentage_contract_price'
+    ? resolveContractCommissionRate({
+        commissionRate: secondaryRep?.commission_rate ?? 50,
+        selfGeneratedRate: secondaryRep?.commission_rate_self_generated,
+        companyGeneratedRate: secondaryRep?.commission_rate_company_generated,
+      }, leadGenerationType)
+    : (secondaryRep?.commission_rate ?? 50);
   const secondaryCommissionStructure = secondaryRep?.commission_structure || 'profit_split';
   const secondaryRepName = secondaryRep 
     ? `${secondaryRep.first_name || ''} ${secondaryRep.last_name || ''}`.trim() 

@@ -30,6 +30,10 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
   const [saving, setSaving] = useState(false);
   const [commissionType, setCommissionType] = useState<string>('profit_split');
   const [commissionRate, setCommissionRate] = useState<number>(10);
+  const [selfGeneratedRate, setSelfGeneratedRate] = useState<number>(10);
+  const [companyGeneratedRate, setCompanyGeneratedRate] = useState<number>(10);
+  const [previewLeadType, setPreviewLeadType] = useState<'self_generated' | 'company_generated'>('self_generated');
+
   const [repOverheadRate, setRepOverheadRate] = useState<number>(15);
   const [managerOverrideRate, setManagerOverrideRate] = useState<number>(0);
   const [reportsToManagerId, setReportsToManagerId] = useState<string | null>(null);
@@ -135,7 +139,7 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
       // Load rep's profile data including manager override settings
       const { data: profile } = await supabase
         .from('profiles')
-        .select('personal_overhead_rate, manager_override_rate, reports_to_manager_id, manager_override_applies_to, manager_override_basis, manager_override_min_profit_percent, manager_override_selected_reps, manager_override_location_id')
+        .select('personal_overhead_rate, manager_override_rate, reports_to_manager_id, manager_override_applies_to, manager_override_basis, manager_override_min_profit_percent, manager_override_selected_reps, manager_override_location_id, commission_rate_self_generated, commission_rate_company_generated')
         .eq('id', userId)
         .single();
       
@@ -165,6 +169,12 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
         if (profile.manager_override_location_id) {
           setOverrideLocationId(profile.manager_override_location_id);
         }
+        if (profile.commission_rate_self_generated !== null && profile.commission_rate_self_generated !== undefined) {
+          setSelfGeneratedRate(Number(profile.commission_rate_self_generated));
+        }
+        if (profile.commission_rate_company_generated !== null && profile.commission_rate_company_generated !== undefined) {
+          setCompanyGeneratedRate(Number(profile.commission_rate_company_generated));
+        }
       }
       
       // Load user's commission plan from user_commission_plans
@@ -191,7 +201,11 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
 
       if (userPlan?.commission_plans) {
         const plan = userPlan.commission_plans;
-        const planConfig = plan.plan_config as { commission_rate?: number } | null;
+        const planConfig = plan.plan_config as {
+          commission_rate?: number;
+          commission_rate_self_generated?: number | null;
+          commission_rate_company_generated?: number | null;
+        } | null;
         setExistingPlanId(plan.id);
         // Map database types to our simplified types
         if (plan.commission_type === 'gross_percent' || plan.payment_method === 'percentage_selling_price') {
@@ -201,7 +215,18 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
         } else {
           setCommissionType('profit_split');
         }
-        setCommissionRate(planConfig?.commission_rate || 10);
+        const baseRate = planConfig?.commission_rate || 10;
+        setCommissionRate(baseRate);
+        if (planConfig?.commission_rate_self_generated !== null && planConfig?.commission_rate_self_generated !== undefined) {
+          setSelfGeneratedRate(Number(planConfig.commission_rate_self_generated));
+        } else {
+          setSelfGeneratedRate((prev) => (prev === 10 ? baseRate : prev));
+        }
+        if (planConfig?.commission_rate_company_generated !== null && planConfig?.commission_rate_company_generated !== undefined) {
+          setCompanyGeneratedRate(Number(planConfig.commission_rate_company_generated));
+        } else {
+          setCompanyGeneratedRate((prev) => (prev === 10 ? baseRate : prev));
+        }
       }
     } catch (error) {
       console.error('Error loading commission settings:', error);
@@ -209,6 +234,8 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
       setLoading(false);
     }
   };
+
+  const isContractType = commissionType === 'percentage_contract_price';
 
   const saveCommissionSettings = async () => {
     try {
@@ -219,7 +246,9 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
         body: {
           target_user_id: userId,
           commission_type: commissionType,
-          commission_rate: commissionRate,
+          commission_rate: isContractType ? selfGeneratedRate : commissionRate,
+          commission_rate_self_generated: isContractType ? selfGeneratedRate : null,
+          commission_rate_company_generated: isContractType ? companyGeneratedRate : null,
           rep_overhead_rate: repOverheadRate,
           manager_override_rate: isManager ? managerOverrideRate : undefined,
           reports_to_manager_id: !isManager ? reportsToManagerId : undefined,
@@ -278,6 +307,12 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
   const exampleContractValue = 50000;
   const materialsRate = 0.325;
   const laborRate = 0.325;
+
+  // Effective rate used in the example: contract-price plans use the lead-source rate
+  const effectiveRate = isContractType
+    ? (previewLeadType === 'self_generated' ? selfGeneratedRate : companyGeneratedRate)
+    : commissionRate;
+  
   
   const calculateProfitBreakdown = () => {
     const materialsCost = exampleContractValue * materialsRate;
@@ -291,13 +326,13 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
     // Commission based on type
     let commission: number;
     let commissionBase: number;
-    
-    if (commissionType === 'percentage_contract_price') {
+
+    if (isContractType) {
       commissionBase = exampleContractValue;
-      commission = (exampleContractValue * commissionRate) / 100;
+      commission = (exampleContractValue * effectiveRate) / 100;
     } else {
       commissionBase = netProfit;
-      commission = (netProfit * commissionRate) / 100;
+      commission = (netProfit * effectiveRate) / 100;
     }
     
     return {
@@ -345,20 +380,85 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
           </p>
         </div>
 
-        {/* Commission Rate */}
-        <div className="space-y-2">
-          <Label htmlFor="commission-rate">Commission Rate (%)</Label>
-          <Input
-            id="commission-rate"
-            type="number"
-            step="0.5"
-            min="0"
-            max="100"
-            value={commissionRate}
-            onChange={(e) => setCommissionRate(parseFloat(e.target.value) || 0)}
-            disabled={!canEdit}
-          />
-        </div>
+        {/* Commission Rate — single rate for profit split */}
+        {!isContractType && (
+          <div className="space-y-2">
+            <Label htmlFor="commission-rate">Commission Rate (%)</Label>
+            <Input
+              id="commission-rate"
+              type="number"
+              step="0.5"
+              min="0"
+              max="100"
+              value={commissionRate}
+              onChange={(e) => setCommissionRate(parseFloat(e.target.value) || 0)}
+              disabled={!canEdit}
+            />
+          </div>
+        )}
+
+        {/* Commission Rates by lead source — Percent of Contract Price */}
+        {isContractType && (
+          <Card className="border-primary/20 bg-primary/5">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Calculator className="h-4 w-4" />
+                Commission Rates by Lead Source
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="self-generated-rate">Self Generated Rate (%)</Label>
+                  <Input
+                    id="self-generated-rate"
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    max="100"
+                    value={selfGeneratedRate}
+                    onChange={(e) => setSelfGeneratedRate(parseFloat(e.target.value) || 0)}
+                    disabled={!canEdit}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Applied when the sales rep created the contact and the lead.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="company-generated-rate">Company Generated Rate (%)</Label>
+                  <Input
+                    id="company-generated-rate"
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    max="100"
+                    value={companyGeneratedRate}
+                    onChange={(e) => setCompanyGeneratedRate(parseFloat(e.target.value) || 0)}
+                    disabled={!canEdit}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Applied when a manager created the contact and the lead for the rep.
+                  </p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Preview Example For</Label>
+                <Select
+                  value={previewLeadType}
+                  onValueChange={(v) => setPreviewLeadType(v as 'self_generated' | 'company_generated')}
+                >
+                  <SelectTrigger className="max-w-[260px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="self_generated">Self Generated Lead</SelectItem>
+                    <SelectItem value="company_generated">Company Generated Lead</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Rep Overhead Rate - only for profit split */}
         {commissionType === 'profit_split' && (
@@ -673,10 +773,12 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
             
             <div className="flex justify-between">
               <span className="text-muted-foreground">Commission Rate:</span>
-              <span className="font-medium">{commissionRate}%</span>
+              <span className="font-medium">
+                {effectiveRate}%{isContractType ? (previewLeadType === 'self_generated' ? ' (Self Generated)' : ' (Company Generated)') : ''}
+              </span>
             </div>
             <p className="text-xs text-muted-foreground italic">
-              ({commissionRate}% of ${breakdown.commissionBase.toLocaleString()} {commissionType === 'profit_split' ? 'Net Profit' : 'Contract Value'})
+              ({effectiveRate}% of ${breakdown.commissionBase.toLocaleString()} {commissionType === 'profit_split' ? 'Net Profit' : 'Contract Value'})
             </p>
             <hr className="border-border" />
             <div className="flex justify-between text-base">

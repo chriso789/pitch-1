@@ -160,3 +160,41 @@ export function formatCurrency(amount: number): string {
 export function formatPercent(value: number): string {
   return `${value.toFixed(1)}%`;
 }
+
+export type LeadGenerationType = 'self_generated' | 'company_generated';
+
+export const LEAD_GENERATION_LABELS: Record<LeadGenerationType, string> = {
+  self_generated: 'Self Generated',
+  company_generated: 'Company Generated',
+};
+
+export interface ContractRateConfig {
+  commissionRate: number | null | undefined;
+  selfGeneratedRate?: number | null;
+  companyGeneratedRate?: number | null;
+}
+
+/**
+ * Resolve the effective "Percent of Contract Price" commission rate for a lead.
+ * Self-generated leads (rep created the contact/lead) and company-generated leads
+ * (a manager created the contact/lead) can carry different rates.
+ * Falls back to the single legacy commission rate when a split rate isn't configured.
+ */
+export function resolveContractCommissionRate(
+  config: ContractRateConfig,
+  leadGenerationType?: LeadGenerationType | null
+): number {
+  const fallback = Number(config.commissionRate ?? 0);
+  const split =
+    leadGenerationType === 'self_generated'
+      ? config.selfGeneratedRate
+      : leadGenerationType === 'company_generated'
+        ? config.companyGeneratedRate
+        : null;
+
+  if (split === null || split === undefined || Number.isNaN(Number(split))) {
+    return fallback;
+  }
+  return Number(split);
+}
+

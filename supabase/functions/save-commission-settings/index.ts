@@ -9,6 +9,8 @@ interface SaveCommissionRequest {
   target_user_id: string;
   commission_type: 'profit_split' | 'percentage_contract_price';
   commission_rate: number;
+  commission_rate_self_generated?: number | null;
+  commission_rate_company_generated?: number | null;
   rep_overhead_rate: number;
   manager_override_rate?: number;
   reports_to_manager_id?: string | null;
@@ -83,6 +85,8 @@ Deno.serve(async (req) => {
       target_user_id,
       commission_type,
       commission_rate,
+      commission_rate_self_generated,
+      commission_rate_company_generated,
       rep_overhead_rate,
       manager_override_rate,
       reports_to_manager_id,
@@ -140,6 +144,13 @@ Deno.serve(async (req) => {
       // Sync commission rate/structure to profiles table for estimate builder compatibility
       commission_rate: commission_rate,
       commission_structure: commission_type, // 'profit_split' or 'percentage_contract_price'
+      // Lead-source split rates only apply to Percent of Contract Price plans
+      commission_rate_self_generated: commission_type === 'percentage_contract_price'
+        ? (commission_rate_self_generated ?? commission_rate)
+        : null,
+      commission_rate_company_generated: commission_type === 'percentage_contract_price'
+        ? (commission_rate_company_generated ?? commission_rate)
+        : null,
     };
 
     if (is_manager) {
@@ -198,6 +209,8 @@ Deno.serve(async (req) => {
           commission_type: dbCommissionType,
           plan_config: {
             commission_rate: commission_rate,
+            commission_rate_self_generated: commission_type === 'percentage_contract_price' ? (commission_rate_self_generated ?? commission_rate) : null,
+            commission_rate_company_generated: commission_type === 'percentage_contract_price' ? (commission_rate_company_generated ?? commission_rate) : null,
             description: `Personal commission plan for ${targetProfile.first_name} ${targetProfile.last_name}`
           },
           include_overhead: false,
@@ -235,6 +248,8 @@ Deno.serve(async (req) => {
             commission_type: dbCommissionType,
             plan_config: {
               commission_rate: commission_rate,
+              commission_rate_self_generated: commission_type === 'percentage_contract_price' ? (commission_rate_self_generated ?? commission_rate) : null,
+              commission_rate_company_generated: commission_type === 'percentage_contract_price' ? (commission_rate_company_generated ?? commission_rate) : null,
               description: `Personal commission plan for ${targetProfile.first_name} ${targetProfile.last_name}`
             },
             include_overhead: false,
@@ -262,6 +277,8 @@ Deno.serve(async (req) => {
             commission_type: dbCommissionType,
             plan_config: {
               commission_rate: commission_rate,
+              commission_rate_self_generated: commission_type === 'percentage_contract_price' ? (commission_rate_self_generated ?? commission_rate) : null,
+              commission_rate_company_generated: commission_type === 'percentage_contract_price' ? (commission_rate_company_generated ?? commission_rate) : null,
               description: `Personal commission plan for ${targetProfile.first_name} ${targetProfile.last_name}`
             },
             include_overhead: false,
