@@ -511,7 +511,16 @@ const LeadDetails = () => {
       });
       
       if (error) throw error;
-      
+
+      // Keep the linked contact's status in sync with the lead status
+      if (lead?.contact?.id) {
+        const { error: contactError } = await supabase
+          .from('contacts')
+          .update({ qualification_status: newStatus, updated_at: new Date().toISOString() })
+          .eq('id', lead.contact.id);
+        if (contactError) console.error('Error syncing contact status:', contactError);
+      }
+
       toast({ title: "Status updated successfully" });
       await refetchLead();
     } catch (error: any) {
