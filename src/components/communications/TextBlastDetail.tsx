@@ -407,6 +407,14 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
         </Card>
       </div>
 
+      {/* Follow-up sequence stages */}
+      <BlastSequenceStages
+        templatePoolIds={(blast as any).template_pool_ids}
+        maxAttemptsPerContact={(blast as any).max_attempts_per_contact}
+        aiFollowupEnabled={(blast as any).ai_followup_enabled}
+        items={items || []}
+      />
+
       {/* Verification Agents */}
       <Card className="shrink-0">
         <CardHeader className="pb-2">
