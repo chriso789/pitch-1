@@ -287,8 +287,9 @@ async function fetchSalesReps(tenantId: string | null, locationId?: string | nul
   // (must be hidden here) apart from "no assignments at all".
   const { data: assignments, error: assignError } = await supabase
     .from('user_location_assignments')
-    .select('user_id, location_id')
-    .eq('tenant_id', tenantId);
+    .select('user_id, location_id, is_active')
+    .eq('tenant_id', tenantId)
+    .eq('is_active', true);
 
   if (assignError) throw assignError;
   const locationUserIds = new Set(
