@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { ArrowLeft, Ban, CheckCircle, XCircle, ShieldOff, Send, Clock, Sparkles } from 'lucide-react';
 import { useState } from 'react';
+import { BlastSequenceStages } from './BlastSequenceStages';
 
 interface TextBlastDetailProps {
   blastId: string;
@@ -406,6 +407,14 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Follow-up sequence stages */}
+      <BlastSequenceStages
+        templatePoolIds={(blast as any).template_pool_ids}
+        maxAttemptsPerContact={(blast as any).max_attempts_per_contact}
+        aiFollowupEnabled={(blast as any).ai_followup_enabled}
+        items={items || []}
+      />
 
       {/* Verification Agents */}
       <Card className="shrink-0">
