@@ -144,9 +144,10 @@ export const CLJSearchBar = () => {
         leadIds.length
           ? supabase
               .from('pipeline_entries')
-              .select('id, lead_name, location_id, contacts!pipeline_entries_contact_id_fkey(first_name, last_name, address_street, location_id)')
+              .select('id, lead_name, status, location_id, contacts!pipeline_entries_contact_id_fkey(first_name, last_name, address_street, location_id)')
               .in('id', leadIds)
           : Promise.resolve({ data: [] as any[] }),
+
       ]);
 
       const contactMap = new Map((contactsRes.data || []).map((c: any) => [c.id, c]));
