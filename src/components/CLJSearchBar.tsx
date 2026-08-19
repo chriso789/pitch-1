@@ -87,6 +87,13 @@ const formatCljForType = (
 };
 
 const MAX_RECENTS = 5;
+// Pipeline statuses that are still pre-conversion "leads"; anything else is a job.
+// Mirrors the search_contacts_and_jobs RPC classification.
+const LEAD_STAGE_STATUSES = [
+  'lead', 'estimate_sent', 'contingency_signed', 'claim_filed',
+  'claim_approved', 'ready_for_approval', 'legal_review',
+];
+
 // Scope recents to BOTH tenant and active location so switching locations
 // doesn't surface results from a different location (e.g. East Coast jobs
 // appearing while the user is viewing West Coast).
@@ -144,9 +151,10 @@ export const CLJSearchBar = () => {
         leadIds.length
           ? supabase
               .from('pipeline_entries')
-              .select('id, lead_name, location_id, contacts!pipeline_entries_contact_id_fkey(first_name, last_name, address_street, location_id)')
+              .select('id, lead_name, status, location_id, contacts!pipeline_entries_contact_id_fkey(first_name, last_name, address_street, location_id)')
               .in('id', leadIds)
           : Promise.resolve({ data: [] as any[] }),
+
       ]);
 
       const contactMap = new Map((contactsRes.data || []).map((c: any) => [c.id, c]));
@@ -170,11 +178,18 @@ export const CLJSearchBar = () => {
             ? `${l.contacts.first_name || ''} ${l.contacts.last_name || ''}`.trim()
             : '';
           const name = (l.lead_name && l.lead_name.trim()) || contactName || r.entity_name;
+          // Re-derive lead vs job from the CURRENT pipeline status so a recent
+          // cached before conversion doesn't keep showing the "Lead" badge.
+          const status = String(l.status || '');
+          const isJob = status !== '' && !LEAD_STAGE_STATUSES.includes(status);
           return [{
             ...r,
+            entity_type: (isJob ? 'job' : 'lead') as 'lead' | 'job',
+            entity_status: status || r.entity_status,
             entity_name: name,
             entity_subtext: l.contacts?.address_street || r.entity_subtext,
           }];
+
         }
         return [r];
       });
