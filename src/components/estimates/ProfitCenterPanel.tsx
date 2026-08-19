@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { resolveContractCommissionRate, type LeadGenerationType } from '@/lib/commission-calculator';
 import { InvoiceUploadCard } from '@/components/production/InvoiceUploadCard';
 import { BudgetTracker } from '@/features/projects/components/BudgetTracker';
 import { PaymentsTab } from '@/components/estimates/PaymentsTab';
@@ -147,31 +148,60 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
     };
   }, [pipelineEntryId, projectId, effectiveTenantId, queryClient]);
 
-  // Fetch sales rep's commission settings
-  const { data: salesRepData, isLoading: isLoadingRep } = useQuery({
+  // Fetch sales rep's commission settings (lead-type aware)
+  const { data: salesRepData, isLoading: isLoadingRep, refetch: refetchRep } = useQuery({
     queryKey: ['sales-rep-commission', pipelineEntryId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('pipeline_entries')
         .select(`
           assigned_to,
+          lead_generation_type,
           profiles!pipeline_entries_assigned_to_fkey(
             first_name,
             last_name,
             overhead_rate,
             personal_overhead_rate,
             commission_rate,
-            commission_structure
+            commission_structure,
+            commission_rate_self_generated,
+            commission_rate_company_generated
           )
         `)
         .eq('id', pipelineEntryId)
         .single();
       
       if (error) throw error;
-      return data?.profiles as (SalesRepData & { commission_structure: string | null }) | null;
+      const profile = data?.profiles as any;
+      if (!profile) return null;
+      const effectiveRate = profile.commission_structure === 'percentage_contract_price'
+        ? resolveContractCommissionRate(
+            {
+              commissionRate: profile.commission_rate ?? 50,
+              selfGeneratedRate: profile.commission_rate_self_generated,
+              companyGeneratedRate: profile.commission_rate_company_generated,
+            },
+            ((data as any)?.lead_generation_type as LeadGenerationType | null) ?? null
+          )
+        : (profile.commission_rate ?? 50);
+      return { ...profile, commission_rate: effectiveRate } as (SalesRepData & { commission_structure: string | null });
     },
     enabled: !!pipelineEntryId,
   });
+
+  // Live-refresh commission when lead type / rep assignment changes
+  useEffect(() => {
+    if (!pipelineEntryId) return;
+    const channel = supabase
+      .channel(`profit-center-rep-${pipelineEntryId}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'pipeline_entries', filter: `id=eq.${pipelineEntryId}` },
+        () => { refetchRep(); }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [pipelineEntryId, refetchRep]);
 
   // Fetch estimate data (original/locked costs)
   const { data: estimateData, isLoading: isLoadingEstimate } = useQuery({

@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { resolveContractCommissionRate, type LeadGenerationType } from '@/lib/commission-calculator';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -457,69 +458,90 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     }
   };
 
-  // Fetch assigned rep's rates from the pipeline entry
-  useEffect(() => {
-    const fetchAssignedRepRates = async () => {
-      try {
-        const { data, error } = await supabaseClient
-          .from('pipeline_entries')
-          .select(`
-            assigned_to,
-            profiles!pipeline_entries_assigned_to_fkey(
-              first_name,
-              last_name,
-              overhead_rate,
-              personal_overhead_rate,
-              commission_rate,
-              commission_structure
-            )
-          `)
-          .eq('id', pipelineEntryId)
-          .single();
-        
-        if (error) {
-          console.error('Error fetching assigned rep rates:', error);
-          return;
-        }
-        
-        const profile = data?.profiles as any;
-        if (profile) {
-          // Apply overhead hierarchy: personal_overhead_rate > 0 takes priority over overhead_rate
-          const personalOverhead = profile.personal_overhead_rate ?? 0;
-          const baseOverhead = profile.overhead_rate ?? 10;
-          const effectiveOverheadPercent = personalOverhead > 0 ? personalOverhead : baseOverhead;
-          
-          const rates = {
-            overheadPercent: effectiveOverheadPercent,
-            commissionPercent: profile.commission_rate ?? 50,
-            commissionStructure: (profile.commission_structure === 'sales_percentage' || profile.commission_structure === 'percentage_contract_price') ? 'sales_percentage' : 'profit_split' as 'profit_split' | 'sales_percentage',
-            repName: `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'Rep'
-          };
-          setRepRates(rates);
-          
-          // Apply rep's rates to pricing config
-          setConfig({
-            overheadPercent: rates.overheadPercent,
-            repCommissionPercent: rates.commissionPercent,
-            commissionStructure: rates.commissionStructure,
-          });
-          
-          console.log('[MultiTemplateSelector] Applied rep rates:', {
-            repName: rates.repName,
-            effectiveOverhead: effectiveOverheadPercent,
-            personalOverhead,
-            baseOverhead,
-            commissionRate: rates.commissionPercent,
-            commissionStructure: rates.commissionStructure
-          });
-        }
-      } catch (err) {
-        console.error('Error fetching assigned rep rates:', err);
+  // Fetch assigned rep's rates from the pipeline entry (lead-type aware)
+  const fetchAssignedRepRates = useCallback(async () => {
+    if (!pipelineEntryId) return;
+    try {
+      const { data, error } = await supabaseClient
+        .from('pipeline_entries')
+        .select(`
+          assigned_to,
+          lead_generation_type,
+          profiles!pipeline_entries_assigned_to_fkey(
+            first_name,
+            last_name,
+            overhead_rate,
+            personal_overhead_rate,
+            commission_rate,
+            commission_structure,
+            commission_rate_self_generated,
+            commission_rate_company_generated
+          )
+        `)
+        .eq('id', pipelineEntryId)
+        .single();
+
+      if (error) {
+        console.error('Error fetching assigned rep rates:', error);
+        return;
       }
-    };
-    
+
+      const profile = data?.profiles as any;
+      if (profile) {
+        // Apply overhead hierarchy: personal_overhead_rate > 0 takes priority over overhead_rate
+        const personalOverhead = profile.personal_overhead_rate ?? 0;
+        const baseOverhead = profile.overhead_rate ?? 10;
+        const effectiveOverheadPercent = personalOverhead > 0 ? personalOverhead : baseOverhead;
+
+        const isContractType = profile.commission_structure === 'percentage_contract_price';
+        const commissionPercent = isContractType
+          ? resolveContractCommissionRate(
+              {
+                commissionRate: profile.commission_rate ?? 50,
+                selfGeneratedRate: profile.commission_rate_self_generated,
+                companyGeneratedRate: profile.commission_rate_company_generated,
+              },
+              (data?.lead_generation_type as LeadGenerationType | null) ?? null
+            )
+          : (profile.commission_rate ?? 50);
+
+        const rates = {
+          overheadPercent: effectiveOverheadPercent,
+          commissionPercent,
+          commissionStructure: (profile.commission_structure === 'sales_percentage' || isContractType) ? 'sales_percentage' : 'profit_split' as 'profit_split' | 'sales_percentage',
+          repName: `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'Rep'
+        };
+        setRepRates(rates);
+
+        // Apply rep's rates to pricing config
+        setConfig({
+          overheadPercent: rates.overheadPercent,
+          repCommissionPercent: rates.commissionPercent,
+          commissionStructure: rates.commissionStructure,
+        });
+      }
+    } catch (err) {
+      console.error('Error fetching assigned rep rates:', err);
+    }
+  }, [pipelineEntryId, setConfig]);
+
+  useEffect(() => {
     fetchAssignedRepRates();
-  }, [pipelineEntryId, setConfig, existingEstimateId]);
+  }, [fetchAssignedRepRates, existingEstimateId]);
+
+  // Live-refresh commission when the lead type / assigned rep changes on the pipeline entry
+  useEffect(() => {
+    if (!pipelineEntryId) return;
+    const channel = supabase
+      .channel(`estimate-rep-rates-${pipelineEntryId}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'pipeline_entries', filter: `id=eq.${pipelineEntryId}` },
+        () => { fetchAssignedRepRates(); }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [pipelineEntryId, fetchAssignedRepRates]);
 
   useEffect(() => {
     fetchTemplates();
