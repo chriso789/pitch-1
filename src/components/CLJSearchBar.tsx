@@ -87,6 +87,13 @@ const formatCljForType = (
 };
 
 const MAX_RECENTS = 5;
+// Pipeline statuses that are still pre-conversion "leads"; anything else is a job.
+// Mirrors the search_contacts_and_jobs RPC classification.
+const LEAD_STAGE_STATUSES = [
+  'lead', 'estimate_sent', 'contingency_signed', 'claim_filed',
+  'claim_approved', 'ready_for_approval', 'legal_review',
+];
+
 // Scope recents to BOTH tenant and active location so switching locations
 // doesn't surface results from a different location (e.g. East Coast jobs
 // appearing while the user is viewing West Coast).
