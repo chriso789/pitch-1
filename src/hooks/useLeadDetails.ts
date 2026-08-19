@@ -283,14 +283,18 @@ async function fetchSalesReps(tenantId: string | null, locationId?: string | nul
     return data || [];
   }
 
-  // Get user IDs assigned to this location
+  // Get all assignments for the tenant so we can tell "assigned elsewhere"
+  // (must be hidden here) apart from "no assignments at all".
   const { data: assignments, error: assignError } = await supabase
     .from('user_location_assignments')
-    .select('user_id')
-    .eq('location_id', locationId);
+    .select('user_id, location_id')
+    .eq('tenant_id', tenantId);
 
   if (assignError) throw assignError;
-  const locationUserIds = (assignments || []).map(a => a.user_id);
+  const locationUserIds = new Set(
+    (assignments || []).filter(a => a.location_id === locationId).map(a => a.user_id)
+  );
+  const assignedAnywhere = new Set((assignments || []).map(a => a.user_id));
 
   // Fetch all reps in tenant with qualifying roles
   const { data: allReps, error } = await supabase
@@ -304,11 +308,15 @@ async function fetchSalesReps(tenantId: string | null, locationId?: string | nul
 
   if (error) throw error;
 
-  // Filter: include if elevated role OR assigned to this location
+  // Show reps assigned to this location. Elevated roles stay visible only when
+  // they have no location assignments at all (company-wide access); once they
+  // are scoped to specific locations, they follow the same rule as reps.
   return (allReps || []).filter(rep =>
-    (elevatedRoles as readonly string[]).includes(rep.role) || locationUserIds.includes(rep.id)
+    locationUserIds.has(rep.id) ||
+    ((elevatedRoles as readonly string[]).includes(rep.role) && !assignedAnywhere.has(rep.id))
   );
 }
+
 
 // Fetch project data when status is 'project'
 async function fetchProjectData(pipelineEntryId: string) {
