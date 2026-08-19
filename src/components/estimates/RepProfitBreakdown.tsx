@@ -46,7 +46,7 @@ const RepProfitBreakdown: React.FC<RepProfitBreakdownProps> = ({
   className
 }) => {
   // Fetch both primary and secondary rep's commission settings
-  const { data: repData, isLoading } = useQuery({
+  const { data: repData, isLoading, refetch } = useQuery({
     queryKey: ['sales-rep-commission', pipelineEntryId],
     queryFn: async () => {
       const { data, error } = await supabase
