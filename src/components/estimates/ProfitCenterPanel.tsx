@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { resolveContractCommissionRate, type LeadGenerationType } from '@/lib/commission-calculator';
 import { InvoiceUploadCard } from '@/components/production/InvoiceUploadCard';
 import { BudgetTracker } from '@/features/projects/components/BudgetTracker';
 import { PaymentsTab } from '@/components/estimates/PaymentsTab';
