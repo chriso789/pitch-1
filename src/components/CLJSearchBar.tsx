@@ -171,11 +171,18 @@ export const CLJSearchBar = () => {
             ? `${l.contacts.first_name || ''} ${l.contacts.last_name || ''}`.trim()
             : '';
           const name = (l.lead_name && l.lead_name.trim()) || contactName || r.entity_name;
+          // Re-derive lead vs job from the CURRENT pipeline status so a recent
+          // cached before conversion doesn't keep showing the "Lead" badge.
+          const status = String(l.status || '');
+          const isJob = status !== '' && !LEAD_STAGE_STATUSES.includes(status);
           return [{
             ...r,
+            entity_type: (isJob ? 'job' : 'lead') as 'lead' | 'job',
+            entity_status: status || r.entity_status,
             entity_name: name,
             entity_subtext: l.contacts?.address_street || r.entity_subtext,
           }];
+
         }
         return [r];
       });
