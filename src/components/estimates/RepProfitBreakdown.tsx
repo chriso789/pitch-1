@@ -86,6 +86,22 @@ const RepProfitBreakdown: React.FC<RepProfitBreakdownProps> = ({
     enabled: !!pipelineEntryId,
   });
 
+  // Live-refresh when lead type / rep assignment changes on the pipeline entry
+  React.useEffect(() => {
+    if (!pipelineEntryId) return;
+    const channel = supabase
+      .channel(`rep-profit-breakdown-${pipelineEntryId}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'pipeline_entries', filter: `id=eq.${pipelineEntryId}` },
+        () => { refetch(); }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [pipelineEntryId, refetch]);
+
+
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
