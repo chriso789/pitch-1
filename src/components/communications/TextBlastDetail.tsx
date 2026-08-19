@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { ArrowLeft, Ban, CheckCircle, XCircle, ShieldOff, Send, Clock, Sparkles } from 'lucide-react';
 import { useState } from 'react';
+import { BlastSequenceStages } from './BlastSequenceStages';
 
 interface TextBlastDetailProps {
   blastId: string;
