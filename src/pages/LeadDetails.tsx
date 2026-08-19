@@ -1049,47 +1049,22 @@ const LeadDetails = () => {
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-sm">
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground">Rep:</span>
-                {isEditingSalesRep ? (
-                  <Select 
-                    value={lead.assigned_rep?.id || ''} 
-                    onValueChange={(value) => handleSalesRepUpdate(value)}
-                  >
-                    <SelectTrigger className="h-7 w-[200px]">
-                      <SelectValue placeholder="Select rep" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableSalesReps.map((rep) => (
-                        <SelectItem key={rep.id} value={rep.id}>
-                          {rep.first_name} {rep.last_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : lead.assigned_rep ? (
-                  <div className="flex items-center gap-1">
-                    <span className="font-medium">
-                      {lead.assigned_rep.first_name} {lead.assigned_rep.last_name}
-                    </span>
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      className="h-5 w-5 p-0"
-                      onClick={() => setIsEditingSalesRep(true)}
-                    >
-                      <Edit2 className="h-3 w-3" />
-                    </Button>
-                  </div>
-                ) : (
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="h-6"
-                    onClick={() => setIsEditingSalesRep(true)}
-                  >
-                    <Plus className="h-3 w-3 mr-1" />
-                    Assign
-                  </Button>
-                )}
+                <Select 
+                  value={lead.assigned_rep?.id || ''} 
+                  onValueChange={(value) => handleSalesRepUpdate(value)}
+                >
+                  <SelectTrigger className="h-7 w-[200px]">
+                    <SelectValue placeholder="Assign rep" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableSalesReps.map((rep) => (
+                      <SelectItem key={rep.id} value={rep.id}>
+                        {rep.first_name} {rep.last_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
               </div>
               <span className="text-muted-foreground hidden sm:inline">|</span>
               <div className="flex items-center gap-2">
