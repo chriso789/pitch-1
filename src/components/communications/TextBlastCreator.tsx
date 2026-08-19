@@ -503,18 +503,46 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
   const hasStopClause = /stop/i.test(previewSourceScript);
   const finalPreview = previewMessage;
 
-  // Source of truth for what actually gets sent:
-  // - Rotation OFF (default): only the previewed template is sent to every recipient.
-  // - Rotation ON: rotate across all selected templates.
-  const effectiveTemplatePoolIds =
-    rotateTemplates && selectedTemplateIds.length > 1
-      ? selectedTemplateIds
-      : activePreviewTemplate
+  // Source of truth for what actually gets sent.
+  // IMPORTANT: every selected template (initial + follow-up stages) must be persisted to the
+  // blast, otherwise the follow-up sequence silently never fires. Rotation only controls how the
+  // *initial* message varies; it must never truncate the saved sequence.
+  const selectedInitialTemplates = selectedTemplates.filter((t: any) => !isFollowupTemplate(t));
+  const selectedFollowupTemplates = selectedTemplates.filter((t: any) => isFollowupTemplate(t));
+
+  const initialPoolIds =
+    rotateTemplates && selectedInitialTemplates.length > 1
+      ? selectedInitialTemplates.map((t: any) => t.id)
+      : activePreviewTemplate && !isFollowupTemplate(activePreviewTemplate)
         ? [activePreviewTemplate.id]
-        : selectedTemplateIds.length
-          ? [selectedTemplateIds[0]]
-          : null;
-  const effectiveScript = activePreviewTemplate?.template_body?.trim() || script.trim();
+        : selectedInitialTemplates.length
+          ? [selectedInitialTemplates[0].id]
+          : [];
+
+  const orderedPoolIds = [
+    ...initialPoolIds,
+    ...selectedFollowupTemplates.map((t: any) => t.id),
+  ].filter((id, i, arr) => arr.indexOf(id) === i);
+
+  const effectiveTemplatePoolIds = orderedPoolIds.length
+    ? orderedPoolIds
+    : selectedTemplateIds.length
+      ? [selectedTemplateIds[0]]
+      : null;
+
+  // Follow-up stages need at least one attempt per stage, otherwise the processor stops after the
+  // opening message and the sequence never runs.
+  const effectiveMaxAttempts = Math.max(
+    maxAttemptsPerContact,
+    selectedFollowupTemplates.length ? selectedFollowupTemplates.length + 1 : 1,
+  );
+  const effectiveAiFollowupEnabled = aiFollowupEnabled || selectedFollowupTemplates.length > 0;
+
+  const effectiveScript =
+    (activePreviewTemplate && !isFollowupTemplate(activePreviewTemplate)
+      ? activePreviewTemplate.template_body
+      : selectedInitialTemplates[0]?.template_body || activePreviewTemplate?.template_body
+    )?.trim() || script.trim();
 
   const isValid = sendMode === 'single'
     ? !!(name.trim() && manualPhone.trim() && script.trim())
