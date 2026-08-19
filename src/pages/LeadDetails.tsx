@@ -1075,6 +1075,38 @@ const LeadDetails = () => {
                 </Select>
 
               </div>
+              {isManager && (
+                <>
+                  <span className="text-muted-foreground hidden sm:inline">|</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">Lead Type:</span>
+                    <Select
+                      value={(lead as any).lead_generation_type || 'company_generated'}
+                      onValueChange={async (value) => {
+                        try {
+                          const { error } = await supabase
+                            .from('pipeline_entries')
+                            .update({ lead_generation_type: value })
+                            .eq('id', id);
+                          if (error) throw error;
+                          toast({ title: 'Lead type updated' });
+                          refetchLead();
+                        } catch (err: any) {
+                          toast({ title: 'Error updating lead type', description: err.message, variant: 'destructive' });
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="h-7 w-[190px]">
+                        <SelectValue placeholder="Lead type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="self_generated">Self Generated</SelectItem>
+                        <SelectItem value="company_generated">Company Generated</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </>
+              )}
               <span className="text-muted-foreground hidden sm:inline">|</span>
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground">Split Rep:</span>
