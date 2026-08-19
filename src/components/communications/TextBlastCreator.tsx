@@ -576,11 +576,11 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             script: effectiveScript,
             list_id: null,
             total_recipients: 1,
-            max_attempts_per_contact: maxAttemptsPerContact,
+            max_attempts_per_contact: effectiveMaxAttempts,
             status: 'draft',
             is_test_mode: isTestBlast,
             template_pool_ids: effectiveTemplatePoolIds,
-            ai_followup_enabled: aiFollowupEnabled,
+            ai_followup_enabled: effectiveAiFollowupEnabled,
             goal: goal || null,
           })
           .select()
@@ -633,11 +633,11 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
             script: effectiveScript,
             list_id: null,
             total_recipients: effectiveListItems.length,
-            max_attempts_per_contact: maxAttemptsPerContact,
+            max_attempts_per_contact: effectiveMaxAttempts,
             status: 'draft',
             is_test_mode: isTestBlast,
             template_pool_ids: effectiveTemplatePoolIds,
-            ai_followup_enabled: aiFollowupEnabled,
+            ai_followup_enabled: effectiveAiFollowupEnabled,
             goal: goal || null,
           })
           .select()
