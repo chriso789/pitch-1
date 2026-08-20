@@ -472,7 +472,13 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
   // Total cost = materials + labor + percentage overhead + other charges (permits, dumps, etc.)
   const totalCost = effectiveMaterialCost + effectiveLaborCost + overheadAmount + otherChargesTotal;
   const grossProfit = preTaxSellingPrice - totalCost;
-  const repCommission = grossProfit * (commissionRate / 100);
+  // Percent-of-contract reps are paid on the contract price, not the gross profit
+  const isContractCommission =
+    commissionStructure === 'percentage_contract_price' ||
+    commissionStructure === 'percent_of_contract' ||
+    commissionStructure === 'sales_percentage';
+  const commissionBase = isContractCommission ? preTaxSellingPrice : grossProfit;
+  const repCommission = commissionBase * (commissionRate / 100);
   const companyNet = grossProfit - repCommission;
   const profitMargin = preTaxSellingPrice > 0 ? (grossProfit / preTaxSellingPrice) * 100 : 0;
 
