@@ -113,6 +113,12 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId, editingC
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
   const [items, setItems] = useState<LineItem[]>(initialItems);
+  const [pricingMode, setPricingMode] = useState<'fixed' | 'calculated'>(
+    initialContainer.pricing_mode === 'calculated' ? 'calculated' : 'fixed',
+  );
+  const [fixedPrice, setFixedPrice] = useState<number>(
+    Number(initialContainer.fixed_price ?? 0) || 0,
+  );
   const [overheadPct, setOverheadPct] = useState<number>(
     Number(initialContainer.overhead_pct ?? 10) || 0,
   );
@@ -124,6 +130,7 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId, editingC
   const [laborRatePerSquare, setLaborRatePerSquare] = useState<number>(0);
   const [laborFlatAmount, setLaborFlatAmount] = useState<number>(0);
   const [laborDescription, setLaborDescription] = useState<string>('');
+
   const [invoiceFile, setInvoiceFile] = useState<{ url: string; path: string; name: string } | null>(
     editingChangeOrder?.material_invoice_url
       ? {
