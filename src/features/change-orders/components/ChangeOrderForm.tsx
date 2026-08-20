@@ -179,9 +179,14 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId, editingC
   const subtotal = materialTotal + laborTotal;
   // Overhead & profit are % of selling price (price-based markup), not of cost.
   const opDenom = Math.max(0.01, 1 - (overheadPct / 100) - (profitPct / 100));
-  const grandTotal = subtotal / opDenom;
-  const overheadAmount = grandTotal * (overheadPct / 100);
-  const profitAmount = grandTotal * (profitPct / 100);
+  const calculatedTotal = subtotal / opDenom;
+  // Fixed price mode: the user sets the client price directly — never auto-derived.
+  const grandTotal = pricingMode === 'fixed' ? (Number(fixedPrice) || 0) : calculatedTotal;
+  const overheadAmount = pricingMode === 'fixed' ? 0 : calculatedTotal * (overheadPct / 100);
+  const profitAmount = pricingMode === 'fixed'
+    ? grandTotal - subtotal
+    : calculatedTotal * (profitPct / 100);
+
 
   const addQuickLabor = () => {
     if (laborMode === 'per_square') {
