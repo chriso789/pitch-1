@@ -385,7 +385,7 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId, editingC
           <DialogDescription>
             {isEdit
               ? 'Update materials, labor, overhead and profit — totals recalculate automatically.'
-              : 'Upload a material invoice and add labor — totals build the change order automatically.'}
+              : 'Set a fixed price for the client, then log the material and labor costs for this change order.'}
           </DialogDescription>
         </DialogHeader>
 
