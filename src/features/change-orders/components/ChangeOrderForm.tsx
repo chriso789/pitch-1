@@ -113,6 +113,12 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId, editingC
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
   const [items, setItems] = useState<LineItem[]>(initialItems);
+  const [pricingMode, setPricingMode] = useState<'fixed' | 'calculated'>(
+    initialContainer.pricing_mode === 'calculated' ? 'calculated' : 'fixed',
+  );
+  const [fixedPrice, setFixedPrice] = useState<number>(
+    Number(initialContainer.fixed_price ?? 0) || 0,
+  );
   const [overheadPct, setOverheadPct] = useState<number>(
     Number(initialContainer.overhead_pct ?? 10) || 0,
   );
@@ -124,6 +130,7 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId, editingC
   const [laborRatePerSquare, setLaborRatePerSquare] = useState<number>(0);
   const [laborFlatAmount, setLaborFlatAmount] = useState<number>(0);
   const [laborDescription, setLaborDescription] = useState<string>('');
+
   const [invoiceFile, setInvoiceFile] = useState<{ url: string; path: string; name: string } | null>(
     editingChangeOrder?.material_invoice_url
       ? {
@@ -172,9 +179,14 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId, editingC
   const subtotal = materialTotal + laborTotal;
   // Overhead & profit are % of selling price (price-based markup), not of cost.
   const opDenom = Math.max(0.01, 1 - (overheadPct / 100) - (profitPct / 100));
-  const grandTotal = subtotal / opDenom;
-  const overheadAmount = grandTotal * (overheadPct / 100);
-  const profitAmount = grandTotal * (profitPct / 100);
+  const calculatedTotal = subtotal / opDenom;
+  // Fixed price mode: the user sets the client price directly — never auto-derived.
+  const grandTotal = pricingMode === 'fixed' ? (Number(fixedPrice) || 0) : calculatedTotal;
+  const overheadAmount = pricingMode === 'fixed' ? 0 : calculatedTotal * (overheadPct / 100);
+  const profitAmount = pricingMode === 'fixed'
+    ? grandTotal - subtotal
+    : calculatedTotal * (profitPct / 100);
+
 
   const addQuickLabor = () => {
     if (laborMode === 'per_square') {
@@ -322,7 +334,17 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId, editingC
         cost_impact: grandTotal,
         material_total: materialTotal,
         labor_total: laborTotal,
-        line_items: { items: itemsWithTotals, overhead_pct: overheadPct, profit_pct: profitPct, overhead_amount: overheadAmount, profit_amount: profitAmount, subtotal },
+        line_items: {
+          items: itemsWithTotals,
+          pricing_mode: pricingMode,
+          fixed_price: pricingMode === 'fixed' ? grandTotal : null,
+          overhead_pct: pricingMode === 'fixed' ? 0 : overheadPct,
+          profit_pct: pricingMode === 'fixed' ? 0 : profitPct,
+          overhead_amount: overheadAmount,
+          profit_amount: profitAmount,
+          subtotal,
+        },
+
         material_invoice_url: invoiceFile?.url || null,
         material_invoice_storage_path: invoiceFile?.path || null,
         time_impact_days: parseInt(values.time_impact_days || '0'),
@@ -363,7 +385,7 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId, editingC
           <DialogDescription>
             {isEdit
               ? 'Update materials, labor, overhead and profit — totals recalculate automatically.'
-              : 'Upload a material invoice and add labor — totals build the change order automatically.'}
+              : 'Set a fixed price for the client, then log the material and labor costs for this change order.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -639,53 +661,106 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId, editingC
                 )}
               </div>
 
-              {/* Overhead & profit controls */}
-              <div className="rounded-lg border bg-muted/20 p-3 space-y-2">
-                <h4 className="font-semibold text-sm">Overhead & Profit</h4>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs text-muted-foreground">Overhead %</label>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      value={overheadPct}
-                      onChange={(e) => setOverheadPct(parseFloat(e.target.value) || 0)}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground">Profit %</label>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      value={profitPct}
-                      onChange={(e) => setProfitPct(parseFloat(e.target.value) || 0)}
-                    />
+              {/* Client price — fixed price by default, no auto-generated amount */}
+              <div className="rounded-lg border bg-muted/20 p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-semibold text-sm">Price to Client</h4>
+                  <div className="flex gap-1">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={pricingMode === 'fixed' ? 'default' : 'outline'}
+                      onClick={() => setPricingMode('fixed')}
+                    >
+                      Fixed Price
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={pricingMode === 'calculated' ? 'default' : 'outline'}
+                      onClick={() => setPricingMode('calculated')}
+                    >
+                      Overhead &amp; Profit
+                    </Button>
                   </div>
                 </div>
+
+                {pricingMode === 'fixed' ? (
+                  <div>
+                    <label className="text-xs text-muted-foreground">
+                      Fixed change order price ($)
+                    </label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={fixedPrice || ''}
+                      onChange={(e) => setFixedPrice(parseFloat(e.target.value) || 0)}
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      This exact amount is charged to the client. Material and labor entered below
+                      are recorded as change order costs and roll into the job's material and labor
+                      totals — they do not change this price.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-muted-foreground">Overhead %</label>
+                      <Input
+                        type="number"
+                        step="0.1"
+                        value={overheadPct}
+                        onChange={(e) => setOverheadPct(parseFloat(e.target.value) || 0)}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">Profit %</label>
+                      <Input
+                        type="number"
+                        step="0.1"
+                        value={profitPct}
+                        onChange={(e) => setProfitPct(parseFloat(e.target.value) || 0)}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* totals */}
               <div className="rounded-lg bg-muted/40 p-3 text-sm space-y-1">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Materials</span>
+                  <span className="text-muted-foreground">CO Materials (cost)</span>
                   <span>${materialTotal.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Labor</span>
+                  <span className="text-muted-foreground">CO Labor (cost)</span>
                   <span>${laborTotal.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between border-t pt-1 mt-1">
-                  <span className="text-muted-foreground">Subtotal</span>
+                  <span className="text-muted-foreground">Total CO Cost</span>
                   <span>${subtotal.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Overhead ({overheadPct}%)</span>
-                  <span>${overheadAmount.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Profit ({profitPct}%)</span>
-                  <span>${profitAmount.toFixed(2)}</span>
-                </div>
+                {pricingMode === 'calculated' ? (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Overhead ({overheadPct}%)</span>
+                      <span>${overheadAmount.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Profit ({profitPct}%)</span>
+                      <span>${profitAmount.toFixed(2)}</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">
+                      Gross Profit{grandTotal > 0 ? ` (${((profitAmount / grandTotal) * 100).toFixed(1)}%)` : ''}
+                    </span>
+                    <span>${profitAmount.toFixed(2)}</span>
+                  </div>
+                )}
+
                 <div className="flex justify-between font-semibold border-t pt-1 mt-1 text-base">
                   <span>Total Change Order</span>
                   <span>${grandTotal.toFixed(2)}</span>

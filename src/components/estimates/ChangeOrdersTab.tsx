@@ -146,15 +146,19 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
       items[editingLine.idx] = updated;
       const newMaterial = items.filter((i) => (i.kind || 'material') === 'material').reduce((s, i) => s + Number(i.line_total ?? (Number(i.quantity ?? i.qty ?? 1) * Number(i.unit_price ?? i.price ?? 0))), 0);
       const newLabor = items.filter((i) => i.kind === 'labor').reduce((s, i) => s + Number(i.line_total ?? (Number(i.quantity ?? i.qty ?? 1) * Number(i.unit_price ?? i.price ?? 0))), 0);
-      const overheadPct = Number(container.overhead_pct ?? 10);
-      const profitPct = Number(container.profit_pct ?? 25);
+      const isFixed = container.pricing_mode === 'fixed' || Number(container.fixed_price) > 0;
+      const overheadPct = isFixed ? 0 : Number(container.overhead_pct ?? 10);
+      const profitPct = isFixed ? 0 : Number(container.profit_pct ?? 25);
       const cost = newMaterial + newLabor;
       // Overhead & profit are % of selling price (price-based markup), not of cost.
       // selling = cost / (1 - overhead% - profit%)
       const denom = Math.max(0.01, 1 - (overheadPct / 100) - (profitPct / 100));
-      const sellingPrice = cost / denom;
-      const overheadAmount = sellingPrice * (overheadPct / 100);
-      const profitAmount = sellingPrice * (profitPct / 100);
+      // Fixed-price change orders keep the price the user set — costs never move it.
+      const sellingPrice = isFixed
+        ? Number(container.fixed_price ?? co.cost_impact ?? 0)
+        : cost / denom;
+      const overheadAmount = isFixed ? 0 : sellingPrice * (overheadPct / 100);
+      const profitAmount = isFixed ? sellingPrice - cost : sellingPrice * (profitPct / 100);
       const { error } = await (supabase as any)
         .from('change_orders')
         .update({
@@ -189,13 +193,16 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
     items.splice(idx, 1);
     const newMaterial = items.filter((i) => (i.kind || 'material') === 'material').reduce((s, i) => s + lineAmount(i), 0);
     const newLabor = items.filter((i) => i.kind === 'labor').reduce((s, i) => s + lineAmount(i), 0);
-    const overheadPct = Number(container.overhead_pct ?? 10);
-    const profitPct = Number(container.profit_pct ?? 25);
+    const isFixed = container.pricing_mode === 'fixed' || Number(container.fixed_price) > 0;
+    const overheadPct = isFixed ? 0 : Number(container.overhead_pct ?? 10);
+    const profitPct = isFixed ? 0 : Number(container.profit_pct ?? 25);
     const cost = newMaterial + newLabor;
     const denom = Math.max(0.01, 1 - (overheadPct / 100) - (profitPct / 100));
-    const sellingPrice = cost / denom;
-    const overheadAmount = sellingPrice * (overheadPct / 100);
-    const profitAmount = sellingPrice * (profitPct / 100);
+    const sellingPrice = isFixed
+      ? Number(container.fixed_price ?? co.cost_impact ?? 0)
+      : cost / denom;
+    const overheadAmount = isFixed ? 0 : sellingPrice * (overheadPct / 100);
+    const profitAmount = isFixed ? sellingPrice - cost : sellingPrice * (profitPct / 100);
     const { error } = await (supabase as any)
       .from('change_orders')
       .update({
@@ -377,7 +384,12 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
 
   const handlePushToInvoice = async (co: ChangeOrder) => {
     const computed = totalsFor(co.id);
-    const amount = Math.max(Number(co.cost_impact || 0), Number(computed?.budget || 0));
+    const container: any = (co.line_items as any) || {};
+    const isFixed = container.pricing_mode === 'fixed' || Number(container.fixed_price) > 0;
+    // Fixed-price change orders bill exactly what the user set — never a derived amount.
+    const amount = isFixed
+      ? Number(container.fixed_price ?? co.cost_impact ?? 0)
+      : Math.max(Number(co.cost_impact || 0), Number(computed?.budget || 0));
     if (amount <= 0) {
       toast({ title: 'Cost impact is $0', description: 'Add line items or set a cost impact before invoicing.', variant: 'destructive' });
       return;
@@ -439,6 +451,9 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
                 unit_price: price,
                 line_total: total,
                 source_change_order_id: co.id,
+                change_order_number: co.co_number,
+                is_change_order: true,
+                section_label: `Change Order ${co.co_number}`,
               };
               const cat = String(it.kind ?? it.category ?? 'material').toLowerCase();
               if (cat.startsWith('lab')) laborAdds.push(row);
