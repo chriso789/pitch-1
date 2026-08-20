@@ -169,8 +169,12 @@ export function LocationSelectionDialog({ userId, onLocationSelected }: Location
 
       toast.success('Location selected');
 
-      // Navigate without hard reload
-      navigate('/dashboard', { replace: true });
+      // Stay on the current page — only send the user to the dashboard when
+      // they're on a public/entry route with nothing to return to.
+      const entryPaths = ['/', '/login', '/signup'];
+      if (entryPaths.includes(window.location.pathname)) {
+        navigate('/dashboard', { replace: true });
+      }
     } catch (error) {
       console.error('Error saving location:', error);
       toast.error('Failed to save location preference');
