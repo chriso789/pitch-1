@@ -384,7 +384,12 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
 
   const handlePushToInvoice = async (co: ChangeOrder) => {
     const computed = totalsFor(co.id);
-    const amount = Math.max(Number(co.cost_impact || 0), Number(computed?.budget || 0));
+    const container: any = (co.line_items as any) || {};
+    const isFixed = container.pricing_mode === 'fixed' || Number(container.fixed_price) > 0;
+    // Fixed-price change orders bill exactly what the user set — never a derived amount.
+    const amount = isFixed
+      ? Number(container.fixed_price ?? co.cost_impact ?? 0)
+      : Math.max(Number(co.cost_impact || 0), Number(computed?.budget || 0));
     if (amount <= 0) {
       toast({ title: 'Cost impact is $0', description: 'Add line items or set a cost impact before invoicing.', variant: 'destructive' });
       return;
@@ -446,6 +451,9 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
                 unit_price: price,
                 line_total: total,
                 source_change_order_id: co.id,
+                change_order_number: co.co_number,
+                is_change_order: true,
+                section_label: `Change Order ${co.co_number}`,
               };
               const cat = String(it.kind ?? it.category ?? 'material').toLowerCase();
               if (cat.startsWith('lab')) laborAdds.push(row);
