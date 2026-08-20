@@ -661,53 +661,106 @@ export function ChangeOrderForm({ onClose, onSuccess, defaultProjectId, editingC
                 )}
               </div>
 
-              {/* Overhead & profit controls */}
-              <div className="rounded-lg border bg-muted/20 p-3 space-y-2">
-                <h4 className="font-semibold text-sm">Overhead & Profit</h4>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs text-muted-foreground">Overhead %</label>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      value={overheadPct}
-                      onChange={(e) => setOverheadPct(parseFloat(e.target.value) || 0)}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground">Profit %</label>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      value={profitPct}
-                      onChange={(e) => setProfitPct(parseFloat(e.target.value) || 0)}
-                    />
+              {/* Client price — fixed price by default, no auto-generated amount */}
+              <div className="rounded-lg border bg-muted/20 p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-semibold text-sm">Price to Client</h4>
+                  <div className="flex gap-1">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={pricingMode === 'fixed' ? 'default' : 'outline'}
+                      onClick={() => setPricingMode('fixed')}
+                    >
+                      Fixed Price
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={pricingMode === 'calculated' ? 'default' : 'outline'}
+                      onClick={() => setPricingMode('calculated')}
+                    >
+                      Overhead &amp; Profit
+                    </Button>
                   </div>
                 </div>
+
+                {pricingMode === 'fixed' ? (
+                  <div>
+                    <label className="text-xs text-muted-foreground">
+                      Fixed change order price ($)
+                    </label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={fixedPrice || ''}
+                      onChange={(e) => setFixedPrice(parseFloat(e.target.value) || 0)}
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      This exact amount is charged to the client. Material and labor entered below
+                      are recorded as change order costs and roll into the job's material and labor
+                      totals — they do not change this price.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-muted-foreground">Overhead %</label>
+                      <Input
+                        type="number"
+                        step="0.1"
+                        value={overheadPct}
+                        onChange={(e) => setOverheadPct(parseFloat(e.target.value) || 0)}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">Profit %</label>
+                      <Input
+                        type="number"
+                        step="0.1"
+                        value={profitPct}
+                        onChange={(e) => setProfitPct(parseFloat(e.target.value) || 0)}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* totals */}
               <div className="rounded-lg bg-muted/40 p-3 text-sm space-y-1">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Materials</span>
+                  <span className="text-muted-foreground">CO Materials (cost)</span>
                   <span>${materialTotal.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Labor</span>
+                  <span className="text-muted-foreground">CO Labor (cost)</span>
                   <span>${laborTotal.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between border-t pt-1 mt-1">
-                  <span className="text-muted-foreground">Subtotal</span>
+                  <span className="text-muted-foreground">Total CO Cost</span>
                   <span>${subtotal.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Overhead ({overheadPct}%)</span>
-                  <span>${overheadAmount.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Profit ({profitPct}%)</span>
-                  <span>${profitAmount.toFixed(2)}</span>
-                </div>
+                {pricingMode === 'calculated' ? (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Overhead ({overheadPct}%)</span>
+                      <span>${overheadAmount.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Profit ({profitPct}%)</span>
+                      <span>${profitAmount.toFixed(2)}</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">
+                      Gross Profit{grandTotal > 0 ? ` (${((profitAmount / grandTotal) * 100).toFixed(1)}%)` : ''}
+                    </span>
+                    <span>${profitAmount.toFixed(2)}</span>
+                  </div>
+                )}
+
                 <div className="flex justify-between font-semibold border-t pt-1 mt-1 text-base">
                   <span>Total Change Order</span>
                   <span>${grandTotal.toFixed(2)}</span>
