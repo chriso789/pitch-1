@@ -73,6 +73,12 @@ export function useLiveDataSync() {
         { event: '*', schema: 'public', table: 'estimates' },
         invalidateEstimates)
       .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'estimate_line_items' },
+        invalidateEstimates)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'project_budget_items' },
+        invalidateEstimates)
+      .on('postgres_changes',
         { event: '*', schema: 'public', table: 'project_payments', filter: `tenant_id=eq.${tenantId}` },
         invalidatePayments)
       .on('postgres_changes',
