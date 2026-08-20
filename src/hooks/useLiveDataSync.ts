@@ -31,6 +31,17 @@ export function useLiveDataSync() {
       qc.invalidateQueries({ queryKey: ['ar-projects'] });
       qc.invalidateQueries({ queryKey: ['financials'] });
       qc.invalidateQueries({ queryKey: ['commissions'] });
+      // Financial bars / profit center / totals derived from estimate lines
+      qc.invalidateQueries({ queryKey: ['hyperlink-data'] });
+      qc.invalidateQueries({ queryKey: ['combined-estimate-totals'] });
+      qc.invalidateQueries({ queryKey: ['profit-center-data'] });
+      qc.invalidateQueries({ queryKey: ['pipeline-invoices-totals'] });
+      qc.invalidateQueries({ queryKey: ['estimate-line-items'] });
+      qc.invalidateQueries({ queryKey: ['estimate_line_items'] });
+      qc.invalidateQueries({ queryKey: ['budget-items'] });
+      qc.invalidateQueries({ queryKey: ['project-budget-items'] });
+      qc.invalidateQueries({ queryKey: ['materials'] });
+      qc.invalidateQueries({ queryKey: ['labor'] });
     };
 
     const invalidatePayments = () => {
