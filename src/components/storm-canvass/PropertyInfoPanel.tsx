@@ -524,10 +524,11 @@ export default function PropertyInfoPanel({
         }
       });
 
-      // Auto-create contact for positive dispositions
-      const POSITIVE_DISPOSITIONS = ['interested', 'follow_up', 'callback', 'new_roof'];
-      
-      if (POSITIVE_DISPOSITIONS.includes(dispositionId)) {
+      // Every knocked door becomes a contact for the rep, except explicit opt-outs.
+      const SKIP_CONTACT_DISPOSITIONS = ['do_not_contact', 'dnc', 'wrong_address', 'vacant'];
+
+      if (!SKIP_CONTACT_DISPOSITIONS.includes(dispositionId)) {
+
         // Check if contact already exists for this property
         const { data: existingContact } = await supabase
           .from('contacts')
