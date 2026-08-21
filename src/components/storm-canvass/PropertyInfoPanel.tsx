@@ -696,16 +696,41 @@ export default function PropertyInfoPanel({
         }
       };
 
-      // Check for an existing contact at this address (duplicate trigger will block insert otherwise)
+      // Check for an existing contact for THIS property / THIS address.
+      // NOTE: matching on name alone collapsed every canvassed pin into one
+      // contact (generic owner names like "Primary Owner" matched everything),
+      // so the address must match too and placeholder names never match.
+      const PLACEHOLDER_NAMES = ['primary', 'owner', 'private', 'individual', 'current', 'resident', 'occupant', 'unknown'];
+      const isPlaceholderName =
+        !newContact.first_name ||
+        PLACEHOLDER_NAMES.includes(String(newContact.first_name).trim().toLowerCase());
+
       let createdContact: any = null;
       let wasExisting = false;
-      if (newContact.first_name && newContact.address_street) {
+
+      // 1) Already linked to this exact property?
+      const { data: linkedExisting } = await supabase
+        .from('contacts')
+        .select('*')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('canvassiq_property_id', property.id)
+        .eq('is_deleted', false)
+        .limit(1)
+        .maybeSingle();
+      if (linkedExisting) {
+        createdContact = linkedExisting;
+        wasExisting = true;
+      }
+
+      // 2) Same name AND same street address (real duplicate at the door)
+      if (!createdContact && !isPlaceholderName && newContact.address_street) {
         const { data: existing } = await supabase
           .from('contacts')
           .select('*')
           .eq('tenant_id', profile.tenant_id)
           .ilike('first_name', newContact.first_name.trim())
           .ilike('last_name', (newContact.last_name || '').trim())
+          .ilike('address_street', `${String(newContact.address_street).trim()}%`)
           .eq('is_deleted', false)
           .limit(1)
           .maybeSingle();
@@ -714,6 +739,7 @@ export default function PropertyInfoPanel({
           wasExisting = true;
         }
       }
+
 
       if (!createdContact) {
         const { data, error } = await supabase
