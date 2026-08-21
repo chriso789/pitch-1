@@ -64,9 +64,10 @@ export const ContactKanbanCard: React.FC<ContactKanbanCardProps> = ({
       {...attributes}
       {...listeners}
       className={cn(
-        "touch-none w-full",
-        isDragging && "opacity-50"
+        "touch-pan-y w-full",
+        isDragging && "opacity-50 touch-none"
       )}
+
     >
       <Card className={cn(
         "w-full min-w-0 max-w-full min-h-[80px] max-h-[100px]",

@@ -135,11 +135,13 @@ export const ContactKanbanColumn: React.FC<ContactKanbanColumnProps> = ({
         <div
           ref={setNodeRef}
           className={cn(
-            "min-h-[400px] max-h-[calc(100vh-340px)] overflow-y-auto p-1.5 rounded-lg transition-colors",
+            "min-h-[400px] max-h-[60dvh] md:max-h-[calc(100dvh-340px)] overflow-y-auto overscroll-contain touch-pan-y p-1.5 rounded-lg transition-colors",
+            "[-webkit-overflow-scrolling:touch]",
             isOver 
               ? "bg-primary/10 border-2 border-primary border-dashed" 
               : "bg-muted/20 border-2 border-transparent"
           )}
+
         >
           <div className="space-y-1.5">
             {children}

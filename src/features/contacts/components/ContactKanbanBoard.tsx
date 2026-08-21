@@ -4,7 +4,9 @@ import {
   DragEndEvent,
   DragOverlay,
   DragStartEvent,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
+
   useSensor,
   useSensors,
   closestCenter,
@@ -177,12 +179,16 @@ export const ContactKanbanBoard: React.FC<ContactKanbanBoardProps> = ({
   };
 
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
+    // Mouse: small drag threshold so desktop drag feels instant
+    useSensor(MouseSensor, {
+      activationConstraint: { distance: 8 },
+    }),
+    // Touch: require a long-press before dragging so the list can scroll freely
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 250, tolerance: 8 },
     })
   );
+
 
   // Filter contacts by search
   const filteredContacts = useMemo(() => {
@@ -327,7 +333,7 @@ export const ContactKanbanBoard: React.FC<ContactKanbanBoardProps> = ({
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="flex gap-4 overflow-x-auto pb-4 max-h-[calc(100vh-280px)]" style={{ overscrollBehaviorX: 'contain' }}>
+        <div className="flex gap-4 overflow-x-auto overscroll-x-contain pb-4" style={{ overscrollBehaviorX: 'contain', WebkitOverflowScrolling: 'touch' }}>
           {/* New / Unassigned column FIRST — always visible */}
           {(() => {
             const sorted = sortColumnContacts(

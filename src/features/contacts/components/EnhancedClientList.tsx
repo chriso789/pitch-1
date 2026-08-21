@@ -1387,7 +1387,7 @@ export const EnhancedClientList = () => {
               Contacts by Status ({contacts.length})
             </CardTitle>
           </CardHeader>
-          <CardContent className="overflow-hidden p-2">
+          <CardContent className="p-2">
             <ContactKanbanBoard
               contacts={contacts}
               onContactUpdated={fetchData}
