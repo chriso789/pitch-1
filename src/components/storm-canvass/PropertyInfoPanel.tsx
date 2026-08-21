@@ -539,13 +539,19 @@ export default function PropertyInfoPanel({
         if (!existingContact) {
           const selectedOwnerData = enrichedOwners.find(o => o.id === selectedOwner) || displayOwners[0];
           const ownerFullName = selectedOwnerData?.name || property?.owner_name || homeowner?.name;
+          // Fall back to the street address so unknown-owner knocks still show
+          // up as distinct contacts instead of collapsing into one record.
+          const streetLabel = address?.street || address?.formatted || fullAddress || 'Unknown Address';
+          const resolvedFirst = parseFirstName(ownerFullName) || streetLabel;
+          const resolvedLast = parseLastName(ownerFullName) || (parseFirstName(ownerFullName) ? '' : 'Resident');
 
           const propData = localProperty?.property_data || {};
           const newContact = {
             tenant_id: profile.tenant_id,
             type: 'homeowner' as const,
-            first_name: parseFirstName(ownerFullName),
-            last_name: parseLastName(ownerFullName),
+            first_name: resolvedFirst,
+            last_name: resolvedLast,
+
             phone: phoneNumbers?.[0] || null,
             email: emails?.[0] || null,
             address_street: address?.street || address?.formatted || fullAddress,
