@@ -4,7 +4,9 @@ import {
   DragEndEvent,
   DragOverlay,
   DragStartEvent,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
+
   useSensor,
   useSensors,
   closestCenter,
@@ -177,12 +179,16 @@ export const ContactKanbanBoard: React.FC<ContactKanbanBoardProps> = ({
   };
 
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
+    // Mouse: small drag threshold so desktop drag feels instant
+    useSensor(MouseSensor, {
+      activationConstraint: { distance: 8 },
+    }),
+    // Touch: require a long-press before dragging so the list can scroll freely
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 250, tolerance: 8 },
     })
   );
+
 
   // Filter contacts by search
   const filteredContacts = useMemo(() => {
