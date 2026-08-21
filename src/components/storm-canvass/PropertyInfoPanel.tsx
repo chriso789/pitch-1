@@ -524,10 +524,11 @@ export default function PropertyInfoPanel({
         }
       });
 
-      // Auto-create contact for positive dispositions
-      const POSITIVE_DISPOSITIONS = ['interested', 'follow_up', 'callback', 'new_roof'];
-      
-      if (POSITIVE_DISPOSITIONS.includes(dispositionId)) {
+      // Every knocked door becomes a contact for the rep, except explicit opt-outs.
+      const SKIP_CONTACT_DISPOSITIONS = ['do_not_contact', 'dnc', 'wrong_address', 'vacant'];
+
+      if (!SKIP_CONTACT_DISPOSITIONS.includes(dispositionId)) {
+
         // Check if contact already exists for this property
         const { data: existingContact } = await supabase
           .from('contacts')
@@ -538,13 +539,19 @@ export default function PropertyInfoPanel({
         if (!existingContact) {
           const selectedOwnerData = enrichedOwners.find(o => o.id === selectedOwner) || displayOwners[0];
           const ownerFullName = selectedOwnerData?.name || property?.owner_name || homeowner?.name;
+          // Fall back to the street address so unknown-owner knocks still show
+          // up as distinct contacts instead of collapsing into one record.
+          const streetLabel = address?.street || address?.formatted || fullAddress || 'Unknown Address';
+          const resolvedFirst = parseFirstName(ownerFullName) || streetLabel;
+          const resolvedLast = parseLastName(ownerFullName) || (parseFirstName(ownerFullName) ? '' : 'Resident');
 
           const propData = localProperty?.property_data || {};
           const newContact = {
             tenant_id: profile.tenant_id,
             type: 'homeowner' as const,
-            first_name: parseFirstName(ownerFullName),
-            last_name: parseLastName(ownerFullName),
+            first_name: resolvedFirst,
+            last_name: resolvedLast,
+
             phone: phoneNumbers?.[0] || null,
             email: emails?.[0] || null,
             address_street: address?.street || address?.formatted || fullAddress,
@@ -696,16 +703,41 @@ export default function PropertyInfoPanel({
         }
       };
 
-      // Check for an existing contact at this address (duplicate trigger will block insert otherwise)
+      // Check for an existing contact for THIS property / THIS address.
+      // NOTE: matching on name alone collapsed every canvassed pin into one
+      // contact (generic owner names like "Primary Owner" matched everything),
+      // so the address must match too and placeholder names never match.
+      const PLACEHOLDER_NAMES = ['primary', 'owner', 'private', 'individual', 'current', 'resident', 'occupant', 'unknown'];
+      const isPlaceholderName =
+        !newContact.first_name ||
+        PLACEHOLDER_NAMES.includes(String(newContact.first_name).trim().toLowerCase());
+
       let createdContact: any = null;
       let wasExisting = false;
-      if (newContact.first_name && newContact.address_street) {
+
+      // 1) Already linked to this exact property?
+      const { data: linkedExisting } = await supabase
+        .from('contacts')
+        .select('*')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('canvassiq_property_id', property.id)
+        .eq('is_deleted', false)
+        .limit(1)
+        .maybeSingle();
+      if (linkedExisting) {
+        createdContact = linkedExisting;
+        wasExisting = true;
+      }
+
+      // 2) Same name AND same street address (real duplicate at the door)
+      if (!createdContact && !isPlaceholderName && newContact.address_street) {
         const { data: existing } = await supabase
           .from('contacts')
           .select('*')
           .eq('tenant_id', profile.tenant_id)
           .ilike('first_name', newContact.first_name.trim())
           .ilike('last_name', (newContact.last_name || '').trim())
+          .ilike('address_street', `${String(newContact.address_street).trim()}%`)
           .eq('is_deleted', false)
           .limit(1)
           .maybeSingle();
@@ -714,6 +746,7 @@ export default function PropertyInfoPanel({
           wasExisting = true;
         }
       }
+
 
       if (!createdContact) {
         const { data, error } = await supabase
@@ -730,8 +763,10 @@ export default function PropertyInfoPanel({
               .eq('tenant_id', profile.tenant_id)
               .ilike('first_name', newContact.first_name || '')
               .ilike('last_name', newContact.last_name || '')
+              .ilike('address_street', `${String(newContact.address_street || '').trim()}%`)
               .limit(1)
               .maybeSingle();
+
             createdContact = dup;
             wasExisting = true;
           } else {
