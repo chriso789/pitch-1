@@ -333,7 +333,7 @@ export const ContactKanbanBoard: React.FC<ContactKanbanBoardProps> = ({
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="flex gap-4 overflow-x-auto pb-4 max-h-[calc(100vh-280px)]" style={{ overscrollBehaviorX: 'contain' }}>
+        <div className="flex gap-4 overflow-x-auto overscroll-x-contain pb-4" style={{ overscrollBehaviorX: 'contain', WebkitOverflowScrolling: 'touch' }}>
           {/* New / Unassigned column FIRST — always visible */}
           {(() => {
             const sorted = sortColumnContacts(
