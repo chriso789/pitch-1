@@ -756,8 +756,10 @@ export default function PropertyInfoPanel({
               .eq('tenant_id', profile.tenant_id)
               .ilike('first_name', newContact.first_name || '')
               .ilike('last_name', newContact.last_name || '')
+              .ilike('address_street', `${String(newContact.address_street || '').trim()}%`)
               .limit(1)
               .maybeSingle();
+
             createdContact = dup;
             wasExisting = true;
           } else {
