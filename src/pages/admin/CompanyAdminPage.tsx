@@ -977,23 +977,26 @@ const CompanyAdminPage = () => {
 
         {/* Edit Company Dialog */}
         <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-          <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+          <DialogContent className="max-w-4xl w-[95vw] max-h-[85vh] overflow-y-auto p-4 sm:p-6">
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Building2 className="h-5 w-5" />
-                {selectedCompany?.name}
+              <DialogTitle className="flex items-center gap-2 text-base sm:text-lg pr-6">
+                <Building2 className="h-5 w-5 shrink-0" />
+                <span className="truncate">{selectedCompany?.name}</span>
               </DialogTitle>
             </DialogHeader>
             
             {selectedCompany && (
               <Tabs defaultValue="profile" className="w-full">
-                <TabsList className="grid w-full grid-cols-5">
-                  <TabsTrigger value="profile">Profile</TabsTrigger>
-                  <TabsTrigger value="locations">Locations</TabsTrigger>
-                  <TabsTrigger value="emails">Emails</TabsTrigger>
-                  <TabsTrigger value="subscription">Subscription</TabsTrigger>
-                  <TabsTrigger value="settings">Settings</TabsTrigger>
-                </TabsList>
+                <div className="-mx-1 overflow-x-auto">
+                  <TabsList className="inline-flex w-max min-w-full sm:grid sm:w-full sm:grid-cols-5">
+                    <TabsTrigger value="profile" className="text-xs sm:text-sm px-3">Profile</TabsTrigger>
+                    <TabsTrigger value="locations" className="text-xs sm:text-sm px-3">Locations</TabsTrigger>
+                    <TabsTrigger value="emails" className="text-xs sm:text-sm px-3">Emails</TabsTrigger>
+                    <TabsTrigger value="subscription" className="text-xs sm:text-sm px-3">Subscription</TabsTrigger>
+                    <TabsTrigger value="settings" className="text-xs sm:text-sm px-3">Settings</TabsTrigger>
+                  </TabsList>
+                </div>
+
 
                 <TabsContent value="profile" className="space-y-4 mt-4">
                   {/* Logo Section */}
@@ -1307,20 +1310,20 @@ const CompanyAdminPage = () => {
                       <CardTitle className="text-base">Subscription Status</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                      <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
-                        <div>
-                          <p className="font-medium">Current Plan</p>
-                          <p className="text-2xl font-bold text-primary">
+                      <div className="flex items-center justify-between gap-3 p-3 sm:p-4 bg-muted rounded-lg">
+                        <div className="min-w-0">
+                          <p className="font-medium text-sm">Current Plan</p>
+                          <p className="text-xl sm:text-2xl font-bold text-primary capitalize truncate">
                             {selectedCompany.subscription_tier || 'Starter'}
                           </p>
                         </div>
-                        <Badge variant={selectedCompany.is_active ? "default" : "destructive"}>
+                        <Badge className="shrink-0" variant={selectedCompany.is_active ? "default" : "destructive"}>
                           {selectedCompany.is_active ? 'Active' : 'Inactive'}
                         </Badge>
                       </div>
                       
                       <div className="space-y-2">
-                        <Label>Change Subscription Tier</Label>
+                        <Label className="text-sm">Change Subscription Tier</Label>
                         <Select 
                           value={formData.subscription_tier}
                           onValueChange={(val) => setFormData({ ...formData, subscription_tier: val })}
@@ -1338,6 +1341,7 @@ const CompanyAdminPage = () => {
 
                       <div className="flex gap-2 pt-4">
                         <Button 
+                          className="w-full sm:w-auto"
                           variant={selectedCompany.is_active ? "destructive" : "default"}
                           onClick={() => toggleCompanyStatus(selectedCompany)}
                         >
@@ -1354,6 +1358,7 @@ const CompanyAdminPage = () => {
                           )}
                         </Button>
                       </div>
+
                     </CardContent>
                   </Card>
                 </TabsContent>
