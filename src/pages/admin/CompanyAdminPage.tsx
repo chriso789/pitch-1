@@ -663,6 +663,7 @@ const CompanyAdminPage = () => {
               </TabsTrigger>
             )}
           </TabsList>
+          </div>
 
           {/* Companies Tab */}
           <TabsContent value="companies" className="space-y-6">
