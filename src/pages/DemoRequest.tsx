@@ -86,7 +86,30 @@ const DemoRequest: React.FC = () => {
 
       if (dbError) throw dbError;
       setDemoRequestId(data as string);
+
+      // Fire the internal notification immediately so we never lose a lead
+      // if the visitor abandons the scheduling step.
+      try {
+        await supabase.functions.invoke('send-demo-request', {
+          body: {
+            firstName: formData.firstName,
+            lastName: formData.lastName,
+            email: formData.email,
+            phone: phoneToStore || undefined,
+            companyName: formData.companyName,
+            jobTitle: formData.jobTitle,
+            message: formData.message,
+            requestedAt: new Date().toISOString(),
+            demoRequestId: data as string,
+            skipDbInsert: true,
+          },
+        });
+      } catch (emailErr) {
+        console.warn('Demo notification email failed (request still saved):', emailErr);
+      }
+
       setStep('schedule');
+
     } catch (error: any) {
       console.error('Demo request error:', error);
       toast({
