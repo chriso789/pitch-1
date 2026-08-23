@@ -168,7 +168,9 @@ const DemoRequest: React.FC = () => {
             preferredSlots: combined.map((d) => d!.toISOString()),
             timezone: tz,
             requestedAt: new Date().toISOString(),
+            demoRequestId: demoRequestId!,
             skipDbInsert: true,
+
           },
         });
       } catch (emailErr) {
