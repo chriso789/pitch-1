@@ -9,10 +9,11 @@ const corsHeaders = {
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 
 // Primary recipient + BCC for admin notifications
-const DEMO_RECIPIENT = 'demos@pitch-crm.ai';
+const DEMO_RECIPIENT = Deno.env.get("DEMO_RECIPIENT_EMAIL") || 'support@pitch-crm.ai';
 // Comma-separated list supported, e.g. "chris@pitch-crm.ai,support@pitch-crm.ai"
-const ADMIN_BCC = (Deno.env.get("DEMO_ADMIN_EMAIL") || 'support@pitch-crm.ai')
-  .split(',').map((e) => e.trim()).filter(Boolean);
+const ADMIN_BCC = (Deno.env.get("DEMO_ADMIN_EMAIL") || '')
+  .split(',').map((e) => e.trim()).filter(Boolean)
+  .filter((e) => e.toLowerCase() !== DEMO_RECIPIENT.toLowerCase());
 
 function getFromEmail(): string {
   const fromDomain = Deno.env.get("RESEND_FROM_DOMAIN");
@@ -173,7 +174,7 @@ const handler = async (req: Request): Promise<Response> => {
       body: JSON.stringify({
         from: fromAddress,
         to: [DEMO_RECIPIENT],
-        bcc: ADMIN_BCC,
+        ...(ADMIN_BCC.length ? { bcc: ADMIN_BCC } : {}),
         reply_to: requestData!.email,
         subject: `🎯 Demo Request: ${requestData!.firstName} ${requestData!.lastName} from ${requestData!.companyName}`,
         html: emailHtml,
