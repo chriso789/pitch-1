@@ -407,6 +407,27 @@ const CompanyAdminPage = () => {
         .eq('id', company.id);
 
       if (error) throw error;
+
+      // Suspend/restore every login belonging to this tenant (accounts are kept, not deleted)
+      const { data: affected, error: accessError } = await supabase.rpc('set_tenant_login_access', {
+        p_tenant_id: company.id,
+        p_active: !company.is_active,
+      });
+      if (accessError) {
+        console.error('[CompanyAdmin] Failed to update tenant login access:', accessError);
+        toast({
+          title: 'Login access not updated',
+          description: accessError.message,
+          variant: 'destructive',
+        });
+      } else if (affected) {
+        toast({
+          title: isDeactivating
+            ? `${affected} user login(s) disabled`
+            : `${affected} user login(s) restored`,
+        });
+      }
+
       
       // If deactivating, send farewell email to owner
       if (isDeactivating && company.owner_email) {
