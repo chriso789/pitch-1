@@ -10,7 +10,9 @@ const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 
 // Primary recipient + BCC for admin notifications
 const DEMO_RECIPIENT = 'demos@pitch-crm.ai';
-const ADMIN_BCC = Deno.env.get("DEMO_ADMIN_EMAIL") || 'support@pitch-crm.ai';
+// Comma-separated list supported, e.g. "chris@pitch-crm.ai,support@pitch-crm.ai"
+const ADMIN_BCC = (Deno.env.get("DEMO_ADMIN_EMAIL") || 'support@pitch-crm.ai')
+  .split(',').map((e) => e.trim()).filter(Boolean);
 
 function getFromEmail(): string {
   const fromDomain = Deno.env.get("RESEND_FROM_DOMAIN");
@@ -29,6 +31,10 @@ interface DemoRequestData {
   jobTitle?: string;
   message?: string;
   requestedAt: string;
+  demoRequestId?: string;
+  skipDbInsert?: boolean;
+  preferredSlots?: string[];
+  timezone?: string;
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -167,25 +173,37 @@ const handler = async (req: Request): Promise<Response> => {
       body: JSON.stringify({
         from: fromAddress,
         to: [DEMO_RECIPIENT],
-        bcc: [ADMIN_BCC],
+        bcc: ADMIN_BCC,
         reply_to: requestData!.email,
         subject: `🎯 Demo Request: ${requestData!.firstName} ${requestData!.lastName} from ${requestData!.companyName}`,
         html: emailHtml,
       }),
     });
     
-    const emailResult = await emailResponse.json();
-    
-    console.log("[send-demo-request] Resend API response:", JSON.stringify(emailResult));
+    const emailResult = await emailResponse.json().catch(() => ({}));
 
-    // Update database record with email status
-    if (insertedRequest?.id) {
+    console.log("[send-demo-request] Resend API response:", emailResponse.status, JSON.stringify(emailResult));
+
+    const targetId = insertedRequest?.id || demoData.demoRequestId || null;
+    const delivered = emailResponse.ok && !!emailResult?.id;
+
+    if (targetId) {
       await supabase
         .from('demo_requests')
-        .update({ 
-          email_sent: true,
+        .update({
+          email_sent: delivered,
+          email_error: delivered ? null : `Resend ${emailResponse.status}: ${JSON.stringify(emailResult)}`,
         })
-        .eq('id', insertedRequest.id);
+        .eq('id', targetId);
+    }
+
+    if (!delivered) {
+      console.error("[send-demo-request] Resend rejected the email:", emailResponse.status, JSON.stringify(emailResult));
+      return new Response(JSON.stringify({
+        success: false,
+        error: `Resend ${emailResponse.status}`,
+        details: emailResult,
+      }), { status: 502, headers: { "Content-Type": "application/json", ...corsHeaders } });
     }
 
     return new Response(JSON.stringify({ 
