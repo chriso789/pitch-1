@@ -160,10 +160,8 @@ const DemoRequest: React.FC = () => {
 
   const combineSlot = (slot: Slot): Date | null => {
     if (!slot.date) return null;
-    const [h, m] = slot.time.split(':').map(Number);
-    const d = new Date(slot.date);
-    d.setHours(h, m, 0, 0);
-    return d;
+    // Selected times are always Eastern Time wall-clock
+    return easternWallClockToUtc(slot.date, slot.time);
   };
 
   const handleScheduleSubmit = async () => {
@@ -179,7 +177,7 @@ const DemoRequest: React.FC = () => {
 
     setLoading(true);
     try {
-      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const tz = EASTERN_TZ;
       const { error } = await (supabase as any).rpc('submit_demo_request_slots', {
         p_id: demoRequestId!,
         p_slot_1: combined[0]!.toISOString(),
@@ -280,7 +278,7 @@ const DemoRequest: React.FC = () => {
               <CardHeader>
                 <CardTitle className="text-xl">Your Preferred Times</CardTitle>
                 <CardDescription>
-                  Times shown in your local timezone: <strong>{Intl.DateTimeFormat().resolvedOptions().timeZone}</strong>
+                  All times are shown in <strong>Eastern Time (ET)</strong>.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -334,7 +332,7 @@ const DemoRequest: React.FC = () => {
                           className="h-12 w-full rounded-md border border-input bg-background pl-10 pr-3 text-base"
                         >
                           {TIME_OPTIONS.map((t) => (
-                            <option key={t} value={t}>{t}</option>
+                            <option key={t} value={t}>{formatEtLabel(t)}</option>
                           ))}
                         </select>
                       </div>
