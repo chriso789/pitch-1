@@ -66,8 +66,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         return false;
       }
 
+      // SECURITY: Block logins for users whose company has been deactivated
+      const { data: blocked } = await supabase.rpc('is_login_blocked');
+      if (blocked) {
+        console.warn('[AuthContext] Company deactivated - forcing logout');
+        clearAllSessionData();
+        await supabase.auth.signOut();
+        setSession(null);
+        setUser(null);
+        return false;
+      }
+
       // Session is valid
       return true;
+
     } catch (error) {
       console.error('[AuthContext] Session validation error:', error);
       clearAllSessionData();
@@ -142,6 +154,22 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             }
             return;
           }
+
+          // SECURITY: Block sign-in when the user's company is deactivated
+          const { data: tenantBlocked } = await supabase.rpc('is_login_blocked');
+          if (tenantBlocked) {
+            console.warn('[AuthContext] Company deactivated - forcing logout');
+            clearAllSessionData();
+            await supabase.auth.signOut();
+            if (mounted) {
+              setSession(null);
+              setUser(null);
+              setLoading(false);
+            }
+            return;
+          }
+
+
 
           if (mounted) {
             setSession(initialSession);
