@@ -740,7 +740,21 @@ const CompanyAdminPage = () => {
                     </Badge>
                   )}
                 </div>
+                {!company.is_active && currentUser?.role === 'master' && (
+                  <Button
+                    size="sm"
+                    className="w-full mt-3"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleCompanyStatus(company);
+                    }}
+                  >
+                    <Check className="h-4 w-4 mr-2" />
+                    Reactivate Company
+                  </Button>
+                )}
               </CardContent>
+
             </Card>
           ))}
         </div>
