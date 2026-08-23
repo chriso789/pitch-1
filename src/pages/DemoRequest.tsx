@@ -21,7 +21,43 @@ const TIME_OPTIONS = [
   '15:00', '15:30', '16:00', '16:30', '17:00',
 ];
 
+const EASTERN_TZ = 'America/New_York';
+
+// Label a 24h "HH:mm" string as a friendly Eastern time, e.g. "9:00 AM ET"
+const formatEtLabel = (t: string) => {
+  const [h, m] = t.split(':').map(Number);
+  const suffix = h >= 12 ? 'PM' : 'AM';
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  return `${hour12}:${String(m).padStart(2, '0')} ${suffix} ET`;
+};
+
+// Convert a calendar date + "HH:mm" wall-clock time in Eastern Time to a UTC Date
+const easternWallClockToUtc = (date: Date, time: string): Date => {
+  const [h, m] = time.split(':').map(Number);
+  const y = date.getFullYear();
+  const mo = date.getMonth();
+  const d = date.getDate();
+  // Start from the UTC interpretation, then correct by the Eastern offset at that instant
+  let utc = Date.UTC(y, mo, d, h, m, 0, 0);
+  for (let i = 0; i < 2; i++) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: EASTERN_TZ,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+    }).formatToParts(new Date(utc)).reduce<Record<string, number>>((acc, p) => {
+      if (p.type !== 'literal') acc[p.type] = Number(p.value);
+      return acc;
+    }, {});
+    const asEt = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour % 24, parts.minute, parts.second);
+    const diff = Date.UTC(y, mo, d, h, m, 0, 0) - asEt;
+    if (diff === 0) break;
+    utc += diff;
+  }
+  return new Date(utc);
+};
+
 type Slot = { date: Date | undefined; time: string };
+
 
 const DemoRequest: React.FC = () => {
   const navigate = useNavigate();
@@ -124,10 +160,8 @@ const DemoRequest: React.FC = () => {
 
   const combineSlot = (slot: Slot): Date | null => {
     if (!slot.date) return null;
-    const [h, m] = slot.time.split(':').map(Number);
-    const d = new Date(slot.date);
-    d.setHours(h, m, 0, 0);
-    return d;
+    // Selected times are always Eastern Time wall-clock
+    return easternWallClockToUtc(slot.date, slot.time);
   };
 
   const handleScheduleSubmit = async () => {
@@ -143,7 +177,7 @@ const DemoRequest: React.FC = () => {
 
     setLoading(true);
     try {
-      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const tz = EASTERN_TZ;
       const { error } = await (supabase as any).rpc('submit_demo_request_slots', {
         p_id: demoRequestId!,
         p_slot_1: combined[0]!.toISOString(),
@@ -244,7 +278,7 @@ const DemoRequest: React.FC = () => {
               <CardHeader>
                 <CardTitle className="text-xl">Your Preferred Times</CardTitle>
                 <CardDescription>
-                  Times shown in your local timezone: <strong>{Intl.DateTimeFormat().resolvedOptions().timeZone}</strong>
+                  All times are shown in <strong>Eastern Time (ET)</strong>.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -298,7 +332,7 @@ const DemoRequest: React.FC = () => {
                           className="h-12 w-full rounded-md border border-input bg-background pl-10 pr-3 text-base"
                         >
                           {TIME_OPTIONS.map((t) => (
-                            <option key={t} value={t}>{t}</option>
+                            <option key={t} value={t}>{formatEtLabel(t)}</option>
                           ))}
                         </select>
                       </div>
