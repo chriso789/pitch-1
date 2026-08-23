@@ -1310,20 +1310,20 @@ const CompanyAdminPage = () => {
                       <CardTitle className="text-base">Subscription Status</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                      <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
-                        <div>
-                          <p className="font-medium">Current Plan</p>
-                          <p className="text-2xl font-bold text-primary">
+                      <div className="flex items-center justify-between gap-3 p-3 sm:p-4 bg-muted rounded-lg">
+                        <div className="min-w-0">
+                          <p className="font-medium text-sm">Current Plan</p>
+                          <p className="text-xl sm:text-2xl font-bold text-primary capitalize truncate">
                             {selectedCompany.subscription_tier || 'Starter'}
                           </p>
                         </div>
-                        <Badge variant={selectedCompany.is_active ? "default" : "destructive"}>
+                        <Badge className="shrink-0" variant={selectedCompany.is_active ? "default" : "destructive"}>
                           {selectedCompany.is_active ? 'Active' : 'Inactive'}
                         </Badge>
                       </div>
                       
                       <div className="space-y-2">
-                        <Label>Change Subscription Tier</Label>
+                        <Label className="text-sm">Change Subscription Tier</Label>
                         <Select 
                           value={formData.subscription_tier}
                           onValueChange={(val) => setFormData({ ...formData, subscription_tier: val })}
@@ -1341,6 +1341,7 @@ const CompanyAdminPage = () => {
 
                       <div className="flex gap-2 pt-4">
                         <Button 
+                          className="w-full sm:w-auto"
                           variant={selectedCompany.is_active ? "destructive" : "default"}
                           onClick={() => toggleCompanyStatus(selectedCompany)}
                         >
@@ -1357,6 +1358,7 @@ const CompanyAdminPage = () => {
                           )}
                         </Button>
                       </div>
+
                     </CardContent>
                   </Card>
                 </TabsContent>
