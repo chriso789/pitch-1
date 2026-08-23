@@ -631,11 +631,11 @@ const CompanyAdminPage = () => {
         <Tabs defaultValue="companies" className="space-y-6">
           <div className="-mx-4 px-4 overflow-x-auto sm:mx-0 sm:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <TabsList className={`inline-flex w-max min-w-full h-auto flex-nowrap sm:grid ${currentUser?.role === 'master' ? 'sm:grid-cols-6 sm:max-w-4xl' : 'sm:grid-cols-5 sm:max-w-3xl'} sm:w-full`}>
-            <TabsTrigger value="companies" className="flex items-center gap-2">
+            <TabsTrigger value="companies" className="flex items-center gap-2 whitespace-nowrap text-xs sm:text-sm">
               <Building2 className="h-4 w-4" />
               Companies
             </TabsTrigger>
-            <TabsTrigger value="demos" className="flex items-center gap-2 relative">
+            <TabsTrigger value="demos" className="flex items-center gap-2 whitespace-nowrap text-xs sm:text-sm relative">
               <UserCheck className="h-4 w-4" />
               Demo Requests
               {newDemoCount > 0 && (
@@ -644,20 +644,20 @@ const CompanyAdminPage = () => {
                 </span>
               )}
             </TabsTrigger>
-            <TabsTrigger value="features" className="flex items-center gap-2">
+            <TabsTrigger value="features" className="flex items-center gap-2 whitespace-nowrap text-xs sm:text-sm">
               <ToggleRight className="h-4 w-4" />
               Per-Tenant
             </TabsTrigger>
-            <TabsTrigger value="kill-switch" className="flex items-center gap-2">
+            <TabsTrigger value="kill-switch" className="flex items-center gap-2 whitespace-nowrap text-xs sm:text-sm">
               <AlertTriangle className="h-4 w-4" />
               Kill Switch
             </TabsTrigger>
-            <TabsTrigger value="ai-measurement" className="flex items-center gap-2">
+            <TabsTrigger value="ai-measurement" className="flex items-center gap-2 whitespace-nowrap text-xs sm:text-sm">
               <FileText className="h-4 w-4" />
               AI Measurement
             </TabsTrigger>
             {currentUser?.role === 'master' && (
-              <TabsTrigger value="integrations" className="flex items-center gap-2">
+              <TabsTrigger value="integrations" className="flex items-center gap-2 whitespace-nowrap text-xs sm:text-sm">
                 <Plug className="h-4 w-4" />
                 Integrations
               </TabsTrigger>
