@@ -39097,6 +39097,7 @@ export type Database = {
           signature_updated_at: string | null
           suspended_at: string | null
           suspended_by: string | null
+          suspended_by_tenant: boolean
           suspension_reason: string | null
           tenant_id: string | null
           title: string | null
@@ -39153,6 +39154,7 @@ export type Database = {
           signature_updated_at?: string | null
           suspended_at?: string | null
           suspended_by?: string | null
+          suspended_by_tenant?: boolean
           suspension_reason?: string | null
           tenant_id?: string | null
           title?: string | null
@@ -39209,6 +39211,7 @@ export type Database = {
           signature_updated_at?: string | null
           suspended_at?: string | null
           suspended_by?: string | null
+          suspended_by_tenant?: boolean
           suspension_reason?: string | null
           tenant_id?: string | null
           title?: string | null
@@ -65126,6 +65129,7 @@ export type Database = {
         Args: { _tenant_id: string }
         Returns: boolean
       }
+      is_login_blocked: { Args: never; Returns: boolean }
       is_order_fully_approved: { Args: { p_po_id: string }; Returns: boolean }
       is_pipeline_override_role: {
         Args: { _user_id: string }
@@ -65455,6 +65459,10 @@ export type Database = {
       seed_labor_order_statuses: {
         Args: { p_tenant: string }
         Returns: undefined
+      }
+      set_tenant_login_access: {
+        Args: { p_active: boolean; p_tenant_id: string }
+        Returns: number
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
