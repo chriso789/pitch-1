@@ -977,23 +977,26 @@ const CompanyAdminPage = () => {
 
         {/* Edit Company Dialog */}
         <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-          <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+          <DialogContent className="max-w-4xl w-[95vw] max-h-[85vh] overflow-y-auto p-4 sm:p-6">
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Building2 className="h-5 w-5" />
-                {selectedCompany?.name}
+              <DialogTitle className="flex items-center gap-2 text-base sm:text-lg pr-6">
+                <Building2 className="h-5 w-5 shrink-0" />
+                <span className="truncate">{selectedCompany?.name}</span>
               </DialogTitle>
             </DialogHeader>
             
             {selectedCompany && (
               <Tabs defaultValue="profile" className="w-full">
-                <TabsList className="grid w-full grid-cols-5">
-                  <TabsTrigger value="profile">Profile</TabsTrigger>
-                  <TabsTrigger value="locations">Locations</TabsTrigger>
-                  <TabsTrigger value="emails">Emails</TabsTrigger>
-                  <TabsTrigger value="subscription">Subscription</TabsTrigger>
-                  <TabsTrigger value="settings">Settings</TabsTrigger>
-                </TabsList>
+                <div className="-mx-1 overflow-x-auto">
+                  <TabsList className="inline-flex w-max min-w-full sm:grid sm:w-full sm:grid-cols-5">
+                    <TabsTrigger value="profile" className="text-xs sm:text-sm px-3">Profile</TabsTrigger>
+                    <TabsTrigger value="locations" className="text-xs sm:text-sm px-3">Locations</TabsTrigger>
+                    <TabsTrigger value="emails" className="text-xs sm:text-sm px-3">Emails</TabsTrigger>
+                    <TabsTrigger value="subscription" className="text-xs sm:text-sm px-3">Subscription</TabsTrigger>
+                    <TabsTrigger value="settings" className="text-xs sm:text-sm px-3">Settings</TabsTrigger>
+                  </TabsList>
+                </div>
+
 
                 <TabsContent value="profile" className="space-y-4 mt-4">
                   {/* Logo Section */}
