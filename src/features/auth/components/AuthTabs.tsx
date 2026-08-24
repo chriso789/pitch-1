@@ -7,6 +7,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { logSignupAttempt } from '@/lib/logSignupAttempt';
+import { logLoginAttempt } from '@/lib/logLoginAttempt';
 import { Loader2, Eye, EyeOff, UserPlus, LogIn, Shield } from 'lucide-react';
 
 interface AuthTabsProps {
@@ -91,6 +92,13 @@ export const AuthTabs: React.FC<AuthTabsProps> = ({
       });
 
       clearTimeout(timeoutId);
+
+      logLoginAttempt({
+        email: loginForm.email,
+        status: error ? 'failed' : 'success',
+        error_message: error?.message,
+        source: 'auth-tabs'
+      });
 
       if (error) {
         if (error.message.includes('Invalid login credentials')) {

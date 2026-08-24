@@ -26238,6 +26238,69 @@ export type Database = {
           },
         ]
       }
+      login_attempts: {
+        Row: {
+          city: string | null
+          country: string | null
+          created_at: string
+          email: string | null
+          error_code: string | null
+          error_message: string | null
+          id: string
+          ip_address: string | null
+          isp: string | null
+          latitude: number | null
+          longitude: number | null
+          metadata: Json
+          region: string | null
+          source: string | null
+          status: string
+          timezone: string | null
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          email?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          id?: string
+          ip_address?: string | null
+          isp?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          metadata?: Json
+          region?: string | null
+          source?: string | null
+          status?: string
+          timezone?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          email?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          id?: string
+          ip_address?: string | null
+          isp?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          metadata?: Json
+          region?: string | null
+          source?: string | null
+          status?: string
+          timezone?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       loyalty_points: {
         Row: {
           balance_after: number
