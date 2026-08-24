@@ -96,9 +96,10 @@ export const LoginAttemptsPanel: React.FC = () => {
               Login Attempts
             </CardTitle>
             <CardDescription>
-              Every sign-in attempt with IP address and location.{" "}
+              Full sign-in history — email, company, IP address and location (historical records
+              imported from auth logs have no IP/location captured).{" "}
               <span className="font-semibold text-destructive">{failedCount} failed</span> ·{" "}
-              {successCount} succeeded
+              {successCount} succeeded · {attempts.length} total
             </CardDescription>
           </div>
           <Button variant="outline" size="icon" onClick={load} disabled={loading}>
@@ -106,11 +107,12 @@ export const LoginAttemptsPanel: React.FC = () => {
           </Button>
         </div>
         <Input
-          placeholder="Search email, IP, or location…"
+          placeholder="Search email, company, IP, or location…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="mt-3 max-w-sm"
         />
+
       </CardHeader>
       <CardContent>
         {filtered.length === 0 ? (
