@@ -125,7 +125,7 @@ async function enqueueBlast(supabase: any, blast: any, dryRun: boolean) {
 
   const { data: items } = await supabase
     .from('sms_blast_items')
-    .select('id, contact_id, contact_name, phone, status')
+    .select('id, contact_id, contact_name, phone, status, sent_at, created_at')
     .eq('blast_id', blast.id);
 
   const rows = (items || []) as any[];
@@ -166,7 +166,7 @@ async function enqueueBlast(supabase: any, blast: any, dryRun: boolean) {
   }
 
   const { data: tpls } = await supabase
-    .from('sms_templates').select('id, template_body, active').in('id', pool);
+    .from('sms_templates').select('id, template_body, active, followup_delay_days').in('id', pool);
   const tplMap = new Map<string, any>((tpls || []).map((t: any) => [t.id, t]));
 
   const contactIds = Array.from(groups.keys()).filter((k) => !k.startsWith('phone:'));
@@ -181,7 +181,8 @@ async function enqueueBlast(supabase: any, blast: any, dryRun: boolean) {
 
   const maxStages = Math.min(pool.length, Math.max(1, Number(blast.max_attempts_per_contact || pool.length)));
   const inserts: any[] = [];
-  const skipped = { opted_out: 0, replied_or_blocked: 0, in_flight: 0, stages_exhausted: 0, no_contact: 0, no_phone: 0, missing_address: 0 };
+  const skipped = { opted_out: 0, replied_or_blocked: 0, in_flight: 0, stages_exhausted: 0, no_contact: 0, no_phone: 0, missing_address: 0, not_due: 0 };
+  const nextDue: string[] = [];
 
   for (const [key, group] of groups) {
     if (group.some((g) => BLOCKING_STATES.has(g.status))) {
@@ -207,6 +208,21 @@ async function enqueueBlast(supabase: any, blast: any, dryRun: boolean) {
 
     const tpl = tplMap.get(pool[stage]);
     if (!tpl || tpl.active === false) { skipped.stages_exhausted++; continue; }
+
+    // Respect the stage's configured wait. The previous stage's send time is the anchor,
+    // so a "Sends 2 days later" stage cannot go out until 2 days after the last delivery.
+    const delayDays = Number.isFinite(Number(tpl.followup_delay_days))
+      ? Math.max(0, Number(tpl.followup_delay_days))
+      : 2;
+    const anchor = last.sent_at || last.created_at;
+    if (anchor && delayDays > 0) {
+      const dueAt = new Date(new Date(anchor).getTime() + delayDays * 86400000);
+      if (dueAt.getTime() > Date.now()) {
+        skipped.not_due++;
+        nextDue.push(dueAt.toISOString());
+        continue;
+      }
+    }
 
     const body = tidyEmptyGreetings(resolveTags(tpl.template_body || '', { contact, company, assigned_user }));
     if (!body) { skipped.stages_exhausted++; continue; }
@@ -242,7 +258,8 @@ async function enqueueBlast(supabase: any, blast: any, dryRun: boolean) {
     }).eq('id', blast.id);
   }
 
-  return { blast_id: blast.id, name: blast.name, queued: inserts.length, skipped, dry_run: dryRun };
+  const nextDueAt = nextDue.length ? nextDue.sort()[0] : null;
+  return { blast_id: blast.id, name: blast.name, queued: inserts.length, skipped, next_due_at: nextDueAt, dry_run: dryRun };
 }
 
 Deno.serve(async (req) => {
@@ -255,7 +272,7 @@ Deno.serve(async (req) => {
     );
 
     const body = await req.json().catch(() => ({}));
-    const { tenant_id, blast_id, blast_ids, dry_run } = body || {};
+    const { tenant_id, blast_id, blast_ids, dry_run, all } = body || {};
     const dryRun = dry_run === true;
 
     let query = supabase
@@ -265,8 +282,17 @@ Deno.serve(async (req) => {
     if (blast_id) query = query.eq('id', blast_id);
     else if (Array.isArray(blast_ids) && blast_ids.length) query = query.in('id', blast_ids);
     else if (tenant_id) query = query.eq('tenant_id', tenant_id).in('status', ['completed', 'sending', 'paused']);
-    else {
-      return new Response(JSON.stringify({ error: 'tenant_id, blast_id or blast_ids required' }), {
+    else if (all === true) {
+      // Scheduled sweep across every tenant. Delay gating inside enqueueBlast keeps stages
+      // on their configured cadence, so running this hourly is safe.
+      query = query
+        .in('status', ['completed', 'sending', 'paused'])
+        .eq('is_test_mode', false)
+        .gt('sent_count', 0)
+        .order('created_at', { ascending: false })
+        .limit(200);
+    } else {
+      return new Response(JSON.stringify({ error: 'tenant_id, blast_id, blast_ids or all required' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
