@@ -394,21 +394,17 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
     setPreviewTemplateIndex(0);
 
     const matches = dedupedTemplates.filter(goalMatches);
-    if (matches.length > 0) {
-      // Order: initial (non-followup) templates first, then followups by ascending delay.
-      // Prevents alphabetical name order (e.g. "Final Follow Up" < "Initial") from
-      // making a follow-up template the de-facto opening message.
-      const ordered = [...matches].sort((a: any, b: any) => {
-        const aFollow = isFollowupTemplate(a) ? 1 : 0;
-        const bFollow = isFollowupTemplate(b) ? 1 : 0;
-        if (aFollow !== bFollow) return aFollow - bFollow;
-        const aDelay = typeof a.followup_delay_days === 'number' ? a.followup_delay_days : 0;
-        const bDelay = typeof b.followup_delay_days === 'number' ? b.followup_delay_days : 0;
-        return aDelay - bDelay;
-      });
-      const top = ordered.slice(0, 4);
-      setSelectedTemplateIds(top.map((t: any) => t.id));
-      setScript(top[0].template_body || '');
+    // Only pre-select ONE opening message. Follow-up stages must be chosen explicitly —
+    // auto-selecting them silently padded the saved sequence with templates the user
+    // never picked (every extra stage became a real send).
+    const openers = matches.filter((t: any) => !isFollowupTemplate(t));
+    const firstOpener = openers[0] || null;
+    if (firstOpener) {
+      setSelectedTemplateIds([firstOpener.id]);
+      setScript(firstOpener.template_body || '');
+    } else if (matches.length > 0) {
+      setSelectedTemplateIds([matches[0].id]);
+      setScript(matches[0].template_body || '');
     } else {
       setSelectedTemplateIds([]);
       setScript(getDefaultScriptForGoal(goal));
