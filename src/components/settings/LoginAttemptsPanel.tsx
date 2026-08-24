@@ -20,8 +20,11 @@ interface LoginAttempt {
   country: string | null;
   isp: string | null;
   user_agent: string | null;
+  company_name: string | null;
+  tenant_id: string | null;
   created_at: string;
 }
+
 
 const statusBadge = (status: string) => {
   if (status === "success") {
