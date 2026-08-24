@@ -1,0 +1,2 @@
+REVOKE EXECUTE ON FUNCTION public.create_demo_appointment_for_request(UUID) FROM anon, authenticated, public;
+REVOKE EXECUTE ON FUNCTION public.tg_demo_request_calendar_sync() FROM anon, authenticated, public;
