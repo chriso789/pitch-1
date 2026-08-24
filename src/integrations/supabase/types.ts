@@ -14649,6 +14649,7 @@ export type Database = {
       }
       demo_requests: {
         Row: {
+          appointment_id: string | null
           assigned_to: string | null
           booking_confirmed_at: string | null
           booking_token: string | null
@@ -14666,6 +14667,7 @@ export type Database = {
           interview_status: string | null
           job_title: string | null
           last_name: string
+          meeting_link: string | null
           message: string | null
           notes: string | null
           phone: string | null
@@ -14676,6 +14678,7 @@ export type Database = {
           timezone: string | null
         }
         Insert: {
+          appointment_id?: string | null
           assigned_to?: string | null
           booking_confirmed_at?: string | null
           booking_token?: string | null
@@ -14693,6 +14696,7 @@ export type Database = {
           interview_status?: string | null
           job_title?: string | null
           last_name: string
+          meeting_link?: string | null
           message?: string | null
           notes?: string | null
           phone?: string | null
@@ -14703,6 +14707,7 @@ export type Database = {
           timezone?: string | null
         }
         Update: {
+          appointment_id?: string | null
           assigned_to?: string | null
           booking_confirmed_at?: string | null
           booking_token?: string | null
@@ -14720,6 +14725,7 @@ export type Database = {
           interview_status?: string | null
           job_title?: string | null
           last_name?: string
+          meeting_link?: string | null
           message?: string | null
           notes?: string | null
           phone?: string | null
