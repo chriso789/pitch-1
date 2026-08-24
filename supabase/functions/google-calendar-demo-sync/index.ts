@@ -44,6 +44,15 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Never put declined / spam requests on the calendar
+    if (['declined', 'spam', 'rejected'].includes((demo.status ?? '').toLowerCase())) {
+      return new Response(
+        JSON.stringify({ error: 'Demo request is declined — not syncing to calendar' }),
+        { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
+
     const start = new Date(demo.confirmed_slot);
     const end = new Date(start.getTime() + 30 * 60 * 1000);
     const who = [demo.first_name, demo.last_name].filter(Boolean).join(' ') || demo.email;
