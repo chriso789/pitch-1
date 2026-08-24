@@ -64,7 +64,7 @@ export const LoginAttemptsPanel: React.FC = () => {
       .from("login_attempts")
       .select("*")
       .order("created_at", { ascending: false })
-      .limit(250);
+      .limit(1000);
     if (!error && data) setAttempts(data as unknown as LoginAttempt[]);
     setLoading(false);
   };
@@ -76,11 +76,12 @@ export const LoginAttemptsPanel: React.FC = () => {
   const term = search.trim().toLowerCase();
   const filtered = term
     ? attempts.filter((a) =>
-        [a.email, a.ip_address, a.city, a.region, a.country].some((v) =>
+        [a.email, a.ip_address, a.city, a.region, a.country, a.company_name].some((v) =>
           (v || "").toLowerCase().includes(term),
         ),
       )
     : attempts;
+
 
   const failedCount = attempts.filter((a) => a.status === "failed").length;
   const successCount = attempts.filter((a) => a.status === "success").length;
