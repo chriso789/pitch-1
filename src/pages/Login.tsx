@@ -9,6 +9,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { logSignupAttempt } from '@/lib/logSignupAttempt';
+import { logLoginAttempt } from '@/lib/logLoginAttempt';
 import { useAuth } from '@/contexts/AuthContext';
 import { Loader2, AlertCircle, Eye, EyeOff, Wifi, WifiOff, Shield, UserPlus, KeyRound, ArrowLeft, CheckCircle } from 'lucide-react';
 import { initSession, clearAllSessionData } from '@/services/sessionManager';
@@ -356,6 +357,7 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
     setLoading(true);
     setLoginAttempted(true);
     console.log('[Login] Starting login attempt for:', loginForm.email);
+    logLoginAttempt({ email: loginForm.email, status: 'attempted', source: 'login-page' });
 
     try {
       const { error } = await supabase.auth.signInWithPassword({
@@ -376,6 +378,8 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
           setErrors({ general: error.message });
         }
         
+        logLoginAttempt({ email: loginForm.email, status: 'failed', error_message: error.message, error_code: (error as any).code, source: 'login-page' });
+
         // Non-blocking: Log failed login attempt
         supabase.functions.invoke('log-auth-activity', {
           body: {
@@ -391,11 +395,13 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
       
       // Success! AuthContext will detect the session change
       // The useEffect watching session/authUser will handle navigation
+      logLoginAttempt({ email: loginForm.email, status: 'success', source: 'login-page' });
       console.log('[Login] signInWithPassword succeeded, waiting for AuthContext...');
       
     } catch (error: any) {
       setLoading(false);
       setLoginAttempted(false);
+      logLoginAttempt({ email: loginForm.email, status: 'failed', error_message: error?.message || 'Connection error', source: 'login-page' });
       setErrors({ general: error.message || 'Connection error - please try again' });
     }
   };
