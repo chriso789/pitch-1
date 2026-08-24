@@ -20,8 +20,11 @@ interface LoginAttempt {
   country: string | null;
   isp: string | null;
   user_agent: string | null;
+  company_name: string | null;
+  tenant_id: string | null;
   created_at: string;
 }
+
 
 const statusBadge = (status: string) => {
   if (status === "success") {
@@ -61,7 +64,7 @@ export const LoginAttemptsPanel: React.FC = () => {
       .from("login_attempts")
       .select("*")
       .order("created_at", { ascending: false })
-      .limit(250);
+      .limit(1000);
     if (!error && data) setAttempts(data as unknown as LoginAttempt[]);
     setLoading(false);
   };
@@ -73,11 +76,12 @@ export const LoginAttemptsPanel: React.FC = () => {
   const term = search.trim().toLowerCase();
   const filtered = term
     ? attempts.filter((a) =>
-        [a.email, a.ip_address, a.city, a.region, a.country].some((v) =>
+        [a.email, a.ip_address, a.city, a.region, a.country, a.company_name].some((v) =>
           (v || "").toLowerCase().includes(term),
         ),
       )
     : attempts;
+
 
   const failedCount = attempts.filter((a) => a.status === "failed").length;
   const successCount = attempts.filter((a) => a.status === "success").length;
@@ -92,9 +96,10 @@ export const LoginAttemptsPanel: React.FC = () => {
               Login Attempts
             </CardTitle>
             <CardDescription>
-              Every sign-in attempt with IP address and location.{" "}
+              Full sign-in history — email, company, IP address and location (historical records
+              imported from auth logs have no IP/location captured).{" "}
               <span className="font-semibold text-destructive">{failedCount} failed</span> ·{" "}
-              {successCount} succeeded
+              {successCount} succeeded · {attempts.length} total
             </CardDescription>
           </div>
           <Button variant="outline" size="icon" onClick={load} disabled={loading}>
@@ -102,11 +107,12 @@ export const LoginAttemptsPanel: React.FC = () => {
           </Button>
         </div>
         <Input
-          placeholder="Search email, IP, or location…"
+          placeholder="Search email, company, IP, or location…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="mt-3 max-w-sm"
         />
+
       </CardHeader>
       <CardContent>
         {filtered.length === 0 ? (
@@ -121,6 +127,7 @@ export const LoginAttemptsPanel: React.FC = () => {
                   <TableHead>When</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Email</TableHead>
+                  <TableHead>Company</TableHead>
                   <TableHead>IP</TableHead>
                   <TableHead>Location</TableHead>
                   <TableHead>Network</TableHead>
@@ -131,12 +138,16 @@ export const LoginAttemptsPanel: React.FC = () => {
                 {filtered.map((a) => (
                   <TableRow key={a.id}>
                     <TableCell className="whitespace-nowrap text-sm">
-                      {format(new Date(a.created_at), "MMM d, h:mm a")}
+                      {format(new Date(a.created_at), "MMM d, yyyy h:mm a")}
                     </TableCell>
                     <TableCell>{statusBadge(a.status)}</TableCell>
                     <TableCell className="text-sm">{a.email || "—"}</TableCell>
+                    <TableCell className="max-w-[180px] truncate text-sm">
+                      {a.company_name || "—"}
+                    </TableCell>
                     <TableCell className="font-mono text-xs">{a.ip_address || "—"}</TableCell>
                     <TableCell className="text-sm">
+
                       <span className="inline-flex items-center gap-1">
                         <MapPin className="h-3 w-3 text-muted-foreground" />
                         {formatLocation(a)}
