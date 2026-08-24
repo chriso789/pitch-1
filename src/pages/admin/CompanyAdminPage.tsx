@@ -644,6 +644,10 @@ const CompanyAdminPage = () => {
                 </span>
               )}
             </TabsTrigger>
+            <TabsTrigger value="login-attempts" className="flex items-center gap-2 whitespace-nowrap text-xs sm:text-sm">
+              <ShieldAlert className="h-4 w-4" />
+              Login Attempts
+            </TabsTrigger>
             <TabsTrigger value="features" className="flex items-center gap-2 whitespace-nowrap text-xs sm:text-sm">
               <ToggleRight className="h-4 w-4" />
               Per-Tenant
