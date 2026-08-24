@@ -26250,6 +26250,7 @@ export type Database = {
       login_attempts: {
         Row: {
           city: string | null
+          company_name: string | null
           country: string | null
           created_at: string
           email: string | null
@@ -26264,12 +26265,14 @@ export type Database = {
           region: string | null
           source: string | null
           status: string
+          tenant_id: string | null
           timezone: string | null
           user_agent: string | null
           user_id: string | null
         }
         Insert: {
           city?: string | null
+          company_name?: string | null
           country?: string | null
           created_at?: string
           email?: string | null
@@ -26284,12 +26287,14 @@ export type Database = {
           region?: string | null
           source?: string | null
           status?: string
+          tenant_id?: string | null
           timezone?: string | null
           user_agent?: string | null
           user_id?: string | null
         }
         Update: {
           city?: string | null
+          company_name?: string | null
           country?: string | null
           created_at?: string
           email?: string | null
@@ -26304,6 +26309,7 @@ export type Database = {
           region?: string | null
           source?: string | null
           status?: string
+          tenant_id?: string | null
           timezone?: string | null
           user_agent?: string | null
           user_id?: string | null
