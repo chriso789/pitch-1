@@ -38,7 +38,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { CreateCompanyFromDemoDialog } from "./CreateCompanyFromDemoDialog";
-import { SignupAttemptsPanel } from "./SignupAttemptsPanel";
+import { LoginAttemptsPanel } from "./LoginAttemptsPanel";
 
 interface DemoRequest {
   id: string;
