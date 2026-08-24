@@ -127,6 +127,7 @@ export const LoginAttemptsPanel: React.FC = () => {
                   <TableHead>When</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Email</TableHead>
+                  <TableHead>Company</TableHead>
                   <TableHead>IP</TableHead>
                   <TableHead>Location</TableHead>
                   <TableHead>Network</TableHead>
@@ -137,12 +138,16 @@ export const LoginAttemptsPanel: React.FC = () => {
                 {filtered.map((a) => (
                   <TableRow key={a.id}>
                     <TableCell className="whitespace-nowrap text-sm">
-                      {format(new Date(a.created_at), "MMM d, h:mm a")}
+                      {format(new Date(a.created_at), "MMM d, yyyy h:mm a")}
                     </TableCell>
                     <TableCell>{statusBadge(a.status)}</TableCell>
                     <TableCell className="text-sm">{a.email || "—"}</TableCell>
+                    <TableCell className="max-w-[180px] truncate text-sm">
+                      {a.company_name || "—"}
+                    </TableCell>
                     <TableCell className="font-mono text-xs">{a.ip_address || "—"}</TableCell>
                     <TableCell className="text-sm">
+
                       <span className="inline-flex items-center gap-1">
                         <MapPin className="h-3 w-3 text-muted-foreground" />
                         {formatLocation(a)}
