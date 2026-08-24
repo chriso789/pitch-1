@@ -33,18 +33,18 @@ Deno.serve(async (req) => {
     const { data: demo, error } = await admin
       .from('demo_requests')
       .select('*')
-      .eq('scheduling_token', token)
+      .eq('booking_token', token)
       .maybeSingle();
 
     if (error) throw error;
-    if (!demo?.scheduled_at) {
+    if (!demo?.confirmed_slot) {
       return new Response(JSON.stringify({ error: 'No confirmed slot for this request' }), {
         status: 404,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    const start = new Date(demo.scheduled_at);
+    const start = new Date(demo.confirmed_slot);
     const end = new Date(start.getTime() + 30 * 60 * 1000);
     const who = [demo.first_name, demo.last_name].filter(Boolean).join(' ') || demo.email;
 
