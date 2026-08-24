@@ -64418,6 +64418,10 @@ export type Database = {
         Args: { _slot: string; _token: string }
         Returns: string
       }
+      create_demo_appointment_for_request: {
+        Args: { _demo_id: string }
+        Returns: string
+      }
       current_user_crew_id: { Args: never; Returns: string }
       determine_approval_requirements: {
         Args: { p_order_amount: number; p_tenant_id: string }
