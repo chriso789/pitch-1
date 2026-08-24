@@ -802,6 +802,12 @@ const CompanyAdminPage = () => {
             <DemoRequestsPanel />
           </TabsContent>
 
+          {/* Login Attempts Tab */}
+          <TabsContent value="login-attempts">
+            <LoginAttemptsPanel />
+          </TabsContent>
+
+
           {/* Feature Control Tab */}
           <TabsContent value="features">
             <CompanyFeatureControl />
