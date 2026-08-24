@@ -50,7 +50,8 @@ import { IntegrationsAdmin } from '@/components/admin/IntegrationsAdmin';
 import { AIMeasurementProgramCards } from '@/components/admin/AIMeasurementProgramCards';
 import { AIMeasurementBuildoutLog } from '@/components/admin/AIMeasurementBuildoutLog';
 import { MeasurementTestPanel } from '@/components/measurements/MeasurementTestPanel';
-import { KeyRound, Plug } from 'lucide-react';
+import { KeyRound, Plug, ShieldAlert } from 'lucide-react';
+import { LoginAttemptsPanel } from '@/components/settings/LoginAttemptsPanel';
 
 interface Company {
   id: string;
