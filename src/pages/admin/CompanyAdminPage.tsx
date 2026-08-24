@@ -630,7 +630,7 @@ const CompanyAdminPage = () => {
         {/* Main Tabs */}
         <Tabs defaultValue="companies" className="space-y-6">
           <div className="-mx-4 px-4 overflow-x-auto sm:mx-0 sm:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <TabsList className={`inline-flex w-max min-w-full h-auto flex-nowrap sm:grid ${currentUser?.role === 'master' ? 'sm:grid-cols-6 sm:max-w-4xl' : 'sm:grid-cols-5 sm:max-w-3xl'} sm:w-full`}>
+          <TabsList className={`inline-flex w-max min-w-full h-auto flex-nowrap sm:grid ${currentUser?.role === 'master' ? 'sm:grid-cols-7 sm:max-w-5xl' : 'sm:grid-cols-6 sm:max-w-4xl'} sm:w-full`}>
             <TabsTrigger value="companies" className="flex items-center gap-2 whitespace-nowrap text-xs sm:text-sm">
               <Building2 className="h-4 w-4" />
               Companies
