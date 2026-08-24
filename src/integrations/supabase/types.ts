@@ -14654,6 +14654,7 @@ export type Database = {
           booking_confirmed_at: string | null
           booking_token: string | null
           booking_token_sent_at: string | null
+          calendar_synced_at: string | null
           company_name: string
           confirmed_slot: string | null
           contacted_at: string | null
@@ -14663,6 +14664,8 @@ export type Database = {
           email_error: string | null
           email_sent: boolean | null
           first_name: string
+          google_event_id: string | null
+          google_event_link: string | null
           id: string
           interview_status: string | null
           job_title: string | null
@@ -14683,6 +14686,7 @@ export type Database = {
           booking_confirmed_at?: string | null
           booking_token?: string | null
           booking_token_sent_at?: string | null
+          calendar_synced_at?: string | null
           company_name: string
           confirmed_slot?: string | null
           contacted_at?: string | null
@@ -14692,6 +14696,8 @@ export type Database = {
           email_error?: string | null
           email_sent?: boolean | null
           first_name: string
+          google_event_id?: string | null
+          google_event_link?: string | null
           id?: string
           interview_status?: string | null
           job_title?: string | null
@@ -14712,6 +14718,7 @@ export type Database = {
           booking_confirmed_at?: string | null
           booking_token?: string | null
           booking_token_sent_at?: string | null
+          calendar_synced_at?: string | null
           company_name?: string
           confirmed_slot?: string | null
           contacted_at?: string | null
@@ -14721,6 +14728,8 @@ export type Database = {
           email_error?: string | null
           email_sent?: boolean | null
           first_name?: string
+          google_event_id?: string | null
+          google_event_link?: string | null
           id?: string
           interview_status?: string | null
           job_title?: string | null

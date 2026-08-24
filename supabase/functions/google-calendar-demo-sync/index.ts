@@ -79,6 +79,20 @@ Deno.serve(async (req) => {
     }
 
     const event = JSON.parse(bodyText);
+
+    await admin
+      .from('demo_requests')
+      .update({
+        google_event_id: event.id ?? null,
+        google_event_link: event.htmlLink ?? null,
+        calendar_synced_at: new Date().toISOString(),
+        interview_status: 'scheduled',
+        status: ['completed', 'converted', 'declined'].includes(demo.status ?? '')
+          ? demo.status
+          : 'scheduled',
+      })
+      .eq('id', demo.id);
+
     return new Response(JSON.stringify({ ok: true, event_id: event.id, html_link: event.htmlLink }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
