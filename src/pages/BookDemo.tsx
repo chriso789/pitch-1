@@ -74,7 +74,11 @@ const BookDemo: React.FC = () => {
       return;
     }
 
-    // Best-effort confirmation email (admin gets notified via existing demo flow)
+    // Best-effort push to the PITCH Google Calendar (never blocks confirmation)
+    void supabase.functions
+      .invoke('google-calendar-demo-sync', { body: { token } })
+      .catch(() => {});
+
     setConfirmed(slot);
     setSubmitting(false);
   };
