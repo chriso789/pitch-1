@@ -7,6 +7,8 @@
 import React from 'react';
 import { Award, ShieldCheck, Star, Wrench, Clock, ThumbsUp } from 'lucide-react';
 import type { BrandStat, BrandCommitment, BrandTestimonial } from './templates/types';
+import bbbBadge from '@/assets/badge-bbb-aplus.png';
+import gafBadge from '@/assets/badge-gaf-preferred.png';
 
 const PAGE_WIDTH = 816;
 const PAGE_HEIGHT = 1056;
