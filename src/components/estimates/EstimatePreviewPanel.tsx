@@ -1427,10 +1427,18 @@ export function EstimatePreviewPanel({
                               <button
                                 type="button"
                                 className="text-[10px] text-muted-foreground hover:text-foreground underline"
-                                onClick={() => { setStreetHeading(0); setStreetPitch(0); setStreetFov(90); }}
+                                onClick={() => { setStreetHeading(0); setStreetPitch(0); setStreetFov(90); setStreetSideOffset(0); setStreetDistOffset(0); }}
                               >
                                 Reset
                               </button>
+                            </div>
+                            <div>
+                              <div className="flex justify-between text-[10px] text-muted-foreground"><span>Camera ←→</span><span>{streetSideOffset} m</span></div>
+                              <Slider value={[streetSideOffset]} min={-60} max={60} step={2} onValueChange={(v) => setStreetSideOffset(v[0])} />
+                            </div>
+                            <div>
+                              <div className="flex justify-between text-[10px] text-muted-foreground"><span>Camera ↑↓</span><span>{streetDistOffset} m</span></div>
+                              <Slider value={[streetDistOffset]} min={-60} max={60} step={2} onValueChange={(v) => setStreetDistOffset(v[0])} />
                             </div>
                             <div>
                               <div className="flex justify-between text-[10px] text-muted-foreground"><span>Rotate</span><span>{streetHeading}°</span></div>
@@ -1444,6 +1452,7 @@ export function EstimatePreviewPanel({
                               <div className="flex justify-between text-[10px] text-muted-foreground"><span>Zoom</span><span>{streetFov}°</span></div>
                               <Slider value={[streetFov]} min={30} max={120} step={5} onValueChange={(v) => setStreetFov(v[0])} />
                             </div>
+
                           </div>
                         )}
 
