@@ -91,6 +91,9 @@ export const ModernMinimalCoverPage: React.FC<CoverPageProps> = ({
             {companyInfo?.phone && <div>{companyInfo.phone}</div>}
             {companyInfo?.email && <div>{companyInfo.email}</div>}
             {companyInfo?.license_number && <div>Lic #{companyInfo.license_number}</div>}
+            {companyInfo?.brand_certifications && (
+              <div className="text-[9px] text-gray-400 max-w-[220px]">{companyInfo.brand_certifications}</div>
+            )}
           </div>
         </div>
       </div>
