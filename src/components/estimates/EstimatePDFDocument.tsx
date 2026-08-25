@@ -684,10 +684,17 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     // terms & conditions, fine print, and the signature block on ONE page, do
     // that instead of forcing a dedicated summary page. Threshold chosen to
     // leave room for a moderately long terms block + signature lines.
+    // A Potential Change Orders table eats a large chunk of vertical space, so
+    // the narrative + PCO table + totals + terms + signature no longer fit on a
+    // single page — the pricing summary would be clipped by the page's
+    // overflow:hidden. Reserve room for it, and fall back to a dedicated
+    // summary page when there isn't enough.
+    const pcoReserve = changeOrderItems.length > 0 ? 900 + changeOrderItems.length * 120 : 0;
+    const inlineNarrativeBudget = Math.max(0, 2400 - pcoReserve);
     const narrativeFitsInline =
       useNarrativeSplit &&
       narrativeChunks.length === 1 &&
-      (narrativeChunks[0]?.length ?? 0) <= 2400;
+      (narrativeChunks[0]?.length ?? 0) <= inlineNarrativeBudget;
     const firstPageHasTerms =
       (!useNarrativeSplit && itemChunks.length <= 1 && opts.showTermsAndConditions && !skipWarrantyAndTerms) ||
       (narrativeFitsInline && opts.showTermsAndConditions && !skipWarrantyAndTerms);
