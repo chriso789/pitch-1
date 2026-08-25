@@ -83,9 +83,6 @@ export const ModernMinimalCoverPage: React.FC<CoverPageProps> = ({
         <div className="flex justify-between items-end text-xs text-gray-400">
           <div>
             <span className="text-black font-medium text-sm">{displayName}</span>
-            {companyInfo?.established_year && (
-              <span className="ml-3 text-[10px] text-gray-300">Est. {companyInfo.established_year}</span>
-            )}
           </div>
           <div className="text-right space-y-0.5">
             {companyInfo?.phone && <div>{companyInfo.phone}</div>}

@@ -123,7 +123,7 @@ export const WhyChooseUsPage: React.FC<WhyChooseUsPageProps> = ({
           className="text-[10px] font-bold tracking-[0.4em] mb-3"
           style={{ color: primaryColor }}
         >
-          {establishedYear ? `EST. ${establishedYear} · ` : ''}WHY HOMEOWNERS CHOOSE {companyName.toUpperCase()}
+          WHY HOMEOWNERS CHOOSE {companyName.toUpperCase()}
         </div>
         <h2
           className="font-black leading-[0.88]"
