@@ -521,13 +521,29 @@ export function EstimatePreviewPanel({
     return () => { cancelled = true; };
   }, [propertyCoords, googleMapsApiKey]);
 
-  // Build adjustable Street View URL from coords + heading/pitch/fov.
+  // Build adjustable Street View URL from coords + camera offsets + heading/pitch/fov.
   useEffect(() => {
     if (!streetViewAvailable || !propertyCoords || !googleMapsApiKey) return;
+    const hasOffset = streetSideOffset !== 0 || streetDistOffset !== 0;
+    // Move the camera: side offset runs east/west, distance offset north/south (meters).
+    const metersPerDegLat = 111320;
+    const metersPerDegLng = 111320 * Math.cos((propertyCoords.lat * Math.PI) / 180) || 111320;
+    const camLat = propertyCoords.lat + streetDistOffset / metersPerDegLat;
+    const camLng = propertyCoords.lng + streetSideOffset / metersPerDegLng;
+    // When the camera is moved, keep the property in frame: aim at it and treat
+    // the Rotate slider as a fine-tune offset from that bearing.
+    let heading = streetHeading;
+    if (hasOffset) {
+      const dx = (propertyCoords.lng - camLng) * metersPerDegLng;
+      const dy = (propertyCoords.lat - camLat) * metersPerDegLat;
+      const bearing = (Math.atan2(dx, dy) * 180) / Math.PI;
+      heading = (bearing + streetHeading + 360) % 360;
+    }
     setStreetViewUrl(
-      `https://maps.googleapis.com/maps/api/streetview?size=800x400&location=${propertyCoords.lat},${propertyCoords.lng}&heading=${streetHeading}&pitch=${streetPitch}&fov=${streetFov}&key=${googleMapsApiKey}`
+      `https://maps.googleapis.com/maps/api/streetview?size=800x400&location=${camLat},${camLng}&heading=${heading}&pitch=${streetPitch}&fov=${streetFov}&key=${googleMapsApiKey}`
     );
-  }, [streetViewAvailable, propertyCoords, googleMapsApiKey, streetHeading, streetPitch, streetFov]);
+  }, [streetViewAvailable, propertyCoords, googleMapsApiKey, streetHeading, streetPitch, streetFov, streetSideOffset, streetDistOffset]);
+
 
   // Fetch aerial URL: prefer adjustable Google Static Maps (when coords+key present),
   // otherwise fall back to persisted roof_measurements image.
