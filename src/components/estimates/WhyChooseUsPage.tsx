@@ -7,6 +7,8 @@
 import React from 'react';
 import { Award, ShieldCheck, Star, Wrench, Clock, ThumbsUp } from 'lucide-react';
 import type { BrandStat, BrandCommitment, BrandTestimonial } from './templates/types';
+import bbbBadge from '@/assets/badge-bbb-aplus.png';
+import gafBadge from '@/assets/badge-gaf-preferred.png';
 
 const PAGE_WIDTH = 816;
 const PAGE_HEIGHT = 1056;
@@ -265,22 +267,13 @@ export const WhyChooseUsPage: React.FC<WhyChooseUsPageProps> = ({
                   className="flex items-center gap-2 rounded-md border bg-white px-3 py-2"
                   style={{ borderColor: `${primaryColor}55` }}
                 >
-                  {isBbb ? (
-                    <div
-                      className="w-9 h-9 shrink-0 rounded-md flex flex-col items-center justify-center text-white leading-none"
-                      style={{ background: accentColor }}
-                    >
-                      <span className="text-[13px] font-black">A+</span>
-                      <span className="text-[6px] font-bold tracking-[0.14em] mt-[1px]">BBB</span>
-                    </div>
-                  ) : isGaf ? (
-                    <div
-                      className="w-9 h-9 shrink-0 rounded-md flex flex-col items-center justify-center text-white leading-none"
-                      style={{ background: primaryColor }}
-                    >
-                      <span className="text-[11px] font-black tracking-tight">GAF</span>
-                      <span className="text-[6px] font-bold tracking-[0.14em] mt-[1px]">PRO</span>
-                    </div>
+                  {isBbb || isGaf ? (
+                    <img
+                      src={isBbb ? bbbBadge : gafBadge}
+                      alt={isBbb ? 'BBB A+ Accredited Business' : 'GAF Preferred Contractor'}
+                      className="h-10 w-auto shrink-0 object-contain"
+                      crossOrigin="anonymous"
+                    />
                   ) : (
                     <div
                       className="w-9 h-9 shrink-0 rounded-md flex items-center justify-center text-white"
