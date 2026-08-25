@@ -297,6 +297,8 @@ export function EstimatePreviewPanel({
   const [streetHeading, setStreetHeading] = useState<number>(0);
   const [streetPitch, setStreetPitch] = useState<number>(0);
   const [streetFov, setStreetFov] = useState<number>(90);
+  const [streetSideOffset, setStreetSideOffset] = useState<number>(0);
+  const [streetDistOffset, setStreetDistOffset] = useState<number>(0);
   const [aerialZoom, setAerialZoom] = useState<number>(19);
   const [aerialPanX, setAerialPanX] = useState<number>(0); // -100..100 fraction-of-tile east(+)/west(-), scales with zoom
   const [aerialPanY, setAerialPanY] = useState<number>(0); // -100..100 fraction-of-tile north(+)/south(-), scales with zoom
