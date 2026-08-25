@@ -128,6 +128,28 @@ export function EditProjectDetailsDialog({
 
       if (error) throw error;
 
+      // Keep estimate names in sync with the lead name: any estimate whose
+      // display name starts with the previous lead name gets re-prefixed.
+      const oldName = (initialLeadName || '').trim();
+      const newName = leadName.trim();
+      if (oldName && newName && oldName !== newName) {
+        const { data: ests } = await (supabase
+          .from('enhanced_estimates') as any)
+          .select('id, display_name')
+          .eq('pipeline_entry_id', pipelineEntryId);
+
+        await Promise.all(
+          ((ests as { id: string; display_name: string | null }[]) || [])
+            .filter((e) => (e.display_name || '').trim().toLowerCase().startsWith(oldName.toLowerCase()))
+            .map((e) => {
+              const suffix = (e.display_name || '').trim().slice(oldName.length);
+              return (supabase.from('enhanced_estimates') as any)
+                .update({ display_name: `${newName}${suffix}` })
+                .eq('id', e.id);
+            })
+        );
+      }
+
       toast({
         title: 'Lead details updated',
         description: 'All changes have been saved.',
