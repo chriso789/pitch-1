@@ -180,31 +180,31 @@ export const WhyChooseUsPage: React.FC<WhyChooseUsPageProps> = ({
       </div>
 
       {/* Promises grid */}
-      <div className="px-12 pt-10 pb-8">
-        <div className="text-[10px] font-bold tracking-[0.4em] text-gray-400 mb-4">
+      <div className="px-12 pt-7 pb-4">
+        <div className="text-[10px] font-bold tracking-[0.4em] text-gray-400 mb-3">
           OUR COMMITMENT
         </div>
-        <div className="grid grid-cols-2 gap-5">
+        <div className="grid grid-cols-2 gap-4">
           {commitments.slice(0, 4).map((p) => {
             const IconComponent = ICON_MAP[p.icon || 'shield'] || ShieldCheck;
             return (
               <div
                 key={p.title}
-                className="bg-gray-50 rounded-lg p-5 flex gap-4 border border-gray-100"
+                className="bg-gray-50 rounded-lg p-4 flex gap-3 border border-gray-100"
               >
                 <div
-                  className="w-12 h-12 shrink-0 rounded-lg flex items-center justify-center text-white"
+                  className="w-10 h-10 shrink-0 rounded-lg flex items-center justify-center text-white"
                   style={{
                     background: `linear-gradient(135deg, ${primaryColor} 0%, ${accentColor} 100%)`,
                   }}
                 >
-                  <IconComponent className="w-6 h-6" />
+                  <IconComponent className="w-5 h-5" />
                 </div>
                 <div className="min-w-0">
-                  <h3 className="font-bold text-base text-gray-900 mb-1 leading-tight">
+                  <h3 className="font-bold text-sm text-gray-900 mb-0.5 leading-tight">
                     {p.title}
                   </h3>
-                  <p className="text-xs text-gray-600 leading-relaxed">
+                  <p className="text-[11px] text-gray-600 leading-snug">
                     {p.body}
                   </p>
                 </div>
@@ -215,20 +215,20 @@ export const WhyChooseUsPage: React.FC<WhyChooseUsPageProps> = ({
       </div>
 
       {/* Pull quote / testimonial */}
-      <div className="mx-12 mb-8 relative">
+      <div className="mx-12 mb-4 relative">
         <div
-          className="absolute -top-3 -left-2 text-7xl font-black leading-none select-none"
+          className="absolute -top-2 -left-2 text-5xl font-black leading-none select-none"
           style={{ color: primaryColor, opacity: 0.25 }}
         >
           "
         </div>
         <blockquote
-          className="pl-10 pr-4 py-3 italic text-gray-700 leading-relaxed"
-          style={{ fontSize: '17px' }}
+          className="pl-9 pr-4 py-1 italic text-gray-700 leading-snug"
+          style={{ fontSize: '15px' }}
         >
           {testimonial.quote}
         </blockquote>
-        <div className="pl-10 mt-2 flex items-center gap-3">
+        <div className="pl-9 mt-1.5 flex items-center gap-3">
           <div className="flex">
             {[0, 1, 2, 3, 4].map((i) => (
               <Star
@@ -244,15 +244,54 @@ export const WhyChooseUsPage: React.FC<WhyChooseUsPageProps> = ({
         </div>
       </div>
 
-      {/* Brand certifications / affiliations strip */}
-      {brandCertifications && (
-        <div className="mx-12 mb-16 px-5 py-3 bg-gray-50 border-l-4 rounded-sm" style={{ borderColor: primaryColor }}>
-          <div className="text-[9px] font-bold tracking-[0.3em] text-gray-500 mb-1">
+      {/* Brand certifications / affiliations badges */}
+      {certBadges.length > 0 && (
+        <div className="mx-12 mb-20">
+          <div className="text-[9px] font-bold tracking-[0.3em] text-gray-400 mb-2">
             CERTIFICATIONS & AFFILIATIONS
           </div>
-          <p className="text-xs text-gray-700 leading-relaxed">
-            {brandCertifications}
-          </p>
+          <div className="flex flex-wrap gap-2.5">
+            {certBadges.map((cert) => {
+              const upper = cert.toUpperCase();
+              const isBbb = upper.includes('BBB');
+              const isGaf = upper.includes('GAF');
+              return (
+                <div
+                  key={cert}
+                  className="flex items-center gap-2 rounded-md border bg-white px-3 py-2"
+                  style={{ borderColor: `${primaryColor}55` }}
+                >
+                  {isBbb ? (
+                    <div
+                      className="w-9 h-9 shrink-0 rounded-md flex flex-col items-center justify-center text-white leading-none"
+                      style={{ background: accentColor }}
+                    >
+                      <span className="text-[13px] font-black">A+</span>
+                      <span className="text-[6px] font-bold tracking-[0.14em] mt-[1px]">BBB</span>
+                    </div>
+                  ) : isGaf ? (
+                    <div
+                      className="w-9 h-9 shrink-0 rounded-md flex flex-col items-center justify-center text-white leading-none"
+                      style={{ background: primaryColor }}
+                    >
+                      <span className="text-[11px] font-black tracking-tight">GAF</span>
+                      <span className="text-[6px] font-bold tracking-[0.14em] mt-[1px]">PRO</span>
+                    </div>
+                  ) : (
+                    <div
+                      className="w-9 h-9 shrink-0 rounded-md flex items-center justify-center text-white"
+                      style={{ background: `linear-gradient(135deg, ${primaryColor} 0%, ${accentColor} 100%)` }}
+                    >
+                      <Award className="w-4 h-4" />
+                    </div>
+                  )}
+                  <span className="text-[11px] font-semibold text-gray-800 leading-tight max-w-[190px]">
+                    {cert}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
