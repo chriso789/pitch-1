@@ -90,6 +90,10 @@ export const WhyChooseUsPage: React.FC<WhyChooseUsPageProps> = ({
   const testimonial = brandTestimonial || DEFAULT_TESTIMONIAL;
   const primaryColor = brandPrimaryColor || 'hsl(var(--primary))';
   const accentColor = brandAccentColor || '#1a1a2e';
+  const certBadges = (brandCertifications || '')
+    .split(/[,;·•|]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
 
   const heroBlurb = brandStory
     ? brandStory
