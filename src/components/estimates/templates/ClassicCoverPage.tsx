@@ -58,11 +58,6 @@ export const ClassicCoverPage: React.FC<CoverPageProps> = ({
             </div>
           </div>
           <div className="text-right space-y-1">
-            {yearStr && (
-              <div className="text-[10px] tracking-[0.3em] text-[#C9A96E] font-bold">
-                ESTABLISHED {yearStr}
-              </div>
-            )}
             {companyInfo?.license_number && (
               <div className="text-[9px] text-white/50">License #{companyInfo.license_number}</div>
             )}
