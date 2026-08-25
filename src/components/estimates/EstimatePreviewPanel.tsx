@@ -297,6 +297,8 @@ export function EstimatePreviewPanel({
   const [streetHeading, setStreetHeading] = useState<number>(0);
   const [streetPitch, setStreetPitch] = useState<number>(0);
   const [streetFov, setStreetFov] = useState<number>(90);
+  const [streetSideOffset, setStreetSideOffset] = useState<number>(0);
+  const [streetDistOffset, setStreetDistOffset] = useState<number>(0);
   const [aerialZoom, setAerialZoom] = useState<number>(19);
   const [aerialPanX, setAerialPanX] = useState<number>(0); // -100..100 fraction-of-tile east(+)/west(-), scales with zoom
   const [aerialPanY, setAerialPanY] = useState<number>(0); // -100..100 fraction-of-tile north(+)/south(-), scales with zoom
@@ -521,13 +523,29 @@ export function EstimatePreviewPanel({
     return () => { cancelled = true; };
   }, [propertyCoords, googleMapsApiKey]);
 
-  // Build adjustable Street View URL from coords + heading/pitch/fov.
+  // Build adjustable Street View URL from coords + camera offsets + heading/pitch/fov.
   useEffect(() => {
     if (!streetViewAvailable || !propertyCoords || !googleMapsApiKey) return;
+    const hasOffset = streetSideOffset !== 0 || streetDistOffset !== 0;
+    // Move the camera: side offset runs east/west, distance offset north/south (meters).
+    const metersPerDegLat = 111320;
+    const metersPerDegLng = 111320 * Math.cos((propertyCoords.lat * Math.PI) / 180) || 111320;
+    const camLat = propertyCoords.lat + streetDistOffset / metersPerDegLat;
+    const camLng = propertyCoords.lng + streetSideOffset / metersPerDegLng;
+    // When the camera is moved, keep the property in frame: aim at it and treat
+    // the Rotate slider as a fine-tune offset from that bearing.
+    let heading = streetHeading;
+    if (hasOffset) {
+      const dx = (propertyCoords.lng - camLng) * metersPerDegLng;
+      const dy = (propertyCoords.lat - camLat) * metersPerDegLat;
+      const bearing = (Math.atan2(dx, dy) * 180) / Math.PI;
+      heading = (bearing + streetHeading + 360) % 360;
+    }
     setStreetViewUrl(
-      `https://maps.googleapis.com/maps/api/streetview?size=800x400&location=${propertyCoords.lat},${propertyCoords.lng}&heading=${streetHeading}&pitch=${streetPitch}&fov=${streetFov}&key=${googleMapsApiKey}`
+      `https://maps.googleapis.com/maps/api/streetview?size=800x400&location=${camLat},${camLng}&heading=${heading}&pitch=${streetPitch}&fov=${streetFov}&key=${googleMapsApiKey}`
     );
-  }, [streetViewAvailable, propertyCoords, googleMapsApiKey, streetHeading, streetPitch, streetFov]);
+  }, [streetViewAvailable, propertyCoords, googleMapsApiKey, streetHeading, streetPitch, streetFov, streetSideOffset, streetDistOffset]);
+
 
   // Fetch aerial URL: prefer adjustable Google Static Maps (when coords+key present),
   // otherwise fall back to persisted roof_measurements image.
@@ -1409,10 +1427,18 @@ export function EstimatePreviewPanel({
                               <button
                                 type="button"
                                 className="text-[10px] text-muted-foreground hover:text-foreground underline"
-                                onClick={() => { setStreetHeading(0); setStreetPitch(0); setStreetFov(90); }}
+                                onClick={() => { setStreetHeading(0); setStreetPitch(0); setStreetFov(90); setStreetSideOffset(0); setStreetDistOffset(0); }}
                               >
                                 Reset
                               </button>
+                            </div>
+                            <div>
+                              <div className="flex justify-between text-[10px] text-muted-foreground"><span>Camera ←→</span><span>{streetSideOffset} m</span></div>
+                              <Slider value={[streetSideOffset]} min={-60} max={60} step={2} onValueChange={(v) => setStreetSideOffset(v[0])} />
+                            </div>
+                            <div>
+                              <div className="flex justify-between text-[10px] text-muted-foreground"><span>Camera ↑↓</span><span>{streetDistOffset} m</span></div>
+                              <Slider value={[streetDistOffset]} min={-60} max={60} step={2} onValueChange={(v) => setStreetDistOffset(v[0])} />
                             </div>
                             <div>
                               <div className="flex justify-between text-[10px] text-muted-foreground"><span>Rotate</span><span>{streetHeading}°</span></div>
@@ -1426,6 +1452,7 @@ export function EstimatePreviewPanel({
                               <div className="flex justify-between text-[10px] text-muted-foreground"><span>Zoom</span><span>{streetFov}°</span></div>
                               <Slider value={[streetFov]} min={30} max={120} step={5} onValueChange={(v) => setStreetFov(v[0])} />
                             </div>
+
                           </div>
                         )}
 
