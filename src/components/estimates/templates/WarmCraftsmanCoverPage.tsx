@@ -127,7 +127,12 @@ export const WarmCraftsmanCoverPage: React.FC<CoverPageProps> = ({
       {/* Bottom bar */}
       <div className="absolute bottom-0 left-0 right-0 px-10 py-5" style={{ background: '#3D3225' }}>
         <div className="flex justify-between items-center text-[#F5F0E8]">
-          <div className="text-sm font-bold">{displayName}</div>
+          <div>
+            <div className="text-sm font-bold">{displayName}</div>
+            {companyInfo?.brand_certifications && (
+              <div className="text-[9px] text-[#C9956B]/80 mt-0.5 max-w-[280px]">{companyInfo.brand_certifications}</div>
+            )}
+          </div>
           <div className="flex gap-6 text-xs">
             {companyInfo?.phone && <span className="text-[#C9956B]">{companyInfo.phone}</span>}
             {companyInfo?.email && <span className="text-[#F5F0E8]/60">{companyInfo.email}</span>}

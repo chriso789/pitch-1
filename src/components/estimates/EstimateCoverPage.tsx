@@ -269,6 +269,11 @@ export const EstimateCoverPage: React.FC<EstimateCoverPageProps> = ({
                     LIC #{companyInfo.license_number}
                   </div>
                 )}
+                {companyInfo?.brand_certifications && (
+                  <div className="text-[9px] text-gray-500 max-w-[220px] ml-auto">
+                    {companyInfo.brand_certifications}
+                  </div>
+                )}
               </div>
             </div>
           </div>
