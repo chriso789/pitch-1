@@ -1,16 +1,22 @@
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { GlobalLayout } from '@/shared/components/layout/GlobalLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DrawTally } from '@/components/commission/DrawTally';
+import { RepDrawLedger } from '@/components/commission/RepDrawLedger';
+import { useSettledStages } from '@/hooks/useSettledStages';
 import { formatCurrency } from '@/lib/commission-calculator';
-import { Wallet, TrendingUp, DollarSign, ArrowRight } from 'lucide-react';
+import { Wallet, TrendingUp, DollarSign, ArrowRight, CheckCircle2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export function MyMoneyContent() {
   const navigate = useNavigate();
+  const { settledKeys, payoutStageName } = useSettledStages();
+  const [jobView, setJobView] = useState<'open' | 'paid' | 'all'>('open');
 
   // Get current user
   const { data: currentUser } = useQuery({
