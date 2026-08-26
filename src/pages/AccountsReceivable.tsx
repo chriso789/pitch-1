@@ -283,6 +283,15 @@ export default function AccountsReceivable() {
       filtered = projects.filter((p: any) => new Date(p.created_at) >= filterDate);
     }
 
+    // Projects that reached the tenant's capped-out / settled stage are fully
+    // paid out: keep them out of open AR unless the user asks to see them.
+    const settledSet = new Set(settledKeys);
+    if (settledSet.size > 0 && paidView !== 'all') {
+      filtered = filtered.filter((p: any) =>
+        paidView === 'paid' ? settledSet.has(p.status) : !settledSet.has(p.status)
+      );
+    }
+
     return filtered.map((project: any) => {
       const est = estimateMap.get(project.id);
       const contractValue = Number(est?.selling_price) || 0;
