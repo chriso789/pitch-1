@@ -131,7 +131,7 @@ export default function CommissionReport() {
 
   // Get qualifying pipeline stage keys for this tenant
   const { data: qualifyingStageKeys = [] } = useQuery({
-    queryKey: ['qualifying-stages', effectiveTenantId],
+    queryKey: ['qualifying-stages', effectiveTenantId, MIN_STAGE_ORDER],
     queryFn: async () => {
       if (!effectiveTenantId) return [];
       const { data } = await supabase
