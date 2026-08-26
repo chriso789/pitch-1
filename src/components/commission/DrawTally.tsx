@@ -48,6 +48,10 @@ export function DrawTally({
   const [notes, setNotes] = useState('');
   const [paidToUserId, setPaidToUserId] = useState<string>(selectedRepId && selectedRepId !== 'all' ? selectedRepId : '');
   const [appliedJobId, setAppliedJobId] = useState<string>(pipelineEntryId || '');
+  // Job-level quick draw (manager checkbox + amount on a project page)
+  const [quickDrawEnabled, setQuickDrawEnabled] = useState(false);
+  const [quickAmount, setQuickAmount] = useState('');
+  const [quickDate, setQuickDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
