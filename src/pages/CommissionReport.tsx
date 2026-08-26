@@ -80,8 +80,29 @@ export default function CommissionReport() {
   const [previewEntry, setPreviewEntry] = useState<ComputedCommission | null>(null);
 
   const EXCLUDED_STATUSES = ['lost', 'canceled'];
-  // Minimum stage_order for "project" level
-  const MIN_STAGE_ORDER = 6;
+  // Fallback minimum stage_order when the tenant has no conversion point configured.
+  const FALLBACK_MIN_STAGE_ORDER = 4;
+
+  // Tenant's configured conversion point ("converted to job"): every stage at or
+  // after it counts toward commissions so reps see upcoming money from day one.
+  const { data: minStageOrder = FALLBACK_MIN_STAGE_ORDER } = useQuery({
+    queryKey: ['commission-min-stage-order', effectiveTenantId],
+    queryFn: async () => {
+      if (!effectiveTenantId) return FALLBACK_MIN_STAGE_ORDER;
+      const { data } = await supabase
+        .from('pipeline_stages')
+        .select('stage_order')
+        .eq('tenant_id', effectiveTenantId)
+        .eq('is_conversion_point', true)
+        .order('stage_order', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      return data?.stage_order ?? FALLBACK_MIN_STAGE_ORDER;
+    },
+    enabled: !!effectiveTenantId,
+  });
+  const MIN_STAGE_ORDER = minStageOrder;
+
 
   // Get current user and tenant
   const { data: currentUser } = useQuery({
@@ -110,7 +131,7 @@ export default function CommissionReport() {
 
   // Get qualifying pipeline stage keys for this tenant
   const { data: qualifyingStageKeys = [] } = useQuery({
-    queryKey: ['qualifying-stages', effectiveTenantId],
+    queryKey: ['qualifying-stages', effectiveTenantId, MIN_STAGE_ORDER],
     queryFn: async () => {
       if (!effectiveTenantId) return [];
       const { data } = await supabase
@@ -128,7 +149,7 @@ export default function CommissionReport() {
 
   // Available pipeline stages (key + display name) for the status filter dropdown.
   const { data: statusStageOptions = [] } = useQuery({
-    queryKey: ['commission-status-stages', effectiveTenantId],
+    queryKey: ['commission-status-stages', effectiveTenantId, MIN_STAGE_ORDER],
     queryFn: async () => {
       if (!effectiveTenantId) return [];
       const { data } = await supabase
