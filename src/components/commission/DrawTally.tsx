@@ -448,7 +448,7 @@ export function DrawTally({
         )}
 
         {/* Summary row */}
-        <div className="grid grid-cols-3 gap-4 mb-4 p-3 rounded-lg bg-muted/50">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4 p-3 rounded-lg bg-muted/50">
           <div className="text-center">
             <div className="text-xs text-muted-foreground">Total Earned</div>
             <div className="text-lg font-bold text-green-600">{formatCurrency(totalEarnedCommissions)}</div>
@@ -477,6 +477,7 @@ export function DrawTally({
                           <TableHead>Rep</TableHead>
                           <TableHead className="text-right">Draws</TableHead>
                           <TableHead className="text-right">Total</TableHead>
+                          <TableHead className="text-right">Open</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -487,6 +488,9 @@ export function DrawTally({
                             <TableCell className="text-right text-sm font-medium text-red-600">
                               -{formatCurrency(r.total)}
                             </TableCell>
+                            <TableCell className="text-right text-sm font-medium text-amber-600">
+                              {formatCurrency(r.open)}
+                            </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -496,6 +500,16 @@ export function DrawTally({
               </Dialog>
             ) : (
               <div className="text-lg font-bold text-red-600">-{formatCurrency(totalDraws)}</div>
+            )}
+          </div>
+
+          <div className="text-center">
+            <div className="text-xs text-muted-foreground">Open Draw Balance</div>
+            <div className="text-lg font-bold text-amber-600">{formatCurrency(openDraws)}</div>
+            {recoveredDraws > 0 && (
+              <div className="text-[10px] text-muted-foreground">
+                {formatCurrency(recoveredDraws)} recovered at cap out
+              </div>
             )}
           </div>
 
