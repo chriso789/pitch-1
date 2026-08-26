@@ -15,6 +15,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Plus, Trash2, Wallet } from 'lucide-react';
 import { formatCurrency } from '@/lib/commission-calculator';
 import { format } from 'date-fns';
@@ -47,6 +48,10 @@ export function DrawTally({
   const [notes, setNotes] = useState('');
   const [paidToUserId, setPaidToUserId] = useState<string>(selectedRepId && selectedRepId !== 'all' ? selectedRepId : '');
   const [appliedJobId, setAppliedJobId] = useState<string>(pipelineEntryId || '');
+  // Job-level quick draw (manager checkbox + amount on a project page)
+  const [quickDrawEnabled, setQuickDrawEnabled] = useState(false);
+  const [quickAmount, setQuickAmount] = useState('');
+  const [quickDate, setQuickDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -142,6 +147,7 @@ export function DrawTally({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['commission-draws'] });
       queryClient.invalidateQueries({ queryKey: ['project-draws'] });
+      queryClient.invalidateQueries({ queryKey: ['rep-draw-ledger'] });
       queryClient.invalidateQueries({ queryKey: ['draw-report'] });
       setOpen(false);
       setAmount('');
@@ -162,10 +168,47 @@ export function DrawTally({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['commission-draws'] });
       queryClient.invalidateQueries({ queryKey: ['project-draws'] });
+      queryClient.invalidateQueries({ queryKey: ['rep-draw-ledger'] });
       queryClient.invalidateQueries({ queryKey: ['draw-report'] });
       toast({ title: 'Draw removed' });
     },
   });
+
+  // Attach a draw straight to the project being viewed.
+  const addQuickDraw = useMutation({
+    mutationFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+      const targetUserId = selectedRepId && selectedRepId !== 'all' ? selectedRepId : paidToUserId;
+      if (!targetUserId) throw new Error('No rep assigned to this job');
+      if (!pipelineEntryId) throw new Error('Missing project');
+
+      const { error } = await supabase.from('commission_draws').insert({
+        tenant_id: tenantId,
+        user_id: targetUserId,
+        amount: parseFloat(quickAmount),
+        draw_date: quickDate,
+        notes: 'Job draw',
+        pipeline_entry_id: pipelineEntryId,
+        created_by: user.id,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['commission-draws'] });
+      queryClient.invalidateQueries({ queryKey: ['project-draws'] });
+      queryClient.invalidateQueries({ queryKey: ['rep-draw-ledger'] });
+      queryClient.invalidateQueries({ queryKey: ['draw-report'] });
+      setQuickAmount('');
+      setQuickDrawEnabled(false);
+      toast({ title: 'Draw attached to job' });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    },
+  });
+
+
 
   const totalDraws = draws.reduce((sum, d) => sum + Number(d.amount), 0);
   const netOwed = totalEarnedCommissions - totalDraws;
@@ -285,6 +328,51 @@ export function DrawTally({
         )}
       </CardHeader>
       <CardContent>
+        {/* Job-level quick draw (manager only, on a specific project) */}
+        {isManager && pipelineEntryId && (
+          <div className="mb-4 p-3 rounded-lg border bg-muted/30 space-y-3">
+            <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
+              <Checkbox
+                checked={quickDrawEnabled}
+                onCheckedChange={(v) => setQuickDrawEnabled(v === true)}
+              />
+              Attach a draw to this job
+            </label>
+            {quickDrawEnabled && (
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="space-y-1">
+                  <Label className="text-xs">Draw Amount</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="500.00"
+                    className="w-[140px]"
+                    value={quickAmount}
+                    onChange={e => setQuickAmount(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Date Paid</Label>
+                  <Input
+                    type="date"
+                    className="w-[160px]"
+                    value={quickDate}
+                    onChange={e => setQuickDate(e.target.value)}
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => addQuickDraw.mutate()}
+                  disabled={!quickAmount || parseFloat(quickAmount) <= 0 || addQuickDraw.isPending}
+                >
+                  Save Draw
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Summary row */}
         <div className="grid grid-cols-3 gap-4 mb-4 p-3 rounded-lg bg-muted/50">
           <div className="text-center">

@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Slider } from '@/components/ui/slider';
-import { Plus, Edit, Trash2, GripVertical, ArrowUp, ArrowDown, Loader2, AlertTriangle, Palette, ArrowRightCircle } from 'lucide-react';
+import { Plus, Edit, Trash2, GripVertical, ArrowUp, ArrowDown, Loader2, AlertTriangle, Palette, ArrowRightCircle, BadgeDollarSign } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -46,6 +46,7 @@ interface PipelineStage {
   probability_percent: number;
   is_active: boolean;
   is_conversion_point: boolean;
+  is_payout_point?: boolean;
   archive_on_entry?: boolean;
   archive_after_days?: number;
   color: string;
@@ -522,6 +523,41 @@ export const PipelineStageManager: React.FC = () => {
     }
   };
 
+  const togglePayoutPoint = async (stageId: string) => {
+    const stage = stages.find(s => s.id === stageId);
+    if (!stage) return;
+
+    const newValue = !stage.is_payout_point;
+
+    try {
+      if (newValue) {
+        await supabase
+          .from('pipeline_stages')
+          .update({ is_payout_point: false, updated_at: new Date().toISOString() })
+          .eq('tenant_id', effectiveTenantId)
+          .eq('is_payout_point', true);
+      }
+
+      const { error } = await supabase
+        .from('pipeline_stages')
+        .update({ is_payout_point: newValue, updated_at: new Date().toISOString() })
+        .eq('id', stageId);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Success',
+        description: newValue
+          ? `"${stage.name}" is now the capped-out point — projects here leave open A/R and upcoming commissions`
+          : `"${stage.name}" is no longer the capped-out point`,
+      });
+      fetchStages();
+    } catch (error) {
+      console.error('Error toggling payout point:', error);
+      toast({ title: 'Error', description: 'Failed to update capped-out point', variant: 'destructive' });
+    }
+  };
+
   const toggleConversionPoint = async (stageId: string) => {
     const stage = stages.find(s => s.id === stageId);
     if (!stage) return;
@@ -680,6 +716,12 @@ export const PipelineStageManager: React.FC = () => {
                                   Converts to Project
                                 </Badge>
                               )}
+                              {stage.is_payout_point && (
+                                <Badge className="shrink-0 bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800">
+                                  <BadgeDollarSign className="h-3 w-3 mr-1" />
+                                  Capped Out / Paid
+                                </Badge>
+                              )}
                             </div>
 
                             <div className="flex items-center gap-1">
@@ -702,6 +744,28 @@ export const PipelineStageManager: React.FC = () => {
                                     {stage.is_conversion_point
                                       ? 'This stage converts leads to projects. Click to remove.'
                                       : 'Set as conversion point — leads reaching this stage become projects'}
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant={stage.is_payout_point ? "default" : "ghost"}
+                                      size="icon"
+                                      className={cn(
+                                        "h-8 w-8",
+                                        stage.is_payout_point && "bg-amber-600 hover:bg-amber-700 text-white"
+                                      )}
+                                      onClick={() => togglePayoutPoint(stage.id)}
+                                    >
+                                      <BadgeDollarSign className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    {stage.is_payout_point
+                                      ? 'This stage marks projects paid/capped out. Click to remove.'
+                                      : 'Set as capped-out point — projects here leave open A/R and upcoming commissions'}
                                   </TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>

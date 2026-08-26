@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { usePipelineStages } from '@/hooks/usePipelineStages';
+import { useSettledStages } from '@/hooks/useSettledStages';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -91,6 +92,8 @@ export default function AccountsReceivable() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
+  const [paidView, setPaidView] = useState<'open' | 'paid' | 'all'>('open');
+  const { settledKeys, payoutStageName } = useSettledStages();
   const [expandedWip, setExpandedWip] = useState<Set<string>>(new Set());
   const [sortField, setSortField] = useState<SortField>('age');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -280,6 +283,15 @@ export default function AccountsReceivable() {
       filtered = projects.filter((p: any) => new Date(p.created_at) >= filterDate);
     }
 
+    // Projects that reached the tenant's capped-out / settled stage are fully
+    // paid out: keep them out of open AR unless the user asks to see them.
+    const settledSet = new Set(settledKeys);
+    if (settledSet.size > 0 && paidView !== 'all') {
+      filtered = filtered.filter((p: any) =>
+        paidView === 'paid' ? settledSet.has(p.status) : !settledSet.has(p.status)
+      );
+    }
+
     return filtered.map((project: any) => {
       const est = estimateMap.get(project.id);
       const contractValue = Number(est?.selling_price) || 0;
@@ -345,7 +357,7 @@ export default function AccountsReceivable() {
         budgetVariance,
       };
     });
-  }, [projects, estimates, payments, invoices, laborTracking, filterDate]);
+  }, [projects, estimates, payments, invoices, laborTracking, filterDate, settledKeys, paidView]);
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
@@ -588,6 +600,20 @@ export default function AccountsReceivable() {
                 ))}
               </SelectContent>
             </Select>
+            {settledKeys.length > 0 && (
+              <Select value={paidView} onValueChange={(v) => setPaidView(v as 'open' | 'paid' | 'all')}>
+                <SelectTrigger className="w-[190px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="open">Open Projects</SelectItem>
+                  <SelectItem value="paid">
+                    Paid / Capped Out{payoutStageName ? ` (${payoutStageName})` : ''}
+                  </SelectItem>
+                  <SelectItem value="all">All Projects</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
           </div>
         </div>
 

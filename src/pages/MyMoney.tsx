@@ -1,16 +1,22 @@
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { GlobalLayout } from '@/shared/components/layout/GlobalLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DrawTally } from '@/components/commission/DrawTally';
+import { RepDrawLedger } from '@/components/commission/RepDrawLedger';
+import { useSettledStages } from '@/hooks/useSettledStages';
 import { formatCurrency } from '@/lib/commission-calculator';
-import { Wallet, TrendingUp, DollarSign, ArrowRight } from 'lucide-react';
+import { Wallet, TrendingUp, DollarSign, ArrowRight, CheckCircle2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export function MyMoneyContent() {
   const navigate = useNavigate();
+  const { settledKeys, payoutStageName } = useSettledStages();
+  const [jobView, setJobView] = useState<'open' | 'paid' | 'all'>('open');
 
   // Get current user
   const { data: currentUser } = useQuery({
@@ -123,8 +129,22 @@ export function MyMoneyContent() {
     enabled: !!currentUser?.id && qualifyingStageKeys.length > 0,
   });
 
-  const totalEarned = myCommissions.reduce((sum, c) => sum + c.commissionAmount, 0);
-  const totalContract = myCommissions.reduce((sum, c) => sum + c.contractValue, 0);
+  // Tag each job as settled (capped out / paid) so upcoming commission totals
+  // only count what is still owed, while paid jobs stay viewable via the filter.
+  const taggedCommissions = useMemo(() => {
+    const settledSet = new Set(settledKeys);
+    return myCommissions.map(c => ({ ...c, settled: settledSet.has(c.status) }));
+  }, [myCommissions, settledKeys]);
+
+  const openCommissions = taggedCommissions.filter(c => !c.settled);
+  const paidCommissions = taggedCommissions.filter(c => c.settled);
+
+  const visibleCommissions =
+    jobView === 'paid' ? paidCommissions : jobView === 'all' ? taggedCommissions : openCommissions;
+
+  const totalEarned = openCommissions.reduce((sum, c) => sum + c.commissionAmount, 0);
+  const totalPaidOut = paidCommissions.reduce((sum, c) => sum + c.commissionAmount, 0);
+  const totalContract = openCommissions.reduce((sum, c) => sum + c.contractValue, 0);
 
   return (
       <div className="space-y-6">
@@ -144,15 +164,29 @@ export function MyMoneyContent() {
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
           <Card className="border-l-4 border-l-green-500">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Total Earned</p>
+                  <p className="text-sm text-muted-foreground">Upcoming Commission</p>
                   <p className="text-2xl font-bold text-green-600">{formatCurrency(totalEarned)}</p>
                 </div>
                 <DollarSign className="h-8 w-8 text-green-500/30" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-l-4 border-l-emerald-600">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">
+                    Paid / Capped Out{payoutStageName ? ` (${payoutStageName})` : ''}
+                  </p>
+                  <p className="text-2xl font-bold">{formatCurrency(totalPaidOut)}</p>
+                </div>
+                <CheckCircle2 className="h-8 w-8 text-emerald-600/30" />
               </div>
             </CardContent>
           </Card>
@@ -162,7 +196,7 @@ export function MyMoneyContent() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">Active Jobs</p>
-                  <p className="text-2xl font-bold">{myCommissions.length}</p>
+                  <p className="text-2xl font-bold">{openCommissions.length}</p>
                 </div>
                 <TrendingUp className="h-8 w-8 text-blue-500/30" />
               </div>
@@ -173,7 +207,7 @@ export function MyMoneyContent() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Total Contract Value</p>
+                  <p className="text-sm text-muted-foreground">Open Contract Value</p>
                   <p className="text-2xl font-bold">{formatCurrency(totalContract)}</p>
                 </div>
                 <Wallet className="h-8 w-8 text-amber-500/30" />
@@ -192,17 +226,38 @@ export function MyMoneyContent() {
           />
         )}
 
+        {/* Rolling draw balance */}
+        {currentUser?.tenant_id && currentUser?.id && (
+          <RepDrawLedger
+            tenantId={currentUser.tenant_id}
+            repId={currentUser.id}
+            commissions={taggedCommissions}
+          />
+        )}
+
         {/* My Jobs */}
         <Card>
-          <CardHeader>
-            <CardTitle className="text-base">My Commission Jobs ({myCommissions.length})</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between gap-3">
+            <CardTitle className="text-base">
+              My Commission Jobs ({visibleCommissions.length})
+            </CardTitle>
+            <Select value={jobView} onValueChange={(v) => setJobView(v as 'open' | 'paid' | 'all')}>
+              <SelectTrigger className="w-[170px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="open">Open Jobs</SelectItem>
+                <SelectItem value="paid">Paid / Capped Out</SelectItem>
+                <SelectItem value="all">All Jobs</SelectItem>
+              </SelectContent>
+            </Select>
           </CardHeader>
           <CardContent>
-            {myCommissions.length === 0 ? (
-              <p className="text-center py-6 text-muted-foreground">No commission-eligible jobs yet</p>
+            {visibleCommissions.length === 0 ? (
+              <p className="text-center py-6 text-muted-foreground">No commission-eligible jobs here</p>
             ) : (
               <div className="space-y-2">
-                {myCommissions.map(job => (
+                {visibleCommissions.map(job => (
                   <div
                     key={job.id}
                     className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted cursor-pointer transition-colors"
@@ -215,8 +270,12 @@ export function MyMoneyContent() {
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="font-bold text-green-600">{formatCurrency(job.commissionAmount)}</p>
-                      <Badge variant="secondary" className="text-[10px]">{job.status}</Badge>
+                      <p className={`font-bold ${job.settled ? 'text-muted-foreground' : 'text-green-600'}`}>
+                        {formatCurrency(job.commissionAmount)}
+                      </p>
+                      <Badge variant={job.settled ? 'outline' : 'secondary'} className="text-[10px]">
+                        {job.settled ? 'Paid' : job.status}
+                      </Badge>
                     </div>
                   </div>
                 ))}
