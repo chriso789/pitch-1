@@ -43,6 +43,8 @@ export function DrawTally({
   const effectiveTenantId = useEffectiveTenantId();
   const tenantId = effectiveTenantId || tenantIdProp;
   const [open, setOpen] = useState(false);
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
+
   const [amount, setAmount] = useState('');
   const [drawDate, setDrawDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [notes, setNotes] = useState('');
