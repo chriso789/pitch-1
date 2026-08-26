@@ -66177,6 +66177,10 @@ export type Database = {
         Returns: undefined
       }
       submit_public_referral: { Args: { _payload: Json }; Returns: Json }
+      sweep_closed_stage_auto_advance: {
+        Args: { p_limit?: number }
+        Returns: number
+      }
       switch_active_tenant: { Args: { p_tenant_id: string }; Returns: Json }
       switch_developer_context: {
         Args: { target_tenant_id: string }
