@@ -43,6 +43,8 @@ export function DrawTally({
   const effectiveTenantId = useEffectiveTenantId();
   const tenantId = effectiveTenantId || tenantIdProp;
   const [open, setOpen] = useState(false);
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
+
   const [amount, setAmount] = useState('');
   const [drawDate, setDrawDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [notes, setNotes] = useState('');
@@ -211,6 +213,20 @@ export function DrawTally({
 
 
   const totalDraws = draws.reduce((sum, d) => sum + Number(d.amount), 0);
+
+  const repBreakdown = useMemo(() => {
+    const map = new Map<string, { userId: string; name: string; total: number; count: number }>();
+    draws.forEach((d: any) => {
+      const p = d.profiles;
+      const name = p ? `${p.first_name || ''} ${p.last_name || ''}`.trim() || 'Unknown rep' : 'Unknown rep';
+      const existing = map.get(d.user_id) || { userId: d.user_id, name, total: 0, count: 0 };
+      existing.total += Number(d.amount || 0);
+      existing.count += 1;
+      map.set(d.user_id, existing);
+    });
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [draws]);
+
   const netOwed = totalEarnedCommissions - totalDraws;
 
   const jobLabel = (entry: any) => {
@@ -381,8 +397,50 @@ export function DrawTally({
           </div>
           <div className="text-center">
             <div className="text-xs text-muted-foreground">Total Draws</div>
-            <div className="text-lg font-bold text-red-600">-{formatCurrency(totalDraws)}</div>
+            {isManager && repBreakdown.length > 0 ? (
+              <Dialog open={breakdownOpen} onOpenChange={setBreakdownOpen}>
+                <DialogTrigger asChild>
+                  <button
+                    type="button"
+                    className="text-lg font-bold text-red-600 underline underline-offset-2 hover:opacity-80"
+                    title="View draws by rep"
+                  >
+                    -{formatCurrency(totalDraws)}
+                  </button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Draws By Rep</DialogTitle>
+                  </DialogHeader>
+                  <div className="rounded-md border max-h-[400px] overflow-y-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Rep</TableHead>
+                          <TableHead className="text-right">Draws</TableHead>
+                          <TableHead className="text-right">Total</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {repBreakdown.map(r => (
+                          <TableRow key={r.userId}>
+                            <TableCell className="text-sm">{r.name}</TableCell>
+                            <TableCell className="text-right text-sm">{r.count}</TableCell>
+                            <TableCell className="text-right text-sm font-medium text-red-600">
+                              -{formatCurrency(r.total)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            ) : (
+              <div className="text-lg font-bold text-red-600">-{formatCurrency(totalDraws)}</div>
+            )}
           </div>
+
           <div className="text-center">
             <div className="text-xs text-muted-foreground">Net Owed</div>
             <div className={`text-lg font-bold ${netOwed >= 0 ? 'text-green-600' : 'text-red-600'}`}>
