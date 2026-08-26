@@ -21,6 +21,7 @@ import { formatCurrency } from '@/lib/commission-calculator';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { useSettledStages } from '@/hooks/useSettledStages';
 
 interface DrawTallyProps {
   tenantId: string;
