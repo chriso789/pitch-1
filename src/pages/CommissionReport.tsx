@@ -149,7 +149,7 @@ export default function CommissionReport() {
 
   // Available pipeline stages (key + display name) for the status filter dropdown.
   const { data: statusStageOptions = [] } = useQuery({
-    queryKey: ['commission-status-stages', effectiveTenantId],
+    queryKey: ['commission-status-stages', effectiveTenantId, MIN_STAGE_ORDER],
     queryFn: async () => {
       if (!effectiveTenantId) return [];
       const { data } = await supabase
