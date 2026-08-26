@@ -603,14 +603,14 @@ export default function CommissionReport() {
         {/* Commission Table */}
         <Card>
           <CardHeader>
-            <CardTitle>Commission Details ({commissions.length} jobs)</CardTitle>
+            <CardTitle>Commission Details ({sortedCommissions.length} jobs)</CardTitle>
           </CardHeader>
           <CardContent>
             {isLoading ? (
               <div className="text-center py-8 text-muted-foreground">Loading commission data...</div>
-            ) : commissions.length === 0 ? (
+            ) : sortedCommissions.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
-                No jobs at project status or beyond found for the selected period
+                No jobs match the selected filters
               </div>
             ) : (
               <div 
