@@ -198,7 +198,6 @@ export function DrawTally({
       queryClient.invalidateQueries({ queryKey: ['commission-draws'] });
       queryClient.invalidateQueries({ queryKey: ['project-draws'] });
       queryClient.invalidateQueries({ queryKey: ['rep-draw-ledger'] });
-      queryClient.invalidateQueries({ queryKey: ['rep-draw-ledger'] });
       queryClient.invalidateQueries({ queryKey: ['draw-report'] });
       setQuickAmount('');
       setQuickDrawEnabled(false);
