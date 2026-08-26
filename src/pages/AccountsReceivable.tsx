@@ -92,6 +92,8 @@ export default function AccountsReceivable() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
+  const [paidView, setPaidView] = useState<'open' | 'paid' | 'all'>('open');
+  const { settledKeys, payoutStageName } = useSettledStages();
   const [expandedWip, setExpandedWip] = useState<Set<string>>(new Set());
   const [sortField, setSortField] = useState<SortField>('age');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
