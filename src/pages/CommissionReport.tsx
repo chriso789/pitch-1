@@ -72,6 +72,7 @@ export default function CommissionReport() {
     end: format(endOfMonth(new Date()), 'yyyy-MM-dd'),
   });
   const [selectedRep, setSelectedRep] = useState<string>('all');
+  const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [sortColumn, setSortColumn] = useState<string>('commissionAmount');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
