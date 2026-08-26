@@ -46,6 +46,7 @@ interface PipelineStage {
   probability_percent: number;
   is_active: boolean;
   is_conversion_point: boolean;
+  is_payout_point?: boolean;
   archive_on_entry?: boolean;
   archive_after_days?: number;
   color: string;
