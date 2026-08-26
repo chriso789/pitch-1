@@ -164,15 +164,29 @@ export function MyMoneyContent() {
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
           <Card className="border-l-4 border-l-green-500">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Total Earned</p>
+                  <p className="text-sm text-muted-foreground">Upcoming Commission</p>
                   <p className="text-2xl font-bold text-green-600">{formatCurrency(totalEarned)}</p>
                 </div>
                 <DollarSign className="h-8 w-8 text-green-500/30" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-l-4 border-l-emerald-600">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">
+                    Paid / Capped Out{payoutStageName ? ` (${payoutStageName})` : ''}
+                  </p>
+                  <p className="text-2xl font-bold">{formatCurrency(totalPaidOut)}</p>
+                </div>
+                <CheckCircle2 className="h-8 w-8 text-emerald-600/30" />
               </div>
             </CardContent>
           </Card>
@@ -182,7 +196,7 @@ export function MyMoneyContent() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">Active Jobs</p>
-                  <p className="text-2xl font-bold">{myCommissions.length}</p>
+                  <p className="text-2xl font-bold">{openCommissions.length}</p>
                 </div>
                 <TrendingUp className="h-8 w-8 text-blue-500/30" />
               </div>
@@ -193,7 +207,7 @@ export function MyMoneyContent() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Total Contract Value</p>
+                  <p className="text-sm text-muted-foreground">Open Contract Value</p>
                   <p className="text-2xl font-bold">{formatCurrency(totalContract)}</p>
                 </div>
                 <Wallet className="h-8 w-8 text-amber-500/30" />
@@ -212,17 +226,38 @@ export function MyMoneyContent() {
           />
         )}
 
+        {/* Rolling draw balance */}
+        {currentUser?.tenant_id && currentUser?.id && (
+          <RepDrawLedger
+            tenantId={currentUser.tenant_id}
+            repId={currentUser.id}
+            commissions={taggedCommissions}
+          />
+        )}
+
         {/* My Jobs */}
         <Card>
-          <CardHeader>
-            <CardTitle className="text-base">My Commission Jobs ({myCommissions.length})</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between gap-3">
+            <CardTitle className="text-base">
+              My Commission Jobs ({visibleCommissions.length})
+            </CardTitle>
+            <Select value={jobView} onValueChange={(v) => setJobView(v as 'open' | 'paid' | 'all')}>
+              <SelectTrigger className="w-[170px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="open">Open Jobs</SelectItem>
+                <SelectItem value="paid">Paid / Capped Out</SelectItem>
+                <SelectItem value="all">All Jobs</SelectItem>
+              </SelectContent>
+            </Select>
           </CardHeader>
           <CardContent>
-            {myCommissions.length === 0 ? (
-              <p className="text-center py-6 text-muted-foreground">No commission-eligible jobs yet</p>
+            {visibleCommissions.length === 0 ? (
+              <p className="text-center py-6 text-muted-foreground">No commission-eligible jobs here</p>
             ) : (
               <div className="space-y-2">
-                {myCommissions.map(job => (
+                {visibleCommissions.map(job => (
                   <div
                     key={job.id}
                     className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted cursor-pointer transition-colors"
@@ -235,8 +270,12 @@ export function MyMoneyContent() {
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="font-bold text-green-600">{formatCurrency(job.commissionAmount)}</p>
-                      <Badge variant="secondary" className="text-[10px]">{job.status}</Badge>
+                      <p className={`font-bold ${job.settled ? 'text-muted-foreground' : 'text-green-600'}`}>
+                        {formatCurrency(job.commissionAmount)}
+                      </p>
+                      <Badge variant={job.settled ? 'outline' : 'secondary'} className="text-[10px]">
+                        {job.settled ? 'Paid' : job.status}
+                      </Badge>
                     </div>
                   </div>
                 ))}
