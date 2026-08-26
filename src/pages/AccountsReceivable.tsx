@@ -600,6 +600,20 @@ export default function AccountsReceivable() {
                 ))}
               </SelectContent>
             </Select>
+            {settledKeys.length > 0 && (
+              <Select value={paidView} onValueChange={(v) => setPaidView(v as 'open' | 'paid' | 'all')}>
+                <SelectTrigger className="w-[190px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="open">Open Projects</SelectItem>
+                  <SelectItem value="paid">
+                    Paid / Capped Out{payoutStageName ? ` (${payoutStageName})` : ''}
+                  </SelectItem>
+                  <SelectItem value="all">All Projects</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
           </div>
         </div>
 
