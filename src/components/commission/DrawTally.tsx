@@ -285,6 +285,51 @@ export function DrawTally({
         )}
       </CardHeader>
       <CardContent>
+        {/* Job-level quick draw (manager only, on a specific project) */}
+        {isManager && pipelineEntryId && (
+          <div className="mb-4 p-3 rounded-lg border bg-muted/30 space-y-3">
+            <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
+              <Checkbox
+                checked={quickDrawEnabled}
+                onCheckedChange={(v) => setQuickDrawEnabled(v === true)}
+              />
+              Attach a draw to this job
+            </label>
+            {quickDrawEnabled && (
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="space-y-1">
+                  <Label className="text-xs">Draw Amount</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="500.00"
+                    className="w-[140px]"
+                    value={quickAmount}
+                    onChange={e => setQuickAmount(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Date Paid</Label>
+                  <Input
+                    type="date"
+                    className="w-[160px]"
+                    value={quickDate}
+                    onChange={e => setQuickDate(e.target.value)}
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => addQuickDraw.mutate()}
+                  disabled={!quickAmount || parseFloat(quickAmount) <= 0 || addQuickDraw.isPending}
+                >
+                  Save Draw
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Summary row */}
         <div className="grid grid-cols-3 gap-4 mb-4 p-3 rounded-lg bg-muted/50">
           <div className="text-center">
