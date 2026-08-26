@@ -557,6 +557,22 @@ export default function CommissionReport() {
                   </Select>
                 </div>
               )}
+              <div className="space-y-2">
+                <Label>Status</Label>
+                <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Statuses" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    {statusStageOptions.map(stage => (
+                      <SelectItem key={stage.key} value={stage.key}>
+                        {stage.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </CardContent>
         </Card>
