@@ -381,8 +381,50 @@ export function DrawTally({
           </div>
           <div className="text-center">
             <div className="text-xs text-muted-foreground">Total Draws</div>
-            <div className="text-lg font-bold text-red-600">-{formatCurrency(totalDraws)}</div>
+            {isManager && repBreakdown.length > 0 ? (
+              <Dialog open={breakdownOpen} onOpenChange={setBreakdownOpen}>
+                <DialogTrigger asChild>
+                  <button
+                    type="button"
+                    className="text-lg font-bold text-red-600 underline underline-offset-2 hover:opacity-80"
+                    title="View draws by rep"
+                  >
+                    -{formatCurrency(totalDraws)}
+                  </button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Draws By Rep</DialogTitle>
+                  </DialogHeader>
+                  <div className="rounded-md border max-h-[400px] overflow-y-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Rep</TableHead>
+                          <TableHead className="text-right">Draws</TableHead>
+                          <TableHead className="text-right">Total</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {repBreakdown.map(r => (
+                          <TableRow key={r.userId}>
+                            <TableCell className="text-sm">{r.name}</TableCell>
+                            <TableCell className="text-right text-sm">{r.count}</TableCell>
+                            <TableCell className="text-right text-sm font-medium text-red-600">
+                              -{formatCurrency(r.total)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            ) : (
+              <div className="text-lg font-bold text-red-600">-{formatCurrency(totalDraws)}</div>
+            )}
           </div>
+
           <div className="text-center">
             <div className="text-xs text-muted-foreground">Net Owed</div>
             <div className={`text-lg font-bold ${netOwed >= 0 ? 'text-green-600' : 'text-red-600'}`}>
