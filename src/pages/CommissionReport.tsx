@@ -126,6 +126,26 @@ export default function CommissionReport() {
     enabled: !!effectiveTenantId,
   });
 
+  // Available pipeline stages (key + display name) for the status filter dropdown.
+  const { data: statusStageOptions = [] } = useQuery({
+    queryKey: ['commission-status-stages', effectiveTenantId],
+    queryFn: async () => {
+      if (!effectiveTenantId) return [];
+      const { data } = await supabase
+        .from('pipeline_stages')
+        .select('key, name, stage_order')
+        .eq('tenant_id', effectiveTenantId)
+        .eq('is_active', true)
+        .gte('stage_order', MIN_STAGE_ORDER)
+        .order('stage_order', { ascending: true });
+      if (!data) return [];
+      return data
+        .filter(s => !EXCLUDED_STATUSES.includes(s.key))
+        .map(s => ({ key: s.key, name: s.name || s.key }));
+    },
+    enabled: !!effectiveTenantId,
+  });
+
   // Get reps for filter — only from selected location
   const { data: reps = [] } = useQuery({
     queryKey: ['commission-reps', effectiveTenantId, currentLocationId],
