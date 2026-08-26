@@ -357,7 +357,7 @@ export default function AccountsReceivable() {
         budgetVariance,
       };
     });
-  }, [projects, estimates, payments, invoices, laborTracking, filterDate]);
+  }, [projects, estimates, payments, invoices, laborTracking, filterDate, settledKeys, paidView]);
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
