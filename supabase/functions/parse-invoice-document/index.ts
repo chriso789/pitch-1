@@ -430,7 +430,7 @@ Deno.serve(async (req) => {
             company_id: tenant_id,
             supplier_id: supplierId,
             job_id: project_id || null,
-            source_file_url: document_url,
+            source_file_url: document_url ?? (bucket && storage_path ? `${bucket}/${storage_path}` : null),
             source_file_name: source_file_name || null,
             supplier_detected_name: parsed.vendor_name || null,
             supplier_confidence: supplierId ? 0.9 : 0.3,
