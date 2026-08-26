@@ -126,17 +126,20 @@ export function BulkInvoiceImportDialog({ open, onOpenChange, onComplete }: Prop
         upsert: false,
       });
       if (upErr) throw new Error(`Upload failed: ${upErr.message}`);
-      const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path);
       const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrl(path, 60 * 30);
-      const documentUrl = signed?.signedUrl || pub.publicUrl;
-      const storedUrl = pub.publicUrl;
+      const documentUrl = signed?.signedUrl;
+      const storedUrl = documentUrl || path;
 
-      // 2. Parse via edge function
+      // 2. Parse via edge function (server reads the private object directly)
       updateRow(row.id, { status: "parsing", documentUrl, storedUrl });
       const { data: parseData, error: parseErr } = await supabase.functions.invoke("parse-invoice-document", {
-        body: { document_url: documentUrl, source_file_name: row.file.name, auto_persist: false },
+        body: { bucket: BUCKET, storage_path: path, source_file_name: row.file.name, auto_persist: false },
       });
-      if (parseErr) throw new Error(parseErr.message);
+      if (parseErr) {
+        const details = (parseErr as any)?.context?.text ? await (parseErr as any).context.text() : parseErr.message;
+        throw new Error(details || parseErr.message);
+      }
+
       const parsed = parseData?.parsed;
       if (!parsed) throw new Error("Could not extract invoice data");
 
