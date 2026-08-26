@@ -549,11 +549,48 @@ export function DrawTally({
                         ? `${draw.profiles.first_name} ${draw.profiles.last_name}`
                         : 'Unknown'}
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground truncate max-w-[200px]">
-                      {draw.pipeline_entries ? jobLabel(draw.pipeline_entries) : 'Unassigned'}
+                    <TableCell className="text-sm text-muted-foreground max-w-[240px]">
+                      {isManager && !pipelineEntryId ? (
+                        <Select
+                          value={draw.pipeline_entry_id || 'unassigned'}
+                          onValueChange={v =>
+                            assignDrawJob.mutate({
+                              drawId: draw.id,
+                              entryId: v === 'unassigned' ? null : v,
+                            })
+                          }
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue placeholder="Unassigned" />
+                          </SelectTrigger>
+                          <SelectContent className="max-h-[300px]">
+                            <SelectItem value="unassigned">Unassigned</SelectItem>
+                            {allJobs
+                              .filter((j: any) => !j.assigned_to || j.assigned_to === draw.user_id)
+                              .map((j: any) => (
+                                <SelectItem key={j.id} value={j.id}>
+                                  {jobLabel(j)}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <span className="truncate block">
+                          {draw.pipeline_entries ? jobLabel(draw.pipeline_entries) : 'Unassigned'}
+                        </span>
+                      )}
                     </TableCell>
-                    <TableCell className="text-right font-medium text-red-600">
-                      -{formatCurrency(Number(draw.amount))}
+                    <TableCell className="text-right font-medium">
+                      {isRecovered(draw) ? (
+                        <span className="text-muted-foreground line-through">
+                          -{formatCurrency(Number(draw.amount))}
+                        </span>
+                      ) : (
+                        <span className="text-red-600">-{formatCurrency(Number(draw.amount))}</span>
+                      )}
+                      {isRecovered(draw) && (
+                        <div className="text-[10px] text-green-600">Recovered · capped out</div>
+                      )}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground truncate max-w-[150px]">
                       {draw.notes || '-'}
