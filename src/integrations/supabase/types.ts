@@ -36338,6 +36338,7 @@ export type Database = {
           id: string
           is_active: boolean | null
           is_conversion_point: boolean
+          is_payout_point: boolean
           is_terminal: boolean | null
           key: string
           name: string
@@ -36358,6 +36359,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           is_conversion_point?: boolean
+          is_payout_point?: boolean
           is_terminal?: boolean | null
           key?: string
           name: string
@@ -36378,6 +36380,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           is_conversion_point?: boolean
+          is_payout_point?: boolean
           is_terminal?: boolean | null
           key?: string
           name?: string
