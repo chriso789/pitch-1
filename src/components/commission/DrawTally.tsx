@@ -95,6 +95,26 @@ export function DrawTally({
     enabled: !!tenantId && !!paidToUserId && !pipelineEntryId,
   });
 
+  // All tenant jobs (used by the inline "Applied To" dropdown on each draw row).
+  const { data: allJobs = [] } = useQuery({
+    queryKey: ['draw-all-jobs', tenantId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('pipeline_entries')
+        .select(`
+          id, lead_name, status, contact_number, assigned_to,
+          contacts!pipeline_entries_contact_id_fkey(first_name, last_name, address_street)
+        `)
+        .eq('tenant_id', tenantId)
+        .eq('is_deleted', false)
+        .order('created_at', { ascending: false })
+        .limit(500);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!tenantId && isManager && !pipelineEntryId,
+  });
+
   const { data: draws = [] } = useQuery({
     queryKey: ['commission-draws', tenantId, selectedRepId, pipelineEntryId],
     queryFn: async () => {
@@ -104,7 +124,7 @@ export function DrawTally({
           *,
           profiles!commission_draws_user_id_fkey(first_name, last_name),
           pipeline_entries!commission_draws_pipeline_entry_id_fkey(
-            id, lead_name, contact_number,
+            id, lead_name, contact_number, status,
             contacts!pipeline_entries_contact_id_fkey(first_name, last_name, address_street)
           )
         `)
