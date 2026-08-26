@@ -716,6 +716,12 @@ export const PipelineStageManager: React.FC = () => {
                                   Converts to Project
                                 </Badge>
                               )}
+                              {stage.is_payout_point && (
+                                <Badge className="shrink-0 bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800">
+                                  <BadgeDollarSign className="h-3 w-3 mr-1" />
+                                  Capped Out / Paid
+                                </Badge>
+                              )}
                             </div>
 
                             <div className="flex items-center gap-1">
@@ -738,6 +744,28 @@ export const PipelineStageManager: React.FC = () => {
                                     {stage.is_conversion_point
                                       ? 'This stage converts leads to projects. Click to remove.'
                                       : 'Set as conversion point — leads reaching this stage become projects'}
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant={stage.is_payout_point ? "default" : "ghost"}
+                                      size="icon"
+                                      className={cn(
+                                        "h-8 w-8",
+                                        stage.is_payout_point && "bg-amber-600 hover:bg-amber-700 text-white"
+                                      )}
+                                      onClick={() => togglePayoutPoint(stage.id)}
+                                    >
+                                      <BadgeDollarSign className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    {stage.is_payout_point
+                                      ? 'This stage marks projects paid/capped out. Click to remove.'
+                                      : 'Set as capped-out point — projects here leave open A/R and upcoming commissions'}
                                   </TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>
