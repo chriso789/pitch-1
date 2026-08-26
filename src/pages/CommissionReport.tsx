@@ -594,7 +594,7 @@ export default function CommissionReport() {
         {effectiveTenantId && (
           <DrawTally
             tenantId={effectiveTenantId}
-            totalEarnedCommissions={totalCommissions}
+            totalEarnedCommissions={totalEarnedAll}
             selectedRepId={selectedRep}
             isManager={!!isManager}
           />
