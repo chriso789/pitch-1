@@ -72,6 +72,7 @@ export default function CommissionReport() {
     end: format(endOfMonth(new Date()), 'yyyy-MM-dd'),
   });
   const [selectedRep, setSelectedRep] = useState<string>('all');
+  const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [sortColumn, setSortColumn] = useState<string>('commissionAmount');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
@@ -121,6 +122,26 @@ export default function CommissionReport() {
       return data
         .filter(s => !EXCLUDED_STATUSES.includes(s.key))
         .map(s => s.key);
+    },
+    enabled: !!effectiveTenantId,
+  });
+
+  // Available pipeline stages (key + display name) for the status filter dropdown.
+  const { data: statusStageOptions = [] } = useQuery({
+    queryKey: ['commission-status-stages', effectiveTenantId],
+    queryFn: async () => {
+      if (!effectiveTenantId) return [];
+      const { data } = await supabase
+        .from('pipeline_stages')
+        .select('key, name, stage_order')
+        .eq('tenant_id', effectiveTenantId)
+        .eq('is_active', true)
+        .gte('stage_order', MIN_STAGE_ORDER)
+        .order('stage_order', { ascending: true });
+      if (!data) return [];
+      return data
+        .filter(s => !EXCLUDED_STATUSES.includes(s.key))
+        .map(s => ({ key: s.key, name: s.name || s.key }));
     },
     enabled: !!effectiveTenantId,
   });
@@ -393,12 +414,22 @@ export default function CommissionReport() {
     c => !EXCLUDED_STATUSES.includes((c.status || '').toLowerCase())
   );
 
-  // Summary stats
-  const totalJobs = earnedCommissions.length;
-  const totalRevenue = earnedCommissions.reduce((sum, c) => sum + c.contractValue, 0);
-  const totalCommissions = earnedCommissions.reduce((sum, c) => sum + c.commissionAmount, 0);
+  // Apply the optional status filter selected in the Filters card.
+  const filteredCommissions =
+    selectedStatus === 'all'
+      ? earnedCommissions
+      : earnedCommissions.filter(c => c.status === selectedStatus);
+
+  // Summary stats (reflect the active status filter)
+  const totalJobs = filteredCommissions.length;
+  const totalRevenue = filteredCommissions.reduce((sum, c) => sum + c.contractValue, 0);
+  const totalCommissions = filteredCommissions.reduce((sum, c) => sum + c.commissionAmount, 0);
   const pendingCommissions = totalCommissions; // All are pending until paid via commission_earnings
   const paidCommissions = 0;
+
+  // Unfiltered earned total — DrawTally's net-owed math must reflect ALL earned
+  // commissions, not just the rows visible under the status filter.
+  const totalEarnedAll = earnedCommissions.reduce((sum, c) => sum + c.commissionAmount, 0);
 
   const handleSort = (column: string) => {
     if (sortColumn === column) {
@@ -409,7 +440,7 @@ export default function CommissionReport() {
     }
   };
 
-  const sortedCommissions = [...earnedCommissions].sort((a, b) => {
+  const sortedCommissions = [...filteredCommissions].sort((a, b) => {
     let valA: any, valB: any;
     switch (sortColumn) {
       case 'leadName': valA = a.leadName?.toLowerCase() || ''; valB = b.leadName?.toLowerCase() || ''; break;
@@ -451,7 +482,7 @@ export default function CommissionReport() {
 
   const handleExportCSV = () => {
     const headers = ['Lead', 'Customer', 'Address', 'Stage', 'Rep', 'Contract Value', 'Materials', 'Labor', 'Overhead', 'Other Charges', 'Gross Profit', 'Commission Type', 'Commission Rate', 'Commission Amount', 'Date'];
-    const rows = commissions.map(c => [
+    const rows = filteredCommissions.map(c => [
       c.leadName, c.customerName, c.address, c.stageName, c.repName,
       c.contractValue, c.materialCost, c.laborCost, c.overheadAmount, c.otherCharges, c.grossProfit,
       c.commissionType, c.commissionRate, c.commissionAmount, c.createdAt,
@@ -495,7 +526,7 @@ export default function CommissionReport() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="space-y-2">
                 <Label>Start Date</Label>
                 <Input
@@ -530,6 +561,22 @@ export default function CommissionReport() {
                   </Select>
                 </div>
               )}
+              <div className="space-y-2">
+                <Label>Status</Label>
+                <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Statuses" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    {statusStageOptions.map(stage => (
+                      <SelectItem key={stage.key} value={stage.key}>
+                        {stage.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -547,7 +594,7 @@ export default function CommissionReport() {
         {effectiveTenantId && (
           <DrawTally
             tenantId={effectiveTenantId}
-            totalEarnedCommissions={totalCommissions}
+            totalEarnedCommissions={totalEarnedAll}
             selectedRepId={selectedRep}
             isManager={!!isManager}
           />
@@ -556,14 +603,14 @@ export default function CommissionReport() {
         {/* Commission Table */}
         <Card>
           <CardHeader>
-            <CardTitle>Commission Details ({commissions.length} jobs)</CardTitle>
+            <CardTitle>Commission Details ({sortedCommissions.length} jobs)</CardTitle>
           </CardHeader>
           <CardContent>
             {isLoading ? (
               <div className="text-center py-8 text-muted-foreground">Loading commission data...</div>
-            ) : commissions.length === 0 ? (
+            ) : sortedCommissions.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
-                No jobs at project status or beyond found for the selected period
+                No jobs match the selected filters
               </div>
             ) : (
               <div 
