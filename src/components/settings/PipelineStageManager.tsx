@@ -523,6 +523,41 @@ export const PipelineStageManager: React.FC = () => {
     }
   };
 
+  const togglePayoutPoint = async (stageId: string) => {
+    const stage = stages.find(s => s.id === stageId);
+    if (!stage) return;
+
+    const newValue = !stage.is_payout_point;
+
+    try {
+      if (newValue) {
+        await supabase
+          .from('pipeline_stages')
+          .update({ is_payout_point: false, updated_at: new Date().toISOString() })
+          .eq('tenant_id', effectiveTenantId)
+          .eq('is_payout_point', true);
+      }
+
+      const { error } = await supabase
+        .from('pipeline_stages')
+        .update({ is_payout_point: newValue, updated_at: new Date().toISOString() })
+        .eq('id', stageId);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Success',
+        description: newValue
+          ? `"${stage.name}" is now the capped-out point — projects here leave open A/R and upcoming commissions`
+          : `"${stage.name}" is no longer the capped-out point`,
+      });
+      fetchStages();
+    } catch (error) {
+      console.error('Error toggling payout point:', error);
+      toast({ title: 'Error', description: 'Failed to update capped-out point', variant: 'destructive' });
+    }
+  };
+
   const toggleConversionPoint = async (stageId: string) => {
     const stage = stages.find(s => s.id === stageId);
     if (!stage) return;
