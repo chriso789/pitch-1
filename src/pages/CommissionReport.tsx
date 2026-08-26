@@ -414,10 +414,16 @@ export default function CommissionReport() {
     c => !EXCLUDED_STATUSES.includes((c.status || '').toLowerCase())
   );
 
-  // Summary stats
-  const totalJobs = earnedCommissions.length;
-  const totalRevenue = earnedCommissions.reduce((sum, c) => sum + c.contractValue, 0);
-  const totalCommissions = earnedCommissions.reduce((sum, c) => sum + c.commissionAmount, 0);
+  // Apply the optional status filter selected in the Filters card.
+  const filteredCommissions =
+    selectedStatus === 'all'
+      ? earnedCommissions
+      : earnedCommissions.filter(c => c.status === selectedStatus);
+
+  // Summary stats (reflect the active status filter)
+  const totalJobs = filteredCommissions.length;
+  const totalRevenue = filteredCommissions.reduce((sum, c) => sum + c.contractValue, 0);
+  const totalCommissions = filteredCommissions.reduce((sum, c) => sum + c.commissionAmount, 0);
   const pendingCommissions = totalCommissions; // All are pending until paid via commission_earnings
   const paidCommissions = 0;
 
@@ -430,7 +436,7 @@ export default function CommissionReport() {
     }
   };
 
-  const sortedCommissions = [...earnedCommissions].sort((a, b) => {
+  const sortedCommissions = [...filteredCommissions].sort((a, b) => {
     let valA: any, valB: any;
     switch (sortColumn) {
       case 'leadName': valA = a.leadName?.toLowerCase() || ''; valB = b.leadName?.toLowerCase() || ''; break;
