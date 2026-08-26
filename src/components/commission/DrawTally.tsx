@@ -256,23 +256,36 @@ export function DrawTally({
   });
 
 
+  // A draw is "recovered" once the project it is attached to is capped out /
+  // settled — it then stops counting against the rep's open draw balance.
+  const { settledKeys } = useSettledStages();
+  const isRecovered = (draw: any) => {
+    const status = draw?.pipeline_entries?.status;
+    return !!status && settledKeys.includes(status);
+  };
 
   const totalDraws = draws.reduce((sum, d) => sum + Number(d.amount), 0);
+  const recoveredDraws = draws.reduce(
+    (sum, d) => sum + (isRecovered(d) ? Number(d.amount || 0) : 0),
+    0,
+  );
+  const openDraws = totalDraws - recoveredDraws;
 
   const repBreakdown = useMemo(() => {
-    const map = new Map<string, { userId: string; name: string; total: number; count: number }>();
+    const map = new Map<string, { userId: string; name: string; total: number; open: number; count: number }>();
     draws.forEach((d: any) => {
       const p = d.profiles;
       const name = p ? `${p.first_name || ''} ${p.last_name || ''}`.trim() || 'Unknown rep' : 'Unknown rep';
-      const existing = map.get(d.user_id) || { userId: d.user_id, name, total: 0, count: 0 };
+      const existing = map.get(d.user_id) || { userId: d.user_id, name, total: 0, open: 0, count: 0 };
       existing.total += Number(d.amount || 0);
+      if (!isRecovered(d)) existing.open += Number(d.amount || 0);
       existing.count += 1;
       map.set(d.user_id, existing);
     });
     return Array.from(map.values()).sort((a, b) => b.total - a.total);
-  }, [draws]);
+  }, [draws, settledKeys]);
 
-  const netOwed = totalEarnedCommissions - totalDraws;
+  const netOwed = totalEarnedCommissions - openDraws;
 
   const jobLabel = (entry: any) => {
     if (!entry) return '—';
