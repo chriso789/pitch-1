@@ -165,6 +165,18 @@ function isImage(url: string, mimeType?: string): boolean {
   return /\.(png|jpe?g|webp|gif|heic|heif|bmp|tiff?)(\?.*)?$/.test(lower);
 }
 
+async function downloadFromStorage(bucket: string, path: string): Promise<DocumentBytes> {
+  const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+  const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!SUPABASE_URL || !SERVICE_ROLE) throw new Error("Storage credentials unavailable");
+  const resp = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}/${path}`, {
+    headers: { Authorization: `Bearer ${SERVICE_ROLE}`, apikey: SERVICE_ROLE },
+  });
+  if (!resp.ok) throw new Error(`Failed to read ${bucket}/${path}: ${resp.status}`);
+  const mimeType = (resp.headers.get("content-type") || "application/octet-stream").split(";")[0].trim();
+  return { arrayBuffer: await resp.arrayBuffer(), mimeType };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -172,12 +184,13 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { document_url, auto_persist, pipeline_entry_id, project_id, source_file_name } = body || {};
+    const { auto_persist, pipeline_entry_id, project_id, source_file_name, bucket, storage_path } = body || {};
     let tenant_id: string | null = body?.tenant_id || null;
+    const document_url: string | null = body?.document_url || null;
 
-    if (!document_url) {
+    if (!document_url && !(bucket && storage_path)) {
       return new Response(
-        JSON.stringify({ error: "document_url is required" }),
+        JSON.stringify({ error: "document_url or bucket + storage_path is required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -187,47 +200,42 @@ Deno.serve(async (req) => {
       throw new Error("Missing LOVABLE_API_KEY");
     }
 
-    console.log("[parse-invoice] Extracting data from:", document_url);
+    console.log("[parse-invoice] Extracting data from:", document_url || `${bucket}/${storage_path}`);
 
     let userContent: Array<Record<string, unknown>>;
     let pdfTextFallback: string | null = null;
 
-    if (isImage(document_url)) {
-      // Images can be sent directly as URLs
+    // Always fetch the bytes ourselves — private storage URLs cannot be read by
+    // the AI gateway, and signed URLs may be unavailable to the caller.
+    const sourceLabel = storage_path || document_url || "";
+    const { arrayBuffer, mimeType } = bucket && storage_path
+      ? await downloadFromStorage(bucket, storage_path)
+      : await fetchDocumentAsBytes(document_url!);
+
+    if (isPdf(sourceLabel, mimeType)) {
+      console.log("[parse-invoice] PDF detected, extracting text");
+      const extractedText = await extractPdfInvoiceText(arrayBuffer);
+      if (!extractedText.trim()) {
+        throw new Error("No readable text found in PDF. Please upload a text-based supplier invoice or add line items manually.");
+      }
+      pdfTextFallback = extractedText;
+      userContent = [
+        {
+          type: "text",
+          text: `Extract all invoice data from this PDF text: the vendor name, invoice number, invoice date, every line item (description, quantity, unit price, line total), subtotal, tax, and total amount.\n\n${extractedText}`
+        }
+      ];
+    } else {
+      const dataUrl = bufferToDataUrl(arrayBuffer, isImage(sourceLabel, mimeType) ? mimeType : "image/png");
       userContent = [
         {
           type: "text",
           text: "Extract all invoice data from this document image: the vendor name, invoice number, invoice date, every line item (description, quantity, unit price, line total), subtotal, tax, and total amount."
         },
-        { type: "image_url", image_url: { url: document_url } }
+        { type: "image_url", image_url: { url: dataUrl } }
       ];
-    } else {
-      console.log("[parse-invoice] Non-image format detected, extracting PDF text");
-      const { arrayBuffer, mimeType } = await fetchDocumentAsBytes(document_url);
-
-      if (isPdf(document_url, mimeType)) {
-        const extractedText = await extractPdfInvoiceText(arrayBuffer);
-        if (!extractedText.trim()) {
-          throw new Error("No readable text found in PDF. Please upload a text-based supplier invoice or add line items manually.");
-        }
-        pdfTextFallback = extractedText;
-        userContent = [
-          {
-            type: "text",
-            text: `Extract all invoice data from this PDF text: the vendor name, invoice number, invoice date, every line item (description, quantity, unit price, line total), subtotal, tax, and total amount.\n\n${extractedText}`
-          }
-        ];
-      } else {
-        const dataUrl = bufferToDataUrl(arrayBuffer, mimeType);
-        userContent = [
-          {
-            type: "text",
-            text: "Extract all invoice data from this document: the vendor name, invoice number, invoice date, every line item (description, quantity, unit price, line total), subtotal, tax, and total amount."
-          },
-          { type: "image_url", image_url: { url: dataUrl } }
-        ];
-      }
     }
+
 
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
