@@ -172,6 +172,42 @@ export function DrawTally({
     },
   });
 
+  // Attach a draw straight to the project being viewed.
+  const addQuickDraw = useMutation({
+    mutationFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+      const targetUserId = selectedRepId && selectedRepId !== 'all' ? selectedRepId : paidToUserId;
+      if (!targetUserId) throw new Error('No rep assigned to this job');
+      if (!pipelineEntryId) throw new Error('Missing project');
+
+      const { error } = await supabase.from('commission_draws').insert({
+        tenant_id: tenantId,
+        user_id: targetUserId,
+        amount: parseFloat(quickAmount),
+        draw_date: quickDate,
+        notes: 'Job draw',
+        pipeline_entry_id: pipelineEntryId,
+        created_by: user.id,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['commission-draws'] });
+      queryClient.invalidateQueries({ queryKey: ['project-draws'] });
+      queryClient.invalidateQueries({ queryKey: ['rep-draw-ledger'] });
+      queryClient.invalidateQueries({ queryKey: ['draw-report'] });
+      setQuickAmount('');
+      setQuickDrawEnabled(false);
+      toast({ title: 'Draw attached to job' });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    },
+  });
+
+
+
   const totalDraws = draws.reduce((sum, d) => sum + Number(d.amount), 0);
   const netOwed = totalEarnedCommissions - totalDraws;
 
