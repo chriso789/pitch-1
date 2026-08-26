@@ -43,21 +43,32 @@ export function MyMoneyContent() {
       ['master', 'corporate', 'office_admin', 'regional_manager', 'sales_manager'].includes(r.role)
   );
 
-  // Get qualifying stages
+  // Qualifying stages: everything at or after the tenant's conversion point, so
+  // converted (not yet completed) jobs show their upcoming commission from day one.
   const { data: qualifyingStageKeys = [] } = useQuery({
     queryKey: ['my-money-stages', currentUser?.tenant_id],
     queryFn: async () => {
       if (!currentUser?.tenant_id) return [];
+      const { data: conversionStage } = await supabase
+        .from('pipeline_stages')
+        .select('stage_order')
+        .eq('tenant_id', currentUser.tenant_id)
+        .eq('is_conversion_point', true)
+        .order('stage_order', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      const minOrder = conversionStage?.stage_order ?? 4;
       const { data } = await supabase
         .from('pipeline_stages')
         .select('key, stage_order')
         .eq('tenant_id', currentUser.tenant_id)
-        .gte('stage_order', 6);
+        .gte('stage_order', minOrder);
       if (!data) return [];
       return data.filter(s => !['lost', 'canceled'].includes(s.key)).map(s => s.key);
     },
     enabled: !!currentUser?.tenant_id,
   });
+
 
   // Get my commissions (current user only)
   const { data: myCommissions = [] } = useQuery({
