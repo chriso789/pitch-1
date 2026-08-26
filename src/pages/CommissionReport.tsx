@@ -427,6 +427,10 @@ export default function CommissionReport() {
   const pendingCommissions = totalCommissions; // All are pending until paid via commission_earnings
   const paidCommissions = 0;
 
+  // Unfiltered earned total — DrawTally's net-owed math must reflect ALL earned
+  // commissions, not just the rows visible under the status filter.
+  const totalEarnedAll = earnedCommissions.reduce((sum, c) => sum + c.commissionAmount, 0);
+
   const handleSort = (column: string) => {
     if (sortColumn === column) {
       setSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
