@@ -21,6 +21,7 @@ import { formatCurrency } from '@/lib/commission-calculator';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { useSettledStages } from '@/hooks/useSettledStages';
 
 interface DrawTallyProps {
   tenantId: string;
@@ -94,6 +95,26 @@ export function DrawTally({
     enabled: !!tenantId && !!paidToUserId && !pipelineEntryId,
   });
 
+  // All tenant jobs (used by the inline "Applied To" dropdown on each draw row).
+  const { data: allJobs = [] } = useQuery({
+    queryKey: ['draw-all-jobs', tenantId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('pipeline_entries')
+        .select(`
+          id, lead_name, status, contact_number, assigned_to,
+          contacts!pipeline_entries_contact_id_fkey(first_name, last_name, address_street)
+        `)
+        .eq('tenant_id', tenantId)
+        .eq('is_deleted', false)
+        .order('created_at', { ascending: false })
+        .limit(500);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!tenantId && isManager && !pipelineEntryId,
+  });
+
   const { data: draws = [] } = useQuery({
     queryKey: ['commission-draws', tenantId, selectedRepId, pipelineEntryId],
     queryFn: async () => {
@@ -103,7 +124,7 @@ export function DrawTally({
           *,
           profiles!commission_draws_user_id_fkey(first_name, last_name),
           pipeline_entries!commission_draws_pipeline_entry_id_fkey(
-            id, lead_name, contact_number,
+            id, lead_name, contact_number, status,
             contacts!pipeline_entries_contact_id_fkey(first_name, last_name, address_street)
           )
         `)
@@ -176,6 +197,30 @@ export function DrawTally({
     },
   });
 
+  // Attach / re-attach an existing draw to a project from the table row.
+  const assignDrawJob = useMutation({
+    mutationFn: async ({ drawId, entryId }: { drawId: string; entryId: string | null }) => {
+      const { error } = await supabase
+        .from('commission_draws')
+        .update({ pipeline_entry_id: entryId })
+        .eq('id', drawId)
+        .eq('tenant_id', tenantId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['commission-draws'] });
+      queryClient.invalidateQueries({ queryKey: ['project-draws'] });
+      queryClient.invalidateQueries({ queryKey: ['rep-draw-ledger'] });
+      queryClient.invalidateQueries({ queryKey: ['draw-report'] });
+      toast({ title: 'Draw linked to project' });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    },
+  });
+
+
+
   // Attach a draw straight to the project being viewed.
   const addQuickDraw = useMutation({
     mutationFn: async () => {
@@ -211,23 +256,36 @@ export function DrawTally({
   });
 
 
+  // A draw is "recovered" once the project it is attached to is capped out /
+  // settled — it then stops counting against the rep's open draw balance.
+  const { settledKeys } = useSettledStages();
+  const isRecovered = (draw: any) => {
+    const status = draw?.pipeline_entries?.status;
+    return !!status && settledKeys.includes(status);
+  };
 
   const totalDraws = draws.reduce((sum, d) => sum + Number(d.amount), 0);
+  const recoveredDraws = draws.reduce(
+    (sum, d) => sum + (isRecovered(d) ? Number(d.amount || 0) : 0),
+    0,
+  );
+  const openDraws = totalDraws - recoveredDraws;
 
   const repBreakdown = useMemo(() => {
-    const map = new Map<string, { userId: string; name: string; total: number; count: number }>();
+    const map = new Map<string, { userId: string; name: string; total: number; open: number; count: number }>();
     draws.forEach((d: any) => {
       const p = d.profiles;
       const name = p ? `${p.first_name || ''} ${p.last_name || ''}`.trim() || 'Unknown rep' : 'Unknown rep';
-      const existing = map.get(d.user_id) || { userId: d.user_id, name, total: 0, count: 0 };
+      const existing = map.get(d.user_id) || { userId: d.user_id, name, total: 0, open: 0, count: 0 };
       existing.total += Number(d.amount || 0);
+      if (!isRecovered(d)) existing.open += Number(d.amount || 0);
       existing.count += 1;
       map.set(d.user_id, existing);
     });
     return Array.from(map.values()).sort((a, b) => b.total - a.total);
-  }, [draws]);
+  }, [draws, settledKeys]);
 
-  const netOwed = totalEarnedCommissions - totalDraws;
+  const netOwed = totalEarnedCommissions - openDraws;
 
   const jobLabel = (entry: any) => {
     if (!entry) return '—';
@@ -390,7 +448,7 @@ export function DrawTally({
         )}
 
         {/* Summary row */}
-        <div className="grid grid-cols-3 gap-4 mb-4 p-3 rounded-lg bg-muted/50">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4 p-3 rounded-lg bg-muted/50">
           <div className="text-center">
             <div className="text-xs text-muted-foreground">Total Earned</div>
             <div className="text-lg font-bold text-green-600">{formatCurrency(totalEarnedCommissions)}</div>
@@ -419,6 +477,7 @@ export function DrawTally({
                           <TableHead>Rep</TableHead>
                           <TableHead className="text-right">Draws</TableHead>
                           <TableHead className="text-right">Total</TableHead>
+                          <TableHead className="text-right">Open</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -429,6 +488,9 @@ export function DrawTally({
                             <TableCell className="text-right text-sm font-medium text-red-600">
                               -{formatCurrency(r.total)}
                             </TableCell>
+                            <TableCell className="text-right text-sm font-medium text-amber-600">
+                              {formatCurrency(r.open)}
+                            </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -438,6 +500,16 @@ export function DrawTally({
               </Dialog>
             ) : (
               <div className="text-lg font-bold text-red-600">-{formatCurrency(totalDraws)}</div>
+            )}
+          </div>
+
+          <div className="text-center">
+            <div className="text-xs text-muted-foreground">Open Draw Balance</div>
+            <div className="text-lg font-bold text-amber-600">{formatCurrency(openDraws)}</div>
+            {recoveredDraws > 0 && (
+              <div className="text-[10px] text-muted-foreground">
+                {formatCurrency(recoveredDraws)} recovered at cap out
+              </div>
             )}
           </div>
 
@@ -477,11 +549,48 @@ export function DrawTally({
                         ? `${draw.profiles.first_name} ${draw.profiles.last_name}`
                         : 'Unknown'}
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground truncate max-w-[200px]">
-                      {draw.pipeline_entries ? jobLabel(draw.pipeline_entries) : 'Unassigned'}
+                    <TableCell className="text-sm text-muted-foreground max-w-[240px]">
+                      {isManager && !pipelineEntryId ? (
+                        <Select
+                          value={draw.pipeline_entry_id || 'unassigned'}
+                          onValueChange={v =>
+                            assignDrawJob.mutate({
+                              drawId: draw.id,
+                              entryId: v === 'unassigned' ? null : v,
+                            })
+                          }
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue placeholder="Unassigned" />
+                          </SelectTrigger>
+                          <SelectContent className="max-h-[300px]">
+                            <SelectItem value="unassigned">Unassigned</SelectItem>
+                            {allJobs
+                              .filter((j: any) => !j.assigned_to || j.assigned_to === draw.user_id)
+                              .map((j: any) => (
+                                <SelectItem key={j.id} value={j.id}>
+                                  {jobLabel(j)}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <span className="truncate block">
+                          {draw.pipeline_entries ? jobLabel(draw.pipeline_entries) : 'Unassigned'}
+                        </span>
+                      )}
                     </TableCell>
-                    <TableCell className="text-right font-medium text-red-600">
-                      -{formatCurrency(Number(draw.amount))}
+                    <TableCell className="text-right font-medium">
+                      {isRecovered(draw) ? (
+                        <span className="text-muted-foreground line-through">
+                          -{formatCurrency(Number(draw.amount))}
+                        </span>
+                      ) : (
+                        <span className="text-red-600">-{formatCurrency(Number(draw.amount))}</span>
+                      )}
+                      {isRecovered(draw) && (
+                        <div className="text-[10px] text-green-600">Recovered · capped out</div>
+                      )}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground truncate max-w-[150px]">
                       {draw.notes || '-'}
