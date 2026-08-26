@@ -147,6 +147,7 @@ export function DrawTally({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['commission-draws'] });
       queryClient.invalidateQueries({ queryKey: ['project-draws'] });
+      queryClient.invalidateQueries({ queryKey: ['rep-draw-ledger'] });
       queryClient.invalidateQueries({ queryKey: ['draw-report'] });
       setOpen(false);
       setAmount('');
@@ -167,6 +168,7 @@ export function DrawTally({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['commission-draws'] });
       queryClient.invalidateQueries({ queryKey: ['project-draws'] });
+      queryClient.invalidateQueries({ queryKey: ['rep-draw-ledger'] });
       queryClient.invalidateQueries({ queryKey: ['draw-report'] });
       toast({ title: 'Draw removed' });
     },
@@ -195,6 +197,7 @@ export function DrawTally({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['commission-draws'] });
       queryClient.invalidateQueries({ queryKey: ['project-draws'] });
+      queryClient.invalidateQueries({ queryKey: ['rep-draw-ledger'] });
       queryClient.invalidateQueries({ queryKey: ['rep-draw-ledger'] });
       queryClient.invalidateQueries({ queryKey: ['draw-report'] });
       setQuickAmount('');
