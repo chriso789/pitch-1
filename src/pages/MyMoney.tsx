@@ -129,8 +129,22 @@ export function MyMoneyContent() {
     enabled: !!currentUser?.id && qualifyingStageKeys.length > 0,
   });
 
-  const totalEarned = myCommissions.reduce((sum, c) => sum + c.commissionAmount, 0);
-  const totalContract = myCommissions.reduce((sum, c) => sum + c.contractValue, 0);
+  // Tag each job as settled (capped out / paid) so upcoming commission totals
+  // only count what is still owed, while paid jobs stay viewable via the filter.
+  const taggedCommissions = useMemo(() => {
+    const settledSet = new Set(settledKeys);
+    return myCommissions.map(c => ({ ...c, settled: settledSet.has(c.status) }));
+  }, [myCommissions, settledKeys]);
+
+  const openCommissions = taggedCommissions.filter(c => !c.settled);
+  const paidCommissions = taggedCommissions.filter(c => c.settled);
+
+  const visibleCommissions =
+    jobView === 'paid' ? paidCommissions : jobView === 'all' ? taggedCommissions : openCommissions;
+
+  const totalEarned = openCommissions.reduce((sum, c) => sum + c.commissionAmount, 0);
+  const totalPaidOut = paidCommissions.reduce((sum, c) => sum + c.commissionAmount, 0);
+  const totalContract = openCommissions.reduce((sum, c) => sum + c.contractValue, 0);
 
   return (
       <div className="space-y-6">
