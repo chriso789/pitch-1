@@ -197,6 +197,30 @@ export function DrawTally({
     },
   });
 
+  // Attach / re-attach an existing draw to a project from the table row.
+  const assignDrawJob = useMutation({
+    mutationFn: async ({ drawId, entryId }: { drawId: string; entryId: string | null }) => {
+      const { error } = await supabase
+        .from('commission_draws')
+        .update({ pipeline_entry_id: entryId })
+        .eq('id', drawId)
+        .eq('tenant_id', tenantId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['commission-draws'] });
+      queryClient.invalidateQueries({ queryKey: ['project-draws'] });
+      queryClient.invalidateQueries({ queryKey: ['rep-draw-ledger'] });
+      queryClient.invalidateQueries({ queryKey: ['draw-report'] });
+      toast({ title: 'Draw linked to project' });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    },
+  });
+
+
+
   // Attach a draw straight to the project being viewed.
   const addQuickDraw = useMutation({
     mutationFn: async () => {
