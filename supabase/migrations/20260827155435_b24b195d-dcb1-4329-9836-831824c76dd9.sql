@@ -1,0 +1,1 @@
+REVOKE EXECUTE ON FUNCTION public.prevent_duplicate_contact() FROM PUBLIC, anon, authenticated;
