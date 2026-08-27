@@ -65323,9 +65323,14 @@ export type Database = {
         Args: { _supplier: string; _tenant_id: string }
         Returns: string
       }
+      normalize_address_key: { Args: { _addr: string }; Returns: string }
       normalize_email: { Args: { email_text: string }; Returns: string }
       normalize_material_description: {
         Args: { input: string }
+        Returns: string
+      }
+      normalize_person_key: {
+        Args: { _first: string; _last: string }
         Returns: string
       }
       normalize_phone: { Args: { phone_text: string }; Returns: string }
