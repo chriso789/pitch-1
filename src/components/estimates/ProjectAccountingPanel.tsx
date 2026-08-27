@@ -214,13 +214,11 @@ export default function ProjectAccountingPanel({ projectId }: Props) {
   if (isLoading) {
     return (
       <Card>
-        <CardHeader><CardTitle>Project Accounting</CardTitle></CardHeader>
-        <CardContent><Skeleton className="h-32 w-full" /></CardContent>
+        <CardHeader><CardTitle>QuickBooks Mapping</CardTitle></CardHeader>
+        <CardContent><Skeleton className="h-16 w-full" /></CardContent>
       </Card>
     );
   }
-
-
 
   const snap = data?.snapshot;
   const scopes = data?.scopes ?? [];
@@ -230,24 +228,18 @@ export default function ProjectAccountingPanel({ projectId }: Props) {
   if (!snap) {
     return (
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <AlertCircle className="h-4 w-4" /> Project Accounting
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <AlertCircle className="h-4 w-4 text-amber-500" /> QuickBooks Mapping
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="flex items-center justify-between gap-3 flex-wrap">
           <p className="text-sm text-muted-foreground">
-            No accounting snapshot exists for this project yet. Initialize one to lock
-            in the original contract value, trade classification, and downstream
-            QuickBooks mapping.
+            This project isn't mapped to QuickBooks yet.
           </p>
-          <Button
-            size="sm"
-            onClick={() => initMut.mutate()}
-            disabled={initMut.isPending}
-          >
+          <Button size="sm" onClick={() => initMut.mutate()} disabled={initMut.isPending}>
             {initMut.isPending ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : null}
-            Initialize Accounting
+            Set Up Mapping
           </Button>
         </CardContent>
       </Card>
@@ -261,18 +253,21 @@ export default function ProjectAccountingPanel({ projectId }: Props) {
     };
 
   const anyReviewNeeded = scopes.some((s) => s.classification_review_required);
+  const unmappedScopes = scopes.filter((s) => {
+    const res = resByScope.get(s.id);
+    return !res || res.resolution_status !== "resolved";
+  });
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="flex items-center gap-2">
-          {snap.accounting_readiness === "ready" ||
-          snap.accounting_readiness === "qbo_sync_pending" ? (
+      <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          {qboMapping?.qbo_customer_id ? (
             <CheckCircle2 className="h-4 w-4 text-green-600" />
           ) : (
             <AlertCircle className="h-4 w-4 text-amber-500" />
           )}
-          Project Accounting
+          QuickBooks Mapping
         </CardTitle>
         <div className="flex items-center gap-2">
           <Badge variant={r.tone}>{r.label}</Badge>
@@ -287,22 +282,14 @@ export default function ProjectAccountingPanel({ projectId }: Props) {
             onClick={() => resolveMut.mutate()}
             disabled={resolveMut.isPending}
           >
-            {resolveMut.isPending ? (
-              <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4 mr-1" />
-            )}
-            Refresh Mapping
+            <RefreshCw className={`h-4 w-4 mr-1 ${resolveMut.isPending ? "animate-spin" : ""}`} />
+            Verify
           </Button>
           {(snap.accounting_readiness === "qbo_sync_pending" ||
             snap.accounting_readiness === "qbo_sync_error" ||
             snap.accounting_readiness === "qbo_duplicate_review_required" ||
             (snap.accounting_readiness === "ready" && !qboMapping?.qbo_customer_id)) && (
-            <Button
-              size="sm"
-              onClick={() => syncMut.mutate("manual")}
-              disabled={syncMut.isPending}
-            >
+            <Button size="sm" onClick={() => syncMut.mutate("manual")} disabled={syncMut.isPending}>
               {syncMut.isPending ? (
                 <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
               ) : (
@@ -310,36 +297,13 @@ export default function ProjectAccountingPanel({ projectId }: Props) {
               )}
               {snap.accounting_readiness === "qbo_sync_error" ||
               snap.accounting_readiness === "qbo_duplicate_review_required"
-                ? "Retry QuickBooks Sync"
+                ? "Retry Sync"
                 : "Create in QuickBooks"}
             </Button>
           )}
         </div>
-
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-          <Metric label="Original Contract" value={fmt(snap.original_contract_value_cents)} />
-          <Metric label="Change Orders" value={fmt(snap.approved_change_orders_cents)} />
-          <Metric label="Supplements" value={fmt(snap.approved_supplements_cents)} />
-          <Metric label="Current Contract" value={fmt(snap.current_contract_value_cents)} strong />
-          <Metric label="Invoiced" value={fmt(snap.invoiced_total_cents)} />
-          <Metric label="Paid" value={fmt(snap.paid_total_cents)} />
-          <Metric label="Outstanding AR" value={fmt(snap.outstanding_invoice_balance_cents)} />
-          <Metric label="Uninvoiced Balance" value={fmt(snap.uninvoiced_contract_balance_cents)} />
-        </div>
-
-        {anyReviewNeeded && (
-          <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 flex items-start gap-2">
-            <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-            <span>
-              One or more scopes were classified by a Slice 1 fallback and need a human
-              to confirm the trade, project type, and job type before QuickBooks mapping
-              can complete.
-            </span>
-          </div>
-        )}
-
+      <CardContent className="space-y-2">
         <div className="rounded-md border p-2 text-xs flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2 min-w-0">
             <BookOpen className="h-4 w-4 flex-shrink-0" />
@@ -366,60 +330,20 @@ export default function ProjectAccountingPanel({ projectId }: Props) {
           )}
         </div>
 
-
-        <div className="border-t pt-3">
-          <div className="text-xs uppercase text-muted-foreground mb-2">Scopes &amp; QBO Mapping</div>
-          <div className="space-y-1.5">
-            {scopes.map((s) => {
-              const res = resByScope.get(s.id);
-              const resInfo = res
-                ? resolutionLabel[res.resolution_status] ?? {
-                    label: res.resolution_status,
-                    tone: "secondary" as const,
-                  }
-                : { label: "Not resolved yet", tone: "outline" as const };
-              return (
-                <div key={s.id} className="text-sm">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 min-w-0">
-                      {s.is_primary && (
-                        <Badge variant="outline" className="text-[10px]">Primary</Badge>
-                      )}
-                      <span className="truncate">{s.trade_name_snapshot ?? s.id.slice(0, 8)}</span>
-                      <Badge variant="secondary" className="text-[10px]">{s.status}</Badge>
-                      <Badge variant={resInfo.tone} className="text-[10px]">{resInfo.label}</Badge>
-                    </div>
-                    <span className="tabular-nums">{fmt(s.current_contract_amount_cents)}</span>
-                  </div>
-                  {res?.resolution_reason && (
-                    <div className="text-[11px] text-muted-foreground pl-2 mt-0.5">
-                      {res.resolution_reason}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-            {scopes.length === 0 && (
-              <div className="text-xs text-muted-foreground">No scopes recorded.</div>
-            )}
+        {anyReviewNeeded && (
+          <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+            <span>A scope needs its trade/job type confirmed before QuickBooks mapping can complete.</span>
           </div>
-        </div>
+        )}
 
-        <div className="text-[11px] text-muted-foreground flex flex-wrap gap-x-4 gap-y-1">
-          <span>Classification: {snap.classification_source}</span>
-          <span>Snapshot: {snap.id.slice(0, 8)}</span>
-          <span>Created: {new Date(snap.created_at).toLocaleString()}</span>
-        </div>
+        {unmappedScopes.length > 0 && (
+          <div className="text-xs text-muted-foreground">
+            Unmapped scopes:{" "}
+            {unmappedScopes.map((s) => s.trade_name_snapshot ?? s.id.slice(0, 8)).join(", ")}
+          </div>
+        )}
       </CardContent>
     </Card>
-  );
-}
-
-function Metric({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
-  return (
-    <div>
-      <div className="text-[11px] uppercase text-muted-foreground">{label}</div>
-      <div className={strong ? "font-semibold tabular-nums" : "tabular-nums"}>{value}</div>
-    </div>
   );
 }
