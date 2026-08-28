@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -84,7 +84,9 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
   onSuccess
 }) => {
   const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
+
   const [uploading, setUploading] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanSuccess, setScanSuccess] = useState(false);
@@ -493,7 +495,12 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
             </div>
           ) : (
             <div className="mt-1">
-              <label className="flex items-center justify-center gap-2 p-4 border-2 border-dashed border-border rounded-md cursor-pointer hover:border-primary/50 transition-colors">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading || scanning}
+                className="w-full flex items-center justify-center gap-2 p-4 border-2 border-dashed border-border rounded-md cursor-pointer hover:border-primary/50 transition-colors disabled:opacity-60"
+              >
                 {uploading ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
@@ -502,18 +509,25 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
                 <span className="text-sm text-muted-foreground">
                   {uploading ? 'Uploading...' : 'Upload PDF or Image'}
                 </span>
-                <input
-                  type="file"
-                  className="hidden"
-                  // Accept anything a phone camera / photo library produces
-                  // (including iPhone HEIC/HEIF) plus PDFs from email attachments.
-                  accept="image/*,application/pdf,.pdf,.heic,.heif"
-                  onChange={handleFileUpload}
-                  disabled={uploading || scanning}
-                />
-              </label>
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                // Keep the input in the layout (not display:none) — some
+                // in-app/Capacitor WebViews refuse to open the picker for
+                // hidden inputs triggered via a label.
+                className="sr-only"
+                // Accept anything a phone camera / photo library produces
+                // (including iPhone HEIC/HEIF) plus PDFs from email attachments.
+                accept="image/*,application/pdf,.pdf,.heic,.heif"
+                onChange={(e) => {
+                  handleFileUpload(e);
+                  e.target.value = '';
+                }}
+              />
             </div>
           )}
+
         </div>
 
         {/* Extracted Line Items */}

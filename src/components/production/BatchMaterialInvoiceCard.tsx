@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -96,7 +96,9 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
   onSuccess,
 }) => {
   const { toast } = useToast();
+  const batchFileInputRef = useRef<HTMLInputElement>(null);
   const [rows, setRows] = useState<InvoiceRow[]>([]);
+
   const [submittingAll, setSubmittingAll] = useState(false);
   const [serviceAddress, setServiceAddress] = useState<string>('');
   const [manualForm, setManualForm] = useState({
@@ -502,22 +504,30 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
         )}
       </CardHeader>
       <CardContent className="space-y-3">
-        <label className="flex items-center justify-center gap-2 p-4 border-2 border-dashed border-border rounded-md cursor-pointer hover:border-primary/50 transition-colors">
+        <button
+          type="button"
+          onClick={() => batchFileInputRef.current?.click()}
+          className="w-full flex items-center justify-center gap-2 p-4 border-2 border-dashed border-border rounded-md cursor-pointer hover:border-primary/50 transition-colors"
+        >
           <Upload className="h-4 w-4 text-muted-foreground" />
           <span className="text-sm text-muted-foreground">
             Upload one or many invoices (PDF/Image) — fields auto-fill
           </span>
-          <input
-            type="file"
-            className="hidden"
-            accept=".pdf,.png,.jpg,.jpeg"
-            multiple
-            onChange={e => {
-              handleFiles(e.target.files);
-              e.target.value = '';
-            }}
-          />
-        </label>
+        </button>
+        <input
+          ref={batchFileInputRef}
+          type="file"
+          // Kept in the layout (sr-only, not display:none) so Capacitor and
+          // in-app WebViews reliably open the native file picker.
+          className="sr-only"
+          accept="image/*,application/pdf,.pdf,.heic,.heif"
+          multiple
+          onChange={e => {
+            handleFiles(e.target.files);
+            e.target.value = '';
+          }}
+        />
+
 
         {/* Manual entry form — mirrors the Labor Invoice layout */}
         <div className="border border-border rounded-md p-4 space-y-4">
