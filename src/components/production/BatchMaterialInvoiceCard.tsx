@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -99,7 +99,6 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
 }) => {
   const { toast } = useToast();
   const effectiveTenantId = useEffectiveTenantId();
-  const batchFileInputRef = useRef<HTMLInputElement>(null);
   const [rows, setRows] = useState<InvoiceRow[]>([]);
 
   const [submittingAll, setSubmittingAll] = useState(false);
@@ -509,29 +508,23 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
         )}
       </CardHeader>
       <CardContent className="space-y-3">
-        <button
-          type="button"
-          onClick={() => batchFileInputRef.current?.click()}
-          className="w-full flex items-center justify-center gap-2 p-4 border-2 border-dashed border-border rounded-md cursor-pointer hover:border-primary/50 transition-colors"
-        >
+        <label className="relative flex w-full cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-md border-2 border-dashed border-border p-4 transition-colors hover:border-primary/50 focus-within:border-primary focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
           <Upload className="h-4 w-4 text-muted-foreground" />
           <span className="text-sm text-muted-foreground">
             Upload one or many invoices (PDF/Image) — fields auto-fill
           </span>
-        </button>
-        <input
-          ref={batchFileInputRef}
-          type="file"
-          // Kept in the layout (sr-only, not display:none) so Capacitor and
-          // in-app WebViews reliably open the native file picker.
-          className="sr-only"
-          accept="image/*,application/pdf,.pdf,.heic,.heif"
-          multiple
-          onChange={e => {
-            handleFiles(e.target.files);
-            e.target.value = '';
-          }}
-        />
+          <input
+            type="file"
+            aria-label="Upload one or more material invoices"
+            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+            accept="image/*,application/pdf,.pdf,.heic,.heif"
+            multiple
+            onChange={e => {
+              handleFiles(e.target.files);
+              e.target.value = '';
+            }}
+          />
+        </label>
 
 
         {/* Manual entry form — mirrors the Labor Invoice layout */}
