@@ -30,6 +30,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { BatchMaterialInvoiceCard } from './BatchMaterialInvoiceCard';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { safeStorageUpload } from '@/lib/storage/safeUpload';
 
 interface LineItem {
   description: string;
@@ -84,6 +86,7 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
   onSuccess
 }) => {
   const { toast } = useToast();
+  const effectiveTenantId = useEffectiveTenantId();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
 
@@ -281,24 +284,22 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
 
     setUploading(true);
     try {
-      // Storage RLS requires the first folder to be the user's tenant_id
-      const { data: profile, error: profileErr } = await supabase
-        .from('profiles')
-        .select('tenant_id')
-        .eq('id', (await supabase.auth.getUser()).data.user?.id ?? '')
-        .maybeSingle();
-
-      if (profileErr || !profile?.tenant_id) {
-        throw new Error('Could not resolve your tenant — please re-login.');
+      if (!effectiveTenantId) {
+        throw new Error('Could not resolve the active company — please re-login.');
       }
 
-      const fileExt = file.name.split('.').pop();
+      const fileExt = file.name.split('.').pop() || 'bin';
       const folderId = projectId || pipelineEntryId || 'unknown';
-      const fileName = `${profile.tenant_id}/${folderId}/${invoiceType}-${Date.now()}.${fileExt}`;
+      const fileName = `${effectiveTenantId}/${folderId}/${invoiceType}-${Date.now()}.${fileExt}`;
 
-      const { data, error } = await supabase.storage
-        .from('project-invoices')
-        .upload(fileName, file);
+      const { error } = await safeStorageUpload({
+        bucket: 'project-invoices',
+        path: fileName,
+        file,
+        tenantId: effectiveTenantId,
+        contentType: file.type || 'application/octet-stream',
+        upsert: false,
+      });
 
       if (error) throw error;
 
