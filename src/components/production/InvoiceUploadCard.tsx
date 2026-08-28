@@ -84,7 +84,9 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
   onSuccess
 }) => {
   const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
+
   const [uploading, setUploading] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanSuccess, setScanSuccess] = useState(false);
