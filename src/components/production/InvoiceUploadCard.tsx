@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -87,7 +87,6 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
 }) => {
   const { toast } = useToast();
   const effectiveTenantId = useEffectiveTenantId();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
 
   const [uploading, setUploading] = useState(false);
@@ -496,12 +495,7 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
             </div>
           ) : (
             <div className="mt-1">
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading || scanning}
-                className="w-full flex items-center justify-center gap-2 p-4 border-2 border-dashed border-border rounded-md cursor-pointer hover:border-primary/50 transition-colors disabled:opacity-60"
-              >
+              <label className={`relative flex w-full items-center justify-center gap-2 overflow-hidden rounded-md border-2 border-dashed border-border p-4 transition-colors focus-within:border-primary focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 ${uploading || scanning ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:border-primary/50'}`}>
                 {uploading ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
@@ -510,22 +504,18 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
                 <span className="text-sm text-muted-foreground">
                   {uploading ? 'Uploading...' : 'Upload PDF or Image'}
                 </span>
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                // Keep the input in the layout (not display:none) — some
-                // in-app/Capacitor WebViews refuse to open the picker for
-                // hidden inputs triggered via a label.
-                className="sr-only"
-                // Accept anything a phone camera / photo library produces
-                // (including iPhone HEIC/HEIF) plus PDFs from email attachments.
-                accept="image/*,application/pdf,.pdf,.heic,.heif"
-                onChange={(e) => {
-                  handleFileUpload(e);
-                  e.target.value = '';
-                }}
-              />
+                <input
+                  type="file"
+                  aria-label={`Upload ${invoiceType} invoice`}
+                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
+                  accept="image/*,application/pdf,.pdf,.heic,.heif"
+                  disabled={uploading || scanning}
+                  onChange={(e) => {
+                    handleFileUpload(e);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
             </div>
           )}
 
