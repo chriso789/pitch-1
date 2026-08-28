@@ -22,6 +22,8 @@ import {
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { safeStorageUpload } from '@/lib/storage/safeUpload';
 
 interface LineItem {
   description: string;
@@ -96,6 +98,7 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
   onSuccess,
 }) => {
   const { toast } = useToast();
+  const effectiveTenantId = useEffectiveTenantId();
   const batchFileInputRef = useRef<HTMLInputElement>(null);
   const [rows, setRows] = useState<InvoiceRow[]>([]);
 
@@ -124,6 +127,7 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
             .from('projects')
             .select('pipeline_entry_id')
             .eq('id', projectId)
+            .eq('tenant_id', effectiveTenantId || '')
             .maybeSingle();
           peId = p?.pipeline_entry_id || undefined;
         }
@@ -132,12 +136,14 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
             .from('pipeline_entries')
             .select('contact_id')
             .eq('id', peId)
+            .eq('tenant_id', effectiveTenantId || '')
             .maybeSingle();
           if (pe?.contact_id) {
             const { data: c } = await supabase
               .from('contacts')
               .select('address_street, address_city, address_state, address_zip')
               .eq('id', pe.contact_id)
+              .eq('tenant_id', effectiveTenantId || '')
               .maybeSingle();
             if (c) {
               address = [c.address_street, c.address_city, c.address_state, c.address_zip]
@@ -151,7 +157,7 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
       }
     })();
     return () => { cancelled = true; };
-  }, [projectId, pipelineEntryId]);
+  }, [projectId, pipelineEntryId, effectiveTenantId]);
 
   const patchRow = (id: string, patch: Partial<InvoiceRow>) =>
     setRows(prev => prev.map(r => (r.id === id ? { ...r, ...patch } : r)));
@@ -177,23 +183,22 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
 
   const uploadAndScan = async (file: File, row: InvoiceRow) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('tenant_id')
-        .eq('id', user?.id ?? '')
-        .maybeSingle();
-      if (!profile?.tenant_id) throw new Error('Tenant not found');
+      if (!effectiveTenantId) throw new Error('Active company not found — please re-login.');
 
       const folderId = projectId || pipelineEntryId || 'unknown';
-      const ext = file.name.split('.').pop();
-      const path = `${profile.tenant_id}/${folderId}/material-${Date.now()}-${Math.random()
+      const ext = file.name.split('.').pop() || 'bin';
+      const path = `${effectiveTenantId}/${folderId}/material-${Date.now()}-${Math.random()
         .toString(36)
         .slice(2, 6)}.${ext}`;
 
-      const { error: upErr } = await supabase.storage
-        .from('project-invoices')
-        .upload(path, file);
+      const { error: upErr } = await safeStorageUpload({
+        bucket: 'project-invoices',
+        path,
+        file,
+        tenantId: effectiveTenantId,
+        contentType: file.type || 'application/octet-stream',
+        upsert: false,
+      });
       if (upErr) throw upErr;
 
       const { data: pub } = supabase.storage
