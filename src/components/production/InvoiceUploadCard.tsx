@@ -495,19 +495,19 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
             </div>
           ) : (
             <div className="mt-1">
-              <label className={`relative flex w-full items-center justify-center gap-2 overflow-hidden rounded-md border-2 border-dashed border-border p-4 transition-colors focus-within:border-primary focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 ${uploading || scanning ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:border-primary/50'}`}>
-                {uploading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Upload className="h-4 w-4 text-muted-foreground" />
-                )}
-                <span className="text-sm text-muted-foreground">
-                  {uploading ? 'Uploading...' : 'Upload PDF or Image'}
-                </span>
+              <div className={`flex w-full flex-col items-center gap-2 rounded-md border-2 border-dashed border-border p-4 ${uploading || scanning ? 'opacity-60' : ''}`}>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  {uploading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Upload className="h-4 w-4" />
+                  )}
+                  <span>{uploading ? 'Uploading...' : 'Upload PDF or Image'}</span>
+                </div>
                 <input
                   type="file"
                   aria-label={`Upload ${invoiceType} invoice`}
-                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
+                  className="block w-full text-sm text-muted-foreground file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary-foreground disabled:cursor-not-allowed"
                   accept="image/*,application/pdf,.pdf,.heic,.heif"
                   disabled={uploading || scanning}
                   onChange={(e) => {
@@ -515,7 +515,7 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
                     e.target.value = '';
                   }}
                 />
-              </label>
+              </div>
             </div>
           )}
 

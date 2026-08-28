@@ -508,15 +508,15 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
         )}
       </CardHeader>
       <CardContent className="space-y-3">
-        <label className="relative flex w-full cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-md border-2 border-dashed border-border p-4 transition-colors hover:border-primary/50 focus-within:border-primary focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
-          <Upload className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm text-muted-foreground">
-            Upload one or many invoices (PDF/Image) — fields auto-fill
-          </span>
+        <div className="flex w-full flex-col items-center gap-2 rounded-md border-2 border-dashed border-border p-4">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Upload className="h-4 w-4" />
+            <span>Upload one or many invoices (PDF/Image) — fields auto-fill</span>
+          </div>
           <input
             type="file"
             aria-label="Upload one or more material invoices"
-            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+            className="block w-full text-sm text-muted-foreground file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary-foreground"
             accept="image/*,application/pdf,.pdf,.heic,.heif"
             multiple
             onChange={e => {
@@ -524,7 +524,7 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
               e.target.value = '';
             }}
           />
-        </label>
+        </div>
 
 
         {/* Manual entry form — mirrors the Labor Invoice layout */}
