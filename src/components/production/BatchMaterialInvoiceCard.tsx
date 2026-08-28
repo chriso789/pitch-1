@@ -96,7 +96,9 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
   onSuccess,
 }) => {
   const { toast } = useToast();
+  const batchFileInputRef = useRef<HTMLInputElement>(null);
   const [rows, setRows] = useState<InvoiceRow[]>([]);
+
   const [submittingAll, setSubmittingAll] = useState(false);
   const [serviceAddress, setServiceAddress] = useState<string>('');
   const [manualForm, setManualForm] = useState({
