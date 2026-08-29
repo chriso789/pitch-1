@@ -397,7 +397,8 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
     const mat = Number(e.material_cost || 0);
     const lab = Number(e.labor_cost || 0);
     const preTax = selling - tax;
-    const oh = preTax * (overheadRate / 100);
+    // Overhead is charged on the full gross contract amount (including tax)
+    const oh = selling * (overheadRate / 100);
     const gp = preTax - mat - lab - oh;
     const margin = preTax > 0 ? (gp / preTax) * 100 : 0;
     return {
@@ -468,7 +469,8 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
 
   const salesTaxAmount = combinedSums ? combinedSums.salesTax : ((estimateData as any)?.sales_tax_amount || 0);
   const preTaxSellingPrice = sellingPrice - salesTaxAmount;
-  const overheadAmount = preTaxSellingPrice * (overheadRate / 100);
+  // Overhead is charged on the full gross contract amount (including tax)
+  const overheadAmount = sellingPrice * (overheadRate / 100);
   // Total cost = materials + labor + percentage overhead + other charges (permits, dumps, etc.)
   const totalCost = effectiveMaterialCost + effectiveLaborCost + overheadAmount + otherChargesTotal;
   const grossProfit = preTaxSellingPrice - totalCost;
@@ -601,7 +603,8 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
       const tax = estimate.sales_tax_amount || 0;
       const preTax = newPrice - tax;
       const ohRate = estimate.overhead_percent || overheadRate;
-      const ohAmount = preTax * (ohRate / 100);
+      // Overhead is charged on the full gross contract amount (including tax)
+      const ohAmount = newPrice * (ohRate / 100);
       const profit = preTax - directCost - ohAmount;
       const profitPct = preTax > 0 ? (profit / preTax) * 100 : 0;
 
