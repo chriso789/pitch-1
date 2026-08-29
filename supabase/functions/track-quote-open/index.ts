@@ -53,16 +53,19 @@ Deno.serve(async (req: Request) => {
     // Only notify on the first open of this email
     const alreadyOpened = !!link.email_opened_at;
 
+    const { data: current } = await supabase
+      .from("quote_tracking_links")
+      .select("email_open_count")
+      .eq("id", link.id)
+      .maybeSingle();
+
     await supabase
       .from("quote_tracking_links")
       .update({
         email_opened_at: link.email_opened_at || new Date().toISOString(),
-        email_open_count: undefined,
+        email_open_count: (current?.email_open_count || 0) + 1,
       })
       .eq("id", link.id);
-
-    // increment open count separately (column may not exist on older rows)
-    await supabase.rpc("noop_placeholder").catch(() => {});
 
     if (alreadyOpened) return pixelResponse();
 
