@@ -1389,9 +1389,9 @@ export function EstimatePreviewPanel({
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="none">None</SelectItem>
-                            {jobPhotos.some(p => p.id !== 'aerial') && (
-                              <SelectItem value="uploaded">Uploaded Photo</SelectItem>
-                            )}
+                            <SelectItem value="uploaded">
+                              {jobPhotos.some(p => p.id !== 'aerial') ? 'Job Photo' : 'Job Photo (none uploaded)'}
+                            </SelectItem>
                             <SelectItem value="streetview">
                               {streetViewUrl ? 'Street View' : 'Street View (loading…)'}
                             </SelectItem>
@@ -1400,6 +1400,15 @@ export function EstimatePreviewPanel({
                             </SelectItem>
                           </SelectContent>
                         </Select>
+
+                        {coverPhotoSource === 'uploaded' && jobPhotos.filter(p => p.id !== 'aerial').length === 0 && (
+                          <div className="rounded border border-dashed border-border p-2 text-center space-y-1.5">
+                            <p className="text-[11px] text-muted-foreground">No job photos yet — upload one to use it on the cover.</p>
+                            <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={handleUploadPhotos}>
+                              Upload Photo
+                            </Button>
+                          </div>
+                        )}
 
                         {coverPhotoSource === 'uploaded' && jobPhotos.filter(p => p.id !== 'aerial').length > 0 && (
                           <div className="flex gap-1.5 overflow-x-auto pb-1">
