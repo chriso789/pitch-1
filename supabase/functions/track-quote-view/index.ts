@@ -292,58 +292,8 @@ Deno.serve(async (req: Request) => {
       console.warn('Broadcast failed (non-blocking):', broadcastErr);
     }
 
-    // Send SMS notification to rep on EVERY view
-    try {
-      const { data: repProfile } = await supabase
-        .from("profiles")
-        .select("phone, first_name")
-        .eq("id", trackingLink.sent_by)
-        .single();
+    // SMS + email to the rep are handled by notifySenderEngagement above.
 
-      let repPhone: string | null | undefined = repProfile?.phone;
-      if (!repPhone) {
-        try {
-          const { data: authUser } = await supabase.auth.admin.getUserById(trackingLink.sent_by);
-          repPhone = authUser?.user?.phone || (authUser?.user?.user_metadata?.phone as string | undefined) || null;
-        } catch (_e) { /* ignore */ }
-      }
-
-      if (repPhone) {
-        const viewText = viewCount === 1 ? "just opened" : `viewed again (${viewCount}x)`;
-        const estimateNum = trackingLink.enhanced_estimates?.estimate_number || 'your quote';
-        const locationText = geo.city ? ` From ${geo.city}` : '';
-        
-        const smsMessage = `🔔 ${contactName} ${viewText} quote #${estimateNum}!${locationText}`;
-
-        // Call telnyx-send-sms internally using service role
-        // Pass tenant_id to enable location-based phone number lookup
-        const smsResponse = await fetch(`${supabaseUrl}/functions/v1/telnyx-send-sms`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${supabaseServiceKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            to: repPhone,
-            message: smsMessage,
-            tenant_id: trackingLink.tenant_id,
-            sent_by: trackingLink.sent_by,
-          })
-        });
-
-        if (smsResponse.ok) {
-          console.log(`SMS notification sent to rep ${repProfile.first_name} at ${repPhone}`);
-        } else {
-          const smsError = await smsResponse.text();
-          console.error('Failed to send SMS notification:', smsError);
-        }
-      } else {
-        console.log('Rep has no phone number configured, skipping SMS notification');
-      }
-    } catch (smsError) {
-      // Don't fail the whole request if SMS fails
-      console.error('Error sending SMS notification:', smsError);
-    }
 
     console.log(`Quote viewed: ${trackingLink.id} by ${contactName} from ${geo.city || clientIp}`);
 
