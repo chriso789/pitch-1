@@ -352,6 +352,7 @@ Deno.serve(async (req: Request) => {
       </td>
     </tr>
   </table>
+  <img src="${supabaseUrl}/functions/v1/track-quote-open?t=${trackingToken}" width="1" height="1" alt="" style="display:none;width:1px;height:1px;border:0;" />
 </body>
 </html>
     `;
