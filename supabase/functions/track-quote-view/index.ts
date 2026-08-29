@@ -295,7 +295,15 @@ Deno.serve(async (req: Request) => {
         .eq("id", trackingLink.sent_by)
         .single();
 
-      if (repProfile?.phone) {
+      let repPhone: string | null | undefined = repProfile?.phone;
+      if (!repPhone) {
+        try {
+          const { data: authUser } = await supabase.auth.admin.getUserById(trackingLink.sent_by);
+          repPhone = authUser?.user?.phone || (authUser?.user?.user_metadata?.phone as string | undefined) || null;
+        } catch (_e) { /* ignore */ }
+      }
+
+      if (repPhone) {
         const viewText = viewCount === 1 ? "just opened" : `viewed again (${viewCount}x)`;
         const estimateNum = trackingLink.enhanced_estimates?.estimate_number || 'your quote';
         const locationText = geo.city ? ` From ${geo.city}` : '';
@@ -311,7 +319,7 @@ Deno.serve(async (req: Request) => {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            to: repProfile.phone,
+            to: repPhone,
             message: smsMessage,
             tenant_id: trackingLink.tenant_id,
             sent_by: trackingLink.sent_by,
@@ -319,7 +327,7 @@ Deno.serve(async (req: Request) => {
         });
 
         if (smsResponse.ok) {
-          console.log(`SMS notification sent to rep ${repProfile.first_name} at ${repProfile.phone}`);
+          console.log(`SMS notification sent to rep ${repProfile.first_name} at ${repPhone}`);
         } else {
           const smsError = await smsResponse.text();
           console.error('Failed to send SMS notification:', smsError);
