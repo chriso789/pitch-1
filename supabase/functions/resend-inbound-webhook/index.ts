@@ -1,4 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
+import { notifySenderEngagement } from "../_shared/engagement-notify.ts";
+
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -101,35 +103,78 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
 
+    // ------------------------------------------------------------------
+    // Attach the reply to the same lead/project + rep as the original
+    // outbound message so it shows up in the Comms tab of that record.
+    // ------------------------------------------------------------------
+    let parent: any = null;
+
+    if (threadId) {
+      const { data } = await supabase
+        .from('communication_history')
+        .select('tenant_id, contact_id, pipeline_entry_id, project_id, rep_id')
+        .eq('thread_id', threadId)
+        .eq('direction', 'outbound')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      parent = data;
+    }
+
+    // Fallback: most recent outbound email to this address (quote / document sends)
+    if (!parent) {
+      const { data } = await supabase
+        .from('communication_history')
+        .select('tenant_id, contact_id, pipeline_entry_id, project_id, rep_id, thread_id')
+        .eq('communication_type', 'email')
+        .eq('direction', 'outbound')
+        .ilike('to_address', `%${fromEmail}%`)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      parent = data;
+      if (!threadId && data?.thread_id) threadId = data.thread_id;
+    }
+
     // If no existing thread, generate new thread_id
     if (!threadId) {
       threadId = generateThreadId();
       console.log('Creating new thread:', threadId);
     }
 
+    const tenantId = parent?.tenant_id || contact?.tenant_id || null;
+    const contactId = parent?.contact_id || contact?.id || null;
+    const pipelineEntryId = parent?.pipeline_entry_id || null;
+    const projectId = parent?.project_id || null;
+    // Alert the rep who actually sent the email, not just the assigned rep
+    const repId = parent?.rep_id || contact?.assigned_rep || null;
+
     // Log the received email to communication_history
     const { data: logEntry, error: logError } = await supabase
       .from('communication_history')
       .insert({
-        tenant_id: contact?.tenant_id,
-        contact_id: contact?.id,
-        rep_id: contact?.assigned_rep,
+        tenant_id: tenantId,
+        contact_id: contactId,
+        pipeline_entry_id: pipelineEntryId,
+        project_id: projectId,
+        rep_id: repId,
         communication_type: 'email',
         direction: 'inbound',
         subject: email.subject,
         content: email.text || email.html || '',
-        status: 'received',
         thread_id: threadId,
         message_id: messageId,
         in_reply_to: inReplyTo,
         from_address: email.from,
         to_address: toAddresses.join(', '),
+        delivery_status: 'received',
         metadata: {
           raw_headers: email.headers,
           has_attachments: !!email.attachments?.length,
           attachment_count: email.attachments?.length || 0,
           sender_name: fromName,
-          references: references
+          references: references,
+          matched_via: parent ? 'outbound_thread' : (contact ? 'contact_email' : 'none'),
         }
       })
       .select()
@@ -142,27 +187,50 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log('Email logged successfully:', logEntry?.id);
 
-    // Create a notification for the rep if we found a contact
-    if (contact?.assigned_rep && contact?.tenant_id) {
-      const { error: notifError } = await supabase
-        .from('notifications')
-        .insert({
-          tenant_id: contact.tenant_id,
-          user_id: contact.assigned_rep,
+    // Drop a note on the lead/project so the reply is visible in the record
+    if (pipelineEntryId && tenantId) {
+      try {
+        await supabase.from('internal_notes').insert({
+          tenant_id: tenantId,
+          pipeline_entry_id: pipelineEntryId,
+          contact_id: contactId,
+          author_id: repId,
+          content: `📨 Email reply from ${fromName || fromEmail}: ${(email.text || '').slice(0, 500) || email.subject}`,
+        });
+      } catch (e) {
+        console.error('Error adding internal note:', e);
+      }
+    }
+
+    // Alert the sending rep by in-app + SMS (company number) + email
+    if (repId && tenantId) {
+      try {
+        await notifySenderEngagement({
+          supabase,
+          tenantId,
+          userId: repId,
           type: 'email_received',
           title: 'New Email Reply',
           message: `${fromName || fromEmail} replied: ${email.subject}`,
+          emailSubject: `Reply from ${fromName || fromEmail}`,
+          detailLines: [
+            `<strong>From:</strong> ${fromEmail}`,
+            `<strong>Subject:</strong> ${email.subject || '(no subject)'}`,
+            `<strong>Message:</strong> ${(email.text || '').slice(0, 800)}`,
+          ],
+          actionUrl: pipelineEntryId ? `https://pitch-crm.ai/lead/${pipelineEntryId}` : null,
           metadata: {
-            contact_id: contact.id,
+            contact_id: contactId,
+            pipeline_entry_id: pipelineEntryId,
             communication_id: logEntry?.id,
-            thread_id: threadId
-          }
+            thread_id: threadId,
+          },
         });
-
-      if (notifError) {
-        console.error('Error creating notification:', notifError);
+      } catch (e) {
+        console.error('Error notifying rep:', e);
       }
     }
+
 
     return new Response(
       JSON.stringify({ 

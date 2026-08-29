@@ -141,7 +141,8 @@ const handler = async (req: Request) => {
     const defaultFromDomain = Deno.env.get("RESEND_FROM_DOMAIN") || "resend.dev";
     const fromEmail = emailDomain?.from_email || `photos@${defaultFromDomain}`;
     const fromName = emailDomain?.from_name || companyName;
-    const replyTo = emailDomain?.reply_to_email || profile?.email;
+    // Replies must go to the rep who sent it, not a shared company inbox.
+    const replyTo = profile?.email || emailDomain?.reply_to_email;
 
     const firstName = (body.recipient_name || "").split(" ")[0] || "there";
     const safeMessage = (body.message || "").replace(/</g, "&lt;");
