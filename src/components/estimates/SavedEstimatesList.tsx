@@ -748,7 +748,10 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
                     size="sm"
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleDuplicateEstimate(estimate.id);
+                      const label = estimate.display_name || estimate.estimate_number;
+                      if (window.confirm(`Create a duplicate copy of "${label}"?`)) {
+                        handleDuplicateEstimate(estimate.id);
+                      }
                     }}
                     disabled={duplicatingId === estimate.id || estimate.is_recovered_pdf}
                     className="h-6 w-6 p-0"
