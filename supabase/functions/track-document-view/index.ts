@@ -97,27 +97,32 @@ const handler = async (req: Request) => {
       })
       .eq("id", link.id);
 
-    // Notify sender — only on first view (or every view? send-quote-email notifies every)
+    // Notify the sender on EVERY view: in-app + SMS from company number + email
     const contactName = link.contacts
       ? `${link.contacts.first_name} ${link.contacts.last_name}`
       : link.recipient_name || "A customer";
     const viewWord = isFirstView ? "opened" : "viewed again";
+    const viewCount = (link.view_count || 0) + 1;
 
-    await supabase.from("user_notifications").insert({
-      tenant_id: link.tenant_id,
-      user_id: link.sent_by,
+    await notifySenderEngagement({
+      supabase,
+      tenantId: link.tenant_id,
+      userId: link.sent_by,
       title: "Document Viewed 👀",
       message: `${contactName} ${viewWord} ${doc.filename}`,
+      emailSubject: `👀 ${contactName} viewed ${doc.filename}`,
+      detailLines: [`Device: ${device} · ${browser}`, `Total views: ${viewCount}`],
       type: "document_viewed",
-      priority: isFirstView ? "high" : "normal",
       metadata: {
         tracking_link_id: link.id,
         document_id: doc.id,
         contact_id: link.contact_id,
         pipeline_entry_id: link.pipeline_entry_id,
         ip: clientIp, device, browser,
+        view_count: viewCount,
       },
     });
+
 
     // Realtime broadcast
     try {
