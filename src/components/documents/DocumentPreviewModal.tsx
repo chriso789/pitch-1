@@ -89,9 +89,10 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
       throw new Error(error.message || 'Unable to create a secure document link');
     }
 
-    const signedUrl = (data as { signedUrl?: string; path?: string; bucket?: string; error?: string } | null)?.signedUrl;
+    const payload = data as { signedUrl?: string; path?: string; bucket?: string; error?: string; message?: string } | null;
+    const signedUrl = payload?.signedUrl;
     if (!signedUrl) {
-      throw new Error((data as { error?: string } | null)?.error || 'Unable to create a secure document link');
+      throw new Error(payload?.message || payload?.error || 'Unable to create a secure document link');
     }
 
     return {

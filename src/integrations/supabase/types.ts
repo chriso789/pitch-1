@@ -64609,6 +64609,13 @@ export type Database = {
           tenant_id: string
         }[]
       }
+      find_storage_object_by_filename: {
+        Args: { p_filename: string; p_limit?: number }
+        Returns: {
+          bucket_id: string
+          name: string
+        }[]
+      }
       format_clj_number:
         | {
             Args: { contact_num: string; job_num?: string; lead_num?: string }

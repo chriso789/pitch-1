@@ -143,12 +143,42 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // Last resort: the stored path is stale — locate the object anywhere by filename
+    if (doc.filename) {
+      const { data: matches } = await admin.rpc("find_storage_object_by_filename", {
+        p_filename: doc.filename,
+        p_limit: 5,
+      });
+      for (const match of (matches ?? []) as Array<{ bucket_id: string; name: string }>) {
+        const { data: signed } = await admin.storage
+          .from(match.bucket_id)
+          .createSignedUrl(match.name, Number(expires_in) || 3600);
+        if (signed?.signedUrl) {
+          return json({
+            signedUrl: signed.signedUrl,
+            bucket: match.bucket_id,
+            path: match.name,
+            filename: doc.filename,
+            mime_type: doc.mime_type,
+            recovered_by_filename: true,
+          });
+        }
+      }
+    }
+
     console.warn("[get-document-access-url] no accessible storage object", {
       document_id,
       bucket,
       candidates,
     });
-    return json({ error: "storage_object_not_found", bucket, path: basePath }, 404);
+    // Return 200 so the client can surface a readable message instead of "non-2xx status code"
+    return json({
+      error: "storage_object_not_found",
+      message: "This file is no longer in storage — the record exists but the PDF was removed. Re-generate or re-upload it.",
+      bucket,
+      path: basePath,
+    });
+
 
   } catch (error) {
     console.error("[get-document-access-url] unexpected error", error);
