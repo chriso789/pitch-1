@@ -381,7 +381,7 @@ export default function CommissionReport() {
           ? personalOverhead
           : (Number.isFinite(baseOverhead) && baseOverhead > 0 ? baseOverhead : 10);
         // Overhead is charged on the full gross contract amount (including tax)
-        const overheadAmount = sellingPrice * (overheadRate / 100);
+        const overheadAmount = contractValue * (overheadRate / 100);
 
         const totalCost = materialCost + laborCost + overheadAmount + otherCharges;
         const grossProfit = preTaxSellingPrice - totalCost;
