@@ -1,4 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
+import { notifySenderEngagement } from "../_shared/engagement-notify.ts";
+
 
 // 1x1 transparent GIF
 const PIXEL = Uint8Array.from([
