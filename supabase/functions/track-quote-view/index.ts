@@ -232,34 +232,39 @@ Deno.serve(async (req: Request) => {
       })
       .eq("id", trackingLink.id);
 
-    // Send notification to sales rep
     const contactName = trackingLink.contacts 
       ? `${trackingLink.contacts.first_name} ${trackingLink.contacts.last_name}`
       : trackingLink.recipient_name || 'A customer';
 
     const viewCount = (trackingLink.view_count || 0) + 1;
+    const estimateNumber = trackingLink.enhanced_estimates?.estimate_number || 'N/A';
+    const viewText = viewCount === 1 ? "just opened" : `viewed again (${viewCount}x)`;
+    const locationText = geo.city ? `${geo.city}${geo.region ? `, ${geo.region}` : ''}` : 'Unknown location';
 
-    const { error: notifError } = await supabase
-      .from("user_notifications")
-      .insert({
-        tenant_id: trackingLink.tenant_id,
-        user_id: trackingLink.sent_by,
-        title: "Quote Viewed! 👀",
-        message: `${contactName} just opened your quote #${trackingLink.enhanced_estimates?.estimate_number || 'N/A'}`,
-        type: "quote_viewed",
-        priority: "high",
-        metadata: {
-          tracking_link_id: trackingLink.id,
-          estimate_id: trackingLink.estimate_id,
-          contact_id: trackingLink.contact_id,
-          viewer_location: geo.city ? `${geo.city}, ${geo.region}` : null,
-          viewer_device: device
-        }
-      });
+    // Notify the rep on EVERY view: in-app + SMS from company number + email
+    await notifySenderEngagement({
+      supabase,
+      tenantId: trackingLink.tenant_id,
+      userId: trackingLink.sent_by,
+      title: "Quote Viewed! 👀",
+      message: `${contactName} ${viewText} quote #${estimateNumber}`,
+      emailSubject: `👀 ${contactName} viewed your quote #${estimateNumber}`,
+      detailLines: [
+        `Location: ${locationText}`,
+        `Device: ${device} · ${browser}`,
+        `Total views: ${viewCount}`,
+      ],
+      type: "quote_viewed",
+      metadata: {
+        tracking_link_id: trackingLink.id,
+        estimate_id: trackingLink.estimate_id,
+        contact_id: trackingLink.contact_id,
+        viewer_location: geo.city ? `${geo.city}, ${geo.region}` : null,
+        viewer_device: device,
+        view_count: viewCount,
+      },
+    });
 
-    if (notifError) {
-      console.error("Failed to insert quote_viewed notification:", notifError);
-    }
 
     // Send instant broadcast for real-time UI update (bypasses Postgres change polling delay)
     try {
