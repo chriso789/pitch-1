@@ -456,6 +456,9 @@ verify_jwt = true
 [functions.track-quote-view]
 verify_jwt = false
 
+[functions.track-quote-open]
+verify_jwt = false
+
 [functions.send-quote-email]
 verify_jwt = true
 
