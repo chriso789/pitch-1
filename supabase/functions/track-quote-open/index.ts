@@ -1,4 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
+import { notifySenderEngagement } from "../_shared/engagement-notify.ts";
+
 
 // 1x1 transparent GIF
 const PIXEL = Uint8Array.from([
@@ -67,61 +69,34 @@ Deno.serve(async (req: Request) => {
       })
       .eq("id", link.id);
 
-    if (alreadyOpened) return pixelResponse();
+    const openCount = (current?.email_open_count || 0) + 1;
 
     const contactName = link.contacts
       ? `${link.contacts.first_name ?? ""} ${link.contacts.last_name ?? ""}`.trim()
       : link.recipient_name || "A customer";
     const estimateNum = link.enhanced_estimates?.estimate_number || "your quote";
+    const openText = alreadyOpened
+      ? `opened your quote email #${estimateNum} again (${openCount}x)`
+      : `opened your quote email #${estimateNum}`;
 
-    await supabase.from("user_notifications").insert({
-      tenant_id: link.tenant_id,
-      user_id: link.sent_by,
+    // Notify the rep on EVERY open: in-app + SMS from company number + email
+    await notifySenderEngagement({
+      supabase,
+      tenantId: link.tenant_id,
+      userId: link.sent_by,
       title: "Email Opened 📬",
-      message: `${contactName} opened your quote email #${estimateNum}`,
+      message: `${contactName} ${openText}`,
+      emailSubject: `📬 ${contactName} opened your quote email`,
+      detailLines: [`Quote: #${estimateNum}`, `Total opens: ${openCount}`],
       type: "quote_email_opened",
-      priority: "high",
       metadata: {
         tracking_link_id: link.id,
         estimate_id: link.estimate_id,
         contact_id: link.contact_id,
+        open_count: openCount,
       },
     });
 
-    // SMS the rep
-    try {
-      const { data: repProfile } = await supabase
-        .from("profiles")
-        .select("phone")
-        .eq("id", link.sent_by)
-        .maybeSingle();
-
-      let phone = repProfile?.phone as string | null | undefined;
-      if (!phone) {
-        const { data: authUser } = await supabase.auth.admin.getUserById(link.sent_by);
-        phone = authUser?.user?.phone || (authUser?.user?.user_metadata?.phone as string | undefined);
-      }
-
-      if (phone) {
-        await fetch(`${supabaseUrl}/functions/v1/telnyx-send-sms`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${serviceKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            to: phone,
-            message: `📬 ${contactName} just opened your quote email #${estimateNum}`,
-            tenant_id: link.tenant_id,
-            sent_by: link.sent_by,
-          }),
-        });
-      } else {
-        console.log("[track-quote-open] rep has no phone on file, SMS skipped", link.sent_by);
-      }
-    } catch (smsErr) {
-      console.error("[track-quote-open] SMS error", smsErr);
-    }
 
     return pixelResponse();
   } catch (err) {

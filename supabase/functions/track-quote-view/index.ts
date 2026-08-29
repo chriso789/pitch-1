@@ -1,5 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { createClient as createBroadcastClient } from "npm:@supabase/supabase-js@2.49.1";
+import { notifySenderEngagement } from "../_shared/engagement-notify.ts";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -232,34 +234,39 @@ Deno.serve(async (req: Request) => {
       })
       .eq("id", trackingLink.id);
 
-    // Send notification to sales rep
     const contactName = trackingLink.contacts 
       ? `${trackingLink.contacts.first_name} ${trackingLink.contacts.last_name}`
       : trackingLink.recipient_name || 'A customer';
 
     const viewCount = (trackingLink.view_count || 0) + 1;
+    const estimateNumber = trackingLink.enhanced_estimates?.estimate_number || 'N/A';
+    const viewText = viewCount === 1 ? "just opened" : `viewed again (${viewCount}x)`;
+    const locationText = geo.city ? `${geo.city}${geo.region ? `, ${geo.region}` : ''}` : 'Unknown location';
 
-    const { error: notifError } = await supabase
-      .from("user_notifications")
-      .insert({
-        tenant_id: trackingLink.tenant_id,
-        user_id: trackingLink.sent_by,
-        title: "Quote Viewed! 👀",
-        message: `${contactName} just opened your quote #${trackingLink.enhanced_estimates?.estimate_number || 'N/A'}`,
-        type: "quote_viewed",
-        priority: "high",
-        metadata: {
-          tracking_link_id: trackingLink.id,
-          estimate_id: trackingLink.estimate_id,
-          contact_id: trackingLink.contact_id,
-          viewer_location: geo.city ? `${geo.city}, ${geo.region}` : null,
-          viewer_device: device
-        }
-      });
+    // Notify the rep on EVERY view: in-app + SMS from company number + email
+    await notifySenderEngagement({
+      supabase,
+      tenantId: trackingLink.tenant_id,
+      userId: trackingLink.sent_by,
+      title: "Quote Viewed! 👀",
+      message: `${contactName} ${viewText} quote #${estimateNumber}`,
+      emailSubject: `👀 ${contactName} viewed your quote #${estimateNumber}`,
+      detailLines: [
+        `Location: ${locationText}`,
+        `Device: ${device} · ${browser}`,
+        `Total views: ${viewCount}`,
+      ],
+      type: "quote_viewed",
+      metadata: {
+        tracking_link_id: trackingLink.id,
+        estimate_id: trackingLink.estimate_id,
+        contact_id: trackingLink.contact_id,
+        viewer_location: geo.city ? `${geo.city}, ${geo.region}` : null,
+        viewer_device: device,
+        view_count: viewCount,
+      },
+    });
 
-    if (notifError) {
-      console.error("Failed to insert quote_viewed notification:", notifError);
-    }
 
     // Send instant broadcast for real-time UI update (bypasses Postgres change polling delay)
     try {
@@ -287,58 +294,8 @@ Deno.serve(async (req: Request) => {
       console.warn('Broadcast failed (non-blocking):', broadcastErr);
     }
 
-    // Send SMS notification to rep on EVERY view
-    try {
-      const { data: repProfile } = await supabase
-        .from("profiles")
-        .select("phone, first_name")
-        .eq("id", trackingLink.sent_by)
-        .single();
+    // SMS + email to the rep are handled by notifySenderEngagement above.
 
-      let repPhone: string | null | undefined = repProfile?.phone;
-      if (!repPhone) {
-        try {
-          const { data: authUser } = await supabase.auth.admin.getUserById(trackingLink.sent_by);
-          repPhone = authUser?.user?.phone || (authUser?.user?.user_metadata?.phone as string | undefined) || null;
-        } catch (_e) { /* ignore */ }
-      }
-
-      if (repPhone) {
-        const viewText = viewCount === 1 ? "just opened" : `viewed again (${viewCount}x)`;
-        const estimateNum = trackingLink.enhanced_estimates?.estimate_number || 'your quote';
-        const locationText = geo.city ? ` From ${geo.city}` : '';
-        
-        const smsMessage = `🔔 ${contactName} ${viewText} quote #${estimateNum}!${locationText}`;
-
-        // Call telnyx-send-sms internally using service role
-        // Pass tenant_id to enable location-based phone number lookup
-        const smsResponse = await fetch(`${supabaseUrl}/functions/v1/telnyx-send-sms`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${supabaseServiceKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            to: repPhone,
-            message: smsMessage,
-            tenant_id: trackingLink.tenant_id,
-            sent_by: trackingLink.sent_by,
-          })
-        });
-
-        if (smsResponse.ok) {
-          console.log(`SMS notification sent to rep ${repProfile.first_name} at ${repPhone}`);
-        } else {
-          const smsError = await smsResponse.text();
-          console.error('Failed to send SMS notification:', smsError);
-        }
-      } else {
-        console.log('Rep has no phone number configured, skipping SMS notification');
-      }
-    } catch (smsError) {
-      // Don't fail the whole request if SMS fails
-      console.error('Error sending SMS notification:', smsError);
-    }
 
     console.log(`Quote viewed: ${trackingLink.id} by ${contactName} from ${geo.city || clientIp}`);
 
