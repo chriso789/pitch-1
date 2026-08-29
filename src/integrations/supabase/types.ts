@@ -43730,6 +43730,8 @@ export type Database = {
           contact_id: string | null
           created_at: string | null
           document_id: string | null
+          email_open_count: number
+          email_opened_at: string | null
           estimate_id: string | null
           expires_at: string | null
           id: string
@@ -43752,6 +43754,8 @@ export type Database = {
           contact_id?: string | null
           created_at?: string | null
           document_id?: string | null
+          email_open_count?: number
+          email_opened_at?: string | null
           estimate_id?: string | null
           expires_at?: string | null
           id?: string
@@ -43774,6 +43778,8 @@ export type Database = {
           contact_id?: string | null
           created_at?: string | null
           document_id?: string | null
+          email_open_count?: number
+          email_opened_at?: string | null
           estimate_id?: string | null
           expires_at?: string | null
           id?: string
