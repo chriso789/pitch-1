@@ -746,14 +746,15 @@ const LeadDetails = () => {
 
       // Navigate to the new project details
       navigate(`/job/${id}`);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error approving lead:', error);
       toast({
-        title: 'Error',
-        description: 'Failed to approve lead',
+        title: 'Could not convert this lead',
+        description: error?.message || 'Failed to approve lead',
         variant: 'destructive'
       });
     }
+
   };
 
   const renderActiveSection = () => {
