@@ -621,8 +621,14 @@ const LeadDetails = () => {
         return;
       }
       if (error || payload?.error) {
-        throw error || new Error(payload.error || 'Conversion failed');
+        const detail =
+          payload?.message ||
+          (typeof payload?.error === 'string' ? payload.error : null) ||
+          (error as any)?.message ||
+          'Conversion failed';
+        throw new Error(detail);
       }
+
 
 
       // Auto-populate budget from selected estimate
