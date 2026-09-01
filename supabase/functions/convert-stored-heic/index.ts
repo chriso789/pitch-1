@@ -32,6 +32,19 @@ const handler = async (req: Request): Promise<Response> => {
 
     const body = await req.json().catch(() => ({}));
 
+    // Sign mode: hand back short-lived signed URLs for stored objects.
+    if (Array.isArray(body.sign_paths)) {
+      const signed: Record<string, string> = {};
+      for (const p of body.sign_paths as string[]) {
+        const { data } = await supabase.storage.from('customer-photos').createSignedUrl(p, 3600);
+        if (data?.signedUrl) signed[p] = data.signedUrl;
+      }
+      return new Response(JSON.stringify({ signed }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+
     // Relay mode: caller already produced the JPEG bytes (used by the one-time
     // backfill of photos stored before client-side HEIC conversion shipped).
     if (body.upload_path && body.jpeg_base64) {
