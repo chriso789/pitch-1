@@ -23,8 +23,7 @@ const handler = async (req: Request): Promise<Response> => {
     // Caller must be an authenticated user of the app.
     const authHeader = req.headers.get('Authorization') ?? '';
     const { data: userData } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''));
-    const allowBackfill = req.headers.get('x-heic-backfill') === 'run-once';
-    if (!userData?.user && !allowBackfill) {
+    if (!userData?.user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
