@@ -106,8 +106,7 @@ export const PhotoMarkupEditor: React.FC<PhotoMarkupEditorProps> = ({
 
         if (isHeic) {
           try {
-            const jpegBlob = await heicToJpegBlob(blob, 0.85);
-            blob = (Array.isArray(converted) ? converted[0] : converted) as Blob;
+            blob = await heicToJpegBlob(blob, 0.85);
           } catch (err) {
             console.warn('[PhotoMarkupEditor] HEIC conversion failed:', err);
           }
