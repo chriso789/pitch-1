@@ -198,16 +198,18 @@ export async function getHeicDisplayUrl(url: string | undefined | null): Promise
  * Returns the original URL for non-HEIC files.
  * Caches results to avoid re-downloading.
  */
-export function useHeicUrl(url: string | undefined | null): { displayUrl: string; loading: boolean } {
+export function useHeicUrl(url: string | undefined | null): { displayUrl: string; loading: boolean; error: boolean } {
   const [displayUrl, setDisplayUrl] = useState<string>(url || '');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
-    if (!url) { setDisplayUrl(''); return; }
-    if (cache.has(url)) { setDisplayUrl(cache.get(url)!); return; }
+    if (!url) { setDisplayUrl(''); setError(false); return; }
+    if (cache.has(url)) { setDisplayUrl(cache.get(url)!); setError(false); return; }
 
     let cancelled = false;
     setLoading(true);
+    setError(false);
 
     (async () => {
       try {
@@ -215,7 +217,10 @@ export function useHeicUrl(url: string | undefined | null): { displayUrl: string
         if (!cancelled) setDisplayUrl(safeUrl);
       } catch (err) {
         console.warn('[useHeicUrl] Conversion failed, falling back:', err);
-        if (!cancelled) setDisplayUrl(url);
+        if (!cancelled) {
+          setDisplayUrl(url);
+          setError(isHeicUrl(url));
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -224,5 +229,6 @@ export function useHeicUrl(url: string | undefined | null): { displayUrl: string
     return () => { cancelled = true; };
   }, [url]);
 
-  return { displayUrl, loading };
+  return { displayUrl, loading, error };
 }
+
