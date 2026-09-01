@@ -105,32 +105,93 @@ async function persistConvertedHeic(originalUrl: string, jpegBlob: Blob): Promis
   return publicData.publicUrl;
 }
 
+// Limit simultaneous HEIC decodes — converting a whole grid at once locks the main
+// thread and makes every tile appear blank.
+const MAX_CONCURRENT_CONVERSIONS = 2;
+let activeConversions = 0;
+const conversionQueue: Array<() => void> = [];
+const inFlight = new Map<string, Promise<string>>();
+
+function acquireSlot(): Promise<void> {
+  if (activeConversions < MAX_CONCURRENT_CONVERSIONS) {
+    activeConversions++;
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve) => {
+    conversionQueue.push(() => {
+      activeConversions++;
+      resolve();
+    });
+  });
+}
+
+function releaseSlot() {
+  activeConversions = Math.max(0, activeConversions - 1);
+  const next = conversionQueue.shift();
+  if (next) next();
+}
+
 /** Resolve private Supabase storage URLs and convert HEIC/HEIF URLs to displayable JPEG URLs. */
 export async function getHeicDisplayUrl(url: string | undefined | null): Promise<string> {
   if (!url) return '';
   if (cache.has(url)) return cache.get(url)!;
+  const existing = inFlight.get(url);
+  if (existing) return existing;
 
-  const resolvedUrl = await resolveDisplayUrl(url);
+  const task = (async () => {
+    const resolvedUrl = await resolveDisplayUrl(url);
 
-  if (!isHeicUrl(url)) {
-    cache.set(url, resolvedUrl);
-    return resolvedUrl;
+    if (!isHeicUrl(url)) {
+      cache.set(url, resolvedUrl);
+      return resolvedUrl;
+    }
+
+    // A previous conversion may already have persisted a .jpg sibling — prefer it.
+    const storageObject = parseSupabaseStorageUrl(url);
+    if (storageObject) {
+      const jpegPath = storageObject.path.replace(/\.(heic|heif)$/i, '.jpg');
+      if (jpegPath !== storageObject.path) {
+        const { data: existingJpeg } = await supabase.storage
+          .from(storageObject.bucket)
+          .createSignedUrl(jpegPath, 60 * 60);
+        if (existingJpeg?.signedUrl) {
+          const head = await fetch(existingJpeg.signedUrl, { method: 'HEAD' }).catch(() => null);
+          if (head?.ok) {
+            cache.set(url, existingJpeg.signedUrl);
+            return existingJpeg.signedUrl;
+          }
+        }
+      }
+    }
+
+    await acquireSlot();
+    try {
+      const resp = await fetch(resolvedUrl);
+      if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`);
+      const blob = await resp.blob();
+      const converted = await heic2any({ blob, toType: 'image/jpeg', quality: 0.85 });
+      const jpegBlob = Array.isArray(converted) ? converted[0] : converted;
+      const persistedUrl = await persistConvertedHeic(url, jpegBlob).catch((err) => {
+        console.warn('[useHeicUrl] Converted display but could not persist JPEG:', err);
+        return null;
+      });
+      const blobUrl = URL.createObjectURL(jpegBlob);
+      const displayUrl = persistedUrl || blobUrl;
+      cache.set(url, displayUrl);
+      return displayUrl;
+    } finally {
+      releaseSlot();
+    }
+  })();
+
+  inFlight.set(url, task);
+  try {
+    return await task;
+  } finally {
+    inFlight.delete(url);
   }
-
-  const resp = await fetch(resolvedUrl);
-  if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`);
-  const blob = await resp.blob();
-  const converted = await heic2any({ blob, toType: 'image/jpeg', quality: 0.85 });
-  const jpegBlob = Array.isArray(converted) ? converted[0] : converted;
-  const persistedUrl = await persistConvertedHeic(url, jpegBlob).catch((err) => {
-    console.warn('[useHeicUrl] Converted display but could not persist JPEG:', err);
-    return null;
-  });
-  const blobUrl = URL.createObjectURL(jpegBlob);
-  const displayUrl = persistedUrl || blobUrl;
-  cache.set(url, displayUrl);
-  return displayUrl;
 }
+
 
 /**
  * Converts a HEIC/HEIF URL to a displayable blob URL.
