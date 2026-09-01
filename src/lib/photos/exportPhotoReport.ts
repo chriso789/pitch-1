@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import { format } from 'date-fns';
-import heic2any from 'heic2any';
+import { heicToJpegBlob } from '@/lib/heicDecode';
 import type { CustomerPhoto } from '@/hooks/usePhotos';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -75,12 +75,7 @@ function inferImageMime(source?: string | null): string | null {
 async function normalizeReportImageBlob(blob: Blob, source?: string | null): Promise<Blob> {
   if (!isHeicSource(source, blob)) return blob;
 
-  const converted = await heic2any({
-    blob,
-    toType: 'image/jpeg',
-    quality: 0.85,
-  });
-  return Array.isArray(converted) ? converted[0] : converted;
+  return await heicToJpegBlob(blob, 0.85);
 }
 
 function ensureImageMime(blob: Blob, source?: string | null): Blob {

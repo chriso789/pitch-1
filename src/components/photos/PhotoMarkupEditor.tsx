@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import heic2any from 'heic2any';
+import { heicToJpegBlob } from '@/lib/heicDecode';
 import {
   Dialog,
   DialogContent,
@@ -106,8 +106,7 @@ export const PhotoMarkupEditor: React.FC<PhotoMarkupEditorProps> = ({
 
         if (isHeic) {
           try {
-            const converted = await heic2any({ blob, toType: 'image/jpeg', quality: 0.85 });
-            blob = (Array.isArray(converted) ? converted[0] : converted) as Blob;
+            blob = await heicToJpegBlob(blob, 0.85);
           } catch (err) {
             console.warn('[PhotoMarkupEditor] HEIC conversion failed:', err);
           }

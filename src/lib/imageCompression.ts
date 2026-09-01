@@ -2,17 +2,18 @@
  * Client-side image compression utility.
  * Resizes large images and converts all formats (including HEIC) to JPEG
  * before uploading, preventing edge function memory crashes.
- * 
- * Uses heic2any for reliable HEIC→JPEG conversion on all browsers.
+ *
+ * HEIC decoding is delegated to the shared, concurrency-limited decoder so that
+ * batch uploads never overwhelm the browser and silently store raw HEIC files.
  */
-import heic2any from 'heic2any';
+import { heicToJpegBlob, isHeicFile } from '@/lib/heicDecode';
 
 const DEFAULT_MAX_DIMENSION = 2000;
 const DEFAULT_QUALITY = 0.85;
 
 /**
  * Compress and normalize an image file to JPEG.
- * - Converts HEIC/HEIF to JPEG using heic2any (works on all browsers)
+ * - Converts HEIC/HEIF to JPEG (multi-strategy, queued)
  * - Resizes to fit within maxDimension on longest side
  * - Converts PNG/WebP/etc to JPEG
  * - Typical output: 200-500KB from a 5-10MB iPhone photo
@@ -27,22 +28,18 @@ export async function compressImage(
     return file;
   }
 
+  const heic = isHeicFile(file);
+
   try {
     // Convert HEIC/HEIF to JPEG blob first
     let imageBlob: Blob = file;
-    if (isHeicFile(file)) {
-      console.log(`[imageCompression] Converting HEIC file: ${file.name}`);
-      const converted = await heic2any({
-        blob: file,
-        toType: 'image/jpeg',
-        quality,
-      });
-      imageBlob = Array.isArray(converted) ? converted[0] : converted;
+    if (heic) {
+      imageBlob = await heicToJpegBlob(file, quality);
       console.log(`[imageCompression] HEIC converted: ${(file.size / 1024).toFixed(0)}KB → ${(imageBlob.size / 1024).toFixed(0)}KB`);
     }
 
     const bitmap = await createImageBitmap(imageBlob);
-    
+
     // Calculate new dimensions
     let { width, height } = bitmap;
     if (width > maxDimension || height > maxDimension) {
@@ -56,10 +53,7 @@ export async function compressImage(
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      console.warn('[imageCompression] Canvas context unavailable, returning original');
-      return file;
-    }
+    if (!ctx) throw new Error('Canvas context unavailable');
     ctx.drawImage(bitmap, 0, 0, width, height);
     bitmap.close();
 
@@ -85,13 +79,26 @@ export async function compressImage(
 
     return compressedFile;
   } catch (err) {
-    console.warn('[imageCompression] Compression failed, returning original file:', err);
+    console.warn('[imageCompression] Compression failed:', err);
+
+    if (heic) {
+      // Last resort for HEIC: convert without resizing rather than storing an
+      // undisplayable HEIC in the bucket.
+      try {
+        const jpegBlob = await heicToJpegBlob(file, quality);
+        const baseName = file.name.replace(/\.[^.]+$/, '');
+        return new File([jpegBlob], `${baseName}.jpg`, { type: 'image/jpeg', lastModified: Date.now() });
+      } catch (heicErr) {
+        console.error('[imageCompression] HEIC conversion failed entirely:', heicErr);
+        throw new Error(
+          `${file.name} is a HEIC photo this browser can't convert. Set iPhone Camera → Formats to "Most Compatible", or re-upload as JPEG.`
+        );
+      }
+    }
+
     return file;
   }
 }
 
-function isHeicFile(file: File): boolean {
-  const name = file.name.toLowerCase();
-  return name.endsWith('.heic') || name.endsWith('.heif') || 
-         file.type === 'image/heic' || file.type === 'image/heif';
-}
+export { isHeicFile };
+
