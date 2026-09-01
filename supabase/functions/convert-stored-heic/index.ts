@@ -31,7 +31,41 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     const body = await req.json().catch(() => ({}));
+
+    // Relay mode: caller already produced the JPEG bytes (used by the one-time
+    // backfill of photos stored before client-side HEIC conversion shipped).
+    if (body.upload_path && body.jpeg_base64) {
+      const sourcePath: string = body.source_path ?? '';
+      const jpegPath: string = body.upload_path;
+      const bin = Uint8Array.from(atob(body.jpeg_base64), (c) => c.charCodeAt(0));
+
+      const { error: upError } = await supabase.storage
+        .from('customer-photos')
+        .upload(jpegPath, bin, { contentType: 'image/jpeg', upsert: true, cacheControl: '3600' });
+      if (upError) throw upError;
+
+      const { data: pub } = supabase.storage.from('customer-photos').getPublicUrl(jpegPath);
+      if (body.photo_id) {
+        const { error: updError } = await supabase
+          .from('customer_photos')
+          .update({
+            file_url: pub.publicUrl,
+            file_name: jpegPath,
+            mime_type: 'image/jpeg',
+            file_size: bin.byteLength,
+          })
+          .eq('id', body.photo_id);
+        if (updError) throw updError;
+      }
+      if (sourcePath) await supabase.storage.from('customer-photos').remove([sourcePath]);
+
+      return new Response(JSON.stringify({ ok: true, path: jpegPath, size: bin.byteLength }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const limit = Math.min(Number(body.limit) || 25, 50);
+
 
     let query = supabase
       .from('customer_photos')
