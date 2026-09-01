@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import heic2any from 'heic2any';
+import { heicToJpegBlob } from '@/lib/heicDecode';
 import { supabase } from '@/integrations/supabase/client';
 
 const cache = new Map<string, string>();
@@ -169,8 +169,7 @@ export async function getHeicDisplayUrl(url: string | undefined | null): Promise
       const resp = await fetch(resolvedUrl);
       if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`);
       const blob = await resp.blob();
-      const converted = await heic2any({ blob, toType: 'image/jpeg', quality: 0.85 });
-      const jpegBlob = Array.isArray(converted) ? converted[0] : converted;
+      const jpegBlob = await heicToJpegBlob(blob, 0.85);
       const persistedUrl = await persistConvertedHeic(url, jpegBlob).catch((err) => {
         console.warn('[useHeicUrl] Converted display but could not persist JPEG:', err);
         return null;
