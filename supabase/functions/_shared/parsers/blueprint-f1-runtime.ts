@@ -1,6 +1,6 @@
 // Blueprint F1 runtime payload builder.
-// Converts a PDF into coordinate-aware, persistence-ready sheet intelligence.
-// Pure with respect to storage/DB: callers decide when/how to persist outputs.
+// Converts a PDF into coordinate-aware sheet intelligence plus reviewable
+// specifications/dimensions. Pure with respect to storage/DB.
 
 import { extractPdfLayout, PDF_LAYOUT_VERSION, type PdfLayoutPage } from "./pdf-layout.ts";
 import {
@@ -18,8 +18,10 @@ import {
   type DrawingReference,
   type DrawingViewport,
 } from "./blueprint-viewports.ts";
+import { extractBlueprintSpecifications, type BlueprintSpecCandidate } from "./blueprint-spec-intelligence.ts";
+import { extractDimensionCandidates, type DimensionCandidate } from "./blueprint-dimensions.ts";
 
-export const BLUEPRINT_F1_RUNTIME_VERSION = "blueprint-f1-runtime-v2";
+export const BLUEPRINT_F1_RUNTIME_VERSION = "blueprint-f1-runtime-v3";
 
 export interface BlueprintF1PagePersistenceRow {
   page_number: number;
@@ -81,12 +83,21 @@ export interface BlueprintF1RuntimeResult {
   viewport_version: string;
   reference_version: string;
   page_count: number;
+
+  // Persistence-oriented F1 rows.
   pages: BlueprintF1PagePersistenceRow[];
   analyzed_sheets: SheetIntelligence[];
   sheet_index_entries: BlueprintF1IndexPersistenceRow[];
   drawing_viewports: BlueprintF1ViewportPersistenceRow[];
   drawing_references: BlueprintF1ReferencePersistenceRow[];
+
+  // Full evidence contract for downstream trade engines.
+  layout_pages: PdfLayoutPage[];
+  viewports_by_page: Record<number, DrawingViewport[]>;
+  specifications: BlueprintSpecCandidate[];
+  dimensions: DimensionCandidate[];
   missing_indexed_sheets: string[];
+  unresolved_reference_targets: string[];
   requires_review: boolean;
   summary: {
     pages_with_sheet_number: number;
@@ -98,12 +109,12 @@ export interface BlueprintF1RuntimeResult {
     scaled_viewport_count: number;
     reference_count: number;
     unresolved_reference_target_count: number;
+    specification_candidate_count: number;
+    dimension_candidate_count: number;
   };
 }
 
 function trimRawText(text: string): string {
-  // Preserve the existing plan_pages safety cap. Coordinate text remains available
-  // in layout_json, while raw_text stays compact for existing classifier/review UI.
   return text.slice(0, 8000);
 }
 
@@ -137,18 +148,11 @@ function pageToPersistenceRow(page: PdfLayoutPage, intelligence: SheetIntelligen
   };
 }
 
-function indexRows(
-  analyzed: SheetIntelligence[],
-  missing: Set<string>,
-): BlueprintF1IndexPersistenceRow[] {
-  const presentSheets = new Set(
-    analyzed.map((sheet) => sheet.sheet_number).filter((value): value is string => Boolean(value)),
-  );
+function indexRows(analyzed: SheetIntelligence[], missing: Set<string>): BlueprintF1IndexPersistenceRow[] {
+  const presentSheets = new Set(analyzed.map((sheet) => sheet.sheet_number).filter((value): value is string => Boolean(value)));
   const deduped = new Map<string, BlueprintF1IndexPersistenceRow>();
-
   for (const sourceSheet of analyzed) {
     for (const entry of sourceSheet.sheet_index_entries) {
-      const isMissing = missing.has(entry.sheet_number);
       const row: BlueprintF1IndexPersistenceRow = {
         source_page_number: sourceSheet.page_number,
         sheet_number: entry.sheet_number,
@@ -157,7 +161,7 @@ function indexRows(
         confidence: entry.confidence,
         source_text: entry.source_text,
         bbox: entry.bbox,
-        status: isMissing ? "missing" : "detected",
+        status: missing.has(entry.sheet_number) ? "missing" : "detected",
         metadata: {
           runtime_version: BLUEPRINT_F1_RUNTIME_VERSION,
           sheet_intelligence_version: SHEET_INTELLIGENCE_VERSION,
@@ -165,32 +169,33 @@ function indexRows(
           present_in_document: presentSheets.has(entry.sheet_number),
         },
       };
-
       const prior = deduped.get(entry.sheet_number);
       if (!prior || row.confidence > prior.confidence) deduped.set(entry.sheet_number, row);
     }
   }
-
   return [...deduped.values()].sort((a, b) => a.sheet_number.localeCompare(b.sheet_number));
 }
 
 function viewportRows(layoutPages: PdfLayoutPage[]): BlueprintF1ViewportPersistenceRow[] {
-  return layoutPages.flatMap((page) =>
-    detectDrawingViewports(page).map((viewport) => ({ ...viewport, source_page_number: page.page_number }))
-  );
+  return layoutPages.flatMap((page) => detectDrawingViewports(page).map((viewport) => ({ ...viewport, source_page_number: page.page_number })));
 }
 
-function referenceRows(
-  layoutPages: PdfLayoutPage[],
-  allViewports: BlueprintF1ViewportPersistenceRow[],
-): BlueprintF1ReferencePersistenceRow[] {
+function referenceRows(layoutPages: PdfLayoutPage[], allViewports: BlueprintF1ViewportPersistenceRow[]): BlueprintF1ReferencePersistenceRow[] {
   return layoutPages.flatMap((page) => {
     const pageViewports = allViewports.filter((viewport) => viewport.page_number === page.page_number);
-    return detectDrawingReferences(page, pageViewports).map((reference) => ({
-      ...reference,
-      source_page_number: page.page_number,
-    }));
+    return detectDrawingReferences(page, pageViewports).map((reference) => ({ ...reference, source_page_number: page.page_number }));
   });
+}
+
+function byPage(viewports: BlueprintF1ViewportPersistenceRow[]): Record<number, DrawingViewport[]> {
+  const result: Record<number, DrawingViewport[]> = {};
+  for (const viewport of viewports) {
+    const page = viewport.page_number;
+    if (!result[page]) result[page] = [];
+    const { source_page_number: _ignored, ...drawingViewport } = viewport;
+    result[page].push(drawingViewport);
+  }
+  return result;
 }
 
 export function buildBlueprintF1RuntimeFromLayout(
@@ -203,16 +208,15 @@ export function buildBlueprintF1RuntimeFromLayout(
   const pages = layout.pages.map((page, index) => pageToPersistenceRow(page, analyzed[index]));
   const sheetIndexEntries = indexRows(analyzed, missingSet);
   const drawingViewports = viewportRows(layout.pages);
+  const viewportsByPage = byPage(drawingViewports);
   const drawingReferences = referenceRows(layout.pages, drawingViewports);
+  const specifications = layout.pages.flatMap((page) => extractBlueprintSpecifications(page, viewportsByPage[page.page_number] ?? []));
+  const dimensions = layout.pages.flatMap((page) => extractDimensionCandidates(page, viewportsByPage[page.page_number] ?? []));
   const imageOnlyPageCount = layout.pages.filter((page) => !page.has_selectable_text).length;
-  const actualSheets = new Set(
-    analyzed.map((sheet) => sheet.sheet_number).filter((value): value is string => Boolean(value)),
-  );
-  const unresolvedReferenceTargets = new Set(
-    drawingReferences
-      .map((reference) => reference.target_sheet_number)
-      .filter((target) => !actualSheets.has(target)),
-  );
+  const actualSheets = new Set(analyzed.map((sheet) => sheet.sheet_number).filter((value): value is string => Boolean(value)));
+  const unresolvedReferenceTargets = [...new Set(
+    drawingReferences.map((reference) => reference.target_sheet_number).filter((target) => !actualSheets.has(target)),
+  )].sort();
 
   return {
     runtime_version: BLUEPRINT_F1_RUNTIME_VERSION,
@@ -226,12 +230,17 @@ export function buildBlueprintF1RuntimeFromLayout(
     sheet_index_entries: sheetIndexEntries,
     drawing_viewports: drawingViewports,
     drawing_references: drawingReferences,
+    layout_pages: layout.pages,
+    viewports_by_page: viewportsByPage,
+    specifications,
+    dimensions,
     missing_indexed_sheets: missingIndexedSheets,
+    unresolved_reference_targets: unresolvedReferenceTargets,
     requires_review:
       analyzed.some((sheet) => sheet.requires_review) ||
       missingIndexedSheets.length > 0 ||
       imageOnlyPageCount > 0 ||
-      unresolvedReferenceTargets.size > 0,
+      unresolvedReferenceTargets.length > 0,
     summary: {
       pages_with_sheet_number: analyzed.filter((sheet) => Boolean(sheet.sheet_number)).length,
       pages_with_scale: analyzed.filter((sheet) => Boolean(sheet.scale)).length,
@@ -241,7 +250,9 @@ export function buildBlueprintF1RuntimeFromLayout(
       viewport_count: drawingViewports.length,
       scaled_viewport_count: drawingViewports.filter((viewport) => Boolean(viewport.scale)).length,
       reference_count: drawingReferences.length,
-      unresolved_reference_target_count: unresolvedReferenceTargets.size,
+      unresolved_reference_target_count: unresolvedReferenceTargets.length,
+      specification_candidate_count: specifications.length,
+      dimension_candidate_count: dimensions.length,
     },
   };
 }
