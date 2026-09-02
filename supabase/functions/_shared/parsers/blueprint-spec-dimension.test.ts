@@ -20,7 +20,7 @@ const viewport: DrawingViewport = {
 };
 
 function page(items: PdfLayoutPage["text_items"]): PdfLayoutPage {
-  return { page_number: 1, width_points: 1000, height_points: 700, rotation_deg: 0, text_items: items, text: items.map(i => i.text).join(" "), has_selectable_text: true, vector_extraction_status: "deferred" };
+  return { page_number: 1, width_points: 1000, height_points: 700, rotation_deg: 0, text_items: items, vector_segments: [], text: items.map(i => i.text).join(" "), has_selectable_text: true, vector_extraction_status: "completed" };
 }
 
 Deno.test("F1E extracts normalized roofing and wall specs", () => {
