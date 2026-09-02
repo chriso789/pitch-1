@@ -13,9 +13,10 @@ function page(page_number: number, text_items: PdfLayoutPage["text_items"]): Pdf
     height_points: 700,
     rotation_deg: 0,
     text_items,
+    vector_segments: [],
     text: text_items.map((entry) => entry.text).join(" "),
     has_selectable_text: true,
-    vector_extraction_status: "deferred",
+    vector_extraction_status: "completed",
   };
 }
 
@@ -36,7 +37,7 @@ Deno.test("F1 runtime emits coordinate-aware page persistence rows", () => {
   assertEquals(result.pages[0].sheet_number, "A2.1");
   assertEquals(result.pages[0].width_points, 1000);
   assertEquals(result.pages[0].layout_version, "f1-layout-v1");
-  assertEquals(result.pages[0].layout_json.vector_extraction_status, "deferred");
+  assertEquals(result.pages[0].layout_json.vector_extraction_status, "completed");
   assert(result.pages[0].layout_json.text_items.length >= 4);
 });
 
