@@ -19,6 +19,8 @@ export type MeasurementGroup =
   | "roof_flashing"
   | "roof_pitch"
   | "roof_penetrations"
+  | "roof_drainage"
+  | "roof_equipment"
   | "roof_waste"
   | "wall_area"
   | "wall_edges"
@@ -61,9 +63,13 @@ export const ROOFING_MEASUREMENT_KEYS = [
   "hips_lf",
   "ridges_lf",
   "hips_plus_ridges_lf",
+  "roof_to_wall_lf",
   "flashing_lf",
   "step_flashing_lf",
   "parapet_lf",
+  "drains_count",
+  "scuppers_count",
+  "curbs_count",
   "penetrations_count",
   "penetrations_area_sqft",
   "penetrations_perimeter_lf",
