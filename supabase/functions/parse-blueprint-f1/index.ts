@@ -17,35 +17,40 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
 
-async function resolveTenant(svc: ReturnType<typeof createClient>, req: Request) {
+async function resolveTenant(svc: any, req: Request): Promise<{ tenantId: string; userId: string }> {
   const jwt = (req.headers.get("Authorization") || "").replace("Bearer ", "");
   const { data: userData, error: userErr } = await svc.auth.getUser(jwt);
   if (userErr || !userData?.user) throw new Error("unauthorized");
-  const userId = userData.user.id;
+  const userId = String(userData.user.id);
   const { data: profile } = await svc.from("profiles").select("tenant_id").eq("id", userId).maybeSingle();
   if (!profile?.tenant_id) throw new Error("no_tenant");
+  const profileTenantId = String(profile.tenant_id);
   const requested = req.headers.get("x-tenant-id");
-  if (!requested || requested === profile.tenant_id) return { tenantId: profile.tenant_id as string, userId };
+  if (!requested || requested === profileTenantId) return { tenantId: profileTenantId, userId };
   const { data: access } = await svc.from("user_company_access").select("tenant_id").eq("user_id", userId).eq("tenant_id", requested).maybeSingle();
   if (!access?.tenant_id) throw new Error("tenant_forbidden");
   return { tenantId: requested, userId };
 }
 
 async function getOrCreateWorkbenchSession(
-  svc: ReturnType<typeof createClient>, tenantId: string, userId: string, pd: Record<string, any>, f1: Awaited<ReturnType<typeof analyzeBlueprintPdfF1>>,
-) {
+  svc: any,
+  tenantId: string,
+  userId: string,
+  pd: Record<string, any>,
+  f1: Awaited<ReturnType<typeof analyzeBlueprintPdfF1>>,
+): Promise<{ sessionId: string; sourceDocumentId: string; roofSignal: boolean }> {
   const { data: existing } = await svc.from("blueprint_import_sessions")
     .select("id,status,metadata").eq("tenant_id", tenantId).eq("source_context_type", "standalone")
     .eq("source_context_id", pd.id).neq("status", "superseded")
     .order("created_at", { ascending: false }).limit(1).maybeSingle();
 
-  let sessionId = existing?.id as string | undefined;
-  let sourceDocumentId: string | undefined;
+  let sessionId: string | null = existing?.id ? String(existing.id) : null;
+  let sourceDocumentId: string | null = null;
   if (sessionId) {
     const { data: src } = await svc.from("blueprint_source_documents").select("id")
       .eq("tenant_id", tenantId).eq("import_session_id", sessionId)
       .eq("document_reference", pd.id).order("created_at", { ascending: true }).limit(1).maybeSingle();
-    sourceDocumentId = src?.id;
+    sourceDocumentId = src?.id ? String(src.id) : null;
     await svc.from("blueprint_import_sessions").update({
       status: "trades_detected",
       metadata: {
@@ -76,8 +81,8 @@ async function getOrCreateWorkbenchSession(
       },
       created_by: userId,
     }).select("id").single();
-    if (error || !session) throw new Error(`session_insert_failed:${error?.message ?? "unknown"}`);
-    sessionId = session.id;
+    if (error || !session?.id) throw new Error(`session_insert_failed:${error?.message ?? "unknown"}`);
+    sessionId = String(session.id);
   }
 
   if (!sourceDocumentId) {
@@ -94,8 +99,8 @@ async function getOrCreateWorkbenchSession(
       extraction_status: "succeeded",
       metadata: { blueprint_intelligence: "f1", runtime_version: f1.runtime_version },
     }).select("id").single();
-    if (error || !src) throw new Error(`source_doc_insert_failed:${error?.message ?? "unknown"}`);
-    sourceDocumentId = src.id;
+    if (error || !src?.id) throw new Error(`source_doc_insert_failed:${error?.message ?? "unknown"}`);
+    sourceDocumentId = String(src.id);
   } else {
     await svc.from("blueprint_source_documents").update({
       document_type: "blueprint_set",
@@ -136,7 +141,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ ok: false, error: "method_not_allowed" }, 405);
 
-  const svc = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  const svc: any = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   try {
     const { tenantId, userId } = await resolveTenant(svc, req);
     const body = await req.json().catch(() => ({}));
@@ -152,15 +157,15 @@ Deno.serve(async (req) => {
       .eq("id", documentId).eq("tenant_id", tenantId);
 
     let bytes: Uint8Array;
-    try { bytes = await downloadStorageObject(svc as any, "blueprints", pd.file_path); }
+    try { bytes = await downloadStorageObject(svc, "blueprints", String(pd.file_path)); }
     catch (primary) {
-      try { bytes = await downloadStorageObject(svc as any, "blueprint-documents", pd.file_path); }
+      try { bytes = await downloadStorageObject(svc, "blueprint-documents", String(pd.file_path)); }
       catch { throw primary; }
     }
 
     const f1 = await analyzeBlueprintPdfF1(bytes);
-    const f1Persist = await persistBlueprintF1Result(svc as any, tenantId, documentId, f1);
-    const specDimPersist = await persistBlueprintSpecDimensionCandidates(svc as any, tenantId, documentId, f1);
+    const f1Persist = await persistBlueprintF1Result(svc, tenantId, documentId, f1);
+    const specDimPersist = await persistBlueprintSpecDimensionCandidates(svc, tenantId, documentId, f1);
     const { sessionId, sourceDocumentId, roofSignal } = await getOrCreateWorkbenchSession(svc, tenantId, userId, pd, f1);
 
     let roofing: any = null;
@@ -168,15 +173,13 @@ Deno.serve(async (req) => {
       const safeTakeoff = buildSafeRoofingTakeoff({
         import_session_id: sessionId,
         source_document_id: sourceDocumentId,
-        file_name: pd.file_name,
+        file_name: pd.file_name ? String(pd.file_name) : null,
         pages: f1.layout_pages,
         viewports_by_page: f1.viewports_by_page,
         specification_candidates: f1.specifications,
-        // Vector geometry is still deferred. Only reviewed/calibrated geometry
-        // should be passed here in a later slice.
         geometry_evidence: [],
       });
-      const persisted = await persistRoofingTakeoff(svc as any, tenantId, safeTakeoff);
+      const persisted = await persistRoofingTakeoff(svc, tenantId, safeTakeoff);
 
       const source = "roofing_blueprint_v1";
       await svc.from("blueprint_review_flags").delete()
