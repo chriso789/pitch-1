@@ -59,3 +59,11 @@ Deno.test("F1 runtime marks indexed sheets missing when absent from the PDF", ()
   assertEquals(missing?.metadata.present_in_document, false);
   assertEquals(result.requires_review, true);
 });
+
+Deno.test("F1 runtime keeps image-only pages review-gated", () => {
+  const scanned = page(1, []);
+  scanned.has_selectable_text = false;
+  const result = buildBlueprintF1RuntimeFromLayout({ page_count: 1, version: "f1-layout-v1", pages: [scanned] });
+  assertEquals(result.summary.image_only_page_count, 1);
+  assertEquals(result.requires_review, true);
+});
