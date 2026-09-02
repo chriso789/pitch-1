@@ -35,7 +35,7 @@ async function getOrCreateWorkbenchSession(
   svc: ReturnType<typeof createClient>, tenantId: string, userId: string, pd: Record<string, any>, f1: Awaited<ReturnType<typeof analyzeBlueprintPdfF1>>,
 ) {
   const { data: existing } = await svc.from("blueprint_import_sessions")
-    .select("id,status").eq("tenant_id", tenantId).eq("source_context_type", "standalone")
+    .select("id,status,metadata").eq("tenant_id", tenantId).eq("source_context_type", "standalone")
     .eq("source_context_id", pd.id).neq("status", "superseded")
     .order("created_at", { ascending: false }).limit(1).maybeSingle();
 
@@ -46,6 +46,18 @@ async function getOrCreateWorkbenchSession(
       .eq("tenant_id", tenantId).eq("import_session_id", sessionId)
       .eq("document_reference", pd.id).order("created_at", { ascending: true }).limit(1).maybeSingle();
     sourceDocumentId = src?.id;
+    await svc.from("blueprint_import_sessions").update({
+      status: "trades_detected",
+      metadata: {
+        ...(existing?.metadata ?? {}),
+        source_origin: "plan_document",
+        plan_document_id: pd.id,
+        blueprint_intelligence: "f1",
+        f1_runtime_version: f1.runtime_version,
+        manual_measurement_required: f1.summary.image_only_page_count > 0,
+      },
+      updated_at: new Date().toISOString(),
+    }).eq("id", sessionId).eq("tenant_id", tenantId);
   }
 
   if (!sessionId) {
@@ -59,6 +71,7 @@ async function getOrCreateWorkbenchSession(
         source_origin: "plan_document",
         plan_document_id: pd.id,
         blueprint_intelligence: "f1",
+        f1_runtime_version: f1.runtime_version,
         manual_measurement_required: f1.summary.image_only_page_count > 0,
       },
       created_by: userId,
@@ -83,6 +96,15 @@ async function getOrCreateWorkbenchSession(
     }).select("id").single();
     if (error || !src) throw new Error(`source_doc_insert_failed:${error?.message ?? "unknown"}`);
     sourceDocumentId = src.id;
+  } else {
+    await svc.from("blueprint_source_documents").update({
+      document_type: "blueprint_set",
+      provider: "user_uploaded_blueprint",
+      page_count: f1.page_count,
+      extraction_status: "succeeded",
+      metadata: { blueprint_intelligence: "f1", runtime_version: f1.runtime_version },
+      updated_at: new Date().toISOString(),
+    }).eq("id", sourceDocumentId).eq("tenant_id", tenantId);
   }
 
   const roofSignal = f1.pages.some((p) => p.page_type === "roof_plan" || p.page_subtype === "roofing" || /ROOF/i.test(p.sheet_name ?? ""));
@@ -97,7 +119,10 @@ async function getOrCreateWorkbenchSession(
         trade_id: "roofing",
         support_status: "mvp_supported",
         confidence: 0.9,
-        detection_signals: { source: "blueprint_f1", roof_page_count: f1.pages.filter((p) => p.page_type === "roof_plan" || p.page_subtype === "roofing").length },
+        detection_signals: {
+          source: "blueprint_f1",
+          roof_page_count: f1.pages.filter((p) => p.page_type === "roof_plan" || p.page_subtype === "roofing").length,
+        },
         source_document_ids: [sourceDocumentId],
         status: "detected",
       });
@@ -119,7 +144,7 @@ Deno.serve(async (req) => {
     if (!documentId) return json({ ok: false, error: "document_id required" }, 400);
 
     const { data: pd, error: pdErr } = await svc.from("plan_documents")
-      .select("id,tenant_id,file_path,file_name,page_count,property_address")
+      .select("id,tenant_id,file_path,file_name,page_count,property_address,metadata")
       .eq("id", documentId).eq("tenant_id", tenantId).maybeSingle();
     if (pdErr || !pd) return json({ ok: false, error: "plan_document_not_found" }, 404);
 
@@ -147,15 +172,18 @@ Deno.serve(async (req) => {
         pages: f1.layout_pages,
         viewports_by_page: f1.viewports_by_page,
         specification_candidates: f1.specifications,
+        // Vector geometry is still deferred. Only reviewed/calibrated geometry
+        // should be passed here in a later slice.
         geometry_evidence: [],
-      } as any);
+      });
       const persisted = await persistRoofingTakeoff(svc as any, tenantId, safeTakeoff);
 
-      // Engine review flags are persisted as session-level flags. Idempotent by source code cleanup + insert.
       const source = "roofing_blueprint_v1";
-      await svc.from("blueprint_review_flags").delete().eq("tenant_id", tenantId).eq("import_session_id", sessionId).contains("metadata", { source });
+      await svc.from("blueprint_review_flags").delete()
+        .eq("tenant_id", tenantId).eq("import_session_id", sessionId)
+        .contains("metadata", { source });
       if (safeTakeoff.review_flags.length) {
-        await svc.from("blueprint_review_flags").insert(safeTakeoff.review_flags.map((flag: any) => ({
+        await svc.from("blueprint_review_flags").insert(safeTakeoff.review_flags.map((flag) => ({
           import_session_id: sessionId,
           tenant_id: tenantId,
           related_entity_type: "import_session",
@@ -176,7 +204,10 @@ Deno.serve(async (req) => {
       page_count: f1.page_count,
       status: "ready_for_review",
       status_message: `Blueprint F1 complete: ${f1.summary.pages_with_sheet_number}/${f1.page_count} sheets identified; roofing ${roofSignal ? "analyzed" : "not detected"}`.slice(0, 240),
-      metadata: { ...(pd.metadata ?? {}), blueprint_f1: { runtime_version: f1.runtime_version, summary: f1.summary, session_id: sessionId } },
+      metadata: {
+        ...(pd.metadata ?? {}),
+        blueprint_f1: { runtime_version: f1.runtime_version, summary: f1.summary, session_id: sessionId },
+      },
     }).eq("id", documentId).eq("tenant_id", tenantId);
 
     return json({
@@ -185,7 +216,14 @@ Deno.serve(async (req) => {
       session_id: sessionId,
       source_document_id: sourceDocumentId,
       requires_review: requiresReview,
-      f1: { runtime_version: f1.runtime_version, summary: f1.summary, missing_indexed_sheets: f1.missing_indexed_sheets, unresolved_reference_targets: f1.unresolved_reference_targets, persistence: f1Persist, spec_dimension_persistence: specDimPersist },
+      f1: {
+        runtime_version: f1.runtime_version,
+        summary: f1.summary,
+        missing_indexed_sheets: f1.missing_indexed_sheets,
+        unresolved_reference_targets: f1.unresolved_reference_targets,
+        persistence: f1Persist,
+        spec_dimension_persistence: specDimPersist,
+      },
       roofing,
       push_to_estimate_enabled: false,
     });
