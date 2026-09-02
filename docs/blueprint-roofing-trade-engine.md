@@ -36,9 +36,11 @@ Pitch/slope labels emit `predominant_pitch` candidates using the existing import
 
 F1 roofing/insulation/deck spec candidates are bridged into `blueprint_trade_specifications`. Roofing warranty text is also normalized with year + NDL fields when deterministically detected.
 
-## Provenance
+## Provenance and reruns
 
-Every measurement/spec candidate carries a deterministic PlanPath key pointing back to page, viewport, source text/coordinates, and source document. `persistRoofingTakeoff()` resolves these keys to `blueprint_plan_paths` and upserts measurements/specs idempotently.
+Every measurement/spec candidate carries a deterministic PlanPath key pointing back to page, viewport, source text/coordinates, and source document. `persistRoofingTakeoff()` resolves these keys to `blueprint_plan_paths` and upserts measurements/specs idempotently using deterministic keys.
+
+The canonical safe entrypoint excludes outline area whenever calibrated facet geometry exists for the same viewport, preventing outline + facet double-counting.
 
 ## Safety rules
 
@@ -51,6 +53,8 @@ Every measurement/spec candidate carries a deterministic PlanPath key pointing b
 - No pricing, proposal, purchase-order, production, or CRM estimate write is enabled.
 - `ROOF_AREA_NOT_AVAILABLE` blocks area-driven material generation.
 
-## Next integration
+## Integration boundary
 
-Wire the canonical engine after F1 persistence for accepted/detected roofing sessions. Persist engine review flags into `blueprint_review_flags`, then teach Phase 4 material generation to consume confirmed `blueprint_trade_specifications` in addition to roofing measurement objects.
+The roofing trade engine is complete as a shared deterministic engine. The remaining application integration step is to invoke it after F1 parsing/persistence for a blueprint import session, persist its review flags into `blueprint_review_flags`, and expose the generated measurement/spec candidates in the Trade Quote Workbench.
+
+After that integration, Phase 4 material generation should consume only confirmed `blueprint_trade_specifications` plus confirmed roofing measurement objects.
