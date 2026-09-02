@@ -10,8 +10,16 @@ import {
   type SheetIndexEntry,
   type SheetIntelligence,
 } from "./blueprint-sheet-intelligence.ts";
+import {
+  detectDrawingReferences,
+  detectDrawingViewports,
+  BLUEPRINT_REFERENCE_VERSION,
+  BLUEPRINT_VIEWPORT_VERSION,
+  type DrawingReference,
+  type DrawingViewport,
+} from "./blueprint-viewports.ts";
 
-export const BLUEPRINT_F1_RUNTIME_VERSION = "blueprint-f1-runtime-v1";
+export const BLUEPRINT_F1_RUNTIME_VERSION = "blueprint-f1-runtime-v2";
 
 export interface BlueprintF1PagePersistenceRow {
   page_number: number;
@@ -35,6 +43,8 @@ export interface BlueprintF1PagePersistenceRow {
     discipline: SheetIntelligence["discipline"];
     normalized_scale: SheetIntelligence["scale"];
     sheet_intelligence_version: string;
+    viewport_version: string;
+    reference_version: string;
     requires_review: boolean;
   };
 }
@@ -56,14 +66,26 @@ export interface BlueprintF1IndexPersistenceRow {
   };
 }
 
+export interface BlueprintF1ViewportPersistenceRow extends DrawingViewport {
+  source_page_number: number;
+}
+
+export interface BlueprintF1ReferencePersistenceRow extends DrawingReference {
+  source_page_number: number;
+}
+
 export interface BlueprintF1RuntimeResult {
   runtime_version: string;
   layout_version: string;
   sheet_intelligence_version: string;
+  viewport_version: string;
+  reference_version: string;
   page_count: number;
   pages: BlueprintF1PagePersistenceRow[];
   analyzed_sheets: SheetIntelligence[];
   sheet_index_entries: BlueprintF1IndexPersistenceRow[];
+  drawing_viewports: BlueprintF1ViewportPersistenceRow[];
+  drawing_references: BlueprintF1ReferencePersistenceRow[];
   missing_indexed_sheets: string[];
   requires_review: boolean;
   summary: {
@@ -72,6 +94,10 @@ export interface BlueprintF1RuntimeResult {
     index_entry_count: number;
     missing_indexed_sheet_count: number;
     image_only_page_count: number;
+    viewport_count: number;
+    scaled_viewport_count: number;
+    reference_count: number;
+    unresolved_reference_target_count: number;
   };
 }
 
@@ -104,6 +130,8 @@ function pageToPersistenceRow(page: PdfLayoutPage, intelligence: SheetIntelligen
       discipline: intelligence.discipline,
       normalized_scale: intelligence.scale,
       sheet_intelligence_version: SHEET_INTELLIGENCE_VERSION,
+      viewport_version: BLUEPRINT_VIEWPORT_VERSION,
+      reference_version: BLUEPRINT_REFERENCE_VERSION,
       requires_review: intelligence.requires_review,
     },
   };
@@ -146,6 +174,25 @@ function indexRows(
   return [...deduped.values()].sort((a, b) => a.sheet_number.localeCompare(b.sheet_number));
 }
 
+function viewportRows(layoutPages: PdfLayoutPage[]): BlueprintF1ViewportPersistenceRow[] {
+  return layoutPages.flatMap((page) =>
+    detectDrawingViewports(page).map((viewport) => ({ ...viewport, source_page_number: page.page_number }))
+  );
+}
+
+function referenceRows(
+  layoutPages: PdfLayoutPage[],
+  allViewports: BlueprintF1ViewportPersistenceRow[],
+): BlueprintF1ReferencePersistenceRow[] {
+  return layoutPages.flatMap((page) => {
+    const pageViewports = allViewports.filter((viewport) => viewport.page_number === page.page_number);
+    return detectDrawingReferences(page, pageViewports).map((reference) => ({
+      ...reference,
+      source_page_number: page.page_number,
+    }));
+  });
+}
+
 export function buildBlueprintF1RuntimeFromLayout(
   layout: { page_count: number; version: string; pages: PdfLayoutPage[] },
 ): BlueprintF1RuntimeResult {
@@ -155,24 +202,46 @@ export function buildBlueprintF1RuntimeFromLayout(
   const missingSet = new Set(missingIndexedSheets);
   const pages = layout.pages.map((page, index) => pageToPersistenceRow(page, analyzed[index]));
   const sheetIndexEntries = indexRows(analyzed, missingSet);
+  const drawingViewports = viewportRows(layout.pages);
+  const drawingReferences = referenceRows(layout.pages, drawingViewports);
   const imageOnlyPageCount = layout.pages.filter((page) => !page.has_selectable_text).length;
+  const actualSheets = new Set(
+    analyzed.map((sheet) => sheet.sheet_number).filter((value): value is string => Boolean(value)),
+  );
+  const unresolvedReferenceTargets = new Set(
+    drawingReferences
+      .map((reference) => reference.target_sheet_number)
+      .filter((target) => !actualSheets.has(target)),
+  );
 
   return {
     runtime_version: BLUEPRINT_F1_RUNTIME_VERSION,
     layout_version: layout.version,
     sheet_intelligence_version: SHEET_INTELLIGENCE_VERSION,
+    viewport_version: BLUEPRINT_VIEWPORT_VERSION,
+    reference_version: BLUEPRINT_REFERENCE_VERSION,
     page_count: layout.page_count,
     pages,
     analyzed_sheets: analyzed,
     sheet_index_entries: sheetIndexEntries,
+    drawing_viewports: drawingViewports,
+    drawing_references: drawingReferences,
     missing_indexed_sheets: missingIndexedSheets,
-    requires_review: analyzed.some((sheet) => sheet.requires_review) || missingIndexedSheets.length > 0 || imageOnlyPageCount > 0,
+    requires_review:
+      analyzed.some((sheet) => sheet.requires_review) ||
+      missingIndexedSheets.length > 0 ||
+      imageOnlyPageCount > 0 ||
+      unresolvedReferenceTargets.size > 0,
     summary: {
       pages_with_sheet_number: analyzed.filter((sheet) => Boolean(sheet.sheet_number)).length,
       pages_with_scale: analyzed.filter((sheet) => Boolean(sheet.scale)).length,
       index_entry_count: sheetIndexEntries.length,
       missing_indexed_sheet_count: missingIndexedSheets.length,
       image_only_page_count: imageOnlyPageCount,
+      viewport_count: drawingViewports.length,
+      scaled_viewport_count: drawingViewports.filter((viewport) => Boolean(viewport.scale)).length,
+      reference_count: drawingReferences.length,
+      unresolved_reference_target_count: unresolvedReferenceTargets.size,
     },
   };
 }
