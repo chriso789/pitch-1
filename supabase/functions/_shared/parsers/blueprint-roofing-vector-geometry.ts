@@ -8,7 +8,7 @@ import type { RoofingGeometryEvidence, RoofingGeometryClass } from "./blueprint-
 import { reconstructClosedLoops, detectRoofGraphicSymbols, type RoofSymbolCandidate } from "./blueprint-roofing-topology.ts";
 import { buildBlueprintRoofFacetTopology } from "./blueprint-roof-facet-topology.ts";
 
-export const ROOFING_VECTOR_GEOMETRY_VERSION = "roofing-vector-geometry-v5";
+export const ROOFING_VECTOR_GEOMETRY_VERSION = "roofing-vector-geometry-v5.1";
 
 export interface RoofingVectorGeometryResult {
   evidence: RoofingGeometryEvidence[];
@@ -66,7 +66,7 @@ export function buildRoofingVectorGeometry(input:{pages:PdfLayoutPage[];viewport
 
       const loops=reconstructClosedLoops(assigned,3).filter(p=>{const b=bbox(p),a=polygonArea(p);return p.length>=3&&b.width>=24&&b.height>=24&&a>=600&&a<page.width_points*page.height_points*0.65;});
       reconstructed+=loops.length;loops.sort((a,b)=>polygonArea(b)-polygonArea(a));const outline=loops[0]??null;
-      if(outline){const areaPts=polygonArea(outline);const areaSqft=areaPts*calibration.feet_per_pdf_point*calibration.feet_per_pdf_point;evidence.push({page_number:page.page_number,viewport_key:viewport.viewport_key,geometry_class:"outline",points:outline,confidence:Math.min(viewport.confidence,calibration.confidence,0.86),source:"f1_calibrated_geometry",metadata:{version:ROOFING_VECTOR_GEOMETRY_VERSION,reconstructed:true,area_points2:areaPts,plan_area_sqft:Number(areaSqft.toFixed(2)),scale_status:calibration.status,scale_raw:viewport.scale?.raw??null,requires_review:true}});}
+      if(outline){const areaPts=polygonArea(outline);const areaSqft=areaPts*calibration.feet_per_pdf_point*calibration.feet_per_pdf_point;evidence.push({page_number:page.page_number,viewport_key:viewport.viewport_key,geometry_class:"outline",points:outline,confidence:Math.min(viewport.confidence,calibration.confidence,0.86),source:"f1_calibrated_geometry",metadata:{version:ROOFING_VECTOR_GEOMETRY_VERSION,reconstructed:true,area_points2:areaPts,area_sqft:Number(areaSqft.toFixed(2)),plan_area_sqft:Number(areaSqft.toFixed(2)),scale_status:calibration.status,scale_raw:viewport.scale?.raw??null,requires_review:true}});}
 
       const facets=buildBlueprintRoofFacetTopology({page,segments:assigned,feet_per_pdf_point:calibration.feet_per_pdf_point,roof_outline:outline});
       facetCount+=facets.summary.facet_count;pitchedFacets+=facets.summary.pitched_facets;perimeterEdges+=facets.summary.perimeter_edges;interiorEdges+=facets.summary.interior_edges;review_flags.push(...facets.review_flags.map(f=>({...f,metadata:{...(f.metadata??{}),page_number:page.page_number,viewport_key:viewport.viewport_key}})));
