@@ -3,6 +3,7 @@
 
 import type { BlueprintSpecCandidate } from "./blueprint-spec-intelligence.ts";
 import type { DimensionCandidate } from "./blueprint-dimensions.ts";
+import type { BlueprintF1RuntimeResult } from "./blueprint-f1-runtime.ts";
 
 type QueryError = { message?: string } | null;
 type QueryResult<T> = PromiseLike<{ data: T | null; error: QueryError }>;
@@ -50,4 +51,21 @@ export async function persistBlueprintDimensions(
   const { error } = await insert;
   if (error) throw new Error(`f1_dimensions_insert_failed: ${error.message ?? "unknown"}`);
   return rows.length;
+}
+
+export async function persistBlueprintSpecDimensionCandidates(
+  svc: DbLike,
+  tenantId: string,
+  documentId: string,
+  result: BlueprintF1RuntimeResult,
+): Promise<{ specifications_inserted: number; dimensions_inserted: number }> {
+  const builder = svc.from("plan_pages").select("id,page_number") as {
+    eq: (column: string, value: string) => { eq: (column: string, value: string) => QueryResult<Array<{ id: string; page_number: number }>> };
+  };
+  const { data: pages, error } = await builder.eq("document_id", documentId).eq("tenant_id", tenantId);
+  if (error) throw new Error(`f1_plan_page_lookup_failed: ${error.message ?? "unknown"}`);
+  const pageIdByNumber = new Map((pages ?? []).map(page => [page.page_number, page.id]));
+  const specificationsInserted = await persistBlueprintSpecs(svc, tenantId, documentId, pageIdByNumber, result.specifications);
+  const dimensionsInserted = await persistBlueprintDimensions(svc, tenantId, pageIdByNumber, result.dimensions);
+  return { specifications_inserted: specificationsInserted, dimensions_inserted: dimensionsInserted };
 }
