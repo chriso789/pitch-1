@@ -13,6 +13,7 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# This repository currently has no npm lockfile, so Node jobs use npm install.
 jobs:
   typecheck:
     name: Typecheck
