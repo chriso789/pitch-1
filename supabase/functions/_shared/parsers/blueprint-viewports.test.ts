@@ -49,7 +49,7 @@ Deno.test("detectDrawingReferences extracts detail/sheet callouts", () => {
     item("ROOF PLAN", 100, 100),
     item('SCALE 1/8" = 1\'-0"', 100, 130),
     item("7/A8.1", 140, 160, 60),
-    item("SEE SECTION 4/S3.2", 160, 190, 150),
+    item("SEE SECTION 4/S3.2", 160, 175, 150),
   ]);
   const viewports = detectDrawingViewports(page);
   const refs = detectDrawingReferences(page, viewports);
@@ -58,6 +58,7 @@ Deno.test("detectDrawingReferences extracts detail/sheet callouts", () => {
   assertEquals(refs[0].detail_number, "7");
   assertEquals(refs[0].target_sheet_number, "A8.1");
   assertEquals(refs[0].reference_type, "detail_callout");
+  assert(refs[0].viewport_key);
   assertEquals(refs[1].target_sheet_number, "S3.2");
   assertEquals(refs[1].reference_type, "section_callout");
 });
