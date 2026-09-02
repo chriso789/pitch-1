@@ -3,7 +3,9 @@
 // page coordinates. Existing report parsers remain on pdf-text.ts.
 
 import { getDocumentProxy } from "https://esm.sh/unpdf@0.12.1";
-import { OPS } from "npm:pdfjs-dist@3.11.174";
+import * as pdfjs from "npm:pdfjs-dist@3.11.174";
+
+const OPS = (pdfjs as Record<string, unknown>).OPS as Record<string, number> | undefined;
 
 export const PDF_LAYOUT_VERSION = "f1-layout-v2-vector";
 
@@ -113,6 +115,7 @@ function rgb(args: unknown): [number, number, number] | null {
 }
 
 async function extractVectorSegments(page: any, pageHeight: number): Promise<PdfVectorSegment[]> {
+  if (!OPS) throw new Error("pdfjs_ops_unavailable");
   const opList = await page.getOperatorList();
   const segments: PdfVectorSegment[] = [];
   let ctm: Matrix = [...IDENTITY];
