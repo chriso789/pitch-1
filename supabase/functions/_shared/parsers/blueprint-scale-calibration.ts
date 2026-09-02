@@ -4,7 +4,7 @@
 
 import type { NormalizedScale } from "./blueprint-sheet-intelligence.ts";
 
-export const BLUEPRINT_SCALE_CALIBRATION_VERSION = "blueprint-scale-calibration-v1";
+export const BLUEPRINT_SCALE_CALIBRATION_VERSION = "blueprint-scale-calibration-v2";
 
 export type ScaleCalibrationStatus =
   | "validated"
@@ -35,9 +35,15 @@ export interface ScaleCalibrationResult {
 }
 
 export function scaleFeetPerPdfPoint(scale: NormalizedScale | null): number | null {
-  if (!scale || scale.kind === "unknown" || scale.feet_per_paper_inch == null) return null;
-  if (!Number.isFinite(scale.feet_per_paper_inch) || scale.feet_per_paper_inch <= 0) return null;
-  return scale.feet_per_paper_inch / 72;
+  if (!scale || scale.kind === "unknown") return null;
+  let feetPerPaperInch = scale.feet_per_paper_inch;
+  // Ratio scale 1:N means 1 paper unit = N real units. Therefore one paper
+  // inch represents N real inches, or N/12 real feet.
+  if ((feetPerPaperInch == null || feetPerPaperInch <= 0) && scale.kind === "ratio" && scale.ratio && scale.ratio > 0) {
+    feetPerPaperInch = scale.ratio / 12;
+  }
+  if (feetPerPaperInch == null || !Number.isFinite(feetPerPaperInch) || feetPerPaperInch <= 0) return null;
+  return feetPerPaperInch / 72;
 }
 
 function weightedMean(values: Array<{ value: number; weight: number }>): number | null {
@@ -53,73 +59,39 @@ export function calibrateBlueprintScale(
 ): ScaleCalibrationResult {
   if (!declaredScale) {
     return {
-      version: BLUEPRINT_SCALE_CALIBRATION_VERSION,
-      status: "missing",
-      confidence: 0,
-      declared_scale: null,
-      feet_per_pdf_point: null,
-      pdf_points_per_foot: null,
-      validation_error_pct: null,
-      anchors_used: 0,
-      source: "none",
-      review_required: true,
-      message: "No usable drawing scale was detected for this viewport.",
+      version: BLUEPRINT_SCALE_CALIBRATION_VERSION, status: "missing", confidence: 0, declared_scale: null,
+      feet_per_pdf_point: null, pdf_points_per_foot: null, validation_error_pct: null, anchors_used: 0,
+      source: "none", review_required: true, message: "No usable drawing scale was detected for this viewport.",
     };
   }
 
   if (/\b(?:NTS|NOT\s+TO\s+SCALE)\b/i.test(declaredScale.raw)) {
     return {
-      version: BLUEPRINT_SCALE_CALIBRATION_VERSION,
-      status: "not_to_scale",
-      confidence: 1,
-      declared_scale: declaredScale,
-      feet_per_pdf_point: null,
-      pdf_points_per_foot: null,
-      validation_error_pct: null,
-      anchors_used: 0,
-      source: "none",
-      review_required: true,
-      message: "Drawing is explicitly marked not to scale.",
+      version: BLUEPRINT_SCALE_CALIBRATION_VERSION, status: "not_to_scale", confidence: 1, declared_scale: declaredScale,
+      feet_per_pdf_point: null, pdf_points_per_foot: null, validation_error_pct: null, anchors_used: 0,
+      source: "none", review_required: true, message: "Drawing is explicitly marked not to scale.",
     };
   }
 
   const nominal = scaleFeetPerPdfPoint(declaredScale);
   if (nominal == null) {
     return {
-      version: BLUEPRINT_SCALE_CALIBRATION_VERSION,
-      status: "missing",
-      confidence: 0.1,
-      declared_scale: declaredScale,
-      feet_per_pdf_point: null,
-      pdf_points_per_foot: null,
-      validation_error_pct: null,
-      anchors_used: 0,
-      source: "none",
-      review_required: true,
-      message: "Scale text was detected but could not be converted into a real-world calibration.",
+      version: BLUEPRINT_SCALE_CALIBRATION_VERSION, status: "missing", confidence: 0.1, declared_scale: declaredScale,
+      feet_per_pdf_point: null, pdf_points_per_foot: null, validation_error_pct: null, anchors_used: 0,
+      source: "none", review_required: true, message: "Scale text was detected but could not be converted into a real-world calibration.",
     };
   }
 
   const implied = anchors
     .filter((a) => a.known_feet > 0 && a.pdf_distance_points > 0)
-    .map((a) => ({
-      value: a.known_feet / a.pdf_distance_points,
-      weight: Math.max(0.1, Math.min(1, a.confidence ?? 0.8)),
-    }));
+    .map((a) => ({ value: a.known_feet / a.pdf_distance_points, weight: Math.max(0.1, Math.min(1, a.confidence ?? 0.8)) }));
   const measured = weightedMean(implied);
 
   if (measured == null) {
     return {
-      version: BLUEPRINT_SCALE_CALIBRATION_VERSION,
-      status: "declared_unverified",
-      confidence: 0.82,
-      declared_scale: declaredScale,
-      feet_per_pdf_point: nominal,
-      pdf_points_per_foot: 1 / nominal,
-      validation_error_pct: null,
-      anchors_used: 0,
-      source: "declared_scale",
-      review_required: true,
+      version: BLUEPRINT_SCALE_CALIBRATION_VERSION, status: "declared_unverified", confidence: 0.82, declared_scale: declaredScale,
+      feet_per_pdf_point: nominal, pdf_points_per_foot: 1 / nominal, validation_error_pct: null, anchors_used: 0,
+      source: "declared_scale", review_required: true,
       message: "Scale is mathematically usable but has not yet been validated against a printed dimension.",
     };
   }
@@ -136,10 +108,8 @@ export function calibrateBlueprintScale(
     declared_scale: declaredScale,
     feet_per_pdf_point: conflict ? null : chosen,
     pdf_points_per_foot: conflict ? null : 1 / chosen,
-    validation_error_pct: Number(errorPct.toFixed(3)),
-    anchors_used: implied.length,
-    source: validated ? "dimension_validated" : "declared_scale",
-    review_required: !validated,
+    validation_error_pct: Number(errorPct.toFixed(3)), anchors_used: implied.length,
+    source: validated ? "dimension_validated" : "declared_scale", review_required: !validated,
     message: validated
       ? `Scale validated against ${implied.length} printed dimension anchor(s) within ${errorPct.toFixed(2)}%.`
       : conflict
