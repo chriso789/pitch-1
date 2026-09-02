@@ -13,9 +13,10 @@ function makePage(items: PdfLayoutPage["text_items"]): PdfLayoutPage {
     height_points: 700,
     rotation_deg: 0,
     text_items: items,
+    vector_segments: [],
     text: items.map((entry) => entry.text).join(" "),
     has_selectable_text: true,
-    vector_extraction_status: "deferred",
+    vector_extraction_status: "completed",
   };
 }
 
