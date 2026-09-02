@@ -67,9 +67,9 @@ jobs:
       - run: npm run build
 
   edge-functions-check:
-    name: Deno • Changed Edge Functions
+    name: Deno • Blueprint Edge Functions
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -99,11 +99,27 @@ jobs:
           done
           if [ ${#files[@]} -eq 0 ]; then
             echo "No changed edge function entrypoints to check."
-            exit 0
+          else
+            echo "Checking: ${files[@]}"
+            deno check --no-lock "${files[@]}"
           fi
-          echo "Checking: ${files[@]}"
-          deno check --no-lock "${files[@]}"
         shell: bash
+
+      - name: Run Blueprint F1 and roofing parser tests
+        if: github.ref != 'refs/heads/main' && steps.changed.outputs.any_changed == 'true'
+        run: |
+          deno test --no-lock \
+            supabase/functions/_shared/parsers/blueprint-scale-calibration.test.ts \
+            supabase/functions/_shared/parsers/blueprint-sheet-intelligence.test.ts \
+            supabase/functions/_shared/parsers/blueprint-viewports.test.ts \
+            supabase/functions/_shared/parsers/blueprint-spec-dimension.test.ts \
+            supabase/functions/_shared/parsers/blueprint-f1-runtime.test.ts \
+            supabase/functions/_shared/parsers/blueprint-f1-roofing-integration.test.ts \
+            supabase/functions/_shared/parsers/blueprint-roofing-topology.test.ts \
+            supabase/functions/_shared/parsers/blueprint-roofing-vector-geometry.test.ts \
+            supabase/functions/_shared/parsers/blueprint-roof-facet-topology.test.ts \
+            supabase/functions/_shared/parsers/blueprint-roofing-engine.test.ts \
+            supabase/functions/_shared/parsers/blueprint-roofing-takeoff.test.ts
 
       - name: Deno type-check ALL edge functions (main only, non-blocking)
         if: github.ref == 'refs/heads/main'
