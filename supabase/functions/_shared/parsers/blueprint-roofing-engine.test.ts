@@ -20,9 +20,10 @@ const page: PdfLayoutPage = {
   height_points: 500,
   rotation_deg: 0,
   text_items: [{ text: "ROOF PLAN", x: 20, y: 20, width: 100, height: 12, rotation_deg: 0, font_name: "Test" }],
+  vector_segments: [],
   text: "ROOF PLAN",
   has_selectable_text: true,
-  vector_extraction_status: "deferred",
+  vector_extraction_status: "completed",
 };
 
 Deno.test("safe roofing engine does not add outline area when facets exist", () => {
