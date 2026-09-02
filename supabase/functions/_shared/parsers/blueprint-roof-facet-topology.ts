@@ -3,7 +3,7 @@
 import type { PdfLayoutPage, PdfVectorSegment } from "./pdf-layout.ts";
 import { dedupeAndMergeSegments } from "./blueprint-roofing-topology.ts";
 
-export const BLUEPRINT_ROOF_FACET_TOPOLOGY_VERSION = "blueprint-roof-facet-topology-v1";
+export const BLUEPRINT_ROOF_FACET_TOPOLOGY_VERSION = "blueprint-roof-facet-topology-v1.1";
 
 type Pt = { x:number; y:number };
 export interface BlueprintRoofFacet {
@@ -40,19 +40,28 @@ function areaSigned(p:Pt[]){let a=0;for(let i=0;i<p.length;i++){const q=p[(i+1)%
 function area(p:Pt[]){return Math.abs(areaSigned(p));}
 function centroid(p:Pt[]):Pt{let sx=0,sy=0;for(const x of p){sx+=x.x;sy+=x.y;}return{x:sx/p.length,y:sy/p.length};}
 function pointInPoly(pt:Pt,poly:Pt[]):boolean{let inside=false;for(let i=0,j=poly.length-1;i<poly.length;j=i++){const a=poly[i],b=poly[j];const hit=((a.y>pt.y)!==(b.y>pt.y))&&(pt.x<(b.x-a.x)*(pt.y-a.y)/((b.y-a.y)||1e-9)+a.x);if(hit)inside=!inside;}return inside;}
-function cross(a:Pt,b:Pt,c:Pt){return(b.x-a.x)*(c.y-a.y)-(b.y-a.y)*(c.x-a.x);}
 function segmentIntersection(a:Pt,b:Pt,c:Pt,d:Pt):{p:Pt;ta:number;tb:number}|null{
   const r={x:b.x-a.x,y:b.y-a.y},s={x:d.x-c.x,y:d.y-c.y};const den=r.x*s.y-r.y*s.x;if(Math.abs(den)<1e-8)return null;
   const q={x:c.x-a.x,y:c.y-a.y};const ta=(q.x*s.y-q.y*s.x)/den,tb=(q.x*r.y-q.y*r.x)/den;
   if(ta<=1e-5||ta>=1-1e-5||tb<=1e-5||tb>=1-1e-5)return null;
   return{p:{x:a.x+ta*r.x,y:a.y+ta*r.y},ta,tb};
 }
+function endpointProjection(endpoint:Pt,a:Pt,b:Pt,tolerance=1.75):number|null{
+  const vx=b.x-a.x,vy=b.y-a.y,len2=vx*vx+vy*vy;if(len2<1e-8)return null;
+  const t=((endpoint.x-a.x)*vx+(endpoint.y-a.y)*vy)/len2;if(t<=1e-5||t>=1-1e-5)return null;
+  const projected={x:a.x+t*vx,y:a.y+t*vy};return dist(endpoint,projected)<=tolerance?t:null;
+}
 function splitAtIntersections(raw:PdfVectorSegment[],maxSegments=1400):PdfVectorSegment[]{
   const input=dedupeAndMergeSegments(raw,1.25,3.5).filter(s=>s.length_points>=3);
   if(input.length>maxSegments)return input;
   const cuts=input.map(()=>[0,1]);
   for(let i=0;i<input.length;i++)for(let j=i+1;j<input.length;j++){
-    const a=input[i],b=input[j];const hit=segmentIntersection({x:a.x1,y:a.y1},{x:a.x2,y:a.y2},{x:b.x1,y:b.y1},{x:b.x2,y:b.y2});if(!hit)continue;cuts[i].push(hit.ta);cuts[j].push(hit.tb);
+    const a=input[i],b=input[j];const a1={x:a.x1,y:a.y1},a2={x:a.x2,y:a.y2},b1={x:b.x1,y:b.y1},b2={x:b.x2,y:b.y2};
+    const hit=segmentIntersection(a1,a2,b1,b2);if(hit){cuts[i].push(hit.ta);cuts[j].push(hit.tb);continue;}
+    // CAD roof planes commonly meet at T-junctions: a ridge/hip/valley endpoint lands on a perimeter or another interior line.
+    // Split the host segment at that endpoint so the planar graph becomes topologically connected.
+    for(const endpoint of [a1,a2]){const t=endpointProjection(endpoint,b1,b2);if(t!=null)cuts[j].push(t);}
+    for(const endpoint of [b1,b2]){const t=endpointProjection(endpoint,a1,a2);if(t!=null)cuts[i].push(t);}
   }
   const out:PdfVectorSegment[]=[];
   for(let i=0;i<input.length;i++){
@@ -70,7 +79,7 @@ function planarFaces(segments:PdfVectorSegment[]):Array<{points:Pt[];edgeKeys:st
   const outgoing=new Map<string,string[]>();for(const[k,n]of nodes){outgoing.set(k,[...n.neighbors].sort((a,b)=>Math.atan2(nodes.get(a)!.pt.y-n.pt.y,nodes.get(a)!.pt.x-n.pt.x)-Math.atan2(nodes.get(b)!.pt.y-n.pt.y,nodes.get(b)!.pt.x-n.pt.x)));}
   const visited=new Set<string>();const faces:Array<{points:Pt[];edgeKeys:string[]}>=[];
   for(const[u,list]of outgoing)for(const v of list){const start=`${u}>${v}`;if(visited.has(start))continue;let a=u,b=v;const pts:Pt[]=[],edges:string[]=[];let guard=0;
-    while(guard++<segments.length*3+20){const dk=`${a}>${b}`;if(visited.has(dk)&&dk!==start)break;visited.add(dk);pts.push(nodes.get(a)!.pt);edges.push(canonicalEdge(a,b));const around=outgoing.get(b)??[];const idx=around.indexOf(a);if(idx<0||around.length<2)break;const next=around[(idx-1+around.length)%around.length];a=b;b=next;if(`${a}>${b}`===start){if(pts.length>=3){const signed=areaSigned(pts);if(signed>10)faces.push({points:pts,edgeKeys:edges});}break;}
+    while(guard++<segments.length*3+20){const dk=`${a}>${b}`;if(visited.has(dk)&&dk!==start)break;visited.add(dk);pts.push(nodes.get(a)!.pt);edges.push(canonicalEdge(a,b));const around=outgoing.get(b)??[];const idx=around.indexOf(a);if(idx<0||around.length<2)break;const next=around[(idx-1+around.length)%around.length];a=b;b=next;if(`${a}>${b}`===start){if(pts.length>=3&&areaSigned(pts)>10)faces.push({points:pts,edgeKeys:edges});break;}
     }
   }
   const seen=new Set<string>();return faces.filter(f=>{const c=centroid(f.points);const k=`${Math.round(c.x)}:${Math.round(c.y)}:${Math.round(area(f.points))}`;if(seen.has(k))return false;seen.add(k);return true;});
