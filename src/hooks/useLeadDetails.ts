@@ -309,13 +309,16 @@ async function fetchSalesReps(tenantId: string | null, locationId?: string | nul
 
   if (error) throw error;
 
-  // Show reps assigned to this location. Elevated roles stay visible only when
-  // they have no location assignments at all (company-wide access); once they
-  // are scoped to specific locations, they follow the same rule as reps.
-  return (allReps || []).filter(rep =>
-    locationUserIds.has(rep.id) ||
-    ((elevatedRoles as readonly string[]).includes(rep.role) && !assignedAnywhere.has(rep.id))
+  // Show reps assigned to this location. Users who have NO location assignment
+  // at all remain visible (they are company-wide / not yet scoped); only users
+  // explicitly assigned to other locations are hidden.
+  const filtered = (allReps || []).filter(rep =>
+    locationUserIds.has(rep.id) || !assignedAnywhere.has(rep.id)
   );
+
+  // Safety net: never return an empty list (e.g. orphaned/legacy location ids)
+  return filtered.length > 0 ? filtered : (allReps || []);
+
 }
 
 
