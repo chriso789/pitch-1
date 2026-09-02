@@ -1,20 +1,21 @@
 // Converts raw PDF vector segments into conservative roofing geometry evidence.
-// Scale ownership is viewport-specific; fragmented CAD reconstruction is review-gated.
+// Scale ownership is viewport-specific; fragmented CAD and facet reconstruction are review-gated.
 import type { PdfLayoutPage, PdfVectorSegment, PdfLayoutTextItem } from "./pdf-layout.ts";
 import type { DrawingViewport } from "./blueprint-viewports.ts";
 import type { DimensionCandidate } from "./blueprint-dimensions.ts";
 import { calibrateBlueprintScale, type ScaleDimensionAnchor, type ScaleCalibrationResult } from "./blueprint-scale-calibration.ts";
 import type { RoofingGeometryEvidence, RoofingGeometryClass } from "./blueprint-roofing-takeoff.ts";
 import { reconstructClosedLoops, detectRoofGraphicSymbols, type RoofSymbolCandidate } from "./blueprint-roofing-topology.ts";
+import { buildBlueprintRoofFacetTopology } from "./blueprint-roof-facet-topology.ts";
 
-export const ROOFING_VECTOR_GEOMETRY_VERSION = "roofing-vector-geometry-v4";
+export const ROOFING_VECTOR_GEOMETRY_VERSION = "roofing-vector-geometry-v5";
 
 export interface RoofingVectorGeometryResult {
   evidence: RoofingGeometryEvidence[];
   symbol_candidates: Array<RoofSymbolCandidate & { page_number:number; viewport_key:string }>;
   calibrations: Array<{ page_number: number; viewport_key: string; calibration: ScaleCalibrationResult }>;
   review_flags: Array<{ flag_code: string; severity: "info" | "warning" | "error" | "blocker"; blocking: boolean; message: string; metadata?: Record<string, unknown> }>;
-  summary: { vector_segments: number; roof_viewports: number; reconstructed_components: number; roof_outlines: number; labeled_linear_items: number; symbol_candidates:number; validated_scales: number };
+  summary: { vector_segments:number; roof_viewports:number; reconstructed_components:number; roof_outlines:number; facet_count:number; pitched_facets:number; topology_perimeter_edges:number; topology_interior_edges:number; labeled_linear_items:number; symbol_candidates:number; validated_scales:number };
 }
 
 const ROOF_RE = /\b(ROOF|ROOFING|TPO|EPDM|PVC|SHINGLE|STANDING\s+SEAM)\b/i;
@@ -31,7 +32,6 @@ function midpoint(s: PdfVectorSegment): Pt { return { x: (s.x1+s.x2)/2, y:(s.y1+
 function textCenter(t: PdfLayoutTextItem): Pt { return { x:t.x+t.width/2, y:t.y+t.height/2 }; }
 function dist(a: Pt,b: Pt) { return Math.hypot(a.x-b.x,a.y-b.y); }
 function nearestViewport(point: Pt, viewports: DrawingViewport[]): DrawingViewport | null { return viewports.map(v=>({v,d:dist(point,viewportAnchor(v))})).sort((a,b)=>a.d-b.d)[0]?.v ?? null; }
-
 function dimensionAnchors(viewport:DrawingViewport,allViewports:DrawingViewport[],dimensions:DimensionCandidate[],segments:PdfVectorSegment[]):ScaleDimensionAnchor[]{
   const out:ScaleDimensionAnchor[]=[];for(const dim of dimensions){if(dim.page_number!==viewport.page_number)continue;const dc={x:dim.bbox.x+dim.bbox.width/2,y:dim.bbox.y+dim.bbox.height/2};if(nearestViewport(dc,allViewports)?.viewport_key!==viewport.viewport_key)continue;
     const chosen=segments.map(s=>({s,d:dist(dc,midpoint(s))})).filter(x=>x.d<=Math.max(36,dim.bbox.height*5)&&x.s.length_points>=Math.max(8,dim.bbox.width*1.2)).sort((a,b)=>a.d-b.d)[0]?.s;if(!chosen)continue;
@@ -40,7 +40,6 @@ function dimensionAnchors(viewport:DrawingViewport,allViewports:DrawingViewport[
 }
 function polygonArea(points:Pt[]):number{let a=0;for(let i=0;i<points.length;i++){const p=points[i],q=points[(i+1)%points.length];a+=p.x*q.y-q.x*p.y;}return Math.abs(a)/2;}
 function bbox(points:Pt[]){const xs=points.map(p=>p.x),ys=points.map(p=>p.y);return{width:Math.max(...xs)-Math.min(...xs),height:Math.max(...ys)-Math.min(...ys)};}
-
 function labeledLinearEvidence(page:PdfLayoutPage,viewport:DrawingViewport,allViewports:DrawingViewport[],assigned:PdfVectorSegment[],feetPerPoint:number):RoofingGeometryEvidence[]{
   const labels=page.text_items.flatMap(item=>{const match=LINE_LABELS.find(l=>l.re.test(item.text));return match?[{item,type:match.type}]:[];}).filter(x=>nearestViewport(textCenter(x.item),allViewports)?.viewport_key===viewport.viewport_key);
   const used=new Set<number>();const out:RoofingGeometryEvidence[]=[];
@@ -56,7 +55,7 @@ export function calibratedViewports(viewportsByPage:Record<number,DrawingViewpor
 
 export function buildRoofingVectorGeometry(input:{pages:PdfLayoutPage[];viewports_by_page:Map<number,DrawingViewport[]>|Record<number,DrawingViewport[]>;dimensions?:DimensionCandidate[]}):RoofingVectorGeometryResult{
   const evidence:RoofingGeometryEvidence[]=[],symbol_candidates:RoofingVectorGeometryResult["symbol_candidates"]=[],calibrations:RoofingVectorGeometryResult["calibrations"]=[],review_flags:RoofingVectorGeometryResult["review_flags"]=[];
-  let vectorSegments=0,roofViewports=0,reconstructed=0,validated=0,labeledLinear=0;
+  let vectorSegments=0,roofViewports=0,reconstructed=0,validated=0,labeledLinear=0,facetCount=0,pitchedFacets=0,perimeterEdges=0,interiorEdges=0;
   const getV=(n:number)=>input.viewports_by_page instanceof Map?(input.viewports_by_page.get(n)??[]):(input.viewports_by_page[n]??[]);
   for(const page of input.pages){vectorSegments+=page.vector_segments.length;const vs=getV(page.page_number);if(!vs.length)continue;
     for(const viewport of vs){const roof=ROOF_RE.test(`${viewport.title??""} ${viewport.metadata.title_item_text??""}`)||(vs.length===1&&/\bROOF\s+PLAN\b/i.test(page.text));if(!roof)continue;roofViewports++;
@@ -66,13 +65,16 @@ export function buildRoofingVectorGeometry(input:{pages:PdfLayoutPage[];viewport
       if(calibration.review_required)review_flags.push({flag_code:"ROOF_VIEWPORT_SCALE_REVIEW",severity:"warning",blocking:false,message:calibration.message,metadata:{page_number:page.page_number,viewport_key:viewport.viewport_key,status:calibration.status,anchors_used:calibration.anchors_used}});
 
       const loops=reconstructClosedLoops(assigned,3).filter(p=>{const b=bbox(p),a=polygonArea(p);return p.length>=3&&b.width>=24&&b.height>=24&&a>=600&&a<page.width_points*page.height_points*0.65;});
-      reconstructed+=loops.length;loops.sort((a,b)=>polygonArea(b)-polygonArea(a));const outline=loops[0];
-      if(outline){const areaPts=polygonArea(outline);const areaSqft=areaPts*calibration.feet_per_pdf_point*calibration.feet_per_pdf_point;evidence.push({page_number:page.page_number,viewport_key:viewport.viewport_key,geometry_class:"outline",points:outline,confidence:Math.min(viewport.confidence,calibration.confidence,0.86),source:"f1_calibrated_geometry",metadata:{version:ROOFING_VECTOR_GEOMETRY_VERSION,reconstructed:true,area_points2:areaPts,area_sqft:Number(areaSqft.toFixed(2)),scale_status:calibration.status,scale_raw:viewport.scale?.raw??null,requires_review:true}});}
+      reconstructed+=loops.length;loops.sort((a,b)=>polygonArea(b)-polygonArea(a));const outline=loops[0]??null;
+      if(outline){const areaPts=polygonArea(outline);const areaSqft=areaPts*calibration.feet_per_pdf_point*calibration.feet_per_pdf_point;evidence.push({page_number:page.page_number,viewport_key:viewport.viewport_key,geometry_class:"outline",points:outline,confidence:Math.min(viewport.confidence,calibration.confidence,0.86),source:"f1_calibrated_geometry",metadata:{version:ROOFING_VECTOR_GEOMETRY_VERSION,reconstructed:true,area_points2:areaPts,plan_area_sqft:Number(areaSqft.toFixed(2)),scale_status:calibration.status,scale_raw:viewport.scale?.raw??null,requires_review:true}});}
+
+      const facets=buildBlueprintRoofFacetTopology({page,segments:assigned,feet_per_pdf_point:calibration.feet_per_pdf_point,roof_outline:outline});
+      facetCount+=facets.summary.facet_count;pitchedFacets+=facets.summary.pitched_facets;perimeterEdges+=facets.summary.perimeter_edges;interiorEdges+=facets.summary.interior_edges;review_flags.push(...facets.review_flags.map(f=>({...f,metadata:{...(f.metadata??{}),page_number:page.page_number,viewport_key:viewport.viewport_key}})));
+      for(const facet of facets.facets){evidence.push({page_number:page.page_number,viewport_key:viewport.viewport_key,geometry_class:"facet",points:facet.points,confidence:Math.min(facet.confidence,calibration.confidence),source:"f1_calibrated_geometry",metadata:{version:ROOFING_VECTOR_GEOMETRY_VERSION,facet_key:facet.facet_key,plan_area_sqft:facet.plan_area_sqft,surface_area_sqft:facet.surface_area_sqft,pitch_rise:facet.pitch_rise,pitch_run:facet.pitch_run,pitch_source:facet.pitch_source,edge_keys:facet.edge_keys,requires_review:true}});}
 
       const linear=labeledLinearEvidence(page,viewport,vs,assigned,calibration.feet_per_pdf_point);evidence.push(...linear);labeledLinear+=linear.length;
-      const symbols=detectRoofGraphicSymbols(page,assigned).filter(s=>nearestViewport(s.center,vs)?.viewport_key===viewport.viewport_key).map(s=>({...s,page_number:page.page_number,viewport_key:viewport.viewport_key}));
-      symbol_candidates.push(...symbols);
-      for(const symbol of symbols){review_flags.push({flag_code:"ROOF_GRAPHIC_SYMBOL_CANDIDATE",severity:symbol.confidence>=0.9?"info":"warning",blocking:false,message:`${symbol.kind.replaceAll("_"," ")} graphic candidate detected on page ${page.page_number}.`,metadata:{viewport_key:viewport.viewport_key,kind:symbol.kind,confidence:symbol.confidence,bbox:symbol.bbox,source:symbol.source,evidence_count:symbol.evidence_count}});}
+      const symbols=detectRoofGraphicSymbols(page,assigned).filter(s=>nearestViewport(s.center,vs)?.viewport_key===viewport.viewport_key).map(s=>({...s,page_number:page.page_number,viewport_key:viewport.viewport_key}));symbol_candidates.push(...symbols);
+      for(const symbol of symbols)review_flags.push({flag_code:"ROOF_GRAPHIC_SYMBOL_CANDIDATE",severity:symbol.confidence>=0.9?"info":"warning",blocking:false,message:`${symbol.kind.replaceAll("_"," ")} graphic candidate detected on page ${page.page_number}.`,metadata:{viewport_key:viewport.viewport_key,kind:symbol.kind,confidence:symbol.confidence,bbox:symbol.bbox,source:symbol.source,evidence_count:symbol.evidence_count}});
     }}
-  return{evidence,symbol_candidates,calibrations,review_flags,summary:{vector_segments:vectorSegments,roof_viewports:roofViewports,reconstructed_components:reconstructed,roof_outlines:evidence.filter(e=>e.geometry_class==="outline").length,labeled_linear_items:labeledLinear,symbol_candidates:symbol_candidates.length,validated_scales:validated}};
+  return{evidence,symbol_candidates,calibrations,review_flags,summary:{vector_segments:vectorSegments,roof_viewports:roofViewports,reconstructed_components:reconstructed,roof_outlines:evidence.filter(e=>e.geometry_class==="outline").length,facet_count:facetCount,pitched_facets:pitchedFacets,topology_perimeter_edges:perimeterEdges,topology_interior_edges:interiorEdges,labeled_linear_items:labeledLinear,symbol_candidates:symbol_candidates.length,validated_scales:validated}};
 }
