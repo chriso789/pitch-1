@@ -37,7 +37,8 @@ Deno.test("extracts coordinate-aware sheet index entries", () => {
     height_points: 700,
     rotation_deg: 0,
     has_selectable_text: true,
-    vector_extraction_status: "deferred",
+    vector_extraction_status: "completed",
+    vector_segments: [],
     text: "SHEET INDEX A1.0 FLOOR PLAN A2.0 ROOF PLAN S1.0 FOUNDATION PLAN",
     text_items: [
       { text: "A1.0", x: 100, y: 100, width: 30, height: 10, rotation_deg: 0, font_name: null },
