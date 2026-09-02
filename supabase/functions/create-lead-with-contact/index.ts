@@ -388,49 +388,36 @@ Deno.serve(async (req: Request) => {
       console.log("[create-lead-with-contact] Checking for existing contact...");
 
       const normalizedPhone = isPlaceholderPhone(body.phone) ? null : normalizePhone(body.phone);
-      const normalizedEmail = normalizeEmail(body.email);
 
-
-      // --- DEDUP TIER 1: exact phone or email match within tenant ---
-      if (normalizedPhone || normalizedEmail) {
-        const filters: string[] = [];
-        if (normalizedPhone) filters.push(`phone.ilike.%${normalizedPhone}`);
-        if (normalizedEmail) filters.push(`email.eq.${normalizedEmail}`);
-
+      // --- DEDUP TIER 1: exact phone match within tenant ---
+      // NOTE: email is intentionally NOT a duplicate signal — shared/family emails
+      // must be allowed to create separate leads. Only phone and name+street match.
+      if (normalizedPhone) {
         const { data: contactMatch } = await supabase
           .from("contacts")
           .select("id, first_name, last_name, address_street, email, phone, location_id")
           .eq("tenant_id", tenantId)
           .eq("is_deleted", false)
-          .or(filters.join(","))
+          .ilike("phone", `%${normalizedPhone}`)
           .limit(5);
 
-        const duplicate = contactMatch?.find((c) => {
-          const cPhone = normalizePhone(c.phone);
-          const cEmail = normalizeEmail(c.email);
-          return (
-            (normalizedPhone && cPhone === normalizedPhone) ||
-            (normalizedEmail && cEmail === normalizedEmail)
-          );
-        });
+        const duplicate = contactMatch?.find((c) => normalizePhone(c.phone) === normalizedPhone);
 
         if (duplicate && !body.forceDuplicate) {
-          console.log("[create-lead-with-contact] Phone/email duplicate detected:", duplicate.id);
-          const matchedOn = normalizedPhone && normalizePhone(duplicate.phone) === normalizedPhone
-            ? "phone"
-            : "email";
+          console.log("[create-lead-with-contact] Phone duplicate detected:", duplicate.id);
           return errorResponse({
             code: "duplicate_contact",
-            field: matchedOn,
-            message: `A contact with this ${matchedOn} already exists. Re-submit with forceDuplicate=true to attach a new lead to this contact.`,
-            details: { existingContact: duplicate, matchedOn },
+            field: "phone",
+            message: `A contact with this phone already exists. Re-submit with forceDuplicate=true to attach a new lead to this contact.`,
+            details: { existingContact: duplicate, matchedOn: "phone" },
           }, 409);
         }
         if (duplicate && body.forceDuplicate) {
           contactId = duplicate.id;
-          console.log("[create-lead-with-contact] Force duplicate (phone/email): reusing contact", contactId);
+          console.log("[create-lead-with-contact] Force duplicate (phone): reusing contact", contactId);
         }
       }
+
 
       // --- DEDUP TIER 2: name + street address ---
       if (!contactId && body.name) {
