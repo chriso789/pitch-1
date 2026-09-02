@@ -10,7 +10,8 @@ export interface F1PersistenceSummary {
   protected_reviewed_index_rows: number;
 }
 
-type QueryResult<T> = PromiseLike<{ data: T | null; error: { message?: string } | null }>;
+type QueryError = { message?: string } | null;
+type QueryResult<T> = PromiseLike<{ data: T | null; error: QueryError }>;
 type DbLike = {
   from: (table: string) => {
     select: (...args: unknown[]) => unknown;
@@ -74,10 +75,12 @@ export async function persistBlueprintF1Result(
     }));
 
   if (indexRows.length) {
-    const indexWrite = svc.from("plan_sheet_index_entries").upsert(indexRows, {
+    const indexBuilder = svc.from("plan_sheet_index_entries").upsert(indexRows, {
       onConflict: "document_id,sheet_number",
-    }) as QueryResult<unknown>;
-    const { error: indexError } = await indexWrite;
+    }) as {
+      select: (columns: string) => QueryResult<Array<{ id: string }>>;
+    };
+    const { error: indexError } = await indexBuilder.select("id");
     if (indexError) throw new Error(`f1_sheet_index_upsert_failed: ${indexError.message ?? "unknown"}`);
   }
 
