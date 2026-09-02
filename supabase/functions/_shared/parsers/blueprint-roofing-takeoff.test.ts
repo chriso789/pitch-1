@@ -39,9 +39,10 @@ const page: PdfLayoutPage = {
     item("RTU-1", 400, 100),
     item("SLOPE 1/4:12", 100, 150, 120),
   ],
+  vector_segments: [],
   text: "ROOF PLAN RD-1 RD-2 SCUPPER RTU-1 SLOPE 1/4:12",
   has_selectable_text: true,
-  vector_extraction_status: "deferred",
+  vector_extraction_status: "completed",
 };
 
 const roofSpec: BlueprintSpecCandidate = {
