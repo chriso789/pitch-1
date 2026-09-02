@@ -22,9 +22,10 @@ Deno.test("F1 runtime feeds review-safe roofing engine end to end", () => {
       item("A2.1", 850, 640, 50),
       item("ROOF PLAN", 740, 610, 120),
     ],
+    vector_segments: [],
     text: "ROOF PLAN SCALE 1/8\" = 1'-0\" 60 MIL TPO SLOPE 1/4 / 12 RD-1 A2.1 ROOF PLAN",
     has_selectable_text: true,
-    vector_extraction_status: "deferred",
+    vector_extraction_status: "completed",
   };
 
   const f1 = buildBlueprintF1RuntimeFromLayout({ page_count: 1, version: "f1-layout-v1", pages: [page] });
