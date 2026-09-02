@@ -5,7 +5,7 @@
 import type { PdfLayoutPage, PdfLayoutTextItem } from "./pdf-layout.ts";
 import type { DrawingViewport } from "./blueprint-viewports.ts";
 
-export const BLUEPRINT_DIMENSION_VERSION = "f1-dimension-v1";
+export const BLUEPRINT_DIMENSION_VERSION = "f1-dimension-v1.1";
 
 export interface DimensionCandidate {
   page_number: number;
@@ -29,12 +29,15 @@ export interface CalibratedLengthCandidate {
   metadata: { version: string; scale_raw: string; requires_review: true };
 }
 
-const FEET_INCH_RE = /\b(\d+)\s*['’]\s*(?:-\s*)?(\d+(?:\.\d+)?|\d+\s*\/\s*\d+)?\s*["”]?\b/;
-const INCH_ONLY_RE = /\b(\d+(?:\.\d+)?|\d+\s*\/\s*\d+)\s*["”]\b/;
+const FEET_INCH_RE = /\b(\d+)\s*['’]\s*(?:-\s*)?(\d+(?:\.\d+)?|\d+\s*\/\s*\d+)?\s*["”]?/;
+const INCH_ONLY_RE = /(?:^|\s)(\d+(?:\.\d+)?|\d+\s*\/\s*\d+)\s*["”](?=\s|$|[,;)])/;
 
 function fraction(value: string): number | null {
   const m = value.trim().match(/^(\d+)\s*\/\s*(\d+)$/);
-  if (m) return Number(m[1]) / Number(m[2]);
+  if (m) {
+    const denominator = Number(m[2]);
+    return denominator === 0 ? null : Number(m[1]) / denominator;
+  }
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
@@ -71,7 +74,6 @@ export function extractDimensionCandidates(page: PdfLayoutPage, viewports: Drawi
   for (const item of page.text_items) {
     const feet = parseDimensionFeet(item.text);
     if (feet == null || feet <= 0) continue;
-    // Avoid treating architectural scale labels as dimensions.
     if (/SCALE/i.test(item.text) || /=/.test(item.text)) continue;
     const viewport = owner(item, viewports);
     out.push({
@@ -98,7 +100,6 @@ export function calibrateSegmentLength(input: {
   const scale = input.viewport.scale;
   if (!scale || scale.kind !== "architectural" || !scale.feet_per_paper_inch || scale.feet_per_paper_inch <= 0) return null;
   const lengthPoints = Math.hypot(input.end.x - input.start.x, input.end.y - input.start.y);
-  // PDF point = 1/72 paper inch.
   const paperInches = lengthPoints / 72;
   const lengthFt = paperInches * scale.feet_per_paper_inch;
   if (!Number.isFinite(lengthFt) || lengthFt <= 0) return null;
