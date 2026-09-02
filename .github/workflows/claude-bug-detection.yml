@@ -14,7 +14,7 @@ jobs:
       contents: read
       issues: write
       pull-requests: write
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -27,12 +27,12 @@ jobs:
             "src/features/sales"
             "supabase/functions"
           )
-          
-          touch analysis_bundle.txt
+          : > analysis_bundle.txt
           for area in "${CRITICAL_FILES[@]}"; do
             if [ -d "$area" ]; then
               echo "### Analyzing: $area" >> analysis_bundle.txt
-              find "$area" -type f \( -name "*.ts" -o -name "*.tsx" \) | head -30 | while read -r file; do
+              mapfile -t files < <(find "$area" -type f \( -name "*.ts" -o -name "*.tsx" \) | sed -n '1,30p')
+              for file in "${files[@]}"; do
                 echo "#### File: $file" >> analysis_bundle.txt
                 echo '```typescript' >> analysis_bundle.txt
                 head -n 200 "$file" >> analysis_bundle.txt
@@ -42,113 +42,76 @@ jobs:
           done
 
       - name: Analyze code for bugs with Claude
+        id: analysis
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          CODE_CONTENT=$(cat analysis_bundle.txt | head -c 50000)
-          
-          PROMPT="Analyze this code for potential bugs and issues. Focus on:
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "Claude bug detection skipped: Supabase AI credentials are not configured for this workflow."
+            echo "No bugs detected (analysis unavailable: credentials not configured)" > bug_report.md
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
-          1. **Runtime Errors** - Null pointer exceptions, undefined references, type mismatches
-          2. **Logic Errors** - Incorrect conditions, off-by-one errors, race conditions
-          3. **Data Issues** - SQL injection, data validation gaps, incorrect queries
-          4. **Security Vulnerabilities** - Authentication bypass, data exposure
-
-          For each issue found:
-          - **Severity**: Critical/High/Medium/Low
-          - **Location**: File and line/function
-          - **Issue**: Clear description
-          - **Fix**: Specific code fix
-
-          Only report genuine bugs, not style preferences.
-
-          $CODE_CONTENT"
+          CODE_CONTENT=$(head -c 50000 analysis_bundle.txt)
+          PROMPT="Analyze this code for genuine runtime, logic, data, and security bugs. For each issue provide Severity, Location, Issue, and Fix. Do not report style preferences.\n\n$CODE_CONTENT"
 
           jq -n \
             --arg prompt "$PROMPT" \
             --arg system "You are an expert bug hunter. Find real bugs that could cause production issues." \
-            '{
-              prompt: $prompt,
-              model: "claude-sonnet-4-5",
-              system_prompt: $system,
-              max_tokens: 8192,
-              temperature: 0.1,
-              feature: "ci-bug-detection"
-            }' > bug_prompt.json
+            '{prompt:$prompt,model:"claude-sonnet-4-5",system_prompt:$system,max_tokens:8192,temperature:0.1,feature:"ci-bug-detection"}' > bug_prompt.json
 
-          BUG_RESPONSE=$(curl -sf -X POST \
+          if ! BUG_RESPONSE=$(curl -sf -X POST \
             "$SUPABASE_URL/functions/v1/ai-claude-processor" \
             -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
             -H "Content-Type: application/json" \
-            -d @bug_prompt.json) || {
-              echo "Edge function call failed"
-              echo "No bugs detected (analysis unavailable)" > bug_report.md
-              exit 0
-            }
+            -d @bug_prompt.json); then
+            echo "Claude endpoint unavailable; treating AI review as skipped."
+            echo "No bugs detected (analysis unavailable: endpoint call failed)" > bug_report.md
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           echo "$BUG_RESPONSE" | jq -r '.response // "No bugs detected"' > bug_report.md
+          echo "available=true" >> "$GITHUB_OUTPUT"
 
       - name: Parse bug severity
         id: severity
         run: |
-          CRITICAL_COUNT=$(grep -ci "Critical" bug_report.md || echo "0")
-          HIGH_COUNT=$(grep -ci "High" bug_report.md || echo "0")
-          
-          echo "critical=$CRITICAL_COUNT" >> $GITHUB_OUTPUT
-          echo "high=$HIGH_COUNT" >> $GITHUB_OUTPUT
-          
+          CRITICAL_COUNT=$(grep -ci "Critical" bug_report.md 2>/dev/null || true)
+          HIGH_COUNT=$(grep -ci "High" bug_report.md 2>/dev/null || true)
+          CRITICAL_COUNT=${CRITICAL_COUNT:-0}
+          HIGH_COUNT=${HIGH_COUNT:-0}
+          echo "critical=$CRITICAL_COUNT" >> "$GITHUB_OUTPUT"
+          echo "high=$HIGH_COUNT" >> "$GITHUB_OUTPUT"
           if [ "$CRITICAL_COUNT" -gt 0 ] || [ "$HIGH_COUNT" -gt 0 ]; then
-            echo "issues_found=true" >> $GITHUB_OUTPUT
+            echo "issues_found=true" >> "$GITHUB_OUTPUT"
           else
-            echo "issues_found=false" >> $GITHUB_OUTPUT
+            echo "issues_found=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Create GitHub issues for critical bugs
-        if: steps.severity.outputs.issues_found == 'true'
+        if: steps.analysis.outputs.available == 'true' && steps.severity.outputs.issues_found == 'true'
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const fs = require('fs');
             const bugReport = fs.readFileSync('bug_report.md', 'utf8');
-            
-            const existingIssues = await github.rest.issues.listForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'open',
-              labels: 'bug,claude-ai-detected'
-            });
-            
+            const existingIssues = await github.rest.issues.listForRepo({ owner: context.repo.owner, repo: context.repo.repo, state: 'open', labels: 'bug,claude-ai-detected' });
             const today = new Date().toISOString().split('T')[0];
             const issueTitle = `🐛 Claude AI Bug Detection Report - ${today}`;
-            
-            const alreadyReported = existingIssues.data.some(issue => 
-              issue.title.includes(today)
-            );
-            
-            if (!alreadyReported) {
-              await github.rest.issues.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                title: issueTitle,
-                body: `## 🐛 Automated Bug Detection Report\n\n${bugReport.substring(0, 60000)}\n\n---\n*Detected by Claude AI*`,
-                labels: ['bug', 'claude-ai-detected', 'needs-triage']
-              });
+            if (!existingIssues.data.some(issue => issue.title.includes(today))) {
+              await github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo, title: issueTitle, body: `## 🐛 Automated Bug Detection Report\n\n${bugReport.substring(0, 60000)}\n\n---\n*Detected by Claude AI*`, labels: ['bug', 'claude-ai-detected', 'needs-triage'] });
             }
 
       - name: Comment on PR
-        if: github.event_name == 'pull_request' && steps.severity.outputs.issues_found == 'true'
+        if: github.event_name == 'pull_request' && steps.analysis.outputs.available == 'true' && steps.severity.outputs.issues_found == 'true'
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const fs = require('fs');
             const bugReport = fs.readFileSync('bug_report.md', 'utf8');
-            
-            await github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: `## ⚠️ Claude AI Bug Detection\n\n${bugReport.substring(0, 60000)}\n\n---\n*Powered by Claude AI*`
-            });
+            await github.rest.issues.createComment({ issue_number: context.issue.number, owner: context.repo.owner, repo: context.repo.repo, body: `## ⚠️ Claude AI Bug Detection\n\n${bugReport.substring(0, 60000)}\n\n---\n*Powered by Claude AI*` });
