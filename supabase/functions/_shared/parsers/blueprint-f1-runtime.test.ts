@@ -1,6 +1,6 @@
 import { assertEquals, assert } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { buildBlueprintF1RuntimeFromLayout } from "./blueprint-f1-runtime.ts";
-import type { PdfLayoutPage } from "./pdf-layout.ts";
+import { PDF_LAYOUT_VERSION, type PdfLayoutPage } from "./pdf-layout.ts";
 
 function item(text: string, x: number, y: number, width = 90, height = 10) {
   return { text, x, y, width, height, rotation_deg: 0, font_name: "Test" };
@@ -23,7 +23,7 @@ function page(page_number: number, text_items: PdfLayoutPage["text_items"]): Pdf
 Deno.test("F1 runtime emits coordinate-aware page persistence rows", () => {
   const layout = {
     page_count: 1,
-    version: "f1-layout-v1",
+    version: PDF_LAYOUT_VERSION,
     pages: [page(1, [
       item("ROOF PLAN", 100, 100),
       item('SCALE 1/4" = 1\'-0"', 120, 140),
@@ -36,7 +36,7 @@ Deno.test("F1 runtime emits coordinate-aware page persistence rows", () => {
   assertEquals(result.page_count, 1);
   assertEquals(result.pages[0].sheet_number, "A2.1");
   assertEquals(result.pages[0].width_points, 1000);
-  assertEquals(result.pages[0].layout_version, "f1-layout-v1");
+  assertEquals(result.pages[0].layout_version, PDF_LAYOUT_VERSION);
   assertEquals(result.pages[0].layout_json.vector_extraction_status, "completed");
   assert(result.pages[0].layout_json.text_items.length >= 4);
 });
@@ -53,7 +53,7 @@ Deno.test("F1 runtime marks indexed sheets missing when absent from the PDF", ()
     item("A1.0", 850, 640, 45), item("FLOOR PLAN", 740, 610, 100),
   ]);
 
-  const result = buildBlueprintF1RuntimeFromLayout({ page_count: 2, version: "f1-layout-v1", pages: [cover, floor] });
+  const result = buildBlueprintF1RuntimeFromLayout({ page_count: 2, version: PDF_LAYOUT_VERSION, pages: [cover, floor] });
   assert(result.missing_indexed_sheets.includes("A2.0"));
   const missing = result.sheet_index_entries.find((entry) => entry.sheet_number === "A2.0");
   assertEquals(missing?.status, "missing");
@@ -64,7 +64,7 @@ Deno.test("F1 runtime marks indexed sheets missing when absent from the PDF", ()
 Deno.test("F1 runtime keeps image-only pages review-gated", () => {
   const scanned = page(1, []);
   scanned.has_selectable_text = false;
-  const result = buildBlueprintF1RuntimeFromLayout({ page_count: 1, version: "f1-layout-v1", pages: [scanned] });
+  const result = buildBlueprintF1RuntimeFromLayout({ page_count: 1, version: PDF_LAYOUT_VERSION, pages: [scanned] });
   assertEquals(result.summary.image_only_page_count, 1);
   assertEquals(result.requires_review, true);
 });
