@@ -266,7 +266,7 @@ async function fetchProductionStage(id: string): Promise<string | null> {
 async function fetchSalesReps(tenantId: string | null, locationId?: string | null) {
   if (!tenantId) return [];
 
-  const elevatedRoles = ['owner', 'corporate', 'office_admin'] as const;
+  
   const allRoles = ['owner', 'corporate', 'office_admin', 'regional_manager', 'sales_manager', 'project_manager'] as const;
 
   // If no locationId, fall back to showing all tenant reps (current behavior)
