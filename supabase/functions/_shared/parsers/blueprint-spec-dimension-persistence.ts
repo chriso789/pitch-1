@@ -5,8 +5,6 @@ import type { BlueprintSpecCandidate } from "./blueprint-spec-intelligence.ts";
 import type { DimensionCandidate } from "./blueprint-dimensions.ts";
 import type { BlueprintF1RuntimeResult } from "./blueprint-f1-runtime.ts";
 
-type QueryError = { message?: string } | null;
-type QueryResult<T> = PromiseLike<{ data: T | null; error: QueryError }>;
 type DbLike = { from: (table: string) => any };
 
 export async function persistBlueprintSpecs(
@@ -24,7 +22,6 @@ export async function persistBlueprintSpecs(
     .filter((r: any) => r.status === "confirmed" || r.status === "dismissed")
     .map((r: any) => `${r.page_id ?? ""}|${r.category}|${r.key_name}|${r.value_text ?? ""}`));
 
-  // Replace only this deterministic runtime's pending detections. User-reviewed rows survive.
   const { error: deleteError } = await svc.from("plan_specs").delete()
     .eq("document_id", documentId).eq("tenant_id", tenantId)
     .eq("source", "deterministic_pdf_text").eq("status", "detected");
@@ -33,12 +30,20 @@ export async function persistBlueprintSpecs(
   const rows = specs.map(spec => {
     const pageId = pageIdByNumber.get(spec.page_number) ?? null;
     return {
-      tenant_id: tenantId, document_id: documentId, page_id: pageId,
-      category: spec.category, key_name: spec.key_name, value_text: spec.value_text,
-      normalized_value: spec.normalized_value, confidence: spec.confidence,
-      source_text: spec.source_text, bbox: spec.bbox,
-      source_viewport_key: spec.viewport_key, source: "deterministic_pdf_text",
-      status: "detected", approved: false,
+      tenant_id: tenantId,
+      document_id: documentId,
+      page_id: pageId,
+      category: spec.category,
+      key_name: spec.key_name,
+      value_text: spec.value_text,
+      normalized_value: spec.normalized_value,
+      confidence: spec.confidence,
+      source_text: spec.source_text,
+      bbox: spec.bbox,
+      source_viewport_key: spec.viewport_key,
+      source: "deterministic_pdf_text",
+      status: "detected",
+      approved: false,
     };
   }).filter(row => !protectedKeys.has(`${row.page_id ?? ""}|${row.category}|${row.key_name}|${row.value_text ?? ""}`));
 
@@ -66,10 +71,17 @@ export async function persistBlueprintDimensions(
     const pageId = pageIdByNumber.get(dim.page_number);
     if (!pageId) return [];
     return [{
-      tenant_id: tenantId, page_id: pageId, label_text: dim.label_text,
-      normalized_feet: dim.normalized_feet, bbox: dim.bbox, confidence: dim.confidence,
-      source_text: dim.label_text, source_viewport_key: dim.viewport_key,
-      scale_snapshot: null, source: dim.source, status: "detected",
+      tenant_id: tenantId,
+      page_id: pageId,
+      label_text: dim.label_text,
+      normalized_feet: dim.normalized_feet,
+      bbox: dim.bbox,
+      confidence: dim.confidence,
+      source_text: dim.label_text,
+      source_viewport_key: dim.viewport_key,
+      scale_snapshot: null,
+      source: dim.source,
+      status: "detected",
     }];
   });
   if (!rows.length) return 0;
@@ -87,7 +99,9 @@ export async function persistBlueprintSpecDimensionCandidates(
   const { data: pages, error } = await svc.from("plan_pages").select("id,page_number")
     .eq("document_id", documentId).eq("tenant_id", tenantId);
   if (error) throw new Error(`f1_plan_page_lookup_failed: ${error.message ?? "unknown"}`);
-  const pageIdByNumber = new Map((pages ?? []).map((page: any) => [page.page_number as number, page.id as string]));
+
+  const pairs: Array<[number, string]> = (pages ?? []).map((page: any) => [Number(page.page_number), String(page.id)]);
+  const pageIdByNumber = new Map<number, string>(pairs);
   const specificationsInserted = await persistBlueprintSpecs(svc, tenantId, documentId, pageIdByNumber, result.specifications);
   const dimensionsInserted = await persistBlueprintDimensions(svc, tenantId, pageIdByNumber, result.dimensions);
   return { specifications_inserted: specificationsInserted, dimensions_inserted: dimensionsInserted };
