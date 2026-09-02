@@ -8,7 +8,7 @@ import type { DimensionCandidate } from "./blueprint-dimensions.ts";
 import { calibrateBlueprintScale, type ScaleDimensionAnchor, type ScaleCalibrationResult } from "./blueprint-scale-calibration.ts";
 import type { RoofingGeometryEvidence, RoofingGeometryClass } from "./blueprint-roofing-takeoff.ts";
 
-export const ROOFING_VECTOR_GEOMETRY_VERSION = "roofing-vector-geometry-v3";
+export const ROOFING_VECTOR_GEOMETRY_VERSION = "roofing-vector-geometry-v3.1";
 
 export interface RoofingVectorGeometryResult {
   evidence: RoofingGeometryEvidence[];
@@ -50,8 +50,8 @@ function closedComponents(segments:PdfVectorSegment[]):Pt[][]{
 function polygonArea(points:Pt[]):number{let a=0;for(let i=0;i<points.length;i++){const p=points[i],q=points[(i+1)%points.length];a+=p.x*q.y-q.x*p.y;}return Math.abs(a)/2;}
 function bbox(points:Pt[]){const xs=points.map(p=>p.x),ys=points.map(p=>p.y);return{width:Math.max(...xs)-Math.min(...xs),height:Math.max(...ys)-Math.min(...ys)};}
 
-function labeledLinearEvidence(page:PdfLayoutPage,viewport:DrawingViewport,assigned:PdfVectorSegment[],feetPerPoint:number):RoofingGeometryEvidence[]{
-  const labels=page.text_items.flatMap(item=>{const match=LINE_LABELS.find(l=>l.re.test(item.text));return match?[{item,type:match.type}]:[];}).filter(x=>nearestViewport(textCenter(x.item),[viewport])?.viewport_key===viewport.viewport_key);
+function labeledLinearEvidence(page:PdfLayoutPage,viewport:DrawingViewport,allViewports:DrawingViewport[],assigned:PdfVectorSegment[],feetPerPoint:number):RoofingGeometryEvidence[]{
+  const labels=page.text_items.flatMap(item=>{const match=LINE_LABELS.find(l=>l.re.test(item.text));return match?[{item,type:match.type}]:[];}).filter(x=>nearestViewport(textCenter(x.item),allViewports)?.viewport_key===viewport.viewport_key);
   const used=new Set<number>();const out:RoofingGeometryEvidence[]=[];
   for(const label of labels){const lc=textCenter(label.item);const nearest=assigned.map((s,i)=>({s,i,d:dist(lc,midpoint(s))})).filter(x=>!used.has(x.i)&&x.d<=Math.max(42,label.item.height*6)&&x.s.length_points>=8).sort((a,b)=>a.d-b.d)[0];if(!nearest)continue;used.add(nearest.i);
     out.push({page_number:page.page_number,viewport_key:viewport.viewport_key,geometry_class:label.type,points:[{x:nearest.s.x1,y:nearest.s.y1},{x:nearest.s.x2,y:nearest.s.y2}],length_ft:Number((nearest.s.length_points*feetPerPoint).toFixed(3)),confidence:0.78,source:"f1_calibrated_geometry",metadata:{version:ROOFING_VECTOR_GEOMETRY_VERSION,label_text:label.item.text,label_distance_points:Number(nearest.d.toFixed(2)),requires_review:true}});
@@ -70,7 +70,7 @@ export function buildRoofingVectorGeometry(input:{pages:PdfLayoutPage[];viewport
       const assigned=page.vector_segments.filter(s=>nearestViewport(midpoint(s),vs)?.viewport_key===viewport.viewport_key);const anchors=dimensionAnchors(viewport,vs,input.dimensions??[],assigned);const calibration=calibrateBlueprintScale(viewport.scale,anchors);calibrations.push({page_number:page.page_number,viewport_key:viewport.viewport_key,calibration});if(calibration.status==="validated")validated++;
       if(calibration.feet_per_pdf_point==null){review_flags.push({flag_code:"ROOF_VIEWPORT_SCALE_BLOCKED",severity:"blocker",blocking:true,message:`Roof viewport ${viewport.title??viewport.viewport_key} has no trustworthy usable scale: ${calibration.message}`,metadata:{page_number:page.page_number,viewport_key:viewport.viewport_key,status:calibration.status}});continue;}if(calibration.review_required)review_flags.push({flag_code:"ROOF_VIEWPORT_SCALE_REVIEW",severity:"warning",blocking:false,message:calibration.message,metadata:{page_number:page.page_number,viewport_key:viewport.viewport_key,status:calibration.status,anchors_used:calibration.anchors_used}});
       const loops=closedComponents(assigned).filter(p=>{const b=bbox(p),a=polygonArea(p);return p.length>=3&&b.width>=24&&b.height>=24&&a>=600&&a<page.width_points*page.height_points*0.65;});closedCount+=loops.length;loops.sort((a,b)=>polygonArea(b)-polygonArea(a));const outline=loops[0];if(outline){const areaPts=polygonArea(outline);const areaSqft=areaPts*calibration.feet_per_pdf_point*calibration.feet_per_pdf_point;evidence.push({page_number:page.page_number,viewport_key:viewport.viewport_key,geometry_class:"outline",points:outline,confidence:Math.min(viewport.confidence,calibration.confidence,0.9),source:"f1_calibrated_geometry",metadata:{version:ROOFING_VECTOR_GEOMETRY_VERSION,area_points2:areaPts,area_sqft:Number(areaSqft.toFixed(2)),scale_status:calibration.status,scale_raw:viewport.scale?.raw??null,requires_review:calibration.review_required}});}
-      const linear=labeledLinearEvidence(page,viewport,assigned,calibration.feet_per_pdf_point);evidence.push(...linear);labeledLinear+=linear.length;
+      const linear=labeledLinearEvidence(page,viewport,vs,assigned,calibration.feet_per_pdf_point);evidence.push(...linear);labeledLinear+=linear.length;
     }}
   return{evidence,calibrations,review_flags,summary:{vector_segments:vectorSegments,roof_viewports:roofViewports,closed_components:closedCount,roof_outlines:evidence.filter(e=>e.geometry_class==="outline").length,labeled_linear_items:labeledLinear,validated_scales:validated}};
 }
