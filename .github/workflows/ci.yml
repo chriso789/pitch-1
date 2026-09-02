@@ -118,6 +118,7 @@ jobs:
             supabase/functions/_shared/parsers/blueprint-roofing-topology.test.ts \
             supabase/functions/_shared/parsers/blueprint-roofing-vector-geometry.test.ts \
             supabase/functions/_shared/parsers/blueprint-roof-facet-topology.test.ts \
+            supabase/functions/_shared/parsers/blueprint-roof-edge-evidence.test.ts \
             supabase/functions/_shared/parsers/blueprint-roofing-engine.test.ts \
             supabase/functions/_shared/parsers/blueprint-roofing-takeoff.test.ts
 
