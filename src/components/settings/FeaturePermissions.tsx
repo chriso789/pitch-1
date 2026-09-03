@@ -32,8 +32,9 @@ const FEATURES = [
   { key: 'settings', name: 'System Settings', description: 'Configure system preferences' }
 ];
 
+// NOTE: 'master' (COB) is intentionally excluded — COB always has full access
+// to every feature in every tenant and cannot be restricted by a tenant.
 const ROLES = [
-  { key: 'master', name: 'COB', color: 'destructive' },
   { key: 'corporate', name: 'Corporate', color: 'destructive' },
   { key: 'office_admin', name: 'Office Admin', color: 'default' },
   { key: 'regional_manager', name: 'Regional Manager', color: 'default' },
