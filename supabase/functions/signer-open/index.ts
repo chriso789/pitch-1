@@ -1,7 +1,6 @@
 import {
   createServiceClient,
   logAuditEvent,
-  createNotification,
   successResponse,
   errorResponse,
   handleCors,
