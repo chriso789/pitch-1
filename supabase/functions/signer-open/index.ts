@@ -131,23 +131,35 @@ Deno.serve(async (req: Request) => {
       const openNumber = (priorOpens || 0) + 1;
       const openSuffix = openNumber > 1 ? ` (open #${openNumber})` : '';
 
-      // Notify sender that recipient opened envelope
-      await createNotification(supabase, {
-        tenant_id: envelope.tenant_id,
-        user_id: envelope.created_by,
+      const openTitle = isFirstView ? 'Envelope Opened' : 'Envelope Reopened';
+      const openMessage = `${recipient.recipient_name} (${recipient.recipient_email}) opened "${envelope.title}"${openSuffix}`;
+
+      // Notify sender: in-app + SMS from the company number + email
+      await notifySenderEngagement({
+        supabase,
+        tenantId: envelope.tenant_id,
+        userId: envelope.created_by,
         type: 'envelope_viewed',
-        title: isFirstView ? 'Envelope Opened' : 'Envelope Reopened',
-        message: `${recipient.recipient_name} (${recipient.recipient_email}) opened "${envelope.title}"${openSuffix}`,
-        action_url: `/signature-envelopes/${envelope.id}`,
+        title: openTitle,
+        message: openMessage,
+        emailSubject: `${openTitle}: ${envelope.title}`,
+        detailLines: [
+          `Recipient: ${recipient.recipient_name} (${recipient.recipient_email})`,
+          `Document: ${envelope.title}`,
+          `Open #${openNumber}`,
+        ],
+        actionUrl: `${Deno.env.get('PUBLIC_APP_URL') || 'https://pitch-crm.ai'}/signature-envelopes/${envelope.id}`,
         metadata: {
           envelope_id: envelope.id,
           recipient_id: recipient.id,
           recipient_name: recipient.recipient_name,
           recipient_email: recipient.recipient_email,
+          action_url: `/signature-envelopes/${envelope.id}`,
           open_number: openNumber,
           is_first_view: isFirstView,
         },
       });
+
 
       // Send instant broadcast notification for real-time UI update
       const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
