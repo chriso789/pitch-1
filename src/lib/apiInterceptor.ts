@@ -1,4 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
+import { getTabTenantId, TAB_TENANT_HEADER } from "@/lib/tabTenant";
+
 
 /**
  * API Error Interceptor
