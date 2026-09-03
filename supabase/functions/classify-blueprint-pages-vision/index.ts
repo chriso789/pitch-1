@@ -1,7 +1,7 @@
 // Vision fallback for image-only or low-text blueprint pages.
 // Classifies the sheet and extracts only information explicitly visible on the
 // drawing: trades, material/spec references, named manufacturers/products,
-// scales, pitches, and dimension callouts. It does not infer brands or scope.
+// scales, pitches, and dimension/quantity callouts. It does not infer brands or scope.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
@@ -57,11 +57,12 @@ const TOOL = {
               trade: { type: ["string", "null"] },
               label: { type: "string" },
               value_text: { type: "string" },
-              normalized_feet: { type: ["number", "null"] },
+              normalized_quantity: { type: ["number", "null"] },
+              unit: { type: "string", enum: ["sqft", "lf", "count", "pitch_ratio", "degrees", "percent", "ratio", "unknown"] },
               measurement_type: { type: "string" },
               evidence: { type: "string" },
             },
-            required: ["trade", "label", "value_text", "normalized_feet", "measurement_type", "evidence"],
+            required: ["trade", "label", "value_text", "normalized_quantity", "unit", "measurement_type", "evidence"],
             additionalProperties: false,
           },
         },
@@ -95,7 +96,7 @@ function mergeMetadata(previous: unknown, extraction: any) {
   return {
     ...base,
     source_mode: "vision",
-    vision_extraction_version: "v1.1.0",
+    vision_extraction_version: "v1.2.0",
     vision_extracted_at: new Date().toISOString(),
     vision: extraction,
     pitches: extraction.pitches || [],
@@ -118,13 +119,15 @@ async function callVision(imageUrl: string, pageNumber: number) {
           content: [
             "You are a construction blueprint extraction engine.",
             "Read only what is explicitly visible on this single sheet.",
-            "Never invent a manufacturer, brand, product, dimension, material, or trade.",
+            "Never invent a manufacturer, brand, product, dimension, material, trade, or calculated takeoff quantity.",
             "A design firm, engineer, architect, owner, or contractor name is NOT a material manufacturer unless the drawing explicitly identifies it as a product manufacturer.",
-            "Capture dimension callouts exactly and provide normalized_feet only when conversion is unambiguous.",
-            "For each measurement, assign the trade only when the sheet clearly associates that dimension with a trade; otherwise set trade to null.",
+            "Capture explicit dimension and quantity callouts exactly in value_text.",
+            "Set normalized_quantity only when the displayed value can be converted without assumptions. Use unit sqft for square feet, lf for linear feet, count for explicit counts, pitch_ratio for pitch values, degrees/percent/ratio when explicit, otherwise unknown.",
+            "Do not calculate area from width x height here; preserve those component dimensions separately unless the sheet explicitly gives area.",
+            "For each measurement, assign the trade only when the sheet clearly associates that measurement with a trade; otherwise set trade to null.",
             "Capture every clearly documented trade and material/spec on the sheet, including demolition work.",
             "If a brand/product is not explicitly printed, manufacturer and product must be null and brand_explicit false.",
-            "For schedules and dense details, prioritize accuracy over brevity.",
+            "For schedules and dense details, prioritize accuracy over brevity and capture repeated schedule quantities when explicitly stated.",
           ].join(" "),
         },
         {
@@ -261,8 +264,6 @@ Deno.serve(async (req) => {
         : "vision extraction complete; extracting geometry, measurements, and Blueprint v2 trade data",
     }).eq("id", doc.id).eq("tenant_id", doc.tenant_id);
 
-    // Both downstream jobs are idempotent and consume the persisted page metadata.
-    // Geometry enriches roof measurements; v2 aggregation creates the trade/session view.
     chainInternal("extract-roof-plan-geometry", { document_id: doc.id });
     chainInternal("aggregate-blueprint-vision-v2", { document_id: doc.id });
 
