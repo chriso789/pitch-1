@@ -4,6 +4,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { setSwitchingFlag, cacheUserProfile } from '@/components/layout/GlobalLoadingHandler';
 import { useUserProfile } from '@/contexts/UserProfileContext';
+import { getTabTenantId, setTabTenantId, seedTabTenantId } from '@/lib/tabTenant';
 
 interface AccessibleCompany {
   tenant_id: string;
@@ -17,7 +18,9 @@ interface AccessibleCompany {
 }
 
 export const useCompanySwitcher = () => {
-  const [activeCompanyId, setActiveCompanyId] = useState<string | null>(null);
+  // Per-tab active company: each browser tab keeps its own selection so working
+  // in two companies side by side doesn't cross-contaminate sessions.
+  const [activeCompanyId, setActiveCompanyId] = useState<string | null>(() => getTabTenantId());
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { profile } = useUserProfile();
@@ -71,13 +74,16 @@ export const useCompanySwitcher = () => {
       }));
 
       // Get active tenant from RPC (faster, no RLS overhead)
-      let activeTenantId: string | null = activeTenantResult.data as string | null;
+      let activeTenantId: string | null = getTabTenantId() || (activeTenantResult.data as string | null);
 
       // Fallback: if no active tenant, use primary or first company
       if (!activeTenantId && companies.length > 0) {
         const primary = companies.find(c => c.is_primary);
         activeTenantId = primary?.tenant_id || companies[0]?.tenant_id || null;
       }
+
+      // Pin this tab to whatever company it resolved to on first load.
+      seedTabTenantId(activeTenantId);
 
       return { companies, activeTenantId };
     },
@@ -110,6 +116,9 @@ export const useCompanySwitcher = () => {
       });
     }
     
+    // Scope the switch to this tab first so other open tabs keep their company.
+    setTabTenantId(tenantId);
+
     // Show overlay immediately with user's name
     setIsSwitching(true);
     setSwitchingFlag(targetCompany?.tenant_name, profile ? `${profile.first_name} ${profile.last_name}` : undefined);

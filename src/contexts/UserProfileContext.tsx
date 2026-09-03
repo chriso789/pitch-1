@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import { useAuth } from './AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { getCachedUserProfile, clearCachedUserProfile, cacheWorkspaceIdentity, getCachedWorkspaceIdentity } from '@/components/layout/GlobalLoadingHandler';
+import { getTabTenantId } from '@/lib/tabTenant';
 
 interface UserProfile {
   id: string;
@@ -117,7 +118,8 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
     const metadataTenantId = user.user_metadata?.tenant_id;
     const metadataActiveTenantId = user.user_metadata?.active_tenant_id || metadataTenantId;
     const effectiveTenantId = cached?.tenant_id || cachedIdentity?.tenant_id || metadataTenantId || '';
-    const effectiveActiveTenantId = cached?.active_tenant_id || cachedIdentity?.active_tenant_id || metadataActiveTenantId || '';
+    // A tab-scoped company selection always wins so two tabs can stay in different companies.
+    const effectiveActiveTenantId = getTabTenantId() || cached?.active_tenant_id || cachedIdentity?.active_tenant_id || metadataActiveTenantId || '';
     
     // Must have both role AND valid tenant to be considered loaded
     // NOTE: Don't require first_name/last_name here (metadata may not include them on some accounts)
@@ -174,7 +176,7 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
         company_name: result.company_name,
         role: result.role,
         tenant_id: result.tenant_id,
-        active_tenant_id: result.active_tenant_id || result.tenant_id,
+        active_tenant_id: getTabTenantId() || result.active_tenant_id || result.tenant_id,
         phone: result.phone,
         title: result.title,
         is_developer: result.is_developer,
@@ -187,6 +189,7 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
         user_id: userId,
         tenant_id: result.tenant_id,
         active_tenant_id: result.active_tenant_id || result.tenant_id,
+
         role: result.role,
       });
       
@@ -236,7 +239,7 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
       company_name: dbProfile.company_name,
       role: dbRole,
       tenant_id: dbProfile.tenant_id,
-      active_tenant_id: dbProfile.active_tenant_id || dbProfile.tenant_id,
+      active_tenant_id: getTabTenantId() || dbProfile.active_tenant_id || dbProfile.tenant_id,
       phone: dbProfile.phone,
       title: dbProfile.title,
       is_developer: dbProfile.is_developer,

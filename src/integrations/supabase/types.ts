@@ -65479,6 +65479,7 @@ export type Database = {
         Args: { p_project_id: string }
         Returns: Json
       }
+      resolve_request_tenant_id: { Args: never; Returns: string }
       rollback_estimate_to_version: {
         Args: { estimate_id_param: string; version_id_param: string }
         Returns: boolean
