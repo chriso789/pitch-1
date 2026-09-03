@@ -25,6 +25,7 @@ interface User {
   last_name?: string;
   email: string;
   role: string;
+  is_active?: boolean;
 }
 
 interface Assignment {
@@ -308,6 +309,9 @@ export const LocationUserDetails = () => {
                               <span className="font-medium">
                                 {user.first_name} {user.last_name}
                               </span>
+                              {user.is_active === false && (
+                                <Badge variant="outline" className="text-xs">Inactive</Badge>
+                              )}
                               {isMultiLocation && (
                                 <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
                                   Multi-Location
@@ -375,7 +379,7 @@ export const LocationUserDetails = () => {
                 Select users who should have access to this location. Users can be assigned to multiple locations.
               </p>
               <div className="space-y-2 max-h-80 overflow-y-auto border rounded-md p-3">
-                {users.map((user) => (
+                {users.filter(u => u.is_active !== false).map((user) => (
                   <div 
                     key={user.id} 
                     className="flex items-center space-x-3 p-2 rounded hover:bg-muted/50 cursor-pointer"
