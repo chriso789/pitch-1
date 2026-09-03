@@ -30,7 +30,8 @@ export function NotificationCenter() {
     markAllAsRead,
     dismissNotification,
     clearAllNotifications,
-  } = useNotifications();
+  } = useNotifications(userId || undefined);
+
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
