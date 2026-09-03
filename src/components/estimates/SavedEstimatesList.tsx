@@ -565,7 +565,7 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <CardTitle className="text-base flex items-center gap-2">
             <FileText className="h-4 w-4" />
-            Saved Estimates ({displayedEstimates.length})
+            Saved Estimates ({savedRows.length})
           </CardTitle>
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-2 rounded-md border bg-muted/30 px-2.5 py-1.5">
