@@ -473,7 +473,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
             overhead_rate,
             personal_overhead_rate,
             commission_rate,
-            commission_structure,
+            commission_structure
           )
         `)
         .eq('id', pipelineEntryId)
