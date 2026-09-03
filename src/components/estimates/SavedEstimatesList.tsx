@@ -301,6 +301,10 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
   // without giving the user anything actionable to do.
   const displayedEstimates = [...(estimates || [])];
 
+  // Auto-saved drafts are listed separately in their own "Estimate Drafts" section
+  const savedRows = displayedEstimates.filter((e) => !e.is_auto_draft);
+  const draftRows = displayedEstimates.filter((e) => !!e.is_auto_draft);
+
   // Fetch signature envelopes linked to estimates for this pipeline entry
   const { data: signatureEnvelopes, refetch: refetchEnvelopes } = useQuery({
     queryKey: ['estimate-signature-envelopes', pipelineEntryId],
@@ -561,7 +565,7 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <CardTitle className="text-base flex items-center gap-2">
             <FileText className="h-4 w-4" />
-            Saved Estimates ({displayedEstimates.length})
+            Saved Estimates ({savedRows.length})
           </CardTitle>
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-2 rounded-md border bg-muted/30 px-2.5 py-1.5">
@@ -592,7 +596,8 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
         )}
       </CardHeader>
       <CardContent className="space-y-1.5">
-        {displayedEstimates.map((estimate) => {
+        {(() => {
+          const renderEstimateRow = (estimate: SavedEstimate) => {
           const isSelected = combineMode
             ? activeIds.includes(estimate.id)
             : currentSelectedId === estimate.id;
@@ -801,7 +806,27 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
               </div>
             </div>
           );
-        })}
+          };
+
+          return (
+            <>
+              {savedRows.map(renderEstimateRow)}
+
+              {draftRows.length > 0 && (
+                <div className="pt-3 mt-2 border-t">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground mb-2">
+                    <FileText className="h-3.5 w-3.5" />
+                    Estimate Drafts ({draftRows.length})
+                    <span className="font-normal">— auto-saved, not finalized</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {draftRows.map(renderEstimateRow)}
+                  </div>
+                </div>
+              )}
+            </>
+          );
+        })()}
       </CardContent>
 
       {/* Simple delete confirmation dialog */}
