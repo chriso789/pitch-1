@@ -460,6 +460,10 @@ export const CommissionManagement = () => {
         </Dialog>
       </div>
 
+      <CompanyLeadFeeCard />
+
+
+
       <Tabs defaultValue="plans" className="space-y-4">
         <TabsList>
           <TabsTrigger value="plans">Commission Plans</TabsTrigger>
