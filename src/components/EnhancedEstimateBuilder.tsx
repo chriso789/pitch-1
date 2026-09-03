@@ -709,18 +709,35 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
     performAutoDraftSave,
   ]);
 
-  // Best-effort flush on tab close / navigation
+  // Best-effort flush on tab close / navigation / backgrounding (session timeout safety)
   useEffect(() => {
     const flush = () => {
       if (!pipelineEntryId || editingEstimateId) return;
       performAutoDraftSave();
     };
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flush();
+    };
     window.addEventListener('beforeunload', flush);
     window.addEventListener('pagehide', flush);
+    window.addEventListener('blur', flush);
+    document.addEventListener('visibilitychange', onVisibility);
     return () => {
       window.removeEventListener('beforeunload', flush);
       window.removeEventListener('pagehide', flush);
+      window.removeEventListener('blur', flush);
+      document.removeEventListener('visibilitychange', onVisibility);
     };
+  }, [performAutoDraftSave, pipelineEntryId, editingEstimateId]);
+
+  // Heartbeat auto-draft: guarantees a draft exists even if the page/session
+  // times out before the user ever clicks Save.
+  useEffect(() => {
+    if (!pipelineEntryId || editingEstimateId) return;
+    const interval = setInterval(() => {
+      performAutoDraftSave();
+    }, 20000);
+    return () => clearInterval(interval);
   }, [performAutoDraftSave, pipelineEntryId, editingEstimateId]);
 
   // Handle editEstimate URL parameter to load estimate for editing
