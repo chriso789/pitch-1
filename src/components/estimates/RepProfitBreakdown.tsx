@@ -6,7 +6,8 @@ import { TrendingUp, DollarSign, Calculator, Info, Loader2, Users } from 'lucide
 import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { calculateCommission, resolveContractCommissionRate, type LeadGenerationType } from '@/lib/commission-calculator';
+import { calculateCommission, calculateCompanyLeadFee, type LeadGenerationType } from '@/lib/commission-calculator';
+import { useCompanyLeadFeeRate } from '@/hooks/useCompanyLeadFeeRate';
 
 interface RepProfitBreakdownProps {
   pipelineEntryId?: string;
@@ -62,9 +63,7 @@ const RepProfitBreakdown: React.FC<RepProfitBreakdownProps> = ({
             overhead_rate,
             personal_overhead_rate,
             commission_rate,
-            commission_structure,
-            commission_rate_self_generated,
-            commission_rate_company_generated
+            commission_structure
           ),
           secondary_rep:profiles!pipeline_entries_secondary_assigned_to_fkey(
             first_name,
@@ -72,9 +71,7 @@ const RepProfitBreakdown: React.FC<RepProfitBreakdownProps> = ({
             overhead_rate,
             personal_overhead_rate,
             commission_rate,
-            commission_structure,
-            commission_rate_self_generated,
-            commission_rate_company_generated
+            commission_structure
           )
         `)
         .eq('id', pipelineEntryId!)
@@ -113,6 +110,8 @@ const RepProfitBreakdown: React.FC<RepProfitBreakdownProps> = ({
 
   const formatPercent = (value: number) => `${value.toFixed(1)}%`;
 
+  const { companyLeadFeeRate } = useCompanyLeadFeeRate();
+
   // Primary rep data
   const primaryRep = repData?.profiles;
   const primaryPersonalOH = primaryRep?.personal_overhead_rate ?? 0;
@@ -120,13 +119,7 @@ const RepProfitBreakdown: React.FC<RepProfitBreakdownProps> = ({
   const primaryOverheadRate = primaryPersonalOH > 0 ? primaryPersonalOH : primaryBaseOH;
   const leadGenerationType = repData?.lead_generation_type ?? null;
   const primaryCommissionStructureRaw = primaryRep?.commission_structure || 'profit_split';
-  const primaryCommissionRate = primaryCommissionStructureRaw === 'percentage_contract_price'
-    ? resolveContractCommissionRate({
-        commissionRate: primaryRep?.commission_rate ?? 50,
-        selfGeneratedRate: primaryRep?.commission_rate_self_generated,
-        companyGeneratedRate: primaryRep?.commission_rate_company_generated,
-      }, leadGenerationType)
-    : (primaryRep?.commission_rate ?? 50);
+  const primaryCommissionRate = primaryRep?.commission_rate ?? 50;
   const primaryCommissionStructure = primaryRep?.commission_structure || 'profit_split';
   const primaryRepName = primaryRep 
     ? `${primaryRep.first_name || ''} ${primaryRep.last_name || ''}`.trim() 
@@ -139,13 +132,7 @@ const RepProfitBreakdown: React.FC<RepProfitBreakdownProps> = ({
   const secondaryBaseOH = secondaryRep?.overhead_rate ?? 10;
   const secondaryOverheadRate = secondaryPersonalOH > 0 ? secondaryPersonalOH : secondaryBaseOH;
   const secondaryCommissionStructureRaw = secondaryRep?.commission_structure || 'profit_split';
-  const secondaryCommissionRate = secondaryCommissionStructureRaw === 'percentage_contract_price'
-    ? resolveContractCommissionRate({
-        commissionRate: secondaryRep?.commission_rate ?? 50,
-        selfGeneratedRate: secondaryRep?.commission_rate_self_generated,
-        companyGeneratedRate: secondaryRep?.commission_rate_company_generated,
-      }, leadGenerationType)
-    : (secondaryRep?.commission_rate ?? 50);
+  const secondaryCommissionRate = secondaryRep?.commission_rate ?? 50;
   const secondaryCommissionStructure = secondaryRep?.commission_structure || 'profit_split';
   const secondaryRepName = secondaryRep 
     ? `${secondaryRep.first_name || ''} ${secondaryRep.last_name || ''}`.trim() 
@@ -166,7 +153,8 @@ const RepProfitBreakdown: React.FC<RepProfitBreakdownProps> = ({
   const totalCost = materialCost + laborCost;
   const grossProfit = preTaxSellingPrice - totalCost;
   const overheadAmount = preTaxSellingPrice * (overheadRate / 100);
-  const profitAfterOverhead = grossProfit - overheadAmount;
+  const companyLeadFeeAmount = calculateCompanyLeadFee(sellingPrice, companyLeadFeeRate, leadGenerationType);
+  const profitAfterOverhead = grossProfit - overheadAmount - companyLeadFeeAmount;
 
   // Step 1: If secondary rep is "percentage_contract_price" (Percent of Contract), 
   // deduct their commission FIRST before calculating primary's profit split
