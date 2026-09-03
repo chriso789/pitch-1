@@ -17,7 +17,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { resolveContractCommissionRate, type LeadGenerationType } from '@/lib/commission-calculator';
+import { calculateCompanyLeadFee, type LeadGenerationType } from '@/lib/commission-calculator';
 import { InvoiceUploadCard } from '@/components/production/InvoiceUploadCard';
 import { BudgetTracker } from '@/features/projects/components/BudgetTracker';
 import { PaymentsTab } from '@/components/estimates/PaymentsTab';
@@ -164,8 +164,6 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
             personal_overhead_rate,
             commission_rate,
             commission_structure,
-            commission_rate_self_generated,
-            commission_rate_company_generated
           )
         `)
         .eq('id', pipelineEntryId)
@@ -174,17 +172,12 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
       if (error) throw error;
       const profile = data?.profiles as any;
       if (!profile) return null;
-      const effectiveRate = profile.commission_structure === 'percentage_contract_price'
-        ? resolveContractCommissionRate(
-            {
-              commissionRate: profile.commission_rate ?? 50,
-              selfGeneratedRate: profile.commission_rate_self_generated,
-              companyGeneratedRate: profile.commission_rate_company_generated,
-            },
-            ((data as any)?.lead_generation_type as LeadGenerationType | null) ?? null
-          )
-        : (profile.commission_rate ?? 50);
-      return { ...profile, commission_rate: effectiveRate } as (SalesRepData & { commission_structure: string | null });
+      const effectiveRate = profile.commission_rate ?? 50;
+      return {
+        ...profile,
+        commission_rate: effectiveRate,
+        lead_generation_type: ((data as any)?.lead_generation_type as LeadGenerationType | null) ?? null,
+      } as (SalesRepData & { commission_structure: string | null; lead_generation_type: LeadGenerationType | null });
     },
     enabled: !!pipelineEntryId,
   });
