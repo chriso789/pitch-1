@@ -76,6 +76,7 @@ import { format } from 'date-fns';
 import { SendReferralLinkButton } from '@/components/referrals/SendReferralLinkButton';
 import { AddressValidationResolutionModal } from '@/components/address/AddressValidationResolutionModal';
 import { PortalMessagesPanel } from '@/components/portal/PortalMessagesPanel';
+import { WrongCompanyNotice } from '@/components/leads/WrongCompanyNotice';
 
 // ProjectAddressPanel removed — address validated at lead/contact creation
 
