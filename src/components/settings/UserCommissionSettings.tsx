@@ -203,8 +203,6 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
         const plan = userPlan.commission_plans;
         const planConfig = plan.plan_config as {
           commission_rate?: number;
-          commission_rate_self_generated?: number | null;
-          commission_rate_company_generated?: number | null;
         } | null;
         setExistingPlanId(plan.id);
         // Map database types to our simplified types
@@ -215,19 +213,9 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
         } else {
           setCommissionType('profit_split');
         }
-        const baseRate = planConfig?.commission_rate || 10;
-        setCommissionRate(baseRate);
-        if (planConfig?.commission_rate_self_generated !== null && planConfig?.commission_rate_self_generated !== undefined) {
-          setSelfGeneratedRate(Number(planConfig.commission_rate_self_generated));
-        } else {
-          setSelfGeneratedRate((prev) => (prev === 10 ? baseRate : prev));
-        }
-        if (planConfig?.commission_rate_company_generated !== null && planConfig?.commission_rate_company_generated !== undefined) {
-          setCompanyGeneratedRate(Number(planConfig.commission_rate_company_generated));
-        } else {
-          setCompanyGeneratedRate((prev) => (prev === 10 ? baseRate : prev));
-        }
+        setCommissionRate(planConfig?.commission_rate || 10);
       }
+
     } catch (error) {
       console.error('Error loading commission settings:', error);
     } finally {
