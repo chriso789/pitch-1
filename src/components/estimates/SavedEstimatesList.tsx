@@ -596,7 +596,8 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
         )}
       </CardHeader>
       <CardContent className="space-y-1.5">
-        {displayedEstimates.map((estimate) => {
+        {(() => {
+          const renderEstimateRow = (estimate: SavedEstimate) => {
           const isSelected = combineMode
             ? activeIds.includes(estimate.id)
             : currentSelectedId === estimate.id;
