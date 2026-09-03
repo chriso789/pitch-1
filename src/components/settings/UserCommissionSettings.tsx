@@ -308,10 +308,9 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
   const materialsRate = 0.325;
   const laborRate = 0.325;
 
-  // Effective rate used in the example: contract-price plans use the lead-source rate
-  const effectiveRate = isContractType
-    ? (previewLeadType === 'self_generated' ? selfGeneratedRate : companyGeneratedRate)
-    : commissionRate;
+  // Single commission rate applies to every lead
+  const effectiveRate = commissionRate;
+
   
   
   const calculateProfitBreakdown = () => {
