@@ -67,12 +67,11 @@ export const LocationUserDetails = () => {
 
       if (locationsError) throw locationsError;
 
-      // Fetch users for this tenant
+      // Fetch users for this tenant (include inactive so existing assignments still render)
       const { data: usersData, error: usersError } = await supabase
         .from('profiles')
-        .select('id, first_name, last_name, email, role')
+        .select('id, first_name, last_name, email, role, is_active')
         .eq('tenant_id', activeCompanyId)
-        .eq('is_active', true)
         .order('first_name');
 
       if (usersError) throw usersError;
