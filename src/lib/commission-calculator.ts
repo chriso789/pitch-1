@@ -168,33 +168,21 @@ export const LEAD_GENERATION_LABELS: Record<LeadGenerationType, string> = {
   company_generated: 'Company Generated',
 };
 
-export interface ContractRateConfig {
-  commissionRate: number | null | undefined;
-  selfGeneratedRate?: number | null;
-  companyGeneratedRate?: number | null;
-}
-
 /**
- * Resolve the effective "Percent of Contract Price" commission rate for a lead.
- * Self-generated leads (rep created the contact/lead) and company-generated leads
- * (a manager created the contact/lead) can carry different rates.
- * Falls back to the single legacy commission rate when a split rate isn't configured.
+ * Company lead fee: when a lead is flagged as company generated, the company
+ * charges a percentage of the gross contract price back to the project. The fee
+ * is treated as a project cost (added to the cost breakdown), not a commission
+ * rate change — every rep keeps a single contract commission rate.
  */
-export function resolveContractCommissionRate(
-  config: ContractRateConfig,
+export function calculateCompanyLeadFee(
+  grossContractPrice: number,
+  companyLeadFeeRate: number | null | undefined,
   leadGenerationType?: LeadGenerationType | null
 ): number {
-  const fallback = Number(config.commissionRate ?? 0);
-  const split =
-    leadGenerationType === 'self_generated'
-      ? config.selfGeneratedRate
-      : leadGenerationType === 'company_generated'
-        ? config.companyGeneratedRate
-        : null;
-
-  if (split === null || split === undefined || Number.isNaN(Number(split))) {
-    return fallback;
-  }
-  return Number(split);
+  if (leadGenerationType !== 'company_generated') return 0;
+  const rate = Number(companyLeadFeeRate ?? 0);
+  if (!rate || Number.isNaN(rate)) return 0;
+  return Math.round(grossContractPrice * (rate / 100) * 100) / 100;
 }
+
 
