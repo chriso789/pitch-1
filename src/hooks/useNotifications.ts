@@ -14,7 +14,7 @@ export interface Notification {
   created_at: string;
 }
 
-export const useNotifications = () => {
+export const useNotifications = (realtimeUserId?: string) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -40,6 +40,50 @@ export const useNotifications = () => {
       setLoading(false);
     }
   };
+
+  // Instant delivery: subscribe to this user's notification rows
+  useEffect(() => {
+    if (!realtimeUserId) return;
+
+    const channel = supabase
+      .channel(`user-notifications-${realtimeUserId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'user_notifications',
+          filter: `user_id=eq.${realtimeUserId}`,
+        },
+        (payload: any) => {
+          setNotifications((prev) => {
+            let next = prev;
+            if (payload.eventType === 'INSERT') {
+              const row = payload.new as Notification;
+              next = prev.some((n) => n.id === row.id) ? prev : [row, ...prev].slice(0, 50);
+            } else if (payload.eventType === 'UPDATE') {
+              const row = payload.new as Notification;
+              next = prev.map((n) => (n.id === row.id ? { ...n, ...row } : n));
+            } else if (payload.eventType === 'DELETE') {
+              next = prev.filter((n) => n.id !== (payload.old as any)?.id);
+            }
+            setUnreadCount(next.filter((n) => !n.is_read).length);
+            return next;
+          });
+        }
+      )
+      .subscribe();
+
+    // Safety net if the socket drops (tab sleep, network change)
+    const onFocus = () => fetchNotifications(realtimeUserId);
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      supabase.removeChannel(channel);
+    };
+  }, [realtimeUserId]);
+
 
   const addNotification = async (
     userId: string,
