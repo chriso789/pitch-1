@@ -239,8 +239,19 @@ export function uninstallFetchInterceptor(): void {
 }
 
 /**
- * Create a custom fetch wrapper for Supabase client
+ * Create a custom fetch wrapper for Supabase client.
+ * Attaches the per-tab active company header so each browser tab can work in a
+ * different company without affecting other tabs. The database verifies access
+ * to the requested tenant before honoring the header.
  */
 export function createSupabaseFetch(): typeof fetch {
-  return interceptedFetch;
+  return ((input: RequestInfo | URL, init?: RequestInit) => {
+    const tabTenant = getTabTenantId();
+    if (!tabTenant) return interceptedFetch(input, init);
+
+    const headers = new Headers(init?.headers || (input instanceof Request ? input.headers : undefined));
+    headers.set(TAB_TENANT_HEADER, tabTenant);
+    return interceptedFetch(input, { ...init, headers });
+  }) as typeof fetch;
 }
+
