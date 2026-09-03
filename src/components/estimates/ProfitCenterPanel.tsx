@@ -17,7 +17,8 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { resolveContractCommissionRate, type LeadGenerationType } from '@/lib/commission-calculator';
+import { calculateCompanyLeadFee, type LeadGenerationType } from '@/lib/commission-calculator';
+import { useCompanyLeadFeeRate } from '@/hooks/useCompanyLeadFeeRate';
 import { InvoiceUploadCard } from '@/components/production/InvoiceUploadCard';
 import { BudgetTracker } from '@/features/projects/components/BudgetTracker';
 import { PaymentsTab } from '@/components/estimates/PaymentsTab';
@@ -163,9 +164,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
             overhead_rate,
             personal_overhead_rate,
             commission_rate,
-            commission_structure,
-            commission_rate_self_generated,
-            commission_rate_company_generated
+            commission_structure
           )
         `)
         .eq('id', pipelineEntryId)
@@ -174,17 +173,12 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
       if (error) throw error;
       const profile = data?.profiles as any;
       if (!profile) return null;
-      const effectiveRate = profile.commission_structure === 'percentage_contract_price'
-        ? resolveContractCommissionRate(
-            {
-              commissionRate: profile.commission_rate ?? 50,
-              selfGeneratedRate: profile.commission_rate_self_generated,
-              companyGeneratedRate: profile.commission_rate_company_generated,
-            },
-            ((data as any)?.lead_generation_type as LeadGenerationType | null) ?? null
-          )
-        : (profile.commission_rate ?? 50);
-      return { ...profile, commission_rate: effectiveRate } as (SalesRepData & { commission_structure: string | null });
+      const effectiveRate = profile.commission_rate ?? 50;
+      return {
+        ...profile,
+        commission_rate: effectiveRate,
+        lead_generation_type: ((data as any)?.lead_generation_type as LeadGenerationType | null) ?? null,
+      } as (SalesRepData & { commission_structure: string | null; lead_generation_type: LeadGenerationType | null });
     },
     enabled: !!pipelineEntryId,
   });
@@ -370,6 +364,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
   const personalOverhead = salesRepData?.personal_overhead_rate ?? 0;
   const baseOverhead = salesRepData?.overhead_rate ?? 10;
   const overheadRate = personalOverhead > 0 ? personalOverhead : baseOverhead;
+  const { companyLeadFeeRate } = useCompanyLeadFeeRate();
   const commissionRate = salesRepData?.commission_rate ?? 50;
   const commissionStructure = (salesRepData as any)?.commission_structure as string | null;
   const commissionStructureLabel =
@@ -471,8 +466,15 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
   const preTaxSellingPrice = sellingPrice - salesTaxAmount;
   // Overhead is charged on the full gross contract amount (including tax)
   const overheadAmount = sellingPrice * (overheadRate / 100);
-  // Total cost = materials + labor + percentage overhead + other charges (permits, dumps, etc.)
-  const totalCost = effectiveMaterialCost + effectiveLaborCost + overheadAmount + otherChargesTotal;
+  // Company generated leads carry a company lead fee charged to the project
+  const companyLeadFeeAmount = calculateCompanyLeadFee(
+    sellingPrice,
+    companyLeadFeeRate,
+    ((salesRepData as any)?.lead_generation_type as LeadGenerationType | null) ?? null
+  );
+  const hasCompanyLeadFee = companyLeadFeeAmount > 0;
+  // Total cost = materials + labor + percentage overhead + company lead fee + other charges
+  const totalCost = effectiveMaterialCost + effectiveLaborCost + overheadAmount + companyLeadFeeAmount + otherChargesTotal;
   const grossProfit = preTaxSellingPrice - totalCost;
   // Percent-of-contract reps are paid on the contract price, not the gross profit
   const isContractCommission =
@@ -868,6 +870,18 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                     <span className="text-right"><span className="text-muted-foreground">-</span></span>
                   </div>
 
+                  {hasCompanyLeadFee && (
+                    <div className="grid grid-cols-4 gap-2 text-sm py-1.5">
+                      <span className="flex items-center gap-1">
+                        <Calculator className="h-3 w-3 text-purple-500" />
+                        Company Lead Fee ({formatPercent(companyLeadFeeRate)})
+                      </span>
+                      <span className="text-right text-muted-foreground">{formatCurrency(companyLeadFeeAmount)}</span>
+                      <span className="text-right text-muted-foreground">-</span>
+                      <span className="text-right"><span className="text-muted-foreground">-</span></span>
+                    </div>
+                  )}
+
                   {/* Other Charges Row */}
                   {hasOtherCharges && (
                     <div className="grid grid-cols-4 gap-2 text-sm py-1.5">
@@ -1252,6 +1266,12 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                     <span>Company Overhead ({overheadRate}%)</span>
                     <span className="text-red-600">-{formatCurrency(overheadAmount)}</span>
                   </div>
+                  {hasCompanyLeadFee && (
+                    <div className="flex justify-between items-center py-1 text-muted-foreground">
+                      <span>Company Lead Fee ({companyLeadFeeRate}%)</span>
+                      <span className="text-red-600">-{formatCurrency(companyLeadFeeAmount)}</span>
+                    </div>
+                  )}
                   {hasOtherCharges && (
                     <div className="flex justify-between items-center py-1 text-muted-foreground">
                       <span>Other Charges</span>
