@@ -14,8 +14,11 @@ import { useCompanyLeadFeeRate } from '@/hooks/useCompanyLeadFeeRate';
  * lead is marked "Company Generated". The fee is added to the project cost in
  * estimates and the final project cost breakdown.
  */
-export const CompanyLeadFeeCard: React.FC<{ canEdit?: boolean }> = ({ canEdit = true }) => {
-  const { companyLeadFeeRate, isLoading, refetch, tenantId } = useCompanyLeadFeeRate();
+export const CompanyLeadFeeCard: React.FC<{ canEdit?: boolean; tenantIdOverride?: string | null }> = ({
+  canEdit = true,
+  tenantIdOverride,
+}) => {
+  const { companyLeadFeeRate, isLoading, refetch, tenantId } = useCompanyLeadFeeRate(tenantIdOverride);
   const [rate, setRate] = useState<number>(0);
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
@@ -52,8 +55,9 @@ export const CompanyLeadFeeCard: React.FC<{ canEdit?: boolean }> = ({ canEdit = 
           Company Lead Fee
         </CardTitle>
         <CardDescription>
-          Charged automatically on any lead set to "Company Generated". The fee is calculated on the
-          gross contract price and added to the project cost in estimates and the final cost breakdown.
+          Charged automatically on any lead set to "Company Generated". Defaults to 3% of the gross
+          contract price and is added to the project cost in estimates and the final cost breakdown.
+          Owners and managers can change this rate at any time.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex items-end gap-3">

@@ -11,6 +11,8 @@ import { useToast } from "@/hooks/use-toast";
 import { Calculator, Save, Users, AlertTriangle } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { ManagerOverrideCalculator } from "./ManagerOverrideCalculator";
+import { CompanyLeadFeeCard } from "./CompanyLeadFeeCard";
+import { useUserProfile } from "@/contexts/UserProfileContext";
 
 interface UserCommissionSettingsProps {
   userId: string;
@@ -48,6 +50,12 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
 
   // Check if user is a manager role
   const isManager = MANAGER_ROLES.includes(user?.role);
+
+  // Current signed-in user: owners/managers can view & edit the company lead fee
+  const { profile: currentProfile } = useUserProfile();
+  const currentRole = currentProfile?.role as string | undefined;
+  const canManageCompanyLeadFee = ['master', 'owner', 'corporate', 'regional_manager', 'sales_manager', 'office_admin']
+    .includes(currentRole || '');
 
   // Fetch managers for the "Reports To" dropdown
   const { data: managers } = useQuery({
@@ -708,6 +716,10 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
           </div>
         </CardContent>
       </Card>
+
+      {canManageCompanyLeadFee && (
+        <CompanyLeadFeeCard canEdit={canManageCompanyLeadFee} tenantIdOverride={tenantId} />
+      )}
 
       {canEdit && (
         <Button onClick={saveCommissionSettings} disabled={saving} className="w-full">
