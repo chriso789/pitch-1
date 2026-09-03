@@ -188,7 +188,8 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
       cacheWorkspaceIdentity({
         user_id: userId,
         tenant_id: result.tenant_id,
-        active_tenant_id: getTabTenantId() || result.active_tenant_id || result.tenant_id,
+        active_tenant_id: result.active_tenant_id || result.tenant_id,
+
         role: result.role,
       });
       
