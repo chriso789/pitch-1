@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { resolveContractCommissionRate, type LeadGenerationType } from '@/lib/commission-calculator';
+import { type LeadGenerationType } from '@/lib/commission-calculator';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -474,8 +474,6 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
             personal_overhead_rate,
             commission_rate,
             commission_structure,
-            commission_rate_self_generated,
-            commission_rate_company_generated
           )
         `)
         .eq('id', pipelineEntryId)
@@ -494,19 +492,30 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         const effectiveOverheadPercent = personalOverhead > 0 ? personalOverhead : baseOverhead;
 
         const isContractType = profile.commission_structure === 'percentage_contract_price';
-        const commissionPercent = isContractType
-          ? resolveContractCommissionRate(
-              {
-                commissionRate: profile.commission_rate ?? 50,
-                selfGeneratedRate: profile.commission_rate_self_generated,
-                companyGeneratedRate: profile.commission_rate_company_generated,
-              },
-              (data?.lead_generation_type as LeadGenerationType | null) ?? null
-            )
-          : (profile.commission_rate ?? 50);
+        const commissionPercent = profile.commission_rate ?? 50;
+
+        // Company generated leads carry a company lead fee (tenant setting) that is
+        // charged to the project as an additional overhead cost.
+        const leadGenerationType = (data?.lead_generation_type as LeadGenerationType | null) ?? null;
+        let companyLeadFeePercent = 0;
+        if (leadGenerationType === 'company_generated') {
+          const { data: entryTenant } = await supabaseClient
+            .from('pipeline_entries')
+            .select('tenant_id')
+            .eq('id', pipelineEntryId)
+            .maybeSingle();
+          if (entryTenant?.tenant_id) {
+            const { data: tenantRow } = await supabaseClient
+              .from('tenants')
+              .select('company_lead_fee_rate')
+              .eq('id', entryTenant.tenant_id)
+              .maybeSingle();
+            companyLeadFeePercent = Number((tenantRow as any)?.company_lead_fee_rate ?? 0) || 0;
+          }
+        }
 
         const rates = {
-          overheadPercent: effectiveOverheadPercent,
+          overheadPercent: effectiveOverheadPercent + companyLeadFeePercent,
           commissionPercent,
           commissionStructure: (profile.commission_structure === 'sales_percentage' || isContractType) ? 'sales_percentage' : 'profit_split' as 'profit_split' | 'sales_percentage',
           repName: `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'Rep'
