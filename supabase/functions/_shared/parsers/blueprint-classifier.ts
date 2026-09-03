@@ -8,14 +8,12 @@
 import { CONFIDENCE_THRESHOLDS } from "./confidence.ts";
 
 export const BLUEPRINT_CLASSIFIER_NAME = "blueprint-classifier";
-export const BLUEPRINT_CLASSIFIER_VERSION = "v1.0.0";
+export const BLUEPRINT_CLASSIFIER_VERSION = "v1.1.0";
 
 export type PageType =
   | "roof_plan" | "framing_plan" | "detail_sheet" | "specification_sheet"
   | "section_sheet" | "schedule_sheet" | "cover_sheet" | "irrelevant" | "unknown";
 
-// Fine-grained sub-type label (text column on plan_pages). Free-form so we can
-// grow it without DB enum migrations.
 export type PageSubtype =
   | "architectural" | "interior_framing" | "structural_framing" | "drywall"
   | "interior_finishes" | "rcp_ceiling" | "flashing" | "stucco" | "siding"
@@ -26,7 +24,6 @@ export type PageSubtype =
 
 interface Rule {
   type: PageType;
-  // each entry is a list of patterns; ANY group matching adds its weight
   groups: Array<{ patterns: RegExp[]; weight: number }>;
 }
 
@@ -60,30 +57,27 @@ const RULES: Rule[] = [
 
 const IRRELEVANT_HINTS = [/\bCOLOPHON\b/i, /\bCERTIFICATE\b/i, /\bCOVER\s+LETTER\b/i];
 
-// Sheet-number prefix → discipline. Tolerant to "A-101", "A101", "A1.1".
 function disciplineFromSheet(sheet: string | null): PageSubtype {
   if (!sheet) return null;
   const s = sheet.trim().toUpperCase();
   const prefix = s.match(/^([A-Z]{1,3})[\s\-.]?\d/)?.[1] ?? "";
   switch (prefix) {
-    case "A":   return "architectural";
-    case "AD":  return "demolition";
-    case "S":   return "structural_framing";
-    case "M":   return "mechanical";
-    case "E":   return "electrical";
-    case "P":   return "plumbing";
+    case "A": return "architectural";
+    case "AD": return "demolition";
+    case "S": return "structural_framing";
+    case "M": return "mechanical";
+    case "E": return "electrical";
+    case "P": return "plumbing";
     case "FP":
-    case "F":   return "fire_protection";
-    case "C":   return "civil";
-    case "L":   return "landscape";
+    case "F": return "fire_protection";
+    case "C": return "civil";
+    case "L": return "landscape";
     case "I":
-    case "ID":  return "interior_finishes";
-    default:    return null;
+    case "ID": return "interior_finishes";
+    default: return null;
   }
 }
 
-// Keyword overrides — return the more specific trade when the page text or
-// title strongly suggests it, regardless of sheet prefix.
 const SUBTYPE_KEYWORDS: Array<{ subtype: Exclude<PageSubtype, null>; patterns: RegExp[] }> = [
   { subtype: "interior_framing", patterns: [/INTERIOR\s+(?:PARTITION|FRAMING)/i, /PARTITION\s+PLAN/i, /STUD\s+PLAN/i] },
   { subtype: "drywall", patterns: [/\bDRYWALL\b/i, /\bGYPSUM\b/i, /\bGWB\b/i, /\bGYP\.?\s*BOARD\b/i] },
@@ -100,6 +94,15 @@ const SUBTYPE_KEYWORDS: Array<{ subtype: Exclude<PageSubtype, null>; patterns: R
   { subtype: "window_schedule", patterns: [/\bWINDOW\s+SCHEDULE\b/i] },
 ];
 
+export interface DrawingScale {
+  raw: string;
+  drawing_inches: number | null;
+  real_inches: number | null;
+  ratio: number | null;
+  feet_per_drawing_inch: number | null;
+  format: "architectural" | "engineering" | "ratio" | "unknown";
+}
+
 export interface PageClassification {
   page_number: number;
   page_type: PageType;
@@ -111,14 +114,62 @@ export interface PageClassification {
   requires_review: boolean;
 }
 
-// Common drawing-scale phrasings: 1/4" = 1'-0", 3/16" = 1', 1:50, 1/8 IN = 1 FT.
-function extractScale(t: string): string | null {
-  const m1 = t.match(/\b(\d{1,2}\s*\/\s*\d{1,2}\s*["”]?\s*=\s*\d{1,3}\s*['’][-\s]?\d{0,2}\s*["”]?)/);
-  if (m1) return m1[1].replace(/\s+/g, " ").trim();
-  const m2 = t.match(/\b(1\s*:\s*\d{1,4})\b/);
-  if (m2) return m2[1].replace(/\s+/g, "");
-  const m3 = t.match(/\bSCALE\s*:?\s*([0-9/."'=\s'\-]+?)(?:\s|$)/i);
-  if (m3) return m3[1].trim();
+function parseFraction(value: string): number | null {
+  const s = value.trim();
+  if (/^\d+(?:\.\d+)?$/.test(s)) return Number(s);
+  const mixed = s.match(/^(\d+)\s+(\d+)\s*\/\s*(\d+)$/);
+  if (mixed) return Number(mixed[1]) + Number(mixed[2]) / Number(mixed[3]);
+  const frac = s.match(/^(\d+)\s*\/\s*(\d+)$/);
+  if (frac && Number(frac[2]) !== 0) return Number(frac[1]) / Number(frac[2]);
+  return null;
+}
+
+export function parseDrawingScale(input: string | null | undefined): DrawingScale | null {
+  if (!input) return null;
+  const raw = input.replace(/[“”]/g, '"').replace(/[‘’]/g, "'").replace(/\s+/g, " ").trim();
+  const withoutPrefix = raw.replace(/^SCALE\s*:?\s*/i, "").trim();
+
+  const ratio = withoutPrefix.match(/^1\s*:\s*(\d+(?:\.\d+)?)$/);
+  if (ratio) {
+    const r = Number(ratio[1]);
+    return { raw, drawing_inches: 1, real_inches: r, ratio: r, feet_per_drawing_inch: r / 12, format: "ratio" };
+  }
+
+  const arch = withoutPrefix.match(/^(\d+(?:\s+\d+\/\d+|\/\d+)?|\d*\.\d+)\s*(?:"|IN\.?|INCH(?:ES)?)?\s*=\s*(\d+(?:\.\d+)?)\s*(?:'|FT\.?|FEET)(?:\s*-?\s*(\d+(?:\.\d+)?)\s*(?:"|IN\.?)?)?$/i);
+  if (arch) {
+    const drawingInches = parseFraction(arch[1]);
+    const feet = Number(arch[2]);
+    const inches = arch[3] ? Number(arch[3]) : 0;
+    if (drawingInches && drawingInches > 0) {
+      const realInches = feet * 12 + inches;
+      return {
+        raw,
+        drawing_inches: drawingInches,
+        real_inches: realInches,
+        ratio: realInches / drawingInches,
+        feet_per_drawing_inch: realInches / 12 / drawingInches,
+        format: drawingInches >= 1 ? "engineering" : "architectural",
+      };
+    }
+  }
+
+  return { raw, drawing_inches: null, real_inches: null, ratio: null, feet_per_drawing_inch: null, format: "unknown" };
+}
+
+// Capture the complete scale expression instead of stopping at the first space.
+// Supports architectural, engineering, and metric/ratio formats.
+export function extractScale(t: string): string | null {
+  const normalized = (t || "").replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
+
+  const prefixed = normalized.match(/\bSCALE\s*:?\s*((?:\d+(?:\s+\d+\/\d+|\/\d+)?|\d*\.\d+)\s*(?:"|IN\.?|INCH(?:ES)?)?\s*=\s*\d+(?:\.\d+)?\s*(?:'|FT\.?|FEET)(?:\s*-?\s*\d+(?:\.\d+)?\s*(?:"|IN\.?)?)?|1\s*:\s*\d+(?:\.\d+)?)/i);
+  if (prefixed) return prefixed[1].replace(/\s+/g, " ").trim();
+
+  const architectural = normalized.match(/\b((?:\d+(?:\s+\d+\/\d+|\/\d+)?|\d*\.\d+)\s*(?:"|IN\.?|INCH(?:ES)?)?\s*=\s*\d+(?:\.\d+)?\s*(?:'|FT\.?|FEET)(?:\s*-?\s*\d+(?:\.\d+)?\s*(?:"|IN\.?)?)?)/i);
+  if (architectural) return architectural[1].replace(/\s+/g, " ").trim();
+
+  const ratio = normalized.match(/\b(1\s*:\s*\d+(?:\.\d+)?)\b/);
+  if (ratio) return ratio[1].replace(/\s+/g, "");
+
   return null;
 }
 
@@ -147,7 +198,6 @@ export function classifyBlueprintPage(page_number: number, text: string): PageCl
     best = { type: "irrelevant", confidence: 0.6 };
   }
 
-  // Sub-type: prefer specific keyword hit, else discipline-from-sheet.
   let subtype: PageSubtype = null;
   for (const k of SUBTYPE_KEYWORDS) {
     if (k.patterns.some((p) => p.test(t))) { subtype = k.subtype; break; }
@@ -163,4 +213,3 @@ export function classifyBlueprintPage(page_number: number, text: string): PageCl
     requires_review: best.confidence < CONFIDENCE_THRESHOLDS.REVIEW_FLOOR,
   };
 }
-
