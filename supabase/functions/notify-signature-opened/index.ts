@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
+import { notifySenderEngagement } from '../_shared/engagement-notify.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -43,23 +44,15 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Deduplicate: check if "opened" event already exists for this envelope
-    const { data: existingEvent } = await supabase
+    // Log the opened event (every open)
+    const { count: priorOpens } = await supabase
       .from("signature_events")
-      .select("id")
+      .select("id", { count: "exact", head: true })
       .eq("envelope_id", envelope.id)
-      .eq("event_type", "opened")
-      .limit(1)
-      .maybeSingle();
+      .eq("event_type", "opened");
 
-    if (existingEvent) {
-      console.log("Opened event already exists, skipping SMS");
-      return new Response(JSON.stringify({ success: true, already_notified: true }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const openNumber = (priorOpens || 0) + 1;
 
-    // Log the opened event
     await supabase.from("signature_events").insert({
       envelope_id: envelope.id,
       tenant_id: envelope.tenant_id,
@@ -68,54 +61,43 @@ Deno.serve(async (req) => {
       event_metadata: {
         recipient_id: recipient.id,
         recipient_name: recipient.recipient_name,
+        open_number: openNumber,
       },
     });
 
-    // Get the creator's phone number from profiles
     if (!envelope.created_by) {
-      console.log("No created_by on envelope, skipping SMS");
+      console.log("No created_by on envelope, skipping notification");
       return new Response(JSON.stringify({ success: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const { data: creatorProfile } = await supabase
-      .from("profiles")
-      .select("phone, first_name, last_name")
-      .eq("id", envelope.created_by)
-      .single();
-
-    if (!creatorProfile?.phone) {
-      console.log("Creator has no phone number, skipping SMS");
-      return new Response(JSON.stringify({ success: true }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Build notification message
     const docTitle = envelope.title || "a document";
-    const message = `🔔 ${recipient.recipient_name} just opened their signature request for ${docTitle}!`;
+    const title = openNumber > 1 ? "Envelope Reopened" : "Envelope Opened";
+    const message = `🔔 ${recipient.recipient_name} opened "${docTitle}"${openNumber > 1 ? ` (open #${openNumber})` : ""}`;
 
-    // Send SMS via telnyx-send-sms using direct fetch with tenant_id
-    try {
-      const smsResponse = await fetch(`${supabaseUrl}/functions/v1/telnyx-send-sms`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${supabaseServiceKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          to: creatorProfile.phone,
-          message,
-          tenant_id: envelope.tenant_id,
-          sent_by: envelope.created_by,
-        }),
-      });
-      console.log(`SMS notification sent to ${creatorProfile.phone}, status: ${smsResponse.status}`);
-    } catch (smsError) {
-      console.error("Failed to send SMS notification:", smsError);
-      // Don't fail the request over SMS
-    }
+    await notifySenderEngagement({
+      supabase,
+      tenantId: envelope.tenant_id,
+      userId: envelope.created_by,
+      type: "envelope_viewed",
+      title,
+      message,
+      emailSubject: `${title}: ${docTitle}`,
+      detailLines: [
+        `Recipient: ${recipient.recipient_name}`,
+        `Document: ${docTitle}`,
+        `Open #${openNumber}`,
+      ],
+      actionUrl: `${Deno.env.get("PUBLIC_APP_URL") || "https://pitch-crm.ai"}/signature-envelopes/${envelope.id}`,
+      metadata: {
+        envelope_id: envelope.id,
+        recipient_id: recipient.id,
+        action_url: `/signature-envelopes/${envelope.id}`,
+        open_number: openNumber,
+      },
+    });
+
 
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

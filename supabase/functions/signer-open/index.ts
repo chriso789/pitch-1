@@ -1,13 +1,14 @@
 import {
   createServiceClient,
   logAuditEvent,
-  createNotification,
   successResponse,
   errorResponse,
   handleCors,
   getClientInfo,
 } from '../_shared/utils.ts';
 import { createClient } from 'npm:@supabase/supabase-js@2.57.4';
+import { notifySenderEngagement } from '../_shared/engagement-notify.ts';
+
 
 // ============================================================================
 // SIGNER OPEN - Validate recipient token and start signing session
@@ -131,23 +132,35 @@ Deno.serve(async (req: Request) => {
       const openNumber = (priorOpens || 0) + 1;
       const openSuffix = openNumber > 1 ? ` (open #${openNumber})` : '';
 
-      // Notify sender that recipient opened envelope
-      await createNotification(supabase, {
-        tenant_id: envelope.tenant_id,
-        user_id: envelope.created_by,
+      const openTitle = isFirstView ? 'Envelope Opened' : 'Envelope Reopened';
+      const openMessage = `${recipient.recipient_name} (${recipient.recipient_email}) opened "${envelope.title}"${openSuffix}`;
+
+      // Notify sender: in-app + SMS from the company number + email
+      await notifySenderEngagement({
+        supabase,
+        tenantId: envelope.tenant_id,
+        userId: envelope.created_by,
         type: 'envelope_viewed',
-        title: isFirstView ? 'Envelope Opened' : 'Envelope Reopened',
-        message: `${recipient.recipient_name} (${recipient.recipient_email}) opened "${envelope.title}"${openSuffix}`,
-        action_url: `/signature-envelopes/${envelope.id}`,
+        title: openTitle,
+        message: openMessage,
+        emailSubject: `${openTitle}: ${envelope.title}`,
+        detailLines: [
+          `Recipient: ${recipient.recipient_name} (${recipient.recipient_email})`,
+          `Document: ${envelope.title}`,
+          `Open #${openNumber}`,
+        ],
+        actionUrl: `${Deno.env.get('PUBLIC_APP_URL') || 'https://pitch-crm.ai'}/signature-envelopes/${envelope.id}`,
         metadata: {
           envelope_id: envelope.id,
           recipient_id: recipient.id,
           recipient_name: recipient.recipient_name,
           recipient_email: recipient.recipient_email,
+          action_url: `/signature-envelopes/${envelope.id}`,
           open_number: openNumber,
           is_first_view: isFirstView,
         },
       });
+
 
       // Send instant broadcast notification for real-time UI update
       const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -177,37 +190,8 @@ Deno.serve(async (req: Request) => {
         console.warn('Broadcast notification failed (non-blocking):', broadcastErr);
       }
 
-      // Send SMS notification to envelope creator on every open
-      try {
-        const { data: creatorProfile } = await supabase
-          .from('profiles')
-          .select('phone, first_name')
-          .eq('id', envelope.created_by)
-          .single();
+      // SMS + email are handled by notifySenderEngagement above.
 
-        if (creatorProfile?.phone) {
-          const smsMessage = isFirstView
-            ? `🔔 ${recipient.recipient_name} just opened your signature request for "${envelope.title}"!`
-            : `🔔 ${recipient.recipient_name} reopened "${envelope.title}" (open #${openNumber})`;
-
-          await fetch(`${supabaseUrl}/functions/v1/telnyx-send-sms`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              to: creatorProfile.phone,
-              message: smsMessage,
-              tenant_id: envelope.tenant_id,
-              sent_by: envelope.created_by,
-            }),
-          });
-          console.log(`SMS sent to ${creatorProfile.first_name} at ${creatorProfile.phone} (open #${openNumber})`);
-        }
-      } catch (smsErr) {
-        console.warn('SMS notification failed (non-blocking):', smsErr);
-      }
     }
 
     // Log audit event
