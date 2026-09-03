@@ -282,6 +282,13 @@ const RepProfitBreakdown: React.FC<RepProfitBreakdownProps> = ({
                 <span>Company Overhead ({overheadRate}%)</span>
                 <span className="text-red-600">-{formatCurrency(overheadAmount)}</span>
               </div>
+              {companyLeadFeeAmount > 0 && (
+                <div className="flex justify-between items-center py-1 text-muted-foreground">
+                  <span>Company Lead Fee ({companyLeadFeeRate}%)</span>
+                  <span className="text-red-600">-{formatCurrency(companyLeadFeeAmount)}</span>
+                </div>
+              )}
+
             </div>
 
             <Separator />
