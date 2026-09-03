@@ -805,7 +805,27 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
               </div>
             </div>
           );
-        })}
+          };
+
+          return (
+            <>
+              {savedRows.map(renderEstimateRow)}
+
+              {draftRows.length > 0 && (
+                <div className="pt-3 mt-2 border-t">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground mb-2">
+                    <FileText className="h-3.5 w-3.5" />
+                    Estimate Drafts ({draftRows.length})
+                    <span className="font-normal">— auto-saved, not finalized</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {draftRows.map(renderEstimateRow)}
+                  </div>
+                </div>
+              )}
+            </>
+          );
+        })()}
       </CardContent>
 
       {/* Simple delete confirmation dialog */}
