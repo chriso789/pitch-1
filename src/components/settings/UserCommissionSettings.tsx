@@ -139,7 +139,7 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
       // Load rep's profile data including manager override settings
       const { data: profile } = await supabase
         .from('profiles')
-        .select('personal_overhead_rate, manager_override_rate, reports_to_manager_id, manager_override_applies_to, manager_override_basis, manager_override_min_profit_percent, manager_override_selected_reps, manager_override_location_id, commission_rate_self_generated, commission_rate_company_generated')
+        .select('personal_overhead_rate, manager_override_rate, reports_to_manager_id, manager_override_applies_to, manager_override_basis, manager_override_min_profit_percent, manager_override_selected_reps, manager_override_location_id')
         .eq('id', userId)
         .single();
       
