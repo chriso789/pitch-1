@@ -59186,6 +59186,7 @@ export type Database = {
           brand_story: string | null
           brand_tagline: string | null
           brand_testimonial: Json | null
+          company_lead_fee_rate: number
           company_overhead_rate: number | null
           created_at: string | null
           deleted_at: string | null
@@ -59239,6 +59240,7 @@ export type Database = {
           brand_story?: string | null
           brand_tagline?: string | null
           brand_testimonial?: Json | null
+          company_lead_fee_rate?: number
           company_overhead_rate?: number | null
           created_at?: string | null
           deleted_at?: string | null
@@ -59292,6 +59294,7 @@ export type Database = {
           brand_story?: string | null
           brand_tagline?: string | null
           brand_testimonial?: Json | null
+          company_lead_fee_rate?: number
           company_overhead_rate?: number | null
           created_at?: string | null
           deleted_at?: string | null
