@@ -189,37 +189,8 @@ Deno.serve(async (req: Request) => {
         console.warn('Broadcast notification failed (non-blocking):', broadcastErr);
       }
 
-      // Send SMS notification to envelope creator on every open
-      try {
-        const { data: creatorProfile } = await supabase
-          .from('profiles')
-          .select('phone, first_name')
-          .eq('id', envelope.created_by)
-          .single();
+      // SMS + email are handled by notifySenderEngagement above.
 
-        if (creatorProfile?.phone) {
-          const smsMessage = isFirstView
-            ? `🔔 ${recipient.recipient_name} just opened your signature request for "${envelope.title}"!`
-            : `🔔 ${recipient.recipient_name} reopened "${envelope.title}" (open #${openNumber})`;
-
-          await fetch(`${supabaseUrl}/functions/v1/telnyx-send-sms`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              to: creatorProfile.phone,
-              message: smsMessage,
-              tenant_id: envelope.tenant_id,
-              sent_by: envelope.created_by,
-            }),
-          });
-          console.log(`SMS sent to ${creatorProfile.first_name} at ${creatorProfile.phone} (open #${openNumber})`);
-        }
-      } catch (smsErr) {
-        console.warn('SMS notification failed (non-blocking):', smsErr);
-      }
     }
 
     // Log audit event
