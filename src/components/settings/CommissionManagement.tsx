@@ -26,6 +26,8 @@ import {
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
+import { CompanyLeadFeeCard } from "@/components/settings/CompanyLeadFeeCard";
+
 
 interface CommissionPlan {
   id: string;
