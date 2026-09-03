@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
+import { notifySenderEngagement } from '../_shared/engagement-notify.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
