@@ -25,7 +25,7 @@ type VisionMeasurement = {
   value_text?: string;
   normalized_quantity?: number | null;
   unit?: MeasurementUnit | string | null;
-  normalized_feet?: number | null; // compatibility with older vision rows
+  normalized_feet?: number | null;
   measurement_type?: string;
   evidence?: string;
 };
@@ -254,7 +254,7 @@ Deno.serve(async (req) => {
     const { data: sourceDoc, error: sourceErr } = await svc.from("blueprint_source_documents").insert({
       import_session_id: sessionId, tenant_id: doc.tenant_id, storage_path: doc.file_path ?? null, document_reference: documentId,
       document_type: "blueprint_set", provider: "user_uploaded_blueprint", original_filename: doc.file_name ?? null, page_count: doc.page_count ?? pageRows.length,
-      extraction_status: reviewFlags.length ? "needs_review" : "succeeded",
+      extraction_status: "succeeded",
       metadata: {
         source_mode: "vision", vision_extraction_version: "v1.2.0", aggregate_version: "v2-vision-aggregate-2", overall_confidence: overallConfidence,
         sheets: canonical.map((p) => ({ page_number: p.page_number, page_type: p.page_type, page_subtype: p.page_subtype, sheet_number: p.sheet_number, sheet_name: p.sheet_name, scale_text: p.scale_text, pitches: p.pitches })),
