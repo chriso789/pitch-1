@@ -28,7 +28,9 @@ Deno.test("dimension-validated scale emits calibrated roof area",()=>{
     viewport_key:"roof-v1",
     label_text:"10'-0\"",
     normalized_feet:10,
-    bbox:{x:245,y:315,width:10,height:10},
+    // The printed 10-foot dimension sits adjacent to the 180-point lower roof edge.
+    // At 1/4\" = 1'-0\", 180 PDF points equals exactly 10 feet.
+    bbox:{x:185,y:270,width:10,height:10},
     confidence:0.9,
     source:"explicit_dimension_text",
     metadata:{version:"test",requires_review:true},
