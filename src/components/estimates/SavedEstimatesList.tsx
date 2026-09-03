@@ -301,6 +301,10 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
   // without giving the user anything actionable to do.
   const displayedEstimates = [...(estimates || [])];
 
+  // Auto-saved drafts are listed separately in their own "Estimate Drafts" section
+  const savedRows = displayedEstimates.filter((e) => !e.is_auto_draft);
+  const draftRows = displayedEstimates.filter((e) => !!e.is_auto_draft);
+
   // Fetch signature envelopes linked to estimates for this pipeline entry
   const { data: signatureEnvelopes, refetch: refetchEnvelopes } = useQuery({
     queryKey: ['estimate-signature-envelopes', pipelineEntryId],
