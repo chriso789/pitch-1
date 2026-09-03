@@ -1,7 +1,7 @@
 // Vision fallback for image-only or low-text blueprint pages.
 // Classifies the sheet and extracts only information explicitly visible on the
 // drawing: trades, material/spec references, named manufacturers/products,
-// scales, pitches, and dimension callouts. It does not infer brands or scope.
+// scales, pitches, and dimension/quantity callouts. It does not infer brands or scope.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
@@ -54,13 +54,15 @@ const TOOL = {
           items: {
             type: "object",
             properties: {
+              trade: { type: ["string", "null"] },
               label: { type: "string" },
               value_text: { type: "string" },
-              normalized_feet: { type: ["number", "null"] },
+              normalized_quantity: { type: ["number", "null"] },
+              unit: { type: "string", enum: ["sqft", "lf", "count", "pitch_ratio", "degrees", "percent", "ratio", "unknown"] },
               measurement_type: { type: "string" },
               evidence: { type: "string" },
             },
-            required: ["label", "value_text", "normalized_feet", "measurement_type", "evidence"],
+            required: ["trade", "label", "value_text", "normalized_quantity", "unit", "measurement_type", "evidence"],
             additionalProperties: false,
           },
         },
@@ -94,7 +96,7 @@ function mergeMetadata(previous: unknown, extraction: any) {
   return {
     ...base,
     source_mode: "vision",
-    vision_extraction_version: "v1.0.0",
+    vision_extraction_version: "v1.2.0",
     vision_extracted_at: new Date().toISOString(),
     vision: extraction,
     pitches: extraction.pitches || [],
@@ -117,12 +119,15 @@ async function callVision(imageUrl: string, pageNumber: number) {
           content: [
             "You are a construction blueprint extraction engine.",
             "Read only what is explicitly visible on this single sheet.",
-            "Never invent a manufacturer, brand, product, dimension, material, or trade.",
+            "Never invent a manufacturer, brand, product, dimension, material, trade, or calculated takeoff quantity.",
             "A design firm, engineer, architect, owner, or contractor name is NOT a material manufacturer unless the drawing explicitly identifies it as a product manufacturer.",
-            "Capture dimension callouts exactly and provide normalized_feet only when conversion is unambiguous.",
+            "Capture explicit dimension and quantity callouts exactly in value_text.",
+            "Set normalized_quantity only when the displayed value can be converted without assumptions. Use unit sqft for square feet, lf for linear feet, count for explicit counts, pitch_ratio for pitch values, degrees/percent/ratio when explicit, otherwise unknown.",
+            "Do not calculate area from width x height here; preserve those component dimensions separately unless the sheet explicitly gives area.",
+            "For each measurement, assign the trade only when the sheet clearly associates that measurement with a trade; otherwise set trade to null.",
             "Capture every clearly documented trade and material/spec on the sheet, including demolition work.",
             "If a brand/product is not explicitly printed, manufacturer and product must be null and brand_explicit false.",
-            "For schedules and dense details, prioritize accuracy over brevity.",
+            "For schedules and dense details, prioritize accuracy over brevity and capture repeated schedule quantities when explicitly stated.",
           ].join(" "),
         },
         {
@@ -144,14 +149,14 @@ async function callVision(imageUrl: string, pageNumber: number) {
   return typeof args === "string" ? JSON.parse(args) : args;
 }
 
-async function chainGeometry(documentId: string) {
+function chainInternal(functionName: string, body: Record<string, unknown>) {
   const url = Deno.env.get("SUPABASE_URL")!;
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  fetch(`${url}/functions/v1/extract-roof-plan-geometry`, {
+  return fetch(`${url}/functions/v1/${functionName}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}`, apikey: key },
-    body: JSON.stringify({ document_id: documentId }),
-  }).catch((e) => console.error("geometry chain failed", e));
+    body: JSON.stringify(body),
+  }).catch((e) => console.error(`${functionName} chain failed`, e));
 }
 
 Deno.serve(async (req) => {
@@ -256,12 +261,28 @@ Deno.serve(async (req) => {
       status: reviewCount ? "needs_review" : "extracting_geometry",
       status_message: reviewCount
         ? `vision extraction complete; ${reviewCount} page(s) need review`
-        : "vision extraction complete; extracting geometry and measurements",
+        : "vision extraction complete; extracting geometry, measurements, and Blueprint v2 trade data",
     }).eq("id", doc.id).eq("tenant_id", doc.tenant_id);
 
-    await chainGeometry(doc.id);
+    chainInternal("extract-roof-plan-geometry", { document_id: doc.id });
+    // The v2 schema has no pipeline_entry context type. Keep this automatic
+    // vision bridge standalone; the plan_document id remains in session metadata
+    // and callers can later rebind the session to an allowed CRM context.
+    chainInternal("aggregate-blueprint-vision-v2", {
+      document_id: doc.id,
+      source_context_type: "standalone",
+      source_context_id: null,
+    });
 
-    return json({ ok: true, document_id: doc.id, pages: results.length, review_count: reviewCount, results });
+    return json({
+      ok: true,
+      document_id: doc.id,
+      pages: results.length,
+      review_count: reviewCount,
+      aggregation_queued: true,
+      geometry_queued: true,
+      results,
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return json({ ok: false, error: msg }, 500);
