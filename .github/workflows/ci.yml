@@ -53,6 +53,11 @@ jobs:
         env:
           VITE_SUPABASE_URL: https://example.supabase.co
           VITE_SUPABASE_PUBLISHABLE_KEY: test-anon-key
+      - name: Blueprint Importer regression suite
+        run: npx vitest run tests/blueprint-importer --environment node
+        env:
+          VITE_SUPABASE_URL: https://example.supabase.co
+          VITE_SUPABASE_PUBLISHABLE_KEY: test-anon-key
 
   build:
     name: Build
@@ -120,7 +125,10 @@ jobs:
             supabase/functions/_shared/parsers/blueprint-roof-facet-topology.test.ts \
             supabase/functions/_shared/parsers/blueprint-roof-edge-evidence.test.ts \
             supabase/functions/_shared/parsers/blueprint-roofing-engine.test.ts \
-            supabase/functions/_shared/parsers/blueprint-roofing-takeoff.test.ts
+            supabase/functions/_shared/parsers/blueprint-roofing-takeoff.test.ts \
+            supabase/functions/_shared/parsers/blueprint-trade-detection-f1.test.ts \
+            supabase/functions/_shared/parsers/blueprint-wall-vector-geometry.test.ts \
+            supabase/functions/_shared/parsers/blueprint-opening-schedules.test.ts
 
       - name: Deno type-check ALL edge functions (main only, non-blocking)
         if: github.ref == 'refs/heads/main'
