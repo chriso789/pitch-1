@@ -8,6 +8,8 @@ import {
   getClientInfo,
 } from '../_shared/utils.ts';
 import { createClient } from 'npm:@supabase/supabase-js@2.57.4';
+import { notifySenderEngagement } from '../_shared/engagement-notify.ts';
+
 
 // ============================================================================
 // SIGNER OPEN - Validate recipient token and start signing session
