@@ -76,6 +76,7 @@ import { format } from 'date-fns';
 import { SendReferralLinkButton } from '@/components/referrals/SendReferralLinkButton';
 import { AddressValidationResolutionModal } from '@/components/address/AddressValidationResolutionModal';
 import { PortalMessagesPanel } from '@/components/portal/PortalMessagesPanel';
+import { WrongCompanyNotice } from '@/components/leads/WrongCompanyNotice';
 
 // ProjectAddressPanel removed — address validated at lead/contact creation
 
@@ -889,13 +890,7 @@ const LeadDetails = () => {
 
   if (!lead) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen space-y-4">
-        <h2 className="text-2xl font-bold">{entityLabel} not found</h2>
-        <Button onClick={() => navigate('/pipeline', { replace: true })}>
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Go back
-        </Button>
-      </div>
+      <WrongCompanyNotice entryId={id} entityLabel={entityLabel} />
     );
   }
 

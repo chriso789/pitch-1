@@ -65267,6 +65267,10 @@ export type Database = {
           trade_name: string
         }[]
       }
+      locate_pipeline_entry_tenant: {
+        Args: { p_entry_id: string }
+        Returns: Json
+      }
       log_company_activity: {
         Args: {
           p_action_description: string
