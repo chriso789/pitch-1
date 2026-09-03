@@ -265,7 +265,14 @@ Deno.serve(async (req) => {
     }).eq("id", doc.id).eq("tenant_id", doc.tenant_id);
 
     chainInternal("extract-roof-plan-geometry", { document_id: doc.id });
-    chainInternal("aggregate-blueprint-vision-v2", { document_id: doc.id });
+    // The v2 schema has no pipeline_entry context type. Keep this automatic
+    // vision bridge standalone; the plan_document id remains in session metadata
+    // and callers can later rebind the session to an allowed CRM context.
+    chainInternal("aggregate-blueprint-vision-v2", {
+      document_id: doc.id,
+      source_context_type: "standalone",
+      source_context_id: null,
+    });
 
     return json({
       ok: true,
