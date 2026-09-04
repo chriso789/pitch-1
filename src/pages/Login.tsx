@@ -193,12 +193,13 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
           try {
             console.log('[Login] Syncing user metadata before redirect...');
             await supabase.functions.invoke('sync-user-metadata');
-            // Refresh the session to get updated user_metadata
-            await supabase.auth.refreshSession();
-            console.log('[Login] Metadata synced and session refreshed');
+            // NOTE: no manual refreshSession() here — rotating the token
+            // immediately after sign-in raced with the auth listener and could
+            // invalidate the brand-new session, bouncing the user to login.
           } catch (syncError) {
             console.warn('[Login] Metadata sync failed, proceeding anyway:', syncError);
           }
+
           
           // Background tasks (non-blocking) - these can happen after navigation
           setTimeout(async () => {
