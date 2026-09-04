@@ -23,6 +23,18 @@ RETURNS BOOLEAN AS $$
   );
 $$ LANGUAGE SQL SECURITY DEFINER STABLE SET search_path = public;
 
+-- Compatibility overload for PostgreSQL ARRAY['admin', ...] literals, which are
+-- inferred as text[] on a fresh migration replay. This keeps the enum-safe
+-- app_role[] function while preventing policy creation from failing before later
+-- migrations can repair/cast the calls.
+CREATE OR REPLACE FUNCTION public.has_any_role(required_roles text[])
+RETURNS BOOLEAN AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = auth.uid() AND role::text = ANY(required_roles)
+  );
+$$ LANGUAGE SQL SECURITY DEFINER STABLE SET search_path = public;
+
 -- Tenants policies (Masters can access all, others see only their tenant)
 CREATE POLICY "Masters can access all tenants" ON public.tenants
 FOR ALL USING (public.has_role('master'));
