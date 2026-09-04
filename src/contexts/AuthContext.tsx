@@ -129,16 +129,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             .maybeSingle();
 
           if (verifyError && verifyError.code !== 'PGRST116') {
-            console.error('[AuthContext] Session verification failed:', verifyError);
-            clearAllSessionData();
-            await supabase.auth.signOut();
-            if (mounted) {
-              setSession(null);
-              setUser(null);
-              setLoading(false);
-            }
-            return;
+            // Do not destroy a valid session because of a transient read failure.
+            console.warn('[AuthContext] Profile verification failed, keeping session:', verifyError);
           }
+
 
           // SECURITY: Check suspension status on init
           if (verifyProfile?.is_suspended) {
