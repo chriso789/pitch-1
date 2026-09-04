@@ -148,8 +148,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           }
 
           // SECURITY: Block sign-in when the user's company is deactivated
-          const { data: tenantBlocked } = await supabase.rpc('is_login_blocked');
-          if (tenantBlocked) {
+          const { data: tenantBlocked, error: tenantBlockedError } = await supabase.rpc('is_login_blocked');
+          if (!tenantBlockedError && tenantBlocked) {
+
             console.warn('[AuthContext] Company deactivated - forcing logout');
             clearAllSessionData();
             await supabase.auth.signOut();
