@@ -80,12 +80,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       return true;
 
     } catch (error) {
-      console.error('[AuthContext] Session validation error:', error);
-      clearAllSessionData();
-      setSession(null);
-      setUser(null);
-      return false;
+      // Network/unknown errors should not log a user out mid-session.
+      console.warn('[AuthContext] Session validation error (keeping session):', error);
+      return true;
     }
+
   }, []);
 
   useEffect(() => {
