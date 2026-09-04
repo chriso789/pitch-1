@@ -48,12 +48,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         .maybeSingle();
 
       if (profileError && profileError.code !== 'PGRST116') {
-        console.error('[AuthContext] Session validation failed - API error:', profileError);
-        clearAllSessionData();
-        await supabase.auth.signOut();
-        setSession(null);
-        setUser(null);
-        return false;
+        // Transient failures (network blips, RLS hiccups, offline mobile) must NOT
+        // destroy a valid session — that produced a login -> bounce-back loop.
+        console.warn('[AuthContext] Profile check failed, keeping session:', profileError);
+        return true;
       }
 
       // SECURITY: Check if user is suspended - immediately log them out
@@ -67,8 +65,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
 
       // SECURITY: Block logins for users whose company has been deactivated
-      const { data: blocked } = await supabase.rpc('is_login_blocked');
-      if (blocked) {
+      const { data: blocked, error: blockedError } = await supabase.rpc('is_login_blocked');
+      if (!blockedError && blocked) {
         console.warn('[AuthContext] Company deactivated - forcing logout');
         clearAllSessionData();
         await supabase.auth.signOut();
@@ -77,16 +75,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         return false;
       }
 
+
       // Session is valid
       return true;
 
     } catch (error) {
-      console.error('[AuthContext] Session validation error:', error);
-      clearAllSessionData();
-      setSession(null);
-      setUser(null);
-      return false;
+      // Network/unknown errors should not log a user out mid-session.
+      console.warn('[AuthContext] Session validation error (keeping session):', error);
+      return true;
     }
+
   }, []);
 
   useEffect(() => {
@@ -131,16 +129,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             .maybeSingle();
 
           if (verifyError && verifyError.code !== 'PGRST116') {
-            console.error('[AuthContext] Session verification failed:', verifyError);
-            clearAllSessionData();
-            await supabase.auth.signOut();
-            if (mounted) {
-              setSession(null);
-              setUser(null);
-              setLoading(false);
-            }
-            return;
+            // Do not destroy a valid session because of a transient read failure.
+            console.warn('[AuthContext] Profile verification failed, keeping session:', verifyError);
           }
+
 
           // SECURITY: Check suspension status on init
           if (verifyProfile?.is_suspended) {
@@ -156,8 +148,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           }
 
           // SECURITY: Block sign-in when the user's company is deactivated
-          const { data: tenantBlocked } = await supabase.rpc('is_login_blocked');
-          if (tenantBlocked) {
+          const { data: tenantBlocked, error: tenantBlockedError } = await supabase.rpc('is_login_blocked');
+          if (!tenantBlockedError && tenantBlocked) {
+
             console.warn('[AuthContext] Company deactivated - forcing logout');
             clearAllSessionData();
             await supabase.auth.signOut();
@@ -245,24 +238,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setLoading(false);
     });
 
-    // Refresh session on window focus (helps with Lovable iframe)
-    const handleFocus = async () => {
-      const rememberMe = localStorage.getItem('pitch_remember_me') === 'true';
-      if (rememberMe) {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          await supabase.auth.refreshSession();
-        }
-      }
-    };
-
-    window.addEventListener('focus', handleFocus);
+    // NOTE: we intentionally do NOT force a token refresh on window focus.
+    // Supabase already auto-refreshes; manual refreshes on every focus caused
+    // refresh-token rotation races (especially on mobile), which revoked the
+    // freshly issued session and bounced users straight back to the login page.
 
     return () => {
       mounted = false;
       subscription.unsubscribe();
-      window.removeEventListener('focus', handleFocus);
     };
+
   }, []);
 
   // Check if current device is trusted and update last_seen
