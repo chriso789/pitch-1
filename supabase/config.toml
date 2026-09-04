@@ -683,7 +683,7 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.update-estimate-line-items]
-verify_jwt = true
+verify_jwt = false
 
 [functions.backfill-tenant-defaults]
 verify_jwt = true
