@@ -48,12 +48,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         .maybeSingle();
 
       if (profileError && profileError.code !== 'PGRST116') {
-        console.error('[AuthContext] Session validation failed - API error:', profileError);
-        clearAllSessionData();
-        await supabase.auth.signOut();
-        setSession(null);
-        setUser(null);
-        return false;
+        // Transient failures (network blips, RLS hiccups, offline mobile) must NOT
+        // destroy a valid session — that produced a login -> bounce-back loop.
+        console.warn('[AuthContext] Profile check failed, keeping session:', profileError);
+        return true;
       }
 
       // SECURITY: Check if user is suspended - immediately log them out
@@ -67,8 +65,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
 
       // SECURITY: Block logins for users whose company has been deactivated
-      const { data: blocked } = await supabase.rpc('is_login_blocked');
-      if (blocked) {
+      const { data: blocked, error: blockedError } = await supabase.rpc('is_login_blocked');
+      if (!blockedError && blocked) {
         console.warn('[AuthContext] Company deactivated - forcing logout');
         clearAllSessionData();
         await supabase.auth.signOut();
@@ -76,6 +74,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setUser(null);
         return false;
       }
+
 
       // Session is valid
       return true;
