@@ -238,24 +238,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setLoading(false);
     });
 
-    // Refresh session on window focus (helps with Lovable iframe)
-    const handleFocus = async () => {
-      const rememberMe = localStorage.getItem('pitch_remember_me') === 'true';
-      if (rememberMe) {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          await supabase.auth.refreshSession();
-        }
-      }
-    };
-
-    window.addEventListener('focus', handleFocus);
+    // NOTE: we intentionally do NOT force a token refresh on window focus.
+    // Supabase already auto-refreshes; manual refreshes on every focus caused
+    // refresh-token rotation races (especially on mobile), which revoked the
+    // freshly issued session and bounced users straight back to the login page.
 
     return () => {
       mounted = false;
       subscription.unsubscribe();
-      window.removeEventListener('focus', handleFocus);
     };
+
   }, []);
 
   // Check if current device is trusted and update last_seen
