@@ -28,6 +28,8 @@ interface GoogleLiveLocationMapProps {
   onUserInteraction?: () => void;
   symbolSettings?: SymbolSettings;
   initialZoom?: number;
+  /** Explicit one-shot pan target (e.g. address search). `key` retriggers the pan. */
+  panTarget?: { lat: number; lng: number; key: number } | null;
 }
 
 const MAP_TYPE_IDS: Record<MapStyle, string> = {
