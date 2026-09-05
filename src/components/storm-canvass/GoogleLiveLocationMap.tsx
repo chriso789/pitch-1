@@ -89,6 +89,7 @@ export default function GoogleLiveLocationMap({
   onUserInteraction,
   symbolSettings,
   initialZoom,
+  panTarget,
 }: GoogleLiveLocationMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<google.maps.Map | null>(null);
@@ -225,6 +226,17 @@ export default function GoogleLiveLocationMap({
       }
     }
   }, [userLocation, mapReady, followUser]);
+
+  // Explicit pan target (address search) — fires regardless of followUser
+  // so selecting a searched address always moves the map to that property.
+  useEffect(() => {
+    if (!map.current || !mapReady || !panTarget) return;
+    map.current.panTo({ lat: panTarget.lat, lng: panTarget.lng });
+    const currentZoom = map.current.getZoom() ?? 0;
+    if (currentZoom < 18) {
+      map.current.setZoom(18);
+    }
+  }, [panTarget, mapReady]);
 
   // Render area polygon overlay
   useEffect(() => {
