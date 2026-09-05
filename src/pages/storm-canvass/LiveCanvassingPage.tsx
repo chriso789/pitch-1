@@ -143,6 +143,8 @@ export default function LiveCanvassingPage() {
   const [rawIsLoading, setRawIsLoading] = useState(false);
   const [rawLoadedCount, setRawLoadedCount] = useState<number | null>(null);
   const [markersRefreshKey, setMarkersRefreshKey] = useState(0);
+  // One-shot map pan target for address search (key forces re-pan on repeated searches)
+  const [searchPanTarget, setSearchPanTarget] = useState<{ lat: number; lng: number; key: number } | null>(null);
   
   // Debounced stable loading state for smooth UI
   const [stableLoadingState, setStableLoadingState] = useState<'idle' | 'loading' | 'success'>('idle');
@@ -545,7 +547,9 @@ export default function LiveCanvassingPage() {
       // instead of snapping back to the user's GPS position.
       setUserInteractionPaused(true);
       setCurrentAddress(address);
-      setUserLocation({ lat, lng });
+      // Explicitly pan the map to the searched address — follow mode is now
+      // paused, so without this the map would never move to the result.
+      setSearchPanTarget({ lat, lng, key: Date.now() });
       // Force marker refresh so pins load for the new viewport
       setMarkersRefreshKey(prev => prev + 1);
     };
@@ -649,6 +653,7 @@ export default function LiveCanvassingPage() {
             onUserInteraction={handleUserMapInteraction}
             symbolSettings={symbolSettings}
             initialZoom={initialZoom}
+            panTarget={searchPanTarget}
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center bg-background">
