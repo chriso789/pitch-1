@@ -219,6 +219,54 @@ export const interceptedFetch: typeof fetch = async (input, init) => {
 };
 
 /**
+ * Auth endpoints (token exchange / user lookup) occasionally return upstream
+ * gateway timeouts (502/503/504) when the auth service is under load. Those
+ * transient failures used to surface as "login failed" or an immediate sign-out.
+ * Retry them a couple of times with a short backoff before giving up.
+ */
+const AUTH_RETRY_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
+
+function isRetryableAuthRequest(url: string, method: string): boolean {
+  if (!url.includes('/auth/v1/')) return false;
+  // Never retry sign-out or one-time-use flows.
+  if (url.includes('/logout') || url.includes('/verify') || url.includes('/recover')) return false;
+  return method === 'GET' || url.includes('/token') || url.includes('/user');
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function fetchWithAuthRetry(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+  const method = (init?.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
+
+  if (!isRetryableAuthRequest(url, method)) {
+    return interceptedFetch(input, init);
+  }
+
+  const maxAttempts = 3;
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const response = await interceptedFetch(input, init);
+      if (!AUTH_RETRY_STATUSES.has(response.status) || attempt === maxAttempts) {
+        return response;
+      }
+      console.warn(`[APIInterceptor] Auth request ${response.status}, retrying (${attempt}/${maxAttempts - 1})`);
+    } catch (error) {
+      lastError = error;
+      if (attempt === maxAttempts) throw error;
+      console.warn(`[APIInterceptor] Auth request network failure, retrying (${attempt}/${maxAttempts - 1})`);
+    }
+    await sleep(600 * attempt);
+  }
+
+  if (lastError) throw lastError;
+  return interceptedFetch(input, init);
+}
+
+
+/**
  * Install the fetch interceptor globally
  */
 export function installFetchInterceptor(): void {
