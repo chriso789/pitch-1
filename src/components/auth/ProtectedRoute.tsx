@@ -164,7 +164,7 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   }
 
   // Show error state with retry/signout options (including timeout case)
-  if ((profileError && !profileLoading) || loadingTooLong) {
+  if ((profileError && !profileLoading && autoRetries >= 3) || loadingTooLong) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
         <div className="flex flex-col items-center gap-6 max-w-md text-center p-6">
