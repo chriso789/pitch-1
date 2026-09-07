@@ -19,6 +19,7 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   const [isValid, setIsValid] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
   const [loadingTooLong, setLoadingTooLong] = useState(false);
+  const [autoRetries, setAutoRetries] = useState(0);
   const [passwordCheckDone, setPasswordCheckDone] = useState(false);
   const [passwordIsSet, setPasswordIsSet] = useState<boolean | null>(null);
 
