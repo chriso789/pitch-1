@@ -19,6 +19,7 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   const [isValid, setIsValid] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
   const [loadingTooLong, setLoadingTooLong] = useState(false);
+  const [autoRetries, setAutoRetries] = useState(0);
   const [passwordCheckDone, setPasswordCheckDone] = useState(false);
   const [passwordIsSet, setPasswordIsSet] = useState<boolean | null>(null);
 
@@ -38,21 +39,43 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     checkAuth();
   }, [user, loading, validateSession]);
 
-  // Timeout: if loading takes more than 8 seconds, show error state
+  // Timeout: if loading takes more than 15 seconds, show error state
   useEffect(() => {
     const hasWorkspaceIdentity = !!(profile?.tenant_id && profile?.role);
     
     if (!hasWorkspaceIdentity && !profileError) {
       const timer = setTimeout(() => {
-        console.warn('[ProtectedRoute] Loading workspace took too long (8s), showing error state');
+        console.warn('[ProtectedRoute] Loading workspace took too long (15s), showing error state');
         setLoadingTooLong(true);
-      }, 8000);
+      }, 15000);
       
       return () => clearTimeout(timer);
     } else {
       setLoadingTooLong(false);
     }
   }, [profile?.tenant_id, profile?.role, profileError]);
+
+  // Auto-retry transient workspace load failures (Supabase/network blips) before showing an error
+  useEffect(() => {
+    if (!user) return;
+    const hasWorkspaceIdentity = !!(profile?.tenant_id && profile?.role);
+    if (hasWorkspaceIdentity) {
+      if (autoRetries !== 0) setAutoRetries(0);
+      return;
+    }
+    if (!profileError || profileLoading) return;
+    if (autoRetries >= 3) return;
+
+    const delay = 800 * Math.pow(2, autoRetries);
+    const timer = setTimeout(() => {
+      console.warn(`[ProtectedRoute] Workspace load failed, auto-retry ${autoRetries + 1}/3`);
+      setAutoRetries((n) => n + 1);
+      refetch();
+    }, delay);
+
+    return () => clearTimeout(timer);
+  }, [user, profile?.tenant_id, profile?.role, profileError, profileLoading, autoRetries, refetch]);
+
 
   // Password status check - must be before any conditional returns (React hooks rule)
   useEffect(() => {
@@ -141,7 +164,7 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   }
 
   // Show error state with retry/signout options (including timeout case)
-  if ((profileError && !profileLoading) || loadingTooLong) {
+  if ((profileError && !profileLoading && autoRetries >= 3) || loadingTooLong) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
         <div className="flex flex-col items-center gap-6 max-w-md text-center p-6">
