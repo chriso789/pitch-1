@@ -75,19 +75,28 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
         return;
       }
       
-      const { data: freshProfile } = await supabase
+      const { data: freshProfile, error: freshProfileError } = await supabase
         .from('profiles')
         .select('password_set_at')
         .eq('id', user.id)
-        .single();
+        .maybeSingle();
       
-      if (freshProfile?.password_set_at) {
+      if (freshProfileError || !freshProfile) {
+        // Lookup failed (offline, timeout, transient auth error). Never push an
+        // established user into the password-setup flow because of this.
+        setPasswordIsSet(true);
+        setPasswordCheckDone(true);
+        return;
+      }
+      
+      if (freshProfile.password_set_at) {
         setPasswordIsSet(true);
         localStorage.removeItem('pitch_password_setup_in_progress');
       } else {
         setPasswordIsSet(false);
       }
       setPasswordCheckDone(true);
+
     };
     
     checkPasswordStatus();
