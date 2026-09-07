@@ -12,32 +12,14 @@ interface ProtectedRouteProps {
 }
 
 export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
-  const { user, loading, validateSession } = useAuth();
+  const { user, loading } = useAuth();
   const { profile, loading: profileLoading, error: profileError, refetch } = useUserProfile();
   const location = useLocation();
-  const [isValidating, setIsValidating] = useState(true);
-  const [isValid, setIsValid] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
   const [loadingTooLong, setLoadingTooLong] = useState(false);
   const [autoRetries, setAutoRetries] = useState(0);
   const [passwordCheckDone, setPasswordCheckDone] = useState(false);
   const [passwordIsSet, setPasswordIsSet] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    const checkAuth = async () => {
-      if (!loading) {
-        if (user) {
-          const valid = await validateSession();
-          setIsValid(valid);
-        } else {
-          setIsValid(false);
-        }
-        setIsValidating(false);
-      }
-    };
-
-    checkAuth();
-  }, [user, loading, validateSession]);
 
   // Timeout: if loading takes more than 15 seconds, show error state
   useEffect(() => {
@@ -146,7 +128,7 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   };
 
   // Show loading while checking auth
-  if (loading || isValidating) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
         <div className="flex flex-col items-center gap-4">
@@ -158,7 +140,7 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   }
 
   // Redirect to login if not authenticated
-  if (!user || !isValid) {
+  if (!user) {
     console.log('[ProtectedRoute] No valid session, redirecting to login');
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
