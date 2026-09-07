@@ -147,63 +147,32 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
       // CRITICAL SECURITY: Verify the session is valid before redirecting
       const verifyAndRedirect = async () => {
         try {
-          // Double-check with Supabase that this session is real
-          const { data: { session: verifiedSession }, error } = await supabase.auth.getSession();
-          
-          if (error || !verifiedSession || verifiedSession.user.id !== authUser.id) {
-            console.error('[Login] Session verification failed - clearing and staying on login');
-            clearAllSessionData();
-            await supabase.auth.signOut();
-            setLoading(false);
-            setLoginAttempted(false);
-            toast({
-              title: "Session Error",
-              description: "Please try logging in again.",
-              variant: "destructive"
-            });
-            return;
-          }
-
+          // signInWithPassword already returned a verified session and AuthContext
+          // received that same session. Avoid a second auth request here because it
+          // adds another network round trip precisely when Auth is under load.
           console.log('[Login] Session verified for user:', authUser.email);
-          
-          // CRITICAL: If user logged in with password but password_set_at is NULL, fix it now
-          // This handles legacy accounts that existed before password_set_at was added
-          const { data: profileCheck, error: profileCheckError } = await supabase
-            .from('profiles')
-            .select('password_set_at')
-            .eq('id', authUser.id)
-            .maybeSingle();
-          
-          if (!profileCheckError && profileCheck && !profileCheck.password_set_at) {
-            console.log('[Login] User logged in with password but password_set_at was null, fixing...');
-            await supabase
-              .from('profiles')
-              .update({ password_set_at: new Date().toISOString() })
-              .eq('id', authUser.id);
-            
-            // Clear profile cache so ProtectedRoute gets fresh data
-            localStorage.removeItem('user-profile-cache');
-          }
 
-          
           // Initialize session with configured timeout
           initSession(rememberMe);
-          
-          // CRITICAL: Sync user metadata BEFORE navigation to prevent empty dashboard
-          // This ensures tenant_id is in auth.users.raw_user_meta_data
-          try {
-            console.log('[Login] Syncing user metadata before redirect...');
-            await supabase.functions.invoke('sync-user-metadata');
-            // NOTE: no manual refreshSession() here — rotating the token
-            // immediately after sign-in raced with the auth listener and could
-            // invalidate the brand-new session, bouncing the user to login.
-          } catch (syncError) {
-            console.warn('[Login] Metadata sync failed, proceeding anyway:', syncError);
-          }
 
-          
           // Background tasks (non-blocking) - these can happen after navigation
           setTimeout(async () => {
+            // A successful password login proves this established account has a
+            // password. Repair legacy profile metadata without delaying entry.
+            supabase
+              .from('profiles')
+              .update({ password_set_at: new Date().toISOString() })
+              .eq('id', authUser.id)
+              .is('password_set_at', null)
+              .then(({ error }) => {
+                if (error) console.warn('[Login] Password metadata repair failed:', error);
+              });
+
+            // Workspace bootstrap can use the profile/cache immediately; metadata
+            // synchronization is maintenance and must never block login.
+            supabase.functions.invoke('sync-user-metadata')
+              .catch((syncError) => console.warn('[Login] Metadata sync failed:', syncError));
+
             ensureUserProfile(authUser).catch(console.warn);
             supabase.functions.invoke('log-auth-activity', {
               body: {
