@@ -5,6 +5,7 @@ import {
   buildReferralEmailSubject,
   buildReferralSmsMessage,
 } from "../_shared/referralMessages.ts";
+import { getPublicAppUrl } from "../_shared/public-app-url.ts";
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: referralCors });
@@ -109,7 +110,7 @@ Deno.serve(async (req: Request) => {
     const companyName = tenantRow?.name ?? "Our team";
 
     const origin = req.headers.get("origin") ?? "";
-    const PUBLIC_APP_URL = Deno.env.get("PUBLIC_APP_URL") ?? origin ?? "https://pitch-crm.ai";
+    const PUBLIC_APP_URL = getPublicAppUrl();
     const referral_url = `${PUBLIC_APP_URL}/ref/${link.code}`;
     const reward_url = `${PUBLIC_APP_URL}/ref/${link.code}/reward`;
 

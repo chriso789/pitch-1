@@ -1,6 +1,7 @@
 // Spec-named admin endpoint. Creates (or reuses) a partner row and emits a
 // default referral link. Forwards heavy lifting to crm-referral-create-link.
 import { corsHeaders, json, requireUser, svcClient, generateCode } from "../_shared/crm-referral.ts";
+import { getPublicAppUrl } from "../_shared/public-app-url.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -61,7 +62,7 @@ Deno.serve(async (req) => {
       .single();
     if (lErr) return json({ error: lErr.message }, 400);
 
-    const base = Deno.env.get("PUBLIC_APP_URL") || "https://pitch-crm.ai";
+    const base = getPublicAppUrl();
     return json({
       success: true,
       partner_id: partner.id,

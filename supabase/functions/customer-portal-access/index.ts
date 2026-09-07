@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { corsHeaders } from '../_shared/cors.ts';
+import { getPublicAppUrl } from "../_shared/public-app-url.ts";
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -64,7 +65,7 @@ Deno.serve(async (req) => {
 
       if (insertError) throw insertError;
 
-      const appOrigin = req.headers.get('origin') || Deno.env.get('APP_URL') || 'https://pitch-crm.ai';
+      const appOrigin = req.headers.get('origin') || getPublicAppUrl();
       const portalUrl = `${appOrigin}/portal/setup?contact=${contact_id}&token=${accessToken}`;
 
       return new Response(JSON.stringify({

@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
+import { getPublicAppUrl } from "../_shared/public-app-url.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -9,7 +10,7 @@ Deno.serve(async (req) => {
   try {
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
     const FROM_DOMAIN = Deno.env.get("RESEND_FROM_DOMAIN") || "pitch-crm.ai";
-    const APP_URL = Deno.env.get("APP_URL") || "https://pitch-crm.ai";
+    const APP_URL = getPublicAppUrl();
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceKey);

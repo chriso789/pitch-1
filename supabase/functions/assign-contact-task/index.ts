@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { getPublicAppUrl } from "../_shared/public-app-url.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -119,7 +120,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     // 4. Email the assignee
     if (assignee?.email) {
-      const appUrl = Deno.env.get('PUBLIC_APP_URL') || 'https://pitch-crm.ai';
+      const appUrl = getPublicAppUrl();
       const dueText = start.toLocaleString('en-US', {
         weekday: 'short', month: 'short', day: 'numeric',
         hour: 'numeric', minute: '2-digit',

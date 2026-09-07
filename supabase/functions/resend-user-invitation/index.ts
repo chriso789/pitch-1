@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { EMAIL_CONFIG, getFromEmail } from "../_shared/email-config.ts";
 import { createSetupToken } from "../_shared/setup-tokens.ts";
+import { getPublicAppUrl } from "../_shared/public-app-url.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -83,7 +84,7 @@ Deno.serve(async (req) => {
     console.log("User exists, last_sign_in_at:", authUser.last_sign_in_at);
 
     // Generate custom setup token (24-hour validity, bypasses Supabase OTP expiry)
-    const appUrl = Deno.env.get("APP_URL") || EMAIL_CONFIG.urls.app;
+    const appUrl = getPublicAppUrl() || EMAIL_CONFIG.urls.app;
     
     console.log("Generating custom setup token for existing user:", email);
     

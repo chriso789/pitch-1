@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { Resend } from "npm:resend@2.0.0";
+import { getPublicAppUrl } from "../_shared/public-app-url.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -705,7 +706,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // Build login URL - users will set password via the password reset email
-    const rawAppUrl = Deno.env.get("APP_URL") || "https://pitch-crm.ai";
+    const rawAppUrl = getPublicAppUrl();
     const appUrl = /lovable\.app|lovableproject\.com/i.test(rawAppUrl) ? "https://pitch-crm.ai" : rawAppUrl;
     const onboardingUrl = `${appUrl}/login`;
 

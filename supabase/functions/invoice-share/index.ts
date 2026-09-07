@@ -17,6 +17,7 @@ import "https://deno.land/std@0.224.0/dotenv/load.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { z } from "npm:zod@3.23.8";
 import { getEmailProvider } from "../_shared/email/index.ts";
+import { getPublicAppUrl } from "../_shared/public-app-url.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -27,7 +28,7 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const APP_URL = (Deno.env.get("APP_URL") ?? "https://pitch-crm.ai").replace(/\/$/, "");
+const APP_URL = (getPublicAppUrl()).replace(/\/$/, "");
 const PLATFORM_FALLBACK_FROM =
   Deno.env.get("PLATFORM_FALLBACK_FROM_EMAIL") ?? "invoices@pitch-crm.ai";
 

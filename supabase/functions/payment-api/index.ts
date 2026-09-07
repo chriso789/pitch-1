@@ -39,6 +39,7 @@ import {
   validateInvoiceTotals,
   mapCentzPaymentStatus,
 } from "../_shared/centzClient.ts";
+import { getPublicAppUrl } from "../_shared/public-app-url.ts";
 
 const app = createRouter("payment-api");
 
@@ -51,7 +52,7 @@ app.get("/__health", (c) => jsonOk(c, { fn: "payment-api", ok: true }));
 // ------------------------------------------------------------------
 
 const SQUARE_STATE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const APP_URL = Deno.env.get("APP_URL") ?? "https://pitch-crm.ai";
+const APP_URL = getPublicAppUrl();
 
 app.get("/square/oauth/callback", async (c) => {
   const url = new URL(c.req.url);

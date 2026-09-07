@@ -8,6 +8,7 @@ import {
 } from '../_shared/utils.ts';
 import { createClient } from 'npm:@supabase/supabase-js@2.57.4';
 import { notifySenderEngagement } from '../_shared/engagement-notify.ts';
+import { getPublicAppUrl } from "../_shared/public-app-url.ts";
 
 
 // ============================================================================
@@ -149,7 +150,7 @@ Deno.serve(async (req: Request) => {
           `Document: ${envelope.title}`,
           `Open #${openNumber}`,
         ],
-        actionUrl: `${Deno.env.get('PUBLIC_APP_URL') || 'https://pitch-crm.ai'}/signature-envelopes/${envelope.id}`,
+        actionUrl: `${getPublicAppUrl()}/signature-envelopes/${envelope.id}`,
         metadata: {
           envelope_id: envelope.id,
           recipient_id: recipient.id,
