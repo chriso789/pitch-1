@@ -168,13 +168,13 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
           
           // CRITICAL: If user logged in with password but password_set_at is NULL, fix it now
           // This handles legacy accounts that existed before password_set_at was added
-          const { data: profileCheck } = await supabase
+          const { data: profileCheck, error: profileCheckError } = await supabase
             .from('profiles')
             .select('password_set_at')
             .eq('id', authUser.id)
-            .single();
+            .maybeSingle();
           
-          if (!profileCheck?.password_set_at) {
+          if (!profileCheckError && profileCheck && !profileCheck.password_set_at) {
             console.log('[Login] User logged in with password but password_set_at was null, fixing...');
             await supabase
               .from('profiles')
@@ -184,6 +184,7 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
             // Clear profile cache so ProtectedRoute gets fresh data
             localStorage.removeItem('user-profile-cache');
           }
+
           
           // Initialize session with configured timeout
           initSession(rememberMe);
@@ -272,18 +273,23 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
           return;
         }
         
-        // Check if the user has set their password
-        const { data: profile } = await supabase
+        // Check if the user has set their password.
+        // IMPORTANT: only send someone to the setup flow when we successfully
+        // read the profile AND it genuinely has no password date. A failed or
+        // timed-out lookup must never bounce an existing user to "set up your
+        // password".
+        const { data: profile, error: profileError } = await supabase
           .from('profiles')
           .select('password_set_at')
           .eq('id', authUser.id)
-          .single();
-        
-        if (!profile?.password_set_at) {
+          .maybeSingle();
+
+        if (!profileError && profile && !profile.password_set_at) {
           console.log('[Login] User has session but password not set, redirecting to setup link');
           navigate('/request-setup-link', { replace: true, state: { needsPasswordSetup: true } });
           return;
         }
+
         
         console.log('[Login] Verified existing session, redirecting to dashboard');
         navigate('/dashboard');
