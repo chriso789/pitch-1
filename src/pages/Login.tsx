@@ -369,15 +369,28 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
       if (error) {
         setLoading(false);
         setLoginAttempted(false);
-        
+
+        const rawMessage = (error.message || '').trim();
+        const status = (error as any).status as number | undefined;
+        // Gateway timeouts / empty upstream responses surface as an unreadable
+        // body (often literally "{}"), which used to be shown to the user as-is.
+        const isUnreadable = !rawMessage || /^[{}\[\]\s"]*$/.test(rawMessage) || rawMessage.startsWith('<');
+        const isTransient =
+          error.name === 'AuthRetryableFetchError' ||
+          (typeof status === 'number' && status >= 500) ||
+          /fetch|network|timeout|deadline/i.test(rawMessage);
+
         // Handle specific errors
-        if (error.message.includes('Invalid login credentials')) {
+        if (rawMessage.includes('Invalid login credentials')) {
           setErrors({ general: 'Invalid email or password' });
-        } else if (error.message.includes('Email not confirmed')) {
+        } else if (rawMessage.includes('Email not confirmed')) {
           setErrors({ general: 'Please check your email and click the confirmation link' });
+        } else if (isTransient || isUnreadable) {
+          setErrors({ general: 'Sign-in service is temporarily unavailable. Please wait a moment and try again.' });
         } else {
-          setErrors({ general: error.message });
+          setErrors({ general: rawMessage });
         }
+
         
         logLoginAttempt({ email: loginForm.email, status: 'failed', error_message: error.message, error_code: (error as any).code, source: 'login-page' });
 
