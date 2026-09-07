@@ -136,42 +136,35 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
   const activeSection = getActiveSection();
 
   const handleSignOut = async () => {
+    // 1) Clear local state FIRST so a hung/failed network call can never trap
+    //    the user on the dashboard.
     try {
-      // Best-effort server-side revocation. Do NOT block the local sign-out on a
-      // flaky Supabase Auth endpoint — the local session is what gates the UI,
-      // and a hung/failed signOut() call previously trapped users on the dashboard.
-      try {
-        await supabase.auth.signOut();
-      } catch (signOutErr) {
-        console.warn('[Sidebar] supabase.auth.signOut network call failed, clearing locally:', signOutErr);
-      }
-
-      // Clear all session data (localStorage, sessionStorage, cookies)
-      clearAllSessionData();
-
-      // Clear React Query cache
-      queryClient.clear();
-
-      toast({
-        title: "Signed out successfully",
-        description: "You have been logged out of the system.",
-      });
-
-      // Navigate to login page
-      navigate('/login', { replace: true });
-    } catch (error: any) {
-      console.error('Sign out error:', error);
-      // Even on unexpected errors, still drop the user at the login screen so
-      // they are never stuck on the dashboard unable to sign out.
       clearAllSessionData();
       queryClient.clear();
-      navigate('/login', { replace: true });
-      toast({
-        title: "Signed out",
-        description: "You have been logged out locally. If the server was slow, your session is still cleared here.",
-      });
+    } catch (e) {
+      console.warn('[Sidebar] local session clear issue:', e);
     }
+
+    // 2) Best-effort server-side revocation, capped so it never blocks.
+    try {
+      await Promise.race([
+        supabase.auth.signOut({ scope: 'local' }),
+        new Promise((resolve) => setTimeout(resolve, 1500)),
+      ]);
+    } catch (signOutErr) {
+      console.warn('[Sidebar] supabase.auth.signOut failed, continuing:', signOutErr);
+    }
+
+    toast({
+      title: "Signed out successfully",
+      description: "You have been logged out of the system.",
+    });
+
+    // 3) Hard navigation guarantees every provider/context is torn down and no
+    //    in-memory session can re-hydrate the dashboard.
+    window.location.replace('/login');
   };
+
 
   const handleRoleChange = async (newRole: string) => {
     if (!currentUser) return;
