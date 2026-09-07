@@ -59,53 +59,30 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   }, [user, profile?.tenant_id, profile?.role, profileError, profileLoading, autoRetries, refetch]);
 
 
-  // Password status check - must be before any conditional returns (React hooks rule)
+  // Password status comes from the same workspace bootstrap response. Do not
+  // add another profile request to every login; that made the dashboard wait
+  // behind a second database round trip during service slowdowns.
   useEffect(() => {
-    const checkPasswordStatus = async () => {
-      if (!user) return;
-      
-      // Check workspace identity inline to avoid dependency issues
-      const cachedIdentity = getCachedWorkspaceIdentity(user.id);
-      const workspaceReady = !!(
-        (profile?.tenant_id && profile?.role) || 
-        (cachedIdentity?.tenant_id && cachedIdentity?.role)
-      );
-      
-      if (!workspaceReady) return;
-      
-      const passwordSetupInProgress = localStorage.getItem('pitch_password_setup_in_progress') === 'true';
-      if (passwordSetupInProgress) {
-        setPasswordIsSet(true);
-        setPasswordCheckDone(true);
-        return;
-      }
-      
-      const { data: freshProfile, error: freshProfileError } = await supabase
-        .from('profiles')
-        .select('password_set_at')
-        .eq('id', user.id)
-        .maybeSingle();
-      
-      if (freshProfileError || !freshProfile) {
-        // Lookup failed (offline, timeout, transient auth error). Never push an
-        // established user into the password-setup flow because of this.
-        setPasswordIsSet(true);
-        setPasswordCheckDone(true);
-        return;
-      }
-      
-      if (freshProfile.password_set_at) {
-        setPasswordIsSet(true);
-        localStorage.removeItem('pitch_password_setup_in_progress');
-      } else {
-        setPasswordIsSet(false);
-      }
-      setPasswordCheckDone(true);
+    if (!user) return;
 
-    };
-    
-    checkPasswordStatus();
-  }, [user, profile?.tenant_id, profile?.role]);
+    const cachedIdentity = getCachedWorkspaceIdentity(user.id);
+    const workspaceReady = !!(
+      (profile?.tenant_id && profile?.role) ||
+      (cachedIdentity?.tenant_id && cachedIdentity?.role)
+    );
+    if (!workspaceReady) return;
+
+    const passwordSetupInProgress = localStorage.getItem('pitch_password_setup_in_progress') === 'true';
+    if (passwordSetupInProgress || profile?.password_set_at === undefined) {
+      // An absent field means the instant cached profile is being used. Never
+      // block or redirect an established session while bootstrap refreshes it.
+      setPasswordIsSet(true);
+    } else {
+      setPasswordIsSet(Boolean(profile.password_set_at));
+      if (profile.password_set_at) localStorage.removeItem('pitch_password_setup_in_progress');
+    }
+    setPasswordCheckDone(true);
+  }, [user, profile?.tenant_id, profile?.role, profile?.password_set_at]);
 
   const handleRetry = async () => {
     setIsRetrying(true);
