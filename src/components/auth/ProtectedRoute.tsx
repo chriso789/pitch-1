@@ -94,15 +94,23 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     }
   };
 
-  const handleResetAndRetry = async () => {
+  const forceSignOut = async () => {
     clearAllAppLocalStorage();
-    await supabase.auth.signOut();
+    try {
+      await Promise.race([
+        supabase.auth.signOut({ scope: 'local' }),
+        new Promise((resolve) => setTimeout(resolve, 1500)),
+      ]);
+    } catch (e) {
+      console.warn('[ProtectedRoute] signOut failed, clearing locally:', e);
+    }
+    window.location.replace('/login');
   };
 
-  const handleSignOut = async () => {
-    clearAllAppLocalStorage();
-    await supabase.auth.signOut();
-  };
+  const handleResetAndRetry = forceSignOut;
+
+  const handleSignOut = forceSignOut;
+
 
   // Show loading while checking auth
   if (loading) {
