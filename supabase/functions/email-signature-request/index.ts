@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
+import { getPublicAppUrl } from "../_shared/public-app-url.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -113,7 +114,7 @@ Deno.serve(async (req) => {
     }
 
     // Build signing URL
-    const appUrl = Deno.env.get("FRONTEND_URL") || Deno.env.get("APP_URL") || "https://pitch-crm.ai";
+    const appUrl = getPublicAppUrl();
     const signingUrl = `${appUrl}/sign/${access_token}`;
 
     // Company logo HTML (if available)
