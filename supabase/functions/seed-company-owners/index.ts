@@ -1,12 +1,13 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { createSetupToken } from "../_shared/setup-tokens.ts";
+import { getPublicAppUrl } from "../_shared/public-app-url.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const APP_URL = Deno.env.get("FRONTEND_URL") || Deno.env.get("APP_URL") || "https://pitch-crm.ai";
+const APP_URL = getPublicAppUrl();
 
 /**
  * Convert Supabase action_link to direct app setup link
@@ -117,7 +118,7 @@ Deno.serve(async (req: Request) => {
 
     const results: { email: string; status: string; error?: string }[] = [];
     // Always use APP_URL with reliable production fallback - never rely on origin header
-    const appUrl = Deno.env.get("FRONTEND_URL") || Deno.env.get("APP_URL") || "https://pitch-crm.ai";
+    const appUrl = getPublicAppUrl();
     const resetRedirectUrl = `${appUrl}/reset-password?onboarding=true`;
 
     for (const owner of OWNERS_TO_CREATE) {

@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
+import { getPublicAppUrl } from "../_shared/public-app-url.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -158,7 +159,7 @@ Deno.serve(async (req: Request) => {
                   <blockquote style="border-left: 3px solid #2563eb; padding-left: 12px; margin: 16px 0; color: #374151;">
                     ${note_content}
                   </blockquote>
-                  <a href="${(Deno.env.get('PUBLIC_APP_URL') && !/lovable\.app|lovableproject\.com/i.test(Deno.env.get('PUBLIC_APP_URL')!)) ? Deno.env.get('PUBLIC_APP_URL') : 'https://pitch-crm.ai'}${linkPath}" 
+                  <a href="${(getPublicAppUrl() && !/lovable\.app|lovableproject\.com/i.test(getPublicAppUrl()!)) ? getPublicAppUrl() : 'https://pitch-crm.ai'}${linkPath}" 
                      style="display: inline-block; background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 16px;">
                     View ${pipeline_entry_id ? 'Lead' : 'Contact'}
                   </a>

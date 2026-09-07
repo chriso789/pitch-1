@@ -1,12 +1,13 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { createSetupToken } from "../_shared/setup-tokens.ts";
+import { getPublicAppUrl } from "../_shared/public-app-url.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const APP_URL = Deno.env.get("FRONTEND_URL") || Deno.env.get("APP_URL") || "https://pitch-crm.ai";
+const APP_URL = getPublicAppUrl();
 
 /**
  * Convert Supabase action_link to direct app setup link

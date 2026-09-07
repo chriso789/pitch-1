@@ -1,10 +1,11 @@
+import { getPublicAppUrl } from "./public-app-url.ts";
 /**
  * Shared helper for creating custom setup tokens
  * Bypasses Supabase OTP expiry (which is not configurable in this project)
  * Tokens are valid for 24 hours by default
  */
 
-const APP_URL = Deno.env.get("FRONTEND_URL") || Deno.env.get("APP_URL") || "https://pitch-crm.ai";
+const APP_URL = getPublicAppUrl();
 
 /**
  * Generate a cryptographically random setup token, store it in the

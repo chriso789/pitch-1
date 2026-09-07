@@ -12,6 +12,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import Stripe from "npm:stripe@14.21.0";
+import { getPublicAppUrl } from "../_shared/public-app-url.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -22,7 +23,7 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const STRIPE_KEY = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
-const PUBLIC_APP_URL = Deno.env.get("PUBLIC_APP_URL") ?? "https://pitch-crm.ai";
+const PUBLIC_APP_URL = getPublicAppUrl();
 
 const SERVICE_LABELS: Record<string, string> = {
   four_point: "4-Point Inspection",

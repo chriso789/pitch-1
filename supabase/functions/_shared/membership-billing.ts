@@ -6,8 +6,9 @@
 
 import Stripe from "npm:stripe@14.21.0";
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
+import { getPublicAppUrl } from "./public-app-url.ts";
 
-export const APP_URL = Deno.env.get("APP_URL") ?? "https://pitch-crm.ai";
+export const APP_URL = getPublicAppUrl();
 
 export function platformStripe(): Stripe {
   const key = Deno.env.get("STRIPE_SECRET_KEY") ?? "";

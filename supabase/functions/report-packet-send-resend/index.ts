@@ -4,6 +4,7 @@
 // ============================================================================
 
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
+import { getPublicAppUrl } from "../_shared/public-app-url.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -116,7 +117,7 @@ Deno.serve(async (req) => {
     }
 
     // Build view URL
-    const appUrl = Deno.env.get('APP_URL') || 'https://app.pitchcrm.io';
+    const appUrl = getPublicAppUrl();
     const viewUrl = `${appUrl}/r/${viewerToken}`;
 
     // Get branding for email

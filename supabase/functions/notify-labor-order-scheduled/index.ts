@@ -4,6 +4,7 @@
 // Sends email + SMS to the assigned crew and the project's sales rep when a labor order is scheduled.
 
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
+import { getPublicAppUrl } from "../_shared/public-app-url.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -14,7 +15,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const TELNYX_API_KEY = Deno.env.get("TELNYX_API_KEY");
 const TELNYX_FROM = Deno.env.get("TELNYX_PHONE_NUMBER");
-const APP_URL = Deno.env.get("APP_URL") || "https://pitch-crm.ai";
+const APP_URL = getPublicAppUrl();
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 
