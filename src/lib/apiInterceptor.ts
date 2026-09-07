@@ -297,11 +297,11 @@ export function uninstallFetchInterceptor(): void {
 export function createSupabaseFetch(): typeof fetch {
   return ((input: RequestInfo | URL, init?: RequestInit) => {
     const tabTenant = getTabTenantId();
-    if (!tabTenant) return interceptedFetch(input, init);
+    if (!tabTenant) return fetchWithAuthRetry(input, init);
 
     const headers = new Headers(init?.headers || (input instanceof Request ? input.headers : undefined));
     headers.set(TAB_TENANT_HEADER, tabTenant);
-    return interceptedFetch(input, { ...init, headers });
+    return fetchWithAuthRetry(input, { ...init, headers });
   }) as typeof fetch;
 }
 
