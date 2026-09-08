@@ -203,15 +203,17 @@ export const UserManagement = () => {
   const users = userData?.users || [];
   const currentUser = userData?.currentUser;
 
-  // Auto-set tenant for non-master users when dialog opens
+  // Auto-set tenant for non-master users when dialog opens.
+  // Prefer the company currently selected in this tab.
   useEffect(() => {
-    if (isAddUserOpen && currentUser?.role !== 'master' && currentUser?.tenant_id) {
+    const defaultTenant = activeCompanyId || currentUser?.tenant_id;
+    if (isAddUserOpen && currentUser?.role !== 'master' && defaultTenant) {
       setNewUser(prev => ({
         ...prev,
-        selected_tenant_id: currentUser.tenant_id
+        selected_tenant_id: defaultTenant
       }));
     }
-  }, [isAddUserOpen, currentUser]);
+  }, [isAddUserOpen, currentUser, activeCompanyId]);
 
   // Fetch locations when tenant changes
   useEffect(() => {
