@@ -121,7 +121,7 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
         .from('locations')
         .select('id, name')
         .eq('tenant_id', tenantId)
-        .eq('active', true);
+        .eq('is_active', true);
       
       if (error) throw error;
       return (data || []) as { id: string; name: string }[];
