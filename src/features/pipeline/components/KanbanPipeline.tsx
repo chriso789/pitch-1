@@ -36,6 +36,8 @@ const KanbanPipeline = () => {
     stages, // Dynamic stages from database
     stageTotals,
     isLoading, 
+    isError,
+    error,
     userCanDelete,
     updateEntryStatus,
     revertEntryStatus,
@@ -223,8 +225,24 @@ const KanbanPipeline = () => {
     return <PipelineSkeleton />;
   }
 
+  const pipelineErrorMessage = error instanceof Error ? error.message : 'The pipeline could not be refreshed.';
+
   return (
     <div className="space-y-6">
+      {isError && (
+        <div className="flex flex-col gap-3 border border-destructive/40 bg-destructive/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+            <div>
+              <p className="font-medium text-foreground">Pipeline temporarily unavailable</p>
+              <p className="text-sm text-muted-foreground">{pipelineErrorMessage} Your saved pipeline has not been deleted.</p>
+            </div>
+          </div>
+          <Button variant="outline" onClick={() => refetch()}>
+            Try Again
+          </Button>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -284,7 +302,7 @@ const KanbanPipeline = () => {
                 <div className="bg-card border-2 border-primary rounded-lg shadow-2xl">
                   <KanbanCard
                     id={activeId}
-                    entry={entries.find(e => e.id === activeId)!}
+                    entry={entries.find(e => e.id === activeId) as PipelineEntry}
                     onView={() => {}}
                     isDragging={true}
                   />
@@ -296,7 +314,7 @@ const KanbanPipeline = () => {
       </DndContext>
 
       {/* Empty State Message */}
-      {entries.length === 0 && (
+      {entries.length === 0 && !isError && (
         <div className="text-center p-8 bg-card rounded-lg border-2 border-dashed border-border mt-6">
           <Home className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
           <h3 className="text-lg font-semibold mb-2">No Leads Yet</h3>
