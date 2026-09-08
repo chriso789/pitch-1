@@ -76,14 +76,14 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error("Unauthorized");
     }
 
-    // Get caller's profile for tenant_id
+    // Get caller's profile (home + active company and fallback role)
     const { data: profile } = await supabase
       .from("profiles")
-      .select("tenant_id")
+      .select("tenant_id, active_tenant_id, role")
       .eq("id", user.id)
       .single();
 
-    // SECURITY: Check role from user_roles table using service role client
+    // SECURITY: role/tenant checks run with the service role client
     const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
@@ -95,13 +95,38 @@ const handler = async (req: Request): Promise<Response> => {
       }
     );
 
-    const { data: userRole } = await supabaseAdmin
-      .from("user_roles")
-      .select("role")
+    // Companies this user may act in (home, active, plus granted access)
+    const { data: accessRows } = await supabaseAdmin
+      .from("user_company_access")
+      .select("tenant_id")
       .eq("user_id", user.id)
-      .maybeSingle();
+      .eq("is_active", true);
 
-    const callerRole = userRole?.role;
+    const accessibleTenantIds = new Set<string>(
+      [
+        profile?.tenant_id,
+        profile?.active_tenant_id,
+        ...((accessRows ?? []).map((r: { tenant_id: string }) => r.tenant_id)),
+      ].filter(Boolean) as string[]
+    );
+
+    // The company selected in this browser tab wins when the user has access
+    const requestedTenantId = req.headers.get("x-pitch-tenant");
+    const callerTenantId =
+      requestedTenantId && accessibleTenantIds.has(requestedTenantId)
+        ? requestedTenantId
+        : profile?.active_tenant_id || profile?.tenant_id || null;
+
+    const { data: roleRows } = await supabaseAdmin
+      .from("user_roles")
+      .select("role, tenant_id")
+      .eq("user_id", user.id);
+
+    const callerRole =
+      roleRows?.find((r: { tenant_id: string | null }) => r.tenant_id === callerTenantId)?.role ||
+      roleRows?.[0]?.role ||
+      profile?.role;
+
     const allowedRoles = ['master', 'corporate', 'office_admin', 'owner'];
 
     if (!callerRole || !allowedRoles.includes(callerRole)) {
@@ -127,13 +152,20 @@ const handler = async (req: Request): Promise<Response> => {
       skipInvitationEmail
     }: CreateUserRequest = await req.json();
 
-    const targetTenantId = assignedTenantId || profile?.tenant_id;
+    const targetTenantId = assignedTenantId || callerTenantId;
 
-    // SECURITY: Non-master users can ONLY create users in their own company
-    if (callerRole !== 'master' && targetTenantId !== profile?.tenant_id) {
-      console.log('Security violation: Non-master user attempted to create user in different company', {
+    if (!targetTenantId) {
+      return new Response(
+        JSON.stringify({ error: "No company found for this account" }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    // SECURITY: Non-master users can ONLY create users in a company they belong to
+    if (callerRole !== 'master' && !accessibleTenantIds.has(targetTenantId)) {
+      console.log('Security violation: user attempted to create user in a company they cannot access', {
         callerRole,
-        callerTenantId: profile?.tenant_id,
+        callerTenantId,
         attemptedTenantId: targetTenantId
       });
       return new Response(
