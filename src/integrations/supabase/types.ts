@@ -66210,6 +66210,7 @@ export type Database = {
         Args: { p_limit?: number }
         Returns: number
       }
+      sweep_operational_log_retention: { Args: never; Returns: undefined }
       switch_active_tenant: { Args: { p_tenant_id: string }; Returns: Json }
       switch_developer_context: {
         Args: { target_tenant_id: string }
