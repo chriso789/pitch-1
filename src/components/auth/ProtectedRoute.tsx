@@ -6,6 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Loader2, Building2, AlertCircle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { clearAllAppLocalStorage, getCachedWorkspaceIdentity } from '@/components/layout/GlobalLoadingHandler';
+import { saveReturnTo } from '@/lib/returnTo';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
