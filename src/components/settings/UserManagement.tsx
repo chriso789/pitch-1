@@ -110,9 +110,16 @@ export const UserManagement = () => {
       if (activeCompanyId) {
         profilesQuery = profilesQuery.eq('tenant_id', activeCompanyId);
       }
-      const profilesResult = await profilesQuery;
+      let profilesResult = await profilesQuery;
 
-      if (profilesResult.error) throw profilesResult.error;
+      // A transient failure on the company-wide list must not blank out the
+      // whole screen (and with it the admin actions) — fall back to an empty
+      // list and let the signed-in user's own profile load below.
+      if (profilesResult.error) {
+        console.error('User list query failed, continuing with limited data:', profilesResult.error);
+        profilesResult = { ...profilesResult, data: [], error: null } as typeof profilesResult;
+      }
+
 
       const user = authResult.data?.user;
       let currentUserData = null;
