@@ -127,6 +127,8 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   // Redirect to login if not authenticated
   if (!user) {
     console.log('[ProtectedRoute] No valid session, redirecting to login');
+    // Remember where they were so a refresh returns them to the same page.
+    saveReturnTo(`${location.pathname}${location.search}${location.hash}`);
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
