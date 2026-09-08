@@ -37,7 +37,7 @@ Deno.serve(async (req) => {
     // Get user's profile and tenant
     const { data: profile } = await supabase
       .from('profiles')
-      .select('tenant_id, role, first_name, last_name')
+      .select('tenant_id, active_tenant_id, role, first_name, last_name')
       .eq('id', user.id)
       .single();
 
@@ -48,17 +48,39 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Check if user has permission to approve jobs
-    // master and owner can always override, others need appropriate role
-    const canOverrideConversion = ['master', 'owner'].includes(profile.role);
-    const hasApprovalPermission = ['master', 'owner', 'office_admin', 'regional_manager', 'sales_manager', 'corporate'].includes(profile.role);
-    
+    // Resolve the company the caller is actually working in (per-tab company
+    // switching). The requested tenant is only honored after verifying access.
+    const requestedTenant = req.headers.get('x-pitch-tenant');
+    const { data: accessRows } = await supabase
+      .from('user_company_access')
+      .select('tenant_id')
+      .eq('user_id', user.id);
+    const accessibleTenants = new Set<string>([
+      profile.tenant_id,
+      ...(profile.active_tenant_id ? [profile.active_tenant_id] : []),
+      ...((accessRows ?? []).map((r: any) => r.tenant_id).filter(Boolean)),
+    ]);
+    const effectiveTenantId =
+      requestedTenant && accessibleTenants.has(requestedTenant)
+        ? requestedTenant
+        : (profile.active_tenant_id && accessibleTenants.has(profile.active_tenant_id)
+            ? profile.active_tenant_id
+            : profile.tenant_id);
+
+    // Check if user has permission to approve jobs.
+    // Owners/managers approve conversions themselves — the approval queue
+    // exists for reps, not for the people who grant the approvals.
+    const MANAGER_ROLES = ['master', 'owner', 'corporate', 'office_admin', 'regional_manager', 'sales_manager'];
+    const canOverrideConversion = MANAGER_ROLES.includes(profile.role);
+    const hasApprovalPermission = canOverrideConversion;
+
     if (!hasApprovalPermission) {
       return new Response(JSON.stringify({ error: 'Insufficient permissions' }), {
         status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
 
     // Get pipeline entry with contact details
     const { data: pipelineEntry, error: pipelineError } = await supabase
