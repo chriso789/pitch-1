@@ -440,7 +440,7 @@ const handler = async (req: Request): Promise<Response> => {
     // Log audit trail
     try {
       await supabaseAdmin.from('audit_log').insert({
-        tenant_id: profile?.tenant_id ?? null,
+        tenant_id: targetTenantId,
         table_name: 'profiles',
         record_id: newUser.user.id,
         action: 'INSERT',
