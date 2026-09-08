@@ -30,11 +30,14 @@ Deno.serve(async (req) => {
 
     let queued = 0;
     let skipped = 0;
+    const handled: string[] = [];
     for (const ev of events) {
       const result = await dispatchEvent(ev);
       queued += result.queued;
       skipped += result.skipped;
+      handled.push(ev.id);
     }
+    await markDispatched(handled);
 
     return json({ processed: events.length, queued, skipped }, 200);
   } catch (e) {
@@ -54,17 +57,25 @@ async function fetchOne(id: string) {
 }
 
 async function fetchBatch() {
-  // Pull events from the last 24h that have no automation_runs yet.
-  // Cheap version: pull recent events, dedupe in-memory by checking runs.
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  // Only pull events that have never been dispatched. `dispatched_at` is stamped
+  // after each event is processed, so this never re-scans the same 24h window.
   const { data, error } = await admin
     .from('domain_events')
     .select('*')
-    .gte('occurred_at', since)
+    .is('dispatched_at', null)
     .order('occurred_at', { ascending: true })
     .limit(BATCH);
   if (error) throw error;
   return data ?? [];
+}
+
+async function markDispatched(ids: string[]) {
+  if (ids.length === 0) return;
+  const { error } = await admin
+    .from('domain_events')
+    .update({ dispatched_at: new Date().toISOString() })
+    .in('id', ids);
+  if (error) console.error('[dispatcher] mark dispatched failed', error);
 }
 
 async function dispatchEvent(ev: any): Promise<{ queued: number; skipped: number }> {
