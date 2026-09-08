@@ -179,19 +179,30 @@ const Pipeline = () => {
     });
   };
 
-  const fetchPipelineData = async () => {
+  const fetchPipelineData = async (attempt = 0) => {
     try {
       setLoading(true);
-      
+
       // Guard: don't fetch without a resolved tenant
       if (!effectiveTenantId) {
         setLoading(false);
         return;
       }
-      
-      // Get current user ID for role-based filtering
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+
+      // Resolve the signed-in user from the cached session (no extra network
+      // round-trip). A transient auth hiccup must not blank the whole board.
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData?.session?.user?.id || profile?.id || null;
+      if (!userId) {
+        if (attempt < 3) {
+          setTimeout(() => fetchPipelineData(attempt + 1), 600 * (attempt + 1));
+          return;
+        }
+        setLoading(false);
+        return;
+      }
+      const user = { id: userId };
+
       
       // --- Run reps and pipeline queries in PARALLEL ---
       
@@ -286,13 +297,18 @@ const Pipeline = () => {
 
       if (error) {
         console.error('Error fetching pipeline data:', error);
+        if (attempt < 3) {
+          setTimeout(() => fetchPipelineData(attempt + 1), 800 * (attempt + 1));
+          return;
+        }
         toast({
-          title: "Error",
-          description: "Failed to load pipeline data",
+          title: "Couldn't load the pipeline",
+          description: "Connection issue — retrying didn't help. Try Refresh in a moment.",
           variant: "destructive",
         });
         return;
       }
+
 
       // Filter data based on sales rep
       let filteredData = data || [];
@@ -475,14 +491,19 @@ const Pipeline = () => {
       setStageTotals(totals);
     } catch (error) {
       console.error('Error in fetchPipelineData:', error);
+      if (attempt < 3) {
+        setTimeout(() => fetchPipelineData(attempt + 1), 800 * (attempt + 1));
+        return;
+      }
       toast({
-        title: "Error",
-        description: "Failed to load pipeline data",
+        title: "Couldn't load the pipeline",
+        description: "Connection issue — try Refresh in a moment.",
         variant: "destructive",
       });
     } finally {
       setLoading(false);
     }
+
   };
 
   const handleDragStart = (event: DragStartEvent) => {
