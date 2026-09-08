@@ -90,7 +90,7 @@ Deno.serve(async (req) => {
         contacts(*)
       `)
       .eq('id', pipelineEntryId)
-      .eq('tenant_id', profile.tenant_id)
+      .eq('tenant_id', effectiveTenantId)
       .single();
 
     if (pipelineError || !pipelineEntry) {
@@ -145,7 +145,7 @@ Deno.serve(async (req) => {
       const { data: addrRows } = await supabase
         .from('property_addresses')
         .select('id, source_entity_type, source_entity_id, validation_status')
-        .eq('tenant_id', profile.tenant_id)
+        .eq('tenant_id', effectiveTenantId)
         .is('archived_at', null)
         .in('source_entity_id', candidateIds.map((c) => c.id));
       const scoped = (addrRows ?? []).filter((r) =>
@@ -185,7 +185,7 @@ Deno.serve(async (req) => {
       .from('projects')
       .select('*')
       .eq('pipeline_entry_id', pipelineEntryId)
-      .eq('tenant_id', profile.tenant_id)
+      .eq('tenant_id', effectiveTenantId)
       .maybeSingle();
 
     // ---------------------------------------------------------------
@@ -196,7 +196,7 @@ Deno.serve(async (req) => {
     const { data: preExistingInvoices } = await supabase
       .from('project_invoices')
       .select('id, invoice_number, amount')
-      .eq('tenant_id', profile.tenant_id)
+      .eq('tenant_id', effectiveTenantId)
       .eq('pipeline_entry_id', pipelineEntryId)
       .limit(1);
 
@@ -216,14 +216,14 @@ Deno.serve(async (req) => {
     const { data: pipelineEstimates } = await supabase
       .from('enhanced_estimates')
       .select(estimateColumns)
-      .eq('tenant_id', profile.tenant_id)
+      .eq('tenant_id', effectiveTenantId)
       .eq('pipeline_entry_id', pipelineEntryId);
     let projectEstimates: any[] = [];
     if (existingProject?.id) {
       const { data } = await supabase
         .from('enhanced_estimates')
         .select(estimateColumns)
-        .eq('tenant_id', profile.tenant_id)
+        .eq('tenant_id', effectiveTenantId)
         .eq('project_id', existingProject.id);
       projectEstimates = data ?? [];
     }
@@ -280,7 +280,7 @@ Deno.serve(async (req) => {
 
     if (!newProject) {
       const projectData = {
-        tenant_id: profile.tenant_id,
+        tenant_id: effectiveTenantId,
         pipeline_entry_id: pipelineEntryId,
         name: jobDetails?.name || `${pipelineEntry.contacts?.first_name} ${pipelineEntry.contacts?.last_name} - ${pipelineEntry.contacts?.address_street}`,
         description: jobDetails?.description || `Project created from pipeline entry for ${pipelineEntry.roof_type}`,
@@ -312,7 +312,7 @@ Deno.serve(async (req) => {
         updated_at: new Date().toISOString()
       })
       .eq('id', pipelineEntryId)
-      .eq('tenant_id', profile.tenant_id);
+      .eq('tenant_id', effectiveTenantId);
 
     if (updateError) {
       console.error('Error updating pipeline entry:', updateError);
@@ -323,7 +323,7 @@ Deno.serve(async (req) => {
       await supabase
         .from('communication_history')
         .insert({
-          tenant_id: profile.tenant_id,
+          tenant_id: effectiveTenantId,
           contact_id: pipelineEntry.contact_id,
           project_id: newProject.id,
           pipeline_entry_id: pipelineEntryId,
@@ -344,7 +344,7 @@ Deno.serve(async (req) => {
     const { data: workflow, error: workflowError } = await supabase
       .from('production_workflows')
       .insert({
-        tenant_id: profile.tenant_id,
+        tenant_id: effectiveTenantId,
         project_id: newProject.id,
         pipeline_entry_id: pipelineEntryId,
         current_stage: 'submit_documents',
@@ -358,7 +358,7 @@ Deno.serve(async (req) => {
       await supabase
         .from('production_stage_history')
         .insert({
-          tenant_id: profile.tenant_id,
+          tenant_id: effectiveTenantId,
           production_workflow_id: workflow.id,
           to_stage: 'submit_documents',
           changed_by: user.id,
@@ -373,7 +373,7 @@ Deno.serve(async (req) => {
       .from('enhanced_estimates')
       .update({ project_id: newProject.id })
       .eq('pipeline_entry_id', pipelineEntryId)
-      .eq('tenant_id', profile.tenant_id);
+      .eq('tenant_id', effectiveTenantId);
     if (estimateLinkError) {
       console.error('Error linking enhanced estimates to project:', estimateLinkError);
     }
@@ -382,7 +382,7 @@ Deno.serve(async (req) => {
       .from('estimates')
       .update({ project_id: newProject.id })
       .eq('pipeline_entry_id', pipelineEntryId)
-      .eq('tenant_id', profile.tenant_id);
+      .eq('tenant_id', effectiveTenantId);
     if (legacyEstimateLinkError) {
       console.error('Error linking legacy estimates to project:', legacyEstimateLinkError);
     }
@@ -413,7 +413,7 @@ Deno.serve(async (req) => {
           const { count: collisions } = await supabase
             .from('project_invoices')
             .select('id', { count: 'exact', head: true })
-            .eq('tenant_id', profile.tenant_id)
+            .eq('tenant_id', effectiveTenantId)
             .eq('invoice_number', label);
           if ((collisions ?? 0) > 0) {
             invoiceNumber = `${label}-${String((collisions ?? 0) + 1).padStart(2, '0')}`;
@@ -422,7 +422,7 @@ Deno.serve(async (req) => {
           const { data: invoiceRow, error: invoiceError } = await supabase
             .from('project_invoices')
             .insert({
-              tenant_id: profile.tenant_id,
+              tenant_id: effectiveTenantId,
               pipeline_entry_id: pipelineEntryId,
               invoice_number: invoiceNumber,
               amount: sellingPrice,
@@ -470,7 +470,7 @@ Deno.serve(async (req) => {
         .from('enhanced_estimates')
         .select('*')
         .eq('pipeline_entry_id', pipelineEntryId)
-        .eq('tenant_id', profile.tenant_id)
+        .eq('tenant_id', effectiveTenantId)
         .order('created_at', { ascending: false })
         .limit(1);
 
@@ -519,7 +519,7 @@ Deno.serve(async (req) => {
       const { data: activeQbo } = await supabase
         .from('qbo_connections')
         .select('id, realm_id, status')
-        .eq('tenant_id', profile.tenant_id)
+        .eq('tenant_id', effectiveTenantId)
         .eq('status', 'active')
         .maybeSingle();
 
