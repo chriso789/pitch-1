@@ -542,7 +542,34 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
         const draft = (data || []).find(
           (r: any) => r?.property_details?.is_auto_draft === true
         );
+
+        // A local snapshot is written on every keystroke, so it is usually the
+        // freshest copy after an unexpected refresh. Prefer it when it is newer
+        // than the server auto-draft.
+        const snapshot = readLatestEstimateSnapshot(pipelineEntryId);
+        const draftTs = draft ? new Date((draft as any).updated_at || 0).getTime() : 0;
+        if (snapshotHasContent(snapshot) && snapshot!.ts > draftTs) {
+          isRestoringDraftRef.current = true;
+          if (draft) setDraftEstimateId(draft.id);
+          if (snapshot!.editingEstimateId) setEditingEstimateId(snapshot!.editingEstimateId);
+          setPropertyDetails(snapshot!.propertyDetails);
+          if (Array.isArray(snapshot!.lineItems)) setLineItems(snapshot!.lineItems as LineItem[]);
+          if (snapshot!.excelConfig) setExcelConfig(snapshot!.excelConfig);
+          if (snapshot!.templateId) setTemplateId(snapshot!.templateId);
+          if (snapshot!.salesRepId) setSalesRepId(snapshot!.salesRepId);
+          if (Array.isArray(snapshot!.secondaryRepIds)) setSecondaryRepIds(snapshot!.secondaryRepIds);
+          toast({
+            title: 'Draft Recovered',
+            description: 'We restored the estimate you were working on.',
+          });
+          setTimeout(() => {
+            isRestoringDraftRef.current = false;
+          }, 600);
+          return;
+        }
+
         if (!draft) return;
+
 
         isRestoringDraftRef.current = true;
         setDraftEstimateId(draft.id);
