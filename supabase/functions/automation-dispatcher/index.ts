@@ -30,11 +30,14 @@ Deno.serve(async (req) => {
 
     let queued = 0;
     let skipped = 0;
+    const handled: string[] = [];
     for (const ev of events) {
       const result = await dispatchEvent(ev);
       queued += result.queued;
       skipped += result.skipped;
+      handled.push(ev.id);
     }
+    await markDispatched(handled);
 
     return json({ processed: events.length, queued, skipped }, 200);
   } catch (e) {
