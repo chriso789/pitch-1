@@ -7,7 +7,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-api-key",
+    "authorization, x-client-info, apikey, content-type, x-api-key, x-pitch-tenant",
 };
 
 async function hashApiKey(key: string): Promise<string> {

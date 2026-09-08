@@ -4,7 +4,7 @@ import { notifySenderEngagement } from "../_shared/engagement-notify.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-resend-signature',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-resend-signature, x-pitch-tenant',
 };
 
 interface ResendInboundEmail {

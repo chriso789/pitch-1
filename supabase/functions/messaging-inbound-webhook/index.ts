@@ -9,7 +9,7 @@ import {
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers':
-    'authorization, x-client-info, apikey, content-type, telnyx-signature-ed25519, telnyx-timestamp, x-twilio-signature',
+    'authorization, x-client-info, apikey, content-type, telnyx-signature-ed25519, telnyx-timestamp, x-twilio-signature, x-pitch-tenant',
 };
 
 Deno.serve(async (req) => {

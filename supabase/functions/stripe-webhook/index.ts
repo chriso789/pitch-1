@@ -16,7 +16,7 @@ import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, stripe-signature",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, stripe-signature, x-pitch-tenant",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 

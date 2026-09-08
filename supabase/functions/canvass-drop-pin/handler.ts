@@ -3,7 +3,7 @@ import { resolveLocation } from "../_shared/public_data/locationResolver.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-pitch-tenant",
 };
 
 export const handle = async (req) => {

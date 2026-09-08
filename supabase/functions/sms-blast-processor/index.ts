@@ -24,7 +24,7 @@ const RATE_LIMIT_RETRY_CEILING = 8;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-pitch-tenant',
 };
 
 const FAILURE_CIRCUIT_BREAKER = 0.10; // 10%

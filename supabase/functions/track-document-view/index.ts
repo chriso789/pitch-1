@@ -4,7 +4,7 @@ import { notifySenderEngagement } from "../_shared/engagement-notify.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-pitch-tenant",
 };
 
 function resolveStorageBucket(documentType?: string | null, filePath?: string | null): string {
