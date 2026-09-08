@@ -398,7 +398,29 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
       // The useEffect watching session/authUser will handle navigation
       logLoginAttempt({ email: loginForm.email, status: 'success', source: 'login-page' });
       console.log('[Login] signInWithPassword succeeded, waiting for AuthContext...');
-      
+
+      // Stamp the session window immediately. Otherwise a stale expiry left in
+      // storage from an older visit can log the user straight back out.
+      initSession(rememberMe);
+
+      // Mobile browsers occasionally drop/delay the auth state event when the
+      // keyboard closes or the tab is throttled. If we still have a valid local
+      // session a moment later, go to the dashboard instead of hanging on
+      // "Signing in...".
+      window.setTimeout(async () => {
+        try {
+          const { data } = await supabase.auth.getSession();
+          if (data.session && window.location.pathname.startsWith('/login')) {
+            console.log('[Login] Fallback redirect after auth event delay');
+            setLoading(false);
+            setLoginAttempted(false);
+            navigate('/dashboard', { replace: true });
+          }
+        } catch {
+          /* ignore - the primary effect will handle navigation */
+        }
+      }, 2500);
+
     } catch (error: any) {
       setLoading(false);
       setLoginAttempted(false);
