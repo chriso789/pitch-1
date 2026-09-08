@@ -230,6 +230,10 @@ function isRetryableAuthRequest(url: string, method: string): boolean {
   if (!url.includes('/auth/v1/')) return false;
   // Never retry sign-out or one-time-use flows.
   if (url.includes('/logout') || url.includes('/verify') || url.includes('/recover')) return false;
+  // A password exchange creates a new session/refresh token. Replaying it after
+  // an upstream timeout can create competing sessions and makes the sign-in
+  // spinner last through multiple gateway timeout windows.
+  if (url.includes('/token') && url.includes('grant_type=password')) return false;
   return method === 'GET' || url.includes('/token') || url.includes('/user');
 }
 
