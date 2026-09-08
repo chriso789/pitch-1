@@ -160,8 +160,30 @@ export const UserManagement = () => {
       }
 
       if (user) {
-        const currentProfile = profilesResult.data?.find(p => p.id === user.id);
-        const currentUserRole = rolesResult.data?.find(r => r.user_id === user.id);
+        // Never rely solely on the tenant-filtered list above: if that query is
+        // narrowed by RLS, or the signed-in user's row isn't in the active
+        // company slice, we'd lose their role and hide admin actions entirely.
+        let currentProfile = profilesResult.data?.find(p => p.id === user.id) || null;
+        if (!currentProfile) {
+          const { data: ownProfile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', user.id)
+            .maybeSingle();
+          currentProfile = ownProfile || null;
+        }
+
+        let currentUserRole = rolesResult.data?.find(r => r.user_id === user.id);
+        if (!currentUserRole) {
+          const { data: ownRoles } = await supabase
+            .from('user_roles')
+            .select('user_id, role, tenant_id')
+            .eq('user_id', user.id);
+          currentUserRole =
+            ownRoles?.find(r => activeCompanyId && r.tenant_id === activeCompanyId) ||
+            ownRoles?.[0];
+        }
+
         const loginStats = loginStatsMap.get(user.id);
         currentUserData = {
           ...currentProfile,
@@ -171,6 +193,7 @@ export const UserManagement = () => {
           is_activated: loginStats?.is_activated ?? false
         };
       }
+
 
       // Get role from user_roles table, matching tenant_id if available
       const roleMap = new Map<string, string>();
