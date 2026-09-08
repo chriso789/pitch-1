@@ -179,19 +179,30 @@ const Pipeline = () => {
     });
   };
 
-  const fetchPipelineData = async () => {
+  const fetchPipelineData = async (attempt = 0) => {
     try {
       setLoading(true);
-      
+
       // Guard: don't fetch without a resolved tenant
       if (!effectiveTenantId) {
         setLoading(false);
         return;
       }
-      
-      // Get current user ID for role-based filtering
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+
+      // Resolve the signed-in user from the cached session (no extra network
+      // round-trip). A transient auth hiccup must not blank the whole board.
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData?.session?.user?.id || profile?.id || null;
+      if (!userId) {
+        if (attempt < 3) {
+          setTimeout(() => fetchPipelineData(attempt + 1), 600 * (attempt + 1));
+          return;
+        }
+        setLoading(false);
+        return;
+      }
+      const user = { id: userId };
+
       
       // --- Run reps and pipeline queries in PARALLEL ---
       
