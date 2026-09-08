@@ -16383,6 +16383,7 @@ export type Database = {
           company_id: string
           created_at: string
           dedupe_key: string | null
+          dispatched_at: string | null
           entity_id: string
           entity_type: string
           event_source: string
@@ -16399,6 +16400,7 @@ export type Database = {
           company_id: string
           created_at?: string
           dedupe_key?: string | null
+          dispatched_at?: string | null
           entity_id: string
           entity_type: string
           event_source?: string
@@ -16415,6 +16417,7 @@ export type Database = {
           company_id?: string
           created_at?: string
           dedupe_key?: string | null
+          dispatched_at?: string | null
           entity_id?: string
           entity_type?: string
           event_source?: string
