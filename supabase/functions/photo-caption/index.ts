@@ -2,7 +2,7 @@
 // the Lovable AI Gateway (google/gemini-2.5-flash vision). Returns { caption }.
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-pitch-tenant",
 };
 
 const json = (body: unknown, status = 200) =>

@@ -30,7 +30,7 @@ import { getQboOAuthEndpoints } from "../_shared/qbo-discovery.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-pitch-tenant",
 };
 
 // Intuit publishing requirement: OAuth 2.0 endpoints come from the OpenID

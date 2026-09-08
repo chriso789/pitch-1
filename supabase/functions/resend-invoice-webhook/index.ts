@@ -11,7 +11,7 @@ import { getEmailProvider } from "../_shared/email/index.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, svix-id, svix-timestamp, svix-signature, webhook-id, webhook-timestamp, webhook-signature",
+    "authorization, x-client-info, apikey, content-type, svix-id, svix-timestamp, svix-signature, webhook-id, webhook-timestamp, webhook-signature, x-pitch-tenant",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 

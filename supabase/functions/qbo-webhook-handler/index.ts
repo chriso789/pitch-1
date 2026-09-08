@@ -14,7 +14,7 @@ import { reconcileInvoiceFromQbo, reconcilePaymentFromQbo, appendReconciliationE
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, intuit-signature",
+    "authorization, x-client-info, apikey, content-type, intuit-signature, x-pitch-tenant",
 };
 
 interface WebhookEvent {

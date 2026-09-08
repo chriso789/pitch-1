@@ -20,7 +20,7 @@ import {
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-centz-signature, x-webhook-secret",
+    "authorization, x-client-info, apikey, content-type, x-centz-signature, x-webhook-secret, x-pitch-tenant",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 

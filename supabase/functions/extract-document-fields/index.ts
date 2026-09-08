@@ -8,7 +8,7 @@ import { scrubSensitiveDocumentData } from "../_shared/scrub-sensitive.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-worker-secret",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-worker-secret, x-pitch-tenant",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 

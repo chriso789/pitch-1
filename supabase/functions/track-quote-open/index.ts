@@ -26,7 +26,7 @@ Deno.serve(async (req: Request) => {
     return new Response(null, {
       headers: {
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Allow-Headers": "*, x-pitch-tenant",
       },
     });
   }
