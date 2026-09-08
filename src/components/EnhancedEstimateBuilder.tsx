@@ -11,6 +11,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { Slider } from '@/components/ui/slider';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import {
+  saveEstimateSnapshot,
+  readLatestEstimateSnapshot,
+  clearEstimateSnapshots,
+  snapshotHasContent,
+} from '@/lib/estimateDraftSnapshot';
 import { Calculator, Plus, Trash2, FileText, DollarSign, Target, TrendingUp, MapPin, Satellite, Loader2, AlertTriangle, RefreshCw, Clock, Edit, RotateCcw } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
@@ -739,7 +745,18 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
   // Best-effort flush on tab close / navigation / backgrounding (session timeout safety)
   useEffect(() => {
     const flush = () => {
-      if (!pipelineEntryId || editingEstimateId) return;
+      if (!pipelineEntryId) return;
+      // Synchronous local copy first – this always completes, even on unload.
+      saveEstimateSnapshot(pipelineEntryId, {
+        propertyDetails,
+        lineItems,
+        excelConfig,
+        templateId: templateId || null,
+        salesRepId: salesRepId || null,
+        secondaryRepIds,
+        editingEstimateId,
+      });
+      if (editingEstimateId) return;
       performAutoDraftSave();
     };
     const onVisibility = () => {
@@ -755,7 +772,41 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
       window.removeEventListener('blur', flush);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [performAutoDraftSave, pipelineEntryId, editingEstimateId]);
+  }, [
+    performAutoDraftSave,
+    pipelineEntryId,
+    editingEstimateId,
+    propertyDetails,
+    lineItems,
+    excelConfig,
+    templateId,
+    salesRepId,
+    secondaryRepIds,
+  ]);
+
+  // Keep a local recovery copy on every change so an immediate browser refresh
+  // never loses work, including while editing an existing estimate.
+  useEffect(() => {
+    if (!pipelineEntryId || isRestoringDraftRef.current) return;
+    saveEstimateSnapshot(pipelineEntryId, {
+      propertyDetails,
+      lineItems,
+      excelConfig,
+      templateId: templateId || null,
+      salesRepId: salesRepId || null,
+      secondaryRepIds,
+      editingEstimateId,
+    });
+  }, [
+    pipelineEntryId,
+    propertyDetails,
+    lineItems,
+    excelConfig,
+    templateId,
+    salesRepId,
+    secondaryRepIds,
+    editingEstimateId,
+  ]);
 
   // Heartbeat auto-draft: guarantees a draft exists even if the page/session
   // times out before the user ever clicks Save.
@@ -1830,7 +1881,8 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
       // Refresh the saved estimates list
       await loadSavedEstimates();
       
-      // Clear editing state and unsaved changes after saving
+      // Clear editing state, recovery copies and unsaved changes after saving
+      if (pipelineEntryId) clearEstimateSnapshots(pipelineEntryId);
       setEditingEstimateId(null);
       setHasUnsavedChanges(false);
     } catch (error: any) {
