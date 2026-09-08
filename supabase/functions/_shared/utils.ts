@@ -137,7 +137,7 @@ export function successResponse<T>(data: T, status: number = 200): Response {
     headers: { 
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+      'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-pitch-tenant',
     },
   });
 }
@@ -157,7 +157,7 @@ export function errorResponse(
     headers: { 
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+      'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-pitch-tenant',
     },
   });
 }
@@ -171,7 +171,7 @@ export function handleCors(req: Request): Response | null {
     return new Response(null, {
       headers: {
         'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-pitch-tenant',
         'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
       },
     });

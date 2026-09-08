@@ -12,7 +12,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2.49.1';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-pitch-tenant',
 };
 
 const LOVABLE_AI_URL = 'https://ai.gateway.lovable.dev/v1/chat/completions';

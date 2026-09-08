@@ -4,7 +4,7 @@ const MAPBOX_TOKEN = Deno.env.get('MAPBOX_PUBLIC_TOKEN')!
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-pitch-tenant',
 }
 
 interface ImageRequest {

@@ -8,7 +8,7 @@ import { PDFDocument, rgb, StandardFonts } from "npm:pdf-lib@1.17.1";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-pitch-tenant',
 };
 
 interface SignRequest {
