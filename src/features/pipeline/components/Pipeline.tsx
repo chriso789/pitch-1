@@ -491,14 +491,19 @@ const Pipeline = () => {
       setStageTotals(totals);
     } catch (error) {
       console.error('Error in fetchPipelineData:', error);
+      if (attempt < 3) {
+        setTimeout(() => fetchPipelineData(attempt + 1), 800 * (attempt + 1));
+        return;
+      }
       toast({
-        title: "Error",
-        description: "Failed to load pipeline data",
+        title: "Couldn't load the pipeline",
+        description: "Connection issue — try Refresh in a moment.",
         variant: "destructive",
       });
     } finally {
       setLoading(false);
     }
+
   };
 
   const handleDragStart = (event: DragStartEvent) => {
