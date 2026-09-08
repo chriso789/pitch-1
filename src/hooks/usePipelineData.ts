@@ -144,6 +144,22 @@ async function fetchPipelineEntries(locationId: string | null, tenantId: string 
   return { entries, valueMap };
 }
 
+type PipelineCache = { entries: PipelineEntry[]; valueMap: Record<string, number> };
+
+const getPipelineSessionKey = (userId: string | undefined, tenantId: string | null, locationId: string | null) =>
+  `pitch-pipeline:${userId || 'unknown'}:${tenantId || 'unknown'}:${locationId || 'all'}`;
+
+const readPipelineSessionCache = (key: string): PipelineCache | undefined => {
+  try {
+    const raw = sessionStorage.getItem(key);
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw) as PipelineCache;
+    return Array.isArray(parsed.entries) && parsed.valueMap ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 function groupByStatus(entries: PipelineEntry[], stages: PipelineStage[]): Record<string, PipelineEntry[]> {
   const grouped: Record<string, PipelineEntry[]> = {};
   stages.forEach(stage => {
@@ -166,6 +182,7 @@ export function usePipelineData() {
   const { currentLocationId } = useLocation();
   const queryClient = useQueryClient();
   const effectiveTenantId = useEffectiveTenantId();
+  const sessionCacheKey = getPipelineSessionKey(profile?.id, effectiveTenantId, currentLocationId);
   
   // Load dynamic stages from database
   const { stages, isLoading: stagesLoading } = usePipelineStages();
@@ -174,10 +191,24 @@ export function usePipelineData() {
     queryKey: ['pipeline-entries', currentLocationId, effectiveTenantId],
     queryFn: () => fetchPipelineEntries(currentLocationId, effectiveTenantId),
     enabled: !!effectiveTenantId, // Don't fetch until tenant is resolved
+    initialData: () => readPipelineSessionCache(sessionCacheKey),
+    retry: 3,
+    retryDelay: attempt => Math.min(750 * Math.pow(2, attempt), 3000),
     staleTime: 30 * 1000,
     gcTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
+
+  // Keep the most recent successful board in this tab. A transient Supabase
+  // timeout must not make a user's entire pipeline appear deleted.
+  useEffect(() => {
+    if (!query.data || query.isError) return;
+    try {
+      sessionStorage.setItem(sessionCacheKey, JSON.stringify(query.data));
+    } catch {
+      // Storage can be unavailable in privacy-restricted browsers.
+    }
+  }, [query.data, query.isError, sessionCacheKey]);
   
   // Listen for location changes and invalidate cache immediately
   useEffect(() => {
