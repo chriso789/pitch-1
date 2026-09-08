@@ -39,6 +39,21 @@ const UserProfileContext = createContext<UserProfileContextType>({
 // Session storage keys for role and title backup
 const SESSION_ROLE_KEY = 'pitch-user-role';
 const SESSION_TITLE_KEY = 'pitch-user-title';
+const BOOTSTRAP_TIMEOUT_MS = 3500;
+
+const withTimeout = async <T,>(promise: PromiseLike<T>, timeoutMs: number): Promise<T> => {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      Promise.resolve(promise),
+      new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('Workspace bootstrap timed out')), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+};
 
 // Helper to get role from session storage
 const getSessionRole = (): string => {
@@ -146,7 +161,10 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
       console.log('[UserProfile] Trying fast bootstrap for:', userId);
       
       // @ts-ignore - RPC function not yet in generated types
-      const { data, error: rpcError } = await supabase.rpc('get_workspace_bootstrap');
+      const { data, error: rpcError } = await withTimeout(
+        supabase.rpc('get_workspace_bootstrap'),
+        BOOTSTRAP_TIMEOUT_MS,
+      );
       
       if (rpcError) {
         console.warn('[UserProfile] Bootstrap RPC error:', rpcError.message);

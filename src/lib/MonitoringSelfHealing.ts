@@ -49,8 +49,9 @@ class MonitoringService {
     // Set up global error handlers
     this.setupErrorHandlers();
 
-    // Start health check loop
-    this.startHealthChecks();
+    // Do not run fleet-wide health probes from every signed-in browser. That
+    // multiplied into thousands of database writes per day and competed with
+    // authentication. The dedicated monitoring screen owns active checks.
 
     // Start error buffer flush
     this.startErrorBufferFlush();

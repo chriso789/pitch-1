@@ -39,13 +39,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         return false;
       }
 
-      // Verify the session token is actually valid by making a test API call
-      // ALSO check if user is suspended
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('id, email, is_suspended, suspension_reason')
-        .eq('id', currentSession.user.id)
-        .maybeSingle();
+      // Account checks are independent. Run them together so a slow database
+      // does not make every login wait for two sequential round trips.
+      const [profileResult, blockedResult] = await Promise.all([
+        supabase
+          .from('profiles')
+          .select('id, email, is_suspended, suspension_reason')
+          .eq('id', currentSession.user.id)
+          .maybeSingle(),
+        supabase.rpc('is_login_blocked'),
+      ]);
+      const { data: profile, error: profileError } = profileResult;
 
       if (profileError && profileError.code !== 'PGRST116') {
         // Transient failures (network blips, RLS hiccups, offline mobile) must NOT
@@ -65,7 +69,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
 
       // SECURITY: Block logins for users whose company has been deactivated
-      const { data: blocked, error: blockedError } = await supabase.rpc('is_login_blocked');
+      const { data: blocked, error: blockedError } = blockedResult;
       if (!blockedError && blocked) {
         console.warn('[AuthContext] Company deactivated - forcing logout');
         clearAllSessionData();
@@ -121,12 +125,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
 
         if (initialSession?.user) {
-          // SECURITY: Verify this session actually works AND user is not suspended
-          const { data: verifyProfile, error: verifyError } = await supabase
-            .from('profiles')
-            .select('id, is_suspended, suspension_reason')
-            .eq('id', initialSession.user.id)
-            .maybeSingle();
+          // Run independent account checks concurrently. These used to be
+          // sequential and visibly extended the post-password verification.
+          const [profileResult, blockedResult] = await Promise.all([
+            supabase
+              .from('profiles')
+              .select('id, is_suspended, suspension_reason')
+              .eq('id', initialSession.user.id)
+              .maybeSingle(),
+            supabase.rpc('is_login_blocked'),
+          ]);
+          const { data: verifyProfile, error: verifyError } = profileResult;
 
           if (verifyError && verifyError.code !== 'PGRST116') {
             // Do not destroy a valid session because of a transient read failure.
@@ -148,7 +157,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           }
 
           // SECURITY: Block sign-in when the user's company is deactivated
-          const { data: tenantBlocked, error: tenantBlockedError } = await supabase.rpc('is_login_blocked');
+          const { data: tenantBlocked, error: tenantBlockedError } = blockedResult;
           if (!tenantBlockedError && tenantBlocked) {
 
             console.warn('[AuthContext] Company deactivated - forcing logout');
