@@ -6,6 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Loader2, Building2, AlertCircle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { clearAllAppLocalStorage, getCachedWorkspaceIdentity } from '@/components/layout/GlobalLoadingHandler';
+import { saveReturnTo } from '@/lib/returnTo';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -127,6 +128,8 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   // Redirect to login if not authenticated
   if (!user) {
     console.log('[ProtectedRoute] No valid session, redirecting to login');
+    // Remember where they were so a refresh returns them to the same page.
+    saveReturnTo(`${location.pathname}${location.search}${location.hash}`);
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 

@@ -17,6 +17,7 @@ import { getDeviceFingerprint, getDeviceName } from '@/services/deviceFingerprin
 import { clearAllAppLocalStorage } from '@/components/layout/GlobalLoadingHandler';
 import { BRAND } from '@/lib/branding/legal';
 import { SEO } from '@/components/seo/SEO';
+import { consumeReturnTo } from '@/lib/returnTo';
 
 // Helper to clean up stale localStorage on Login mount
 const cleanupStaleLocalStorage = () => {
@@ -213,7 +214,7 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
           
           setLoading(false);
           setLoginAttempted(false);
-          navigate('/dashboard');
+          navigate(consumeReturnTo() || '/dashboard', { replace: true });
         } catch (error) {
           console.error('[Login] Verification error:', error);
           clearAllSessionData();
@@ -272,8 +273,9 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
         }
 
         
-        console.log('[Login] Verified existing session, redirecting to dashboard');
-        navigate('/dashboard');
+        const returnTo = consumeReturnTo();
+        console.log('[Login] Verified existing session, redirecting to', returnTo || '/dashboard');
+        navigate(returnTo || '/dashboard', { replace: true });
       }
     };
     
@@ -414,7 +416,7 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
             console.log('[Login] Fallback redirect after auth event delay');
             setLoading(false);
             setLoginAttempted(false);
-            navigate('/dashboard', { replace: true });
+            navigate(consumeReturnTo() || '/dashboard', { replace: true });
           }
         } catch {
           /* ignore - the primary effect will handle navigation */
