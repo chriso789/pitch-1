@@ -297,13 +297,18 @@ const Pipeline = () => {
 
       if (error) {
         console.error('Error fetching pipeline data:', error);
+        if (attempt < 3) {
+          setTimeout(() => fetchPipelineData(attempt + 1), 800 * (attempt + 1));
+          return;
+        }
         toast({
-          title: "Error",
-          description: "Failed to load pipeline data",
+          title: "Couldn't load the pipeline",
+          description: "Connection issue — retrying didn't help. Try Refresh in a moment.",
           variant: "destructive",
         });
         return;
       }
+
 
       // Filter data based on sales rep
       let filteredData = data || [];
