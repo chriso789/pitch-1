@@ -239,12 +239,58 @@ function isRetryableAuthRequest(url: string, method: string): boolean {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/**
+ * Supabase occasionally answers with a Cloudflare "521 web server is down"
+ * page or drops the connection entirely for a second or two. Those blips
+ * surfaced to users as "Failed to fetch" on ordinary saves. Retry them.
+ */
+const TRANSIENT_STATUSES = new Set([502, 503, 504, 520, 521, 522, 524]);
+
+function isSupabaseRequest(url: string): boolean {
+  return url.includes('.supabase.co') || url.includes('/rest/v1/') || url.includes('/functions/v1/');
+}
+
+async function fetchWithTransientRetry(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+  const method = (init?.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
+
+  if (!isSupabaseRequest(url) || url.includes('/auth/v1/')) {
+    return interceptedFetch(input, init);
+  }
+
+  // A body can only be consumed once, so a Request built from a stream cannot
+  // safely be replayed. Plain init-based calls (what the Supabase SDK uses) can.
+  const canReplay = !(input instanceof Request) || init !== undefined;
+  const maxAttempts = canReplay ? 3 : 1;
+  const isRead = method === 'GET' || method === 'HEAD';
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const response = await interceptedFetch(input, init);
+      // Only replay a non-read request when the server clearly never processed
+      // it (gateway/edge-level failure), never on a normal 4xx/5xx app error.
+      if (!TRANSIENT_STATUSES.has(response.status) || attempt === maxAttempts) {
+        return response;
+      }
+      console.warn(`[APIInterceptor] ${response.status} from ${url}, retrying (${attempt}/${maxAttempts - 1})`);
+    } catch (error) {
+      // Network-level failure: no response was produced, so replaying is safe.
+      if (attempt === maxAttempts) throw error;
+      console.warn(`[APIInterceptor] network failure on ${method} ${url}, retrying (${attempt}/${maxAttempts - 1})`);
+      void isRead;
+    }
+    await sleep(500 * attempt);
+  }
+
+  return interceptedFetch(input, init);
+}
+
 async function fetchWithAuthRetry(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
   const method = (init?.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
 
   if (!isRetryableAuthRequest(url, method)) {
-    return interceptedFetch(input, init);
+    return fetchWithTransientRetry(input, init);
   }
 
   const maxAttempts = 3;
