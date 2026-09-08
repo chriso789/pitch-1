@@ -232,15 +232,27 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
   useEffect(() => {
     const checkAndRedirect = async () => {
       if (!authLoading && session && authUser && !loginAttempted) {
-        // Verify session is actually valid before redirecting
-        const { data: { session: verifiedSession }, error } = await supabase.auth.getSession();
-        
-        if (error || !verifiedSession || verifiedSession.user.id !== authUser.id) {
-          console.log('[Login] Invalid session detected, clearing...');
-          clearAllSessionData();
-          await supabase.auth.signOut();
-          return;
+        // Verify session is actually valid before redirecting.
+        // On phones this call can fail transiently (backgrounded tab, flaky
+        // mobile data). A failure is NOT proof of a bad session, so we only
+        // discard the session when we positively read a mismatched/absent one.
+        let verifiedSession = session;
+        try {
+          const { data, error } = await supabase.auth.getSession();
+          if (!error) {
+            if (!data.session || data.session.user.id !== authUser.id) {
+              console.log('[Login] Invalid session detected, clearing...');
+              clearAllSessionData();
+              await supabase.auth.signOut().catch(() => {});
+              return;
+            }
+            verifiedSession = data.session;
+          }
+        } catch (sessionError) {
+          console.warn('[Login] Session check failed, keeping existing session:', sessionError);
         }
+        void verifiedSession;
+        
         
         // Check if the user has set their password.
         // IMPORTANT: only send someone to the setup flow when we successfully
