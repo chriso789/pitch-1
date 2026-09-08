@@ -1,0 +1,1 @@
+ALTER VIEW public.material_invoice_audits_all SET (security_invoker = true);
