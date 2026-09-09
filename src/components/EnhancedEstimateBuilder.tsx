@@ -379,6 +379,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
   const [autoPopulateRan, setAutoPopulateRan] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showNewEstimateConfirm, setShowNewEstimateConfirm] = useState(false);
+  const [showDraftRecovered, setShowDraftRecovered] = useState(false);
 
   // Auto-draft persistence: silently save a `draft` row to enhanced_estimates
   // so unsaved work survives page reloads / browser close.
@@ -564,6 +565,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
           if (snapshot!.templateId) setTemplateId(snapshot!.templateId);
           if (snapshot!.salesRepId) setSalesRepId(snapshot!.salesRepId);
           if (Array.isArray(snapshot!.secondaryRepIds)) setSecondaryRepIds(snapshot!.secondaryRepIds);
+          setShowDraftRecovered(true);
           toast({
             title: 'Draft Recovered',
             description: 'We restored the estimate you were working on.',
@@ -600,6 +602,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
         if (pd.sales_rep_id) setSalesRepId(pd.sales_rep_id);
         if (Array.isArray(pd.secondary_rep_ids)) setSecondaryRepIds(pd.secondary_rep_ids);
 
+        setShowDraftRecovered(true);
         toast({
           title: 'Draft Restored',
           description: 'Your unsaved estimate draft was recovered.',
@@ -1885,6 +1888,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
       if (pipelineEntryId) clearEstimateSnapshots(pipelineEntryId);
       setEditingEstimateId(null);
       setHasUnsavedChanges(false);
+      setShowDraftRecovered(false);
     } catch (error: any) {
       const saveEndTime = Date.now();
       const saveDuration = saveEndTime - saveStartTime;
@@ -2143,13 +2147,64 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
     }
   };
 
-  const handleNewEstimate = () => {
-    if (hasUnsavedChanges && editingEstimateId) {
-      setShowNewEstimateConfirm(true);
-      return;
+   const handleNewEstimate = () => {
+     if (hasUnsavedChanges && editingEstimateId) {
+       setShowNewEstimateConfirm(true);
+       return;
+     }
+     
+     performNewEstimate();
+   };
+
+  const handleDiscardDraft = async () => {
+    if (pipelineEntryId) clearEstimateSnapshots(pipelineEntryId);
+    if (draftEstimateId) {
+      try {
+        await supabase.from('enhanced_estimates').delete().eq('id', draftEstimateId);
+      } catch (e) {
+        console.warn('Failed to delete prior draft:', e);
+      }
+      setDraftEstimateId(null);
     }
-    
-    performNewEstimate();
+    isRestoringDraftRef.current = true;
+    setEditingEstimateId(null);
+    setLineItems([
+      {
+        item_category: 'material',
+        item_name: 'Asphalt Shingles',
+        description: 'Architectural shingles',
+        quantity: 1,
+        unit_cost: 150,
+        unit_type: 'square',
+        markup_percent: 25
+      }
+    ]);
+    setPropertyDetails({
+      roof_area_sq_ft: 0,
+      roof_type: 'asphalt_shingle',
+      complexity_level: 'moderate',
+      roof_pitch: '4/12',
+      customer_name: '',
+      customer_address: ''
+    });
+    setExcelConfig({
+      target_margin_percent: 30.0,
+      overhead_percent: 15.0,
+      commission_percent: 5.0,
+      waste_factor_percent: 10.0,
+      contingency_percent: 5.0
+    });
+    setTemplateId('');
+    setSalesRepId('');
+    setSecondaryRepIds([]);
+    setCalculationResults(null);
+    setHasUnsavedChanges(false);
+    setShowDraftRecovered(false);
+    setTimeout(() => { isRestoringDraftRef.current = false; }, 600);
+    toast({
+      title: 'Draft Discarded',
+      description: 'The recovered draft has been cleared. You can start fresh.',
+    });
   };
 
   const performNewEstimate = async () => {
@@ -2199,8 +2254,27 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
+     <div className="space-y-6">
+       {/* Draft Recovered Banner */}
+       {showDraftRecovered && (
+         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-2">
+           <RotateCcw className="h-4 w-4 text-blue-600" />
+           <span className="text-blue-800 font-medium">Draft Recovered</span>
+           <span className="text-blue-700 text-sm">
+             — unsaved work was restored after the page reloaded
+           </span>
+           <Button
+             variant="outline"
+             size="sm"
+             onClick={handleDiscardDraft}
+             className="ml-auto h-7 border-blue-300 text-blue-700 hover:bg-blue-100"
+           >
+             <Trash2 className="h-3.5 w-3.5 mr-1" />
+             Discard Draft
+           </Button>
+         </div>
+       )}
+       {/* Header */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">

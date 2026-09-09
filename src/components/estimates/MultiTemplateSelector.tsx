@@ -265,6 +265,8 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const [editingEstimateNumber, setEditingEstimateNumber] = useState<string | null>(null);
   const [isEditingLoadedEstimate, setIsEditingLoadedEstimate] = useState(false);
   const [isCreatingNewEstimate, setIsCreatingNewEstimate] = useState(false);
+  const [showDraftRecovered, setShowDraftRecovered] = useState(false);
+
   const [estimateDisplayName, setEstimateDisplayName] = useState<string>('');
   const [estimatePricingTier, setEstimatePricingTier] = useState<'good' | 'better' | 'best' | ''>('');
   
@@ -438,6 +440,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       } else {
         setIsCreatingNewEstimate(true);
       }
+      setShowDraftRecovered(true);
       toast({
         title: 'Draft Recovered',
         description: 'We restored the estimate you were building before the page reloaded.',
@@ -999,6 +1002,30 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     toast({
       title: 'Edit Mode Cancelled',
       description: 'All changes discarded. Ready to create a new estimate.'
+    });
+  };
+
+  const handleDiscardDraft = () => {
+    if (!pipelineEntryId) return;
+    clearTradeEstimateSnapshots(pipelineEntryId);
+    setSelectedTemplateId('');
+    setLineItems([]);
+    setTradeSections([]);
+    setTradeLineItems({});
+    setFixedPrice(null);
+    setExistingEstimateId(null);
+    setIsCreatingNewEstimate(false);
+    setEstimateDisplayName('');
+    setEstimatePricingTier('good');
+    setConfig({
+      overheadPercent: 15,
+      profitMarginPercent: 30,
+      repCommissionPercent: 5,
+    });
+    setShowDraftRecovered(false);
+    toast({
+      title: 'Draft Discarded',
+      description: 'The recovered draft has been cleared. You can start fresh.',
     });
   };
   
@@ -2027,6 +2054,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       queryClient.invalidateQueries({ queryKey: ['hyperlink-data', pipelineEntryId] });
 
       clearTradeEstimateSnapshots(pipelineEntryId);
+      setShowDraftRecovered(false);
 
       toast({
         title: 'Estimate Created',
@@ -2101,6 +2129,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
 
       // Show success immediately after database save
       clearTradeEstimateSnapshots(pipelineEntryId);
+      setShowDraftRecovered(false);
       toast({
         title: 'Changes Saved',
         description: 'Estimate updated. Regenerating PDF...'
@@ -2595,6 +2624,26 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           >
             <X className="h-4 w-4 mr-1" />
             Cancel Edit
+          </Button>
+        </div>
+      )}
+
+      {/* Draft Recovered Banner */}
+      {showDraftRecovered && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-2">
+          <RotateCcw className="h-4 w-4 text-blue-600" />
+          <span className="text-blue-800 font-medium">Draft Recovered</span>
+          <span className="text-blue-700 text-sm">
+            — unsaved work was restored after the page reloaded
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleDiscardDraft}
+            className="ml-auto h-7 border-blue-300 text-blue-700 hover:bg-blue-100"
+          >
+            <Trash2 className="h-3.5 w-3.5 mr-1" />
+            Discard Draft
           </Button>
         </div>
       )}
