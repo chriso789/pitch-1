@@ -2026,6 +2026,8 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       queryClient.invalidateQueries({ queryKey: ['enhanced-estimate-items', pipelineEntryId] });
       queryClient.invalidateQueries({ queryKey: ['hyperlink-data', pipelineEntryId] });
 
+      clearTradeEstimateSnapshots(pipelineEntryId);
+
       toast({
         title: 'Estimate Created',
         description: `Estimate ${estimateNumber} has been saved${pdfUrl ? ' with PDF' : ''}`
