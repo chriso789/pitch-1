@@ -2146,13 +2146,64 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
     }
   };
 
-  const handleNewEstimate = () => {
-    if (hasUnsavedChanges && editingEstimateId) {
-      setShowNewEstimateConfirm(true);
-      return;
+   const handleNewEstimate = () => {
+     if (hasUnsavedChanges && editingEstimateId) {
+       setShowNewEstimateConfirm(true);
+       return;
+     }
+     
+     performNewEstimate();
+   };
+
+  const handleDiscardDraft = async () => {
+    if (pipelineEntryId) clearEstimateSnapshots(pipelineEntryId);
+    if (draftEstimateId) {
+      try {
+        await supabase.from('enhanced_estimates').delete().eq('id', draftEstimateId);
+      } catch (e) {
+        console.warn('Failed to delete prior draft:', e);
+      }
+      setDraftEstimateId(null);
     }
-    
-    performNewEstimate();
+    isRestoringDraftRef.current = true;
+    setEditingEstimateId(null);
+    setLineItems([
+      {
+        item_category: 'material',
+        item_name: 'Asphalt Shingles',
+        description: 'Architectural shingles',
+        quantity: 1,
+        unit_cost: 150,
+        unit_type: 'square',
+        markup_percent: 25
+      }
+    ]);
+    setPropertyDetails({
+      roof_area_sq_ft: 0,
+      roof_type: 'asphalt_shingle',
+      complexity_level: 'moderate',
+      roof_pitch: '4/12',
+      customer_name: '',
+      customer_address: ''
+    });
+    setExcelConfig({
+      target_margin_percent: 30.0,
+      overhead_percent: 15.0,
+      commission_percent: 5.0,
+      waste_factor_percent: 10.0,
+      contingency_percent: 5.0
+    });
+    setTemplateId('');
+    setSalesRepId('');
+    setSecondaryRepIds([]);
+    setCalculationResults(null);
+    setHasUnsavedChanges(false);
+    setShowDraftRecovered(false);
+    setTimeout(() => { isRestoringDraftRef.current = false; }, 600);
+    toast({
+      title: 'Draft Discarded',
+      description: 'The recovered draft has been cleared. You can start fresh.',
+    });
   };
 
   const performNewEstimate = async () => {
