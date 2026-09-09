@@ -2100,6 +2100,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       tenantId = profile?.active_tenant_id || profile?.tenant_id;
 
       // Show success immediately after database save
+      clearTradeEstimateSnapshots(pipelineEntryId);
       toast({
         title: 'Changes Saved',
         description: 'Estimate updated. Regenerating PDF...'
