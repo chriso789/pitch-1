@@ -2253,8 +2253,27 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
+     <div className="space-y-6">
+       {/* Draft Recovered Banner */}
+       {showDraftRecovered && (
+         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-2">
+           <RotateCcw className="h-4 w-4 text-blue-600" />
+           <span className="text-blue-800 font-medium">Draft Recovered</span>
+           <span className="text-blue-700 text-sm">
+             — unsaved work was restored after the page reloaded
+           </span>
+           <Button
+             variant="outline"
+             size="sm"
+             onClick={handleDiscardDraft}
+             className="ml-auto h-7 border-blue-300 text-blue-700 hover:bg-blue-100"
+           >
+             <Trash2 className="h-3.5 w-3.5 mr-1" />
+             Discard Draft
+           </Button>
+         </div>
+       )}
+       {/* Header */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
