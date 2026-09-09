@@ -565,6 +565,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
           if (snapshot!.templateId) setTemplateId(snapshot!.templateId);
           if (snapshot!.salesRepId) setSalesRepId(snapshot!.salesRepId);
           if (Array.isArray(snapshot!.secondaryRepIds)) setSecondaryRepIds(snapshot!.secondaryRepIds);
+          setShowDraftRecovered(true);
           toast({
             title: 'Draft Recovered',
             description: 'We restored the estimate you were working on.',
