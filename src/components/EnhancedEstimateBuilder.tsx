@@ -602,6 +602,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
         if (pd.sales_rep_id) setSalesRepId(pd.sales_rep_id);
         if (Array.isArray(pd.secondary_rep_ids)) setSecondaryRepIds(pd.secondary_rep_ids);
 
+        setShowDraftRecovered(true);
         toast({
           title: 'Draft Restored',
           description: 'Your unsaved estimate draft was recovered.',
