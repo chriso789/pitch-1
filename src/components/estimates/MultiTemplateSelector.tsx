@@ -440,6 +440,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       } else {
         setIsCreatingNewEstimate(true);
       }
+      setShowDraftRecovered(true);
       toast({
         title: 'Draft Recovered',
         description: 'We restored the estimate you were building before the page reloaded.',
