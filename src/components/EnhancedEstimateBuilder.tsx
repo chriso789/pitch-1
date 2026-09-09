@@ -379,6 +379,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
   const [autoPopulateRan, setAutoPopulateRan] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showNewEstimateConfirm, setShowNewEstimateConfirm] = useState(false);
+  const [showDraftRecovered, setShowDraftRecovered] = useState(false);
 
   // Auto-draft persistence: silently save a `draft` row to enhanced_estimates
   // so unsaved work survives page reloads / browser close.
