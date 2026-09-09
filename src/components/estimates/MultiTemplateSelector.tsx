@@ -2129,6 +2129,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
 
       // Show success immediately after database save
       clearTradeEstimateSnapshots(pipelineEntryId);
+      setShowDraftRecovered(false);
       toast({
         title: 'Changes Saved',
         description: 'Estimate updated. Regenerating PDF...'
