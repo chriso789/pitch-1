@@ -38,6 +38,12 @@ import { SupplierQuoteUploader } from './SupplierQuoteUploader';
 // usePDFGeneration removed - now using useMultiPagePDFGeneration for all PDF operations
 import { useMultiPagePDFGeneration } from '@/hooks/useMultiPagePDFGeneration';
 import { UpdateTemplateDialog } from './UpdateTemplateDialog';
+import {
+  saveTradeEstimateSnapshot,
+  readLatestTradeEstimateSnapshot,
+  clearTradeEstimateSnapshots,
+  tradeSnapshotHasContent,
+} from '@/lib/tradeEstimateDraftSnapshot';
 
 // Parsed measurements interface for inline import
 interface ParsedMeasurements {
