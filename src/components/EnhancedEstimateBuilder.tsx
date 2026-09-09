@@ -1888,6 +1888,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
       if (pipelineEntryId) clearEstimateSnapshots(pipelineEntryId);
       setEditingEstimateId(null);
       setHasUnsavedChanges(false);
+      setShowDraftRecovered(false);
     } catch (error: any) {
       const saveEndTime = Date.now();
       const saveDuration = saveEndTime - saveStartTime;
