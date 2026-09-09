@@ -2054,6 +2054,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       queryClient.invalidateQueries({ queryKey: ['hyperlink-data', pipelineEntryId] });
 
       clearTradeEstimateSnapshots(pipelineEntryId);
+      setShowDraftRecovered(false);
 
       toast({
         title: 'Estimate Created',
