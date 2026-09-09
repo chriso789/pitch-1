@@ -402,6 +402,132 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     onCurrentEditingChange?.(existingEstimateId);
   }, [existingEstimateId, onCurrentEditingChange]);
 
+  // ---- Unsaved-work recovery (survives browser refresh / session timeout) ----
+  const draftRestoreDoneRef = useRef(false);
+  const isRestoringDraftRef = useRef(false);
+
+  // Restore in-progress estimate work on mount
+  useEffect(() => {
+    if (!pipelineEntryId || draftRestoreDoneRef.current) return;
+    if (searchParams.get('editEstimate')) return; // explicit edit flow wins
+    draftRestoreDoneRef.current = true;
+
+    const snapshot = readLatestTradeEstimateSnapshot(pipelineEntryId);
+    if (!tradeSnapshotHasContent(snapshot)) return;
+
+    isRestoringDraftRef.current = true;
+    try {
+      if (Array.isArray(snapshot!.tradeSections) && snapshot!.tradeSections.length > 0) {
+        setTradeSections(snapshot!.tradeSections as any);
+      }
+      if (snapshot!.tradeLineItems && typeof snapshot!.tradeLineItems === 'object') {
+        setTradeLineItems(snapshot!.tradeLineItems as any);
+      }
+      if (Array.isArray(snapshot!.lineItems) && snapshot!.lineItems.length > 0) {
+        setLineItems(snapshot!.lineItems as LineItem[]);
+      }
+      if (snapshot!.config) setConfig(snapshot!.config);
+      if (typeof snapshot!.fixedPrice === 'number') setFixedPrice(snapshot!.fixedPrice);
+      if (snapshot!.selectedTemplateId) setSelectedTemplateId(snapshot!.selectedTemplateId);
+      if (snapshot!.estimateDisplayName) setEstimateDisplayName(snapshot!.estimateDisplayName);
+      if (snapshot!.estimatePricingTier) {
+        setEstimatePricingTier(snapshot!.estimatePricingTier as any);
+      }
+      if (snapshot!.existingEstimateId) {
+        setExistingEstimateId(snapshot!.existingEstimateId);
+      } else {
+        setIsCreatingNewEstimate(true);
+      }
+      toast({
+        title: 'Draft Recovered',
+        description: 'We restored the estimate you were building before the page reloaded.',
+      });
+    } finally {
+      setTimeout(() => {
+        isRestoringDraftRef.current = false;
+      }, 800);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pipelineEntryId]);
+
+  // Keep a local copy of every change
+  useEffect(() => {
+    if (!pipelineEntryId || isRestoringDraftRef.current) return;
+    if (!draftRestoreDoneRef.current) return;
+    const hasContent =
+      lineItems.length > 0 ||
+      !!selectedTemplateId ||
+      tradeSections.some((t) => !!t.templateId);
+    if (!hasContent) return;
+    saveTradeEstimateSnapshot(pipelineEntryId, {
+      tradeSections,
+      tradeLineItems,
+      lineItems,
+      config,
+      fixedPrice: fixedPrice ?? null,
+      selectedTemplateId,
+      estimateDisplayName,
+      estimatePricingTier,
+      existingEstimateId,
+    });
+  }, [
+    pipelineEntryId,
+    tradeSections,
+    tradeLineItems,
+    lineItems,
+    config,
+    fixedPrice,
+    selectedTemplateId,
+    estimateDisplayName,
+    estimatePricingTier,
+    existingEstimateId,
+  ]);
+
+  // Flush on tab close / background so a timeout never loses work
+  useEffect(() => {
+    const flush = () => {
+      if (!pipelineEntryId) return;
+      const hasContent =
+        lineItems.length > 0 ||
+        !!selectedTemplateId ||
+        tradeSections.some((t) => !!t.templateId);
+      if (!hasContent) return;
+      saveTradeEstimateSnapshot(pipelineEntryId, {
+        tradeSections,
+        tradeLineItems,
+        lineItems,
+        config,
+        fixedPrice: fixedPrice ?? null,
+        selectedTemplateId,
+        estimateDisplayName,
+        estimatePricingTier,
+        existingEstimateId,
+      });
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flush();
+    };
+    window.addEventListener('beforeunload', flush);
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('beforeunload', flush);
+      window.removeEventListener('pagehide', flush);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [
+    pipelineEntryId,
+    tradeSections,
+    tradeLineItems,
+    lineItems,
+    config,
+    fixedPrice,
+    selectedTemplateId,
+    estimateDisplayName,
+    estimatePricingTier,
+    existingEstimateId,
+  ]);
+
   // Expose save function to parent via ref
   useEffect(() => {
     if (saveChangesRef) {
