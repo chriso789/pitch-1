@@ -1004,6 +1004,30 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       description: 'All changes discarded. Ready to create a new estimate.'
     });
   };
+
+  const handleDiscardDraft = () => {
+    if (!pipelineEntryId) return;
+    clearTradeEstimateSnapshots(pipelineEntryId);
+    setSelectedTemplateId('');
+    setLineItems([]);
+    setTradeSections([]);
+    setTradeLineItems({});
+    setFixedPrice(null);
+    setExistingEstimateId(null);
+    setIsCreatingNewEstimate(false);
+    setEstimateDisplayName('');
+    setEstimatePricingTier('good');
+    setConfig({
+      overheadPercent: 15,
+      profitMarginPercent: 30,
+      repCommissionPercent: 5,
+    });
+    setShowDraftRecovered(false);
+    toast({
+      title: 'Draft Discarded',
+      description: 'The recovered draft has been cleared. You can start fresh.',
+    });
+  };
   
   // Delete a line item from the estimate
   const handleDeleteLineItem = (itemId: string) => {
