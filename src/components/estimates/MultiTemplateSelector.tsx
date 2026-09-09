@@ -265,6 +265,8 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const [editingEstimateNumber, setEditingEstimateNumber] = useState<string | null>(null);
   const [isEditingLoadedEstimate, setIsEditingLoadedEstimate] = useState(false);
   const [isCreatingNewEstimate, setIsCreatingNewEstimate] = useState(false);
+  const [showDraftRecovered, setShowDraftRecovered] = useState(false);
+
   const [estimateDisplayName, setEstimateDisplayName] = useState<string>('');
   const [estimatePricingTier, setEstimatePricingTier] = useState<'good' | 'better' | 'best' | ''>('');
   
