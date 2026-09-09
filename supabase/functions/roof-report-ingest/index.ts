@@ -775,31 +775,68 @@ async function convertPdfToImages(pdfBytes: Uint8Array): Promise<string[]> {
 function parseRoofr(textRaw: string) {
   const text = normalizeText(textRaw);
 
-  const addrMatch = text.match(/Report summary\s*\n([^\n]+)\n/i);
+  const addrMatch =
+    text.match(/Report summary\s*\n([^\n]+)\n/i) ||
+    text.match(/\n([^\n]*,\s*[A-Z]{2}\s*\d{5}(?:-\d{4})?)\s*\n/);
   const address = addrMatch?.[1]?.trim() ?? null;
 
-  const totalRoofArea = parseIntSafe(text.match(/Total roof area\s+([\d,]+)\s*sqft/i)?.[1]);
-  const totalPitchedArea = parseIntSafe(text.match(/Total pitched area\s+([\d,]+)\s*sqft/i)?.[1]);
-  const totalFlatArea = parseIntSafe(text.match(/Total flat area\s+([\d,]+)\s*sqft/i)?.[1]);
-  const facetCount = parseIntSafe(text.match(/Total roof facets\s+([\d,]+)\s*facets/i)?.[1]);
-  const predominantPitch = text.match(/Predominant pitch\s+(\d+\/\d+)/i)?.[1] ?? null;
+  // Roofr reports contain BOTH whole-property pages ("Area measurement report",
+  // "Length measurement report") and per-structure summaries ("Structure #1 summary").
+  // The whole-property pages are authoritative — a per-structure block can be a tiny
+  // detached shed and must never be mistaken for the roof total.
+  const num = (re: RegExp) => parseIntSafe(text.match(re)?.[1]);
+  const ftIn = (re: RegExp) => {
+    const m = text.match(re);
+    return m ? feetInchesToFeet(m[1], m[2]) : null;
+  };
+  // Sum every per-structure occurrence, so multi-structure reports still add up.
+  const sumAll = (re: RegExp): number | null => {
+    const rx = new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g");
+    let m: RegExpExecArray | null;
+    let total: number | null = null;
+    while ((m = rx.exec(text)) !== null) {
+      const v = m[2] !== undefined
+        ? feetInchesToFeet(m[1], m[2])
+        : parseFloatSafe(m[1]);
+      if (v !== null) total = (total ?? 0) + v;
+    }
+    return total;
+  };
 
-  function parseFtIn(key: string) {
-    const m = text.match(new RegExp(`${key}\\s+(\\d+)\\s*ft\\s*(\\d+)\\s*in`, "i"));
-    if (!m) return null;
-    return feetInchesToFeet(m[1], m[2]);
+  // Whole-property area page (colon form), then cover page, then structure sum.
+  const totalRoofArea =
+    num(/Total roof area:\s*([\d,]+)\s*sqft/i) ??
+    num(/Roof Report\s*\n+\s*([\d,]+)\s*sqft/i) ??
+    sumAll(/Total roof area\s*\n?\s*([\d,]+)\s*sqft/i);
+  const totalPitchedArea =
+    num(/Pitched roof area:\s*([\d,]+)\s*sqft/i) ??
+    sumAll(/Total pitched area\s*\n?\s*([\d,]+)\s*sqft/i);
+  const totalFlatArea =
+    num(/Flat roof area:\s*([\d,]+)\s*sqft/i) ??
+    sumAll(/Total flat area\s*\n?\s*([\d,]+)\s*sqft/i);
+  const facetCount =
+    num(/([\d,]+)\s*facets\s*\n+\s*Predominant pitch/i) ??
+    num(/Total roof facets\s*\n?\s*([\d,]+)\s*facets/i);
+  const predominantPitch =
+    text.match(/Predominant pitch:?\s*\n?\s*(\d+\/\d+)/i)?.[1] ?? null;
+
+  // Length measurement page uses "Eaves: 242ft 11in"; structure summaries use "Total eaves".
+  function lengthFor(label: string) {
+    const main = ftIn(new RegExp(`(?:^|\\n)\\s*${label}:\\s*(\\d+)\\s*ft\\s*(\\d+)\\s*in`, "i"));
+    if (main !== null) return main;
+    return sumAll(new RegExp(`Total ${label}\\s*\\n?\\s*(\\d+)\\s*ft\\s*(\\d+)\\s*in`, "i"));
   }
 
-  const eaves = parseFtIn("Total eaves");
-  const valleys = parseFtIn("Total valleys");
-  const hips = parseFtIn("Total hips");
-  const ridges = parseFtIn("Total ridges");
-  const rakes = parseFtIn("Total rakes");
-  const wallFlashing = parseFtIn("Total wall flashing");
-  const stepFlashing = parseFtIn("Total step flashing");
-  const transitions = parseFtIn("Total transitions");
-  const parapetWall = parseFtIn("Total parapet wall");
-  const unspecified = parseFtIn("Total unspecified");
+  const eaves = lengthFor("eaves");
+  const valleys = lengthFor("valleys");
+  const hips = lengthFor("hips");
+  const ridges = lengthFor("ridges");
+  const rakes = lengthFor("rakes");
+  const wallFlashing = lengthFor("wall flashing");
+  const stepFlashing = lengthFor("step flashing");
+  const transitions = lengthFor("transitions");
+  const parapetWall = lengthFor("parapet wall");
+  const unspecified = lengthFor("unspecified");
 
   const pitchRows: Array<{ pitch: string; area_sqft: number }> = [];
   const pitchRe = /Pitch\s+(\d+\/\d+)\s+Area\s+\(sqft\)\s+([\d,]+)/gi;
