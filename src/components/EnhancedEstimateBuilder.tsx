@@ -5,6 +5,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -127,10 +128,9 @@ const LineItemRow: React.FC<{
         </div>
         <div className="space-y-2">
           <Label>Unit Cost</Label>
-          <Input
-            type="number"
+          <NumberInput
             value={item.unit_cost}
-            onChange={(e) => updateLineItem(index, 'unit_cost', parseFloat(e.target.value) || 0)}
+            onChange={(v) => updateLineItem(index, \'unit_cost\', v)} allowNegative
           />
         </div>
         <div className="space-y-2">

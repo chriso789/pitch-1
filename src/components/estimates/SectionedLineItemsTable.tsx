@@ -10,6 +10,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -795,11 +796,10 @@ export function SectionedLineItemsTable({
                           </div>
                           <div className="w-24">
                             <Label className="text-xs">Unit Cost</Label>
-                            <Input
-                              type="number"
+                            <NumberInput
                               step="0.01"
                               value={newItem.unit_cost}
-                              onChange={(e) => onNewItemChange({ ...newItem, unit_cost: parseFloat(e.target.value) || 0 })}
+                              onChange={(v) => onNewItemChange({ ...newItem, unit_cost: v })} allowNegative
                             />
                           </div>
                           <Button onClick={onSaveNewItem} size="sm">
@@ -891,11 +891,10 @@ export function SectionedLineItemsTable({
                       </div>
                       <div className="w-24">
                         <Label className="text-xs">Unit Cost</Label>
-                        <Input
-                          type="number"
+                        <NumberInput
                           step="0.01"
                           value={newItem.unit_cost}
-                          onChange={(e) => onNewItemChange({ ...newItem, unit_cost: parseFloat(e.target.value) || 0 })}
+                          onChange={(v) => onNewItemChange({ ...newItem, unit_cost: v })} allowNegative
                         />
                       </div>
                       <Button onClick={onSaveNewItem} size="sm">
@@ -993,11 +992,10 @@ export function SectionedLineItemsTable({
                       </div>
                       <div className="w-24">
                         <Label className="text-xs">Unit Cost</Label>
-                        <Input
-                          type="number"
+                        <NumberInput
                           step="0.01"
                           value={newItem.unit_cost}
-                          onChange={(e) => onNewItemChange({ ...newItem, unit_cost: parseFloat(e.target.value) || 0 })}
+                          onChange={(v) => onNewItemChange({ ...newItem, unit_cost: v })} allowNegative
                         />
                       </div>
                       <Button onClick={onSaveNewItem} size="sm">
@@ -1151,11 +1149,10 @@ export function SectionedLineItemsTable({
                   </div>
                   <div className="w-24">
                     <Label className="text-xs">Unit Cost</Label>
-                    <Input
-                      type="number"
+                    <NumberInput
                       step="0.01"
                       value={newItem.unit_cost}
-                      onChange={(e) => onNewItemChange({ ...newItem, unit_cost: parseFloat(e.target.value) || 0 })}
+                      onChange={(v) => onNewItemChange({ ...newItem, unit_cost: v })} allowNegative
                     />
                   </div>
                   <Button onClick={onSaveNewItem} size="sm">

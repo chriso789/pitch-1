@@ -389,10 +389,9 @@ export function AddEstimateLineDialog({
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Unit Cost</Label>
-                    <Input
-                      type="number"
+                    <NumberInput
                       value={formData.unit_cost}
-                      onChange={(e) => setFormData(prev => ({ ...prev, unit_cost: parseFloat(e.target.value) || 0 }))}
+                      onChange={(v) => setFormData(prev => ({ ...prev, unit_cost: v }))} allowNegative
                       step="0.01"
                     />
                   </div>
