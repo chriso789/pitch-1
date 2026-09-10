@@ -1223,7 +1223,7 @@ const NarrativeContinuationPage: React.FC<{ text: string; continues?: boolean }>
         Project Scope (continued)
       </h3>
       <div className="text-xs text-gray-800 leading-relaxed whitespace-pre-wrap scope-narrative">
-        {text}
+        {renderNarrativeText(text)}
       </div>
       {continues && (
         <p className="text-xs text-gray-400 italic text-right mt-2">Continues on next page…</p>
