@@ -10,6 +10,7 @@ interface IncomingItem {
   unit?: string;
   item_type?: string;
   trade_type?: string;
+  emphasize?: boolean;
 }
 
 Deno.serve(async (req: Request) => {
@@ -54,7 +55,8 @@ Deno.serve(async (req: Request) => {
       const trade = it.trade_type ? `(${it.trade_type})` : '';
       const qty = it.qty != null ? `${it.qty}${it.unit ? ' ' + it.unit : ''}` : '';
       const desc = it.description ? ` — ${it.description}` : '';
-      return `- ${type}${trade} ${it.item_name || 'Item'} ${qty}${desc}`.trim();
+      const emph = it.emphasize ? ' [EMPHASIZE]' : '';
+      return `- ${type}${trade} ${it.item_name || 'Item'} ${qty}${desc}${emph}`.trim();
     }).join('\n');
 
     const itemSummary = formatItems(items as IncomingItem[]);
@@ -97,7 +99,8 @@ One short paragraph (1–2 sentences) reassuring the customer about quality, cle
 
 Style:
 - Tone: ${tone}. Confident, reassuring, professional. No hype.
-- Plain text only — no markdown bold/italics (no **, no _).
+- Plain text only, with ONE exception: any line item marked [EMPHASIZE] must be given its own dedicated bullet in the relevant section, and the words describing that item must be wrapped in **double asterisks** so they render bold. Never output the literal token [EMPHASIZE]. Do not bold anything else and never use italics/underscores.
+- Every [EMPHASIZE] item must be mentioned explicitly by name (for example a discount, upgrade, or warranty), even if it is not physical work.
 - Do NOT invent work not implied by the line items.
 - Keep the entire scope under ~400 words.
 ${extra_instructions ? `\nAdditional instructions: ${extra_instructions}` : ''}`;
