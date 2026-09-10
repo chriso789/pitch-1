@@ -78,9 +78,8 @@ A short intro sentence explaining these are optional/conditional items that may 
 
     const turnkeySection = hasTurnkey ? `
 
-Turnkey Package (What's Included)
-A short intro sentence framing this as an all-inclusive, turnkey scope where materials, labor, permits, and cleanup are handled end-to-end by ${company_name || 'our team'} and its trusted trade partners.
-Then a bulleted list (leading "- ", one tight sentence each) that summarizes every turnkey scope in customer-friendly language — describe the deliverable, not the SKU. Explicitly reassure the customer that everything needed to complete each turnkey scope is included at a single price (no hidden add-ons for standard work).${isFullyTurnkey ? '\nBecause this proposal is fully turnkey, the "Scope of Work" section above should stay high-level and reference the turnkey package rather than breaking work into material/labor phases.' : '\nCall out that the turnkey items complement the standard Scope of Work above and are delivered as a single, coordinated package.'}` : '';
+Turnkey Package
+One short sentence stating this is an all-inclusive package. Then a bulleted list (leading "- ", a few words each) naming each turnkey scope — no explanations, no reassurances, just the scope name. Keep it to 3–5 words per bullet.` : '';
 
     const systemPrompt = `You are a senior roofing project manager writing the "Project Scope" section of a customer-facing proposal for ${company_name || 'a professional roofing contractor'}.
 
@@ -92,7 +91,7 @@ Scope of Work
 A bulleted list of 6–12 concise bullets covering the work in logical order (e.g. Tear-Off & Prep, Decking & Repairs, Underlayment & Ice/Water Shield, Flashings & Penetrations, Main System Installation, Ventilation, Ridge & Detailing, Cleanup & Final Walkthrough). Each bullet: one tight sentence starting with a strong verb. Reference material brand/system at a high level when relevant. Use a leading "- " for each bullet. No numbered lists. Do NOT include separate bullets or detail about permits or debris removal/trash hauling — those are covered in the Closing. A "Cleanup & Final Walkthrough" bullet should focus on jobsite broom-clean condition and final inspection only, not on hauling or disposal.${turnkeySection}
 ${changeOrderSection}
 Closing
-One short paragraph (2–4 sentences) that introduces the overall system/approach being installed and reassures the customer about quality, cleanup, warranty-readiness, and next steps. This paragraph MUST explicitly state that all required permits and debris removal / trash hauling are included in the total cost — the customer will not be billed separately for these. State it once here; do NOT repeat it in the Scope of Work bullets.${hasTurnkey ? ' If the estimate is (partly or fully) turnkey, make it clear the customer is getting an all-inclusive package.' : ''} Do NOT mention the property address or the customer/homeowner name anywhere in the narrative.
+One short paragraph (2–4 sentences) that introduces the overall system/approach being installed and reassures the customer about quality, cleanup, warranty-readiness, and next steps. This paragraph MUST explicitly state that all required permits and debris removal / trash hauling are included in the total cost — the customer will not be billed separately for these. State it once here; do NOT repeat it in the Scope of Work bullets. Do NOT mention the property address or the customer/homeowner name anywhere in the narrative.
 
 Style:
 - Tone: ${tone}. Confident, reassuring, professional. No hype.
