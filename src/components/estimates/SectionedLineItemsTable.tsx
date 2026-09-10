@@ -196,7 +196,10 @@ export function SectionedLineItemsTable({
       document.activeElement.blur();
     }
     const numValue = parseFloat(editValue);
-    if (!isNaN(numValue) && numValue >= 0) {
+    // Allow negative unit costs so discounts can be entered as line items.
+    // Quantity must remain non-negative.
+    const isValid = !isNaN(numValue) && (editingCell.field === 'unit_cost' ? true : numValue >= 0);
+    if (isValid) {
       onUpdateItem(editingCell.itemId, { [editingCell.field]: numValue });
     }
     cancelEdit();
