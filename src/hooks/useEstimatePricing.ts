@@ -27,6 +27,11 @@ export interface LineItem {
    * Used for client-supplied / reimbursable items.
    */
   exclude_from_overhead?: boolean;
+  /**
+   * When true, this line is highlighted: shown bold in the builder and
+   * emphasized (bold) by the AI when it writes the customer-facing scope.
+   */
+  emphasize?: boolean;
 }
 
 
