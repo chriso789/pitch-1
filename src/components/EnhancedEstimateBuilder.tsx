@@ -130,7 +130,7 @@ const LineItemRow: React.FC<{
           <Label>Unit Cost</Label>
           <NumberInput
             value={item.unit_cost}
-            onChange={(v) => updateLineItem(index, \'unit_cost\', v)} allowNegative
+            onChange={(v) => updateLineItem(index, 'unit_cost', v)} allowNegative
           />
         </div>
         <div className="space-y-2">
