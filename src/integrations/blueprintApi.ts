@@ -1,16 +1,11 @@
 import { supabase } from "@/integrations/supabase/client";
 import { edgeApi } from "@/lib/edgeApi";
 
-// NOTE (Slice 2B):
-// - parseBlueprintDocument + classifyBlueprintPages now route through the
-//   grouped `document-worker` function via edgeApi. Legacy folder names
-//   (parse-blueprint-document, classify-blueprint-pages) remain as forwarding
-//   shims and must not be invoked directly from new code.
-// - uploadBlueprintDocument still calls upload-blueprint-document because it
-//   writes to the legacy plan_documents/plan_parse_jobs tables, which are
-//   distinct from the documents table that `document-api /ingest/upload`
-//   manages. Migrating upload requires a table-merge migration and belongs
-//   to a later slice.
+// Blueprint upload remains on the legacy plan_documents storage model.
+// Generic blueprint parsing now routes through parse-blueprint-f1 so uploads,
+// re-parses, and measurement uploads all receive F1 + roofing workbench output.
+// The grouped document-worker routes remain available for vendor report parsing
+// and as a legacy fallback; no CRM estimate write is enabled here.
 
 export async function uploadBlueprintDocument(payload: {
   property_address?: string;
@@ -63,14 +58,32 @@ export async function getBlueprintDocument(document_id: string) {
   return data;
 }
 
+export interface BlueprintF1ParseResult {
+  ok: boolean;
+  document_id: string;
+  session_id: string;
+  source_document_id: string;
+  requires_review: boolean;
+  f1: {
+    runtime_version: string;
+    summary: Record<string, number>;
+    missing_indexed_sheets: string[];
+    unresolved_reference_targets: string[];
+  };
+  roofing: null | {
+    summary: Record<string, unknown>;
+    review_flags: Array<Record<string, unknown>>;
+  };
+  push_to_estimate_enabled: false;
+}
+
 export async function parseBlueprintDocument(document_id: string, tenant_id?: string) {
-  const { data, error } = await edgeApi(
-    "document-worker",
-    "/parse/blueprint",
-    { document_id },
-    tenant_id ? { headers: { "x-tenant-id": tenant_id } } : undefined,
-  );
-  if (error) throw new Error(error);
+  const { data, error } = await supabase.functions.invoke<BlueprintF1ParseResult>("parse-blueprint-f1", {
+    body: { document_id },
+    headers: tenant_id ? { "x-tenant-id": tenant_id } : undefined,
+  });
+  if (error) throw error;
+  if (!data?.ok) throw new Error((data as any)?.error ?? "Blueprint F1 parse failed");
   return data;
 }
 
@@ -93,4 +106,3 @@ export async function rasterizeBlueprintPages(input: {
   if (error) throw error;
   return data;
 }
-

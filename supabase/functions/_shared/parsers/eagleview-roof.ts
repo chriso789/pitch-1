@@ -1,14 +1,12 @@
 // Deterministic EagleView roof report parser.
-// Input:  raw text extracted from the report PDF (all pages concatenated).
-// Output: normalized JSON + field-level confidences + page_map (when pages provided).
-//
-// NEVER calls AI. Pure regex over EagleView's stable layout.
+// Input: raw text extracted from the report PDF (all pages concatenated).
+// NEVER calls AI.
 
 import { CONFIDENCE_THRESHOLDS, aggregateConfidence, requiresReview, type FieldConfidence } from "./confidence.ts";
 import { validateRoofTotals, type ValidationError } from "./validators.ts";
 
 export const EAGLEVIEW_ROOF_PARSER_NAME = "eagleview-roof";
-export const EAGLEVIEW_ROOF_PARSER_VERSION = "v1.0.0";
+export const EAGLEVIEW_ROOF_PARSER_VERSION = "v1.1.0-real-report";
 
 export interface EagleViewRoofExtraction {
   report_number: string | null;
@@ -47,27 +45,22 @@ export interface ParseResult<T> {
   missing_fields: string[];
   validation_errors: ValidationError[];
   requires_review: boolean;
-  matched_signal: boolean;  // false → text doesn't look like EagleView
+  matched_signal: boolean;
 }
 
 function detectEagleView(text: string): boolean {
-  return /eagle[ -]?view/i.test(text) || /Report\s+Number\s*:\s*\d+/i.test(text);
+  return /eagle[ -]?view/i.test(text) || /\bReport\s*(?:(?:Number|ID)\s*)?[:#]?\s*\d{5,}/i.test(text);
 }
-
 function num(s: string | undefined | null): number | null {
   if (!s) return null;
-  const cleaned = s.replace(/,/g, "").trim();
-  const n = parseFloat(cleaned);
+  const n = parseFloat(s.replace(/,/g, "").trim());
   return Number.isFinite(n) ? n : null;
 }
-
 function firstMatch(text: string, re: RegExp): string | null {
   const m = text.match(re);
   return m ? (m[1] ?? null) : null;
 }
-
 function extractWasteTable(text: string): Record<string, number> | null {
-  // Look for blocks like "0% 2,450  3% 2,524  5% 2,572 ..."
   const block = text.match(/Waste\s*Calculation\s*Table[\s\S]{0,800}/i)?.[0];
   if (!block) return null;
   const out: Record<string, number> = {};
@@ -77,9 +70,8 @@ function extractWasteTable(text: string): Record<string, number> | null {
     const v = num(m[2]);
     if (v !== null) out[m[1]] = v;
   }
-  return Object.keys(out).length > 0 ? out : null;
+  return Object.keys(out).length ? out : null;
 }
-
 function extractAreasPerPitch(text: string): Record<string, number> | null {
   const block = text.match(/Areas\s+per\s+Pitch[\s\S]{0,800}/i)?.[0];
   if (!block) return null;
@@ -90,20 +82,19 @@ function extractAreasPerPitch(text: string): Record<string, number> | null {
     const v = num(m[2]);
     if (v !== null) out[`${m[1]}/12`] = v;
   }
-  return Object.keys(out).length > 0 ? out : null;
+  return Object.keys(out).length ? out : null;
 }
 
 export function parseEagleViewRoofReport(fullText: string): ParseResult<EagleViewRoofExtraction> {
   const matched_signal = detectEagleView(fullText);
   const T = CONFIDENCE_THRESHOLDS;
-
   const data: EagleViewRoofExtraction = {
-    report_number: firstMatch(fullText, /Report\s+(?:Number|ID)\s*:?\s*([A-Z0-9-]+)/i),
-    property_address: firstMatch(fullText, /(?:Property\s+Address|Subject\s+Property)\s*:?\s*([^\n\r]{5,150})/i)?.trim() ?? null,
-    total_roof_area_sqft: num(firstMatch(fullText, /Total\s+Roof\s+Area\s*(?:\(sq\s*ft\))?\s*:?\s*([\d,]+(?:\.\d+)?)/i)),
-    total_roof_facets: num(firstMatch(fullText, /Total\s+Roof\s+Facets?\s*:?\s*(\d+)/i)),
-    predominant_pitch: firstMatch(fullText, /Predominant\s+Pitch\s*:?\s*(\d{1,2}\s*\/\s*12)/i)?.replace(/\s+/g, "") ?? null,
-    number_of_stories: num(firstMatch(fullText, /Number\s+of\s+Stories\s*:?\s*(\d+)/i)),
+    report_number: firstMatch(fullText, /\bReport\s*(?:(?:Number|ID)\s*)?[:#]?\s*([A-Z0-9-]{4,})/i),
+    property_address: firstMatch(fullText, /(?:Property\s+Address|Subject\s+Property)\s*[:=]?\s*([^\n\r]{5,150})/i)?.trim() ?? null,
+    total_roof_area_sqft: num(firstMatch(fullText, /Total\s+Roof\s+Area\s*(?:\(sq\s*ft\))?\s*[:=]?\s*([\d,]+(?:\.\d+)?)/i)),
+    total_roof_facets: num(firstMatch(fullText, /Total\s+Roof\s+Facets?\s*[:=]?\s*(\d+)/i)),
+    predominant_pitch: firstMatch(fullText, /Predominant\s+Pitch\s*[:=]?\s*(\d{1,2}\s*\/\s*12)/i)?.replace(/\s+/g, "") ?? null,
+    number_of_stories: num(firstMatch(fullText, /Number\s+of\s+Stories\s*[:=]?\s*(\d+)/i)),
     ridges_ft: num(firstMatch(fullText, /\bRidges?\s*(?:\(ft\))?\s*[:=]?\s*([\d,]+(?:\.\d+)?)\s*(?:ft|feet|lf)?/i)),
     hips_ft: num(firstMatch(fullText, /\bHips?\s*(?:\(ft\))?\s*[:=]?\s*([\d,]+(?:\.\d+)?)\s*(?:ft|feet|lf)?/i)),
     hips_ridges_combined_ft: num(firstMatch(fullText, /Hips?\s*(?:&|and|\+)\s*Ridges?\s*[:=]?\s*([\d,]+(?:\.\d+)?)/i)),
@@ -119,10 +110,9 @@ export function parseEagleViewRoofReport(fullText: string): ParseResult<EagleVie
     longitude: num(firstMatch(fullText, /Longitude\s*[:=]?\s*(-?\d+\.\d+)/i)),
     waste_table: extractWasteTable(fullText),
     areas_per_pitch: extractAreasPerPitch(fullText),
-    report_date: firstMatch(fullText, /Report\s+Date\s*:?\s*([0-9/.-]{6,12})/i),
+    report_date: firstMatch(fullText, /Report\s+Date\s*[:=]?\s*([0-9/.-]{6,12})/i),
   };
 
-  // Field-level confidence assignment (deterministic — labelled summary fields get high scores).
   const conf: FieldConfidence = {};
   if (data.report_number) conf.report_number = T.EXACT_LABEL;
   if (data.property_address) conf.property_address = T.SUMMARY_SECTION;
@@ -147,22 +137,13 @@ export function parseEagleViewRoofReport(fullText: string): ParseResult<EagleVie
   if (data.areas_per_pitch) conf.areas_per_pitch = T.TABLE_OR_REPEATED;
   if (data.report_date) conf.report_date = T.SUMMARY_SECTION;
 
-  // Required-for-acceptance fields
-  const required = [
-    "total_roof_area_sqft", "total_roof_facets", "predominant_pitch",
-    "ridges_ft", "hips_ft", "valleys_ft", "rakes_ft", "eaves_ft",
-  ] as const;
+  const required = ["total_roof_area_sqft", "total_roof_facets", "predominant_pitch", "ridges_ft", "hips_ft", "valleys_ft", "rakes_ft", "eaves_ft"] as const;
   const missing_fields = required.filter((k) => (data as Record<string, unknown>)[k] === null);
-
-  // If matched_signal is false, deflate every score — we're guessing.
-  if (!matched_signal) {
-    for (const k of Object.keys(conf)) conf[k] = Math.min(conf[k], T.WEAK);
-  }
+  if (!matched_signal) for (const k of Object.keys(conf)) conf[k] = Math.min(conf[k], T.WEAK);
 
   const overall = aggregateConfidence(conf);
   const validation_errors = validateRoofTotals(data);
   const hasErr = validation_errors.some((v) => v.severity === "error");
-
   return {
     vendor_type: "eagleview",
     document_type: "roof_report",
