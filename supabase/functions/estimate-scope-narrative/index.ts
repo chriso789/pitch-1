@@ -99,8 +99,9 @@ One short paragraph (1–2 sentences) reassuring the customer about quality, cle
 
 Style:
 - Tone: ${tone}. Confident, reassuring, professional. No hype.
-- Plain text only, with ONE exception: any line item marked [EMPHASIZE] must be given its own dedicated bullet in the relevant section, and the words describing that item must be wrapped in **double asterisks** so they render bold. Never output the literal token [EMPHASIZE]. Do not bold anything else and never use italics/underscores.
+- Plain text only, with ONE exception: any line item marked [EMPHASIZE] must be given its own dedicated bullet in the relevant section, and the ENTIRE sentence of that bullet — the item name and the full description of what it means for the customer — must be wrapped in **double asterisks** so the whole line renders bold (not just one or two words). Never output the literal token [EMPHASIZE]. Do not bold anything else and never use italics/underscores.
 - Every [EMPHASIZE] item must be mentioned explicitly by name (for example a discount, upgrade, or warranty), even if it is not physical work.
+- Write in the present tense as if the work and pricing are already settled: never use imperative or future-tense verbs like "apply", "will apply", or "add" for items that are already included in this estimate. A discount line, for example, is already reflected in the price — describe it as "A military discount has been applied..." or "Your military discount is included...", never "Apply a military discount...".
 - Do NOT invent work not implied by the line items.
 - Keep the entire scope under ~400 words.
 ${extra_instructions ? `\nAdditional instructions: ${extra_instructions}` : ''}`;
