@@ -88,14 +88,11 @@ Turn the technical line-item list into a clean, bulletin-style scope the custome
 
 Required structure (in this exact order, use these exact headings on their own line):
 
-Opening
-One short paragraph (2–3 sentences) introducing the project, the property, and the overall system/approach being installed. This paragraph MUST explicitly state that all required permits and debris removal / trash hauling are included in the total cost — the customer will not be billed separately for these. State it once here as part of the overview; do NOT repeat it in the Scope of Work bullets.${hasTurnkey ? ' If the estimate is (partly or fully) turnkey, make it clear the customer is getting an all-inclusive package.' : ''}
-
 Scope of Work
-A bulleted list of 6–12 concise bullets covering the work in logical order (e.g. Tear-Off & Prep, Decking & Repairs, Underlayment & Ice/Water Shield, Flashings & Penetrations, Main System Installation, Ventilation, Ridge & Detailing, Cleanup & Final Walkthrough). Each bullet: one tight sentence starting with a strong verb. Reference material brand/system at a high level when relevant. Use a leading "- " for each bullet. No numbered lists. Do NOT include separate bullets or detail about permits or debris removal/trash hauling — those are already covered as included in the Opening. A "Cleanup & Final Walkthrough" bullet should focus on jobsite broom-clean condition and final inspection only, not on hauling or disposal.${turnkeySection}
+A bulleted list of 6–12 concise bullets covering the work in logical order (e.g. Tear-Off & Prep, Decking & Repairs, Underlayment & Ice/Water Shield, Flashings & Penetrations, Main System Installation, Ventilation, Ridge & Detailing, Cleanup & Final Walkthrough). Each bullet: one tight sentence starting with a strong verb. Reference material brand/system at a high level when relevant. Use a leading "- " for each bullet. No numbered lists. Do NOT include separate bullets or detail about permits or debris removal/trash hauling — those are covered in the Closing. A "Cleanup & Final Walkthrough" bullet should focus on jobsite broom-clean condition and final inspection only, not on hauling or disposal.${turnkeySection}
 ${changeOrderSection}
 Closing
-One short paragraph (1–2 sentences) reassuring the customer about quality, cleanup, warranty-readiness, and next steps.
+One short paragraph (2–4 sentences) that introduces the overall system/approach being installed and reassures the customer about quality, cleanup, warranty-readiness, and next steps. This paragraph MUST explicitly state that all required permits and debris removal / trash hauling are included in the total cost — the customer will not be billed separately for these. State it once here; do NOT repeat it in the Scope of Work bullets.${hasTurnkey ? ' If the estimate is (partly or fully) turnkey, make it clear the customer is getting an all-inclusive package.' : ''} Do NOT mention the property address or the customer/homeowner name anywhere in the narrative.
 
 Style:
 - Tone: ${tone}. Confident, reassuring, professional. No hype.
@@ -107,13 +104,11 @@ Style:
 ${extra_instructions ? `\nAdditional instructions: ${extra_instructions}` : ''}`;
 
     const userPrompt = `Project: ${project_title || 'Roofing project'}
-Customer: ${customer_name || 'Customer'}
-Address: ${property_address || 'Property'}
 
 Line items from the estimate:
 ${itemSummary}
 ${hasChangeOrders ? `\nPotential Change Order items (optional/conditional add-ons — include them in a dedicated "Potential Change Orders" section):\n${changeOrderSummary}\n` : ''}
-Write the customer-friendly Project Scope now.`;
+Write the customer-friendly Project Scope now. Do not mention the property address or the customer/homeowner name anywhere.`;
 
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
