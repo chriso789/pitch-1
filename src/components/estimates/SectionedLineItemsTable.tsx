@@ -232,9 +232,10 @@ export function SectionedLineItemsTable({
 
 
           <Input
-            type="number"
+            type="text"
+            inputMode="decimal"
             value={editValue}
-            onChange={(e) => setEditValue(e.target.value)}
+            onChange={(e) => setEditValue(e.target.value.replace(/[^0-9.\-]/g, ''))}
             onKeyDown={handleKeyDown}
             className="h-7 w-20 text-right font-mono"
             autoFocus
