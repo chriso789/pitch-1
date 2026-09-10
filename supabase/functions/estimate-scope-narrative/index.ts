@@ -104,13 +104,11 @@ Style:
 ${extra_instructions ? `\nAdditional instructions: ${extra_instructions}` : ''}`;
 
     const userPrompt = `Project: ${project_title || 'Roofing project'}
-Customer: ${customer_name || 'Customer'}
-Address: ${property_address || 'Property'}
 
 Line items from the estimate:
 ${itemSummary}
 ${hasChangeOrders ? `\nPotential Change Order items (optional/conditional add-ons — include them in a dedicated "Potential Change Orders" section):\n${changeOrderSummary}\n` : ''}
-Write the customer-friendly Project Scope now.`;
+Write the customer-friendly Project Scope now. Do not mention the property address or the customer/homeowner name anywhere.`;
 
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
