@@ -454,6 +454,19 @@ export function SectionedLineItemsTable({
               <Button
                 size="icon"
                 variant="ghost"
+                className={`h-6 w-6 ${item.emphasize ? 'text-primary opacity-100' : ''}`}
+                onClick={() => onUpdateItem(item.id, { emphasize: !item.emphasize })}
+                title={
+                  item.emphasize
+                    ? 'Highlighted: the AI scope will bold this item. Click to remove.'
+                    : 'Bold this item in the AI-written scope'
+                }
+              >
+                <Bold className="h-3 w-3" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
                 className={`h-6 w-6 ${item.exclude_from_overhead ? 'text-amber-600 opacity-100' : ''}`}
                 onClick={() => onUpdateItem(item.id, { exclude_from_overhead: !item.exclude_from_overhead })}
                 title={
