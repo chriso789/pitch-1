@@ -30,6 +30,7 @@ import {
   GripVertical,
   AlertTriangle,
   PiggyBank,
+  Bold,
 } from 'lucide-react';
 
 import {
