@@ -29,7 +29,12 @@ export const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(
     }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const raw = e.target.value;
+      // Use text input + manual sanitizing: native number inputs report an
+      // empty string for intermediate values like "-", which loses the sign.
+      let raw = e.target.value.replace(/[^0-9.\-]/g, '');
+      // only a single leading minus
+      const negative = allowNegative && raw.trim().startsWith('-');
+      raw = (negative ? '-' : '') + raw.replace(/-/g, '');
       setStr(raw);
       let num = parseFloat(raw);
       if (isNaN(num)) num = 0;
@@ -40,8 +45,8 @@ export const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(
     return (
       <Input
         ref={ref}
-        type="number"
-        step={step}
+        type="text"
+        inputMode="decimal"
         value={str}
         onChange={handleChange}
         {...rest}
