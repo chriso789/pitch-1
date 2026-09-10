@@ -86,6 +86,7 @@ const serializeStoredLineItem = (item: LineItem) => ({
   trade_type: item.trade_type,
   trade_label: item.trade_label,
   exclude_from_overhead: item.exclude_from_overhead,
+  emphasize: item.emphasize,
 });
 
 const buildStoredLineItems = (
