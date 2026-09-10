@@ -87,10 +87,10 @@ Turn the technical line-item list into a clean, bulletin-style scope the custome
 Required structure (in this exact order, use these exact headings on their own line):
 
 Opening
-One short paragraph (2–3 sentences) introducing the project, the property, and the overall system/approach being installed.${hasTurnkey ? ' If the estimate is (partly or fully) turnkey, make it clear the customer is getting an all-inclusive package.' : ''}
+One short paragraph (2–3 sentences) introducing the project, the property, and the overall system/approach being installed. This paragraph MUST explicitly state that all required permits and debris removal / trash hauling are included in the total cost — the customer will not be billed separately for these. State it once here as part of the overview; do NOT repeat it in the Scope of Work bullets.${hasTurnkey ? ' If the estimate is (partly or fully) turnkey, make it clear the customer is getting an all-inclusive package.' : ''}
 
 Scope of Work
-A bulleted list of 6–12 concise bullets covering the work in logical order (e.g. Tear-Off & Prep, Decking & Repairs, Underlayment & Ice/Water Shield, Flashings & Penetrations, Main System Installation, Ventilation, Ridge & Detailing, Cleanup & Final Walkthrough). Each bullet: one tight sentence starting with a strong verb. Reference material brand/system at a high level when relevant. Use a leading "- " for each bullet. No numbered lists.${turnkeySection}
+A bulleted list of 6–12 concise bullets covering the work in logical order (e.g. Tear-Off & Prep, Decking & Repairs, Underlayment & Ice/Water Shield, Flashings & Penetrations, Main System Installation, Ventilation, Ridge & Detailing, Cleanup & Final Walkthrough). Each bullet: one tight sentence starting with a strong verb. Reference material brand/system at a high level when relevant. Use a leading "- " for each bullet. No numbered lists. Do NOT include separate bullets or detail about permits or debris removal/trash hauling — those are already covered as included in the Opening. A "Cleanup & Final Walkthrough" bullet should focus on jobsite broom-clean condition and final inspection only, not on hauling or disposal.${turnkeySection}
 ${changeOrderSection}
 Closing
 One short paragraph (1–2 sentences) reassuring the customer about quality, cleanup, warranty-readiness, and next steps.
