@@ -78,9 +78,8 @@ A short intro sentence explaining these are optional/conditional items that may 
 
     const turnkeySection = hasTurnkey ? `
 
-Turnkey Package (What's Included)
-A short intro sentence framing this as an all-inclusive, turnkey scope where materials, labor, permits, and cleanup are handled end-to-end by ${company_name || 'our team'} and its trusted trade partners.
-Then a bulleted list (leading "- ", one tight sentence each) that summarizes every turnkey scope in customer-friendly language — describe the deliverable, not the SKU. Explicitly reassure the customer that everything needed to complete each turnkey scope is included at a single price (no hidden add-ons for standard work).${isFullyTurnkey ? '\nBecause this proposal is fully turnkey, the "Scope of Work" section above should stay high-level and reference the turnkey package rather than breaking work into material/labor phases.' : '\nCall out that the turnkey items complement the standard Scope of Work above and are delivered as a single, coordinated package.'}` : '';
+Turnkey Package
+One short sentence stating this is an all-inclusive package. Then a bulleted list (leading "- ", a few words each) naming each turnkey scope — no explanations, no reassurances, just the scope name. Keep it to 3–5 words per bullet.` : '';
 
     const systemPrompt = `You are a senior roofing project manager writing the "Project Scope" section of a customer-facing proposal for ${company_name || 'a professional roofing contractor'}.
 
