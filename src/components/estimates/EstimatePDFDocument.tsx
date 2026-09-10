@@ -1026,6 +1026,17 @@ const ChangeOrdersBlock: React.FC<{ items: LineItem[] }> = ({ items }) => {
   );
 };
 
+// Renders AI scope text, converting **bold** markers into real bold text.
+function renderNarrativeText(text: string) {
+  return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
+    part.startsWith('**') && part.endsWith('**') && part.length > 4 ? (
+      <strong key={i} className="font-bold text-gray-900">{part.slice(2, -2)}</strong>
+    ) : (
+      <span key={i}>{part}</span>
+    )
+  );
+}
+
 // Split a long AI narrative into safely-sized chunks so it never pushes the
 // totals or signature block off the page. Prefers paragraph, then sentence,
 // then word boundaries; falls back to a hard slice for pathological input.
@@ -1121,7 +1132,7 @@ const FirstPage: React.FC<{
             Project Scope
           </h3>
           <div className="text-xs text-gray-800 leading-relaxed whitespace-pre-wrap scope-narrative">
-            {narrativeText}
+            {renderNarrativeText(narrativeText)}
           </div>
           {narrativeContinues && (
             <p className="text-xs text-gray-400 italic text-right mt-2">Continues on next page…</p>
@@ -1212,7 +1223,7 @@ const NarrativeContinuationPage: React.FC<{ text: string; continues?: boolean }>
         Project Scope (continued)
       </h3>
       <div className="text-xs text-gray-800 leading-relaxed whitespace-pre-wrap scope-narrative">
-        {text}
+        {renderNarrativeText(text)}
       </div>
       {continues && (
         <p className="text-xs text-gray-400 italic text-right mt-2">Continues on next page…</p>

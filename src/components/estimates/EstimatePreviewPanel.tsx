@@ -919,6 +919,7 @@ export function EstimatePreviewPanel({
       unit: it.unit,
       item_type: it.item_type,
       trade_type: it.trade_type,
+      emphasize: it.emphasize === true,
     });
 
     // Build one generation task per estimate (main + each selected additional).

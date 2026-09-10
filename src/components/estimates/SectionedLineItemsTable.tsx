@@ -30,6 +30,7 @@ import {
   GripVertical,
   AlertTriangle,
   PiggyBank,
+  Bold,
 } from 'lucide-react';
 
 import {
@@ -421,7 +422,7 @@ export function SectionedLineItemsTable({
           <div className="flex items-start gap-1">
             <div className="flex-1 min-w-0">
               <div className="flex items-start gap-1 flex-wrap">
-                <span className="break-words whitespace-normal">{safeText(item.item_name)}</span>
+                <span className={`break-words whitespace-normal ${item.emphasize ? 'font-bold' : ''}`}>{safeText(item.item_name)}</span>
                 {item.is_override && (
                   <Badge variant="outline" className="text-xs shrink-0">Modified</Badge>
                 )}
@@ -451,6 +452,19 @@ export function SectionedLineItemsTable({
         {editable && (
           <TableCell className="w-10">
             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <Button
+                size="icon"
+                variant="ghost"
+                className={`h-6 w-6 ${item.emphasize ? 'text-primary opacity-100' : ''}`}
+                onClick={() => onUpdateItem(item.id, { emphasize: !item.emphasize })}
+                title={
+                  item.emphasize
+                    ? 'Highlighted: the AI scope will bold this item. Click to remove.'
+                    : 'Bold this item in the AI-written scope'
+                }
+              >
+                <Bold className="h-3 w-3" />
+              </Button>
               <Button
                 size="icon"
                 variant="ghost"
