@@ -428,6 +428,28 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
     setShowAddressPicker(false);
   };
 
+  const currentUserIsRep = isSalesRepRole(userProfile?.role);
+  const canPickOtherReps = canAssignToOthers(userProfile?.role);
+
+  // Sales reps always own the leads they create — lock themselves in as primary.
+  useEffect(() => {
+    if (!open || !currentUserIsRep || !userProfile?.id) return;
+    setFormData(prev =>
+      prev.assignedTo[0] === userProfile.id
+        ? prev
+        : { ...prev, assignedTo: [userProfile.id, ...prev.assignedTo.filter(id => id !== userProfile.id)].slice(0, 2) }
+    );
+  }, [open, currentUserIsRep, userProfile?.id]);
+
+  // Primary slot: managers pick anyone, reps only themselves.
+  // Additional slot: always another sales rep (never a manager/owner).
+  const availableReps = React.useMemo(() => {
+    if (formData.assignedTo.length === 0) {
+      return filterPrimaryAssignees(salesReps, userProfile?.role, userProfile?.id);
+    }
+    return filterSecondaryAssignees(salesReps, formData.assignedTo);
+  }, [salesReps, formData.assignedTo, userProfile?.role, userProfile?.id]);
+
   const handleAddRep = (repId: string) => {
     if (formData.assignedTo.length < 2 && !formData.assignedTo.includes(repId)) {
       setFormData(prev => ({
