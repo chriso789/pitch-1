@@ -80,7 +80,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [newTag, setNewTag] = useState("");
   const [assignedTo, setAssignedTo] = useState<string>("");
-  const [tenantUsers, setTenantUsers] = useState<Array<{ id: string; name: string; email: string }>>([]);
+  const [tenantUsers, setTenantUsers] = useState<Array<{ id: string; name: string; email: string; role?: string }>>([]);
   // Dynamic lead sources from database
   const [leadSources, setLeadSources] = useState<Array<{ id: string; name: string }>>([
     { id: "google", name: "Google" },
