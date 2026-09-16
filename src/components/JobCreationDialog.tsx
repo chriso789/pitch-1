@@ -52,6 +52,8 @@ export const JobCreationDialog: React.FC<JobCreationDialogProps> = ({
   const [salesReps, setSalesReps] = useState<any[]>([]);
   const [selectedSalesRep, setSelectedSalesRep] = useState<string>('');
   const { toast } = useToast();
+  const { user: currentUser } = useCurrentUser();
+  const currentUserIsRep = isSalesRepRole(currentUser?.role);
 
   useEffect(() => {
     if (open) {
@@ -59,12 +61,17 @@ export const JobCreationDialog: React.FC<JobCreationDialogProps> = ({
     }
   }, [open]);
 
+  // Sales reps can only create work under their own name
+  useEffect(() => {
+    if (currentUserIsRep && currentUser?.id) setSelectedSalesRep(currentUser.id);
+  }, [currentUserIsRep, currentUser?.id, open]);
+
   const loadSalesReps = async () => {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, first_name, last_name')
-        .in('role', ['sales_manager', 'regional_manager', 'corporate'])
+        .select('id, first_name, last_name, role')
+        .in('role', ['sales_manager', 'regional_manager', 'corporate', 'project_manager'])
         .eq('is_active', true)
         .neq('is_developer', true)
         .order('first_name');
@@ -75,6 +82,11 @@ export const JobCreationDialog: React.FC<JobCreationDialogProps> = ({
       console.error('Error loading sales reps:', error);
     }
   };
+
+  const assignableReps = React.useMemo(
+    () => filterPrimaryAssignees(salesReps, currentUser?.role, currentUser?.id),
+    [salesReps, currentUser?.role, currentUser?.id]
+  );
 
   const getContactInitialAddress = (): Partial<VerifiedAddress> | undefined => {
     if (contact && formData.useSameAddress && contact.address_street) {
