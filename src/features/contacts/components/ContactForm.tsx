@@ -14,6 +14,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
 import { TEST_IDS } from "../../../../tests/utils/test-ids";
 import { useContactDraftPersistence } from "@/hooks/useContactDraftPersistence";
+import { isSalesRepRole, filterPrimaryAssignees } from "@/lib/assignmentPermissions";
 import { useNavigate } from "react-router-dom";
 import { useLocation } from "@/contexts/LocationContext";
 
