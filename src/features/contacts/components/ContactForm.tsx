@@ -633,18 +633,23 @@ const ContactForm: React.FC<ContactFormProps> = ({
           {/* Assign to Sales Rep - visible to all users */}
           <div>
             <label className="text-sm font-medium">Assign to Sales Rep</label>
-            <Select value={assignedTo} onValueChange={setAssignedTo}>
+            <Select value={assignedTo} onValueChange={setAssignedTo} disabled={currentUserIsRep}>
               <SelectTrigger>
                 <SelectValue placeholder="Select sales rep..." />
               </SelectTrigger>
               <SelectContent className="bg-popover">
-                {tenantUsers.map((user) => (
+                {assignableUsers.map((user) => (
                   <SelectItem key={user.id} value={user.id}>
                     {user.name}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            {currentUserIsRep && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Customers you add are assigned to you.
+              </p>
+            )}
           </div>
 
           {/* Address Verification */}
