@@ -1082,13 +1082,16 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
               <div className="flex flex-wrap gap-2 mb-2">
                 {formData.assignedTo.map(repId => {
                   const rep = salesReps.find(r => r.id === repId);
+                  const isLockedSelf = currentUserIsRep && repId === userProfile?.id;
                   return rep ? (
                     <Badge key={repId} variant="secondary" className="flex items-center gap-1 py-1 px-2">
                       {rep.first_name} {rep.last_name}
-                      <X 
-                        className="h-3 w-3 cursor-pointer hover:text-destructive" 
-                        onClick={() => handleRemoveRep(repId)}
-                      />
+                      {!isLockedSelf && (
+                        <X
+                          className="h-3 w-3 cursor-pointer hover:text-destructive"
+                          onClick={() => handleRemoveRep(repId)}
+                        />
+                      )}
                     </Badge>
                   ) : null;
                 })}
@@ -1099,21 +1102,25 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
             {formData.assignedTo.length < 2 && (
               <Select onValueChange={handleAddRep} value="">
                 <SelectTrigger>
-                  <SelectValue placeholder={formData.assignedTo.length === 0 ? "Select sales representative..." : "Add another rep..."} />
+                  <SelectValue placeholder={formData.assignedTo.length === 0 ? "Select sales representative..." : "Add another sales rep..."} />
                 </SelectTrigger>
                 <SelectContent>
-                  {salesReps
-                    .filter(rep => !formData.assignedTo.includes(rep.id))
-                    .map(rep => (
-                      <SelectItem key={rep.id} value={rep.id}>
-                        {rep.first_name} {rep.last_name}
-                      </SelectItem>
-                    ))}
-                  {salesReps.filter(rep => !formData.assignedTo.includes(rep.id)).length === 0 && (
+                  {availableReps.map(rep => (
+                    <SelectItem key={rep.id} value={rep.id}>
+                      {rep.first_name} {rep.last_name}
+                    </SelectItem>
+                  ))}
+                  {availableReps.length === 0 && (
                     <div className="px-2 py-1.5 text-sm text-muted-foreground">No available reps</div>
                   )}
                 </SelectContent>
               </Select>
+            )}
+
+            {!canPickOtherReps && (
+              <p className="text-xs text-muted-foreground mt-1">
+                This lead is assigned to you. You can add one more sales rep to split it.
+              </p>
             )}
             
             {formData.assignedTo.length === 2 && (
