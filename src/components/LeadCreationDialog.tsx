@@ -20,6 +20,12 @@ import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { useFormNavigationGuard } from "@/hooks/useFormNavigationGuard";
 import { useLocation } from "@/contexts/LocationContext";
+import {
+  isSalesRepRole,
+  canAssignToOthers,
+  filterPrimaryAssignees,
+  filterSecondaryAssignees,
+} from "@/lib/assignmentPermissions";
 
 interface LeadCreationDialogProps {
   trigger?: React.ReactNode;
