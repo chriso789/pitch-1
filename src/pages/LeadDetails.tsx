@@ -77,6 +77,7 @@ import { SendReferralLinkButton } from '@/components/referrals/SendReferralLinkB
 import { AddressValidationResolutionModal } from '@/components/address/AddressValidationResolutionModal';
 import { PortalMessagesPanel } from '@/components/portal/PortalMessagesPanel';
 import { WrongCompanyNotice } from '@/components/leads/WrongCompanyNotice';
+import { isSalesRepRole, filterSecondaryAssignees } from '@/lib/assignmentPermissions';
 
 // ProjectAddressPanel removed — address validated at lead/contact creation
 
