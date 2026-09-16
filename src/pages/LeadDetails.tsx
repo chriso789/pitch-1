@@ -388,6 +388,8 @@ const LeadDetails = () => {
   
   const MANAGER_ROLES = ['master', 'owner', 'corporate', 'office_admin', 'regional_manager', 'sales_manager'];
   const isManager = userProfile?.role && MANAGER_ROLES.includes(userProfile.role);
+  // Sales reps cannot hand their lead to somebody else
+  const currentUserIsRep = isSalesRepRole(userProfile?.role);
   
   // SMS sending hook
   const { sendSMS } = useSendSMS();
