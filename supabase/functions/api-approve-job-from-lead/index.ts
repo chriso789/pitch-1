@@ -387,6 +387,37 @@ Deno.serve(async (req) => {
       console.error('Error linking legacy estimates to project:', legacyEstimateLinkError);
     }
 
+    // Snapshot the original material + labor orders as PDFs in the project's
+    // documents so the as-sold scope is preserved for every tenant.
+    let archivedOrders: any = { archived: [] };
+    try {
+      const archiveEstimateIds =
+        convMeta.combine_estimates === true && selectedIds.length > 1
+          ? selectedIds
+          : selectedId
+            ? [selectedId]
+            : [];
+      const archiveRes = await fetch(`${supabaseUrl}/functions/v1/archive-conversion-orders`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify({
+          tenantId: effectiveTenantId,
+          pipelineEntryId,
+          projectId: newProject.id,
+          estimateIds: archiveEstimateIds,
+          userId: user.id,
+        }),
+      });
+      archivedOrders = await archiveRes.json();
+    } catch (archiveErr) {
+      console.error('[api-approve-job-from-lead] order archive failed', archiveErr);
+    }
+
+
+
     // Create the contract invoice for the selling price so the project always
     // carries an invoice amount + invoice number that QuickBooks payments can
     // be attached to. Price + "no existing invoice" were already enforced by
@@ -592,6 +623,7 @@ Deno.serve(async (req) => {
       qbo_sync: qboSync,
       accounting_init: accountingInit,
       contract_invoice: contractInvoice,
+      archived_orders: archivedOrders,
       message: `Successfully converted lead to project ${newProject.project_number}`
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
