@@ -771,8 +771,8 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
           roof_type: formData.projectType === "roof" && formData.roofType ? formData.roofType : null,
           priority: formData.priority,
           estimated_value: formData.estimatedValue ? parseFloat(formData.estimatedValue) : null,
-          assigned_to: formData.assignedTo[0] || session.user.id, // Auto-assign to creator if no rep selected
-          secondary_assigned_to: formData.assignedTo[1] || null, // Secondary rep if selected
+          assigned_to: currentUserIsRep ? session.user.id : (formData.assignedTo[0] || session.user.id), // Sales reps always own leads they enter
+          secondary_assigned_to: formData.assignedTo.find(id => id !== (currentUserIsRep ? session.user.id : formData.assignedTo[0])) || null, // Additional sales rep if selected
           primary_rep_split_percent: formData.assignedTo.length > 1 ? 50 : 100, // Default 50/50 split if two reps
           notes: formData.notes || null,
           created_by: session.user.id,
