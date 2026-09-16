@@ -58,8 +58,26 @@ export async function saveEstimatePdf({
       };
     }
 
-    // Create document record
-    const { error: docError } = await (supabase as any)
+    // Re-use the existing document record for this exact file path so repeated
+    // saves of the same estimate don't pile up duplicate rows pointing at one PDF.
+    const { data: existingDoc } = await (supabase as any)
+      .from('documents')
+      .select('id')
+      .eq('file_path', pdfPath)
+      .limit(1)
+      .maybeSingle();
+
+    const { error: docError } = existingDoc?.id
+      ? await (supabase as any)
+          .from('documents')
+          .update({
+            file_size: pdfBlob.size,
+            description,
+            estimate_display_name: estimateDisplayName || null,
+            estimate_pricing_tier: estimatePricingTier || null,
+          })
+          .eq('id', existingDoc.id)
+      : await (supabase as any)
       .from('documents')
       .insert({
         tenant_id: tenantId,
