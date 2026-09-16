@@ -665,7 +665,9 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
         const streetAddress = (getComponent('street_number') + ' ' + getComponent('route')).trim();
 
         // Determine the assigned rep - use first selected rep or fall back to current user
-        const assignedRep = formData.assignedTo[0] || session.user.id;
+        const assignedRep = currentUserIsRep
+          ? session.user.id
+          : (formData.assignedTo[0] || session.user.id);
 
         // --- CROSS-LOCATION DEDUP: Check by normalized phone across ALL locations in tenant ---
         let existingContact: any = null;
