@@ -16,6 +16,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, MapPin, Check, AlertCircle, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { isSalesRepRole, filterPrimaryAssignees } from "@/lib/assignmentPermissions";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AddressVerification } from "@/shared/components/forms";
 
