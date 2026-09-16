@@ -20,6 +20,12 @@ import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { useFormNavigationGuard } from "@/hooks/useFormNavigationGuard";
 import { useLocation } from "@/contexts/LocationContext";
+import {
+  isSalesRepRole,
+  canAssignToOthers,
+  filterPrimaryAssignees,
+  filterSecondaryAssignees,
+} from "@/lib/assignmentPermissions";
 
 interface LeadCreationDialogProps {
   trigger?: React.ReactNode;
@@ -422,6 +428,28 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
     setShowAddressPicker(false);
   };
 
+  const currentUserIsRep = isSalesRepRole(userProfile?.role);
+  const canPickOtherReps = canAssignToOthers(userProfile?.role);
+
+  // Sales reps always own the leads they create — lock themselves in as primary.
+  useEffect(() => {
+    if (!open || !currentUserIsRep || !userProfile?.id) return;
+    setFormData(prev =>
+      prev.assignedTo[0] === userProfile.id
+        ? prev
+        : { ...prev, assignedTo: [userProfile.id, ...prev.assignedTo.filter(id => id !== userProfile.id)].slice(0, 2) }
+    );
+  }, [open, currentUserIsRep, userProfile?.id]);
+
+  // Primary slot: managers pick anyone, reps only themselves.
+  // Additional slot: always another sales rep (never a manager/owner).
+  const availableReps = React.useMemo(() => {
+    if (formData.assignedTo.length === 0) {
+      return filterPrimaryAssignees(salesReps, userProfile?.role, userProfile?.id);
+    }
+    return filterSecondaryAssignees(salesReps, formData.assignedTo);
+  }, [salesReps, formData.assignedTo, userProfile?.role, userProfile?.id]);
+
   const handleAddRep = (repId: string) => {
     if (formData.assignedTo.length < 2 && !formData.assignedTo.includes(repId)) {
       setFormData(prev => ({
@@ -432,6 +460,8 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
   };
 
   const handleRemoveRep = (repId: string) => {
+    // A sales rep can never remove themselves from their own lead
+    if (currentUserIsRep && repId === userProfile?.id) return;
     setFormData(prev => ({
       ...prev,
       assignedTo: prev.assignedTo.filter(id => id !== repId)
@@ -635,7 +665,9 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
         const streetAddress = (getComponent('street_number') + ' ' + getComponent('route')).trim();
 
         // Determine the assigned rep - use first selected rep or fall back to current user
-        const assignedRep = formData.assignedTo[0] || session.user.id;
+        const assignedRep = currentUserIsRep
+          ? session.user.id
+          : (formData.assignedTo[0] || session.user.id);
 
         // --- CROSS-LOCATION DEDUP: Check by normalized phone across ALL locations in tenant ---
         let existingContact: any = null;
@@ -739,8 +771,8 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
           roof_type: formData.projectType === "roof" && formData.roofType ? formData.roofType : null,
           priority: formData.priority,
           estimated_value: formData.estimatedValue ? parseFloat(formData.estimatedValue) : null,
-          assigned_to: formData.assignedTo[0] || session.user.id, // Auto-assign to creator if no rep selected
-          secondary_assigned_to: formData.assignedTo[1] || null, // Secondary rep if selected
+          assigned_to: currentUserIsRep ? session.user.id : (formData.assignedTo[0] || session.user.id), // Sales reps always own leads they enter
+          secondary_assigned_to: formData.assignedTo.find(id => id !== (currentUserIsRep ? session.user.id : formData.assignedTo[0])) || null, // Additional sales rep if selected
           primary_rep_split_percent: formData.assignedTo.length > 1 ? 50 : 100, // Default 50/50 split if two reps
           notes: formData.notes || null,
           created_by: session.user.id,
@@ -1052,13 +1084,16 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
               <div className="flex flex-wrap gap-2 mb-2">
                 {formData.assignedTo.map(repId => {
                   const rep = salesReps.find(r => r.id === repId);
+                  const isLockedSelf = currentUserIsRep && repId === userProfile?.id;
                   return rep ? (
                     <Badge key={repId} variant="secondary" className="flex items-center gap-1 py-1 px-2">
                       {rep.first_name} {rep.last_name}
-                      <X 
-                        className="h-3 w-3 cursor-pointer hover:text-destructive" 
-                        onClick={() => handleRemoveRep(repId)}
-                      />
+                      {!isLockedSelf && (
+                        <X
+                          className="h-3 w-3 cursor-pointer hover:text-destructive"
+                          onClick={() => handleRemoveRep(repId)}
+                        />
+                      )}
                     </Badge>
                   ) : null;
                 })}
@@ -1069,21 +1104,25 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
             {formData.assignedTo.length < 2 && (
               <Select onValueChange={handleAddRep} value="">
                 <SelectTrigger>
-                  <SelectValue placeholder={formData.assignedTo.length === 0 ? "Select sales representative..." : "Add another rep..."} />
+                  <SelectValue placeholder={formData.assignedTo.length === 0 ? "Select sales representative..." : "Add another sales rep..."} />
                 </SelectTrigger>
                 <SelectContent>
-                  {salesReps
-                    .filter(rep => !formData.assignedTo.includes(rep.id))
-                    .map(rep => (
-                      <SelectItem key={rep.id} value={rep.id}>
-                        {rep.first_name} {rep.last_name}
-                      </SelectItem>
-                    ))}
-                  {salesReps.filter(rep => !formData.assignedTo.includes(rep.id)).length === 0 && (
+                  {availableReps.map(rep => (
+                    <SelectItem key={rep.id} value={rep.id}>
+                      {rep.first_name} {rep.last_name}
+                    </SelectItem>
+                  ))}
+                  {availableReps.length === 0 && (
                     <div className="px-2 py-1.5 text-sm text-muted-foreground">No available reps</div>
                   )}
                 </SelectContent>
               </Select>
+            )}
+
+            {!canPickOtherReps && (
+              <p className="text-xs text-muted-foreground mt-1">
+                This lead is assigned to you. You can add one more sales rep to split it.
+              </p>
             )}
             
             {formData.assignedTo.length === 2 && (

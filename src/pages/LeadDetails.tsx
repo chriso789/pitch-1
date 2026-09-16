@@ -77,6 +77,7 @@ import { SendReferralLinkButton } from '@/components/referrals/SendReferralLinkB
 import { AddressValidationResolutionModal } from '@/components/address/AddressValidationResolutionModal';
 import { PortalMessagesPanel } from '@/components/portal/PortalMessagesPanel';
 import { WrongCompanyNotice } from '@/components/leads/WrongCompanyNotice';
+import { isSalesRepRole, filterSecondaryAssignees } from '@/lib/assignmentPermissions';
 
 // ProjectAddressPanel removed — address validated at lead/contact creation
 
@@ -388,6 +389,8 @@ const LeadDetails = () => {
   
   const MANAGER_ROLES = ['master', 'owner', 'corporate', 'office_admin', 'regional_manager', 'sales_manager'];
   const isManager = userProfile?.role && MANAGER_ROLES.includes(userProfile.role);
+  // Sales reps cannot hand their lead to somebody else
+  const currentUserIsRep = isSalesRepRole(userProfile?.role);
   
   // SMS sending hook
   const { sendSMS } = useSendSMS();
@@ -1063,6 +1066,7 @@ const LeadDetails = () => {
                 <Select 
                   value={lead.assigned_rep?.id || ''} 
                   onValueChange={(value) => handleSalesRepUpdate(value)}
+                  disabled={currentUserIsRep}
                 >
                   <SelectTrigger className="h-7 w-[200px]">
                     <SelectValue placeholder="Assign rep" />
@@ -1144,8 +1148,10 @@ const LeadDetails = () => {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">None</SelectItem>
-                      {availableSalesReps
-                        .filter(rep => rep.id !== lead.assigned_rep?.id)
+                      {filterSecondaryAssignees(
+                        availableSalesReps,
+                        lead.assigned_rep?.id ? [lead.assigned_rep.id] : []
+                      )
                         .map((rep) => (
                           <SelectItem key={rep.id} value={rep.id}>
                             {rep.first_name} {rep.last_name}

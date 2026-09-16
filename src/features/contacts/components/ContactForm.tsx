@@ -14,6 +14,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
 import { TEST_IDS } from "../../../../tests/utils/test-ids";
 import { useContactDraftPersistence } from "@/hooks/useContactDraftPersistence";
+import { isSalesRepRole, filterPrimaryAssignees } from "@/lib/assignmentPermissions";
 import { useNavigate } from "react-router-dom";
 import { useLocation } from "@/contexts/LocationContext";
 
@@ -80,7 +81,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [newTag, setNewTag] = useState("");
   const [assignedTo, setAssignedTo] = useState<string>("");
-  const [tenantUsers, setTenantUsers] = useState<Array<{ id: string; name: string; email: string }>>([]);
+  const [tenantUsers, setTenantUsers] = useState<Array<{ id: string; name: string; email: string; role?: string }>>([]);
   // Dynamic lead sources from database
   const [leadSources, setLeadSources] = useState<Array<{ id: string; name: string }>>([
     { id: "google", name: "Google" },
@@ -130,7 +131,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
       try {
         const { data, error } = await supabase
           .from('profiles')
-          .select('id, first_name, last_name, email')
+          .select('id, first_name, last_name, email, role')
           .eq('tenant_id', tenantToUse)
           .neq('role', 'master')
           .neq('is_developer', true)
@@ -141,7 +142,8 @@ const ContactForm: React.FC<ContactFormProps> = ({
         const users = data?.map(u => ({
           id: u.id,
           name: `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email || 'Unknown User',
-          email: u.email || ''
+          email: u.email || '',
+          role: u.role || ''
         })) || [];
 
         setTenantUsers(users);
@@ -152,6 +154,19 @@ const ContactForm: React.FC<ContactFormProps> = ({
 
     fetchTenantUsers();
   }, [effectiveTenantId, currentUser?.tenant_id]);
+
+  // Sales reps own the customers they enter — lock assignment to themselves
+  const currentUserIsRep = isSalesRepRole(currentUser?.role);
+  useEffect(() => {
+    if (currentUserIsRep && currentUser?.id && assignedTo !== currentUser.id) {
+      setAssignedTo(currentUser.id);
+    }
+  }, [currentUserIsRep, currentUser?.id, assignedTo]);
+
+  const assignableUsers = React.useMemo(
+    () => filterPrimaryAssignees(tenantUsers, currentUser?.role, currentUser?.id),
+    [tenantUsers, currentUser?.role, currentUser?.id]
+  );
 
   // Fetch lead sources from database
   useEffect(() => {
@@ -618,18 +633,23 @@ const ContactForm: React.FC<ContactFormProps> = ({
           {/* Assign to Sales Rep - visible to all users */}
           <div>
             <label className="text-sm font-medium">Assign to Sales Rep</label>
-            <Select value={assignedTo} onValueChange={setAssignedTo}>
+            <Select value={assignedTo} onValueChange={setAssignedTo} disabled={currentUserIsRep}>
               <SelectTrigger>
                 <SelectValue placeholder="Select sales rep..." />
               </SelectTrigger>
               <SelectContent className="bg-popover">
-                {tenantUsers.map((user) => (
+                {assignableUsers.map((user) => (
                   <SelectItem key={user.id} value={user.id}>
                     {user.name}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            {currentUserIsRep && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Customers you add are assigned to you.
+              </p>
+            )}
           </div>
 
           {/* Address Verification */}

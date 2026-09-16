@@ -16,6 +16,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, MapPin, Check, AlertCircle, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { isSalesRepRole, filterPrimaryAssignees } from "@/lib/assignmentPermissions";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AddressVerification } from "@/shared/components/forms";
 
@@ -52,6 +54,8 @@ export const JobCreationDialog: React.FC<JobCreationDialogProps> = ({
   const [salesReps, setSalesReps] = useState<any[]>([]);
   const [selectedSalesRep, setSelectedSalesRep] = useState<string>('');
   const { toast } = useToast();
+  const { user: currentUser } = useCurrentUser();
+  const currentUserIsRep = isSalesRepRole(currentUser?.role);
 
   useEffect(() => {
     if (open) {
@@ -59,12 +63,17 @@ export const JobCreationDialog: React.FC<JobCreationDialogProps> = ({
     }
   }, [open]);
 
+  // Sales reps can only create work under their own name
+  useEffect(() => {
+    if (currentUserIsRep && currentUser?.id) setSelectedSalesRep(currentUser.id);
+  }, [currentUserIsRep, currentUser?.id, open]);
+
   const loadSalesReps = async () => {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, first_name, last_name')
-        .in('role', ['sales_manager', 'regional_manager', 'corporate'])
+        .select('id, first_name, last_name, role')
+        .in('role', ['sales_manager', 'regional_manager', 'corporate', 'project_manager'])
         .eq('is_active', true)
         .neq('is_developer', true)
         .order('first_name');
@@ -75,6 +84,11 @@ export const JobCreationDialog: React.FC<JobCreationDialogProps> = ({
       console.error('Error loading sales reps:', error);
     }
   };
+
+  const assignableReps = React.useMemo(
+    () => filterPrimaryAssignees(salesReps, currentUser?.role, currentUser?.id),
+    [salesReps, currentUser?.role, currentUser?.id]
+  );
 
   const getContactInitialAddress = (): Partial<VerifiedAddress> | undefined => {
     if (contact && formData.useSameAddress && contact.address_street) {
@@ -245,12 +259,12 @@ export const JobCreationDialog: React.FC<JobCreationDialogProps> = ({
 
           <div>
             <Label htmlFor="salesRep">Sales Representative</Label>
-            <Select value={selectedSalesRep} onValueChange={setSelectedSalesRep}>
+            <Select value={selectedSalesRep} onValueChange={setSelectedSalesRep} disabled={currentUserIsRep}>
               <SelectTrigger>
                 <SelectValue placeholder="Select sales rep (optional)" />
               </SelectTrigger>
               <SelectContent>
-                {salesReps.map((rep) => (
+                {assignableReps.map((rep) => (
                   <SelectItem key={rep.id} value={rep.id}>
                     {rep.first_name} {rep.last_name}
                   </SelectItem>
