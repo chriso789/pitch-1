@@ -270,6 +270,43 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
 
   const [estimateDisplayName, setEstimateDisplayName] = useState<string>('');
   const [estimatePricingTier, setEstimatePricingTier] = useState<'good' | 'better' | 'best' | ''>('');
+
+  // Persist the estimate name / pricing tier immediately for an already-saved
+  // estimate, so renaming sticks even if the user never clicks "Save Changes".
+  const persistEstimateNaming = async (
+    nextName: string,
+    nextTier: 'good' | 'better' | 'best' | ''
+  ) => {
+    if (!existingEstimateId) return;
+    try {
+      const displayName = nextName.trim() || null;
+      const tier = nextTier || null;
+
+      const { error } = await (supabase as any)
+        .from('enhanced_estimates')
+        .update({ display_name: displayName, pricing_tier: tier })
+        .eq('id', existingEstimateId);
+      if (error) throw error;
+
+      if (editingEstimateNumber) {
+        await (supabase as any)
+          .from('documents')
+          .update({
+            estimate_display_name: displayName,
+            estimate_pricing_tier: tier,
+          })
+          .eq('document_type', 'estimate')
+          .ilike('filename', `${editingEstimateNumber}%`);
+      }
+    } catch (err: any) {
+      console.error('Failed to save estimate name:', err);
+      toast({
+        title: 'Name not saved',
+        description: err?.message || 'Could not save the estimate name',
+        variant: 'destructive',
+      });
+    }
+  };
   
   // User context for sharing
   const [currentTenantId, setCurrentTenantId] = useState<string | null>(null);
@@ -2991,6 +3028,12 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
               id="estimate-display-name"
               value={estimateDisplayName}
               onChange={(e) => setEstimateDisplayName(e.target.value)}
+              onBlur={() => persistEstimateNaming(estimateDisplayName, estimatePricingTier)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  (e.target as HTMLInputElement).blur();
+                }
+              }}
               placeholder="e.g., Smith Residence - Full Roof Replacement"
             />
             <p className="text-xs text-muted-foreground">
@@ -3003,7 +3046,11 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
             </Label>
             <Select
               value={estimatePricingTier}
-              onValueChange={(val) => setEstimatePricingTier(val as 'good' | 'better' | 'best' | '')}
+              onValueChange={(val) => {
+                const tier = val as 'good' | 'better' | 'best' | '';
+                setEstimatePricingTier(tier);
+                persistEstimateNaming(estimateDisplayName, tier);
+              }}
             >
               <SelectTrigger id="estimate-pricing-tier">
                 <SelectValue placeholder="Select tier" />
