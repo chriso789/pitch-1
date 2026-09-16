@@ -3028,6 +3028,12 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
               id="estimate-display-name"
               value={estimateDisplayName}
               onChange={(e) => setEstimateDisplayName(e.target.value)}
+              onBlur={() => persistEstimateNaming(estimateDisplayName, estimatePricingTier)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  (e.target as HTMLInputElement).blur();
+                }
+              }}
               placeholder="e.g., Smith Residence - Full Roof Replacement"
             />
             <p className="text-xs text-muted-foreground">
@@ -3040,7 +3046,11 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
             </Label>
             <Select
               value={estimatePricingTier}
-              onValueChange={(val) => setEstimatePricingTier(val as 'good' | 'better' | 'best' | '')}
+              onValueChange={(val) => {
+                const tier = val as 'good' | 'better' | 'best' | '';
+                setEstimatePricingTier(tier);
+                persistEstimateNaming(estimateDisplayName, tier);
+              }}
             >
               <SelectTrigger id="estimate-pricing-tier">
                 <SelectValue placeholder="Select tier" />
