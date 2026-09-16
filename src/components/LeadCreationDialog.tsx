@@ -438,6 +438,8 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
   };
 
   const handleRemoveRep = (repId: string) => {
+    // A sales rep can never remove themselves from their own lead
+    if (currentUserIsRep && repId === userProfile?.id) return;
     setFormData(prev => ({
       ...prev,
       assignedTo: prev.assignedTo.filter(id => id !== repId)
