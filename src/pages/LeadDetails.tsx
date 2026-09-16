@@ -1148,8 +1148,10 @@ const LeadDetails = () => {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">None</SelectItem>
-                      {availableSalesReps
-                        .filter(rep => rep.id !== lead.assigned_rep?.id)
+                      {filterSecondaryAssignees(
+                        availableSalesReps,
+                        lead.assigned_rep?.id ? [lead.assigned_rep.id] : []
+                      )
                         .map((rep) => (
                           <SelectItem key={rep.id} value={rep.id}>
                             {rep.first_name} {rep.last_name}
