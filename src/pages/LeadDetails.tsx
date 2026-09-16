@@ -1066,6 +1066,7 @@ const LeadDetails = () => {
                 <Select 
                   value={lead.assigned_rep?.id || ''} 
                   onValueChange={(value) => handleSalesRepUpdate(value)}
+                  disabled={currentUserIsRep}
                 >
                   <SelectTrigger className="h-7 w-[200px]">
                     <SelectValue placeholder="Assign rep" />
