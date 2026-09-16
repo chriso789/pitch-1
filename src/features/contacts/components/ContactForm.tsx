@@ -130,7 +130,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
       try {
         const { data, error } = await supabase
           .from('profiles')
-          .select('id, first_name, last_name, email')
+          .select('id, first_name, last_name, email, role')
           .eq('tenant_id', tenantToUse)
           .neq('role', 'master')
           .neq('is_developer', true)
@@ -141,7 +141,8 @@ const ContactForm: React.FC<ContactFormProps> = ({
         const users = data?.map(u => ({
           id: u.id,
           name: `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email || 'Unknown User',
-          email: u.email || ''
+          email: u.email || '',
+          role: u.role || ''
         })) || [];
 
         setTenantUsers(users);
