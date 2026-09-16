@@ -155,6 +155,19 @@ const ContactForm: React.FC<ContactFormProps> = ({
     fetchTenantUsers();
   }, [effectiveTenantId, currentUser?.tenant_id]);
 
+  // Sales reps own the customers they enter — lock assignment to themselves
+  const currentUserIsRep = isSalesRepRole(currentUser?.role);
+  useEffect(() => {
+    if (currentUserIsRep && currentUser?.id && assignedTo !== currentUser.id) {
+      setAssignedTo(currentUser.id);
+    }
+  }, [currentUserIsRep, currentUser?.id, assignedTo]);
+
+  const assignableUsers = React.useMemo(
+    () => filterPrimaryAssignees(tenantUsers, currentUser?.role, currentUser?.id),
+    [tenantUsers, currentUser?.role, currentUser?.id]
+  );
+
   // Fetch lead sources from database
   useEffect(() => {
     const fetchLeadSources = async () => {
