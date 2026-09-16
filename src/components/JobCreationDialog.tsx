@@ -259,12 +259,12 @@ export const JobCreationDialog: React.FC<JobCreationDialogProps> = ({
 
           <div>
             <Label htmlFor="salesRep">Sales Representative</Label>
-            <Select value={selectedSalesRep} onValueChange={setSelectedSalesRep}>
+            <Select value={selectedSalesRep} onValueChange={setSelectedSalesRep} disabled={currentUserIsRep}>
               <SelectTrigger>
                 <SelectValue placeholder="Select sales rep (optional)" />
               </SelectTrigger>
               <SelectContent>
-                {salesReps.map((rep) => (
+                {assignableReps.map((rep) => (
                   <SelectItem key={rep.id} value={rep.id}>
                     {rep.first_name} {rep.last_name}
                   </SelectItem>
