@@ -361,6 +361,7 @@ export function UnifiedMeasurementPanel({
   const [approvalToDelete, setApprovalToDelete] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [addOptionsOpen, setAddOptionsOpen] = useState(false);
+  const [showOtherMeasurements, setShowOtherMeasurements] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingApproval, setEditingApproval] = useState<SavedMeasurement | null>(null);
   const [reportState, setReportState] = useState<{
@@ -621,7 +622,8 @@ export function UnifiedMeasurementPanel({
       if (error) throw error;
 
       setActiveApprovalId(approvalId);
-      
+      setShowOtherMeasurements(false);
+
       // Invalidate queries to refresh estimate templates
       queryClient.invalidateQueries({ queryKey: ['measurement-context', pipelineEntryId] });
       queryClient.invalidateQueries({ queryKey: ['measurement-approvals', pipelineEntryId] });
@@ -1397,31 +1399,42 @@ export function UnifiedMeasurementPanel({
             );
           })()}
 
-          {/* Other saved measurements — selectable alternatives */}
+          {/* Other saved measurements — hidden by default, expandable */}
           {otherMeasurements.length > 0 && (
-            <div className="space-y-2">
-              {activeMeasurement && (
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Other Measurements
-                </p>
-              )}
-              <ScrollArea className={otherMeasurements.length > 2 ? 'h-[280px]' : undefined}>
-                <div className="space-y-2">
-                  {otherMeasurements.map((measurement) => (
-                    <MeasurementCard
-                      key={measurement.id}
-                      measurement={measurement}
-                      isActive={false}
-                      isPhone={layout.isPhone}
-                      onSetActive={() => handleSetActive(measurement.id)}
-                      onDelete={() => handleDeleteClick(measurement.id)}
-                      onEdit={() => handleEditMeasurement(measurement)}
-                      isSettingActive={isSettingActive}
-                    />
-                  ))}
-                </div>
-              </ScrollArea>
-            </div>
+            <Collapsible open={showOtherMeasurements} onOpenChange={setShowOtherMeasurements}>
+              <CollapsibleTrigger asChild>
+                <button
+                  type="button"
+                  className="flex items-center justify-between w-full text-xs font-medium text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors py-1"
+                >
+                  <span>
+                    Other Measurements ({otherMeasurements.length})
+                  </span>
+                  <span className="flex items-center gap-1 normal-case tracking-normal text-foreground">
+                    {showOtherMeasurements ? 'Hide' : 'Show'}
+                    <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showOtherMeasurements ? 'rotate-180' : ''}`} />
+                  </span>
+                </button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <ScrollArea className={otherMeasurements.length > 2 ? 'h-[280px]' : undefined}>
+                  <div className="space-y-2 pt-1">
+                    {otherMeasurements.map((measurement) => (
+                      <MeasurementCard
+                        key={measurement.id}
+                        measurement={measurement}
+                        isActive={false}
+                        isPhone={layout.isPhone}
+                        onSetActive={() => handleSetActive(measurement.id)}
+                        onDelete={() => handleDeleteClick(measurement.id)}
+                        onEdit={() => handleEditMeasurement(measurement)}
+                        isSettingActive={isSettingActive}
+                      />
+                    ))}
+                  </div>
+                </ScrollArea>
+              </CollapsibleContent>
+            </Collapsible>
           )}
 
           {/* Empty State */}
