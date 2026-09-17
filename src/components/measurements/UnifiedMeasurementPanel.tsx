@@ -622,7 +622,8 @@ export function UnifiedMeasurementPanel({
       if (error) throw error;
 
       setActiveApprovalId(approvalId);
-      
+      setShowOtherMeasurements(false);
+
       // Invalidate queries to refresh estimate templates
       queryClient.invalidateQueries({ queryKey: ['measurement-context', pipelineEntryId] });
       queryClient.invalidateQueries({ queryKey: ['measurement-approvals', pipelineEntryId] });
