@@ -1397,8 +1397,8 @@ export function UnifiedMeasurementPanel({
             );
           })()}
 
-          {/* Other Measurements - hidden: only show the active measurement being used for estimates */}
-          {false && otherMeasurements.length > 0 && (
+          {/* Other saved measurements — selectable alternatives */}
+          {otherMeasurements.length > 0 && (
             <div className="space-y-2">
               {activeMeasurement && (
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
