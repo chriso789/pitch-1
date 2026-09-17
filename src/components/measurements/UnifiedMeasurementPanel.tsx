@@ -361,6 +361,7 @@ export function UnifiedMeasurementPanel({
   const [approvalToDelete, setApprovalToDelete] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [addOptionsOpen, setAddOptionsOpen] = useState(false);
+  const [showOtherMeasurements, setShowOtherMeasurements] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingApproval, setEditingApproval] = useState<SavedMeasurement | null>(null);
   const [reportState, setReportState] = useState<{
