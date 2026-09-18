@@ -508,23 +508,28 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
         )}
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="flex w-full flex-col items-center gap-2 rounded-md border-2 border-dashed border-border p-4">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Upload className="h-4 w-4" />
-            <span>Upload one or many invoices (PDF/Image) — fields auto-fill</span>
-          </div>
-          <input
-            type="file"
-            aria-label="Upload one or more material invoices"
-            className="block w-full text-sm text-muted-foreground file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary-foreground"
-            accept="image/*,application/pdf,.pdf,.heic,.heif"
-            multiple
-            onChange={e => {
-              handleFiles(e.target.files);
-              e.target.value = '';
-            }}
-          />
-        </div>
+        <input
+          ref={materialFileInputRef}
+          type="file"
+          aria-label="Upload one or more material invoices"
+          className="hidden"
+          accept="image/*,application/pdf,.pdf,.heic,.heif"
+          multiple
+          onChange={e => {
+            handleFiles(e.target.files);
+            e.target.value = '';
+          }}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full"
+          disabled={processing}
+          onClick={() => materialFileInputRef.current?.click()}
+        >
+          <Upload className="h-4 w-4 mr-2" />
+          Upload one or many invoices (PDF/Image) — fields auto-fill
+        </Button>
 
 
         {/* Manual entry form — mirrors the Labor Invoice layout */}
