@@ -9856,6 +9856,71 @@ export type Database = {
           },
         ]
       }
+      commission_payments: {
+        Row: {
+          amount: number
+          created_at: string
+          created_by: string | null
+          id: string
+          notes: string | null
+          payment_date: string
+          payment_method: string
+          pipeline_entry_id: string | null
+          project_id: string | null
+          qbo_entity_id: string | null
+          qbo_entity_type: string | null
+          reference: string | null
+          source: string
+          tenant_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount?: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          payment_date?: string
+          payment_method?: string
+          pipeline_entry_id?: string | null
+          project_id?: string | null
+          qbo_entity_id?: string | null
+          qbo_entity_type?: string | null
+          reference?: string | null
+          source?: string
+          tenant_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          payment_date?: string
+          payment_method?: string
+          pipeline_entry_id?: string | null
+          project_id?: string | null
+          qbo_entity_id?: string | null
+          qbo_entity_type?: string | null
+          reference?: string | null
+          source?: string
+          tenant_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commission_payments_pipeline_entry_id_fkey"
+            columns: ["pipeline_entry_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_entries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       commission_payouts: {
         Row: {
           approved_at: string | null
