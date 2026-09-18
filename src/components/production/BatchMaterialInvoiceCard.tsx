@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -99,6 +99,7 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
 }) => {
   const { toast } = useToast();
   const effectiveTenantId = useEffectiveTenantId();
+  const materialFileInputRef = useRef<HTMLInputElement>(null);
   const [rows, setRows] = useState<InvoiceRow[]>([]);
 
   const [submittingAll, setSubmittingAll] = useState(false);
@@ -524,7 +525,7 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
           type="button"
           variant="outline"
           className="w-full"
-          disabled={processing}
+          disabled={submittingAll}
           onClick={() => materialFileInputRef.current?.click()}
         >
           <Upload className="h-4 w-4 mr-2" />
