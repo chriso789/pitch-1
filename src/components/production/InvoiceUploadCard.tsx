@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -89,6 +89,7 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
   const effectiveTenantId = useEffectiveTenantId();
   const [loading, setLoading] = useState(false);
 
+  const invoiceFileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanSuccess, setScanSuccess] = useState(false);
@@ -495,27 +496,32 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
             </div>
           ) : (
             <div className="mt-1">
-              <div className={`flex w-full flex-col items-center gap-2 rounded-md border-2 border-dashed border-border p-4 ${uploading || scanning ? 'opacity-60' : ''}`}>
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  {uploading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Upload className="h-4 w-4" />
-                  )}
-                  <span>{uploading ? 'Uploading...' : 'Upload PDF or Image'}</span>
-                </div>
-                <input
-                  type="file"
-                  aria-label={`Upload ${invoiceType} invoice`}
-                  className="block w-full text-sm text-muted-foreground file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary-foreground disabled:cursor-not-allowed"
-                  accept="image/*,application/pdf,.pdf,.heic,.heif"
-                  disabled={uploading || scanning}
-                  onChange={(e) => {
-                    handleFileUpload(e);
-                    e.target.value = '';
-                  }}
-                />
-              </div>
+              <input
+                ref={(el) => { invoiceFileInputRef.current = el; }}
+                type="file"
+                aria-label={`Upload ${invoiceType} invoice`}
+                className="hidden"
+                accept="image/*,application/pdf,.pdf,.heic,.heif"
+                disabled={uploading || scanning}
+                onChange={(e) => {
+                  handleFileUpload(e);
+                  e.target.value = '';
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                disabled={uploading || scanning}
+                onClick={() => invoiceFileInputRef.current?.click()}
+              >
+                {uploading ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Upload className="h-4 w-4 mr-2" />
+                )}
+                {uploading ? 'Uploading...' : 'Upload PDF or Image'}
+              </Button>
             </div>
           )}
 
