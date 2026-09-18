@@ -245,6 +245,7 @@ const LaborSection = ({ pipelineEntryId }: { pipelineEntryId: string }) => {
 
 const LeadDetails = () => {
   const { id } = useParams<{ id: string }>();
+  const pageQueryClient = useQueryClient();
   const { stages } = usePipelineStages();
   const { statuses: contactStatuses } = useContactStatuses();
   const navigate = useNavigate();
@@ -1097,6 +1098,11 @@ const LeadDetails = () => {
                           if (error) throw error;
                           toast({ title: 'Lead type updated' });
                           refetchLead();
+                          // Refresh profit/commission views so the company lead fee recalculates immediately
+                          pageQueryClient.invalidateQueries({ queryKey: ['sales-rep-commission', id] });
+                          pageQueryClient.invalidateQueries({ queryKey: ['profit-center-data', id] });
+                          pageQueryClient.invalidateQueries({ queryKey: ['estimate-costs', id] });
+                          pageQueryClient.invalidateQueries({ queryKey: ['rep-profit-breakdown', id] });
                         } catch (err: any) {
                           toast({ title: 'Error updating lead type', description: err.message, variant: 'destructive' });
                         }
