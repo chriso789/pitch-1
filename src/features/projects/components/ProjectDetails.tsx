@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { CostReconciliationPanel } from "@/components/production/CostReconciliationPanel";
 import { InvoiceUploadCard } from "@/components/production/InvoiceUploadCard";
 import { DrawTally } from "@/components/commission/DrawTally";
+import { CommissionPaymentsCard } from "@/components/commission/CommissionPaymentsCard";
 import { ProjectMaterialsTab } from "@/components/orders/ProjectMaterialsTab";
 import { ProjectInsuranceTab } from "./ProjectInsuranceTab";
 import { useQuery } from "@tanstack/react-query";
@@ -709,6 +710,17 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
               selectedRepId={salesRep.id}
               isManager={true}
               pipelineEntryId={pipelineEntryId}
+            />
+          )}
+
+          {salesRep && tenantIdForDraws && (
+            <CommissionPaymentsCard
+              tenantId={tenantIdForDraws}
+              repId={salesRep.id}
+              pipelineEntryId={pipelineEntryId || undefined}
+              projectId={id}
+              commissionEarned={repCommissionAmount}
+              isManager={true}
             />
           )}
         </TabsContent>

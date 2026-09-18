@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DrawTally } from '@/components/commission/DrawTally';
 import { RepDrawLedger } from '@/components/commission/RepDrawLedger';
+import { CommissionPaymentsCard } from '@/components/commission/CommissionPaymentsCard';
 import { useSettledStages } from '@/hooks/useSettledStages';
 import { formatCurrency } from '@/lib/commission-calculator';
 import { Wallet, TrendingUp, DollarSign, ArrowRight, CheckCircle2 } from 'lucide-react';
@@ -243,6 +244,16 @@ export function MyMoneyContent() {
             tenantId={currentUser.tenant_id}
             repId={currentUser.id}
             commissions={taggedCommissions}
+          />
+        )}
+
+        {/* Commission pay history (never affects job cost) */}
+        {currentUser?.tenant_id && currentUser?.id && (
+          <CommissionPaymentsCard
+            tenantId={currentUser.tenant_id}
+            repId={currentUser.id}
+            commissionEarned={totalEarned}
+            isManager={!!isManager}
           />
         )}
 
