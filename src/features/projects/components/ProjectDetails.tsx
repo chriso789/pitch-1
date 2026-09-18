@@ -718,7 +718,7 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
               tenantId={tenantIdForDraws}
               repId={salesRep.id}
               pipelineEntryId={pipelineEntryId || undefined}
-              projectId={id}
+              projectId={projectId}
               commissionEarned={repCommissionAmount}
               isManager={true}
             />
