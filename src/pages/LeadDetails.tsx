@@ -245,6 +245,7 @@ const LaborSection = ({ pipelineEntryId }: { pipelineEntryId: string }) => {
 
 const LeadDetails = () => {
   const { id } = useParams<{ id: string }>();
+  const pageQueryClient = useQueryClient();
   const { stages } = usePipelineStages();
   const { statuses: contactStatuses } = useContactStatuses();
   const navigate = useNavigate();
