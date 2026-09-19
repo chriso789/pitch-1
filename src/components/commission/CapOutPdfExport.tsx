@@ -130,10 +130,6 @@ export function buildCapOutHtml(data: CapOutPdfData): string {
       <div class="info-value">${data.date}</div>
     </div>
     <div class="info-item">
-      <div class="info-label">Customer</div>
-      <div class="info-value">${data.customerName}</div>
-    </div>
-    <div class="info-item">
       <div class="info-label">Sales Rep</div>
       <div class="info-value">${data.repName}</div>
     </div>
@@ -330,8 +326,7 @@ export async function generateCapOutPdfBlob(data: CapOutPdfData): Promise<Blob> 
   drawLabelValue('Project', data.projectName, margin);
   drawLabelValue('Date', data.date, margin + contentWidth / 2);
   y += 42;
-  drawLabelValue('Customer', data.customerName, margin);
-  drawLabelValue('Sales Rep', data.repName, margin + contentWidth / 2);
+  drawLabelValue('Sales Rep', data.repName, margin);
   y += 42;
   const addressLines = drawLabelValue('Property Address', data.address, margin, contentWidth);
   y += 24 + Math.max(1, addressLines - 1) * 12;
