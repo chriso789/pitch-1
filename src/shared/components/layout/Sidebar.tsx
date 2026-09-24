@@ -114,6 +114,7 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
     if (path.startsWith('/jobs')) return 'jobs';
     if (path.startsWith('/estimates')) return 'estimates';
     if (path.startsWith('/production')) return 'production';
+    if (path.startsWith('/commercial')) return 'commercial';
     if (path.startsWith('/material-orders')) return 'material-orders';
     if (path.startsWith('/material-audit')) return 'material-audit';
     if (path.startsWith('/accounts-receivable')) return 'accounts-receivable';
@@ -264,6 +265,13 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       icon: Target,
       description: "Production workflow",
       featureKey: "production"
+    },
+    {
+      name: "Commercial",
+      href: "commercial",
+      path: "/commercial",
+      icon: Building2,
+      description: "Commercial estimating & takeoff",
     },
     {
       name: "My Money",
