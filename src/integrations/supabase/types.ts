@@ -9440,6 +9440,622 @@ export type Database = {
           },
         ]
       }
+      commercial_assemblies: {
+        Row: {
+          active: boolean
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          system_type: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          system_type?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          system_type?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      commercial_assembly_components: {
+        Row: {
+          assembly_id: string
+          created_at: string
+          crew_day_cost: number | null
+          crew_rate_per_day: number | null
+          driver: string
+          id: string
+          kind: string
+          name: string
+          qty_per_driver: number
+          sort_order: number
+          tenant_id: string
+          unit_cost: number
+          uom: string
+          updated_at: string
+          waste_pct: number
+        }
+        Insert: {
+          assembly_id: string
+          created_at?: string
+          crew_day_cost?: number | null
+          crew_rate_per_day?: number | null
+          driver?: string
+          id?: string
+          kind?: string
+          name: string
+          qty_per_driver?: number
+          sort_order?: number
+          tenant_id?: string
+          unit_cost?: number
+          uom?: string
+          updated_at?: string
+          waste_pct?: number
+        }
+        Update: {
+          assembly_id?: string
+          created_at?: string
+          crew_day_cost?: number | null
+          crew_rate_per_day?: number | null
+          driver?: string
+          id?: string
+          kind?: string
+          name?: string
+          qty_per_driver?: number
+          sort_order?: number
+          tenant_id?: string
+          unit_cost?: number
+          uom?: string
+          updated_at?: string
+          waste_pct?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commercial_assembly_components_assembly_id_fkey"
+            columns: ["assembly_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_assemblies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      commercial_audit_log: {
+        Row: {
+          action: string
+          created_at: string
+          id: string
+          new_value: Json | null
+          old_value: Json | null
+          project_id: string | null
+          reason: string | null
+          record_id: string | null
+          record_type: string
+          source: string | null
+          tenant_id: string
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          id?: string
+          new_value?: Json | null
+          old_value?: Json | null
+          project_id?: string | null
+          reason?: string | null
+          record_id?: string | null
+          record_type: string
+          source?: string | null
+          tenant_id: string
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          id?: string
+          new_value?: Json | null
+          old_value?: Json | null
+          project_id?: string | null
+          reason?: string | null
+          record_id?: string | null
+          record_type?: string
+          source?: string | null
+          tenant_id?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      commercial_bid_packages: {
+        Row: {
+          carried_quote_id: string | null
+          created_at: string
+          id: string
+          name: string
+          project_id: string
+          scope: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          carried_quote_id?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          project_id: string
+          scope?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Update: {
+          carried_quote_id?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          project_id?: string
+          scope?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commercial_bid_packages_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      commercial_bid_quotes: {
+        Row: {
+          amount: number
+          bidder_name: string
+          created_at: string
+          excludes: string | null
+          id: string
+          includes: string | null
+          package_id: string
+          scope_gaps: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          amount?: number
+          bidder_name: string
+          created_at?: string
+          excludes?: string | null
+          id?: string
+          includes?: string | null
+          package_id: string
+          scope_gaps?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          bidder_name?: string
+          created_at?: string
+          excludes?: string | null
+          id?: string
+          includes?: string | null
+          package_id?: string
+          scope_gaps?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commercial_bid_quotes_package_id_fkey"
+            columns: ["package_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_bid_packages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      commercial_estimate_lines: {
+        Row: {
+          created_at: string
+          description: string
+          estimate_id: string
+          id: string
+          kind: string
+          quantity: number
+          sort_order: number
+          takeoff_quantity_id: string | null
+          tenant_id: string
+          total: number
+          unit_cost: number
+          uom: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          estimate_id: string
+          id?: string
+          kind?: string
+          quantity?: number
+          sort_order?: number
+          takeoff_quantity_id?: string | null
+          tenant_id?: string
+          total?: number
+          unit_cost?: number
+          uom?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          estimate_id?: string
+          id?: string
+          kind?: string
+          quantity?: number
+          sort_order?: number
+          takeoff_quantity_id?: string | null
+          tenant_id?: string
+          total?: number
+          unit_cost?: number
+          uom?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commercial_estimate_lines_estimate_id_fkey"
+            columns: ["estimate_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_estimates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_estimate_lines_takeoff_quantity_id_fkey"
+            columns: ["takeoff_quantity_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_takeoff_quantities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      commercial_estimate_versions: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          bid_total: number
+          comments: string | null
+          created_at: string
+          estimate_id: string
+          id: string
+          snapshot: Json
+          status: string
+          submitted_by: string | null
+          tenant_id: string
+          version_number: number
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          bid_total?: number
+          comments?: string | null
+          created_at?: string
+          estimate_id: string
+          id?: string
+          snapshot: Json
+          status?: string
+          submitted_by?: string | null
+          tenant_id?: string
+          version_number: number
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          bid_total?: number
+          comments?: string | null
+          created_at?: string
+          estimate_id?: string
+          id?: string
+          snapshot?: Json
+          status?: string
+          submitted_by?: string | null
+          tenant_id?: string
+          version_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commercial_estimate_versions_estimate_id_fkey"
+            columns: ["estimate_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_estimates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      commercial_estimates: {
+        Row: {
+          alternates: Json
+          assembly_id: string | null
+          bid_total: number
+          bond_pct: number
+          created_at: string
+          created_by: string | null
+          exclusions: string | null
+          general_conditions: number
+          id: string
+          labor_total: number
+          material_total: number
+          name: string
+          overhead_pct: number
+          profit_pct: number
+          project_id: string
+          status: string
+          sub_total: number
+          tax_pct: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          alternates?: Json
+          assembly_id?: string | null
+          bid_total?: number
+          bond_pct?: number
+          created_at?: string
+          created_by?: string | null
+          exclusions?: string | null
+          general_conditions?: number
+          id?: string
+          labor_total?: number
+          material_total?: number
+          name?: string
+          overhead_pct?: number
+          profit_pct?: number
+          project_id: string
+          status?: string
+          sub_total?: number
+          tax_pct?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Update: {
+          alternates?: Json
+          assembly_id?: string | null
+          bid_total?: number
+          bond_pct?: number
+          created_at?: string
+          created_by?: string | null
+          exclusions?: string | null
+          general_conditions?: number
+          id?: string
+          labor_total?: number
+          material_total?: number
+          name?: string
+          overhead_pct?: number
+          profit_pct?: number
+          project_id?: string
+          status?: string
+          sub_total?: number
+          tax_pct?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commercial_estimates_assembly_id_fkey"
+            columns: ["assembly_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_assemblies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_estimates_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      commercial_import_jobs: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          error: string | null
+          file_name: string | null
+          id: string
+          result: Json
+          rows_imported: number
+          source: string
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          error?: string | null
+          file_name?: string | null
+          id?: string
+          result?: Json
+          rows_imported?: number
+          source: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          error?: string | null
+          file_name?: string | null
+          id?: string
+          result?: Json
+          rows_imported?: number
+          source?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      commercial_projects: {
+        Row: {
+          address: string | null
+          architect_name: string | null
+          bid_due_date: string | null
+          client_name: string | null
+          contact_id: string | null
+          created_at: string
+          created_by: string | null
+          engineer_name: string | null
+          estimator_id: string | null
+          gc_name: string | null
+          id: string
+          metadata: Json
+          name: string
+          notes: string | null
+          owner_name: string | null
+          pipeline_entry_id: string | null
+          project_number: string | null
+          roof_area_sf: number | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          architect_name?: string | null
+          bid_due_date?: string | null
+          client_name?: string | null
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          engineer_name?: string | null
+          estimator_id?: string | null
+          gc_name?: string | null
+          id?: string
+          metadata?: Json
+          name: string
+          notes?: string | null
+          owner_name?: string | null
+          pipeline_entry_id?: string | null
+          project_number?: string | null
+          roof_area_sf?: number | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          architect_name?: string | null
+          bid_due_date?: string | null
+          client_name?: string | null
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          engineer_name?: string | null
+          estimator_id?: string | null
+          gc_name?: string | null
+          id?: string
+          metadata?: Json
+          name?: string
+          notes?: string | null
+          owner_name?: string | null
+          pipeline_entry_id?: string | null
+          project_number?: string | null
+          roof_area_sf?: number | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      commercial_takeoff_quantities: {
+        Row: {
+          confidence: number | null
+          created_at: string
+          driver: string
+          id: string
+          label: string
+          overridden_from: number | null
+          override_reason: string | null
+          project_id: string
+          review_status: string
+          roof_section: string | null
+          scale_status: string
+          source: string
+          source_sheet: string | null
+          tenant_id: string
+          uom: string
+          updated_at: string
+          value: number
+          verified_at: string | null
+          verified_by: string | null
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string
+          driver: string
+          id?: string
+          label: string
+          overridden_from?: number | null
+          override_reason?: string | null
+          project_id: string
+          review_status?: string
+          roof_section?: string | null
+          scale_status?: string
+          source?: string
+          source_sheet?: string | null
+          tenant_id?: string
+          uom?: string
+          updated_at?: string
+          value?: number
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string
+          driver?: string
+          id?: string
+          label?: string
+          overridden_from?: number | null
+          override_reason?: string | null
+          project_id?: string
+          review_status?: string
+          roof_section?: string | null
+          scale_status?: string
+          source?: string
+          source_sheet?: string | null
+          tenant_id?: string
+          uom?: string
+          updated_at?: string
+          value?: number
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commercial_takeoff_quantities_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       commission_adjustments: {
         Row: {
           adjustment_type: string
