@@ -269,9 +269,10 @@ function Estimate({ projectId, tenantId, qtys, project }: any) {
           <Button className="w-full mt-2" onClick={submit}>Submit & lock version</Button>
           <p className="text-xs text-muted-foreground">Submitting is blocked until every takeoff quantity is verified, overridden, or rejected.</p>
         </CardContent></Card>
-        <Card><CardHeader><CardTitle className="text-base">Versions</CardTitle></CardHeader><CardContent className="space-y-1 text-sm">
-          {versions.map((v) => <div key={v.id} className="flex justify-between"><span>v{v.version_number} · {new Date(v.created_at).toLocaleDateString()}</span><span className="font-medium">{money(v.bid_total)}</span></div>)}
+        <Card><CardHeader><CardTitle className="text-base">Versions & approvals</CardTitle></CardHeader><CardContent className="space-y-3 text-sm">
+          {versions.map((v) => <VersionRow key={v.id} v={v} project={project} onChange={load} />)}
           {!versions.length && <p className="text-muted-foreground">No submitted versions yet.</p>}
+          <p className="text-xs text-muted-foreground">Under $100k: Estimator. $100k–$500k: + Senior Estimator. Over $500k: + Executive.</p>
         </CardContent></Card>
       </div>
     </div>
@@ -279,6 +280,41 @@ function Estimate({ projectId, tenantId, qtys, project }: any) {
 }
 
 const Row = ({ l, v }: { l: string; v: number }) => <div className="flex justify-between"><span className="text-muted-foreground">{l}</span><span>{money(v)}</span></div>;
+
+const STEP_LABEL: Record<string, string> = { estimator: "Estimator", senior_estimator: "Senior Estimator", executive: "Executive" };
+const stepsFor = (amt: number) => amt > 500000 ? ["estimator", "senior_estimator", "executive"] : amt >= 100000 ? ["estimator", "senior_estimator"] : ["estimator"];
+
+function VersionRow({ v, project, onChange }: any) {
+  const [appr, setAppr] = useState<any[]>([]);
+  const load = () => db.from("commercial_estimate_approvals").select("*").eq("version_id", v.id).order("created_at").then(({ data }: any) => setAppr(data || []));
+  useEffect(() => { load(); }, [v.id, v.status]);
+  const steps = stepsFor(Number(v.bid_total || 0));
+  const done = new Set(appr.filter((a) => a.decision === "approved").map((a) => a.step));
+  const next = v.status === "approved" || v.status === "rejected" ? null : steps.find((s) => !done.has(s));
+  const decide = async (decision: string) => {
+    const comments = decision === "rejected" ? window.prompt("Reason for rejecting?") : window.prompt("Comments (optional)") ?? "";
+    if (decision === "rejected" && !comments) return;
+    const { error } = await db.rpc("commercial_decide_version", { _version_id: v.id, _decision: decision, _comments: comments || null });
+    if (error) return toast.error(error.message);
+    toast.success(decision === "approved" ? "Approved" : "Rejected"); load(); onChange();
+  };
+  const pdf = async () => {
+    const { buildProposalPdf } = await import("@/lib/commercial/proposalPdf");
+    const { data: t } = await db.from("tenants").select("name, phone, email").eq("id", v.tenant_id).maybeSingle();
+    buildProposalPdf({ project, version: v, company: t || undefined }).save(`${project.name.replace(/[^\w-]+/g, "_")}-proposal-v${v.version_number}.pdf`);
+  };
+  return (
+    <div className="border rounded p-2 space-y-1">
+      <div className="flex justify-between"><span className="font-medium">v{v.version_number} · {new Date(v.created_at).toLocaleDateString()}</span><span className="font-medium">{money(v.bid_total)}</span></div>
+      <div className="flex flex-wrap gap-1">{steps.map((s) => { const a = appr.find((x) => x.step === s); return <Badge key={s} variant={a?.decision === "approved" ? "default" : a?.decision === "rejected" ? "destructive" : "outline"}>{STEP_LABEL[s]}{a ? ` ✓` : ""}</Badge>; })}</div>
+      {v.status === "rejected" && <p className="text-xs text-destructive">Rejected: {v.comments}</p>}
+      <div className="flex gap-1 pt-1">
+        {next && <><Button size="sm" onClick={() => decide("approved")}>Approve as {STEP_LABEL[next]}</Button><Button size="sm" variant="outline" onClick={() => decide("rejected")}>Reject</Button></>}
+        <Button size="sm" variant="outline" onClick={pdf} disabled={v.status !== "approved"} title={v.status !== "approved" ? "Available once fully approved" : ""}>Proposal PDF</Button>
+      </div>
+    </div>
+  );
+}
 
 function Bids({ projectId, tenantId }: any) {
   const [pkgs, setPkgs] = useState<any[]>([]);
