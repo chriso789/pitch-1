@@ -12,10 +12,12 @@ const schema = {
   properties: {
     project: {
       type: "object", additionalProperties: false,
-      required: ["name", "address", "architect", "owner", "project_number"],
+      required: ["name", "address", "architect", "owner", "project_number", "engineer", "general_contractor", "bid_due_date", "total_roof_area_sf"],
       properties: {
         name: { type: ["string", "null"] }, address: { type: ["string", "null"] }, architect: { type: ["string", "null"] },
         owner: { type: ["string", "null"] }, project_number: { type: ["string", "null"] },
+        engineer: { type: ["string", "null"] }, general_contractor: { type: ["string", "null"] },
+        bid_due_date: { type: ["string", "null"], description: "YYYY-MM-DD if printed" }, total_roof_area_sf: { type: ["number", "null"] },
       },
     },
     sheets: {
@@ -48,6 +50,7 @@ const schema = {
 };
 
 const PROMPT = `You are a senior commercial roofing estimator reading a full construction plan set (PDF).
+0. From the cover sheet and title blocks, capture project name, address, project number, owner, architect, engineer, general contractor, bid due date (if printed) and total roof area.
 1. Index every sheet: number, title, discipline, whether it's roof-relevant, and its drawing scale.
 2. From roof plans, details, sections and specs, produce a roofing takeoff. Use the printed scale and dimensions; show your basis briefly.
    - roof_area (SF) per roof section, perimeter/edge (LF), parapet (LF), flashing (LF), drains, scuppers, curbs/RTUs, penetrations (EA, count them).
@@ -71,7 +74,7 @@ Deno.serve(async (req) => {
     if (!/^[0-9a-f-]{36}$/i.test(projectId) || !path) return json({ error: "project_id and file_path required" }, 400);
 
     // RLS-scoped check that the user can see this project
-    const { data: project } = await userClient.from("commercial_projects").select("id, tenant_id, metadata").eq("id", projectId).maybeSingle();
+    const { data: project } = await userClient.from("commercial_projects").select("*").eq("id", projectId).maybeSingle();
     if (!project) return json({ error: "Project not found" }, 404);
     if (!path.startsWith(`${project.tenant_id}/`)) return json({ error: "Invalid file path" }, 400);
 
@@ -126,11 +129,24 @@ Deno.serve(async (req) => {
       const { error } = await admin.from("commercial_takeoff_quantities").insert(rows);
       if (error) throw error;
     }
+    // Fill blank project fields (and placeholder names) from the title block
+    const info = result.project ?? {};
+    const patch: Record<string, unknown> = {};
+    const fill = (col: string, v: unknown) => { if (v != null && v !== "" && (project[col] == null || project[col] === "")) patch[col] = v; };
+    if (info.name && (project.metadata?.placeholder_name || !project.name)) patch.name = info.name;
+    fill("address", info.address); fill("architect_name", info.architect); fill("owner_name", info.owner);
+    fill("client_name", info.owner); fill("project_number", info.project_number); fill("engineer_name", info.engineer);
+    fill("gc_name", info.general_contractor);
+    if (info.bid_due_date && /^\d{4}-\d{2}-\d{2}$/.test(info.bid_due_date)) fill("bid_due_date", info.bid_due_date);
+    const sumArea = rows.filter((r: any) => r.driver === "roof_area").reduce((a: number, r: any) => a + Number(r.value), 0);
+    fill("roof_area_sf", info.total_roof_area_sf || sumArea || null);
+    const meta = { ...(project.metadata ?? {}) }; delete meta.placeholder_name;
     await admin.from("commercial_projects").update({
-      metadata: { ...(project.metadata ?? {}), plan_analysis: { file_name: fileName, file_path: path, analyzed_at: new Date().toISOString(), sheets: result.sheets, roof_system: result.roof_system, scope_notes: result.scope_notes, project_info: result.project, quantity_basis: result.quantities.map((q: any) => ({ label: q.label, basis: q.basis })) } },
+      ...patch,
+      metadata: { ...meta, plan_analysis: { file_name: fileName, file_path: path, analyzed_at: new Date().toISOString(), sheets: result.sheets, roof_system: result.roof_system, scope_notes: result.scope_notes, project_info: result.project, quantity_basis: result.quantities.map((q: any) => ({ label: q.label, basis: q.basis })) } },
     }).eq("id", projectId);
 
-    return json({ ok: true, quantities: rows.length, sheets: result.sheets?.length ?? 0, roof_system: result.roof_system, scope_notes: result.scope_notes });
+    return json({ ok: true, quantities: rows.length, sheets: result.sheets?.length ?? 0, roof_system: result.roof_system, scope_notes: result.scope_notes, filled: Object.keys(patch) });
   } catch (e) {
     console.error(e);
     return json({ error: e instanceof Error ? e.message : "Unexpected error" }, 500);
