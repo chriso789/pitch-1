@@ -141,9 +141,33 @@ Deno.serve(async (req) => {
     const sumArea = rows.filter((r: any) => r.driver === "roof_area").reduce((a: number, r: any) => a + Number(r.value), 0);
     fill("roof_area_sf", info.total_roof_area_sf || sumArea || null);
     const meta = { ...(project.metadata ?? {}) }; delete meta.placeholder_name;
+    const chunkIndex = Number(body.chunk_index ?? 0);
+    const chunkCount = Number(body.chunk_count ?? 1);
+    const pageRange = Array.isArray(body.page_range) ? body.page_range : null;
+    const prev = (chunkIndex > 0 ? meta.plan_analysis : null) ?? {};
+    const merge = (a: any[] = [], b: any[] = []) => [...a, ...b];
+    const nonEmpty = (obj: any = {}, base: any = {}) => {
+      const out = { ...base };
+      for (const [k, v] of Object.entries(obj)) if (v != null && v !== "" && (out[k] == null || out[k] === "")) out[k] = v;
+      return out;
+    };
     await admin.from("commercial_projects").update({
       ...patch,
-      metadata: { ...meta, plan_analysis: { file_name: fileName, file_path: path, analyzed_at: new Date().toISOString(), sheets: result.sheets, roof_system: result.roof_system, scope_notes: result.scope_notes, project_info: result.project, quantity_basis: result.quantities.map((q: any) => ({ label: q.label, basis: q.basis })) } },
+      metadata: {
+        ...meta,
+        plan_analysis: {
+          file_name: fileName,
+          file_path: String(body.source_file_path ?? path),
+          analyzed_at: new Date().toISOString(),
+          parts: merge(prev.parts, [{ page_range: pageRange, file_path: path, sheets: result.sheets?.length ?? 0 }]),
+          part_count: chunkCount,
+          sheets: merge(prev.sheets, result.sheets),
+          roof_system: nonEmpty(result.roof_system, prev.roof_system),
+          scope_notes: merge(prev.scope_notes, result.scope_notes),
+          project_info: nonEmpty(result.project, prev.project_info),
+          quantity_basis: merge(prev.quantity_basis, (result.quantities ?? []).map((q: any) => ({ label: q.label, basis: q.basis }))),
+        },
+      },
     }).eq("id", projectId);
 
     return json({ ok: true, quantities: rows.length, sheets: result.sheets?.length ?? 0, roof_system: result.roof_system, scope_notes: result.scope_notes, filled: Object.keys(patch) });
