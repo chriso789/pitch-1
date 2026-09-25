@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -10,8 +11,9 @@ import { parseCsv, pick, guessDriver } from "@/lib/commercial/engine";
 const db = supabase as any;
 
 /** Imports EDGE takeoff/estimate CSVs, Procore project lists, and shared-drive folders. */
-export function CommercialImportDialog({ open, onOpenChange, onDone, projectId }: { open: boolean; onOpenChange: (o: boolean) => void; onDone?: () => void; projectId?: string }) {
+export function CommercialImportDialog({ open, onOpenChange, onDone, projectId, initialTab }: { open: boolean; onOpenChange: (o: boolean) => void; onDone?: () => void; projectId?: string; initialTab?: string }) {
   const tenantId = useEffectiveTenantId();
+  const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
 
   const logJob = (source: string, file_name: string, rows: number, error?: string) =>
@@ -68,16 +70,21 @@ export function CommercialImportDialog({ open, onOpenChange, onDone, projectId }
   };
 
   const importPlans = async (file: File) => {
-    if (!projectId) throw new Error("Open a project first");
     if (file.size > 45 * 1024 * 1024) throw new Error("Plan set is over 45 MB — split it into smaller PDFs (e.g. roof sheets + specs).");
-    const path = `${tenantId}/commercial/${projectId}/drawings/${Date.now()}-${file.name.replace(/[^\w.\-]/g, "_")}`;
+    let pid = projectId;
+    if (!pid) {
+      const { data: created, error: cErr } = await db.from("commercial_projects").insert({ tenant_id: tenantId, name: file.name.replace(/\.pdf$/i, ""), metadata: { imported_from: "plan_set", placeholder_name: true } }).select("id").single();
+      if (cErr) throw cErr; pid = created.id;
+    }
+    const path = `${tenantId}/commercial/${pid}/drawings/${Date.now()}-${file.name.replace(/[^\w.\-]/g, "_")}`;
     const { error: upErr } = await supabase.storage.from("documents").upload(path, file, { contentType: "application/pdf" });
     if (upErr) throw upErr;
-    await db.from("documents").insert({ tenant_id: tenantId, filename: file.name, file_path: path, file_size: file.size, mime_type: "application/pdf", document_type: "commercial_drawings", description: "Full plan set", metadata: { commercial_project_id: projectId, category: "drawings", plan_set: true } });
-    const { data, error } = await supabase.functions.invoke("commercial-plan-takeoff", { body: { project_id: projectId, file_path: path, file_name: file.name } });
+    await db.from("documents").insert({ tenant_id: tenantId, filename: file.name, file_path: path, file_size: file.size, mime_type: "application/pdf", document_type: "commercial_drawings", description: "Full plan set", metadata: { commercial_project_id: pid, category: "drawings", plan_set: true } });
+    const { data, error } = await supabase.functions.invoke("commercial-plan-takeoff", { body: { project_id: pid, file_path: path, file_name: file.name } });
     if (error) { const ctx = await (error as any).context?.json?.().catch(() => null); throw new Error(ctx?.error || error.message); }
     if (data?.error) throw new Error(data.error);
-    toast.message(`Read ${data.sheets} sheets`, { description: data.roof_system?.membrane ? `Specified system: ${data.roof_system.membrane}` : undefined });
+    toast.message(`Read ${data.sheets} sheets`, { description: [data.filled?.length ? `Filled ${data.filled.length} project details` : "", data.roof_system?.membrane ? `System: ${data.roof_system.membrane}` : ""].filter(Boolean).join(" · ") || undefined });
+    if (!projectId) navigate(`/commercial/${pid}`);
     return data.quantities ?? 0;
   };
 
@@ -92,11 +99,11 @@ export function CommercialImportDialog({ open, onOpenChange, onDone, projectId }
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader><DialogTitle>Import existing data</DialogTitle></DialogHeader>
-        <Tabs defaultValue={projectId ? "plans" : "edge"}>
+        <Tabs defaultValue={initialTab ?? "plans"}>
           <TabsList className="grid grid-cols-4"><TabsTrigger value="plans">Plan set</TabsTrigger><TabsTrigger value="edge">EDGE</TabsTrigger><TabsTrigger value="procore">Procore</TabsTrigger><TabsTrigger value="drive">Shared drive</TabsTrigger></TabsList>
           <TabsContent value="plans" className="space-y-2 text-sm">
-            <p className="text-muted-foreground">Upload the full plan set PDF (up to 45 MB). AI indexes every sheet, reads the roof plans, details and specs, and fills the takeoff (roof areas, edges, parapets, drains, curbs, penetrations) plus the specified roof system. Everything lands as "Review required". Large sets take a few minutes. {!projectId && "Open a project first."}</p>
-            <FilePick accept=".pdf,application/pdf" disabled={busy || !projectId} label={busy ? "Reading plans… this can take a few minutes" : undefined} onFile={(f) => run("plan_set", () => importPlans(f), f.name)} />
+            <p className="text-muted-foreground">Upload the full plan set PDF (up to 45 MB). {projectId ? "" : "A new project is created and filled from the title block (name, address, project #, owner, architect, engineer, GC, bid date, roof area). "}AI indexes every sheet, reads the roof plans, details and specs, and fills the takeoff plus the specified roof system. Quantities land as "Review required". Large sets take a few minutes.</p>
+            <FilePick accept=".pdf,application/pdf" disabled={busy} label={busy ? "Reading plans… this can take a few minutes" : "Import plan set PDF"} onFile={(f) => run("plan_set", () => importPlans(f), f.name)} />
           </TabsContent>
           <TabsContent value="edge" className="space-y-2 text-sm">
             <p className="text-muted-foreground">EDGE takeoff/estimate export as CSV. Columns like Description, Quantity, UOM, Section, Sheet are detected. All imported quantities start as "Review required".</p>
