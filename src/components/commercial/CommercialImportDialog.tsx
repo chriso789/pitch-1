@@ -131,8 +131,9 @@ export function CommercialImportDialog({ open, onOpenChange, onDone, projectId, 
         <Tabs defaultValue={initialTab ?? "plans"}>
           <TabsList className="grid grid-cols-4"><TabsTrigger value="plans">Plan set</TabsTrigger><TabsTrigger value="edge">EDGE</TabsTrigger><TabsTrigger value="procore">Procore</TabsTrigger><TabsTrigger value="drive">Shared drive</TabsTrigger></TabsList>
           <TabsContent value="plans" className="space-y-2 text-sm">
-            <p className="text-muted-foreground">Upload the full plan set PDF (up to 45 MB). {projectId ? "" : "A new project is created and filled from the title block (name, address, project #, owner, architect, engineer, GC, bid date, roof area). "}AI indexes every sheet, reads the roof plans, details and specs, and fills the takeoff plus the specified roof system. Quantities land as "Review required". Large sets take a few minutes.</p>
-            <FilePick accept=".pdf,application/pdf" disabled={busy} label={busy ? "Reading plans… this can take a few minutes" : "Import plan set PDF"} onFile={(f) => run("plan_set", () => importPlans(f), f.name)} />
+            <p className="text-muted-foreground">Upload the full plan set PDF — any size. Big sets are split into page ranges automatically and read part by part. {projectId ? "" : "A new project is created and filled from the title block (name, address, project #, owner, architect, engineer, GC, bid date, roof area). "}AI indexes every sheet, reads the roof plans, details and specs, and fills the takeoff plus the specified roof system. Quantities land as "Review required". Large sets take a few minutes.</p>
+            <FilePick accept=".pdf,application/pdf" disabled={busy} label={busy ? (step ?? "Reading plans… this can take a few minutes") : "Import plan set PDF"} onFile={(f) => run("plan_set", () => importPlans(f), f.name)} />
+            {busy && step && <p className="text-xs text-muted-foreground">{step}</p>}
           </TabsContent>
           <TabsContent value="edge" className="space-y-2 text-sm">
             <p className="text-muted-foreground">EDGE takeoff/estimate export as CSV. Columns like Description, Quantity, UOM, Section, Sheet are detected. All imported quantities start as "Review required".</p>
