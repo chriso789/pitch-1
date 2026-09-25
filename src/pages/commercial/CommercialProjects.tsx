@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Building2, Plus, Upload } from "lucide-react";
+import { Building2, FileText, Plus, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { CommercialImportDialog } from "@/components/commercial/CommercialImportDialog";
 
@@ -22,6 +22,7 @@ export default function CommercialProjects() {
   const [filter, setFilter] = useState("all");
   const [open, setOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [importTab, setImportTab] = useState("plans");
   const [form, setForm] = useState<any>({ name: "", project_number: "", gc_name: "", client_name: "", address: "", bid_due_date: "" });
 
   const load = async () => {
@@ -46,7 +47,8 @@ export default function CommercialProjects() {
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2"><Building2 className="h-6 w-6 text-primary" /><h1 className="text-2xl font-bold">Commercial</h1></div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setImportOpen(true)}><Upload className="h-4 w-4 mr-1" />Import</Button>
+            <Button variant="outline" onClick={() => { setImportTab("edge"); setImportOpen(true); }}><Upload className="h-4 w-4 mr-1" />Import EDGE / Procore</Button>
+            <Button variant="secondary" onClick={() => { setImportTab("plans"); setImportOpen(true); }}><FileText className="h-4 w-4 mr-1" />Import plan set</Button>
             <Button onClick={() => setOpen(true)}><Plus className="h-4 w-4 mr-1" />New project</Button>
           </div>
         </div>
@@ -91,7 +93,7 @@ export default function CommercialProjects() {
           <DialogFooter><Button onClick={create}>Create</Button></DialogFooter>
         </DialogContent>
       </Dialog>
-      <CommercialImportDialog open={importOpen} onOpenChange={setImportOpen} onDone={load} />
+      <CommercialImportDialog key={importTab} open={importOpen} onOpenChange={setImportOpen} onDone={load} initialTab={importTab} />
     </GlobalLayout>
   );
 }

@@ -1,0 +1,1 @@
+REVOKE EXECUTE ON FUNCTION public.commercial_decide_version(uuid,text,text) FROM PUBLIC, anon;
