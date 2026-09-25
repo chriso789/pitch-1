@@ -16,6 +16,7 @@ export function CommercialImportDialog({ open, onOpenChange, onDone, projectId, 
   const tenantId = useEffectiveTenantId();
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
+  const [step, setStep] = useState<string | null>(null);
 
   const logJob = (source: string, file_name: string, rows: number, error?: string) =>
     db.from("commercial_import_jobs").insert({ tenant_id: tenantId, source, file_name, rows_imported: rows, status: error ? "failed" : "completed", error });
