@@ -67,6 +67,20 @@ export function CommercialImportDialog({ open, onOpenChange, onDone, projectId }
     return n;
   };
 
+  const importPlans = async (file: File) => {
+    if (!projectId) throw new Error("Open a project first");
+    if (file.size > 45 * 1024 * 1024) throw new Error("Plan set is over 45 MB — split it into smaller PDFs (e.g. roof sheets + specs).");
+    const path = `${tenantId}/commercial/${projectId}/drawings/${Date.now()}-${file.name.replace(/[^\w.\-]/g, "_")}`;
+    const { error: upErr } = await supabase.storage.from("documents").upload(path, file, { contentType: "application/pdf" });
+    if (upErr) throw upErr;
+    await db.from("documents").insert({ tenant_id: tenantId, filename: file.name, file_path: path, file_size: file.size, mime_type: "application/pdf", document_type: "commercial_drawings", description: "Full plan set", metadata: { commercial_project_id: projectId, category: "drawings", plan_set: true } });
+    const { data, error } = await supabase.functions.invoke("commercial-plan-takeoff", { body: { project_id: projectId, file_path: path, file_name: file.name } });
+    if (error) { const ctx = await (error as any).context?.json?.().catch(() => null); throw new Error(ctx?.error || error.message); }
+    if (data?.error) throw new Error(data.error);
+    toast.message(`Read ${data.sheets} sheets`, { description: data.roof_system?.membrane ? `Specified system: ${data.roof_system.membrane}` : undefined });
+    return data.quantities ?? 0;
+  };
+
   const run = async (source: string, fn: () => Promise<number>, name: string) => {
     setBusy(true);
     try { const n = await fn(); await logJob(source, name, n); toast.success(`Imported ${n} records`); onDone?.(); onOpenChange(false); }
@@ -78,8 +92,12 @@ export function CommercialImportDialog({ open, onOpenChange, onDone, projectId }
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader><DialogTitle>Import existing data</DialogTitle></DialogHeader>
-        <Tabs defaultValue="edge">
-          <TabsList className="grid grid-cols-3"><TabsTrigger value="edge">EDGE</TabsTrigger><TabsTrigger value="procore">Procore</TabsTrigger><TabsTrigger value="drive">Shared drive</TabsTrigger></TabsList>
+        <Tabs defaultValue={projectId ? "plans" : "edge"}>
+          <TabsList className="grid grid-cols-4"><TabsTrigger value="plans">Plan set</TabsTrigger><TabsTrigger value="edge">EDGE</TabsTrigger><TabsTrigger value="procore">Procore</TabsTrigger><TabsTrigger value="drive">Shared drive</TabsTrigger></TabsList>
+          <TabsContent value="plans" className="space-y-2 text-sm">
+            <p className="text-muted-foreground">Upload the full plan set PDF (up to 45 MB). AI indexes every sheet, reads the roof plans, details and specs, and fills the takeoff (roof areas, edges, parapets, drains, curbs, penetrations) plus the specified roof system. Everything lands as "Review required". Large sets take a few minutes. {!projectId && "Open a project first."}</p>
+            <FilePick accept=".pdf,application/pdf" disabled={busy || !projectId} label={busy ? "Reading plans… this can take a few minutes" : undefined} onFile={(f) => run("plan_set", () => importPlans(f), f.name)} />
+          </TabsContent>
           <TabsContent value="edge" className="space-y-2 text-sm">
             <p className="text-muted-foreground">EDGE takeoff/estimate export as CSV. Columns like Description, Quantity, UOM, Section, Sheet are detected. All imported quantities start as "Review required".</p>
             <FilePick accept=".csv" disabled={busy} onFile={(f) => run("edge", () => importEdge(f), f.name)} />
@@ -101,11 +119,11 @@ export function CommercialImportDialog({ open, onOpenChange, onDone, projectId }
   );
 }
 
-function FilePick({ accept, disabled, onFile }: { accept: string; disabled: boolean; onFile: (f: File) => void }) {
+function FilePick({ accept, disabled, onFile, label }: { accept: string; disabled: boolean; onFile: (f: File) => void; label?: string }) {
   return (
     <Button variant="outline" className="w-full" disabled={disabled}
       onClick={() => { const i = document.createElement("input"); i.type = "file"; i.accept = accept; i.onchange = () => i.files?.[0] && onFile(i.files[0]); i.click(); }}>
-      {disabled ? "Importing…" : "Choose file"}
+      {label ?? (disabled ? "Importing…" : "Choose file")}
     </Button>
   );
 }
