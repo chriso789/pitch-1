@@ -9668,6 +9668,50 @@ export type Database = {
           },
         ]
       }
+      commercial_estimate_approvals: {
+        Row: {
+          comments: string | null
+          created_at: string
+          decided_by: string | null
+          decision: string
+          id: string
+          step: string
+          tenant_id: string
+          updated_at: string
+          version_id: string
+        }
+        Insert: {
+          comments?: string | null
+          created_at?: string
+          decided_by?: string | null
+          decision: string
+          id?: string
+          step: string
+          tenant_id: string
+          updated_at?: string
+          version_id: string
+        }
+        Update: {
+          comments?: string | null
+          created_at?: string
+          decided_by?: string | null
+          decision?: string
+          id?: string
+          step?: string
+          tenant_id?: string
+          updated_at?: string
+          version_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commercial_estimate_approvals_version_id_fkey"
+            columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_estimate_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       commercial_estimate_lines: {
         Row: {
           created_at: string
@@ -65168,6 +65212,14 @@ export type Database = {
       }
       cleanup_expired_canvass_sessions: { Args: never; Returns: undefined }
       cleanup_old_rate_limits: { Args: never; Returns: undefined }
+      commercial_decide_version: {
+        Args: { _comments?: string; _decision: string; _version_id: string }
+        Returns: Json
+      }
+      commercial_required_steps: {
+        Args: { _amount: number }
+        Returns: string[]
+      }
       complete_presentation_session: {
         Args: { p_session_id: string; p_signature_data?: Json }
         Returns: undefined
