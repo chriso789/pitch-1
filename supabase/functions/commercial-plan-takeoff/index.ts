@@ -79,9 +79,36 @@ Deno.serve(async (req) => {
     if (!path.startsWith(`${project.tenant_id}/`)) return json({ error: "Invalid file path" }, 400);
 
     const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const jobId = crypto.randomUUID();
+    const setJob = async (patch: Record<string, unknown>) => {
+      const { data: p } = await admin.from("commercial_projects").select("metadata").eq("id", projectId).single();
+      const m = { ...(p?.metadata ?? {}) };
+      m.plan_jobs = { ...(m.plan_jobs ?? {}), [jobId]: { ...(m.plan_jobs?.[jobId] ?? {}), ...patch, updated_at: new Date().toISOString() } };
+      await admin.from("commercial_projects").update({ metadata: m }).eq("id", projectId);
+    };
+    await setJob({ status: "running", chunk_index: body.chunk_index ?? 0 });
+    const work = (async () => {
+      try {
+        const r = await processPlans(admin, key, projectId, path, fileName, body);
+        await setJob({ status: "done", result: r });
+      } catch (e) {
+        console.error(e);
+        await setJob({ status: "error", error: e instanceof Error ? e.message : "Unexpected error" });
+      }
+    })();
+    // @ts-ignore EdgeRuntime is provided by Supabase
+    if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(work); else await work;
+    return json({ ok: true, job_id: jobId }, 202);
+  } catch (e) {
+    console.error(e);
+    return json({ error: e instanceof Error ? e.message : "Unexpected error" }, 500);
+  }
+});
+
+async function processPlans(admin: any, key: string, projectId: string, path: string, fileName: string, body: any) {
     const { data: file, error: dlErr } = await admin.storage.from("documents").download(path);
-    if (dlErr || !file) return json({ error: "Could not read uploaded file" }, 400);
-    if (file.size > 45 * 1024 * 1024) return json({ error: "This part of the plan set is still too large to read. Re-upload it and it will be split into smaller page ranges." }, 400);
+    if (dlErr || !file) throw new Error("Could not read uploaded file");
+    if (file.size > 45 * 1024 * 1024) throw new Error("This part of the plan set is still too large to read.");
     const b64 = encodeBase64(new Uint8Array(await file.arrayBuffer()));
 
     const res = await fetch("https://ai.gateway.lovable.dev/v1/responses", {
@@ -100,7 +127,7 @@ Deno.serve(async (req) => {
     if (!res.ok || !res.body) {
       const t = await res.text();
       const msg = res.status === 402 ? "AI credits exhausted — add credits in Settings → Plans & credits." : res.status === 429 ? "AI is busy, try again in a minute." : `AI error (${res.status}): ${t.slice(0, 200)}`;
-      return json({ error: msg }, res.status);
+      throw new Error(msg);
     }
 
     // accumulate SSE
@@ -116,7 +143,8 @@ Deno.serve(async (req) => {
         try { const ev = JSON.parse(l.slice(5)); if (ev.type === "response.output_text.delta") out += ev.delta; if (ev.type === "error" || ev.type === "response.failed") throw new Error(ev.message ?? ev.response?.error?.message ?? "AI failed"); } catch (e) { if (e instanceof Error && e.message !== "Unexpected end of JSON input" && !(e instanceof SyntaxError)) throw e; }
       }
     }
-    if (!out.trim()) return json({ error: "The AI couldn't read this plan set (possibly scanned or refused). Try a clearer PDF." }, 422);
+    if (!out.trim()) throw new Error("The AI couldn't read this plan set (possibly scanned or refused). Try a clearer PDF.");
+    const { data: project } = await admin.from("commercial_projects").select("*").eq("id", projectId).single();
     const result = JSON.parse(out);
 
     const rows = (result.quantities ?? []).filter((q: any) => q.value > 0).map((q: any) => ({
@@ -170,9 +198,5 @@ Deno.serve(async (req) => {
       },
     }).eq("id", projectId);
 
-    return json({ ok: true, quantities: rows.length, sheets: result.sheets?.length ?? 0, roof_system: result.roof_system, scope_notes: result.scope_notes, filled: Object.keys(patch) });
-  } catch (e) {
-    console.error(e);
-    return json({ error: e instanceof Error ? e.message : "Unexpected error" }, 500);
-  }
-});
+    return { quantities: rows.length, sheets: result.sheets?.length ?? 0, roof_system: result.roof_system, filled: Object.keys(patch) };
+}
