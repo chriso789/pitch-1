@@ -81,7 +81,7 @@ Deno.serve(async (req) => {
     const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const { data: file, error: dlErr } = await admin.storage.from("documents").download(path);
     if (dlErr || !file) return json({ error: "Could not read uploaded file" }, 400);
-    if (file.size > 45 * 1024 * 1024) return json({ error: "Plan set is over 45 MB — split it into smaller PDFs (e.g. roof sheets + specs)." }, 400);
+    if (file.size > 45 * 1024 * 1024) return json({ error: "This part of the plan set is still too large to read. Re-upload it and it will be split into smaller page ranges." }, 400);
     const b64 = encodeBase64(new Uint8Array(await file.arrayBuffer()));
 
     const res = await fetch("https://ai.gateway.lovable.dev/v1/responses", {
