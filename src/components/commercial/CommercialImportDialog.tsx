@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { parseCsv, pick, guessDriver } from "@/lib/commercial/engine";
+import { splitPdfBySize } from "@/lib/commercial/splitPdf";
 
 const db = supabase as any;
 
