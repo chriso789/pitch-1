@@ -121,7 +121,7 @@ export function CommercialImportDialog({ open, onOpenChange, onDone, projectId, 
     setBusy(true);
     try { const n = await fn(); await logJob(source, name, n); toast.success(`Imported ${n} records`); onDone?.(); onOpenChange(false); }
     catch (e: any) { await logJob(source, name, 0, e.message); toast.error(e.message); }
-    finally { setBusy(false); }
+    finally { setBusy(false); setStep(null); }
   };
 
   return (
