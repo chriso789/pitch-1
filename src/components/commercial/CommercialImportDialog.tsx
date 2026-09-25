@@ -94,7 +94,7 @@ export function CommercialImportDialog({ open, onOpenChange, onDone, projectId, 
 
     // Split oversized sets into page ranges the reader can handle
     setStep("Preparing plan set…");
-    const chunks = await splitPdfBySize(file, 28 * 1024 * 1024, (m) => setStep(m));
+    const chunks = await splitPdfBySize(file, 15 * 1024 * 1024, (m) => setStep(m));
     let quantities = 0, sheets = 0, filled = 0, membrane = "";
 
     for (let i = 0; i < chunks.length; i++) {
@@ -115,6 +115,20 @@ export function CommercialImportDialog({ open, onOpenChange, onDone, projectId, 
       });
       if (error) { const ctx = await (error as any).context?.json?.().catch(() => null); throw new Error(ctx?.error || error.message); }
       if (data?.error) throw new Error(data.error);
+      const jobId = data?.job_id as string;
+      const started = Date.now();
+      let job: any = null;
+      while (Date.now() - started < 20 * 60 * 1000) {
+        await new Promise((r) => setTimeout(r, 5000));
+        const { data: p } = await db.from("commercial_projects").select("metadata").eq("id", pid).single();
+        job = (p as any)?.metadata?.plan_jobs?.[jobId];
+        if (job?.status === "done" || job?.status === "error") break;
+        const secs = Math.round((Date.now() - started) / 1000);
+        setStep(`${chunks.length > 1 ? `Reading pages ${c.firstPage}–${c.lastPage} (part ${i + 1} of ${chunks.length})` : "Reading plans"}… ${Math.floor(secs / 60)}m ${secs % 60}s`);
+      }
+      if (job?.status === "error") throw new Error(job.error || "Plan reading failed");
+      if (job?.status !== "done") throw new Error("Plan reading is taking too long — check the project in a few minutes.");
+      Object.assign(data, job.result);
       quantities += data.quantities ?? 0;
       sheets += data.sheets ?? 0;
       filled += data.filled?.length ?? 0;
