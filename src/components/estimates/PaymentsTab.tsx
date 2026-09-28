@@ -1405,6 +1405,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
         contractTotal: sellingPrice,
         totalPaid: totalPaid || sellingPrice,
         warrantyText: workmanshipWarranty,
+        includePayments: includePaymentsOnInvoice,
         paymentHistory: (payments || []).map((p: any) => ({
           date: format(new Date(p.payment_date), 'MMM d, yyyy'),
           amount: Number(p.amount) || 0,
@@ -1503,6 +1504,16 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
               )}
               {generatingCloseout ? 'Creating…' : 'Create Closing Docs'}
             </Button>
+          </div>
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="closeout-include-payments"
+              checked={includePaymentsOnInvoice}
+              onCheckedChange={(v) => setIncludePaymentsOnInvoice(v === true)}
+            />
+            <label htmlFor="closeout-include-payments" className="text-xs text-muted-foreground cursor-pointer">
+              Show payment history on the final invoice
+            </label>
           </div>
           {closeoutDocs.length > 0 && (
             <div className="space-y-1 pt-1 border-t border-green-500/20">
