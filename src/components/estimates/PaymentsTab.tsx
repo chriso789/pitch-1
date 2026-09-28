@@ -148,6 +148,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   // Closeout (closing docs) state
   const [generatingCloseout, setGeneratingCloseout] = useState(false);
   const [closeoutDocs, setCloseoutDocs] = useState<{ label: string; filePath?: string; filename: string }[]>([]);
+  const [includePaymentsOnInvoice, setIncludePaymentsOnInvoice] = useState(true);
 
   // Fetch latest estimate from enhanced_estimates (any status except void/cancelled)
   const { data: enhancedEstimates } = useQuery({
