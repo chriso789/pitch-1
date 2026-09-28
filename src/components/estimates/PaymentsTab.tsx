@@ -17,7 +17,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger 
 } from '@/components/ui/dialog';
 import { 
-  DollarSign, Plus, CreditCard, FileText, Loader2, Receipt, ChevronDown, Trash2, Copy, Link2, CheckCircle2, Camera, Building2, AlertCircle, Pencil, ExternalLink
+  DollarSign, Plus, CreditCard, FileText, FileCheck, Loader2, Receipt, ChevronDown, Trash2, Copy, Link2, CheckCircle2, Camera, Building2, AlertCircle, Pencil, ExternalLink
 
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -32,6 +32,7 @@ import { resolveInvoicePayUrl } from '@/lib/invoices/resolveInvoicePayUrl';
 import { useSearchParams } from 'react-router-dom';
 import { InvoiceEmailActions } from '@/components/invoices/InvoiceEmailActions';
 import { InvoiceShareActions } from '@/components/invoices/InvoiceShareActions';
+import { generateCloseoutDocuments } from '@/lib/closeout/closeoutPdfGenerator';
 
 import {
   computeRemainingInvoiceBalance,
@@ -143,6 +144,10 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   const [editDueDate, setEditDueDate] = useState('');
   const [editNotes, setEditNotes] = useState('');
   const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
+
+  // Closeout (closing docs) state
+  const [generatingCloseout, setGeneratingCloseout] = useState(false);
+  const [closeoutDocs, setCloseoutDocs] = useState<{ label: string; filePath?: string; filename: string }[]>([]);
 
   // Fetch latest estimate from enhanced_estimates (any status except void/cancelled)
   const { data: enhancedEstimates } = useQuery({
