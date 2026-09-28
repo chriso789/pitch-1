@@ -194,6 +194,8 @@ export interface CloseoutInput {
   contractTotal: number;
   totalPaid: number;
   paymentHistory: Array<{ date: string; amount: number; method?: string; reference?: string }>;
+  /** When false, the payment history list is omitted from the paid-in-full invoice. Defaults to true. */
+  includePayments?: boolean;
   scopeOfWork?: string;
   warrantyText?: string;
 }
@@ -237,7 +239,7 @@ export async function generateCloseoutDocuments(input: CloseoutInput): Promise<C
     customer: input.customer,
     alreadyPaid: input.totalPaid || input.contractTotal,
     contractTotal: input.contractTotal,
-    paymentHistory: input.paymentHistory,
+    paymentHistory: input.includePayments === false ? [] : input.paymentHistory,
   }, { singlePage: true });
 
   const invoiceFilename = `Paid-In-Full-${invoiceNumber}.pdf`;
