@@ -1335,6 +1335,118 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
     });
   };
 
+  // Generate closing documents (Paid-In-Full invoice + Completion Certificate
+  // with workmanship warranty) once the contract balance is fully paid.
+  const handleGenerateCloseout = async () => {
+    if (!effectiveTenantId) {
+      toast.error('No active tenant');
+      return;
+    }
+    setGeneratingCloseout(true);
+    setCloseoutDocs([]);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not signed in');
+
+      // Load customer from the pipeline entry's contact
+      let customer = { name: '', address: '', email: '', phone: '' };
+      try {
+        const { data: pe } = await supabase
+          .from('pipeline_entries')
+          .select('contact_id, contacts!pipeline_entries_contact_id_fkey(first_name,last_name,email,phone,address_street,address_city,address_state,address_zip)')
+          .eq('id', pipelineEntryId)
+          .maybeSingle();
+        const c: any = (pe as any)?.contacts;
+        if (c) {
+          customer = {
+            name: [c.first_name, c.last_name].filter(Boolean).join(' '),
+            email: c.email || '',
+            phone: c.phone || '',
+            address: [
+              c.address_street,
+              [c.address_city, c.address_state, c.address_zip].filter(Boolean).join(', '),
+            ].filter(Boolean).join('\n'),
+          };
+        }
+      } catch (e) {
+        console.warn('Could not load contact for closeout', e);
+      }
+
+      // Load tenant workmanship warranty verbiage
+      let workmanshipWarranty: string | undefined;
+      try {
+        const { data: tenantRow } = await supabase
+          .from('tenants')
+          .select('warranty_terms')
+          .eq('id', effectiveTenantId)
+          .maybeSingle();
+        const raw = (tenantRow as any)?.warranty_terms;
+        if (raw) {
+          try {
+            const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            if (parsed?.workmanship && String(parsed.workmanship).trim()) {
+              workmanshipWarranty = String(parsed.workmanship).trim();
+            }
+          } catch {
+            if (typeof raw === 'string' && raw.trim()) workmanshipWarranty = raw.trim();
+          }
+        }
+      } catch (e) {
+        console.warn('Could not load tenant warranty terms', e);
+      }
+
+      const result = await generateCloseoutDocuments({
+        tenantId: effectiveTenantId,
+        pipelineEntryId,
+        userId: user.id,
+        company: companyInfo,
+        customer,
+        contractTotal: sellingPrice,
+        totalPaid: totalPaid || sellingPrice,
+        warrantyText: workmanshipWarranty,
+        paymentHistory: (payments || []).map((p: any) => ({
+          date: format(new Date(p.payment_date), 'MMM d, yyyy'),
+          amount: Number(p.amount) || 0,
+          method: p.payment_method || '',
+          reference: p.reference_number || '',
+        })),
+      });
+
+      if (result.error) throw new Error(result.error);
+
+      const docs: { label: string; filePath?: string; filename: string }[] = [];
+      if (result.invoiceDocumentId) {
+        docs.push({ label: 'Paid-In-Full Invoice', filePath: result.invoicePath, filename: result.invoiceFilename });
+      }
+      if (result.certificateDocumentId) {
+        docs.push({ label: 'Completion Certificate & Warranty', filePath: result.certificatePath, filename: result.certificateFilename });
+      }
+      setCloseoutDocs(docs);
+
+      queryClient.invalidateQueries({ queryKey: ['documents', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['project-ar-invoices', pipelineEntryId] });
+      toast.success('Closing documents created and saved to Documents');
+    } catch (err: any) {
+      console.error('Closeout generation failed', err);
+      toast.error(err?.message || 'Failed to generate closing documents');
+    } finally {
+      setGeneratingCloseout(false);
+    }
+  };
+
+  const handlePreviewCloseoutDoc = async (filePath?: string) => {
+    try {
+      if (!filePath) throw new Error('File path missing');
+      const { data, error } = await supabase.storage
+        .from('documents')
+        .createSignedUrl(filePath, 3600);
+      if (error || !data?.signedUrl) throw new Error(error?.message || 'Could not generate preview link');
+      window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to open preview');
+    }
+  };
+
   if (loadingInvoices || loadingPayments) {
     return (
       <div className="flex items-center justify-center py-12">
