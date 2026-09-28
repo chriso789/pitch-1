@@ -1477,6 +1477,51 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
         </div>
       </div>
 
+      {/* Closing docs — shown once the contract is paid in full */}
+      {sellingPrice > 0 && contractBalance <= 0.005 && (
+        <div className="rounded-lg border border-green-500/30 bg-green-500/5 p-4 space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-green-600" />
+              <div>
+                <p className="text-sm font-semibold">Paid in full</p>
+                <p className="text-xs text-muted-foreground">
+                  Create the closing package: Paid-In-Full invoice and Completion Certificate with workmanship warranty.
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              onClick={handleGenerateCloseout}
+              disabled={generatingCloseout}
+            >
+              {generatingCloseout ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <FileCheck className="h-4 w-4 mr-1" />
+              )}
+              {generatingCloseout ? 'Creating…' : 'Create Closing Docs'}
+            </Button>
+          </div>
+          {closeoutDocs.length > 0 && (
+            <div className="space-y-1 pt-1 border-t border-green-500/20">
+              {closeoutDocs.map((d) => (
+                <button
+                  key={d.filename}
+                  type="button"
+                  onClick={() => handlePreviewCloseoutDoc(d.filePath)}
+                  className="flex items-center gap-2 text-sm text-primary hover:underline"
+                >
+                  <FileText className="h-4 w-4" />
+                  {d.label} — {d.filename}
+                </button>
+              ))}
+              <p className="text-xs text-muted-foreground">Also saved under this project's Documents.</p>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Action Buttons */}
       <div className="flex gap-2">
         <Dialog open={showInvoiceDialog} onOpenChange={setShowInvoiceDialog}>
