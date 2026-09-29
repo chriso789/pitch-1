@@ -210,35 +210,6 @@ export interface CloseoutResult {
   error?: string;
 }
 
-function htmlToPlainText(value: unknown): string {
-  if (typeof value !== 'string' || !value.trim()) return '';
-  const doc = new DOMParser().parseFromString(value, 'text/html');
-  return (doc.body.textContent || '')
-    .replace(/\u00a0/g, ' ')
-    .replace(/[ \t]+/g, ' ')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-}
-
-function extractWorkScope(lineItems: unknown): string {
-  if (!lineItems || typeof lineItems !== 'object' || Array.isArray(lineItems)) return '';
-  const sections = lineItems as Record<string, unknown>;
-  const items = [
-    ...(Array.isArray(sections.labor) ? sections.labor : []),
-    ...(Array.isArray(sections.materials) ? sections.materials : []),
-  ];
-  const details = items
-    .map((item) => {
-      if (!item || typeof item !== 'object') return '';
-      const row = item as Record<string, unknown>;
-      const value = row.description || row.item_name;
-      return typeof value === 'string' ? value.trim() : '';
-    })
-    .filter((value, index, values) => Boolean(value) && values.indexOf(value) === index)
-    .slice(0, 10);
-  return details.map((detail) => `• ${detail}`).join('\n');
-}
-
 function normalizeEstimateItems(lineItems: unknown): Array<Record<string, unknown>> {
   if (!lineItems || typeof lineItems !== 'object' || Array.isArray(lineItems)) return [];
   const sections = lineItems as Record<string, unknown>;
