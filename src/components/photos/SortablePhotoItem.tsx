@@ -235,9 +235,9 @@ export const SortablePhotoItem: React.FC<SortablePhotoItemProps> = ({
       <div className="aspect-square relative">
         <button
           type="button"
-          className="block w-full h-full cursor-zoom-in"
-          onClick={onPreview}
-          aria-label="Open photo preview"
+          className={cn('block w-full h-full', selectionMode ? 'cursor-pointer' : 'cursor-zoom-in')}
+          onClick={selectionMode ? onSelect : onPreview}
+          aria-label={selectionMode ? 'Toggle photo selection' : 'Open photo preview'}
         >
           <SafeImage
             src={photo.file_url}
@@ -249,26 +249,28 @@ export const SortablePhotoItem: React.FC<SortablePhotoItemProps> = ({
 
         {/* Drag handle & checkbox */}
         <div className="absolute inset-0 pointer-events-none bg-black/0 group-hover:bg-black/20 transition-colors">
-          <button
-            className="pointer-events-auto absolute top-2 left-2 p-1.5 rounded bg-black/60 hover:bg-black/80 text-white cursor-grab active:cursor-grabbing touch-none shadow-md"
-            title="Drag to reorder"
-            aria-label="Drag to reorder"
-            {...attributes}
-            {...listeners}
-          >
-            <GripVertical className="h-4 w-4" />
-          </button>
+          {!selectionMode && (
+            <button
+              className="pointer-events-auto absolute top-2 left-2 p-1.5 rounded bg-black/60 hover:bg-black/80 text-white cursor-grab active:cursor-grabbing touch-none shadow-md"
+              title="Drag to reorder"
+              aria-label="Drag to reorder"
+              {...attributes}
+              {...listeners}
+            >
+              <GripVertical className="h-4 w-4" />
+            </button>
+          )}
 
-          <div 
+          <div
             className={cn(
               'pointer-events-auto absolute top-2 right-2 transition-opacity',
-              isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+              selectionMode || isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
             )}
           >
-            <Checkbox 
-              checked={isSelected} 
+            <Checkbox
+              checked={isSelected}
               onCheckedChange={onSelect}
-              className="bg-white/90 border-white"
+              className="h-5 w-5 bg-white/90 border-white data-[state=checked]:bg-primary data-[state=checked]:border-primary"
             />
           </div>
         </div>
