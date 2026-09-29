@@ -210,6 +210,16 @@ export interface CloseoutResult {
   error?: string;
 }
 
+function htmlToPlainText(value: unknown): string {
+  if (typeof value !== 'string' || !value.trim()) return '';
+  const doc = new DOMParser().parseFromString(value, 'text/html');
+  return (doc.body.textContent || '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 
 export async function generateCloseoutDocuments(input: CloseoutInput): Promise<CloseoutResult> {
   const today = new Date();
@@ -217,6 +227,37 @@ export async function generateCloseoutDocuments(input: CloseoutInput): Promise<C
   const stamp = format(today, 'yyyyMMdd-HHmmss');
   const invoiceNumber = `PIF-${stamp}`;
   const certificateNumber = `COC-${stamp}`;
+
+  // The final invoice must identify the converted job, not replace it with a
+  // generic closeout description. Load the canonical job and its converted
+  // estimate here so every closeout entry point produces the same document.
+  const [{ data: job }, { data: estimate }] = await Promise.all([
+    supabase
+      .from('jobs')
+      .select('job_number, name, description, address_street, roof_type')
+      .eq('tenant_id', input.tenantId)
+      .eq('pipeline_entry_id', input.pipelineEntryId)
+      .eq('is_deleted', false)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from('enhanced_estimates')
+      .select('estimate_number, display_name, short_description, scope_of_work_html, customer_address')
+      .eq('tenant_id', input.tenantId)
+      .eq('pipeline_entry_id', input.pipelineEntryId)
+      .not('status', 'in', '(rejected,expired)')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  const jobName = job?.name || estimate?.display_name || 'Converted Project';
+  const jobDescription =
+    job?.description ||
+    estimate?.short_description ||
+    htmlToPlainText(estimate?.scope_of_work_html).slice(0, 900);
+  const jobAddress = job?.address_street || estimate?.customer_address || input.customer.address;
 
   // ---------- PAID-IN-FULL INVOICE ----------
   const pifBlob = await generateInvoicePdfBlob({
@@ -227,7 +268,7 @@ export async function generateCloseoutDocuments(input: CloseoutInput): Promise<C
       'Final invoice — PAID IN FULL. Thank you for your business! This document confirms that all contract amounts have been received and the project is closed out.',
     lineItems: [
       {
-        description: 'Contract — Paid in Full (Final Closeout)',
+        description: `${jobName}${job?.job_number ? ` — Job ${job.job_number}` : ''}`,
         qty: 1,
         unit: 'ea',
         unit_cost: input.contractTotal,
@@ -240,6 +281,14 @@ export async function generateCloseoutDocuments(input: CloseoutInput): Promise<C
     alreadyPaid: input.totalPaid || input.contractTotal,
     contractTotal: input.contractTotal,
     paymentHistory: input.includePayments === false ? [] : input.paymentHistory,
+    projectDetails: {
+      projectName: jobName,
+      jobNumber: job?.job_number,
+      jobType: job?.roof_type,
+      propertyAddress: jobAddress,
+      description: jobDescription,
+      estimateNumber: estimate?.estimate_number,
+    },
   }, { singlePage: true });
 
   const invoiceFilename = `Paid-In-Full-${invoiceNumber}.pdf`;
