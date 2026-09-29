@@ -791,34 +791,38 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
             </div>
           )}
 
-          {/* Category filter */}
-          <Select value={filterCategory} onValueChange={setFilterCategory}>
-            <SelectTrigger className="h-10 w-full text-sm sm:h-8 sm:w-[130px] sm:text-xs">
-              <SelectValue placeholder="All Photos" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Photos</SelectItem>
-              {CATEGORY_OPTIONS.map(cat => (
-                <SelectItem key={cat.value} value={cat.value}>
-                  {cat.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {photos.length > 0 && (
+            <>
+              {/* Category filter */}
+              <Select value={filterCategory} onValueChange={setFilterCategory}>
+                <SelectTrigger className="h-10 w-full text-sm sm:h-8 sm:w-[130px] sm:text-xs">
+                  <SelectValue placeholder="All Photos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Photos</SelectItem>
+                  {CATEGORY_OPTIONS.map(cat => (
+                    <SelectItem key={cat.value} value={cat.value}>
+                      {cat.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
-          {/* Sort mode — drives both the gallery order and the exported
-              Photo Report, so field crews can hand clients a chronological
-              set with the earliest-taken photos first. */}
-          <Select value={sortMode} onValueChange={(v) => setSortMode(v as typeof sortMode)}>
-            <SelectTrigger className="h-10 w-full text-sm sm:h-8 sm:w-[140px] sm:text-xs">
-              <SelectValue placeholder="Sort" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="manual">Manual order</SelectItem>
-              <SelectItem value="oldest">Oldest first</SelectItem>
-              <SelectItem value="newest">Newest first</SelectItem>
-            </SelectContent>
-          </Select>
+              {/* Sort mode — drives both the gallery order and the exported
+                  Photo Report, so field crews can hand clients a chronological
+                  set with the earliest-taken photos first. */}
+              <Select value={sortMode} onValueChange={(v) => setSortMode(v as typeof sortMode)}>
+                <SelectTrigger className="h-10 w-full text-sm sm:h-8 sm:w-[140px] sm:text-xs">
+                  <SelectValue placeholder="Sort" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="manual">Manual order</SelectItem>
+                  <SelectItem value="oldest">Oldest first</SelectItem>
+                  <SelectItem value="newest">Newest first</SelectItem>
+                </SelectContent>
+              </Select>
+            </>
+          )}
         </div>
 
 
