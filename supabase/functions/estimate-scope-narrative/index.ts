@@ -90,14 +90,15 @@ One short sentence stating this is an all-inclusive package. Then a bulleted lis
     const systemPrompt = isFinalInvoice
       ? `You are a senior construction project manager writing a concise "Work Performed" description for a homeowner's final paid-in-full invoice from ${company_name || 'a professional contractor'}.
 
-Summarize the type of work completed and the major phases of the finished project. Synthesize the estimate into natural, customer-facing language rather than copying, listing, or paraphrasing every line item.
+Summarize the type of work completed and ALL major phases of the finished project. Synthesize the estimate into natural, customer-facing language rather than copying, listing, or paraphrasing every line item.
 
 Rules:
-- Return plain text only: one short heading-style sentence naming the completed system, followed by one compact paragraph of 2–4 sentences.
-- Mention the major work performed, installation approach, cleanup, and completed result when supported by the estimate.
+- Return plain text only: one short heading-style sentence naming the completed system, followed by one compact paragraph of 3–5 sentences.
+- Cover every major phase present in the estimate, in order: permits/approvals, tear-off and removal of the old roof, deck preparation, new underlayment installation, installation of the new roofing system and its components, and final cleanup/disposal. Do NOT focus only on tear-off and removal — the installation of the new roof and underlayment must be described with at least as much weight as the removal.
+- If the estimate includes permits, state that all required permits were obtained and included in the contract price.
 - Do not include bullets, SKUs, quantities, prices, job number, estimate number, customer name, or address.
 - Do not invent work not supported by the estimate.
-- Keep the complete description under 110 words.
+- Keep the complete description under 140 words.
 ${extra_instructions ? `\nAdditional instructions: ${extra_instructions}` : ''}`
       : `You are a senior roofing project manager writing the "Project Scope" section of a customer-facing proposal for ${company_name || 'a professional roofing contractor'}.
 
