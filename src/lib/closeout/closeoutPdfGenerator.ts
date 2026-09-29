@@ -220,6 +220,25 @@ function htmlToPlainText(value: unknown): string {
     .trim();
 }
 
+function extractWorkScope(lineItems: unknown): string {
+  if (!lineItems || typeof lineItems !== 'object' || Array.isArray(lineItems)) return '';
+  const sections = lineItems as Record<string, unknown>;
+  const items = [
+    ...(Array.isArray(sections.labor) ? sections.labor : []),
+    ...(Array.isArray(sections.materials) ? sections.materials : []),
+  ];
+  const details = items
+    .map((item) => {
+      if (!item || typeof item !== 'object') return '';
+      const row = item as Record<string, unknown>;
+      const value = row.description || row.item_name;
+      return typeof value === 'string' ? value.trim() : '';
+    })
+    .filter((value, index, values) => Boolean(value) && values.indexOf(value) === index)
+    .slice(0, 10);
+  return details.map((detail) => `• ${detail}`).join('\n');
+}
+
 
 export async function generateCloseoutDocuments(input: CloseoutInput): Promise<CloseoutResult> {
   const today = new Date();
@@ -243,7 +262,7 @@ export async function generateCloseoutDocuments(input: CloseoutInput): Promise<C
       .maybeSingle(),
     supabase
       .from('enhanced_estimates')
-      .select('estimate_number, display_name, short_description, scope_of_work_html, customer_address')
+      .select('estimate_number, display_name, short_description, scope_of_work_html, customer_address, line_items')
       .eq('tenant_id', input.tenantId)
       .eq('pipeline_entry_id', input.pipelineEntryId)
       .not('status', 'in', '(rejected,expired)')
@@ -253,11 +272,12 @@ export async function generateCloseoutDocuments(input: CloseoutInput): Promise<C
   ]);
 
   const jobName = job?.name || estimate?.display_name || 'Converted Project';
-  const jobDescription =
-    job?.description ||
-    estimate?.short_description ||
-    htmlToPlainText(estimate?.scope_of_work_html).slice(0, 900);
-  const jobAddress = job?.address_street || estimate?.customer_address || input.customer.address;
+  const workType = estimate?.short_description || job?.roof_type?.replace(/_/g, ' ') || 'Contracted Work';
+  const workScope =
+    htmlToPlainText(estimate?.scope_of_work_html).slice(0, 1400) ||
+    extractWorkScope(estimate?.line_items) ||
+    (job?.description === 'Job created from approved pipeline entry' ? '' : job?.description) ||
+    workType;
 
   // ---------- PAID-IN-FULL INVOICE ----------
   const pifBlob = await generateInvoicePdfBlob({
@@ -268,7 +288,7 @@ export async function generateCloseoutDocuments(input: CloseoutInput): Promise<C
       'Final invoice — PAID IN FULL. Thank you for your business! This document confirms that all contract amounts have been received and the project is closed out.',
     lineItems: [
       {
-        description: `${jobName}${job?.job_number ? ` — Job ${job.job_number}` : ''}`,
+        description: workType,
         qty: 1,
         unit: 'ea',
         unit_cost: input.contractTotal,
@@ -281,12 +301,10 @@ export async function generateCloseoutDocuments(input: CloseoutInput): Promise<C
     alreadyPaid: input.totalPaid || input.contractTotal,
     contractTotal: input.contractTotal,
     paymentHistory: input.includePayments === false ? [] : input.paymentHistory,
-    projectDetails: {
-      projectName: jobName,
+    workDetails: {
+      workType,
+      scope: workScope,
       jobNumber: job?.job_number,
-      jobType: job?.roof_type,
-      propertyAddress: jobAddress,
-      description: jobDescription,
       estimateNumber: estimate?.estimate_number,
     },
   }, { singlePage: true });

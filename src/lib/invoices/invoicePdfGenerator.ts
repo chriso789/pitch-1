@@ -35,12 +35,10 @@ export interface InvoicePdfData {
   alreadyPaid?: number;
   contractTotal?: number;
   paymentHistory?: InvoicePdfPayment[];
-  projectDetails?: {
-    projectName?: string | null;
+  workDetails?: {
+    workType?: string | null;
+    scope?: string | null;
     jobNumber?: string | null;
-    jobType?: string | null;
-    propertyAddress?: string | null;
-    description?: string | null;
     estimateNumber?: string | null;
   };
   /** Hosted "pay this invoice" URL (QuickBooks hosted invoice link or portal link). */
@@ -85,15 +83,10 @@ function buildInvoiceHtml(data: InvoicePdfData): string {
   const originalContract = contractTotal > 0 ? Math.max(0, contractTotal - changeOrdersTotal) : 0;
   const alreadyPaid = data.alreadyPaid || 0;
   const balanceDue = data.amount;
-  const projectDetails = data.projectDetails;
-  const hasProjectDetails = Boolean(
-    projectDetails &&
-      (projectDetails.projectName ||
-        projectDetails.jobNumber ||
-        projectDetails.jobType ||
-        projectDetails.propertyAddress ||
-        projectDetails.description ||
-        projectDetails.estimateNumber),
+  const workDetails = data.workDetails;
+  const hasWorkDetails = Boolean(
+    workDetails &&
+      (workDetails.workType || workDetails.scope || workDetails.jobNumber || workDetails.estimateNumber),
   );
 
   // Pretty name for each change order (strip leading "Change Order —/-/:" prefix)
@@ -135,21 +128,19 @@ function buildInvoiceHtml(data: InvoicePdfData): string {
       </div>
     </div>
 
-    ${hasProjectDetails ? `
-    <!-- CONVERTED JOB DETAILS -->
+    ${hasWorkDetails ? `
+    <!-- CONVERTED JOB SCOPE -->
     <div style="padding:10px 32px 8px">
       <div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">
-        <div style="background:#f9fafb;padding:11px 16px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#6b7280;border-bottom:1px solid #e5e7eb">Job Details</div>
+        <div style="background:#f9fafb;padding:11px 16px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#6b7280;border-bottom:1px solid #e5e7eb">Work Performed</div>
         <div style="padding:13px 16px;display:flex;gap:24px">
           <div style="flex:1;min-width:0">
-            ${projectDetails?.projectName ? `<div style="font-size:14px;font-weight:700;color:#111827">${escape(projectDetails.projectName)}</div>` : ''}
-            ${projectDetails?.propertyAddress ? `<div style="font-size:12px;color:#4b5563;margin-top:3px;white-space:pre-line">${escape(projectDetails.propertyAddress)}</div>` : ''}
-            ${projectDetails?.description ? `<div style="font-size:11px;color:#4b5563;line-height:1.5;margin-top:7px;white-space:pre-line">${escape(projectDetails.description)}</div>` : ''}
+            ${workDetails?.workType ? `<div style="font-size:14px;font-weight:700;color:#111827">${escape(workDetails.workType)}</div>` : ''}
+            ${workDetails?.scope ? `<div style="font-size:11px;color:#4b5563;line-height:1.55;margin-top:7px;white-space:pre-line">${escape(workDetails.scope)}</div>` : ''}
           </div>
           <div style="min-width:190px;font-size:12px">
-            ${projectDetails?.jobNumber ? `<div style="display:flex;justify-content:space-between;gap:18px;margin-bottom:5px"><span style="color:#6b7280">Job Number:</span><span style="font-weight:600">${escape(projectDetails.jobNumber)}</span></div>` : ''}
-            ${projectDetails?.estimateNumber ? `<div style="display:flex;justify-content:space-between;gap:18px;margin-bottom:5px"><span style="color:#6b7280">Estimate:</span><span style="font-weight:600">${escape(projectDetails.estimateNumber)}</span></div>` : ''}
-            ${projectDetails?.jobType ? `<div style="display:flex;justify-content:space-between;gap:18px"><span style="color:#6b7280">Job Type:</span><span style="font-weight:600;text-transform:capitalize">${escape(projectDetails.jobType.replace(/_/g, ' '))}</span></div>` : ''}
+            ${workDetails?.jobNumber ? `<div style="display:flex;justify-content:space-between;gap:18px;margin-bottom:5px"><span style="color:#6b7280">Job Number:</span><span style="font-weight:600">${escape(workDetails.jobNumber)}</span></div>` : ''}
+            ${workDetails?.estimateNumber ? `<div style="display:flex;justify-content:space-between;gap:18px;margin-bottom:5px"><span style="color:#6b7280">Estimate:</span><span style="font-weight:600">${escape(workDetails.estimateNumber)}</span></div>` : ''}
           </div>
         </div>
       </div>
