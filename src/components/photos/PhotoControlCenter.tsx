@@ -40,6 +40,7 @@ import {
   MapPin,
   Mail,
   Eye,
+  CheckSquare,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePhotos, type PhotoCategory, type CustomerPhoto } from '@/hooks/usePhotos';
@@ -134,6 +135,7 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
 }) => {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set());
+  const [selectMode, setSelectMode] = useState(false);
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [sortMode, setSortMode] = useState<'manual' | 'oldest' | 'newest'>('manual');
   const [editingPhoto, setEditingPhoto] = useState<CustomerPhoto | null>(null);
