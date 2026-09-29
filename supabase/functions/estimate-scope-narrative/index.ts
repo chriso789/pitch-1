@@ -141,8 +141,8 @@ ${isFinalInvoice
     });
     const result = streamText({
       model: provider.responses('openai/gpt-6-astra'),
+      instructions: systemPrompt,
       messages: [
-        { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
       abortSignal: req.signal,
