@@ -239,6 +239,44 @@ function extractWorkScope(lineItems: unknown): string {
   return details.map((detail) => `• ${detail}`).join('\n');
 }
 
+function normalizeEstimateItems(lineItems: unknown): Array<Record<string, unknown>> {
+  if (!lineItems || typeof lineItems !== 'object' || Array.isArray(lineItems)) return [];
+  const sections = lineItems as Record<string, unknown>;
+  return [
+    ...(Array.isArray(sections.labor) ? sections.labor : []),
+    ...(Array.isArray(sections.materials) ? sections.materials : []),
+    ...(Array.isArray(sections.turnkey) ? sections.turnkey : []),
+  ].filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'));
+}
+
+async function generateAiWorkSummary(
+  lineItems: unknown,
+  projectTitle: string,
+  companyName?: string | null,
+): Promise<string> {
+  const items = normalizeEstimateItems(lineItems).map((item) => ({
+    item_name: typeof item.item_name === 'string' ? item.item_name : 'Project work',
+    description: typeof item.description === 'string' ? item.description : null,
+    item_type: typeof item.item_type === 'string' ? item.item_type : null,
+    trade_type: typeof item.trade_type === 'string' ? item.trade_type : null,
+  }));
+  if (items.length === 0) return '';
+
+  const { data, error } = await supabase.functions.invoke('estimate-scope-narrative', {
+    body: {
+      items,
+      project_title: projectTitle,
+      company_name: companyName,
+      tone: 'professional',
+      output_mode: 'final_invoice_summary',
+    },
+  });
+  if (error) throw new Error((data as { error?: string } | null)?.error || error.message);
+  const narrative = (data as { narrative?: string } | null)?.narrative?.trim();
+  if (!narrative) throw new Error('Lovable AI did not return a work description.');
+  return narrative;
+}
+
 
 export async function generateCloseoutDocuments(input: CloseoutInput): Promise<CloseoutResult> {
   const today = new Date();
@@ -273,11 +311,13 @@ export async function generateCloseoutDocuments(input: CloseoutInput): Promise<C
 
   const jobName = job?.name || estimate?.display_name || 'Converted Project';
   const workType = estimate?.short_description || job?.roof_type?.replace(/_/g, ' ') || 'Contracted Work';
-  const workScope =
-    htmlToPlainText(estimate?.scope_of_work_html).slice(0, 1400) ||
-    extractWorkScope(estimate?.line_items) ||
-    (job?.description === 'Job created from approved pipeline entry' ? '' : job?.description) ||
-    workType;
+  let workScope = '';
+  try {
+    workScope = await generateAiWorkSummary(estimate?.line_items, workType, input.company?.name);
+  } catch (error) {
+    console.error('[closeout] AI work summary failed', error);
+    throw new Error(error instanceof Error ? error.message : 'Could not generate the AI work description.');
+  }
 
   // ---------- PAID-IN-FULL INVOICE ----------
   const pifBlob = await generateInvoicePdfBlob({
