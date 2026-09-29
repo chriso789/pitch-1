@@ -242,9 +242,9 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
           const { data, error } = await supabase.auth.getSession();
           if (!error) {
             if (!data.session || data.session.user.id !== authUser.id) {
-              console.log('[Login] Invalid session detected, clearing...');
-              clearAllSessionData();
-              await supabase.auth.signOut().catch(() => {});
+              // Don't sign out here: right after a login the stored session can
+              // lag a moment behind. Signing out caused the bounce to the homepage.
+              console.log('[Login] Session not readable yet, skipping auto-redirect');
               return;
             }
             verifiedSession = data.session;
@@ -412,7 +412,8 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
       window.setTimeout(async () => {
         try {
           const { data } = await supabase.auth.getSession();
-          if (data.session && window.location.pathname.startsWith('/login')) {
+          const p = window.location.pathname;
+          if (data.session && (p === '/' || p.startsWith('/login') || p.startsWith('/signup'))) {
             console.log('[Login] Fallback redirect after auth event delay');
             setLoading(false);
             setLoginAttempted(false);

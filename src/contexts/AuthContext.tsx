@@ -240,7 +240,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       } else if (session) {
         setSession(session);
         setUser(session.user);
-      } else {
+      } else if (event !== 'INITIAL_SESSION') {
+        // A late INITIAL_SESSION with no session (slow storage read) must not
+        // wipe a sign-in that already completed — that bounced users out.
         setSession(null);
         setUser(null);
       }
