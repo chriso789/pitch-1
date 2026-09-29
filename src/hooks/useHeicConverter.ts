@@ -228,7 +228,7 @@ export function useHeicUrl(url: string | undefined | null): { displayUrl: string
         console.warn('[useHeicUrl] Conversion failed, falling back:', err);
         if (!cancelled) {
           setDisplayUrl(url);
-          setError(isHeicUrl(url));
+          setError(true);
         }
       } finally {
         if (!cancelled) setLoading(false);
