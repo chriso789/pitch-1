@@ -54,6 +54,8 @@ interface SortablePhotoItemProps {
   photo: CustomerPhoto;
   viewMode: 'grid' | 'list';
   isSelected: boolean;
+  /** When true, checkboxes stay visible and tapping the photo toggles selection. */
+  selectionMode?: boolean;
   onSelect: () => void;
   onEdit: () => void;
   onSetPrimary: () => void;
@@ -69,6 +71,7 @@ export const SortablePhotoItem: React.FC<SortablePhotoItemProps> = ({
   photo,
   viewMode,
   isSelected,
+  selectionMode = false,
   onSelect,
   onEdit,
   onSetPrimary,
