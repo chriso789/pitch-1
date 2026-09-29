@@ -210,33 +210,42 @@ export interface CloseoutResult {
   error?: string;
 }
 
-function htmlToPlainText(value: unknown): string {
-  if (typeof value !== 'string' || !value.trim()) return '';
-  const doc = new DOMParser().parseFromString(value, 'text/html');
-  return (doc.body.textContent || '')
-    .replace(/\u00a0/g, ' ')
-    .replace(/[ \t]+/g, ' ')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-}
-
-function extractWorkScope(lineItems: unknown): string {
-  if (!lineItems || typeof lineItems !== 'object' || Array.isArray(lineItems)) return '';
+function normalizeEstimateItems(lineItems: unknown): Array<Record<string, unknown>> {
+  if (!lineItems || typeof lineItems !== 'object' || Array.isArray(lineItems)) return [];
   const sections = lineItems as Record<string, unknown>;
-  const items = [
+  return [
     ...(Array.isArray(sections.labor) ? sections.labor : []),
     ...(Array.isArray(sections.materials) ? sections.materials : []),
-  ];
-  const details = items
-    .map((item) => {
-      if (!item || typeof item !== 'object') return '';
-      const row = item as Record<string, unknown>;
-      const value = row.description || row.item_name;
-      return typeof value === 'string' ? value.trim() : '';
-    })
-    .filter((value, index, values) => Boolean(value) && values.indexOf(value) === index)
-    .slice(0, 10);
-  return details.map((detail) => `• ${detail}`).join('\n');
+    ...(Array.isArray(sections.turnkey) ? sections.turnkey : []),
+  ].filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'));
+}
+
+async function generateAiWorkSummary(
+  lineItems: unknown,
+  projectTitle: string,
+  companyName?: string | null,
+): Promise<string> {
+  const items = normalizeEstimateItems(lineItems).map((item) => ({
+    item_name: typeof item.item_name === 'string' ? item.item_name : 'Project work',
+    description: typeof item.description === 'string' ? item.description : null,
+    item_type: typeof item.item_type === 'string' ? item.item_type : null,
+    trade_type: typeof item.trade_type === 'string' ? item.trade_type : null,
+  }));
+  if (items.length === 0) return '';
+
+  const { data, error } = await supabase.functions.invoke('estimate-scope-narrative', {
+    body: {
+      items,
+      project_title: projectTitle,
+      company_name: companyName,
+      tone: 'professional',
+      output_mode: 'final_invoice_summary',
+    },
+  });
+  if (error) throw new Error((data as { error?: string } | null)?.error || error.message);
+  const narrative = (data as { narrative?: string } | null)?.narrative?.trim();
+  if (!narrative) throw new Error('Lovable AI did not return a work description.');
+  return narrative;
 }
 
 
@@ -273,11 +282,13 @@ export async function generateCloseoutDocuments(input: CloseoutInput): Promise<C
 
   const jobName = job?.name || estimate?.display_name || 'Converted Project';
   const workType = estimate?.short_description || job?.roof_type?.replace(/_/g, ' ') || 'Contracted Work';
-  const workScope =
-    htmlToPlainText(estimate?.scope_of_work_html).slice(0, 1400) ||
-    extractWorkScope(estimate?.line_items) ||
-    (job?.description === 'Job created from approved pipeline entry' ? '' : job?.description) ||
-    workType;
+  let workScope = '';
+  try {
+    workScope = await generateAiWorkSummary(estimate?.line_items, workType, input.company?.name);
+  } catch (error) {
+    console.error('[closeout] AI work summary failed', error);
+    throw new Error(error instanceof Error ? error.message : 'Could not generate the AI work description.');
+  }
 
   // ---------- PAID-IN-FULL INVOICE ----------
   const pifBlob = await generateInvoicePdfBlob({

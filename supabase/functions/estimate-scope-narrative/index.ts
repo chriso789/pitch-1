@@ -1,3 +1,7 @@
+import { createOpenAI } from 'npm:@ai-sdk/openai';
+import { streamText } from 'npm:ai';
+import { createLovableAiGatewayRunIdFetch } from '../_shared/lovable-ai-run-id.ts';
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version, x-pitch-tenant',
@@ -35,6 +39,7 @@ Deno.serve(async (req: Request) => {
       company_name,
       tone = 'professional',
       extra_instructions,
+      output_mode = 'proposal_scope',
     } = await req.json();
 
     if (!Array.isArray(items) || items.length === 0) {
@@ -81,7 +86,20 @@ A short intro sentence explaining these are optional/conditional items that may 
 Turnkey Package
 One short sentence stating this is an all-inclusive package. Then a bulleted list (leading "- ", a few words each) naming each turnkey scope — no explanations, no reassurances, just the scope name. Keep it to 3–5 words per bullet.` : '';
 
-    const systemPrompt = `You are a senior roofing project manager writing the "Project Scope" section of a customer-facing proposal for ${company_name || 'a professional roofing contractor'}.
+    const isFinalInvoice = output_mode === 'final_invoice_summary';
+    const systemPrompt = isFinalInvoice
+      ? `You are a senior construction project manager writing a concise "Work Performed" description for a homeowner's final paid-in-full invoice from ${company_name || 'a professional contractor'}.
+
+Summarize the type of work completed and the major phases of the finished project. Synthesize the estimate into natural, customer-facing language rather than copying, listing, or paraphrasing every line item.
+
+Rules:
+- Return plain text only: one short heading-style sentence naming the completed system, followed by one compact paragraph of 2–4 sentences.
+- Mention the major work performed, installation approach, cleanup, and completed result when supported by the estimate.
+- Do not include bullets, SKUs, quantities, prices, job number, estimate number, customer name, or address.
+- Do not invent work not supported by the estimate.
+- Keep the complete description under 110 words.
+${extra_instructions ? `\nAdditional instructions: ${extra_instructions}` : ''}`
+      : `You are a senior roofing project manager writing the "Project Scope" section of a customer-facing proposal for ${company_name || 'a professional roofing contractor'}.
 
 Turn the technical line-item list into a clean, bulletin-style scope the customer can skim. No SKUs, quantities, or unit pricing.
 
@@ -107,48 +125,46 @@ ${extra_instructions ? `\nAdditional instructions: ${extra_instructions}` : ''}`
 Line items from the estimate:
 ${itemSummary}
 ${hasChangeOrders ? `\nPotential Change Order items (optional/conditional add-ons — include them in a dedicated "Potential Change Orders" section):\n${changeOrderSummary}\n` : ''}
-Write the customer-friendly Project Scope now. Do not mention the property address or the customer/homeowner name anywhere.`;
+${isFinalInvoice
+  ? 'Write the concise final-invoice Work Performed description now.'
+  : 'Write the customer-friendly Project Scope now. Do not mention the property address or the customer/homeowner name anywhere.'}`;
 
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
+    const runIdFetch = createLovableAiGatewayRunIdFetch(req.headers.get('X-Lovable-AIG-Run-ID') || undefined);
+    const provider = createOpenAI({
+      baseURL: 'https://ai.gateway.lovable.dev/v1',
+      apiKey: lovableKey,
       headers: {
         'Lovable-API-Key': lovableKey,
         'X-Lovable-AIG-SDK': 'vercel-ai-sdk',
-        'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        model: 'google/gemini-3.6-flash',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.4,
-      }),
+      fetch: runIdFetch.fetch,
     });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error('[estimate-scope-narrative] gateway error', response.status, errText);
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: 'Rate limit exceeded. Please try again shortly.' }), {
-          status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: 'AI credits exhausted. Add credits in workspace billing.' }), {
-          status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-      return new Response(JSON.stringify({ error: `AI gateway error (${response.status})` }), {
-        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    const result = await response.json();
-    const narrative = result.choices?.[0]?.message?.content?.trim() || '';
+    const result = streamText({
+      model: provider.responses('openai/gpt-6-astra'),
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      abortSignal: req.signal,
+      providerOptions: {
+        openai: {
+          forceReasoning: true,
+          reasoningEffort: 'low',
+          reasoningSummary: 'auto',
+          store: false,
+          include: ['reasoning.encrypted_content'],
+        },
+      },
+    });
+    const narrative = (await result.text).trim();
+    if (!narrative) throw new Error('Lovable AI returned an empty work description.');
 
     return new Response(JSON.stringify({ narrative }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json',
+        ...(runIdFetch.getRunId() ? { 'X-Lovable-AIG-Run-ID': runIdFetch.getRunId() as string } : {}),
+      },
     });
   } catch (err: any) {
     console.error('[estimate-scope-narrative] error', err);
