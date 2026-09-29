@@ -139,7 +139,14 @@ const AppContent = () => {
       if (event === 'SIGNED_OUT') {
         const publicPaths = ['/', '/login', '/signup', '/demo-request', '/reset-password', '/setup-account', '/auth/confirm-email', '/reports'];
         const isPublicPath = publicPaths.some(p => window.location.pathname === p || window.location.pathname.startsWith('/reports/'));
-        if (!isPublicPath) navigate('/');
+        if (isPublicPath) return;
+        // A stray sign-out event right after logging in must not bounce the
+        // user to the marketing homepage. Confirm the session is really gone,
+        // then send them to the login page (not '/').
+        window.setTimeout(async () => {
+          const { data } = await supabase.auth.getSession();
+          if (!data.session) navigate('/login', { replace: true });
+        }, 300);
       }
     });
 
