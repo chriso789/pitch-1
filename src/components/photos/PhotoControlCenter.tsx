@@ -40,6 +40,7 @@ import {
   MapPin,
   Mail,
   Eye,
+  CheckSquare,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePhotos, type PhotoCategory, type CustomerPhoto } from '@/hooks/usePhotos';
@@ -134,6 +135,7 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
 }) => {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set());
+  const [selectMode, setSelectMode] = useState(false);
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [sortMode, setSortMode] = useState<'manual' | 'oldest' | 'newest'>('manual');
   const [editingPhoto, setEditingPhoto] = useState<CustomerPhoto | null>(null);
@@ -793,6 +795,23 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
 
           {photos.length > 0 && (
             <>
+              {/* Multi-select mode — lets the user tap photos to pick a set,
+                  then apply one action (delete, download, export, email). */}
+              <Button
+                size="sm"
+                variant={selectMode ? 'default' : 'outline'}
+                className="h-10 w-full text-sm sm:h-8 sm:w-auto sm:text-xs"
+                onClick={() => {
+                  setSelectMode((v) => {
+                    if (v) setSelectedPhotos(new Set());
+                    return !v;
+                  });
+                }}
+              >
+                <CheckSquare className="h-4 w-4 mr-1.5" />
+                {selectMode ? 'Done' : 'Select'}
+              </Button>
+
               {/* Category filter */}
               <Select value={filterCategory} onValueChange={setFilterCategory}>
                 <SelectTrigger className="h-10 w-full text-sm sm:h-8 sm:w-[130px] sm:text-xs">
@@ -983,6 +1002,7 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
                     viewMode={viewMode}
                     imageLoading={index < 8 ? 'eager' : 'lazy'}
                     isSelected={selectedPhotos.has(photo.id)}
+                    selectionMode={selectMode || selectedPhotos.size > 0}
                     onSelect={() => toggleSelection(photo.id)}
                     onEdit={() => setEditingPhoto(photo)}
                     onSetPrimary={() => setPrimaryPhoto(photo.id)}
