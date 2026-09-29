@@ -634,9 +634,9 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
         </CardHeader>
       )}
 
-      <CardContent className={cn('space-y-4', showHeader ? 'pt-4' : 'pt-0')}>
+      <CardContent className={cn('space-y-3 px-3 sm:space-y-4 sm:px-6', showHeader ? 'pt-3 sm:pt-4' : 'pt-0')}>
         {/* Action Bar */}
-        <div className="flex flex-wrap items-center gap-2 relative z-10">
+        <div className="grid grid-cols-2 gap-2 relative z-10 sm:flex sm:flex-wrap sm:items-center">
           {/* Upload buttons */}
           <input
             ref={fileInputRef}
@@ -665,6 +665,7 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
           
           <Button
             size="sm"
+            className="h-11 w-full text-sm sm:h-9 sm:w-auto"
             onClick={async () => {
               // On native (Capacitor iOS/Android) use the OS photo picker so the
               // user gets a true multi-select from the Photos library. EXIF is
@@ -698,6 +699,7 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
           <Button
             size="sm"
             variant="outline"
+            className="h-11 w-full text-sm sm:h-9 sm:w-auto"
             onClick={() => cameraInputRef.current?.click()}
             disabled={isUploading}
           >
@@ -708,6 +710,7 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
           <Button
             size="sm"
             variant="outline"
+            className="hidden h-9 sm:inline-flex"
             onClick={handleViewReport}
             disabled={isExporting || photos.length === 0}
             title={selectedPhotos.size > 0
@@ -721,6 +724,7 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
           <Button
             size="sm"
             variant="outline"
+            className="hidden h-9 sm:inline-flex"
             onClick={handleExportReport}
             disabled={isExporting || photos.length === 0}
             title={selectedPhotos.size > 0
@@ -738,6 +742,7 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
           <Button
             size="sm"
             variant="outline"
+            className="hidden h-9 sm:inline-flex"
             onClick={handleOpenEmailDialog}
             disabled={photos.length === 0}
             title={selectedPhotos.size > 0
@@ -750,36 +755,74 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
 
 
 
-          <div className="flex-1" />
+          <div className="hidden flex-1 sm:block" />
 
-          {/* Category filter */}
-          <Select value={filterCategory} onValueChange={setFilterCategory}>
-            <SelectTrigger className="w-[130px] h-8 text-xs">
-              <SelectValue placeholder="All Photos" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Photos</SelectItem>
-              {CATEGORY_OPTIONS.map(cat => (
-                <SelectItem key={cat.value} value={cat.value}>
-                  {cat.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {photos.length > 0 && (
+            <div className="col-span-2 grid grid-cols-3 gap-2 sm:hidden">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-10 min-w-0 px-2"
+                onClick={handleViewReport}
+                disabled={isExporting}
+              >
+                <Eye className="h-4 w-4" />
+                <span className="ml-1.5 truncate">View</span>
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-10 min-w-0 px-2"
+                onClick={handleExportReport}
+                disabled={isExporting}
+              >
+                {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                <span className="ml-1.5 truncate">Export</span>
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-10 min-w-0 px-2"
+                onClick={handleOpenEmailDialog}
+              >
+                <Mail className="h-4 w-4" />
+                <span className="ml-1.5 truncate">Email</span>
+              </Button>
+            </div>
+          )}
 
-          {/* Sort mode — drives both the gallery order and the exported
-              Photo Report, so field crews can hand clients a chronological
-              set with the earliest-taken photos first. */}
-          <Select value={sortMode} onValueChange={(v) => setSortMode(v as typeof sortMode)}>
-            <SelectTrigger className="w-[140px] h-8 text-xs">
-              <SelectValue placeholder="Sort" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="manual">Manual order</SelectItem>
-              <SelectItem value="oldest">Oldest first</SelectItem>
-              <SelectItem value="newest">Newest first</SelectItem>
-            </SelectContent>
-          </Select>
+          {photos.length > 0 && (
+            <>
+              {/* Category filter */}
+              <Select value={filterCategory} onValueChange={setFilterCategory}>
+                <SelectTrigger className="h-10 w-full text-sm sm:h-8 sm:w-[130px] sm:text-xs">
+                  <SelectValue placeholder="All Photos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Photos</SelectItem>
+                  {CATEGORY_OPTIONS.map(cat => (
+                    <SelectItem key={cat.value} value={cat.value}>
+                      {cat.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* Sort mode — drives both the gallery order and the exported
+                  Photo Report, so field crews can hand clients a chronological
+                  set with the earliest-taken photos first. */}
+              <Select value={sortMode} onValueChange={(v) => setSortMode(v as typeof sortMode)}>
+                <SelectTrigger className="h-10 w-full text-sm sm:h-8 sm:w-[140px] sm:text-xs">
+                  <SelectValue placeholder="Sort" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="manual">Manual order</SelectItem>
+                  <SelectItem value="oldest">Oldest first</SelectItem>
+                  <SelectItem value="newest">Newest first</SelectItem>
+                </SelectContent>
+              </Select>
+            </>
+          )}
         </div>
 
 
@@ -850,7 +893,7 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
 
         {/* Bulk actions */}
         {selectedPhotos.size > 0 && (
-          <div className="flex items-center gap-2 p-2 bg-muted rounded-lg">
+          <div className="flex flex-wrap items-center gap-2 p-2 bg-muted rounded-lg">
             <Checkbox
               checked={selectedPhotos.size === filteredPhotos.length}
               onCheckedChange={handleSelectAll}
@@ -858,8 +901,8 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
             <span className="text-sm font-medium">
               {selectedPhotos.size} selected
             </span>
-            <div className="flex-1" />
-            <Button size="sm" variant="ghost" onClick={() => handleBulkEstimate(true)}>
+            <div className="min-w-4 flex-1" />
+            <Button size="sm" variant="ghost" className="hidden sm:inline-flex" onClick={() => handleBulkEstimate(true)}>
               <FileText className="h-3.5 w-3.5 mr-1" />
               Add to Estimate
             </Button>
@@ -871,11 +914,11 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
               )}
               Download JPEGs
             </Button>
-            <Button size="sm" variant="ghost" onClick={handleViewReport} disabled={isExporting}>
+            <Button size="sm" variant="ghost" className="hidden sm:inline-flex" onClick={handleViewReport} disabled={isExporting}>
               <Eye className="h-3.5 w-3.5 mr-1" />
               View Report
             </Button>
-            <Button size="sm" variant="ghost" onClick={handleExportReport} disabled={isExporting}>
+            <Button size="sm" variant="ghost" className="hidden sm:inline-flex" onClick={handleExportReport} disabled={isExporting}>
               {isExporting ? (
                 <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
               ) : (
@@ -883,20 +926,20 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
               )}
               {isExporting ? 'Building…' : 'Export Report'}
             </Button>
-            <Button size="sm" variant="ghost" onClick={handleOpenEmailDialog}>
+            <Button size="sm" variant="ghost" className="hidden sm:inline-flex" onClick={handleOpenEmailDialog}>
               <Mail className="h-3.5 w-3.5 mr-1" />
               Email Report
             </Button>
             <Button 
               size="sm" 
               variant="ghost" 
-              className="text-destructive"
+              className="h-9 text-destructive"
               onClick={() => setDeleteConfirmOpen(true)}
             >
               <Trash2 className="h-3.5 w-3.5 mr-1" />
               Delete
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => setSelectedPhotos(new Set())}>
+            <Button size="icon" variant="ghost" className="h-9 w-9" onClick={() => setSelectedPhotos(new Set())} aria-label="Clear selection">
               <X className="h-3.5 w-3.5" />
             </Button>
           </div>
@@ -909,13 +952,13 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
           </div>
         ) : filteredPhotos.length === 0 ? (
           <div 
-            className="flex flex-col items-center justify-center py-12 text-center border-2 border-dashed rounded-lg cursor-pointer hover:border-primary/50 transition-colors"
+            className="flex min-h-44 flex-col items-center justify-center px-4 py-8 text-center border-2 border-dashed rounded-md cursor-pointer hover:border-primary/50 transition-colors sm:min-h-64 sm:py-12"
             onClick={() => fileInputRef.current?.click()}
           >
-            <ImageIcon className="h-12 w-12 text-muted-foreground/50 mb-3" />
+            <ImageIcon className="h-10 w-10 text-muted-foreground/50 mb-2 sm:h-12 sm:w-12 sm:mb-3" />
             <p className="text-sm font-medium text-muted-foreground">No photos yet</p>
             <p className="text-xs text-muted-foreground/75 mt-1">
-              Click to upload or take a photo
+              Use Upload or Take Photo above
             </p>
           </div>
         ) : (
@@ -930,7 +973,7 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
             >
               <div className={cn(
                 viewMode === 'grid' 
-                  ? 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3'
+                  ? 'grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 md:grid-cols-4'
                   : 'space-y-2'
               )}>
                 {filteredPhotos.map((photo, index) => (
