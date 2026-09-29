@@ -45,13 +45,23 @@ async function resolveDisplayUrl(url: string): Promise<string> {
   }
 
   // Always sign URLs for private buckets (even if the stored URL says /public/).
-  const { data, error } = await supabase.storage
-    .from(storageObject.bucket)
-    .createSignedUrl(storageObject.path, 60 * 60);
-
-  if (error || !data?.signedUrl) return url;
-  signedUrlCache.set(url, data.signedUrl);
-  return data.signedUrl;
+  // On phones the login session can still be restoring when the grid first
+  // renders, so signing may fail briefly — wait for the session and retry
+  // instead of falling back to the unusable /public/ URL.
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (attempt > 0) {
+      await supabase.auth.getSession().catch(() => null);
+      await new Promise((r) => setTimeout(r, 500 * attempt));
+    }
+    const { data, error } = await supabase.storage
+      .from(storageObject.bucket)
+      .createSignedUrl(storageObject.path, 60 * 60);
+    if (!error && data?.signedUrl) {
+      signedUrlCache.set(url, data.signedUrl);
+      return data.signedUrl;
+    }
+  }
+  throw new Error('Could not sign private storage URL');
 }
 
 async function persistConvertedHeic(originalUrl: string, jpegBlob: Blob): Promise<string | null> {
