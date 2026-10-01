@@ -26851,6 +26851,7 @@ export type Database = {
           address_street: string | null
           address_verified_at: string | null
           address_zip: string | null
+          company_name: string | null
           contact_sequence_counter: number | null
           created_at: string
           created_by: string | null
@@ -26891,6 +26892,7 @@ export type Database = {
           address_street?: string | null
           address_verified_at?: string | null
           address_zip?: string | null
+          company_name?: string | null
           contact_sequence_counter?: number | null
           created_at?: string
           created_by?: string | null
@@ -26931,6 +26933,7 @@ export type Database = {
           address_street?: string | null
           address_verified_at?: string | null
           address_zip?: string | null
+          company_name?: string | null
           contact_sequence_counter?: number | null
           created_at?: string
           created_by?: string | null
