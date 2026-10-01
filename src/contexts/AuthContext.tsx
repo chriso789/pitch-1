@@ -240,6 +240,21 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       } else if (session) {
         setSession(session);
         setUser(session.user);
+        // SECURITY: a fresh sign-in or token refresh must also be blocked when
+        // the user's company is deactivated (previously only checked on page load).
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+          setTimeout(async () => {
+            const { data: blocked, error } = await supabase.rpc('is_login_blocked');
+            if (!error && blocked) {
+              console.warn('[AuthContext] Company deactivated - forcing logout');
+              clearAllSessionData();
+              await supabase.auth.signOut();
+              setSession(null);
+              setUser(null);
+              window.location.replace('/login?reason=company_deactivated');
+            }
+          }, 0);
+        }
       } else if (event !== 'INITIAL_SESSION') {
         // A late INITIAL_SESSION with no session (slow storage read) must not
         // wipe a sign-in that already completed — that bounced users out.
