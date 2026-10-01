@@ -20,6 +20,7 @@ interface LocationManagementProps {
 interface Location {
   id: string;
   name: string;
+  company_name?: string | null;
   tenant_id: string;
   address_street?: string;
   address_city?: string;
@@ -44,6 +45,7 @@ interface Location {
 
 interface FormData {
   name: string;
+  company_name: string;
   address_street: string;
   address_city: string;
   address_state: string;
@@ -61,6 +63,7 @@ interface FormData {
 
 const initialFormData: FormData = {
   name: '',
+  company_name: '',
   address_street: '',
   address_city: '',
   address_state: '',
@@ -146,6 +149,7 @@ export const LocationManagement = ({ tenantId }: LocationManagementProps = {}) =
 
       const locationData = {
         name: formData.name,
+        company_name: formData.company_name.trim() || null,
         address_street: formData.address_street,
         address_city: formData.address_city,
         address_state: formData.address_state,
@@ -207,6 +211,7 @@ export const LocationManagement = ({ tenantId }: LocationManagementProps = {}) =
     setEditingLocation(location);
     setFormData({
       name: location.name,
+      company_name: location.company_name || '',
       address_street: location.address_street || '',
       address_city: location.address_city || '',
       address_state: location.address_state || '',
@@ -296,6 +301,16 @@ export const LocationManagement = ({ tenantId }: LocationManagementProps = {}) =
                   />
                 </div>
 
+                <div>
+                  <Label htmlFor="company_name">Company Name for this Location</Label>
+                  <Input
+                    id="company_name"
+                    value={formData.company_name}
+                    onChange={(e) => setFormData({ ...formData, company_name: e.target.value })}
+                    placeholder="Leave blank to use the main company name"
+                  />
+                </div>
+
                 {/* Google-Verified Address */}
                 <AddressVerification
                   label="Location Address"
@@ -380,6 +395,9 @@ export const LocationManagement = ({ tenantId }: LocationManagementProps = {}) =
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2">
                         <h3 className="font-semibold">{location.name}</h3>
+                        {location.company_name && (
+                          <span className="text-sm text-muted-foreground">· {location.company_name}</span>
+                        )}
                         <Badge variant={location.is_active ? "default" : "secondary"}>
                           {location.is_active ? "Active" : "Inactive"}
                         </Badge>
