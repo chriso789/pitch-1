@@ -15,6 +15,8 @@ import { ArrowLeft, Check, Plus, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { DRIVERS, USABLE, STARTER_ASSEMBLIES, buildLines, computeTotals, money, autoReviewStatus } from "@/lib/commercial/engine";
 import { CommercialImportDialog } from "@/components/commercial/CommercialImportDialog";
+import { BudgetTab } from "@/components/commercial/BudgetTab";
+import { defaultCostType } from "@/lib/commercial/budget";
 
 const db = supabase as any;
 const STATUS_STYLE: Record<string, string> = {
@@ -64,10 +66,11 @@ export default function CommercialProjectDetail() {
           </div>
         </div>
         <Tabs defaultValue="takeoff">
-          <TabsList><TabsTrigger value="overview">Overview</TabsTrigger><TabsTrigger value="takeoff">Takeoff</TabsTrigger><TabsTrigger value="estimate">Estimate</TabsTrigger><TabsTrigger value="bids">Bids</TabsTrigger><TabsTrigger value="files">Drawings & Files</TabsTrigger><TabsTrigger value="history">History</TabsTrigger></TabsList>
+          <TabsList><TabsTrigger value="overview">Overview</TabsTrigger><TabsTrigger value="takeoff">Takeoff</TabsTrigger><TabsTrigger value="estimate">Estimate</TabsTrigger><TabsTrigger value="budget">Budget</TabsTrigger><TabsTrigger value="bids">Bids</TabsTrigger><TabsTrigger value="files">Drawings & Files</TabsTrigger><TabsTrigger value="history">History</TabsTrigger></TabsList>
           <TabsContent value="overview"><Overview p={p} save={saveProject} /></TabsContent>
           <TabsContent value="takeoff"><Takeoff projectId={id!} tenantId={tenantId} qtys={qtys} reload={load} /></TabsContent>
           <TabsContent value="estimate"><Estimate projectId={id!} tenantId={tenantId} qtys={qtys} project={p} /></TabsContent>
+          <TabsContent value="budget"><BudgetTab projectId={id!} tenantId={tenantId} /></TabsContent>
           <TabsContent value="bids"><Bids projectId={id!} tenantId={tenantId} /></TabsContent>
           <TabsContent value="files"><Files projectId={id!} onImport={() => setImportOpen(true)} /></TabsContent>
           <TabsContent value="history"><History projectId={id!} /></TabsContent>
@@ -161,6 +164,7 @@ function Estimate({ projectId, tenantId, qtys, project }: any) {
   const [est, setEst] = useState<any>(null);
   const [lines, setLines] = useState<any[]>([]);
   const [versions, setVersions] = useState<any[]>([]);
+  const [codes, setCodes] = useState<any[]>([]);
 
   const load = async () => {
     let { data: a } = await db.from("commercial_assemblies").select("*, commercial_assembly_components(*)").eq("tenant_id", tenantId).eq("active", true).order("name");
@@ -180,6 +184,8 @@ function Estimate({ projectId, tenantId, qtys, project }: any) {
       db.from("commercial_estimate_versions").select("*").eq("estimate_id", e.id).order("version_number", { ascending: false }),
     ]);
     setLines(l || []); setVersions(v || []);
+    const { data: cc } = await db.from("commercial_cost_codes").select("id, code, name").eq("tenant_id", tenantId).eq("active", true).order("code");
+    setCodes(cc || []);
   };
   useEffect(() => { if (tenantId) load(); }, [projectId, tenantId]);
 
@@ -201,7 +207,7 @@ function Estimate({ projectId, tenantId, qtys, project }: any) {
     const comps = [...a.commercial_assembly_components].sort((x: any, y: any) => x.sort_order - y.sort_order);
     const built = buildLines(qtys, comps).filter((l) => l.quantity > 0);
     await db.from("commercial_estimate_lines").delete().eq("estimate_id", est.id);
-    const { data, error } = await db.from("commercial_estimate_lines").insert(built.map((l) => ({ ...l, tenant_id: tenantId, estimate_id: est.id }))).select("*");
+    const { data, error } = await db.from("commercial_estimate_lines").insert(built.map((l) => ({ ...l, tenant_id: tenantId, estimate_id: est.id, assembly_id: a.id, cost_type: defaultCostType(l.kind), source_provenance: { source: "assembly_build", assembly: a.name } }))).select("*");
     if (error) return toast.error(error.message);
     setLines(data); await persistTotals(data, est); toast.success(`${data.length} lines built from takeoff`);
   };
@@ -211,6 +217,13 @@ function Estimate({ projectId, tenantId, qtys, project }: any) {
     const ls = lines.map((x) => x.id === l.id ? nl : x); setLines(ls);
     await db.from("commercial_estimate_lines").update({ quantity: nl.quantity, unit_cost: nl.unit_cost, total: nl.total, description: nl.description }).eq("id", l.id);
     await persistTotals(ls, est);
+  };
+
+  const mapLines = async (ids: string[], cost_code_id: string | null) => {
+    if (!ids.length) return;
+    const { error } = await db.from("commercial_estimate_lines").update({ cost_code_id }).in("id", ids);
+    if (error) return toast.error(error.message);
+    setLines(lines.map((x) => ids.includes(x.id) ? { ...x, cost_code_id } : x));
   };
 
   const addLine = async (kind: string) => {
@@ -241,12 +254,16 @@ function Estimate({ projectId, tenantId, qtys, project }: any) {
           {kinds.map((k) => <Button key={k} variant="outline" size="sm" onClick={() => addLine(k)} className="capitalize">+ {k}</Button>)}
         </CardContent></Card>
         {kinds.map((k) => { const ls = lines.filter((l) => l.kind === k); if (!ls.length) return null; return (
-          <Card key={k}><CardHeader className="py-3"><CardTitle className="text-sm capitalize">{k}</CardTitle></CardHeader><CardContent className="p-0">
+          <Card key={k}><CardHeader className="py-3 flex-row items-center justify-between space-y-0"><CardTitle className="text-sm capitalize">{k}</CardTitle>
+            {codes.length > 0 && <Select value="" onValueChange={(v) => mapLines(ls.filter((l) => !l.cost_code_id).map((l) => l.id), v)}><SelectTrigger className="h-8 w-60 text-xs"><SelectValue placeholder={`Map ${ls.filter((l) => !l.cost_code_id).length} unmapped to…`} /></SelectTrigger>
+              <SelectContent>{codes.map((c) => <SelectItem key={c.id} value={c.id}>{c.code} {c.name}</SelectItem>)}</SelectContent></Select>}</CardHeader><CardContent className="p-0">
             <table className="w-full text-sm"><tbody>{ls.map((l) => (
               <tr key={l.id} className="border-t">
                 <td className="p-2"><Input className="h-8" defaultValue={l.description} onBlur={(e) => e.target.value !== l.description && editLine(l, { description: e.target.value })} /></td>
                 <td className="p-2 w-28"><Input className="h-8" type="number" defaultValue={l.quantity} onBlur={(e) => editLine(l, { quantity: Number(e.target.value) })} /></td>
                 <td className="p-2 w-16 text-muted-foreground">{l.uom}</td>
+                <td className="p-2 w-44"><Select value={l.cost_code_id || "none"} onValueChange={(v) => mapLines([l.id], v === "none" ? null : v)}><SelectTrigger className={`h-8 text-xs ${l.cost_code_id ? "" : "text-muted-foreground"}`}><SelectValue placeholder="Cost code" /></SelectTrigger>
+                  <SelectContent><SelectItem value="none">No cost code</SelectItem>{codes.map((c) => <SelectItem key={c.id} value={c.id}>{c.code} {c.name}</SelectItem>)}</SelectContent></Select></td>
                 <td className="p-2 w-28"><Input className="h-8" type="number" defaultValue={l.unit_cost} onBlur={(e) => editLine(l, { unit_cost: Number(e.target.value) })} /></td>
                 <td className="p-2 w-28 text-right font-medium">{money(l.total)}</td>
                 <td className="p-2 w-10"><Button size="sm" variant="ghost" onClick={async () => { await db.from("commercial_estimate_lines").delete().eq("id", l.id); const ls2 = lines.filter((x) => x.id !== l.id); setLines(ls2); persistTotals(ls2, est); }}><Trash2 className="h-4 w-4" /></Button></td>
@@ -298,6 +315,13 @@ function VersionRow({ v, project, onChange }: any) {
     if (error) return toast.error(error.message);
     toast.success(decision === "approved" ? "Approved" : "Rejected"); load(); onChange();
   };
+  const award = async () => {
+    const notes = window.prompt("Award this version? This locks the award and builds the project budget. Notes (optional):");
+    if (notes === null) return;
+    const { error } = await db.rpc("commercial_award_version", { _version_id: v.id, _notes: notes || null });
+    if (error) return toast.error(error.message);
+    toast.success("Project awarded — budget created. Open the Budget tab."); onChange();
+  };
   const pdf = async () => {
     const { buildProposalPdf } = await import("@/lib/commercial/proposalPdf");
     const { data: t } = await db.from("tenants").select("name, phone, email").eq("id", v.tenant_id).maybeSingle();
@@ -310,6 +334,7 @@ function VersionRow({ v, project, onChange }: any) {
       {v.status === "rejected" && <p className="text-xs text-destructive">Rejected: {v.comments}</p>}
       <div className="flex gap-1 pt-1">
         {next && <><Button size="sm" onClick={() => decide("approved")}>Approve as {STEP_LABEL[next]}</Button><Button size="sm" variant="outline" onClick={() => decide("rejected")}>Reject</Button></>}
+        {v.status === "approved" && <Button size="sm" onClick={award}>Award</Button>}
         <Button size="sm" variant="outline" onClick={pdf} disabled={v.status !== "approved"} title={v.status !== "approved" ? "Available once fully approved" : ""}>Proposal PDF</Button>
       </div>
     </div>
