@@ -14,6 +14,7 @@ const db = supabase as any;
 /** Imports EDGE takeoff/estimate CSVs, Procore project lists, and shared-drive folders. */
 export function CommercialImportDialog({ open, onOpenChange, onDone, projectId, initialTab }: { open: boolean; onOpenChange: (o: boolean) => void; onDone?: () => void; projectId?: string; initialTab?: string }) {
   const tenantId = useEffectiveTenantId();
+  const ctxTenantId = tenantId;
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [step, setStep] = useState<string | null>(null);
@@ -73,11 +74,15 @@ export function CommercialImportDialog({ open, onOpenChange, onDone, projectId, 
 
   const importPlans = async (file: File) => {
     let pid = projectId;
+    let tenantId: string | null = ctxTenantId;
     if (!tenantId) throw new Error("Your company is still loading — wait a moment and try again.");
     if (!pid) {
       const { data: created, error: cErr } = await db.rpc("commercial_create_project", { _tenant_id: tenantId, _name: file.name.replace(/\.pdf$/i, ""), _metadata: { imported_from: "plan_set", placeholder_name: true } });
       if (cErr) throw cErr; pid = created as string;
     }
+    // Use the company the project actually belongs to for file paths and records.
+    const { data: proj } = await db.from("commercial_projects").select("tenant_id").eq("id", pid).single();
+    if (proj?.tenant_id) tenantId = proj.tenant_id;
     const base = file.name.replace(/[^\w.\-]/g, "_");
     const stamp = Date.now();
 
