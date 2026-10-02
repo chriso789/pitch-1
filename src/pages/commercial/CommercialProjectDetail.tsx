@@ -17,6 +17,8 @@ import { DRIVERS, USABLE, STARTER_ASSEMBLIES, buildLines, computeTotals, money, 
 import { CommercialImportDialog } from "@/components/commercial/CommercialImportDialog";
 import { BudgetTab } from "@/components/commercial/BudgetTab";
 import { BuyoutTab } from "@/components/commercial/BuyoutTab";
+import { CommitmentsTab } from "@/components/commercial/CommitmentsTab";
+import { ProcurementTab } from "@/components/commercial/ProcurementTab";
 import { defaultCostType } from "@/lib/commercial/budget";
 
 const db = supabase as any;
@@ -67,12 +69,14 @@ export default function CommercialProjectDetail() {
           </div>
         </div>
         <Tabs defaultValue="takeoff">
-          <TabsList><TabsTrigger value="overview">Overview</TabsTrigger><TabsTrigger value="takeoff">Takeoff</TabsTrigger><TabsTrigger value="estimate">Estimate</TabsTrigger><TabsTrigger value="budget">Budget</TabsTrigger><TabsTrigger value="buyout">Buyout</TabsTrigger><TabsTrigger value="bids">Bids</TabsTrigger><TabsTrigger value="files">Drawings & Files</TabsTrigger><TabsTrigger value="history">History</TabsTrigger></TabsList>
+          <TabsList className="flex-wrap h-auto"><TabsTrigger value="overview">Overview</TabsTrigger><TabsTrigger value="takeoff">Takeoff</TabsTrigger><TabsTrigger value="estimate">Estimate</TabsTrigger><TabsTrigger value="budget">Budget</TabsTrigger><TabsTrigger value="buyout">Buyout</TabsTrigger><TabsTrigger value="bids">Bids</TabsTrigger><TabsTrigger value="commitments">POs & Subcontracts</TabsTrigger><TabsTrigger value="procurement">Procurement</TabsTrigger><TabsTrigger value="files">Drawings & Files</TabsTrigger><TabsTrigger value="history">History</TabsTrigger></TabsList>
           <TabsContent value="overview"><Overview p={p} save={saveProject} /></TabsContent>
           <TabsContent value="takeoff"><Takeoff projectId={id!} tenantId={tenantId} qtys={qtys} reload={load} /></TabsContent>
           <TabsContent value="estimate"><Estimate projectId={id!} tenantId={tenantId} qtys={qtys} project={p} /></TabsContent>
           <TabsContent value="budget"><BudgetTab projectId={id!} tenantId={tenantId} /></TabsContent>
           <TabsContent value="buyout"><BuyoutTab projectId={id!} tenantId={tenantId} /></TabsContent>
+          <TabsContent value="commitments"><CommitmentsTab projectId={id!} tenantId={tenantId} /></TabsContent>
+          <TabsContent value="procurement"><ProcurementTab projectId={id!} tenantId={tenantId} /></TabsContent>
           <TabsContent value="bids"><Bids projectId={id!} tenantId={tenantId} /></TabsContent>
           <TabsContent value="files"><Files projectId={id!} onImport={() => setImportOpen(true)} /></TabsContent>
           <TabsContent value="history"><History projectId={id!} /></TabsContent>
