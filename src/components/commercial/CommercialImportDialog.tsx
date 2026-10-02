@@ -73,6 +73,7 @@ export function CommercialImportDialog({ open, onOpenChange, onDone, projectId, 
 
   const importPlans = async (file: File) => {
     let pid = projectId;
+    if (!tenantId) throw new Error("Your company is still loading — wait a moment and try again.");
     if (!pid) {
       const { data: created, error: cErr } = await db.from("commercial_projects").insert({ tenant_id: tenantId, name: file.name.replace(/\.pdf$/i, ""), metadata: { imported_from: "plan_set", placeholder_name: true } }).select("id").single();
       if (cErr) throw cErr; pid = created.id;
