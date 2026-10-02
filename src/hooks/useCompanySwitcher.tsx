@@ -74,7 +74,13 @@ export const useCompanySwitcher = () => {
       }));
 
       // Get active tenant from RPC (faster, no RLS overhead)
-      let activeTenantId: string | null = getTabTenantId() || (activeTenantResult.data as string | null);
+      const accessible = new Set(companies.map(c => c.tenant_id));
+      const isOk = (id: string | null) => !!id && (accessible.has(id) || profile?.role === 'master');
+      // A tab can remember a company from a previous sign-in; drop it if this user can't access it.
+      const tabId = getTabTenantId();
+      if (tabId && !isOk(tabId)) { clearTabTenantId(); setActiveCompanyId(null); }
+      const rpcId = activeTenantResult.data as string | null;
+      let activeTenantId: string | null = isOk(tabId) ? tabId : isOk(rpcId) ? rpcId : null;
 
       // Fallback: if no active tenant, use primary or first company
       if (!activeTenantId && companies.length > 0) {
@@ -96,7 +102,8 @@ export const useCompanySwitcher = () => {
   const companies = allCompanies
     .filter(c => c.is_active !== false)
     .sort((a, b) => a.tenant_name.localeCompare(b.tenant_name));
-  const computedActiveCompanyId = activeCompanyId || companiesData?.activeTenantId || null;
+  const tabIsValid = !activeCompanyId || !companiesData || profile?.role === 'master' || allCompanies.some(c => c.tenant_id === activeCompanyId);
+  const computedActiveCompanyId = (tabIsValid ? activeCompanyId : null) || companiesData?.activeTenantId || null;
 
   const [isSwitching, setIsSwitching] = useState(false);
 
