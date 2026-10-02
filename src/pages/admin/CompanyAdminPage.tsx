@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { LocationManagement } from '@/components/settings/LocationManagement';
 import { WebsitePreview } from '@/components/settings/WebsitePreview';
@@ -102,6 +103,11 @@ const CompanyAdminPage = () => {
   const [seedingOwners, setSeedingOwners] = useState(false);
   const [viewFilter, setViewFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const refreshCompanySwitcher = () => {
+    queryClient.invalidateQueries({ queryKey: ['accessible-companies'] });
+    queryClient.invalidateQueries({ queryKey: ['available-companies'] });
+  };
   const { user: currentUser } = useCurrentUser();
   const [searchParams] = useSearchParams();
 
@@ -340,6 +346,7 @@ const CompanyAdminPage = () => {
 
       clearTimeout(timeoutId);
       
+      refreshCompanySwitcher();
       toast({ 
         title: "Company Created Successfully",
         description: `${formData.name} created with ${locationsToCreate.length} location(s).`
@@ -386,6 +393,7 @@ const CompanyAdminPage = () => {
 
       if (error) throw error;
 
+      refreshCompanySwitcher();
       toast({ title: "Company updated successfully" });
       setEditDialogOpen(false);
       fetchCompanies();
@@ -452,6 +460,7 @@ const CompanyAdminPage = () => {
         }
       }
       
+      refreshCompanySwitcher();
       toast({ title: `Company ${isDeactivating ? 'deactivated' : 'activated'}` });
       fetchCompanies();
     } catch (error: any) {

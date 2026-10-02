@@ -93,7 +93,9 @@ export const useCompanySwitcher = () => {
 
   // Update local state when data changes - filter out inactive companies from the switcher
   const allCompanies = companiesData?.companies || [];
-  const companies = allCompanies.filter(c => c.is_active !== false);
+  const companies = allCompanies
+    .filter(c => c.is_active !== false)
+    .sort((a, b) => a.tenant_name.localeCompare(b.tenant_name));
   const computedActiveCompanyId = activeCompanyId || companiesData?.activeTenantId || null;
 
   const [isSwitching, setIsSwitching] = useState(false);
