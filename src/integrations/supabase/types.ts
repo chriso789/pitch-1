@@ -66792,6 +66792,10 @@ export type Database = {
         Args: { _award_date?: string; _notes?: string; _version_id: string }
         Returns: string
       }
+      commercial_can_access_tenant: {
+        Args: { _tenant_id: string }
+        Returns: boolean
+      }
       commercial_create_commitment_from_buyout: {
         Args: { _buyout_package_id: string; _kind: string }
         Returns: string
