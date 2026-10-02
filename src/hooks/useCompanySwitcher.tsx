@@ -4,7 +4,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { setSwitchingFlag, cacheUserProfile } from '@/components/layout/GlobalLoadingHandler';
 import { useUserProfile } from '@/contexts/UserProfileContext';
-import { getTabTenantId, setTabTenantId, seedTabTenantId } from '@/lib/tabTenant';
+import { getTabTenantId, setTabTenantId, seedTabTenantId, clearTabTenantId } from '@/lib/tabTenant';
 
 interface AccessibleCompany {
   tenant_id: string;
