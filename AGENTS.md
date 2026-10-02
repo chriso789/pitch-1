@@ -1,3 +1,4 @@
 # Architecture Decisions
 
 - Final paid-in-full invoices generate a concise homeowner-facing Work Performed summary through `estimate-scope-narrative`; they never expose raw estimate line items as the invoice description.- Commercial budgets are created only by the `commercial_award_version` RPC from an approved estimate version's snapshot; awards and original budget values are immutable, and later changes must go through budget/change records, never edits to the estimate or originals.
+- Commercial buyout packages link 1:1 to a commercial_bid_packages row; RFQ quotes enter leveling only via `commercial_record_rfq_quote`, vendors are reused from `vendors`/`contacts`, and `committed_cost` is never user-editable (owned by the commitment engine).

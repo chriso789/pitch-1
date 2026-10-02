@@ -9696,47 +9696,102 @@ export type Database = {
       }
       commercial_bid_quotes: {
         Row: {
+          adjusted_total: number | null
+          alternates_amount: number
+          alternates_notes: string | null
           amount: number
           bidder_name: string
+          contact_id: string | null
           created_at: string
           excludes: string | null
+          freight: number
           id: string
           includes: string | null
+          lead_time_days: number | null
           package_id: string
+          rfq_vendor_id: string | null
           scope_gaps: string | null
+          tax: number
           tenant_id: string
           updated_at: string
+          vendor_id: string | null
         }
         Insert: {
+          adjusted_total?: number | null
+          alternates_amount?: number
+          alternates_notes?: string | null
           amount?: number
           bidder_name: string
+          contact_id?: string | null
           created_at?: string
           excludes?: string | null
+          freight?: number
           id?: string
           includes?: string | null
+          lead_time_days?: number | null
           package_id: string
+          rfq_vendor_id?: string | null
           scope_gaps?: string | null
+          tax?: number
           tenant_id?: string
           updated_at?: string
+          vendor_id?: string | null
         }
         Update: {
+          adjusted_total?: number | null
+          alternates_amount?: number
+          alternates_notes?: string | null
           amount?: number
           bidder_name?: string
+          contact_id?: string | null
           created_at?: string
           excludes?: string | null
+          freight?: number
           id?: string
           includes?: string | null
+          lead_time_days?: number | null
           package_id?: string
+          rfq_vendor_id?: string | null
           scope_gaps?: string | null
+          tax?: number
           tenant_id?: string
           updated_at?: string
+          vendor_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "commercial_bid_quotes_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_bid_quotes_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
           {
             foreignKeyName: "commercial_bid_quotes_package_id_fkey"
             columns: ["package_id"]
             isOneToOne: false
             referencedRelation: "commercial_bid_packages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_bid_quotes_rfq_vendor_id_fkey"
+            columns: ["rfq_vendor_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_rfq_vendors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_bid_quotes_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
             referencedColumns: ["id"]
           },
         ]
@@ -9843,6 +9898,95 @@ export type Database = {
           },
           {
             foreignKeyName: "commercial_budget_lines_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      commercial_buyout_packages: {
+        Row: {
+          assigned_to: string | null
+          bid_package_id: string | null
+          budget_line_id: string | null
+          committed_cost: number
+          cost_code_id: string | null
+          cost_type: string
+          created_at: string
+          created_by: string | null
+          estimated_cost: number
+          id: string
+          name: string
+          notes: string | null
+          project_id: string
+          required_by_date: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_to?: string | null
+          bid_package_id?: string | null
+          budget_line_id?: string | null
+          committed_cost?: number
+          cost_code_id?: string | null
+          cost_type?: string
+          created_at?: string
+          created_by?: string | null
+          estimated_cost?: number
+          id?: string
+          name: string
+          notes?: string | null
+          project_id: string
+          required_by_date?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_to?: string | null
+          bid_package_id?: string | null
+          budget_line_id?: string | null
+          committed_cost?: number
+          cost_code_id?: string | null
+          cost_type?: string
+          created_at?: string
+          created_by?: string | null
+          estimated_cost?: number
+          id?: string
+          name?: string
+          notes?: string | null
+          project_id?: string
+          required_by_date?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commercial_buyout_packages_bid_package_id_fkey"
+            columns: ["bid_package_id"]
+            isOneToOne: true
+            referencedRelation: "commercial_bid_packages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_buyout_packages_budget_line_id_fkey"
+            columns: ["budget_line_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_budget_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_buyout_packages_cost_code_id_fkey"
+            columns: ["cost_code_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_cost_codes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_buyout_packages_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "commercial_projects"
@@ -10340,6 +10484,228 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      commercial_rfq_documents: {
+        Row: {
+          category: string | null
+          created_at: string
+          document_id: string | null
+          file_name: string
+          file_path: string | null
+          id: string
+          rfq_id: string
+          tenant_id: string
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string
+          document_id?: string | null
+          file_name: string
+          file_path?: string | null
+          id?: string
+          rfq_id: string
+          tenant_id?: string
+        }
+        Update: {
+          category?: string | null
+          created_at?: string
+          document_id?: string | null
+          file_name?: string
+          file_path?: string | null
+          id?: string
+          rfq_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commercial_rfq_documents_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_rfq_documents_rfq_id_fkey"
+            columns: ["rfq_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_rfqs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      commercial_rfq_vendors: {
+        Row: {
+          bid_quote_id: string | null
+          contact_id: string | null
+          created_at: string
+          decline_reason: string | null
+          declined_at: string | null
+          id: string
+          invited_at: string
+          quote_amount: number | null
+          quote_document_id: string | null
+          responded_at: string | null
+          rfq_id: string
+          sent_at: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+          vendor_email: string | null
+          vendor_id: string | null
+          vendor_name: string
+          viewed_at: string | null
+        }
+        Insert: {
+          bid_quote_id?: string | null
+          contact_id?: string | null
+          created_at?: string
+          decline_reason?: string | null
+          declined_at?: string | null
+          id?: string
+          invited_at?: string
+          quote_amount?: number | null
+          quote_document_id?: string | null
+          responded_at?: string | null
+          rfq_id: string
+          sent_at?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+          vendor_email?: string | null
+          vendor_id?: string | null
+          vendor_name: string
+          viewed_at?: string | null
+        }
+        Update: {
+          bid_quote_id?: string | null
+          contact_id?: string | null
+          created_at?: string
+          decline_reason?: string | null
+          declined_at?: string | null
+          id?: string
+          invited_at?: string
+          quote_amount?: number | null
+          quote_document_id?: string | null
+          responded_at?: string | null
+          rfq_id?: string
+          sent_at?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+          vendor_email?: string | null
+          vendor_id?: string | null
+          vendor_name?: string
+          viewed_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commercial_rfq_vendors_bid_quote_id_fkey"
+            columns: ["bid_quote_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_bid_quotes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_rfq_vendors_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_rfq_vendors_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "commercial_rfq_vendors_rfq_id_fkey"
+            columns: ["rfq_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_rfqs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_rfq_vendors_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      commercial_rfqs: {
+        Row: {
+          buyout_package_id: string | null
+          created_at: string
+          created_by: string | null
+          delivery_requirement: string | null
+          details: string | null
+          due_date: string | null
+          id: string
+          project_id: string
+          quantities: Json
+          schedule_notes: string | null
+          scope: string | null
+          specifications: string | null
+          status: string
+          tenant_id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          buyout_package_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          delivery_requirement?: string | null
+          details?: string | null
+          due_date?: string | null
+          id?: string
+          project_id: string
+          quantities?: Json
+          schedule_notes?: string | null
+          scope?: string | null
+          specifications?: string | null
+          status?: string
+          tenant_id?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          buyout_package_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          delivery_requirement?: string | null
+          details?: string | null
+          due_date?: string | null
+          id?: string
+          project_id?: string
+          quantities?: Json
+          schedule_notes?: string | null
+          scope?: string | null
+          specifications?: string | null
+          status?: string
+          tenant_id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commercial_rfqs_buyout_package_id_fkey"
+            columns: ["buyout_package_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_buyout_packages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_rfqs_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_projects"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       commercial_takeoff_quantities: {
         Row: {
@@ -65538,11 +65904,25 @@ export type Database = {
         Args: { _comments?: string; _decision: string; _version_id: string }
         Returns: Json
       }
+      commercial_record_rfq_quote: {
+        Args: {
+          _amount: number
+          _freight?: number
+          _lead_time_days?: number
+          _rfq_vendor_id: string
+          _tax?: number
+        }
+        Returns: string
+      }
       commercial_required_steps: {
         Args: { _amount: number }
         Returns: string[]
       }
       commercial_seed_cost_codes: { Args: never; Returns: number }
+      commercial_suggest_buyout_packages: {
+        Args: { _project_id: string }
+        Returns: number
+      }
       complete_presentation_session: {
         Args: { p_session_id: string; p_signature_data?: Json }
         Returns: undefined

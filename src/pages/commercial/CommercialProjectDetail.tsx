@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { DRIVERS, USABLE, STARTER_ASSEMBLIES, buildLines, computeTotals, money, autoReviewStatus } from "@/lib/commercial/engine";
 import { CommercialImportDialog } from "@/components/commercial/CommercialImportDialog";
 import { BudgetTab } from "@/components/commercial/BudgetTab";
+import { BuyoutTab } from "@/components/commercial/BuyoutTab";
 import { defaultCostType } from "@/lib/commercial/budget";
 
 const db = supabase as any;
@@ -66,11 +67,12 @@ export default function CommercialProjectDetail() {
           </div>
         </div>
         <Tabs defaultValue="takeoff">
-          <TabsList><TabsTrigger value="overview">Overview</TabsTrigger><TabsTrigger value="takeoff">Takeoff</TabsTrigger><TabsTrigger value="estimate">Estimate</TabsTrigger><TabsTrigger value="budget">Budget</TabsTrigger><TabsTrigger value="bids">Bids</TabsTrigger><TabsTrigger value="files">Drawings & Files</TabsTrigger><TabsTrigger value="history">History</TabsTrigger></TabsList>
+          <TabsList><TabsTrigger value="overview">Overview</TabsTrigger><TabsTrigger value="takeoff">Takeoff</TabsTrigger><TabsTrigger value="estimate">Estimate</TabsTrigger><TabsTrigger value="budget">Budget</TabsTrigger><TabsTrigger value="buyout">Buyout</TabsTrigger><TabsTrigger value="bids">Bids</TabsTrigger><TabsTrigger value="files">Drawings & Files</TabsTrigger><TabsTrigger value="history">History</TabsTrigger></TabsList>
           <TabsContent value="overview"><Overview p={p} save={saveProject} /></TabsContent>
           <TabsContent value="takeoff"><Takeoff projectId={id!} tenantId={tenantId} qtys={qtys} reload={load} /></TabsContent>
           <TabsContent value="estimate"><Estimate projectId={id!} tenantId={tenantId} qtys={qtys} project={p} /></TabsContent>
           <TabsContent value="budget"><BudgetTab projectId={id!} tenantId={tenantId} /></TabsContent>
+          <TabsContent value="buyout"><BuyoutTab projectId={id!} tenantId={tenantId} /></TabsContent>
           <TabsContent value="bids"><Bids projectId={id!} tenantId={tenantId} /></TabsContent>
           <TabsContent value="files"><Files projectId={id!} onImport={() => setImportOpen(true)} /></TabsContent>
           <TabsContent value="history"><History projectId={id!} /></TabsContent>
@@ -344,31 +346,42 @@ function VersionRow({ v, project, onChange }: any) {
 function Bids({ projectId, tenantId }: any) {
   const [pkgs, setPkgs] = useState<any[]>([]);
   const [name, setName] = useState("");
-  const load = async () => { const { data } = await db.from("commercial_bid_packages").select("*, commercial_bid_quotes(*)").eq("project_id", projectId).order("created_at"); setPkgs(data || []); };
-  useEffect(() => { load(); }, [projectId]);
+  const load = async () => { const { data } = await db.from("commercial_bid_packages").select("*, commercial_bid_quotes(*)").eq("project_id", projectId).eq("tenant_id", tenantId).order("created_at"); setPkgs(data || []); };
+  useEffect(() => { if (tenantId) load(); }, [projectId, tenantId]);
   const addPkg = async () => { if (!name) return; await db.from("commercial_bid_packages").insert({ tenant_id: tenantId, project_id: projectId, name }); setName(""); load(); };
   const addQuote = async (pkg: any) => {
     const bidder = window.prompt("Bidder / supplier name"); if (!bidder) return;
-    const amt = Number(window.prompt("Quote amount") || 0);
+    const amt = Number(window.prompt("Base quote amount") || 0);
     await db.from("commercial_bid_quotes").insert({ tenant_id: tenantId, package_id: pkg.id, bidder_name: bidder, amount: amt }); load();
   };
-  const upd = async (q: any, patch: any) => { await db.from("commercial_bid_quotes").update(patch).eq("id", q.id); };
+  const upd = async (q: any, patch: any) => { const { error } = await db.from("commercial_bid_quotes").update(patch).eq("id", q.id); if (error) toast.error(error.message); else load(); };
+  const carry = async (pkg: any, q: any) => {
+    if (!window.confirm(`Carry ${q.bidder_name} at ${money(q.adjusted_total)} for ${pkg.name}?`)) return;
+    await db.from("commercial_bid_packages").update({ carried_quote_id: q.id }).eq("id", pkg.id);
+    await db.from("commercial_buyout_packages").update({ status: "under_review" }).eq("bid_package_id", pkg.id).in("status", ["not_started", "pricing", "rfq_sent", "quotes_received"]);
+    load();
+  };
+  const num = (q: any, k: string, w = "w-24") => <Input className={`h-8 ${w} text-right`} type="number" defaultValue={q[k] ?? ""} onBlur={(e) => { const v = e.target.value === "" ? (k === "lead_time_days" ? null : 0) : Number(e.target.value); if (v !== q[k]) upd(q, { [k]: v }); }} />;
+  const txt = (q: any, k: string) => <Input className="h-8 min-w-[140px]" defaultValue={q[k] || ""} onBlur={(e) => e.target.value !== (q[k] || "") && upd(q, { [k]: e.target.value })} />;
   return (
     <div className="space-y-4">
       <div className="flex gap-2"><Input placeholder="New bid package (e.g. Sheet metal, Crane, Membrane supply)" value={name} onChange={(e) => setName(e.target.value)} /><Button onClick={addPkg}>Add</Button></div>
-      {pkgs.map((pkg) => { const low = Math.min(...pkg.commercial_bid_quotes.map((q: any) => Number(q.amount)));
-        return (
+      <p className="text-xs text-muted-foreground">Adjusted total = base + freight + tax + alternates. Pitch never picks a vendor for you — choose the carried quote yourself.</p>
+      {pkgs.map((pkg) => (
         <Card key={pkg.id}><CardHeader className="py-3 flex-row items-center justify-between"><CardTitle className="text-base">{pkg.name}</CardTitle><Button size="sm" variant="outline" onClick={() => addQuote(pkg)}>+ Quote</Button></CardHeader>
-          <CardContent className="p-0"><table className="w-full text-sm"><thead className="bg-muted/50 text-left"><tr><th className="p-2">Bidder</th><th className="p-2">Amount</th><th className="p-2">Includes</th><th className="p-2">Excludes</th><th className="p-2">Scope gaps</th><th className="p-2">Carry</th></tr></thead>
+          <CardContent className="p-0 overflow-x-auto"><table className="w-full text-sm whitespace-nowrap"><thead className="bg-muted/50 text-left"><tr>
+            <th className="p-2">Vendor</th><th className="p-2 text-right">Base</th><th className="p-2 text-right">Freight</th><th className="p-2 text-right">Tax</th><th className="p-2 text-right">Alternates</th><th className="p-2">Lead (days)</th>
+            <th className="p-2">Includes</th><th className="p-2">Excludes</th><th className="p-2">Scope gaps</th><th className="p-2 text-right">Adjusted total</th><th className="p-2">Carried</th></tr></thead>
             <tbody>{pkg.commercial_bid_quotes.map((q: any) => (
-              <tr key={q.id} className="border-t">
+              <tr key={q.id} className={`border-t ${pkg.carried_quote_id === q.id ? "bg-primary/5" : ""}`}>
                 <td className="p-2 font-medium">{q.bidder_name}</td>
-                <td className={`p-2 ${Number(q.amount) === low ? "text-primary font-semibold" : ""}`}>{money(q.amount)}</td>
-                {["includes", "excludes", "scope_gaps"].map((k) => <td key={k} className="p-2"><Input className="h-8" defaultValue={q[k] || ""} onBlur={(e) => upd(q, { [k]: e.target.value })} /></td>)}
-                <td className="p-2"><input type="radio" name={pkg.id} defaultChecked={pkg.carried_quote_id === q.id} onChange={async () => { await db.from("commercial_bid_packages").update({ carried_quote_id: q.id }).eq("id", pkg.id); }} /></td>
+                <td className="p-2">{num(q, "amount", "w-28")}</td><td className="p-2">{num(q, "freight")}</td><td className="p-2">{num(q, "tax")}</td><td className="p-2">{num(q, "alternates_amount")}</td><td className="p-2">{num(q, "lead_time_days", "w-20")}</td>
+                <td className="p-2">{txt(q, "includes")}</td><td className="p-2">{txt(q, "excludes")}</td><td className="p-2">{txt(q, "scope_gaps")}</td>
+                <td className="p-2 text-right font-semibold">{money(q.adjusted_total)}</td>
+                <td className="p-2">{pkg.carried_quote_id === q.id ? <Badge>Carried</Badge> : <Button size="sm" variant="ghost" onClick={() => carry(pkg, q)}>Carry</Button>}</td>
               </tr>))}
-              {!pkg.commercial_bid_quotes.length && <tr><td colSpan={6} className="p-4 text-center text-muted-foreground">No quotes yet.</td></tr>}
-            </tbody></table></CardContent></Card>); })}
+              {!pkg.commercial_bid_quotes.length && <tr><td colSpan={11} className="p-4 text-center text-muted-foreground">No quotes yet.</td></tr>}
+            </tbody></table></CardContent></Card>))}
     </div>
   );
 }
