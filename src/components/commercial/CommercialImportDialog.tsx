@@ -31,8 +31,8 @@ export function CommercialImportDialog({ open, onOpenChange, onDone, projectId, 
     for (const [name, list] of Object.entries(groups)) {
       let pid = projectId;
       if (!pid) {
-        const { data, error } = await db.from("commercial_projects").insert({ tenant_id: tenantId, name, metadata: { imported_from: "edge" } }).select("id").single();
-        if (error) throw error; pid = data.id;
+        const { data, error } = await db.rpc("commercial_create_project", { _tenant_id: tenantId, _name: name, _metadata: { imported_from: "edge" } });
+        if (error) throw error; pid = data as string;
       }
       const qtys = list.map((r) => {
         const label = pick(r, "description", "item", "name", "condition") || "Imported item";
@@ -75,8 +75,8 @@ export function CommercialImportDialog({ open, onOpenChange, onDone, projectId, 
     let pid = projectId;
     if (!tenantId) throw new Error("Your company is still loading — wait a moment and try again.");
     if (!pid) {
-      const { data: created, error: cErr } = await db.from("commercial_projects").insert({ tenant_id: tenantId, name: file.name.replace(/\.pdf$/i, ""), metadata: { imported_from: "plan_set", placeholder_name: true } }).select("id").single();
-      if (cErr) throw cErr; pid = created.id;
+      const { data: created, error: cErr } = await db.rpc("commercial_create_project", { _tenant_id: tenantId, _name: file.name.replace(/\.pdf$/i, ""), _metadata: { imported_from: "plan_set", placeholder_name: true } });
+      if (cErr) throw cErr; pid = created as string;
     }
     const base = file.name.replace(/[^\w.\-]/g, "_");
     const stamp = Date.now();

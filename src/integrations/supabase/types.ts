@@ -66800,6 +66800,10 @@ export type Database = {
         Args: { _buyout_package_id: string; _kind: string }
         Returns: string
       }
+      commercial_create_project: {
+        Args: { _metadata?: Json; _name: string; _tenant_id: string }
+        Returns: string
+      }
       commercial_decide_version: {
         Args: { _comments?: string; _decision: string; _version_id: string }
         Returns: Json
