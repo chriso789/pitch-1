@@ -10362,6 +10362,190 @@ export type Database = {
         }
         Relationships: []
       }
+      commercial_po_releases: {
+        Row: {
+          confirmed_delivery: string | null
+          created_at: string
+          damaged_quantity: number | null
+          delivery_address: string | null
+          description: string | null
+          id: string
+          notes: string | null
+          packing_slip: string | null
+          packing_slip_document_id: string | null
+          po_id: string
+          quantity: number | null
+          received_quantity: number | null
+          release_number: number
+          requested_delivery: string | null
+          site_contact: string | null
+          status: string
+          tenant_id: string
+          uom: string | null
+          updated_at: string
+        }
+        Insert: {
+          confirmed_delivery?: string | null
+          created_at?: string
+          damaged_quantity?: number | null
+          delivery_address?: string | null
+          description?: string | null
+          id?: string
+          notes?: string | null
+          packing_slip?: string | null
+          packing_slip_document_id?: string | null
+          po_id: string
+          quantity?: number | null
+          received_quantity?: number | null
+          release_number: number
+          requested_delivery?: string | null
+          site_contact?: string | null
+          status?: string
+          tenant_id?: string
+          uom?: string | null
+          updated_at?: string
+        }
+        Update: {
+          confirmed_delivery?: string | null
+          created_at?: string
+          damaged_quantity?: number | null
+          delivery_address?: string | null
+          description?: string | null
+          id?: string
+          notes?: string | null
+          packing_slip?: string | null
+          packing_slip_document_id?: string | null
+          po_id?: string
+          quantity?: number | null
+          received_quantity?: number | null
+          release_number?: number
+          requested_delivery?: string | null
+          site_contact?: string | null
+          status?: string
+          tenant_id?: string
+          uom?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commercial_po_releases_packing_slip_document_id_fkey"
+            columns: ["packing_slip_document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_po_releases_po_id_fkey"
+            columns: ["po_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_purchase_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      commercial_procurement_items: {
+        Row: {
+          buyout_package_id: string | null
+          created_at: string
+          delivery_date: string | null
+          expected_delivery_date: string | null
+          expected_ship_date: string | null
+          id: string
+          lead_time_days: number | null
+          manufacturer: string | null
+          manufacturing_start_date: string | null
+          material: string
+          notes: string | null
+          po_date: string | null
+          po_id: string | null
+          project_id: string
+          quote_date: string | null
+          received_date: string | null
+          release_date: string | null
+          required_onsite_date: string | null
+          ship_date: string | null
+          status: string
+          submittal_required: boolean
+          supplier_name: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          buyout_package_id?: string | null
+          created_at?: string
+          delivery_date?: string | null
+          expected_delivery_date?: string | null
+          expected_ship_date?: string | null
+          id?: string
+          lead_time_days?: number | null
+          manufacturer?: string | null
+          manufacturing_start_date?: string | null
+          material: string
+          notes?: string | null
+          po_date?: string | null
+          po_id?: string | null
+          project_id: string
+          quote_date?: string | null
+          received_date?: string | null
+          release_date?: string | null
+          required_onsite_date?: string | null
+          ship_date?: string | null
+          status?: string
+          submittal_required?: boolean
+          supplier_name?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Update: {
+          buyout_package_id?: string | null
+          created_at?: string
+          delivery_date?: string | null
+          expected_delivery_date?: string | null
+          expected_ship_date?: string | null
+          id?: string
+          lead_time_days?: number | null
+          manufacturer?: string | null
+          manufacturing_start_date?: string | null
+          material?: string
+          notes?: string | null
+          po_date?: string | null
+          po_id?: string | null
+          project_id?: string
+          quote_date?: string | null
+          received_date?: string | null
+          release_date?: string | null
+          required_onsite_date?: string | null
+          ship_date?: string | null
+          status?: string
+          submittal_required?: boolean
+          supplier_name?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commercial_procurement_items_buyout_package_id_fkey"
+            columns: ["buyout_package_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_buyout_packages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_procurement_items_po_id_fkey"
+            columns: ["po_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_purchase_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_procurement_items_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       commercial_project_budgets: {
         Row: {
           award_id: string
@@ -10484,6 +10668,215 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      commercial_purchase_order_lines: {
+        Row: {
+          active: boolean
+          buyout_package_id: string | null
+          cost_code_id: string | null
+          cost_type: string
+          created_at: string
+          description: string
+          estimate_source_id: string | null
+          extended_cost: number | null
+          id: string
+          po_id: string
+          quantity: number
+          sort_order: number
+          tenant_id: string
+          unit_cost: number
+          uom: string | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          buyout_package_id?: string | null
+          cost_code_id?: string | null
+          cost_type?: string
+          created_at?: string
+          description: string
+          estimate_source_id?: string | null
+          extended_cost?: number | null
+          id?: string
+          po_id: string
+          quantity?: number
+          sort_order?: number
+          tenant_id?: string
+          unit_cost?: number
+          uom?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          buyout_package_id?: string | null
+          cost_code_id?: string | null
+          cost_type?: string
+          created_at?: string
+          description?: string
+          estimate_source_id?: string | null
+          extended_cost?: number | null
+          id?: string
+          po_id?: string
+          quantity?: number
+          sort_order?: number
+          tenant_id?: string
+          unit_cost?: number
+          uom?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commercial_purchase_order_lines_buyout_package_id_fkey"
+            columns: ["buyout_package_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_buyout_packages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_purchase_order_lines_cost_code_id_fkey"
+            columns: ["cost_code_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_cost_codes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_purchase_order_lines_po_id_fkey"
+            columns: ["po_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_purchase_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      commercial_purchase_orders: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          approved_changes: number
+          bid_quote_id: string | null
+          buyout_package_id: string | null
+          contact_id: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          invoiced_amount: number
+          issue_date: string | null
+          notes: string | null
+          original_amount: number
+          paid_amount: number
+          po_number: string | null
+          project_id: string
+          remaining_amount: number | null
+          required_date: string | null
+          revised_amount: number | null
+          shipping_location: string | null
+          status: string
+          tenant_id: string
+          terms: string | null
+          updated_at: string
+          vendor_id: string | null
+          vendor_name: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          approved_changes?: number
+          bid_quote_id?: string | null
+          buyout_package_id?: string | null
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          invoiced_amount?: number
+          issue_date?: string | null
+          notes?: string | null
+          original_amount?: number
+          paid_amount?: number
+          po_number?: string | null
+          project_id: string
+          remaining_amount?: number | null
+          required_date?: string | null
+          revised_amount?: number | null
+          shipping_location?: string | null
+          status?: string
+          tenant_id?: string
+          terms?: string | null
+          updated_at?: string
+          vendor_id?: string | null
+          vendor_name: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          approved_changes?: number
+          bid_quote_id?: string | null
+          buyout_package_id?: string | null
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          invoiced_amount?: number
+          issue_date?: string | null
+          notes?: string | null
+          original_amount?: number
+          paid_amount?: number
+          po_number?: string | null
+          project_id?: string
+          remaining_amount?: number | null
+          required_date?: string | null
+          revised_amount?: number | null
+          shipping_location?: string | null
+          status?: string
+          tenant_id?: string
+          terms?: string | null
+          updated_at?: string
+          vendor_id?: string | null
+          vendor_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commercial_purchase_orders_bid_quote_id_fkey"
+            columns: ["bid_quote_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_bid_quotes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_purchase_orders_buyout_package_id_fkey"
+            columns: ["buyout_package_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_buyout_packages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_purchase_orders_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_purchase_orders_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "commercial_purchase_orders_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_purchase_orders_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       commercial_rfq_documents: {
         Row: {
@@ -10703,6 +11096,221 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "commercial_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      commercial_subcontract_lines: {
+        Row: {
+          active: boolean
+          buyout_package_id: string | null
+          cost_code_id: string | null
+          cost_type: string
+          created_at: string
+          description: string
+          estimate_source_id: string | null
+          extended_cost: number | null
+          id: string
+          quantity: number
+          sort_order: number
+          subcontract_id: string
+          tenant_id: string
+          unit_cost: number
+          uom: string | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          buyout_package_id?: string | null
+          cost_code_id?: string | null
+          cost_type?: string
+          created_at?: string
+          description: string
+          estimate_source_id?: string | null
+          extended_cost?: number | null
+          id?: string
+          quantity?: number
+          sort_order?: number
+          subcontract_id: string
+          tenant_id?: string
+          unit_cost?: number
+          uom?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          buyout_package_id?: string | null
+          cost_code_id?: string | null
+          cost_type?: string
+          created_at?: string
+          description?: string
+          estimate_source_id?: string | null
+          extended_cost?: number | null
+          id?: string
+          quantity?: number
+          sort_order?: number
+          subcontract_id?: string
+          tenant_id?: string
+          unit_cost?: number
+          uom?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commercial_subcontract_lines_buyout_package_id_fkey"
+            columns: ["buyout_package_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_buyout_packages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_subcontract_lines_cost_code_id_fkey"
+            columns: ["cost_code_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_cost_codes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_subcontract_lines_subcontract_id_fkey"
+            columns: ["subcontract_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_subcontracts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      commercial_subcontracts: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          bid_quote_id: string | null
+          buyout_package_id: string | null
+          change_value: number
+          completion_date: string | null
+          contact_id: string | null
+          contract_value: number
+          created_at: string
+          created_by: string | null
+          id: string
+          invoiced_amount: number
+          notes: string | null
+          paid_amount: number
+          project_id: string
+          remaining_amount: number | null
+          retainage_held: number
+          retainage_pct: number
+          revised_value: number | null
+          scope: string | null
+          start_date: string | null
+          status: string
+          subcontract_number: string | null
+          tenant_id: string
+          terms: string | null
+          updated_at: string
+          vendor_id: string | null
+          vendor_name: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          bid_quote_id?: string | null
+          buyout_package_id?: string | null
+          change_value?: number
+          completion_date?: string | null
+          contact_id?: string | null
+          contract_value?: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          invoiced_amount?: number
+          notes?: string | null
+          paid_amount?: number
+          project_id: string
+          remaining_amount?: number | null
+          retainage_held?: number
+          retainage_pct?: number
+          revised_value?: number | null
+          scope?: string | null
+          start_date?: string | null
+          status?: string
+          subcontract_number?: string | null
+          tenant_id?: string
+          terms?: string | null
+          updated_at?: string
+          vendor_id?: string | null
+          vendor_name: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          bid_quote_id?: string | null
+          buyout_package_id?: string | null
+          change_value?: number
+          completion_date?: string | null
+          contact_id?: string | null
+          contract_value?: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          invoiced_amount?: number
+          notes?: string | null
+          paid_amount?: number
+          project_id?: string
+          remaining_amount?: number | null
+          retainage_held?: number
+          retainage_pct?: number
+          revised_value?: number | null
+          scope?: string | null
+          start_date?: string | null
+          status?: string
+          subcontract_number?: string | null
+          tenant_id?: string
+          terms?: string | null
+          updated_at?: string
+          vendor_id?: string | null
+          vendor_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commercial_subcontracts_bid_quote_id_fkey"
+            columns: ["bid_quote_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_bid_quotes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_subcontracts_buyout_package_id_fkey"
+            columns: ["buyout_package_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_buyout_packages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_subcontracts_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_subcontracts_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "commercial_subcontracts_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_subcontracts_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
             referencedColumns: ["id"]
           },
         ]
@@ -64716,6 +65324,25 @@ export type Database = {
           },
         ]
       }
+      commercial_commitments: {
+        Row: {
+          amount: number | null
+          bucket: string | null
+          buyout_package_id: string | null
+          commitment_id: string | null
+          commitment_type: string | null
+          cost_code_id: string | null
+          cost_type: string | null
+          description: string | null
+          line_id: string | null
+          number: string | null
+          project_id: string | null
+          status: string | null
+          tenant_id: string | null
+          vendor_name: string | null
+        }
+        Relationships: []
+      }
       geography_columns: {
         Row: {
           coord_dimension: number | null
@@ -65900,9 +66527,17 @@ export type Database = {
         Args: { _award_date?: string; _notes?: string; _version_id: string }
         Returns: string
       }
+      commercial_create_commitment_from_buyout: {
+        Args: { _buyout_package_id: string; _kind: string }
+        Returns: string
+      }
       commercial_decide_version: {
         Args: { _comments?: string; _decision: string; _version_id: string }
         Returns: Json
+      }
+      commercial_recompute_commitments: {
+        Args: { _project_id: string }
+        Returns: undefined
       }
       commercial_record_rfq_quote: {
         Args: {
