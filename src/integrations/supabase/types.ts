@@ -10044,6 +10044,84 @@ export type Database = {
           },
         ]
       }
+      commercial_cost_entries: {
+        Row: {
+          active: boolean
+          amount: number | null
+          cost_code_id: string | null
+          cost_type: string
+          created_at: string
+          created_by: string | null
+          description: string
+          entry_type: string
+          id: string
+          notes: string | null
+          project_id: string
+          quantity: number
+          resource_name: string | null
+          tenant_id: string
+          unit_cost: number
+          uom: string | null
+          updated_at: string
+          work_date: string
+        }
+        Insert: {
+          active?: boolean
+          amount?: number | null
+          cost_code_id?: string | null
+          cost_type?: string
+          created_at?: string
+          created_by?: string | null
+          description: string
+          entry_type: string
+          id?: string
+          notes?: string | null
+          project_id: string
+          quantity?: number
+          resource_name?: string | null
+          tenant_id?: string
+          unit_cost?: number
+          uom?: string | null
+          updated_at?: string
+          work_date?: string
+        }
+        Update: {
+          active?: boolean
+          amount?: number | null
+          cost_code_id?: string | null
+          cost_type?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string
+          entry_type?: string
+          id?: string
+          notes?: string | null
+          project_id?: string
+          quantity?: number
+          resource_name?: string | null
+          tenant_id?: string
+          unit_cost?: number
+          uom?: string | null
+          updated_at?: string
+          work_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commercial_cost_entries_cost_code_id_fkey"
+            columns: ["cost_code_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_cost_codes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_cost_entries_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       commercial_estimate_approvals: {
         Row: {
           comments: string | null
@@ -11385,6 +11463,177 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "commercial_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      commercial_vendor_invoice_lines: {
+        Row: {
+          active: boolean
+          amount: number
+          cost_code_id: string | null
+          cost_type: string
+          created_at: string
+          description: string
+          id: string
+          invoice_id: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          amount?: number
+          cost_code_id?: string | null
+          cost_type?: string
+          created_at?: string
+          description: string
+          id?: string
+          invoice_id: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          amount?: number
+          cost_code_id?: string | null
+          cost_type?: string
+          created_at?: string
+          description?: string
+          id?: string
+          invoice_id?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commercial_vendor_invoice_lines_cost_code_id_fkey"
+            columns: ["cost_code_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_cost_codes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_vendor_invoice_lines_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_vendor_invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      commercial_vendor_invoices: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          created_at: string
+          created_by: string | null
+          document_id: string | null
+          due_date: string | null
+          gross_amount: number
+          id: string
+          invoice_date: string | null
+          invoice_number: string
+          net_due: number | null
+          notes: string | null
+          paid_amount: number
+          paid_date: string | null
+          po_id: string | null
+          project_id: string
+          retainage_amount: number | null
+          retainage_pct: number
+          status: string
+          subcontract_id: string | null
+          tenant_id: string
+          updated_at: string
+          vendor_id: string | null
+          vendor_name: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          document_id?: string | null
+          due_date?: string | null
+          gross_amount?: number
+          id?: string
+          invoice_date?: string | null
+          invoice_number: string
+          net_due?: number | null
+          notes?: string | null
+          paid_amount?: number
+          paid_date?: string | null
+          po_id?: string | null
+          project_id: string
+          retainage_amount?: number | null
+          retainage_pct?: number
+          status?: string
+          subcontract_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+          vendor_id?: string | null
+          vendor_name: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          document_id?: string | null
+          due_date?: string | null
+          gross_amount?: number
+          id?: string
+          invoice_date?: string | null
+          invoice_number?: string
+          net_due?: number | null
+          notes?: string | null
+          paid_amount?: number
+          paid_date?: string | null
+          po_id?: string | null
+          project_id?: string
+          retainage_amount?: number | null
+          retainage_pct?: number
+          status?: string
+          subcontract_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+          vendor_id?: string | null
+          vendor_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commercial_vendor_invoices_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_vendor_invoices_po_id_fkey"
+            columns: ["po_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_purchase_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_vendor_invoices_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_vendor_invoices_subcontract_id_fkey"
+            columns: ["subcontract_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_subcontracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_vendor_invoices_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
             referencedColumns: ["id"]
           },
         ]
@@ -65324,6 +65573,22 @@ export type Database = {
           },
         ]
       }
+      commercial_actual_costs: {
+        Row: {
+          amount: number | null
+          cost_code_id: string | null
+          cost_date: string | null
+          cost_type: string | null
+          description: string | null
+          party: string | null
+          project_id: string | null
+          reference: string | null
+          source: string | null
+          source_id: string | null
+          tenant_id: string | null
+        }
+        Relationships: []
+      }
       commercial_commitments: {
         Row: {
           amount: number | null
@@ -66534,6 +66799,10 @@ export type Database = {
       commercial_decide_version: {
         Args: { _comments?: string; _decision: string; _version_id: string }
         Returns: Json
+      }
+      commercial_recompute_actuals: {
+        Args: { _project_id: string }
+        Returns: undefined
       }
       commercial_recompute_commitments: {
         Args: { _project_id: string }
