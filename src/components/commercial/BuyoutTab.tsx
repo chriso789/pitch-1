@@ -37,6 +37,11 @@ export function BuyoutTab({ projectId, tenantId }: { projectId: string; tenantId
     if (error) return toast.error(error.message);
     toast.success(data ? `${data} package(s) suggested from the budget` : "Every budget line already has a package"); load();
   };
+  const createCommitment = async (p: any, kind: "po" | "subcontract") => {
+    const { error } = await db.rpc("commercial_create_commitment_from_buyout", { _buyout_package_id: p.id, _kind: kind });
+    if (error) return toast.error(error.message);
+    toast.success(`Draft ${kind === "po" ? "purchase order" : "subcontract"} created — open POs & Subcontracts to review and submit`); load();
+  };
   const upd = async (p: any, patch: any) => { const { error } = await db.from("commercial_buyout_packages").update(patch).eq("id", p.id); if (error) toast.error(error.message); load(); };
 
   const rows = useMemo(() => pkgs.map((p) => {
@@ -78,6 +83,7 @@ export function BuyoutTab({ projectId, tenantId }: { projectId: string; tenantId
                 </tr>
                 {isOpen && <tr className="bg-muted/10"><td colSpan={8} className="p-3 space-y-3">
                   <div className="flex gap-2"><Button size="sm" onClick={() => setRfqFor(p)}>New RFQ</Button>
+                    {p.sel && <><Button size="sm" variant="outline" onClick={() => createCommitment(p, p.cost_type === "subcontract" || p.cost_type === "labor" ? "subcontract" : "po")}>Create {p.cost_type === "subcontract" || p.cost_type === "labor" ? "subcontract" : "PO"} from carried quote</Button></>}
                     <Input className="h-8 max-w-md" placeholder="Notes" defaultValue={p.notes || ""} onBlur={(e) => e.target.value !== (p.notes || "") && upd(p, { notes: e.target.value })} /></div>
                   {pr.map((r) => <RfqCard key={r.id} rfq={r} tenantId={tenantId} onChange={load} />)}
                   {!pr.length && <p className="text-xs text-muted-foreground">No RFQs yet.</p>}
@@ -89,7 +95,7 @@ export function BuyoutTab({ projectId, tenantId }: { projectId: string; tenantId
           </tbody>
         </table>
       </CardContent></Card>
-      <p className="text-xs text-muted-foreground">Committed fills in from purchase orders and subcontracts once those are built. Until then, gain/loss uses the selected quote.</p>
+      <p className="text-xs text-muted-foreground">Committed comes from approved purchase orders and subcontracts. Until something is committed, gain/loss uses the selected quote.</p>
       <RfqDialog pkg={rfqFor} projectId={projectId} tenantId={tenantId} onClose={() => setRfqFor(null)} onDone={load} />
       <NewPackageDialog open={newPkg} onClose={() => setNewPkg(false)} projectId={projectId} tenantId={tenantId} onDone={load} />
     </div>

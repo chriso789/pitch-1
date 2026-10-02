@@ -153,6 +153,13 @@ export function BudgetTab({ projectId, tenantId }: { projectId: string; tenantId
 }
 
 function DrillDialog({ drill, award, onClose }: any) {
+  const [com, setCom] = useState<any[]>([]);
+  useEffect(() => {
+    if (drill?.kind !== "committed") return setCom([]);
+    let q = db.from("commercial_commitments").select("*").eq("project_id", drill.line.project_id).eq("cost_type", drill.line.cost_type).neq("bucket", "void");
+    q = drill.line.cost_code_id ? q.eq("cost_code_id", drill.line.cost_code_id) : q.is("cost_code_id", null);
+    q.then(({ data }: any) => setCom(data || []));
+  }, [drill]);
   const src = drill?.kind === "original"
     ? (award?.snapshot_json?.lines || []).filter((l: any) => drill.line.source_estimate_line_ids?.includes(l.id))
     : [];
@@ -165,7 +172,10 @@ function DrillDialog({ drill, award, onClose }: any) {
             <tbody>{src.map((l: any) => <tr key={l.id} className="border-t"><td className="p-1">{l.description}</td><td className="p-1 text-right">{l.quantity} {l.uom}</td><td className="p-1 text-right">{money(l.unit_cost)}</td><td className="p-1 text-right">{money(l.total)}</td></tr>)}
               <tr className="border-t font-semibold"><td className="p-1" colSpan={3}>Total</td><td className="p-1 text-right">{money(src.reduce((a: number, l: any) => a + Number(l.total || 0), 0))}</td></tr></tbody></table>
           : <p className="text-sm text-muted-foreground">This amount comes from the estimate's {drill?.line.description?.toLowerCase() || "summary"} (from the awarded version's totals), not individual lines.</p>
-        ) : <p className="text-sm text-muted-foreground">Nothing recorded yet. {drill?.kind === "committed" ? "Purchase orders and subcontracts" : "Vendor invoices, labor and equipment costs"} will list here once those steps are built.</p>}
+        ) : drill?.kind === "committed" ? (com.length ? <table className="w-full text-sm"><thead className="text-left text-muted-foreground"><tr><th className="p-1">Number</th><th className="p-1">Vendor</th><th className="p-1">Line</th><th className="p-1">Status</th><th className="p-1 text-right">Amount</th></tr></thead>
+            <tbody>{com.map((c: any) => <tr key={c.line_id} className="border-t"><td className="p-1">{c.number}</td><td className="p-1">{c.vendor_name}</td><td className="p-1">{c.description}</td><td className="p-1">{c.bucket === "pending" ? "Pending" : "Committed"} ({c.status.replace(/_/g, " ")})</td><td className="p-1 text-right">{money(c.amount)}</td></tr>)}</tbody></table>
+          : <p className="text-sm text-muted-foreground">No purchase orders or subcontracts on this cost code and type yet.</p>)
+        : <p className="text-sm text-muted-foreground">Nothing recorded yet. Vendor invoices, labor and equipment costs will list here once that step is built.</p>}
       </DialogContent>
     </Dialog>
   );
