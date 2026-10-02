@@ -9580,6 +9580,79 @@ export type Database = {
         }
         Relationships: []
       }
+      commercial_awards: {
+        Row: {
+          award_date: string
+          award_notes: string | null
+          awarded_by: string | null
+          awarded_contract_value: number
+          commercial_estimate_id: string
+          commercial_estimate_version_id: string
+          commercial_project_id: string
+          created_at: string
+          id: string
+          original_cost: number
+          original_gross_margin: number | null
+          original_gross_profit: number
+          snapshot_json: Json
+          tenant_id: string
+        }
+        Insert: {
+          award_date?: string
+          award_notes?: string | null
+          awarded_by?: string | null
+          awarded_contract_value: number
+          commercial_estimate_id: string
+          commercial_estimate_version_id: string
+          commercial_project_id: string
+          created_at?: string
+          id?: string
+          original_cost: number
+          original_gross_margin?: number | null
+          original_gross_profit: number
+          snapshot_json: Json
+          tenant_id: string
+        }
+        Update: {
+          award_date?: string
+          award_notes?: string | null
+          awarded_by?: string | null
+          awarded_contract_value?: number
+          commercial_estimate_id?: string
+          commercial_estimate_version_id?: string
+          commercial_project_id?: string
+          created_at?: string
+          id?: string
+          original_cost?: number
+          original_gross_margin?: number | null
+          original_gross_profit?: number
+          snapshot_json?: Json
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commercial_awards_commercial_estimate_id_fkey"
+            columns: ["commercial_estimate_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_estimates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_awards_commercial_estimate_version_id_fkey"
+            columns: ["commercial_estimate_version_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_estimate_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_awards_commercial_project_id_fkey"
+            columns: ["commercial_project_id"]
+            isOneToOne: true
+            referencedRelation: "commercial_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       commercial_bid_packages: {
         Row: {
           carried_quote_id: string | null
@@ -9668,6 +9741,165 @@ export type Database = {
           },
         ]
       }
+      commercial_budget_lines: {
+        Row: {
+          actual_cost: number
+          approved_budget_changes: number
+          approved_revenue_changes: number
+          budget_id: string
+          committed_cost: number
+          cost_code_id: string | null
+          cost_to_complete: number | null
+          cost_type: string
+          created_at: string
+          description: string | null
+          forecast_cost: number | null
+          id: string
+          metadata: Json
+          original_budget: number
+          original_revenue: number
+          pending_commitments: number
+          project_id: string
+          projected_final_cost: number | null
+          projected_gross_profit: number | null
+          projected_revenue: number | null
+          revised_budget: number | null
+          revised_revenue: number | null
+          source_estimate_line_ids: string[]
+          tenant_id: string
+          updated_at: string
+          variance: number | null
+        }
+        Insert: {
+          actual_cost?: number
+          approved_budget_changes?: number
+          approved_revenue_changes?: number
+          budget_id: string
+          committed_cost?: number
+          cost_code_id?: string | null
+          cost_to_complete?: number | null
+          cost_type: string
+          created_at?: string
+          description?: string | null
+          forecast_cost?: number | null
+          id?: string
+          metadata?: Json
+          original_budget?: number
+          original_revenue?: number
+          pending_commitments?: number
+          project_id: string
+          projected_final_cost?: number | null
+          projected_gross_profit?: number | null
+          projected_revenue?: number | null
+          revised_budget?: number | null
+          revised_revenue?: number | null
+          source_estimate_line_ids?: string[]
+          tenant_id: string
+          updated_at?: string
+          variance?: number | null
+        }
+        Update: {
+          actual_cost?: number
+          approved_budget_changes?: number
+          approved_revenue_changes?: number
+          budget_id?: string
+          committed_cost?: number
+          cost_code_id?: string | null
+          cost_to_complete?: number | null
+          cost_type?: string
+          created_at?: string
+          description?: string | null
+          forecast_cost?: number | null
+          id?: string
+          metadata?: Json
+          original_budget?: number
+          original_revenue?: number
+          pending_commitments?: number
+          project_id?: string
+          projected_final_cost?: number | null
+          projected_gross_profit?: number | null
+          projected_revenue?: number | null
+          revised_budget?: number | null
+          revised_revenue?: number | null
+          source_estimate_line_ids?: string[]
+          tenant_id?: string
+          updated_at?: string
+          variance?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commercial_budget_lines_budget_id_fkey"
+            columns: ["budget_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_project_budgets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_budget_lines_cost_code_id_fkey"
+            columns: ["cost_code_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_cost_codes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_budget_lines_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      commercial_cost_codes: {
+        Row: {
+          active: boolean
+          code: string
+          created_at: string
+          division: string | null
+          id: string
+          metadata: Json
+          name: string
+          parent_id: string | null
+          sort_order: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          code: string
+          created_at?: string
+          division?: string | null
+          id?: string
+          metadata?: Json
+          name: string
+          parent_id?: string | null
+          sort_order?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          code?: string
+          created_at?: string
+          division?: string | null
+          id?: string
+          metadata?: Json
+          name?: string
+          parent_id?: string | null
+          sort_order?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commercial_cost_codes_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_cost_codes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       commercial_estimate_approvals: {
         Row: {
           comments: string | null
@@ -9714,6 +9946,11 @@ export type Database = {
       }
       commercial_estimate_lines: {
         Row: {
+          assembly_id: string | null
+          blueprint_measurement_id: string | null
+          blueprint_trade_takeoff_id: string | null
+          cost_code_id: string | null
+          cost_type: string | null
           created_at: string
           description: string
           estimate_id: string
@@ -9721,6 +9958,7 @@ export type Database = {
           kind: string
           quantity: number
           sort_order: number
+          source_provenance: Json
           takeoff_quantity_id: string | null
           tenant_id: string
           total: number
@@ -9729,6 +9967,11 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          assembly_id?: string | null
+          blueprint_measurement_id?: string | null
+          blueprint_trade_takeoff_id?: string | null
+          cost_code_id?: string | null
+          cost_type?: string | null
           created_at?: string
           description: string
           estimate_id: string
@@ -9736,6 +9979,7 @@ export type Database = {
           kind?: string
           quantity?: number
           sort_order?: number
+          source_provenance?: Json
           takeoff_quantity_id?: string | null
           tenant_id?: string
           total?: number
@@ -9744,6 +9988,11 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          assembly_id?: string | null
+          blueprint_measurement_id?: string | null
+          blueprint_trade_takeoff_id?: string | null
+          cost_code_id?: string | null
+          cost_type?: string | null
           created_at?: string
           description?: string
           estimate_id?: string
@@ -9751,6 +10000,7 @@ export type Database = {
           kind?: string
           quantity?: number
           sort_order?: number
+          source_provenance?: Json
           takeoff_quantity_id?: string | null
           tenant_id?: string
           total?: number
@@ -9759,6 +10009,20 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "commercial_estimate_lines_assembly_id_fkey"
+            columns: ["assembly_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_assemblies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_estimate_lines_cost_code_id_fkey"
+            columns: ["cost_code_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_cost_codes"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "commercial_estimate_lines_estimate_id_fkey"
             columns: ["estimate_id"]
@@ -9953,6 +10217,57 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      commercial_project_budgets: {
+        Row: {
+          award_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          metadata: Json
+          project_id: string
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          award_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          metadata?: Json
+          project_id: string
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          award_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          metadata?: Json
+          project_id?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commercial_project_budgets_award_id_fkey"
+            columns: ["award_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_awards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commercial_project_budgets_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_projects"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       commercial_projects: {
         Row: {
@@ -65215,6 +65530,10 @@ export type Database = {
       }
       cleanup_expired_canvass_sessions: { Args: never; Returns: undefined }
       cleanup_old_rate_limits: { Args: never; Returns: undefined }
+      commercial_award_version: {
+        Args: { _award_date?: string; _notes?: string; _version_id: string }
+        Returns: string
+      }
       commercial_decide_version: {
         Args: { _comments?: string; _decision: string; _version_id: string }
         Returns: Json
@@ -65223,6 +65542,7 @@ export type Database = {
         Args: { _amount: number }
         Returns: string[]
       }
+      commercial_seed_cost_codes: { Args: never; Returns: number }
       complete_presentation_session: {
         Args: { p_session_id: string; p_signature_data?: Json }
         Returns: undefined
