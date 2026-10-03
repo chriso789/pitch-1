@@ -87,7 +87,7 @@ export function InvoiceShareActions({
 
   const openShare = (channel: Channel) => {
     setOpenChannel(channel);
-    setRecipient(channel === 'email' ? (defaultEmail ?? '') : (defaultPhone ?? ''));
+    setRecipient(channel === 'email' ? (defaultEmail ?? fetchedEmail ?? '') : (defaultPhone ?? ''));
     setNote('');
   };
 
