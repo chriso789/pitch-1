@@ -6,3 +6,4 @@
 - Commercial actual costs (budget actual_cost, PO/subcontract invoiced/paid/retainage) are derived only by `commercial_recompute_actuals` from approved vendor invoices and cost entries; approved invoices are locked and over-billing a commitment is blocked.
 - Edge function CORS headers must allow `x-pitch-tenant`; the browser client sends it on every request for per-tab company selection, so the stock supabase-js cors import breaks browser calls.
 - Customer invoice emails link to `https://pitch-crm.ai/invoice/:deliveryId`; the public viewer obtains short-lived PDF access through `email-api`, so storage hostnames never appear as customer-facing links.
+- Review links on customer closeout pages are analytics-only: clicks and private feedback must never feed reward/qualification logic, and review copy is checked by a DB compliance trigger that blocks rating or incentive wording.

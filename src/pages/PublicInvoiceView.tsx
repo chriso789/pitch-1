@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { AlertTriangle, Download, FileText, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CloseoutReviewSection } from "@/components/closeout/CloseoutReviewSection";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
@@ -183,6 +184,8 @@ export default function PublicInvoiceView() {
             className="h-full w-full border-0"
           />
         </section>
+
+        <div className="mt-5"><CloseoutReviewSection deliveryId={deliveryId!} /></div>
 
         <footer className="py-5 text-center text-xs text-muted-foreground">
           Securely delivered by Pitch CRM

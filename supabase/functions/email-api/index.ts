@@ -8,6 +8,7 @@ import { createRouter, jsonOk, jsonErr, requireAuth, requireTenant, serveRouter 
 import { delegate } from "../_shared/delegate.ts";
 import { handleInvoiceShare } from "../_shared/invoice-share-handler.ts";
 import { handleInvoiceTrack } from "../_shared/invoice-track-handler.ts";
+import { handleCloseoutFeedback, handleCloseoutReviewClick, handleCloseoutView } from "../_shared/closeout-public-handler.ts";
 
 const app = createRouter("email-api");
 
@@ -19,6 +20,9 @@ app.post("/password-reset", (c) => delegate(c.req.raw, "send-password-reset", "e
 app.post("/demo-request", (c) => delegate(c.req.raw, "send-demo-request-emails", "email-api", { anon: true }));
 app.get("/invoice/view", (c) => handleInvoiceTrack(c.req.raw));
 app.get("/invoice/track", (c) => handleInvoiceTrack(c.req.raw));
+app.get("/closeout/view", (c) => handleCloseoutView(c.req.raw));
+app.get("/closeout/review", (c) => handleCloseoutReviewClick(c.req.raw));
+app.post("/closeout/feedback", (c) => handleCloseoutFeedback(c.req.raw));
 
 // ---- authenticated routes ----
 app.use("/*", requireAuth);
