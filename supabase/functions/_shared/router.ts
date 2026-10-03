@@ -111,7 +111,9 @@ export function serveRouter(app: Hono<RouterEnv>) {
 
     if (!isRoot) return app.fetch(req);
 
-    let route = req.headers.get("x-route") ?? "";
+    // Public links and tracking pixels cannot set custom headers, so they may
+    // provide the routed path as a query parameter instead.
+    let route = req.headers.get("x-route") ?? url.searchParams.get("__route") ?? "";
     let bodyBytes: Uint8Array | null = null;
     const mayHaveBody = req.method !== "GET" && req.method !== "HEAD";
 

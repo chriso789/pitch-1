@@ -239,7 +239,7 @@ export async function handleInvoiceShare(req: Request): Promise<Response> {
       .maybeSingle();
     const deliveryId = (deliveryRow as any)?.id as string | undefined;
     if (!deliveryId) console.error("[invoice-share] delivery insert failed");
-    const trackBase = `${SUPABASE_URL}/functions/v1/email-api/invoice/track?d=${deliveryId}`;
+    const trackBase = `${SUPABASE_URL}/functions/v1/email-api?__route=${encodeURIComponent("/invoice/track")}&d=${deliveryId}`;
     const brandedInvoiceHref = deliveryId ? `${APP_URL}/invoice/${deliveryId}` : pdfUrl;
     const payHref = deliveryId && qboLink ? `${trackBase}&k=pay` : qboLink;
     const primaryHref = qboLink ? payHref : brandedInvoiceHref;

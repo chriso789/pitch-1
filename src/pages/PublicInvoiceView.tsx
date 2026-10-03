@@ -54,7 +54,8 @@ export default function PublicInvoiceView() {
     setLoading(true);
     setError(false);
     try {
-      const endpoint = new URL(`${SUPABASE_URL}/functions/v1/email-api/invoice/view`);
+      const endpoint = new URL(`${SUPABASE_URL}/functions/v1/email-api`);
+      endpoint.searchParams.set("__route", "/invoice/view");
       endpoint.searchParams.set("d", deliveryId);
       endpoint.searchParams.set("k", "view");
       const response = await fetch(endpoint.toString(), {
