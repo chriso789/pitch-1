@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { edgeApi } from '@/lib/edgeApi';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -116,17 +117,15 @@ export function InvoiceShareActions({
       let sent = 0;
       let lastError: string | null = null;
       for (const target of targets) {
-        const { data, error } = await supabase.functions.invoke('invoice-share', {
-          body: {
-            invoice_id: invoiceId,
-            channel: openChannel,
-            recipient: target,
-            message: note || undefined,
-            include_qbo_link: includeQbo,
-          },
+        const { data, error } = await edgeApi<{ channel: Channel; to: string }>('email-api', '/invoice/share', {
+          invoice_id: invoiceId,
+          channel: openChannel,
+          recipient: target,
+          message: note || undefined,
+          include_qbo_link: includeQbo,
         });
-        if (error || !(data as any)?.ok) {
-          lastError = (data as any)?.reason || (data as any)?.error || error?.message || 'Send failed';
+        if (error || !data) {
+          lastError = error || 'Send failed';
         } else {
           sent += 1;
         }

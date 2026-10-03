@@ -57,6 +57,19 @@ function isSafeHttpsUrl(u: string | null | undefined): boolean {
   try { const url = new URL(u); return url.protocol === "https:"; } catch { return false; }
 }
 
+function escapeHtml(value: string | null | undefined): string {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function safeBrandColor(value: string | null | undefined): string {
+  return /^#[0-9a-f]{6}$/i.test(value ?? "") ? String(value) : "#0b2a45";
+}
+
 export async function handleInvoiceShare(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ ok: false, error: "method_not_allowed" }, 405);
@@ -167,7 +180,7 @@ export async function handleInvoiceShare(req: Request): Promise<Response> {
   // 9) Load tenant branding
   const { data: tenantRow } = await service
     .from("tenants")
-    .select("id, name, phone, email")
+    .select("id, name, phone, email, website, logo_url, primary_color")
     .eq("id", tenantId)
     .maybeSingle();
   const tenantName = tenantRow?.name ?? "Pitch";
@@ -217,7 +230,7 @@ export async function handleInvoiceShare(req: Request): Promise<Response> {
         provider: "resend",
         send_request_id: correlationId,
         idempotency_key: idempotencyKey,
-        template_version: 1,
+        template_version: 2,
         subject,
         status: "queued",
         created_by: userId,
@@ -226,33 +239,66 @@ export async function handleInvoiceShare(req: Request): Promise<Response> {
       .maybeSingle();
     const deliveryId = (deliveryRow as any)?.id as string | undefined;
     if (!deliveryId) console.error("[invoice-share] delivery insert failed");
-    const trackBase = `${SUPABASE_URL}/functions/v1/invoice-track?d=${deliveryId}`;
-    const pdfHref = deliveryId && pdfUrl ? `${trackBase}&k=pdf` : pdfUrl;
+    const trackBase = `${SUPABASE_URL}/functions/v1/email-api/invoice/track?d=${deliveryId}`;
+    const brandedInvoiceHref = deliveryId ? `${APP_URL}/invoice/${deliveryId}` : pdfUrl;
     const payHref = deliveryId && qboLink ? `${trackBase}&k=pay` : qboLink;
-    const primaryHref = qboLink ? payHref : pdfHref;
+    const primaryHref = qboLink ? payHref : brandedInvoiceHref;
     const openPixel = deliveryId
       ? `<img src="${trackBase}&k=open" width="1" height="1" alt="" style="display:block;border:0;width:1px;height:1px" />`
       : "";
+    const brandColor = safeBrandColor((tenantRow as any)?.primary_color);
+    const safeTenant = escapeHtml(tenantName);
+    const safeInvoice = escapeHtml(String(invoice.invoice_number));
+    const safeFirst = escapeHtml(first);
+    const safeIntro = escapeHtml(intro).replaceAll("\n", "<br>");
+    const safePhone = escapeHtml(tenantRow?.phone);
+    const safeEmail = escapeHtml(tenantRow?.email);
+    const safeWebsite = escapeHtml((tenantRow as any)?.website);
+    const safeLogo = isSafeHttpsUrl((tenantRow as any)?.logo_url) ? escapeHtml((tenantRow as any).logo_url) : "";
+    const secondaryHref = qboLink ? brandedInvoiceHref : null;
     const html = `
-<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#0f172a">
-  <h2 style="margin:0 0 8px">Invoice ${invoice.invoice_number}</h2>
-  <p style="margin:0 0 16px;color:#475569">Hi ${first},</p>
-  ${intro ? `<p style="margin:0 0 16px">${intro.replace(/</g, "&lt;")}</p>` : ""}
-  <p style="margin:0 0 16px">Your invoice from <strong>${tenantName}</strong> is ready.</p>
-  <table style="border-collapse:collapse;margin:0 0 16px">
-    <tr><td style="padding:4px 12px 4px 0;color:#64748b">Total</td><td style="font-weight:600">${money(total)}</td></tr>
-    <tr><td style="padding:4px 12px 4px 0;color:#64748b">Balance</td><td style="font-weight:600">${money(balance)}</td></tr>
-    ${due ? `<tr><td style="padding:4px 12px 4px 0;color:#64748b">Due</td><td>${due}</td></tr>` : ""}
+<!doctype html>
+<html><body style="margin:0;padding:0;background:#f2f5f7;font-family:Arial,Helvetica,sans-serif;color:#172033">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f5f7;padding:32px 12px">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;background:#ffffff;border:1px solid #dde3e8;border-radius:8px;overflow:hidden">
+        <tr><td style="height:7px;background:${brandColor};font-size:0">&nbsp;</td></tr>
+        <tr><td style="padding:30px 34px 24px">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td valign="middle">${safeLogo ? `<img src="${safeLogo}" alt="${safeTenant}" width="64" style="display:block;max-height:64px;max-width:150px;object-fit:contain">` : `<div style="font-size:20px;font-weight:700;color:${brandColor}">${safeTenant}</div>`}</td>
+              <td align="right" valign="middle" style="font-size:12px;color:#677386;text-transform:uppercase">Invoice<br><strong style="font-size:16px;color:#172033">${safeInvoice}</strong></td>
+            </tr>
+          </table>
+        </td></tr>
+        <tr><td style="padding:0 34px 32px">
+          <h1 style="margin:0 0 10px;font-size:27px;line-height:1.25;color:#172033">Your invoice is ready</h1>
+          <p style="margin:0 0 22px;font-size:16px;color:#526075">Hi ${safeFirst},</p>
+          ${intro ? `<p style="margin:0 0 22px;font-size:16px;line-height:1.6;color:#293548">${safeIntro}</p>` : ""}
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 24px;background:#f7f9fa;border:1px solid #e3e8ec;border-radius:6px">
+            <tr><td style="padding:20px 22px">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                <tr><td style="padding:0 0 10px;color:#677386;font-size:14px">Invoice total</td><td align="right" style="padding:0 0 10px;font-size:16px;font-weight:700">${money(total)}</td></tr>
+                <tr><td style="padding:10px 0 0;border-top:1px solid #dde3e8;color:#677386;font-size:14px">Balance due</td><td align="right" style="padding:10px 0 0;border-top:1px solid #dde3e8;font-size:24px;font-weight:700;color:${brandColor}">${money(balance)}</td></tr>
+                ${due ? `<tr><td style="padding:10px 0 0;color:#677386;font-size:14px">Due date</td><td align="right" style="padding:10px 0 0;font-size:14px;font-weight:600">${escapeHtml(due)}</td></tr>` : ""}
+              </table>
+            </td></tr>
+          </table>
+          <table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="background:${brandColor};border-radius:6px">
+            <a href="${primaryHref}" style="display:inline-block;padding:14px 24px;color:#ffffff;text-decoration:none;font-size:16px;font-weight:700">${qboLink ? "Pay invoice" : "View invoice"}</a>
+          </td></tr></table>
+          ${secondaryHref ? `<p style="margin:16px 0 0;font-size:14px"><a href="${secondaryHref}" style="color:${brandColor};font-weight:600;text-decoration:underline">View invoice PDF</a></p>` : ""}
+        </td></tr>
+        <tr><td style="padding:22px 34px;background:#f7f9fa;border-top:1px solid #e3e8ec">
+          <p style="margin:0 0 5px;font-size:14px;font-weight:700;color:#293548">${safeTenant}</p>
+          <p style="margin:0;font-size:12px;line-height:1.5;color:#677386">${[safePhone, safeEmail, safeWebsite].filter(Boolean).join(" &nbsp;·&nbsp; ")}</p>
+          <p style="margin:12px 0 0;font-size:11px;color:#8a95a5">Securely delivered by Pitch CRM</p>
+        </td></tr>
+      </table>
+    </td></tr>
   </table>
-  <p style="margin:16px 0">
-    <a href="${primaryHref}" style="display:inline-block;background:#0f172a;color:#fff;padding:12px 20px;border-radius:6px;text-decoration:none;font-weight:600">
-      ${qboLink ? "Pay Invoice" : "View Invoice PDF"}
-    </a>
-  </p>
-  ${qboLink && pdfUrl ? `<p style="margin:8px 0;font-size:13px"><a href="${pdfHref}" style="color:#334155">Download PDF</a></p>` : ""}
-  <p style="margin:24px 0 0;color:#64748b;font-size:12px">Sent by ${tenantName}${tenantRow?.phone ? ` · ${tenantRow.phone}` : ""}</p>
   ${openPixel}
-</div>`.trim();
+</body></html>`.trim();
     const text = [
       `Hi ${first},`,
       intro || `Your invoice from ${tenantName} is ready.`,
@@ -260,7 +306,7 @@ export async function handleInvoiceShare(req: Request): Promise<Response> {
       `Total: ${money(total)}  Balance: ${money(balance)}`,
       due ? `Due: ${due}` : "",
       `Open: ${primaryHref}`,
-      qboLink && pdfUrl ? `PDF: ${pdfHref}` : "",
+      secondaryHref ? `View invoice: ${secondaryHref}` : "",
       `— ${tenantName}`,
     ].filter(Boolean).join("\n");
 
