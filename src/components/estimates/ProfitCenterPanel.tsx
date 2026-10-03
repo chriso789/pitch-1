@@ -870,17 +870,6 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                     <span className="text-right"><span className="text-muted-foreground">-</span></span>
                   </div>
 
-                  {salesTaxAmount > 0 && (
-                    <div className="grid grid-cols-4 gap-2 text-sm py-1.5">
-                      <span className="flex items-center gap-1">
-                        <Receipt className="h-3 w-3 text-muted-foreground" />
-                        Sales Tax (remitted)
-                      </span>
-                      <span className="text-right text-muted-foreground">{formatCurrency(salesTaxAmount)}</span>
-                      <span className="text-right text-muted-foreground">-</span>
-                      <span className="text-right"><span className="text-muted-foreground">-</span></span>
-                    </div>
-                  )}
 
                   {hasCompanyLeadFee && (
                     <div className="grid grid-cols-4 gap-2 text-sm py-1.5">
