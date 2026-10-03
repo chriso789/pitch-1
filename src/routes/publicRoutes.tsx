@@ -27,6 +27,7 @@ const ZellePaymentPage = React.lazy(() => import("@/pages/ZellePaymentPage"));
 const PublicReferralLanding = React.lazy(() => import("@/pages/PublicReferralLanding"));
 const PublicReferralReward = React.lazy(() => import("@/pages/PublicReferralReward"));
 const PublicCompanySignupReferralPage = React.lazy(() => import("@/pages/PublicCompanySignupReferralPage"));
+const PublicInvoiceView = React.lazy(() => import("@/pages/PublicInvoiceView"));
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-background">
@@ -66,6 +67,7 @@ export default function PublicRoutes() {
         <Route path="/ref/:referralCode/reward" element={<PublicReferralReward />} />
         <Route path="/ref/:referralCode" element={<PublicReferralLanding />} />
         <Route path="/signup-ref/:partnerCode" element={<PublicCompanySignupReferralPage />} />
+        <Route path="/invoice/:deliveryId" element={<PublicInvoiceView />} />
       </Routes>
     </Suspense>
   );

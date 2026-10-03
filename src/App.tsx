@@ -68,6 +68,7 @@ const Security = React.lazy(() => import("@/pages/legal/Security"));
 const HomeownerProtectedRoute = React.lazy(() => import("@/components/auth/HomeownerProtectedRoute").then(m => ({ default: m.HomeownerProtectedRoute })));
 const Unsubscribe = React.lazy(() => import("@/pages/Unsubscribe"));
 const PublicChangeOrderView = React.lazy(() => import("@/pages/PublicChangeOrderView"));
+const PublicInvoiceView = React.lazy(() => import("@/pages/PublicInvoiceView"));
 const PublicReferralLanding = React.lazy(() => import("@/pages/PublicReferralLanding"));
 const PublicReferralReward = React.lazy(() => import("@/pages/PublicReferralReward"));
 const PublicCrmReferralSignup = React.lazy(() => import("@/pages/PublicCrmReferralSignup"));
@@ -213,6 +214,7 @@ const AppContent = () => {
         <Route path="/v/:token" element={<Suspense fallback={<PageLoader />}><PublicDocumentView /></Suspense>} />
         <Route path="/pay/:token" element={<Suspense fallback={<PageLoader />}><ZellePaymentPage /></Suspense>} />
         <Route path="/portal/i/:token" element={<Suspense fallback={<PageLoader />}>{React.createElement(React.lazy(() => import("@/pages/portal/CustomerInvoicePortalPage")))}</Suspense>} />
+        <Route path="/invoice/:deliveryId" element={<Suspense fallback={<PageLoader />}><PublicInvoiceView /></Suspense>} />
 
         <Route path="/unsubscribe" element={<Suspense fallback={<PageLoader />}><Unsubscribe /></Suspense>} />
         <Route path="/co/:token" element={<Suspense fallback={<PageLoader />}><PublicChangeOrderView /></Suspense>} />
