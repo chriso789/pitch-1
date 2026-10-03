@@ -1,0 +1,1 @@
+REVOKE ALL ON FUNCTION public.trg_change_orders_on_delete() FROM PUBLIC, anon, authenticated;
