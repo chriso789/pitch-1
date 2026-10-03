@@ -11,7 +11,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Bell, X, CheckCheck, Trash2, TrendingUp, Trophy, DollarSign, Gift, ExternalLink } from 'lucide-react';
+import { Bell, X, CheckCheck, Trash2, TrendingUp, Trophy, DollarSign, Gift, ExternalLink, Eye } from 'lucide-react';
 import { useNotifications, Notification } from '@/hooks/useNotifications';
 import { supabase } from '@/integrations/supabase/client';
 import { formatDistanceToNow } from 'date-fns';
@@ -43,7 +43,8 @@ export function NotificationCenter() {
   }, []);
 
   const getNotificationIcon = (type: Notification['type'], icon: string) => {
-    if (icon) return icon;
+    if (icon === 'eye') return <Eye className="h-4 w-4 text-primary" />;
+    if (icon && icon.length <= 2) return <span className="text-xl">{icon}</span>;
     
     switch (type) {
       case 'rank_change':
@@ -54,6 +55,8 @@ export function NotificationCenter() {
         return <DollarSign className="h-4 w-4 text-green-500" />;
       case 'reward_ready':
         return <Gift className="h-4 w-4 text-purple-500" />;
+      case 'invoice_viewed':
+        return <Eye className="h-4 w-4 text-primary" />;
       default:
         return <Bell className="h-4 w-4" />;
     }
@@ -237,10 +240,7 @@ export function NotificationCenter() {
                   >
                     <div className="flex items-start gap-3 w-full">
                       <div className="flex-shrink-0 mt-1">
-                        {typeof notification.icon === 'string' && notification.icon.length <= 2 
-                          ? <span className="text-xl">{notification.icon}</span>
-                          : getNotificationIcon(notification.type, notification.icon)
-                        }
+                        {getNotificationIcon(notification.type, notification.icon)}
                       </div>
                       
                       <div className="flex-1 min-w-0">

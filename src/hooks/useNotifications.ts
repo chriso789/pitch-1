@@ -5,7 +5,7 @@ import { useToast } from '@/hooks/use-toast';
 export interface Notification {
   id: string;
   user_id: string;
-  type: 'rank_change' | 'achievement_unlock' | 'prize_zone' | 'reward_ready';
+  type: 'rank_change' | 'achievement_unlock' | 'prize_zone' | 'reward_ready' | 'invoice_viewed';
   title: string;
   message: string;
   icon: string;
