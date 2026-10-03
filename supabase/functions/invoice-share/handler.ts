@@ -362,7 +362,16 @@ export async function handleInvoiceShare(req: Request): Promise<Response> {
     if (!result.ok) {
       return json({ ok: false, error: "email_send_failed", reason: result.errorMessage ?? "provider_error" }, 502);
     }
-    return json({ ok: true, channel: "email", to: target, provider_message_id: result.providerMessageId, delivery_id: deliveryId ?? null });
+    return json({
+      ok: true,
+      data: {
+        channel: "email",
+        to: target,
+        provider_message_id: result.providerMessageId,
+        delivery_id: deliveryId ?? null,
+      },
+      requestId: correlationId,
+    });
   }
 
   // channel === 'sms'
@@ -409,5 +418,5 @@ export async function handleInvoiceShare(req: Request): Promise<Response> {
   if (!smsOk) {
     return json({ ok: false, error: "sms_send_failed", status: smsRes.status, reason: smsJson?.error ?? smsJson?.message ?? "telnyx_error" }, 502);
   }
-  return json({ ok: true, channel: "sms", to: target });
+  return json({ ok: true, data: { channel: "sms", to: target }, requestId: correlationId });
 }
