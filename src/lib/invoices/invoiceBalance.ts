@@ -99,11 +99,21 @@ export function scaleGroupsToInvoiceBalance<G extends InvoiceGroupLike>(
   groups: G[],
   targetBalance: number,
 ): G[] {
-  const sourceTotal = groups.reduce((sum, g) => sum + sumGroupTotal(g), 0);
-  const target = Math.max(0, Math.round((targetBalance || 0) * 100) / 100);
+  const allTotal = groups.reduce((sum, g) => sum + sumGroupTotal(g), 0);
+  const fullTarget = Math.max(0, Math.round((targetBalance || 0) * 100) / 100);
 
+  if (allTotal <= 0) return groups;
+  if (fullTarget >= allTotal) return groups;
+
+  // Change orders keep their agreed client price; only base-contract groups
+  // shrink to fit the remaining balance (unless COs alone exceed it).
+  const coTotal = groups
+    .filter((g) => g.kind === 'change_order')
+    .reduce((sum, g) => sum + sumGroupTotal(g), 0);
+  const keepCOs = coTotal > 0 && coTotal <= fullTarget;
+  const sourceTotal = keepCOs ? allTotal - coTotal : allTotal;
+  const target = keepCOs ? Math.round((fullTarget - coTotal) * 100) / 100 : fullTarget;
   if (sourceTotal <= 0) return groups;
-  if (target >= sourceTotal) return groups;
 
   const scale = target === 0 ? 0 : target / sourceTotal;
   let runningTotal = 0;
@@ -113,6 +123,7 @@ export function scaleGroupsToInvoiceBalance<G extends InvoiceGroupLike>(
     ...group,
     children: group.children.map((item, childIndex) => {
       if (!item.selected) return item;
+      if (keepCOs && group.kind === 'change_order') return item;
       lastSelected = { groupIndex, childIndex };
       const lineTotal = Math.round((Number(item.line_total) || 0) * scale * 100) / 100;
       runningTotal += lineTotal;
