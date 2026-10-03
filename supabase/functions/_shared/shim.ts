@@ -12,8 +12,13 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 export async function forward(req: Request, targetFn: string, targetRoute: string, fromName: string): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
-  const url = `${SUPABASE_URL}/functions/v1/${targetFn}${targetRoute}`;
+  // Call the function root and pass the route via x-route: the edge runtime
+  // prefixes the pathname with the function name, so a path-style URL never
+  // matches the grouped router's routes.
+  const src = new URL(req.url);
+  const url = `${SUPABASE_URL}/functions/v1/${targetFn}${src.search}`;
   const headers = new Headers(req.headers);
+  headers.set("x-route", targetRoute);
   headers.set("x-shim-from", fromName);
 
   // For invoke() callers, body may be JSON with a `__route` field — leave it untouched.
