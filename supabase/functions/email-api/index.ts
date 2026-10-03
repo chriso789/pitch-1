@@ -6,8 +6,8 @@
 
 import { createRouter, jsonOk, jsonErr, requireAuth, requireTenant, serveRouter } from "../_shared/router.ts";
 import { delegate } from "../_shared/delegate.ts";
-import { handleInvoiceShare } from "../invoice-share/handler.ts";
-import { handleInvoiceTrack } from "../invoice-track/handler.ts";
+import { handleInvoiceShare } from "../_shared/invoice-share-handler.ts";
+import { handleInvoiceTrack } from "../_shared/invoice-track-handler.ts";
 
 const app = createRouter("email-api");
 
