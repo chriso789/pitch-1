@@ -93,27 +93,54 @@ export function InvoiceShareActions({
 
   const submitShare = async () => {
     if (!openChannel) return;
-    const target = recipient.trim();
-    if (!target) {
+    // Email supports multiple recipients separated by commas
+    const targets =
+      openChannel === 'email'
+        ? recipient.split(/[,\s;]+/).map((t) => t.trim()).filter(Boolean)
+        : [recipient.trim()].filter(Boolean);
+    if (targets.length === 0) {
       toast.error(openChannel === 'email' ? 'Enter an email' : 'Enter a phone number');
       return;
     }
+    if (openChannel === 'email') {
+      const bad = targets.filter((t) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t));
+      if (bad.length > 0) {
+        toast.error(`Invalid email: ${bad[0]}`);
+        return;
+      }
+    }
     setSubmitting(true);
     try {
-      const { data, error } = await supabase.functions.invoke('invoice-share', {
-        body: {
-          invoice_id: invoiceId,
-          channel: openChannel,
-          recipient: target,
-          message: note || undefined,
-          include_qbo_link: includeQbo,
-        },
-      });
-      if (error || !(data as any)?.ok) {
-        const reason = (data as any)?.reason || (data as any)?.error || error?.message || 'Send failed';
-        throw new Error(reason);
+      let sent = 0;
+      let lastError: string | null = null;
+      for (const target of targets) {
+        const { data, error } = await supabase.functions.invoke('invoice-share', {
+          body: {
+            invoice_id: invoiceId,
+            channel: openChannel,
+            recipient: target,
+            message: note || undefined,
+            include_qbo_link: includeQbo,
+          },
+        });
+        if (error || !(data as any)?.ok) {
+          lastError = (data as any)?.reason || (data as any)?.error || error?.message || 'Send failed';
+        } else {
+          sent += 1;
+        }
       }
-      toast.success(openChannel === 'email' ? 'Invoice emailed' : 'Invoice texted');
+      if (sent === 0) throw new Error(lastError ?? 'Send failed');
+      if (lastError) {
+        toast.warning(`Sent to ${sent} of ${targets.length} recipients. Last error: ${lastError}`);
+      } else {
+        toast.success(
+          openChannel === 'email'
+            ? targets.length > 1
+              ? `Invoice emailed to ${sent} recipients`
+              : 'Invoice emailed'
+            : 'Invoice texted',
+        );
+      }
       setOpenChannel(null);
     } catch (e: any) {
       toast.error(e?.message ?? 'Send failed');
