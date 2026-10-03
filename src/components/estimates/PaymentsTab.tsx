@@ -213,7 +213,20 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   ): (InvoiceLineItem & { selected: boolean })[] => {
     const container: any = co?.line_items || {};
     const items: any[] = Array.isArray(container.items) ? container.items : [];
-    if (items.length === 0) return [];
+    // Fixed-price change orders store their price as a single amount, not items.
+    const fixedTotal = Number(container.fixed_price ?? co?.cost_impact ?? 0) || 0;
+    if (container.pricing_mode === 'fixed' || items.length === 0) {
+      if (fixedTotal <= 0) return [];
+      const total = Math.round(fixedTotal * 100) / 100;
+      return [{
+        selected: true,
+        description: co?.title || 'Change order',
+        qty: 1,
+        unit: 'lot',
+        unit_cost: total,
+        line_total: total,
+      }];
+    }
     const overheadPct = Number(container.overhead_pct ?? 10);
     const profitPct = Number(container.profit_pct ?? 25);
     const denom = Math.max(0.01, 1 - overheadPct / 100 - profitPct / 100);
