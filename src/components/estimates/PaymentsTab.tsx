@@ -220,7 +220,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
       const total = Math.round(fixedTotal * 100) / 100;
       return [{
         selected: true,
-        description: co?.title || 'Change order',
+        description: (co?.reason || '').trim() || co?.title || 'Change order',
         qty: 1,
         unit: 'lot',
         unit_cost: total,
