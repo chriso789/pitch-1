@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/dialog';
 import { Eye, Loader2, Mail, MessageSquare, Share2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { InvoiceReadStatus } from './InvoiceReadStatus';
 
 interface Props {
   invoiceId: string;
@@ -50,6 +51,7 @@ export function InvoiceShareActions({
   const [includeQbo, setIncludeQbo] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [fetchedEmail, setFetchedEmail] = useState<string | null>(null);
+  const [sentCount, setSentCount] = useState(0);
 
   // Prefill from the project's contact when the invoice has no saved email
   useEffect(() => {
@@ -142,6 +144,7 @@ export function InvoiceShareActions({
         );
       }
       setOpenChannel(null);
+      setSentCount((n) => n + 1);
     } catch (e: any) {
       toast.error(e?.message ?? 'Send failed');
     } finally {
@@ -151,6 +154,7 @@ export function InvoiceShareActions({
 
   return (
     <div className="flex items-center gap-1">
+      <InvoiceReadStatus invoiceId={invoiceId} tenantId={tenantId} refreshKey={sentCount} />
       <Button
         variant="ghost"
         size="icon"
