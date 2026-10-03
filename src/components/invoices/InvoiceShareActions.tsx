@@ -49,6 +49,23 @@ export function InvoiceShareActions({
   const [note, setNote] = useState('');
   const [includeQbo, setIncludeQbo] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [fetchedEmail, setFetchedEmail] = useState<string | null>(null);
+
+  // Prefill from the project's contact when the invoice has no saved email
+  useEffect(() => {
+    if (defaultEmail || !pipelineEntryId) return;
+    let cancelled = false;
+    (async () => {
+      const { data: pe } = await supabase
+        .from('pipeline_entries')
+        .select('contact_id, contacts!pipeline_entries_contact_id_fkey(email)')
+        .eq('id', pipelineEntryId)
+        .maybeSingle();
+      const email = (pe as any)?.contacts?.email?.trim() || null;
+      if (!cancelled && email) setFetchedEmail(email);
+    })();
+    return () => { cancelled = true; };
+  }, [defaultEmail, pipelineEntryId]);
 
   const safeNumber = invoiceNumber.replace(/[^A-Za-z0-9_-]/g, '_');
   const pdfPath = `${tenantId}/${pipelineEntryId}/invoices/${safeNumber}.pdf`;
