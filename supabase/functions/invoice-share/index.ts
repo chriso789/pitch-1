@@ -245,12 +245,13 @@ Deno.serve(async (req: Request) => {
     ${due ? `<tr><td style="padding:4px 12px 4px 0;color:#64748b">Due</td><td>${due}</td></tr>` : ""}
   </table>
   <p style="margin:16px 0">
-    <a href="${primaryLink}" style="display:inline-block;background:#0f172a;color:#fff;padding:12px 20px;border-radius:6px;text-decoration:none;font-weight:600">
+    <a href="${primaryHref}" style="display:inline-block;background:#0f172a;color:#fff;padding:12px 20px;border-radius:6px;text-decoration:none;font-weight:600">
       ${qboLink ? "Pay Invoice" : "View Invoice PDF"}
     </a>
   </p>
-  ${qboLink && pdfUrl ? `<p style="margin:8px 0;font-size:13px"><a href="${pdfUrl}" style="color:#334155">Download PDF</a></p>` : ""}
+  ${qboLink && pdfUrl ? `<p style="margin:8px 0;font-size:13px"><a href="${pdfHref}" style="color:#334155">Download PDF</a></p>` : ""}
   <p style="margin:24px 0 0;color:#64748b;font-size:12px">Sent by ${tenantName}${tenantRow?.phone ? ` · ${tenantRow.phone}` : ""}</p>
+  ${openPixel}
 </div>`.trim();
     const text = [
       `Hi ${first},`,
@@ -258,13 +259,12 @@ Deno.serve(async (req: Request) => {
       `Invoice: ${invoice.invoice_number}`,
       `Total: ${money(total)}  Balance: ${money(balance)}`,
       due ? `Due: ${due}` : "",
-      `Open: ${primaryLink}`,
-      qboLink && pdfUrl ? `PDF: ${pdfUrl}` : "",
+      `Open: ${primaryHref}`,
+      qboLink && pdfUrl ? `PDF: ${pdfHref}` : "",
       `— ${tenantName}`,
     ].filter(Boolean).join("\n");
 
     const provider = getEmailProvider("resend");
-    const idempotencyKey = `share:${invoice.id}:${target}:${Date.now()}`;
     const result = await provider.sendInvoiceEmail({
       to: target, fromEmail, fromName, replyTo, subject, html, text, idempotencyKey,
       tags: [
@@ -272,6 +272,28 @@ Deno.serve(async (req: Request) => {
         { name: "tenant_id", value: tenantId },
       ],
     });
+
+    if (deliveryId) {
+      const now = new Date().toISOString();
+      await service.from("invoice_email_deliveries").update(
+        result.ok
+          ? { status: "accepted", accepted_at: now, provider_message_id: result.providerMessageId ?? null }
+          : { status: "failed", failed_at: now, failure_reason: result.errorMessage ?? "provider_error" },
+      ).eq("id", deliveryId).eq("tenant_id", tenantId);
+      await service.from("customer_invoice_events").insert({
+        tenant_id: tenantId,
+        project_id: invoice.pipeline_entry_id,
+        pitch_invoice_id: invoice.id,
+        contact_id: contactId,
+        event_type: result.ok ? "invoice_email_sent" : "invoice_email_failed",
+        actor_type: "staff",
+        actor_user_id: userId,
+        delivery_provider: "resend",
+        delivery_provider_message_id: result.providerMessageId ?? null,
+        request_correlation_id: correlationId,
+        metadata: { delivery_id: deliveryId, recipient: target },
+      }).then(() => {}, () => {});
+    }
 
     // Audit
     await service.from("audit_log").insert({
@@ -294,7 +316,7 @@ Deno.serve(async (req: Request) => {
     if (!result.ok) {
       return json({ ok: false, error: "email_send_failed", reason: result.errorMessage ?? "provider_error" }, 502);
     }
-    return json({ ok: true, channel: "email", to: target, provider_message_id: result.providerMessageId });
+    return json({ ok: true, channel: "email", to: target, provider_message_id: result.providerMessageId, delivery_id: deliveryId ?? null });
   }
 
   // channel === 'sms'
