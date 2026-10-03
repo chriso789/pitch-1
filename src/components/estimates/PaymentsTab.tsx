@@ -2,6 +2,7 @@ import { safeText } from '@/lib/safeText';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { edgeApi } from '@/lib/edgeApi';
 import { useActiveTenantId } from '@/hooks/useActiveTenantId';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { Button } from '@/components/ui/button';
@@ -735,16 +736,18 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
       // via the tenant's verified domain (or platform fallback).
       if (sendFromPitchEmail && createdInvoice?.id && customer.email) {
         try {
-          const { data: shareRes, error: shareErr } = await supabase.functions.invoke('invoice-share', {
-            body: {
+          const { data: shareRes, error: shareErr } = await edgeApi<{ channel: 'email'; to: string }>(
+            'email-api',
+            '/invoice/share',
+            {
               invoice_id: createdInvoice.id,
               channel: 'email',
               recipient: customer.email,
               include_qbo_link: true,
             },
-          });
-          if (shareErr || !(shareRes as any)?.ok) {
-            const reason = (shareRes as any)?.reason || (shareRes as any)?.error || shareErr?.message || 'unknown';
+          );
+          if (shareErr || !shareRes) {
+            const reason = shareErr || 'unknown';
             toast.warning(`Invoice created, but auto-email failed: ${reason}`);
           } else {
             toast.success(`Invoice emailed to ${customer.email}`);
