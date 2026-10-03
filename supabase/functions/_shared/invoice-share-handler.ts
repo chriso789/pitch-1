@@ -1,0 +1,422 @@
+// invoice-share
+// Share a project_invoices invoice with a customer via email or SMS.
+// Auth mode: authenticated tenant route (JWT required; tenant resolved from
+// user's profile, not the request body). Attaches (as a link) the invoice PDF
+// stored in the tenant-scoped `documents` bucket, plus optional QBO hosted
+// payment link when present. Never emails/texts the raw QBO URL alone.
+//
+// Body: {
+//   invoice_id: uuid,                    // project_invoices.id
+//   channel: 'email' | 'sms',
+//   recipient?: string,                  // optional override, else contact on file
+//   message?: string,                    // optional short note prepended
+//   include_qbo_link?: boolean,          // include QBO hosted link if available
+// }
+
+import "https://deno.land/std@0.224.0/dotenv/load.ts";
+import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { z } from "npm:zod@3.23.8";
+import { getEmailProvider } from "../_shared/email/index.ts";
+import { getPublicAppUrl } from "../_shared/public-app-url.ts";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-pitch-tenant",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const APP_URL = (getPublicAppUrl()).replace(/\/$/, "");
+const PLATFORM_FALLBACK_FROM =
+  Deno.env.get("PLATFORM_FALLBACK_FROM_EMAIL") ?? "invoices@pitch-crm.ai";
+
+const BodySchema = z.object({
+  invoice_id: z.string().uuid(),
+  channel: z.enum(["email", "sms"]),
+  recipient: z.string().trim().min(3).max(254).optional(),
+  message: z.string().trim().max(500).optional(),
+  include_qbo_link: z.boolean().optional(),
+});
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+function money(n: number | null | undefined): string {
+  const v = Number(n ?? 0);
+  return `$${v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function isSafeHttpsUrl(u: string | null | undefined): boolean {
+  if (!u) return false;
+  try { const url = new URL(u); return url.protocol === "https:"; } catch { return false; }
+}
+
+function escapeHtml(value: string | null | undefined): string {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function safeBrandColor(value: string | null | undefined): string {
+  return /^#[0-9a-f]{6}$/i.test(value ?? "") ? String(value) : "#0b2a45";
+}
+
+export async function handleInvoiceShare(req: Request): Promise<Response> {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method !== "POST") return json({ ok: false, error: "method_not_allowed" }, 405);
+
+  const correlationId = crypto.randomUUID();
+  const authHeader = req.headers.get("Authorization") ?? "";
+  if (!authHeader.startsWith("Bearer ")) return json({ ok: false, error: "unauthorized" }, 401);
+
+  // 1) Auth
+  const userClient = createClient(SUPABASE_URL, ANON_KEY, {
+    global: { headers: { Authorization: authHeader } },
+  });
+  const { data: userData, error: userErr } = await userClient.auth.getUser();
+  if (userErr || !userData?.user) return json({ ok: false, error: "unauthorized" }, 401);
+  const userId = userData.user.id;
+
+  // 2) Validate body
+  const parsed = BodySchema.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return json({ ok: false, error: "invalid_request", details: parsed.error.flatten().fieldErrors }, 400);
+  }
+  const { invoice_id, channel, recipient, message, include_qbo_link } = parsed.data;
+
+  const service = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+
+  // 3) Load invoice from project_invoices (source of truth for pitch-created invoices)
+  const { data: invoice } = await service
+    .from("project_invoices")
+    .select("id, tenant_id, pipeline_entry_id, invoice_number, amount, balance, due_date, status, notes")
+    .eq("id", invoice_id)
+    .maybeSingle();
+  if (!invoice) return json({ ok: false, error: "invoice_not_found" }, 404);
+  const tenantId = invoice.tenant_id as string;
+
+  // 4) Verify user belongs to invoice tenant (direct member or master-impersonating)
+  const [{ data: profile }, { data: accessRows }, { data: masterRow }] = await Promise.all([
+    service.from("profiles").select("tenant_id, active_tenant_id").eq("id", userId).maybeSingle(),
+    service.from("user_company_access").select("tenant_id").eq("user_id", userId),
+    service.from("user_roles").select("role").eq("user_id", userId).eq("role", "master").maybeSingle(),
+  ]);
+  const memberTenants = new Set<string>([
+    ...(profile?.tenant_id ? [profile.tenant_id] : []),
+    ...((accessRows ?? []).map((r: any) => r.tenant_id).filter(Boolean)),
+  ]);
+  const isMaster = !!masterRow;
+  const activeOverride = profile?.active_tenant_id ?? null;
+  const authorized = memberTenants.has(tenantId) || (isMaster && activeOverride === tenantId);
+  if (!authorized) return json({ ok: false, error: "forbidden" }, 403);
+
+  // 5) Resolve contact via pipeline_entries
+  const { data: pe } = await service
+    .from("pipeline_entries")
+    .select("contact_id")
+    .eq("id", invoice.pipeline_entry_id)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  const contactId = (pe as any)?.contact_id ?? null;
+  let contact: { id: string; first_name: string | null; last_name: string | null; email: string | null; phone: string | null } | null = null;
+  if (contactId) {
+    const { data: c } = await service
+      .from("contacts")
+      .select("id, first_name, last_name, email, phone")
+      .eq("id", contactId)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    contact = (c as any) ?? null;
+  }
+
+  // 6) Resolve recipient
+  let target = (recipient ?? "").trim();
+  if (!target) {
+    target = channel === "email" ? (contact?.email ?? "").trim() : (contact?.phone ?? "").trim();
+  }
+  if (!target) {
+    return json({ ok: false, error: channel === "email" ? "no_recipient_email" : "no_recipient_phone" }, 400);
+  }
+
+  // 7) Build the PDF signed URL (30 days). The stored path follows the same
+  //    convention as generateAndSaveInvoicePdf: {tenant}/{pipeline}/invoices/{safeNumber}.pdf
+  const safeNumber = String(invoice.invoice_number).replace(/[^A-Za-z0-9_-]/g, "_");
+  const pdfPath = `${tenantId}/${invoice.pipeline_entry_id}/invoices/${safeNumber}.pdf`;
+  let pdfUrl: string | null = null;
+  const { data: signed } = await service.storage
+    .from("documents")
+    .createSignedUrl(pdfPath, 60 * 60 * 24 * 30);
+  if (signed?.signedUrl) pdfUrl = signed.signedUrl;
+
+  // 8) Optional QBO hosted link if the mirror row exists and is safe
+  let qboLink: string | null = null;
+  if (include_qbo_link) {
+    const { data: mirror } = await service
+      .from("invoice_ar_mirror")
+      .select("invoice_link, invoice_link_status, qbo_status")
+      .eq("tenant_id", tenantId)
+      .eq("project_id", invoice.pipeline_entry_id)
+      .eq("doc_number", invoice.invoice_number)
+      .maybeSingle();
+    if (
+      mirror &&
+      (mirror as any).invoice_link_status === "available" &&
+      isSafeHttpsUrl((mirror as any).invoice_link) &&
+      !["voided", "void"].includes(String((mirror as any).qbo_status ?? "").toLowerCase())
+    ) {
+      qboLink = (mirror as any).invoice_link as string;
+    }
+  }
+
+  // 9) Load tenant branding
+  const { data: tenantRow } = await service
+    .from("tenants")
+    .select("id, name, phone, email, website, logo_url, primary_color")
+    .eq("id", tenantId)
+    .maybeSingle();
+  const tenantName = tenantRow?.name ?? "Pitch";
+
+  const first = contact?.first_name?.trim() || "there";
+  const total = Number(invoice.amount ?? 0);
+  const balance = Number(invoice.balance ?? invoice.amount ?? 0);
+  const due = invoice.due_date ? new Date(invoice.due_date).toLocaleDateString("en-US") : null;
+
+  const primaryLink = qboLink || pdfUrl;
+  if (!primaryLink) {
+    return json({ ok: false, error: "no_deliverable_link", reason: "PDF has not been generated yet." }, 409);
+  }
+
+  // 10) Send via channel
+  if (channel === "email") {
+    const { data: settingsRow } = await service
+      .from("tenant_email_settings")
+      .select("*")
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    const sendingEnabled = (settingsRow as any)?.sending_enabled ?? true;
+    if (!sendingEnabled) return json({ ok: false, error: "sending_disabled" }, 409);
+    const verified = (settingsRow as any)?.verified_domain_status === "verified" && !!(settingsRow as any)?.from_email;
+    const fromEmail = verified ? String((settingsRow as any).from_email) : PLATFORM_FALLBACK_FROM;
+    const fromName = verified ? ((settingsRow as any).from_name ?? tenantName) : tenantName;
+    const replyTo = (settingsRow as any)?.reply_to ?? tenantRow?.email ?? null;
+
+    const subject = `Invoice ${invoice.invoice_number} from ${tenantName}`;
+    const intro = message?.trim();
+    const idempotencyKey = `share:${invoice.id}:${target}:${Date.now()}`;
+
+    // Read receipts: record the delivery, then route links + an open pixel
+    // through invoice-track so opens and clicks are logged.
+    const { data: deliveryRow } = await service
+      .from("invoice_email_deliveries")
+      .insert({
+        tenant_id: tenantId,
+        project_id: invoice.pipeline_entry_id,
+        pitch_invoice_id: invoice.id,
+        contact_id: contactId,
+        recipient_email: target,
+        from_email: fromEmail,
+        from_name: fromName,
+        reply_to: replyTo,
+        sender_kind: verified ? "tenant_verified" : "platform_fallback",
+        provider: "resend",
+        send_request_id: correlationId,
+        idempotency_key: idempotencyKey,
+        template_version: 2,
+        subject,
+        status: "queued",
+        created_by: userId,
+      })
+      .select("id")
+      .maybeSingle();
+    const deliveryId = (deliveryRow as any)?.id as string | undefined;
+    if (!deliveryId) console.error("[invoice-share] delivery insert failed");
+    const trackBase = `${SUPABASE_URL}/functions/v1/email-api?__route=${encodeURIComponent("/invoice/track")}&d=${deliveryId}`;
+    const brandedInvoiceHref = deliveryId ? `${APP_URL}/invoice/${deliveryId}` : pdfUrl;
+    const payHref = deliveryId && qboLink ? `${trackBase}&k=pay` : qboLink;
+    const primaryHref = qboLink ? payHref : brandedInvoiceHref;
+    const openPixel = deliveryId
+      ? `<img src="${trackBase}&k=open" width="1" height="1" alt="" style="display:block;border:0;width:1px;height:1px" />`
+      : "";
+    const brandColor = safeBrandColor((tenantRow as any)?.primary_color);
+    const safeTenant = escapeHtml(tenantName);
+    const safeInvoice = escapeHtml(String(invoice.invoice_number));
+    const safeFirst = escapeHtml(first);
+    const safeIntro = escapeHtml(intro).replaceAll("\n", "<br>");
+    const safePhone = escapeHtml(tenantRow?.phone);
+    const safeEmail = escapeHtml(tenantRow?.email);
+    const safeWebsite = escapeHtml((tenantRow as any)?.website);
+    const safeLogo = isSafeHttpsUrl((tenantRow as any)?.logo_url) ? escapeHtml((tenantRow as any).logo_url) : "";
+    const secondaryHref = qboLink ? brandedInvoiceHref : null;
+    const html = `
+<!doctype html>
+<html><body style="margin:0;padding:0;background:#f2f5f7;font-family:Arial,Helvetica,sans-serif;color:#172033">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f5f7;padding:32px 12px">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;background:#ffffff;border:1px solid #dde3e8;border-radius:8px;overflow:hidden">
+        <tr><td style="height:7px;background:${brandColor};font-size:0">&nbsp;</td></tr>
+        <tr><td style="padding:30px 34px 24px">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td valign="middle">${safeLogo ? `<img src="${safeLogo}" alt="${safeTenant}" width="64" style="display:block;max-height:64px;max-width:150px;object-fit:contain">` : `<div style="font-size:20px;font-weight:700;color:${brandColor}">${safeTenant}</div>`}</td>
+              <td align="right" valign="middle" style="font-size:12px;color:#677386;text-transform:uppercase">Invoice<br><strong style="font-size:16px;color:#172033">${safeInvoice}</strong></td>
+            </tr>
+          </table>
+        </td></tr>
+        <tr><td style="padding:0 34px 32px">
+          <h1 style="margin:0 0 10px;font-size:27px;line-height:1.25;color:#172033">Your invoice is ready</h1>
+          <p style="margin:0 0 22px;font-size:16px;color:#526075">Hi ${safeFirst},</p>
+          ${intro ? `<p style="margin:0 0 22px;font-size:16px;line-height:1.6;color:#293548">${safeIntro}</p>` : ""}
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 24px;background:#f7f9fa;border:1px solid #e3e8ec;border-radius:6px">
+            <tr><td style="padding:20px 22px">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                <tr><td style="padding:0 0 10px;color:#677386;font-size:14px">Invoice total</td><td align="right" style="padding:0 0 10px;font-size:16px;font-weight:700">${money(total)}</td></tr>
+                <tr><td style="padding:10px 0 0;border-top:1px solid #dde3e8;color:#677386;font-size:14px">Balance due</td><td align="right" style="padding:10px 0 0;border-top:1px solid #dde3e8;font-size:24px;font-weight:700;color:${brandColor}">${money(balance)}</td></tr>
+                ${due ? `<tr><td style="padding:10px 0 0;color:#677386;font-size:14px">Due date</td><td align="right" style="padding:10px 0 0;font-size:14px;font-weight:600">${escapeHtml(due)}</td></tr>` : ""}
+              </table>
+            </td></tr>
+          </table>
+          <table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="background:${brandColor};border-radius:6px">
+            <a href="${primaryHref}" style="display:inline-block;padding:14px 24px;color:#ffffff;text-decoration:none;font-size:16px;font-weight:700">${qboLink ? "Pay invoice" : "View invoice"}</a>
+          </td></tr></table>
+          ${secondaryHref ? `<p style="margin:16px 0 0;font-size:14px"><a href="${secondaryHref}" style="color:${brandColor};font-weight:600;text-decoration:underline">View invoice PDF</a></p>` : ""}
+        </td></tr>
+        <tr><td style="padding:22px 34px;background:#f7f9fa;border-top:1px solid #e3e8ec">
+          <p style="margin:0 0 5px;font-size:14px;font-weight:700;color:#293548">${safeTenant}</p>
+          <p style="margin:0;font-size:12px;line-height:1.5;color:#677386">${[safePhone, safeEmail, safeWebsite].filter(Boolean).join(" &nbsp;·&nbsp; ")}</p>
+          <p style="margin:12px 0 0;font-size:11px;color:#8a95a5">Securely delivered by Pitch CRM</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+  ${openPixel}
+</body></html>`.trim();
+    const text = [
+      `Hi ${first},`,
+      intro || `Your invoice from ${tenantName} is ready.`,
+      `Invoice: ${invoice.invoice_number}`,
+      `Total: ${money(total)}  Balance: ${money(balance)}`,
+      due ? `Due: ${due}` : "",
+      `Open: ${primaryHref}`,
+      secondaryHref ? `View invoice: ${secondaryHref}` : "",
+      `— ${tenantName}`,
+    ].filter(Boolean).join("\n");
+
+    const provider = getEmailProvider("resend");
+    const result = await provider.sendInvoiceEmail({
+      to: target, fromEmail, fromName, replyTo, subject, html, text, idempotencyKey,
+      tags: [
+        { name: "kind", value: "invoice_share" },
+        { name: "tenant_id", value: tenantId },
+      ],
+    });
+
+    if (deliveryId) {
+      const now = new Date().toISOString();
+      await service.from("invoice_email_deliveries").update(
+        result.ok
+          ? { status: "accepted", accepted_at: now, provider_message_id: result.providerMessageId ?? null }
+          : { status: "failed", failed_at: now, failure_reason: result.errorMessage ?? "provider_error" },
+      ).eq("id", deliveryId).eq("tenant_id", tenantId);
+      await service.from("customer_invoice_events").insert({
+        tenant_id: tenantId,
+        project_id: invoice.pipeline_entry_id,
+        pitch_invoice_id: invoice.id,
+        contact_id: contactId,
+        event_type: result.ok ? "invoice_email_sent" : "invoice_email_failed",
+        actor_type: "staff",
+        actor_user_id: userId,
+        delivery_provider: "resend",
+        delivery_provider_message_id: result.providerMessageId ?? null,
+        request_correlation_id: correlationId,
+        metadata: { delivery_id: deliveryId, recipient: target },
+      }).then(() => {}, () => {});
+    }
+
+    // Audit
+    await service.from("audit_log").insert({
+      tenant_id: tenantId,
+      table_name: "project_invoices",
+      record_id: invoice.id,
+      action: "invoice.share.email",
+      new_values: {
+        correlation_id: correlationId,
+        recipient: target,
+        sender_kind: verified ? "tenant_verified" : "platform_fallback",
+        provider_message_id: result.providerMessageId ?? null,
+        ok: result.ok,
+        error: result.ok ? null : (result.errorMessage ?? "provider_error"),
+        included_qbo_link: !!qboLink,
+      } as any,
+      changed_by: userId,
+    }).then(() => {}, () => {});
+
+    if (!result.ok) {
+      return json({ ok: false, error: "email_send_failed", reason: result.errorMessage ?? "provider_error" }, 502);
+    }
+    return json({
+      ok: true,
+      data: {
+        channel: "email",
+        to: target,
+        provider_message_id: result.providerMessageId,
+        delivery_id: deliveryId ?? null,
+      },
+      requestId: correlationId,
+    });
+  }
+
+  // channel === 'sms'
+  const introSms = message?.trim();
+  const smsBody = [
+    introSms || `${tenantName}: Invoice ${invoice.invoice_number}`,
+    `Balance ${money(balance)}${due ? ` due ${due}` : ""}`,
+    primaryLink,
+  ].join(" — ");
+
+  const smsRes = await fetch(`${SUPABASE_URL}/functions/v1/telnyx-send-sms`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${SERVICE_KEY}`,
+    },
+    body: JSON.stringify({
+      to: target,
+      message: smsBody,
+      contactId: contact?.id ?? undefined,
+      tenant_id: tenantId,
+      sent_by: userId,
+    }),
+  });
+  const smsJson = await smsRes.json().catch(() => ({} as any));
+  const smsOk = smsRes.ok && smsJson?.success !== false;
+
+  await service.from("audit_log").insert({
+    tenant_id: tenantId,
+    table_name: "project_invoices",
+    record_id: invoice.id,
+    action: "invoice.share.sms",
+    new_values: {
+      correlation_id: correlationId,
+      recipient: target,
+      ok: smsOk,
+      status: smsRes.status,
+      error: smsOk ? null : (smsJson?.error ?? smsJson?.message ?? `status_${smsRes.status}`),
+      included_qbo_link: !!qboLink,
+    } as any,
+    changed_by: userId,
+  }).then(() => {}, () => {});
+
+  if (!smsOk) {
+    return json({ ok: false, error: "sms_send_failed", status: smsRes.status, reason: smsJson?.error ?? smsJson?.message ?? "telnyx_error" }, 502);
+  }
+  return json({ ok: true, data: { channel: "sms", to: target }, requestId: correlationId });
+}

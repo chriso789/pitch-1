@@ -6,6 +6,8 @@
 
 import { createRouter, jsonOk, jsonErr, requireAuth, requireTenant, serveRouter } from "../_shared/router.ts";
 import { delegate } from "../_shared/delegate.ts";
+import { handleInvoiceShare } from "../_shared/invoice-share-handler.ts";
+import { handleInvoiceTrack } from "../_shared/invoice-track-handler.ts";
 
 const app = createRouter("email-api");
 
@@ -15,10 +17,15 @@ app.post("/unsubscribe", (c) => delegate(c.req.raw, "handle-email-unsubscribe", 
 app.post("/suppression", (c) => delegate(c.req.raw, "handle-email-suppression", "email-api", { anon: true }));
 app.post("/password-reset", (c) => delegate(c.req.raw, "send-password-reset", "email-api", { anon: true }));
 app.post("/demo-request", (c) => delegate(c.req.raw, "send-demo-request-emails", "email-api", { anon: true }));
+app.get("/invoice/view", (c) => handleInvoiceTrack(c.req.raw));
+app.get("/invoice/track", (c) => handleInvoiceTrack(c.req.raw));
 
 // ---- authenticated routes ----
 app.use("/*", requireAuth);
 app.use("/*", requireTenant);
+
+// Invoice delivery
+app.post("/invoice/share", (c) => handleInvoiceShare(c.req.raw));
 
 // Generic send
 app.post("/send", (c) => delegate(c.req.raw, "send-email", "email-api"));

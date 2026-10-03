@@ -1381,3 +1381,6 @@ verify_jwt = true
 
 [functions.invoice-track]
 verify_jwt = false
+
+[functions.email-api]
+verify_jwt = false

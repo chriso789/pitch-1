@@ -1,25 +1,24 @@
 # Edge Function Consolidation — Current Status
 
-Generated: 2026-05-22T14:13:02.699Z
+Generated: 2026-10-03T19:02:16.513Z
 
 ## Live counts
 
 | Metric | Count |
 |---|---:|
-| Function folders (excluding `_shared`) | **457** |
-| Grouped routed functions (`*-api` / `*-worker` / `*-webhook`) | **62** |
-| ↳ with real routes wired | **19** |
-| ↳ scaffold-only (501 not_migrated) | **43** |
-| Legacy shim functions (index.ts forwards via `_shared/shim.ts`) | **17** |
-| MIGRATE rows in audit CSV | **291** |
-| ↳ still classified `TBD` (need manual target) | **109** |
-| DELETE_CANDIDATE rows (zero references) | **63** |
-| Public webhook functions that MUST stay (KEEP) | **26** |
-| Frontend call sites still pointing to OLD function names | **261** |
+| Function folders (excluding `_shared`) | **520** |
+| Grouped routed functions (`*-api` / `*-worker` / `*-webhook`) | **69** |
+| ↳ with real routes wired | **38** |
+| ↳ scaffold-only (501 not_migrated) | **31** |
+| Legacy shim functions (index.ts forwards via `_shared/shim.ts`) | **26** |
+| MIGRATE rows in audit CSV | **337** |
+| ↳ still classified `TBD` (need manual target) | **131** |
+| DELETE_CANDIDATE rows (zero references) | **21** |
+| Public webhook functions that MUST stay (KEEP) | **28** |
+| Frontend call sites still pointing to OLD function names | **292** |
 
 ## Scaffold-only grouped functions (need logic ported in)
 
-- `abc-api`
 - `admin-api`
 - `ai-api`
 - `ai-worker`
@@ -29,31 +28,20 @@ Generated: 2026-05-22T14:13:02.699Z
 - `canvass-api`
 - `company-api`
 - `contact-api`
-- `document-api`
 - `health-api`
 - `job-api`
 - `map-api`
-- `measurement-api`
-- `measurement-worker`
-- `payment-api`
-- `pdf-api`
 - `permit-api`
 - `pipeline-api`
 - `property-data-api`
 - `qbo-api`
 - `qbo-webhook`
-- `qbo-worker`
-- `qxo-api`
 - `report-packet-api`
 - `security-api`
 - `signature-api`
 - `signature-webhook`
-- `srs-api`
 - `storm-api`
-- `stripe-webhook`
 - `stripe-worker`
-- `supplier-api`
-- `supplier-webhook`
 - `supplier-worker`
 - `task-api`
 - `telnyx-api`
@@ -65,22 +53,41 @@ Generated: 2026-05-22T14:13:02.699Z
 
 ## Grouped functions with real routes
 
+- `abc-api`
 - `ai-followup-worker`
 - `automation-worker`
+- `centz-webhook`
+- `document-api`
+- `document-worker`
 - `docusign-webhook`
 - `email-api`
 - `email-worker`
 - `external-lead-webhook`
+- `import-api`
+- `intuit-review-api`
 - `material-pricing-api`
+- `measurement-api`
+- `measurement-worker`
 - `messaging-api`
 - `messaging-inbound-webhook`
 - `messaging-webhook`
 - `messaging-worker`
+- `ocr-scanned-document-worker`
+- `payment-api`
+- `pdf-api`
+- `platform-api`
 - `proposal-webhook`
 - `qbo-check-projects-api`
+- `qbo-worker`
+- `qxo-api`
 - `resend-inbound-webhook`
+- `resend-invoice-webhook`
 - `resend-webhook`
 - `roofhub-webhook`
+- `srs-api`
+- `stripe-webhook`
+- `supplier-api`
+- `supplier-webhook`
 - `telnyx-call-webhook`
 - `telnyx-inbound-webhook`
 - `telnyx-sms-status-webhook`
@@ -89,8 +96,6 @@ Generated: 2026-05-22T14:13:02.699Z
 
 - `abc-api-proxy`
 - `admin-cleanup-sms-templates`
-- `admin-create-user`
-- `admin-delete-user`
 - `admin-update-password`
 - `ai-admin-agent`
 - `ai-command-processor`
@@ -104,6 +109,17 @@ Generated: 2026-05-22T14:13:02.699Z
 - `canvass-dispositions`
 - `canvass-drop-pin`
 - `canvassiq-skip-trace`
+- `classify-blueprint-pages`
+- `invoice-share`
+- `invoice-track`
+- `parse-blueprint-document`
+- `parse-roof-report`
+- `pdf-extract-text`
+- `pdf-parse`
+- `qxo-pricing`
+- `qxo-push-order`
+- `qxo-submit-order`
+- `qxo-submit-quote-order`
 
 ## Public webhooks (do NOT delete — provider dashboard URLs depend on these)
 
@@ -112,6 +128,7 @@ Generated: 2026-05-22T14:13:02.699Z
 - `amb-inbound`
 - `asterisk-call-inbound`
 - `asterisk-sms-inbound`
+- `centz-webhook`
 - `docusign-webhook`
 - `external-lead-webhook`
 - `messaging-inbound-webhook`
@@ -120,6 +137,7 @@ Generated: 2026-05-22T14:13:02.699Z
 - `qbo-webhook`
 - `qbo-webhook-handler`
 - `resend-inbound-webhook`
+- `resend-invoice-webhook`
 - `resend-webhook`
 - `roofhub-webhook`
 - `signature-webhook`
@@ -136,10 +154,11 @@ Generated: 2026-05-22T14:13:02.699Z
 
 ## Frontend call sites still pointing to old function names
 
-- `abc-api-proxy` — src/components/orders/PushToSupplierDialog.tsx, src/components/settings/ABCConnectionSettings.tsx
+- `abc-api-proxy` — src/components/admin/IntegrationSandboxConsole.tsx, src/components/estimates/InlineSupplierMatch.tsx, src/components/estimates/TemplateSectionSelector.tsx (+12 more)
 - `admin-cleanup-sms-templates` — src/components/communications/TextBlastCreator.tsx
 - `admin-create-user` — src/components/settings/EnhancedCompanyOnboarding.tsx, src/components/settings/UserManagement.tsx, src/pages/onboarding/OnboardingWalkthrough.tsx
 - `admin-delete-user` — src/components/settings/UserManagement.tsx
+- `admin-supplier-audit` — src/components/admin/IntegrationSandboxConsole.tsx
 - `admin-update-password` — src/components/settings/EnhancedUserProfile.tsx
 - `ai-admin-agent` — src/components/ai-admin/AIAdminChat.tsx
 - `ai-appointment-scheduler` — src/components/scheduling/AIAppointmentScheduler.tsx
@@ -150,9 +169,9 @@ Generated: 2026-05-22T14:13:02.699Z
 - `ai-image-analyzer` — src/shared/components/forms/PhotoCaptureGuide.tsx
 - `ai-lead-scorer` — src/components/AILeadScorer.tsx, src/features/leads/components/LeadScoreDashboard.tsx
 - `ai-measurement-analyzer` — src/components/measurements/AIRoofAnalyzer.tsx
-- `analyze-image-quality` — src/components/measurements/MeasurementTestPanel.tsx
-- `analyze-roof-aerial` — src/components/measurements/MeasurementTestPanel.tsx, src/components/measurements/RoofrStyleReportPreview.tsx
-- `api-approve-job-from-lead` — src/components/ApprovalRequirementsBubbles.tsx, src/components/JobApprovalDialog.tsx, src/components/ManagerApprovalQueue.tsx (+2 more)
+- `analyze-roof-aerial` — src/components/measurements/RoofrStyleReportPreview.tsx
+- `api-approve-job-from-lead` — src/components/ApprovalRequirementsBubbles.tsx, src/components/JobApprovalDialog.tsx, src/components/ManagerApprovalQueue.tsx (+3 more)
+- `apply-document-fields` — src/components/documents/DocumentExtractionPanel.tsx
 - `approve-cost-reconciliation` — src/components/production/CostReconciliationPanel.tsx
 - `approve-order` — src/pages/PendingApprovals.tsx
 - `assign-contact-task` — src/components/contact-profile/ContactNotesSection.tsx
@@ -179,48 +198,30 @@ Generated: 2026-05-22T14:13:02.699Z
 - `canvassiq-load-parcels` — src/components/storm-canvass/GooglePropertyMarkersLayer.tsx, src/components/storm-canvass/PropertyMarkersLayer.tsx
 - `canvassiq-skip-trace` — src/components/storm-canvass/PropertyInfoPanel.tsx
 - `capture-digital-signature` — src/pages/SignDocument.tsx
-- `classify-blueprint-pages` — src/integrations/blueprintApi.ts
+- `commercial-plan-takeoff` — src/components/commercial/CommercialImportDialog.tsx
 - `communication-inbox-manager` — src/components/inbox/StaffAssignmentDropdown.tsx
 - `compare-accuracy` — src/components/settings/CoverageGapPanel.tsx
 - `compare-scope-documents` — src/hooks/useScopeIntelligence.ts
+- `countersign-envelope` — src/components/DocumentsTab.tsx, src/components/estimates/SavedEstimatesList.tsx
 - `create-company-user` — src/components/settings/CreateCompanyFromDemoDialog.tsx
-- `create-lead-with-contact` — src/components/EnhancedLeadCreationDialog.tsx
-- `create-material-order` — src/components/materials/MaterialCalculator.tsx
 
-_…and 211 more — see CSV._
+_…and 242 more — see CSV._
 
 ## Remaining action plan to get below 150 deployed Supabase functions
 
-Current: **457**. Target: **<150**. Gap: **307**.
+Current: **520**. Target: **<150**. Gap: **370**.
 
-1. **Phase A — Wire routes** (43 grouped functions still stubs). Port logic from the 182 MIGRATE rows with concrete targets into the matching grouped function. _No change to function count yet._
-2. **Phase B — Resolve TBD** (109 rows). Classify each into an existing domain or escalate to DELETE_CANDIDATE.
-3. **Phase C — Shim legacy** (replace 291 legacy `index.ts` files with `forward(...)` calls to their grouped target). _No change to function count yet — shims still occupy folders._
-4. **Phase D — Frontend migration**: convert the 261 old call sites to call the grouped function + route directly. Once 100% migrated, the shims have zero production traffic.
-5. **Phase E — First delete sweep**: delete the 63 DELETE_CANDIDATE folders (zero refs anywhere). Drops count to **~394**.
-6. **Phase F — Drop shims**: after edge-function logs show zero shim traffic for 7 days, delete the legacy folders. Drops count by ~17.
-7. **Phase G — Audit KEEP webhooks**: confirm with provider dashboards which can be consolidated under `*-webhook` grouped functions. Worst case all 26 stay.
+1. **Phase A — Wire routes** (31 grouped functions still stubs). Port logic from the 206 MIGRATE rows with concrete targets into the matching grouped function. _No change to function count yet._
+2. **Phase B — Resolve TBD** (131 rows). Classify each into an existing domain or escalate to DELETE_CANDIDATE.
+3. **Phase C — Shim legacy** (replace 337 legacy `index.ts` files with `forward(...)` calls to their grouped target). _No change to function count yet — shims still occupy folders._
+4. **Phase D — Frontend migration**: convert the 292 old call sites to call the grouped function + route directly. Once 100% migrated, the shims have zero production traffic.
+5. **Phase E — First delete sweep**: delete the 21 DELETE_CANDIDATE folders (zero refs anywhere). Drops count to **~499**.
+6. **Phase F — Drop shims**: after edge-function logs show zero shim traffic for 7 days, delete the legacy folders. Drops count by ~26.
+7. **Phase G — Audit KEEP webhooks**: confirm with provider dashboards which can be consolidated under `*-webhook` grouped functions. Worst case all 28 stay.
 
-**Projected end state:** `62` grouped functions + `26` standalone webhooks ≈ **88** deployed functions — well below 150.
+**Projected end state:** `69` grouped functions + `28` standalone webhooks ≈ **97** deployed functions — well below 150.
 
 ---
 
 Full per-function breakdown: `docs/edge-function-consolidation-audit.csv`.
 Policy: `docs/EDGE_FUNCTION_RULES.md` — **one domain = one edge function with internal routes**.
-
-## 2026-07-20 — QBO Sub-plan E/F migration
-
-Legacy QBO endpoints are now **authenticated shims** that reject body `tenant_id` / `realm_id` and forward to `qbo-worker`:
-
-| Legacy function | Now forwards to | Status |
-|---|---|---|
-| `qbo-customer-sync` | `qbo-worker { op: syncProject }` | SHIM (verify_jwt=true) |
-| `qbo-invoice-create` | `qbo-worker { op: createInvoiceFromEstimates }` | SHIM (verify_jwt=true) |
-| `qbo-sync-payment` | `qbo-worker { op: syncPaymentStatus \| refreshAr }` | SHIM (verify_jwt=true) |
-| `qbo-invoice-send` | `qbo-worker { op: toggleOnlinePayments }` | SHIM (verify_jwt=true) |
-
-Shared helper: `supabase/functions/_shared/qbo-shim.ts`. Every response carries `X-Deprecation` and `X-Rejected-Body-Fields`.
-
-Frontend caller migrated: `src/components/jobs/QuickBooksInvoiceCard.tsx` now invokes `qbo-worker` directly.
-
-Schema hardening (see migration): every QBO mapping/mirror/settings table now carries `qbo_connection_id`, and uniqueness is scoped by `(tenant_id, qbo_connection_id, realm_id, ...)`. `invoice_ar_mirror` is now unique per QBO invoice (not per project). Partial unique index enforces one active QBO connection per tenant.
