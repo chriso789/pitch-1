@@ -198,6 +198,41 @@ Deno.serve(async (req: Request) => {
 
     const subject = `Invoice ${invoice.invoice_number} from ${tenantName}`;
     const intro = message?.trim();
+    const idempotencyKey = `share:${invoice.id}:${target}:${Date.now()}`;
+
+    // Read receipts: record the delivery, then route links + an open pixel
+    // through invoice-track so opens and clicks are logged.
+    const { data: deliveryRow } = await service
+      .from("invoice_email_deliveries")
+      .insert({
+        tenant_id: tenantId,
+        project_id: invoice.pipeline_entry_id,
+        pitch_invoice_id: invoice.id,
+        contact_id: contactId,
+        recipient_email: target,
+        from_email: fromEmail,
+        from_name: fromName,
+        reply_to: replyTo,
+        sender_kind: verified ? "tenant_verified" : "platform_fallback",
+        provider: "resend",
+        send_request_id: correlationId,
+        idempotency_key: idempotencyKey,
+        template_version: 1,
+        subject,
+        status: "queued",
+        created_by: userId,
+      })
+      .select("id")
+      .maybeSingle();
+    const deliveryId = (deliveryRow as any)?.id as string | undefined;
+    if (!deliveryId) console.error("[invoice-share] delivery insert failed");
+    const trackBase = `${SUPABASE_URL}/functions/v1/invoice-track?d=${deliveryId}`;
+    const pdfHref = deliveryId && pdfUrl ? `${trackBase}&k=pdf` : pdfUrl;
+    const payHref = deliveryId && qboLink ? `${trackBase}&k=pay` : qboLink;
+    const primaryHref = qboLink ? payHref : pdfHref;
+    const openPixel = deliveryId
+      ? `<img src="${trackBase}&k=open" width="1" height="1" alt="" style="display:block;border:0;width:1px;height:1px" />`
+      : "";
     const html = `
 <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#0f172a">
   <h2 style="margin:0 0 8px">Invoice ${invoice.invoice_number}</h2>
