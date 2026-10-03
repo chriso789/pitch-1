@@ -67806,6 +67806,10 @@ export type Database = {
           released: boolean
         }[]
       }
+      remove_change_order_from_estimates: {
+        Args: { _co_id: string; _lab?: number; _mat?: number }
+        Returns: undefined
+      }
       reresolve_projects_for_mapping: {
         Args: { p_mapping_id: string }
         Returns: number
