@@ -205,6 +205,22 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
 
   const isCombined = !!combineState?.combine && !!combinedTotals && combinedTotals.count > 1;
 
+  // Sales tax on the selected estimate — subtracted from revenue so the profit
+  // shown here matches the Profit Center exactly
+  const { data: selectedSalesTax } = useQuery({
+    queryKey: ['estimate-sales-tax', hyperlinkData?.selected_estimate_id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('enhanced_estimates')
+        .select('sales_tax_amount')
+        .eq('id', hyperlinkData!.selected_estimate_id!)
+        .maybeSingle();
+      return Number((data as any)?.sales_tax_amount || 0);
+    },
+    enabled: !!hyperlinkData?.selected_estimate_id,
+  });
+  const effectiveSalesTax = isCombined ? (combinedTotals!.sales_tax || 0) : (selectedSalesTax || 0);
+
   // Mutation to update estimate selling price and recalculate profit
   const updatePriceMutation = useMutation({
     mutationFn: async (newPrice: number) => {
@@ -379,10 +395,12 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       value: (() => {
         const effMaterial = hasActualMaterials ? actualMaterialCost : effectiveMaterials;
         const effLabor = hasActualLabor ? actualLaborCost : effectiveLabor;
-        const salePrice = effectiveSalePrice;
+        // Same formula as Profit Center: revenue excludes remitted sales tax,
+        // overhead stays on the full gross price
+        const preTax = effectiveSalePrice - effectiveSalesTax;
         const overhead = calculateRepOverhead() + otherChargesTotal;
-        const profit = salePrice - effMaterial - effLabor - overhead;
-        const margin = salePrice > 0 ? (profit / salePrice) * 100 : 0;
+        const profit = preTax - effMaterial - effLabor - overhead;
+        const margin = preTax > 0 ? (profit / preTax) * 100 : 0;
         return `${Math.round(margin)}%`;
       })(),
       hint: (hasActualMaterials || hasActualLabor) ? 'Actual' : (isCombined ? 'Combined' : null),
