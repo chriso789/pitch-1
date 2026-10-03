@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -49,6 +49,23 @@ export function InvoiceShareActions({
   const [note, setNote] = useState('');
   const [includeQbo, setIncludeQbo] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [fetchedEmail, setFetchedEmail] = useState<string | null>(null);
+
+  // Prefill from the project's contact when the invoice has no saved email
+  useEffect(() => {
+    if (defaultEmail || !pipelineEntryId) return;
+    let cancelled = false;
+    (async () => {
+      const { data: pe } = await supabase
+        .from('pipeline_entries')
+        .select('contact_id, contacts!pipeline_entries_contact_id_fkey(email)')
+        .eq('id', pipelineEntryId)
+        .maybeSingle();
+      const email = (pe as any)?.contacts?.email?.trim() || null;
+      if (!cancelled && email) setFetchedEmail(email);
+    })();
+    return () => { cancelled = true; };
+  }, [defaultEmail, pipelineEntryId]);
 
   const safeNumber = invoiceNumber.replace(/[^A-Za-z0-9_-]/g, '_');
   const pdfPath = `${tenantId}/${pipelineEntryId}/invoices/${safeNumber}.pdf`;
@@ -70,33 +87,60 @@ export function InvoiceShareActions({
 
   const openShare = (channel: Channel) => {
     setOpenChannel(channel);
-    setRecipient(channel === 'email' ? (defaultEmail ?? '') : (defaultPhone ?? ''));
+    setRecipient(channel === 'email' ? (defaultEmail ?? fetchedEmail ?? '') : (defaultPhone ?? ''));
     setNote('');
   };
 
   const submitShare = async () => {
     if (!openChannel) return;
-    const target = recipient.trim();
-    if (!target) {
+    // Email supports multiple recipients separated by commas
+    const targets =
+      openChannel === 'email'
+        ? recipient.split(/[,\s;]+/).map((t) => t.trim()).filter(Boolean)
+        : [recipient.trim()].filter(Boolean);
+    if (targets.length === 0) {
       toast.error(openChannel === 'email' ? 'Enter an email' : 'Enter a phone number');
       return;
     }
+    if (openChannel === 'email') {
+      const bad = targets.filter((t) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t));
+      if (bad.length > 0) {
+        toast.error(`Invalid email: ${bad[0]}`);
+        return;
+      }
+    }
     setSubmitting(true);
     try {
-      const { data, error } = await supabase.functions.invoke('invoice-share', {
-        body: {
-          invoice_id: invoiceId,
-          channel: openChannel,
-          recipient: target,
-          message: note || undefined,
-          include_qbo_link: includeQbo,
-        },
-      });
-      if (error || !(data as any)?.ok) {
-        const reason = (data as any)?.reason || (data as any)?.error || error?.message || 'Send failed';
-        throw new Error(reason);
+      let sent = 0;
+      let lastError: string | null = null;
+      for (const target of targets) {
+        const { data, error } = await supabase.functions.invoke('invoice-share', {
+          body: {
+            invoice_id: invoiceId,
+            channel: openChannel,
+            recipient: target,
+            message: note || undefined,
+            include_qbo_link: includeQbo,
+          },
+        });
+        if (error || !(data as any)?.ok) {
+          lastError = (data as any)?.reason || (data as any)?.error || error?.message || 'Send failed';
+        } else {
+          sent += 1;
+        }
       }
-      toast.success(openChannel === 'email' ? 'Invoice emailed' : 'Invoice texted');
+      if (sent === 0) throw new Error(lastError ?? 'Send failed');
+      if (lastError) {
+        toast.warning(`Sent to ${sent} of ${targets.length} recipients. Last error: ${lastError}`);
+      } else {
+        toast.success(
+          openChannel === 'email'
+            ? targets.length > 1
+              ? `Invoice emailed to ${sent} recipients`
+              : 'Invoice emailed'
+            : 'Invoice texted',
+        );
+      }
       setOpenChannel(null);
     } catch (e: any) {
       toast.error(e?.message ?? 'Send failed');
@@ -151,13 +195,18 @@ export function InvoiceShareActions({
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <Label>{openChannel === 'email' ? 'Recipient email' : 'Recipient phone'}</Label>
+              <Label>{openChannel === 'email' ? 'Recipient email(s)' : 'Recipient phone'}</Label>
               <Input
-                type={openChannel === 'email' ? 'email' : 'tel'}
+                type={openChannel === 'email' ? 'text' : 'tel'}
                 value={recipient}
                 onChange={(e) => setRecipient(e.target.value)}
-                placeholder={openChannel === 'email' ? 'name@example.com' : '+15551234567'}
+                placeholder={openChannel === 'email' ? 'name@example.com, another@example.com' : '+15551234567'}
               />
+              {openChannel === 'email' && (
+                <p className="text-xs text-muted-foreground">
+                  The project's email is prefilled. Add more emails separated by commas.
+                </p>
+              )}
             </div>
             <div>
               <Label>Short note (optional)</Label>
