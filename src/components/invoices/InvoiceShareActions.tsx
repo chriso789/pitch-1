@@ -195,13 +195,18 @@ export function InvoiceShareActions({
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <Label>{openChannel === 'email' ? 'Recipient email' : 'Recipient phone'}</Label>
+              <Label>{openChannel === 'email' ? 'Recipient email(s)' : 'Recipient phone'}</Label>
               <Input
-                type={openChannel === 'email' ? 'email' : 'tel'}
+                type={openChannel === 'email' ? 'text' : 'tel'}
                 value={recipient}
                 onChange={(e) => setRecipient(e.target.value)}
-                placeholder={openChannel === 'email' ? 'name@example.com' : '+15551234567'}
+                placeholder={openChannel === 'email' ? 'name@example.com, another@example.com' : '+15551234567'}
               />
+              {openChannel === 'email' && (
+                <p className="text-xs text-muted-foreground">
+                  The project's email is prefilled. Add more emails separated by commas.
+                </p>
+              )}
             </div>
             <div>
               <Label>Short note (optional)</Label>
