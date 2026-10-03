@@ -358,6 +358,7 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
     }
     toast({ title: 'Change order deleted' });
     refresh();
+    window.dispatchEvent(new Event('estimate-updated'));
   };
 
   const handleApprove = async (co: ChangeOrder) => {
@@ -380,6 +381,7 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
       description: 'Cost impact added to project budget and contract value.',
     });
     refresh();
+    window.dispatchEvent(new Event('estimate-updated'));
   };
 
   const handlePushToInvoice = async (co: ChangeOrder) => {
@@ -460,6 +462,7 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
         description: `Contract value updated and invoice ${invoiceNumber} created.`,
       });
       refresh();
+      window.dispatchEvent(new Event('estimate-updated'));
       queryClient.invalidateQueries({ queryKey: ['project-invoices'] });
       queryClient.invalidateQueries({ queryKey: ['estimate-costs', pipelineEntryId] });
       queryClient.invalidateQueries({ queryKey: ['hyperlink-data', pipelineEntryId] });
