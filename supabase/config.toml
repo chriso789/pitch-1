@@ -1378,3 +1378,6 @@ verify_jwt = false
 
 [functions.admin-supplier-audit]
 verify_jwt = true
+
+[functions.invoice-track]
+verify_jwt = false
