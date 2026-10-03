@@ -199,10 +199,14 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
         .select('id, co_number, title, status, cost_impact, customer_approved, line_items')
         .in('project_id', projectIds);
       if (error) throw error;
-      const APPROVED = new Set(['approved', 'invoiced', 'completed']);
-      return (data || []).filter((co: any) =>
-        APPROVED.has(String(co.status || '').toLowerCase()) || co.customer_approved === true
-      );
+      // Change orders already billed on their own invoice ('invoiced') are
+      // excluded so they aren't billed twice.
+      const APPROVED = new Set(['approved', 'completed']);
+      return (data || []).filter((co: any) => {
+        const s = String(co.status || '').toLowerCase();
+        if (s === 'invoiced') return false;
+        return APPROVED.has(s) || co.customer_approved === true;
+      });
     },
   });
 
