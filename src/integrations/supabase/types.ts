@@ -9440,6 +9440,47 @@ export type Database = {
           },
         ]
       }
+      closeout_feedback: {
+        Row: {
+          comment: string | null
+          contact_id: string | null
+          created_at: string
+          delivery_id: string | null
+          id: string
+          project_id: string | null
+          rating: number | null
+          tenant_id: string
+        }
+        Insert: {
+          comment?: string | null
+          contact_id?: string | null
+          created_at?: string
+          delivery_id?: string | null
+          id?: string
+          project_id?: string | null
+          rating?: number | null
+          tenant_id: string
+        }
+        Update: {
+          comment?: string | null
+          contact_id?: string | null
+          created_at?: string
+          delivery_id?: string | null
+          id?: string
+          project_id?: string | null
+          rating?: number | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "closeout_feedback_delivery_id_fkey"
+            columns: ["delivery_id"]
+            isOneToOne: true
+            referencedRelation: "invoice_email_deliveries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       commercial_assemblies: {
         Row: {
           active: boolean
@@ -13280,6 +13321,47 @@ export type Database = {
             foreignKeyName: "company_onboarding_tokens_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      company_reputation_settings: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          feedback_enabled: boolean
+          headline: string
+          message: string
+          show_on_invoice: boolean
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          feedback_enabled?: boolean
+          headline?: string
+          message?: string
+          show_on_invoice?: boolean
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          feedback_enabled?: boolean
+          headline?: string
+          message?: string
+          show_on_invoice?: boolean
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_reputation_settings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
             referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
@@ -48223,6 +48305,101 @@ export type Database = {
           },
         ]
       }
+      review_destinations: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          label: string
+          platform: string
+          sort_order: number
+          tenant_id: string
+          updated_at: string
+          url: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          label: string
+          platform?: string
+          sort_order?: number
+          tenant_id: string
+          updated_at?: string
+          url: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          label?: string
+          platform?: string
+          sort_order?: number
+          tenant_id?: string
+          updated_at?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "review_destinations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      review_link_clicks: {
+        Row: {
+          clicked_at: string
+          contact_id: string | null
+          delivery_id: string | null
+          destination_id: string | null
+          id: string
+          platform: string | null
+          project_id: string | null
+          tenant_id: string
+          user_agent: string | null
+        }
+        Insert: {
+          clicked_at?: string
+          contact_id?: string | null
+          delivery_id?: string | null
+          destination_id?: string | null
+          id?: string
+          platform?: string | null
+          project_id?: string | null
+          tenant_id: string
+          user_agent?: string | null
+        }
+        Update: {
+          clicked_at?: string
+          contact_id?: string | null
+          delivery_id?: string | null
+          destination_id?: string | null
+          id?: string
+          platform?: string | null
+          project_id?: string | null
+          tenant_id?: string
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "review_link_clicks_delivery_id_fkey"
+            columns: ["delivery_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_email_deliveries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "review_link_clicks_destination_id_fkey"
+            columns: ["destination_id"]
+            isOneToOne: false
+            referencedRelation: "review_destinations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       review_requests: {
         Row: {
           completed_at: string | null
@@ -67812,6 +67989,10 @@ export type Database = {
       }
       remove_change_order_from_estimates: {
         Args: { _co_id: string; _lab?: number; _mat?: number }
+        Returns: undefined
+      }
+      reputation_assert_compliant: {
+        Args: { _text: string }
         Returns: undefined
       }
       reresolve_projects_for_mapping: {
