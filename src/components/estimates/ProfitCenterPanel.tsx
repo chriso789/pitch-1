@@ -489,6 +489,18 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
   const materialInvoiceCount = (invoices || []).filter(inv => inv.invoice_type === 'material').length;
   const laborInvoiceCount = (invoices || []).filter(inv => inv.invoice_type === 'labor').length;
   const otherChargesInvoiceCount = otherChargesInvoices.length;
+  const summaryInvoicesMap = new Map<string, InvoiceData>();
+  (invoices || []).forEach((invoice) => {
+    if (invoice.id) summaryInvoicesMap.set(invoice.id, invoice);
+  });
+  otherChargesInvoices.forEach((invoice) => {
+    if (invoice.id && !summaryInvoicesMap.has(invoice.id)) summaryInvoicesMap.set(invoice.id, invoice);
+  });
+  const summaryInvoices = Array.from(summaryInvoicesMap.values()).sort((a, b) => {
+    const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+    const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+    return bTime - aTime;
+  });
 
   const hasValidData = sellingPrice > 0 && (originalMaterialCost > 0 || originalLaborCost > 0);
 
@@ -1023,14 +1035,57 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                 )}
 
 
-                {/* Invoice Status */}
-                {(materialInvoiceCount > 0 || laborInvoiceCount > 0 || otherChargesInvoiceCount > 0) && (
-                  <div className="bg-muted/50 rounded-lg p-3">
-                    <div className="flex items-center gap-2 text-sm">
+                {/* Uploaded invoice list */}
+                {summaryInvoices.length > 0 && (
+                  <div className="border-t border-border pt-3">
+                    <div className="mb-2 flex items-center gap-2">
                       <FileText className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-muted-foreground">
-                        {materialInvoiceCount} material, {laborInvoiceCount} labor, {otherChargesInvoiceCount} other charge invoice(s) uploaded
-                      </span>
+                      <h4 className="text-sm font-semibold">Uploaded invoices ({summaryInvoices.length})</h4>
+                    </div>
+                    <div className="divide-y divide-border overflow-hidden rounded-md border border-border">
+                      {summaryInvoices.map((invoice) => {
+                        const typeLabel = invoice.invoice_type === 'material'
+                          ? 'Material'
+                          : invoice.invoice_type === 'labor'
+                            ? 'Labor'
+                            : invoice.invoice_type === 'overhead'
+                              ? 'Overhead'
+                              : 'Other';
+                        const invoiceName = invoice.document_name?.trim()
+                          || invoice.vendor_name?.trim()
+                          || invoice.crew_name?.trim()
+                          || (invoice.invoice_number ? `Invoice #${invoice.invoice_number}` : `${typeLabel} invoice`);
+                        const documentUrl = invoice.document_url;
+
+                        return (
+                          <div
+                            key={invoice.id || `${invoice.invoice_type}-${invoice.created_at}-${invoice.invoice_amount}`}
+                            className="flex flex-col gap-2 bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium">{invoiceName}</p>
+                              <p className="text-xs text-muted-foreground">{typeLabel}</p>
+                            </div>
+                            <div className="flex items-center justify-between gap-3 sm:justify-end">
+                              <span className="text-sm font-semibold tabular-nums">{formatCurrency(invoice.invoice_amount)}</span>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-8"
+                                disabled={!documentUrl}
+                                onClick={() => {
+                                  if (!documentUrl) return;
+                                  setPreviewInvoice({ url: documentUrl, name: invoiceName });
+                                }}
+                              >
+                                <Eye className="mr-1.5 h-3.5 w-3.5" />
+                                View
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
