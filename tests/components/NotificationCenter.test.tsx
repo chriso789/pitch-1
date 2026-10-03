@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NotificationCenter } from '@/components/notifications/NotificationCenter';
@@ -40,16 +41,17 @@ describe('NotificationCenter', () => {
   beforeEach(() => fetchNotifications.mockClear());
 
   it('renders an icon rather than the saved eye icon name', async () => {
-    const { container } = render(
+    const user = userEvent.setup();
+    render(
       <MemoryRouter>
         <NotificationCenter />
       </MemoryRouter>,
     );
 
-    fireEvent.click(screen.getByRole('button'));
+    await user.click(screen.getByRole('button'));
 
     expect(await screen.findByText('Invoice opened')).toBeInTheDocument();
     expect(screen.queryByText('eye')).not.toBeInTheDocument();
-    expect(container.querySelector('svg.lucide-eye')).toBeInTheDocument();
+    expect(document.querySelector('svg.lucide-eye')).toBeInTheDocument();
   });
 });
