@@ -66229,6 +66229,10 @@ export type Database = {
         }
         Returns: string
       }
+      add_change_order_to_estimate: {
+        Args: { _co_id: string }
+        Returns: undefined
+      }
       addauth: { Args: { "": string }; Returns: boolean }
       addgeometrycolumn:
         | {
