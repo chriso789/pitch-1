@@ -198,6 +198,41 @@ Deno.serve(async (req: Request) => {
 
     const subject = `Invoice ${invoice.invoice_number} from ${tenantName}`;
     const intro = message?.trim();
+    const idempotencyKey = `share:${invoice.id}:${target}:${Date.now()}`;
+
+    // Read receipts: record the delivery, then route links + an open pixel
+    // through invoice-track so opens and clicks are logged.
+    const { data: deliveryRow } = await service
+      .from("invoice_email_deliveries")
+      .insert({
+        tenant_id: tenantId,
+        project_id: invoice.pipeline_entry_id,
+        pitch_invoice_id: invoice.id,
+        contact_id: contactId,
+        recipient_email: target,
+        from_email: fromEmail,
+        from_name: fromName,
+        reply_to: replyTo,
+        sender_kind: verified ? "tenant_verified" : "platform_fallback",
+        provider: "resend",
+        send_request_id: correlationId,
+        idempotency_key: idempotencyKey,
+        template_version: 1,
+        subject,
+        status: "queued",
+        created_by: userId,
+      })
+      .select("id")
+      .maybeSingle();
+    const deliveryId = (deliveryRow as any)?.id as string | undefined;
+    if (!deliveryId) console.error("[invoice-share] delivery insert failed");
+    const trackBase = `${SUPABASE_URL}/functions/v1/invoice-track?d=${deliveryId}`;
+    const pdfHref = deliveryId && pdfUrl ? `${trackBase}&k=pdf` : pdfUrl;
+    const payHref = deliveryId && qboLink ? `${trackBase}&k=pay` : qboLink;
+    const primaryHref = qboLink ? payHref : pdfHref;
+    const openPixel = deliveryId
+      ? `<img src="${trackBase}&k=open" width="1" height="1" alt="" style="display:block;border:0;width:1px;height:1px" />`
+      : "";
     const html = `
 <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#0f172a">
   <h2 style="margin:0 0 8px">Invoice ${invoice.invoice_number}</h2>
@@ -210,12 +245,13 @@ Deno.serve(async (req: Request) => {
     ${due ? `<tr><td style="padding:4px 12px 4px 0;color:#64748b">Due</td><td>${due}</td></tr>` : ""}
   </table>
   <p style="margin:16px 0">
-    <a href="${primaryLink}" style="display:inline-block;background:#0f172a;color:#fff;padding:12px 20px;border-radius:6px;text-decoration:none;font-weight:600">
+    <a href="${primaryHref}" style="display:inline-block;background:#0f172a;color:#fff;padding:12px 20px;border-radius:6px;text-decoration:none;font-weight:600">
       ${qboLink ? "Pay Invoice" : "View Invoice PDF"}
     </a>
   </p>
-  ${qboLink && pdfUrl ? `<p style="margin:8px 0;font-size:13px"><a href="${pdfUrl}" style="color:#334155">Download PDF</a></p>` : ""}
+  ${qboLink && pdfUrl ? `<p style="margin:8px 0;font-size:13px"><a href="${pdfHref}" style="color:#334155">Download PDF</a></p>` : ""}
   <p style="margin:24px 0 0;color:#64748b;font-size:12px">Sent by ${tenantName}${tenantRow?.phone ? ` · ${tenantRow.phone}` : ""}</p>
+  ${openPixel}
 </div>`.trim();
     const text = [
       `Hi ${first},`,
@@ -223,13 +259,12 @@ Deno.serve(async (req: Request) => {
       `Invoice: ${invoice.invoice_number}`,
       `Total: ${money(total)}  Balance: ${money(balance)}`,
       due ? `Due: ${due}` : "",
-      `Open: ${primaryLink}`,
-      qboLink && pdfUrl ? `PDF: ${pdfUrl}` : "",
+      `Open: ${primaryHref}`,
+      qboLink && pdfUrl ? `PDF: ${pdfHref}` : "",
       `— ${tenantName}`,
     ].filter(Boolean).join("\n");
 
     const provider = getEmailProvider("resend");
-    const idempotencyKey = `share:${invoice.id}:${target}:${Date.now()}`;
     const result = await provider.sendInvoiceEmail({
       to: target, fromEmail, fromName, replyTo, subject, html, text, idempotencyKey,
       tags: [
@@ -237,6 +272,28 @@ Deno.serve(async (req: Request) => {
         { name: "tenant_id", value: tenantId },
       ],
     });
+
+    if (deliveryId) {
+      const now = new Date().toISOString();
+      await service.from("invoice_email_deliveries").update(
+        result.ok
+          ? { status: "accepted", accepted_at: now, provider_message_id: result.providerMessageId ?? null }
+          : { status: "failed", failed_at: now, failure_reason: result.errorMessage ?? "provider_error" },
+      ).eq("id", deliveryId).eq("tenant_id", tenantId);
+      await service.from("customer_invoice_events").insert({
+        tenant_id: tenantId,
+        project_id: invoice.pipeline_entry_id,
+        pitch_invoice_id: invoice.id,
+        contact_id: contactId,
+        event_type: result.ok ? "invoice_email_sent" : "invoice_email_failed",
+        actor_type: "staff",
+        actor_user_id: userId,
+        delivery_provider: "resend",
+        delivery_provider_message_id: result.providerMessageId ?? null,
+        request_correlation_id: correlationId,
+        metadata: { delivery_id: deliveryId, recipient: target },
+      }).then(() => {}, () => {});
+    }
 
     // Audit
     await service.from("audit_log").insert({
@@ -259,7 +316,7 @@ Deno.serve(async (req: Request) => {
     if (!result.ok) {
       return json({ ok: false, error: "email_send_failed", reason: result.errorMessage ?? "provider_error" }, 502);
     }
-    return json({ ok: true, channel: "email", to: target, provider_message_id: result.providerMessageId });
+    return json({ ok: true, channel: "email", to: target, provider_message_id: result.providerMessageId, delivery_id: deliveryId ?? null });
   }
 
   // channel === 'sms'
