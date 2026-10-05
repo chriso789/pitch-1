@@ -485,7 +485,7 @@ const PageShell: React.FC<{
         WebkitFontSmoothing: 'antialiased',
         MozOsxFontSmoothing: 'grayscale',
         textRendering: 'optimizeLegibility',
-        letterSpacing: '0.01em',
+        letterSpacing: 'normal',
         overflow: 'hidden'
       }}
     >
@@ -954,7 +954,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
       WebkitFontSmoothing: 'antialiased',
       MozOsxFontSmoothing: 'grayscale',
       textRendering: 'optimizeLegibility',
-      letterSpacing: '0.01em',
+      letterSpacing: 'normal',
     }}>
       {pages.pages.map((pageContent, idx) => {
         // Cover trio pages (CoverPage, WhyChooseUs, ProcessTimeline) already include
@@ -1031,12 +1031,27 @@ const ChangeOrdersBlock: React.FC<{ items: LineItem[] }> = ({ items }) => {
 };
 
 // Renders AI scope text, converting **bold** markers into real bold text.
-function renderNarrativeText(text: string) {
-  return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
+function renderInlineBold(line: string, keyPrefix: string) {
+  return line.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
     part.startsWith('**') && part.endsWith('**') && part.length > 4 ? (
-      <strong key={i} className="font-bold text-gray-900">{part.slice(2, -2)}</strong>
+      <strong key={`${keyPrefix}-${i}`} className="font-bold text-gray-900">{part.slice(2, -2)}</strong>
     ) : (
-      <span key={i}>{part}</span>
+      <React.Fragment key={`${keyPrefix}-${i}`}>{part}</React.Fragment>
+    )
+  );
+}
+
+// Render each line as its own block (normal white-space). One big pre-wrapped
+// text node is mis-measured by html2canvas on some browsers (notably Safari),
+// which drew wrapped lines on top of the terms, fine print and signatures.
+function renderNarrativeText(text: string) {
+  return text.split('\n').map((line, i) =>
+    line.trim() === '' ? (
+      <div key={i} style={{ height: '0.75em' }} />
+    ) : (
+      <div key={i} style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>
+        {renderInlineBold(line, String(i))}
+      </div>
     )
   );
 }
@@ -1135,7 +1150,7 @@ const FirstPage: React.FC<{
             <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
             Project Scope
           </h3>
-          <div className="text-xs text-gray-800 leading-relaxed whitespace-pre-wrap scope-narrative">
+          <div className="text-xs text-gray-800 leading-relaxed scope-narrative">
             {renderNarrativeText(narrativeText)}
           </div>
           {narrativeContinues && (
@@ -1226,7 +1241,7 @@ const NarrativeContinuationPage: React.FC<{ text: string; continues?: boolean }>
         <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
         Project Scope (continued)
       </h3>
-      <div className="text-xs text-gray-800 leading-relaxed whitespace-pre-wrap scope-narrative">
+      <div className="text-xs text-gray-800 leading-relaxed scope-narrative">
         {renderNarrativeText(text)}
       </div>
       {continues && (

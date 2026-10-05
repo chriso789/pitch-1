@@ -1923,7 +1923,7 @@ export function EstimatePreviewPanel({
                   WebkitFontSmoothing: 'antialiased',
                   MozOsxFontSmoothing: 'grayscale',
                   textRendering: 'optimizeLegibility',
-                  letterSpacing: '0.01em',
+                  letterSpacing: 'normal',
                 }}>
                   <EstimatePDFDocument
                     estimateNumber={estimateNumber}
