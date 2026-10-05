@@ -16,7 +16,7 @@ const narrative = `**Scope of Work**
 
 **Closing**
 Tristate Contracting Group provides a Tamko Titan XT laminated shingle system with coordinated underlayment, edge, ventilation, and finishing details. Manufacturer-specified installation and a final quality inspection support warranty coverage subject to manufacturer terms. **All required permits and debris removal / trash hauling are included in this cost, with no separate billing for these services.** The next step is coordination of scheduling and installation details.`;
-const fine = ('Cancel / Rescission (Required) Owner may rescind this contract without penalty within three (3) business days of signing. Any additional/repairs outside the written scope (including code-driven items discovered) require a written change order. ').repeat(12);
+const fine = ('Cancel / Rescission (Required) Owner may rescind this contract without penalty within three (3) business days of signing. Any additional/repairs outside the written scope (including code-driven items discovered) require a written change order. ').repeat(2);
 const b = { materialsTotal: 10000, laborTotal: 8000, directCost: 18000, overheadAmount: 2000, totalCost: 20000, profitAmount: 6572, repCommissionAmount: 0, sellingPrice: 26572, actualProfitMargin: 25 };
 createRoot(document.getElementById('root')!).render(
   <div id="pdf-root"><EstimatePDFDocument estimateNumber="EST-1" customerName="Test" customerAddress="127 West Chester Pike" companyName="Tristate Contracting Group"
