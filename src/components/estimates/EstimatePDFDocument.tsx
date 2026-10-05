@@ -485,7 +485,7 @@ const PageShell: React.FC<{
         WebkitFontSmoothing: 'antialiased',
         MozOsxFontSmoothing: 'grayscale',
         textRendering: 'optimizeLegibility',
-        letterSpacing: '0.01em',
+        letterSpacing: 'normal',
         overflow: 'hidden'
       }}
     >
@@ -954,7 +954,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
       WebkitFontSmoothing: 'antialiased',
       MozOsxFontSmoothing: 'grayscale',
       textRendering: 'optimizeLegibility',
-      letterSpacing: '0.01em',
+      letterSpacing: 'normal',
     }}>
       {pages.pages.map((pageContent, idx) => {
         // Cover trio pages (CoverPage, WhyChooseUs, ProcessTimeline) already include

@@ -91,7 +91,7 @@ function applyPDFStyles(element: HTMLElement): void {
   element.style.setProperty('-webkit-font-smoothing', 'antialiased');
   element.style.setProperty('-moz-osx-font-smoothing', 'grayscale');
   element.style.setProperty('text-rendering', 'optimizeLegibility');
-  element.style.letterSpacing = '0.01em';
+  element.style.letterSpacing = 'normal';
   element.classList.add('pdf-render-container');
   
   // Apply to all child elements
@@ -101,7 +101,6 @@ function applyPDFStyles(element: HTMLElement): void {
       el.style.transform = 'none';
       el.style.webkitTransform = 'none';
       el.style.fontFamily = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-      el.style.letterSpacing = '0.01em';
     }
   });
 }
