@@ -690,7 +690,11 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     // overflow:hidden. Reserve room for it, and fall back to a dedicated
     // summary page when there isn't enough.
     const pcoReserve = changeOrderItems.length > 0 ? 900 + changeOrderItems.length * 120 : 0;
-    const inlineNarrativeBudget = Math.max(0, 2400 - pcoReserve);
+    // Long custom fine print (e.g. state cancellation notices) must also fit on
+    // the same page; otherwise it gets crushed into tiny overlapping text.
+    const finePrintLen = opts.showCustomFinePrint && finePrintContent ? finePrintContent.length : 0;
+    const finePrintReserve = finePrintLen > 600 ? 99999 : finePrintLen;
+    const inlineNarrativeBudget = Math.max(0, 2400 - pcoReserve - finePrintReserve);
     const narrativeFitsInline =
       useNarrativeSplit &&
       narrativeChunks.length === 1 &&
