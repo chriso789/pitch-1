@@ -3,11 +3,11 @@
 // with higher overall_confidence wins.
 
 import { CONFIDENCE_THRESHOLDS, aggregateConfidence, requiresReview, type FieldConfidence } from "./confidence.ts";
-import { validateRoofTotals, type ValidationError } from "./validators.ts";
+import { validateRoofTotals } from "./validators.ts";
 import type { ParseResult } from "./eagleview-roof.ts";
 
 export const ROOFR_ROOF_PARSER_NAME = "roofr-roof";
-export const ROOFR_ROOF_PARSER_VERSION = "v1.0.0";
+export const ROOFR_ROOF_PARSER_VERSION = "v1.1.0-real-report";
 
 export interface RoofrRoofExtraction {
   property_address: string | null;
@@ -32,7 +32,7 @@ export interface RoofrRoofExtraction {
 }
 
 function detectRoofr(text: string): boolean {
-  return /\broofr\b/i.test(text) || /Roofr\s+Report/i.test(text);
+  return /\broofr\b/i.test(text) || /Roofr\s+Report/i.test(text) || /Roof\s+Report\s+Prepared\s+by\s+Roofr/i.test(text);
 }
 
 function num(s: string | undefined | null): number | null {
@@ -40,8 +40,21 @@ function num(s: string | undefined | null): number | null {
   const n = parseFloat(s.replace(/,/g, ""));
   return Number.isFinite(n) ? n : null;
 }
+
 function firstMatch(t: string, r: RegExp): string | null {
-  const m = t.match(r); return m ? (m[1] ?? null) : null;
+  const m = t.match(r);
+  return m ? (m[1] ?? null) : null;
+}
+
+/** Parse Roofr's real-world linear forms: `258ft 9in`, `258 ft`, or `258.75 lf`. */
+function lengthAfterLabel(text: string, label: RegExp): number | null {
+  const m = text.match(new RegExp(`${label.source}\\s*[:=]?\\s*([\\d,]+(?:\\.\\d+)?)\\s*(?:ft|feet|lf)?(?:\\s*([\\d.]+)\\s*(?:in|inch|inches))?`, "i"));
+  if (!m) return null;
+  const feet = num(m[1]);
+  const inches = num(m[2]) ?? 0;
+  if (feet == null) return null;
+  if (inches < 0 || inches >= 12.000001) return feet;
+  return Number((feet + inches / 12).toFixed(6));
 }
 
 function extractRoofrWasteTable(text: string): Record<string, number> | null {
@@ -51,7 +64,8 @@ function extractRoofrWasteTable(text: string): Record<string, number> | null {
   const re = /(\d{1,2})\s*%[^\d]*(\d[\d,]*(?:\.\d+)?)/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(block)) !== null) {
-    const v = num(m[2]); if (v !== null) out[m[1]] = v;
+    const v = num(m[2]);
+    if (v !== null) out[m[1]] = v;
   }
   return Object.keys(out).length > 0 ? out : null;
 }
@@ -61,25 +75,25 @@ export function parseRoofrRoofReport(fullText: string): ParseResult<RoofrRoofExt
   const T = CONFIDENCE_THRESHOLDS;
 
   const data: RoofrRoofExtraction = {
-    property_address: firstMatch(fullText, /(?:Property\s+Address|Address)\s*:?\s*([^\n\r]{5,150})/i)?.trim() ?? null,
-    total_roof_area_sqft: num(firstMatch(fullText, /Total\s+Roof\s+Area\s*(?:\(sq\s*ft\))?\s*:?\s*([\d,]+(?:\.\d+)?)/i)),
-    pitched_roof_area_sqft: num(firstMatch(fullText, /Pitched\s+Roof\s+Area\s*:?\s*([\d,]+(?:\.\d+)?)/i)),
-    flat_roof_area_sqft: num(firstMatch(fullText, /Flat\s+Roof\s+Area\s*:?\s*([\d,]+(?:\.\d+)?)/i)),
-    roof_facets: num(firstMatch(fullText, /(?:Total\s+)?(?:Roof\s+)?Facets\s*:?\s*(\d+)/i)),
-    predominant_pitch: firstMatch(fullText, /Predominant\s+Pitch\s*:?\s*(\d{1,2}\s*\/\s*12)/i)?.replace(/\s+/g, "") ?? null,
-    eaves_ft: num(firstMatch(fullText, /\bEaves?\s*:?\s*([\d,]+(?:\.\d+)?)\s*(?:ft|feet|lf)?/i)),
-    valleys_ft: num(firstMatch(fullText, /\bValleys?\s*:?\s*([\d,]+(?:\.\d+)?)\s*(?:ft|feet|lf)?/i)),
-    hips_ft: num(firstMatch(fullText, /\bHips?\s*:?\s*([\d,]+(?:\.\d+)?)\s*(?:ft|feet|lf)?/i)),
-    ridges_ft: num(firstMatch(fullText, /\bRidges?\s*:?\s*([\d,]+(?:\.\d+)?)\s*(?:ft|feet|lf)?/i)),
-    rakes_ft: num(firstMatch(fullText, /\bRakes?\s*:?\s*([\d,]+(?:\.\d+)?)\s*(?:ft|feet|lf)?/i)),
-    wall_flashing_ft: num(firstMatch(fullText, /Wall\s+Flashing\s*:?\s*([\d,]+(?:\.\d+)?)/i)),
-    step_flashing_ft: num(firstMatch(fullText, /Step\s+Flashing\s*:?\s*([\d,]+(?:\.\d+)?)/i)),
-    transitions_ft: num(firstMatch(fullText, /Transitions?\s*:?\s*([\d,]+(?:\.\d+)?)/i)),
-    parapet_wall_ft: num(firstMatch(fullText, /Parapet\s+Wall\s*:?\s*([\d,]+(?:\.\d+)?)/i)),
-    unspecified_ft: num(firstMatch(fullText, /Unspecified\s*:?\s*([\d,]+(?:\.\d+)?)/i)),
+    property_address: firstMatch(fullText, /(?:Property\s+Address|Address)\s*[:=]?\s*([^\n\r]{5,150})/i)?.trim() ?? null,
+    total_roof_area_sqft: num(firstMatch(fullText, /Total\s+Roof\s+Area\s*(?:\(sq\s*ft\))?\s*[:=]?\s*([\d,]+(?:\.\d+)?)/i)),
+    pitched_roof_area_sqft: num(firstMatch(fullText, /Pitched\s+Roof\s+Area\s*[:=]?\s*([\d,]+(?:\.\d+)?)/i)),
+    flat_roof_area_sqft: num(firstMatch(fullText, /Flat\s+Roof\s+Area\s*[:=]?\s*([\d,]+(?:\.\d+)?)/i)),
+    roof_facets: num(firstMatch(fullText, /(?:Total\s+)?(?:Roof\s+)?Facets\s*[:=]?\s*(\d+)/i)),
+    predominant_pitch: firstMatch(fullText, /Predominant\s+Pitch\s*[:=]?\s*(\d{1,2}\s*\/\s*12)/i)?.replace(/\s+/g, "") ?? null,
+    eaves_ft: lengthAfterLabel(fullText, /(?:Total\s+)?Eaves?/i),
+    valleys_ft: lengthAfterLabel(fullText, /(?:Total\s+)?Valleys?/i),
+    hips_ft: lengthAfterLabel(fullText, /(?:Total\s+)?Hips?(?!\s*\+)/i),
+    ridges_ft: lengthAfterLabel(fullText, /(?:Total\s+)?Ridges?/i),
+    rakes_ft: lengthAfterLabel(fullText, /(?:Total\s+)?Rakes?/i),
+    wall_flashing_ft: lengthAfterLabel(fullText, /(?:Total\s+)?Wall\s+Flashing/i),
+    step_flashing_ft: lengthAfterLabel(fullText, /(?:Total\s+)?Step\s+Flashing/i),
+    transitions_ft: lengthAfterLabel(fullText, /(?:Total\s+)?Transitions?/i),
+    parapet_wall_ft: lengthAfterLabel(fullText, /(?:Total\s+)?Parapet\s+Wall/i),
+    unspecified_ft: lengthAfterLabel(fullText, /(?:Total\s+)?Unspecified/i),
     waste_table: extractRoofrWasteTable(fullText),
-    report_date: firstMatch(fullText, /Report\s+Date\s*:?\s*([0-9/.-]{6,12})/i),
-    image_date: firstMatch(fullText, /(?:Image|Imagery)\s+Date\s*:?\s*([0-9/.-]{6,12})/i),
+    report_date: firstMatch(fullText, /Report\s+Date\s*[:=]?\s*([0-9/.-]{6,12})/i),
+    image_date: firstMatch(fullText, /(?:Image|Imagery)\s+Date\s*[:=]?\s*([0-9/.-]{6,12})/i),
   };
 
   const conf: FieldConfidence = {};
@@ -124,5 +138,5 @@ export function parseRoofrRoofReport(fullText: string): ParseResult<RoofrRoofExt
     validation_errors,
     requires_review: requiresReview(overall, missing_fields) || hasErr,
     matched_signal,
-  };
+  } as unknown as ParseResult<RoofrRoofExtraction> & { vendor_type: "roofr" };
 }

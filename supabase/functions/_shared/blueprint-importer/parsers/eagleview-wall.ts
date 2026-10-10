@@ -1,9 +1,8 @@
 // Deterministic EagleView wall report parser. No AI.
-// Pure regex over EagleView's wall report layout. Mirrors structure of
-// _shared/parsers/eagleview-roof.ts but produces wall-specific fields.
+// Pure regex over EagleView wall-report text.
 
 export const EAGLEVIEW_WALL_PARSER_NAME = "eagleview-wall";
-export const EAGLEVIEW_WALL_PARSER_VERSION = "v1.0.0";
+export const EAGLEVIEW_WALL_PARSER_VERSION = "v1.1.0-real-report";
 
 export interface EagleViewWallExtraction {
   report_number: string | null;
@@ -48,36 +47,37 @@ export interface WallParseResult {
   matched_signal: boolean;
 }
 
-const T = {
-  EXACT_LABEL: 0.95,
-  SUMMARY_SECTION: 0.85,
-  TABLE_OR_REPEATED: 0.75,
-  WEAK: 0.45,
-};
-
+const T = { EXACT_LABEL: 0.95, SUMMARY_SECTION: 0.85, TABLE_OR_REPEATED: 0.75, WEAK: 0.45 };
 function num(s: string | undefined | null): number | null {
   if (!s) return null;
   const n = parseFloat(s.replace(/,/g, "").trim());
   return Number.isFinite(n) ? n : null;
 }
 function firstMatch(t: string, r: RegExp): string | null {
-  const m = t.match(r); return m ? (m[1] ?? null) : null;
+  const m = t.match(r);
+  return m ? (m[1] ?? null) : null;
+}
+function firstNumber(t: string, patterns: RegExp[]): number | null {
+  for (const re of patterns) {
+    const v = num(firstMatch(t, re));
+    if (v !== null) return v;
+  }
+  return null;
 }
 function detectEagleViewWall(text: string): boolean {
-  return /eagle[ -]?view/i.test(text) && /wall/i.test(text);
+  return /eagle[ -]?view/i.test(text) && /(?:wall|walls\s+only)/i.test(text);
 }
-
 function extractKeyedTable(text: string, headerRe: RegExp, keyRe: RegExp): Record<string, number> | null {
   const block = text.match(headerRe)?.[0];
   if (!block) return null;
   const out: Record<string, number> = {};
   let m: RegExpExecArray | null;
   while ((m = keyRe.exec(block)) !== null) {
-    const v = num(m[2]); if (v !== null) out[m[1].toLowerCase()] = v;
+    const v = num(m[2]);
+    if (v !== null) out[m[1].toLowerCase()] = v;
   }
-  return Object.keys(out).length > 0 ? out : null;
+  return Object.keys(out).length ? out : null;
 }
-
 function extractWasteTable(text: string): Record<string, number> | null {
   const block = text.match(/Waste\s*(?:Calculation\s*)?Table[\s\S]{0,800}/i)?.[0];
   if (!block) return null;
@@ -85,60 +85,55 @@ function extractWasteTable(text: string): Record<string, number> | null {
   const re = /(\d{1,2})\s*%[^\d]*(\d[\d,]*(?:\.\d+)?)/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(block)) !== null) {
-    const v = num(m[2]); if (v !== null) out[m[1]] = v;
+    const v = num(m[2]);
+    if (v !== null) out[m[1]] = v;
   }
-  return Object.keys(out).length > 0 ? out : null;
+  return Object.keys(out).length ? out : null;
 }
 
 export function parseEagleViewWallReport(fullText: string): WallParseResult {
   const matched_signal = detectEagleViewWall(fullText);
-
   const data: EagleViewWallExtraction = {
-    report_number: firstMatch(fullText, /Report\s+(?:Number|ID)\s*:?\s*([A-Z0-9-]+)/i),
-    property_address: firstMatch(fullText, /(?:Property\s+Address|Subject\s+Property)\s*:?\s*([^\n\r]{5,150})/i)?.trim() ?? null,
-    wall_area_sqft: num(firstMatch(fullText, /Total\s+Wall\s+Area\s*(?:\(sq\s*ft\))?\s*:?\s*([\d,]+(?:\.\d+)?)/i)),
-    wall_area_with_windows_doors_sqft: num(firstMatch(fullText, /Total\s+Wall\s+Area\s+(?:incl(?:uding)?|with)\s+Windows?\s*(?:&|and)\s*Doors?\s*:?\s*([\d,]+(?:\.\d+)?)/i)),
-    wall_facets_count: num(firstMatch(fullText, /(?:Total\s+)?Wall\s+Facets?\s*:?\s*(\d+)/i)),
-    top_of_walls_lf: num(firstMatch(fullText, /Top\s+of\s+Walls?\s*:?\s*([\d,]+(?:\.\d+)?)/i)),
-    bottom_of_walls_lf: num(firstMatch(fullText, /Bottom\s+of\s+Walls?\s*:?\s*([\d,]+(?:\.\d+)?)/i)),
-    inside_corners_lf: num(firstMatch(fullText, /Inside\s+Corners?\s*(?!.*>?\s*90)\s*:?\s*([\d,]+(?:\.\d+)?)/i)),
-    outside_corners_lf: num(firstMatch(fullText, /Outside\s+Corners?\s*(?!.*>?\s*90)\s*:?\s*([\d,]+(?:\.\d+)?)/i)),
-    inside_corners_gt_90_lf: num(firstMatch(fullText, /Inside\s+Corners?\s*>\s*90[^\d]*([\d,]+(?:\.\d+)?)/i)),
-    outside_corners_gt_90_lf: num(firstMatch(fullText, /Outside\s+Corners?\s*>\s*90[^\d]*([\d,]+(?:\.\d+)?)/i)),
-    fascia_eaves_rake_lf: num(firstMatch(fullText, /Fascia\s*(?:\(Eaves?\s*(?:&|and|\+)\s*Rakes?\))?\s*:?\s*([\d,]+(?:\.\d+)?)/i)),
-    window_door_area_sqft: num(firstMatch(fullText, /Window(?:s)?\s*(?:&|and)\s*Door(?:s)?\s+Area\s*(?:\(sq\s*ft\))?\s*:?\s*([\d,]+(?:\.\d+)?)/i)),
-    window_door_count: num(firstMatch(fullText, /Window(?:s)?\s*(?:&|and)\s*Door(?:s)?\s+Count\s*:?\s*(\d+)/i)),
-    window_door_perimeter_lf: num(firstMatch(fullText, /Window(?:s)?\s*(?:&|and)\s*Door(?:s)?\s+Perimeter\s*:?\s*([\d,]+(?:\.\d+)?)/i)),
-    wall_area_by_direction: extractKeyedTable(
-      fullText,
-      /Wall\s+Area\s+by\s+Direction[\s\S]{0,400}/i,
-      /\b(North|South|East|West|NE|NW|SE|SW)\b[^\d]*([\d,]+(?:\.\d+)?)/gi,
-    ),
-    wall_area_by_elevation: extractKeyedTable(
-      fullText,
-      /Wall\s+Area\s+by\s+Elevation[\s\S]{0,600}/i,
-      /\b(North|South|East|West|NE|NW|SE|SW)[^\n]*?([\d,]+(?:\.\d+)?)\s*(?:sq\s*ft|sqft)/gi,
-    ),
-    window_door_area_by_elevation: extractKeyedTable(
-      fullText,
-      /Window(?:s)?\s*(?:&|and)\s*Door(?:s)?\s+Area\s+by\s+Elevation[\s\S]{0,600}/i,
-      /\b(North|South|East|West|NE|NW|SE|SW)[^\n]*?([\d,]+(?:\.\d+)?)/gi,
-    ),
-    window_door_perimeter_by_elevation: extractKeyedTable(
-      fullText,
-      /Window(?:s)?\s*(?:&|and)\s*Door(?:s)?\s+Perimeter\s+by\s+Elevation[\s\S]{0,600}/i,
-      /\b(North|South|East|West|NE|NW|SE|SW)[^\n]*?([\d,]+(?:\.\d+)?)/gi,
-    ),
-    window_door_count_by_elevation: extractKeyedTable(
-      fullText,
-      /Window(?:s)?\s*(?:&|and)\s*Door(?:s)?\s+Count\s+by\s+Elevation[\s\S]{0,600}/i,
-      /\b(North|South|East|West|NE|NW|SE|SW)[^\n]*?(\d+)/gi,
-    ),
+    report_number: firstMatch(fullText, /\bReport\s*(?:(?:Number|ID)\s*)?[:#]?\s*([A-Z0-9-]{4,})/i),
+    property_address: firstMatch(fullText, /(?:Property\s+Address|Subject\s+Property)\s*[:=]?\s*([^\n\r]{5,150})/i)?.trim() ?? null,
+    wall_area_sqft: firstNumber(fullText, [
+      /Total\s+Wall\s+Area\s*(?:\(sq\s*ft\))?\s*[:=]?\s*([\d,]+(?:\.\d+)?)/i,
+      /\bWall\s+Area\s*[:=]\s*([\d,]+(?:\.\d+)?)\s*sq\s*ft/i,
+    ]),
+    wall_area_with_windows_doors_sqft: firstNumber(fullText, [
+      /Total\s+Wall\s+Area\s+(?:incl(?:uding)?|with)\s+Windows?\s*(?:&|and)\s*Doors?\s*[:=]?\s*([\d,]+(?:\.\d+)?)/i,
+      /Wall\s+Area\s+with\s+Windows?\s*(?:&|and)\s*Doors?\s*[:=]?\s*([\d,]+(?:\.\d+)?)/i,
+    ]),
+    wall_facets_count: firstNumber(fullText, [/(?:Total\s+)?Wall\s+Facets?\s*[:=]?\s*(\d+)/i]),
+    top_of_walls_lf: firstNumber(fullText, [/Top\s+of\s+Walls?\s*[:=]?\s*([\d,]+(?:\.\d+)?)/i]),
+    bottom_of_walls_lf: firstNumber(fullText, [/Bottom\s+of\s+Walls?\s*[:=]?\s*([\d,]+(?:\.\d+)?)/i]),
+    inside_corners_lf: firstNumber(fullText, [/Inside\s+Corners?\s*(?!>\s*90)[^\d>]*[:=]?\s*([\d,]+(?:\.\d+)?)/i]),
+    outside_corners_lf: firstNumber(fullText, [/Outside\s+Corners?\s*(?!>\s*90)[^\d>]*[:=]?\s*([\d,]+(?:\.\d+)?)/i]),
+    inside_corners_gt_90_lf: firstNumber(fullText, [/Inside\s+Corners?\s*>\s*90[^\d]*([\d,]+(?:\.\d+)?)/i]),
+    outside_corners_gt_90_lf: firstNumber(fullText, [/Outside\s+Corners?\s*>\s*90[^\d]*([\d,]+(?:\.\d+)?)/i]),
+    fascia_eaves_rake_lf: firstNumber(fullText, [/Fascia\s*(?:\(Eaves?\s*(?:&|and|\+)\s*Rakes?\))?\s*[:=]?\s*([\d,]+(?:\.\d+)?)/i]),
+    window_door_area_sqft: firstNumber(fullText, [
+      /(?:Total\s+)?Windows?\s*(?:&|and)\s*Doors?\s+Area\s*[:=]?\s*([\d,]+(?:\.\d+)?)/i,
+      /(?:Total\s+)?Window\s+and\s+Door\s+Area\s*[:=]?\s*([\d,]+(?:\.\d+)?)/i,
+    ]),
+    window_door_count: firstNumber(fullText, [
+      /Windows?\s*(?:&|and)\s*Doors?\s+Count\s*[:=]?\s*(\d+)/i,
+      /Total\s+Windows?\s*(?:&|and)\s*Doors?\s*[:=]?\s*(\d+)/i,
+    ]),
+    window_door_perimeter_lf: firstNumber(fullText, [
+      /Windows?\s*(?:&|and)\s*Doors?\s+Perimeter\s*[:=]?\s*([\d,]+(?:\.\d+)?)/i,
+      /Window\s+and\s+Door\s+Perimeter\s*[:=]?\s*([\d,]+(?:\.\d+)?)/i,
+    ]),
+    wall_area_by_direction: extractKeyedTable(fullText, /Wall\s+Area\s+by\s+Direction[\s\S]{0,500}/i, /\b(North|South|East|West|NE|NW|SE|SW)\b[^\d]*([\d,]+(?:\.\d+)?)/gi),
+    wall_area_by_elevation: extractKeyedTable(fullText, /Wall\s+Area\s+by\s+Elevation[\s\S]{0,600}/i, /\b(North|South|East|West|NE|NW|SE|SW)[^\n]*?([\d,]+(?:\.\d+)?)\s*(?:sq\s*ft|sqft)/gi),
+    window_door_area_by_elevation: extractKeyedTable(fullText, /Windows?\s*(?:&|and)\s*Doors?\s+Area\s+by\s+Elevation[\s\S]{0,600}/i, /\b(North|South|East|West|NE|NW|SE|SW)[^\n]*?([\d,]+(?:\.\d+)?)/gi),
+    window_door_perimeter_by_elevation: extractKeyedTable(fullText, /Windows?\s*(?:&|and)\s*Doors?\s+Perimeter\s+by\s+Elevation[\s\S]{0,600}/i, /\b(North|South|East|West|NE|NW|SE|SW)[^\n]*?([\d,]+(?:\.\d+)?)/gi),
+    window_door_count_by_elevation: extractKeyedTable(fullText, /Windows?\s*(?:&|and)\s*Doors?\s+Count\s+by\s+Elevation[\s\S]{0,600}/i, /\b(North|South|East|West|NE|NW|SE|SW)[^\n]*?(\d+)/gi),
     wall_waste_table: extractWasteTable(fullText),
-    has_image_obstruction_warning: /image\s+(?:obstruction|obstructed|limited|limitation)/i.test(fullText),
-    has_field_verification_warning: /(field\s+verif(?:y|ication)\s+required|verify\s+in\s+the\s+field|yellow\s+shaded)/i.test(fullText),
-    has_soffit_assumption_warning: /(soffit\s+assumed|assumed\s+(?:flat|sloped)\s+soffit|soffit\s+assumption)/i.test(fullText),
-    report_date: firstMatch(fullText, /Report\s+Date\s*:?\s*([0-9/.-]{6,12})/i),
+    has_image_obstruction_warning: /(?:image\s+(?:obstruction|obstructed|limited|limitation)|obstructions?\s+in\s+available\s+images)/i.test(fullText),
+    has_field_verification_warning: /(?:field\s+verif(?:y|ied|ication)|verify\s+(?:measurements?|in\s+the\s+field)|yellow\s+shaded)/i.test(fullText),
+    has_soffit_assumption_warning: /(?:soffit\s+assum(?:ed|ption)|assum(?:e|es|ed)\s+that\s+flat\s+soffits?\s+exist|flat\s+soffits?\s+exist)/i.test(fullText),
+    report_date: firstMatch(fullText, /Report\s+Date\s*[:=]?\s*([0-9/.-]{6,12})/i),
   };
 
   const conf: Record<string, number> = {};
@@ -167,28 +162,13 @@ export function parseEagleViewWallReport(fullText: string): WallParseResult {
 
   const required = ["wall_area_sqft", "wall_facets_count"] as const;
   const missing_fields = required.filter((k) => (data as Record<string, unknown>)[k] === null);
-
   if (!matched_signal) for (const k of Object.keys(conf)) conf[k] = Math.min(conf[k], T.WEAK);
-
   const overall = aggregate(conf);
-
   const validation_errors: WallParseResult["validation_errors"] = [];
-  // Cross-check: with-W&D area should be >= bare wall area when both present.
-  if (
-    data.wall_area_sqft !== null &&
-    data.wall_area_with_windows_doors_sqft !== null &&
-    data.wall_area_with_windows_doors_sqft < data.wall_area_sqft * 0.95
-  ) {
-    validation_errors.push({
-      code: "wall_area_with_wd_less_than_bare",
-      severity: "warning",
-      message: "wall_area_with_windows_doors_sqft is unexpectedly less than wall_area_sqft",
-    });
+  if (data.wall_area_sqft !== null && data.wall_area_with_windows_doors_sqft !== null && data.wall_area_with_windows_doors_sqft < data.wall_area_sqft * 0.95) {
+    validation_errors.push({ code: "wall_area_with_wd_less_than_bare", severity: "warning", message: "wall_area_with_windows_doors_sqft is unexpectedly less than wall_area_sqft" });
   }
-
   const hasErr = validation_errors.some((v) => v.severity === "error");
-  const requires_review = overall < 0.7 || missing_fields.length > 0 || hasErr;
-
   return {
     vendor_type: "eagleview",
     document_type: "wall_report",
@@ -200,13 +180,12 @@ export function parseEagleViewWallReport(fullText: string): WallParseResult {
     overall_confidence: overall,
     missing_fields,
     validation_errors,
-    requires_review,
+    requires_review: overall < 0.7 || missing_fields.length > 0 || hasErr,
     matched_signal,
   };
 }
 
 function aggregate(conf: Record<string, number>): number {
   const vals = Object.values(conf);
-  if (vals.length === 0) return 0;
-  return vals.reduce((a, b) => a + b, 0) / vals.length;
+  return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
 }
