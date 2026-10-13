@@ -121,7 +121,7 @@ export function MarkupEditor({ bytes: initialBytes, name: initialName, onSaveVer
   const pageMarkups = markups.filter((m) => m.page === pageIndex);
 
   const evPt = (e: React.MouseEvent | MouseEvent): [number, number] => { const r = svgRef.current!.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
-  const baseMarkup = (type: MarkupType): Markup => ({ id: uid(), page: pageIndex, type, color: style.color, fill: style.fill, width: style.width, opacity: style.opacity, author, createdAt: new Date().toISOString() });
+  const baseMarkup = (type: MarkupType): Markup => ({ id: uid(), page: pageIndex, type, color: style.color, fill: style.fill, width: Math.round((style.width / zoom) * 10) / 10, opacity: style.opacity, author, createdAt: new Date().toISOString() });
 
   const addMarkup = (m: Markup) => { commit([...markups, m]); setSel(m.id); setTool("select"); };
   const boxFromView = (a: [number, number], b: [number, number], minW = 8, minH = 8) => {
@@ -140,16 +140,16 @@ export function MarkupEditor({ bytes: initialBytes, name: initialName, onSaveVer
     if (t === "line" || t === "arrow") { if (tiny) return; return addMarkup({ ...baseMarkup(t), fill: null, points: [toUser(a), toUser(b)] }); }
     if (t === "callout") {
       const boxV: [number, number] = tiny ? [a[0] + 120, a[1] - 60] : b;
-      return addMarkup({ ...baseMarkup(t), ...boxFromView([boxV[0] - 110, boxV[1] - 30], [boxV[0] + 110, boxV[1] + 30]), points: [toUser(a)], fill: [1, 1, 1], text: "Callout", fontSize: style.fontSize, fontColor: [0, 0, 0] });
+      return addMarkup({ ...baseMarkup(t), ...boxFromView([boxV[0] - 110, boxV[1] - 30], [boxV[0] + 110, boxV[1] + 30]), points: [toUser(a)], fill: [1, 1, 1], text: "Callout", fontSize: Math.round(style.fontSize / zoom), fontColor: [0, 0, 0] });
     }
-    if (t === "note") return addMarkup({ ...baseMarkup(t), ...boxFromView([a[0] - 12, a[1] - 12], [a[0] + 12, a[1] + 12]), w: 24, h: 24, color: [1, 0.82, 0.2], fill: null, text: "" });
+    if (t === "note") return addMarkup({ ...baseMarkup(t), ...boxFromView([a[0] - 12, a[1] - 12], [a[0] + 12, a[1] + 12]), color: [1, 0.82, 0.2], fill: null, text: "" });
     const defaults: Record<string, [number, number]> = { text: [220, 50], rect: [160, 100], ellipse: [140, 100], stamp: [220, 64], image: [160, 160 / (pendingImage?.ratio || 1)], cover: [160, 30] };
     const d = defaults[t] ?? [100, 60];
-    const box = tiny ? boxFromView([a[0] - d[0] * zoom / 2, a[1] - d[1] * zoom / 2], [a[0] + d[0] * zoom / 2, a[1] + d[1] * zoom / 2]) : boxFromView(a, b);
+    const box = tiny ? boxFromView([a[0] - d[0] / 2, a[1] - d[1] / 2], [a[0] + d[0] / 2, a[1] + d[1] / 2]) : boxFromView(a, b);
     if (t === "image") { if (!pendingImage) { imgInput.current?.click(); return; } return addMarkup({ ...baseMarkup(t), ...box, h: tiny ? box.h : box.w / pendingImage.ratio, image: { data: pendingImage.data, type: pendingImage.type }, fill: null }); }
-    if (t === "text") return addMarkup({ ...baseMarkup(t), ...box, text: "Text", fontSize: style.fontSize, fontColor: style.color, width: 0, fill: style.fill });
+    if (t === "text") return addMarkup({ ...baseMarkup(t), ...box, text: "Text", fontSize: Math.round(style.fontSize / zoom), fontColor: style.color, width: 0, fill: style.fill });
     if (t === "stamp") return addMarkup({ ...baseMarkup(t), ...box, label: stampLabel, fill: null });
-    if (t === "cover") return addMarkup({ ...baseMarkup(t), ...box, fill: [1, 1, 1], color: [0, 0, 0], text: "", fontSize: style.fontSize, fontColor: [0, 0, 0] });
+    if (t === "cover") return addMarkup({ ...baseMarkup(t), ...box, fill: [1, 1, 1], color: [0, 0, 0], text: "", fontSize: Math.round(style.fontSize / zoom), fontColor: [0, 0, 0] });
     return addMarkup({ ...baseMarkup(t), ...box });
   };
   const finishPoly = (pts: [number, number][]) => {
@@ -260,8 +260,8 @@ export function MarkupEditor({ bytes: initialBytes, name: initialName, onSaveVer
     } else if (m.center) {
       const c = toView(m.center); const w = (m.w ?? 0) * zoom, h = (m.h ?? 0) * zoom; const ang = viewAngle(m);
       const textDiv = (pad = 4) => <foreignObject x={-w / 2} y={-h / 2} width={w} height={h} style={{ pointerEvents: "none" }}><div style={{ fontFamily: "Helvetica, Arial, sans-serif", fontSize: (m.fontSize ?? 12) * zoom, lineHeight: 1.15, color: css(m.fontColor ?? m.color), padding: pad * zoom, textAlign: (["left", "center", "right"] as const)[m.align ?? 0], whiteSpace: "pre-wrap", wordBreak: "break-word", overflow: "hidden", height: "100%" }}>{m.text}</div></foreignObject>;
-      const inner = m.type === "ellipse" ? <ellipse rx={w / 2} ry={h / 2} fill={fill} stroke={stroke} strokeWidth={sw} />
-        : m.type === "rect" ? <rect x={-w / 2} y={-h / 2} width={w} height={h} fill={fill} stroke={stroke} strokeWidth={sw} />
+      const inner = m.type === "ellipse" ? <ellipse rx={w / 2} ry={h / 2} fill={m.fill ? fill : "transparent"} stroke={stroke} strokeWidth={sw} />
+        : m.type === "rect" ? <rect x={-w / 2} y={-h / 2} width={w} height={h} fill={m.fill ? fill : "transparent"} stroke={stroke} strokeWidth={sw} />
         : m.type === "text" ? <><rect x={-w / 2} y={-h / 2} width={w} height={h} fill={m.fill ? fill : "transparent"} stroke={m.width > 0 ? stroke : isSel ? "hsl(var(--primary))" : "none"} strokeDasharray={m.width > 0 ? undefined : "4 3"} strokeWidth={m.width > 0 ? sw : 1} />{textDiv()}</>
         : m.type === "cover" ? <><rect x={-w / 2} y={-h / 2} width={w} height={h} fill={css(m.fill ?? [1, 1, 1])} />{textDiv()}</>
         : m.type === "callout" ? <><rect x={-w / 2} y={-h / 2} width={w} height={h} fill={css(m.fill ?? [1, 1, 1])} stroke={stroke} strokeWidth={sw} />{textDiv()}</>
@@ -393,6 +393,7 @@ export function MarkupEditor({ bytes: initialBytes, name: initialName, onSaveVer
           </div>
         </div> : <div className="rounded-lg border bg-card p-3 space-y-2">
           <Label>New markup style</Label>
+          <p className="text-[11px] text-muted-foreground">Sizes are as they look on screen now; they are converted to the drawing's real size.</p>
           <div className="grid grid-cols-2 gap-2">
             <label className="space-y-1"><span className="text-xs">Color</span><Input type="color" className="h-8 p-1" value={hex(style.color)} onChange={(e) => setStyle({ ...style, color: rgb(e.target.value) })} /></label>
             <label className="space-y-1"><span className="text-xs">Fill</span><div className="flex gap-1"><Input type="color" className="h-8 p-1" value={hex(style.fill ?? [1, 1, 1])} onChange={(e) => setStyle({ ...style, fill: rgb(e.target.value) })} /><Button size="sm" variant={style.fill ? "ghost" : "secondary"} className="h-8 px-1 text-xs" onClick={() => setStyle({ ...style, fill: null })}>None</Button></div></label>
