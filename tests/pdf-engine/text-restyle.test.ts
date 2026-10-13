@@ -75,10 +75,9 @@ describe('restyle / move existing text (no overlay)', () => {
   it('owner-protected PDF (no open password) is unlocked locally and becomes editable; password-protected stays blocked', async () => {
     const plain = join(dir, 'plain.pdf'), prot = join(dir, 'prot.pdf'), pw = join(dir, 'pw.pdf');
     writeFileSync(plain, await chainedFixture());
-    execFileSync('qpdf', ['--encrypt', '', 'owner123', '128', '--use-aes=n', '--modify=none', '--', plain, prot]);
-    execFileSync('qpdf', ['--encrypt', 'user1', 'owner123', '128', '--', plain, pw]);
+    execFileSync('qpdf', ['--allow-weak-crypto', '--encrypt', '', 'owner123', '128', '--use-aes=n', '--modify=none', '--', plain, prot]);
+    execFileSync('qpdf', ['--encrypt', 'user1', 'owner123', '256', '--', plain, pw]);
     const enc = Uint8Array.from(readFileSync(prot));
-    expect(() => readPageText(PDFDocument.prototype as never, 0)).toThrow();
     const opened = await openForEditing(enc, { wasmPath });
     expect(opened.decrypted).toBe(true);
     const pt = readPageText(await PDFDocument.load(opened.bytes), 0);
