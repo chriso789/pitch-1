@@ -21,7 +21,7 @@ async function fixture() {
 }
 function extract(bytes: Uint8Array) {
   const dir = mkdtempSync(join(tmpdir(), 'pitch-pdf-audit-'));
-  try { const file = join(dir, 'output.pdf'); writeFileSync(file, bytes); return execFileSync('pdftotext', [file, '-'], { encoding: 'utf8' }); }
+  try { const file = join(dir, 'output.pdf'); writeFileSync(file, bytes); return execFileSync('pdftotext', ['-raw', file, '-'], { encoding: 'utf8' }); }
   finally { rmSync(dir, { recursive: true, force: true }); }
 }
 const object = { id: 'text1', metadata: { page_number: 1 }, bounds: { x: 60, y: 700, width: 180, height: 12 }, font_info: { fontFamily: 'Helvetica', fontSize: 12 } } as PdfEngineObject;
