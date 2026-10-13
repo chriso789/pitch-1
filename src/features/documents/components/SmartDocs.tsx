@@ -261,8 +261,9 @@ const SmartDocs = () => {
         return;
       }
 
-      // Upload to Supabase storage
-      const fileName = `company-docs/${Date.now()}-${file.name}`;
+      // Storage RLS requires the tenant id as the first folder segment.
+      const safeName = file.name.replace(/[^\w.\-]+/g, '_');
+      const fileName = `${profile.tenant_id}/company-docs/${Date.now()}-${safeName}`;
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('smartdoc-assets')
         .upload(fileName, file);

@@ -18,7 +18,7 @@ export function resolveStorageBucket(
   }
 
   // Files in company-docs folder are in smartdoc-assets
-  if (filePath?.startsWith('company-docs/')) {
+  if ((filePath?.startsWith('company-docs/') || /^[0-9a-f-]{36}/company-docs//.test(filePath ?? ''))) {
     return 'smartdoc-assets';
   }
 
