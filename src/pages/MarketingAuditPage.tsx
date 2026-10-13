@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { BarChart3, Plus, RefreshCw, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
-import { MARKETING_CHANNELS, CHANNEL_LABELS, classifySource, parseCostCents, totalCost, costPerLead, type MarketingChannel } from '@/lib/marketingAudit';
+import { MARKETING_CHANNELS, CHANNEL_LABELS, classifySource, parseCostCents, totalCost, type MarketingChannel } from '@/lib/marketingAudit';
 
 const dateString = (date: Date) => date.toISOString().slice(0, 10);
 const money = (value: number, currency: string) => new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(value);
@@ -127,6 +127,6 @@ export default function MarketingAuditPage() {
         <div><Label htmlFor="cost-notes">Notes</Label><Input id="cost-notes" maxLength={2000} value={draft.notes} onChange={e => setDraft(d => ({ ...d, notes: e.target.value }))} /></div>
         <Button type="submit" className="w-full" disabled={save.isPending || !tenantId}>{save.isPending ? 'Saving…' : 'Save cost'}</Button>
       </form>
-    </Dialog>
+    </DialogContent></Dialog>
   </div></GlobalLayout>;
 }
