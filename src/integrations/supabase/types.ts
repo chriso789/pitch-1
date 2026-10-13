@@ -39057,6 +39057,152 @@ export type Database = {
           },
         ]
       }
+      plan_measurement_revisions: {
+        Row: {
+          action: string
+          changed_at: string
+          changed_by: string | null
+          id: string
+          measurement_id: string
+          revision: number
+          snapshot: Json
+          tenant_id: string
+        }
+        Insert: {
+          action: string
+          changed_at?: string
+          changed_by?: string | null
+          id?: string
+          measurement_id: string
+          revision: number
+          snapshot: Json
+          tenant_id: string
+        }
+        Update: {
+          action?: string
+          changed_at?: string
+          changed_by?: string | null
+          id?: string
+          measurement_id?: string
+          revision?: number
+          snapshot?: Json
+          tenant_id?: string
+        }
+        Relationships: []
+      }
+      plan_measurements: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          document_id: string
+          driver: string | null
+          engine: string
+          id: string
+          kind: string
+          label: string | null
+          page_index: number
+          pitch_rise: number | null
+          points: Json
+          project_id: string | null
+          revision: number
+          roof_section: string | null
+          scale_id: string | null
+          source: string
+          status: string
+          takeoff_quantity_id: string | null
+          tenant_id: string
+          unit: string
+          updated_at: string
+          value: number
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          document_id: string
+          driver?: string | null
+          engine: string
+          id?: string
+          kind: string
+          label?: string | null
+          page_index: number
+          pitch_rise?: number | null
+          points: Json
+          project_id?: string | null
+          revision?: number
+          roof_section?: string | null
+          scale_id?: string | null
+          source: string
+          status?: string
+          takeoff_quantity_id?: string | null
+          tenant_id: string
+          unit: string
+          updated_at?: string
+          value: number
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          document_id?: string
+          driver?: string | null
+          engine?: string
+          id?: string
+          kind?: string
+          label?: string | null
+          page_index?: number
+          pitch_rise?: number | null
+          points?: Json
+          project_id?: string | null
+          revision?: number
+          roof_section?: string | null
+          scale_id?: string | null
+          source?: string
+          status?: string
+          takeoff_quantity_id?: string | null
+          tenant_id?: string
+          unit?: string
+          updated_at?: string
+          value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_measurements_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plan_measurements_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plan_measurements_scale_id_fkey"
+            columns: ["scale_id"]
+            isOneToOne: false
+            referencedRelation: "plan_sheet_scales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plan_measurements_takeoff_quantity_id_fkey"
+            columns: ["takeoff_quantity_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_takeoff_quantities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       plan_pages: {
         Row: {
           ai_summary: string | null
@@ -39296,6 +39442,81 @@ export type Database = {
             columns: ["page_id"]
             isOneToOne: false
             referencedRelation: "plan_pages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plan_sheet_scales: {
+        Row: {
+          calibration: Json
+          created_at: string
+          created_by: string | null
+          document_id: string
+          engine: string
+          id: string
+          method: string
+          name: string
+          page_index: number
+          project_id: string | null
+          tenant_id: string
+          unit: string
+          units_per_user_unit: number
+          updated_at: string
+          verification: Json | null
+          verified: boolean
+          viewport_bbox: Json | null
+        }
+        Insert: {
+          calibration?: Json
+          created_at?: string
+          created_by?: string | null
+          document_id: string
+          engine: string
+          id?: string
+          method: string
+          name?: string
+          page_index: number
+          project_id?: string | null
+          tenant_id: string
+          unit?: string
+          units_per_user_unit: number
+          updated_at?: string
+          verification?: Json | null
+          verified?: boolean
+          viewport_bbox?: Json | null
+        }
+        Update: {
+          calibration?: Json
+          created_at?: string
+          created_by?: string | null
+          document_id?: string
+          engine?: string
+          id?: string
+          method?: string
+          name?: string
+          page_index?: number
+          project_id?: string | null
+          tenant_id?: string
+          unit?: string
+          units_per_user_unit?: number
+          updated_at?: string
+          verification?: Json | null
+          verified?: boolean
+          viewport_bbox?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_sheet_scales_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plan_sheet_scales_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_projects"
             referencedColumns: ["id"]
           },
         ]
