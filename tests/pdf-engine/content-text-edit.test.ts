@@ -36,7 +36,7 @@ describe('genuine content-stream text editing', () => {
     const src = await d.save();
     const pt = readPageText(await PDFDocument.load(src), 0);
     const seg = pt.segments[0];
-    console.log('DIAG', JSON.stringify({ ...pt.fonts[seg.fontKey!], usedCodes: [...pt.fonts[seg.fontKey!].usedCodes], toUni: pt.fonts[seg.fontKey!].toUni.size, fromUni: 0 }), seg.text);
+    expect(pt.fonts[seg.fontKey!].embedded).toBe(true);
     expect(checkReplacement(pt, seg, 'Hello Zed').ok).toBe(false); // Z not in subset
     const out = await replaceSegmentText(src, 0, seg.id, 'World Hello');
     const t = text(out); expect(t).toContain('World Hello'); expect(t).not.toContain('Hello World');

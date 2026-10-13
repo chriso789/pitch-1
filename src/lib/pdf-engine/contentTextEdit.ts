@@ -11,7 +11,7 @@ import { PDFDocument, PDFDict, PDFName, PDFArray, PDFRawStream, PDFStream, PDFPa
 
 export interface FontDiagnosis {
   key: string; baseFont: string; subtype: string; encoding: string;
-  embedded: boolean; subset: boolean; hasToUnicode: boolean; twoByte: boolean;
+  embedded: boolean; subset: boolean; standard14: boolean; hasToUnicode: boolean; twoByte: boolean;
   usedCodes: Set<number>; toUni: Map<number, string>; fromUni: Map<string, number>;
   editable: boolean; reason?: string;
 }
@@ -125,7 +125,7 @@ function diagnoseFont(doc: PDFDocument, key: string, font: PDFDict): FontDiagnos
   else if (!toUni.size) reason = encoding.startsWith('custom') ? 'Custom glyph encoding without a ToUnicode map — characters cannot be mapped reliably.' : 'No character map available for this font.';
   else if (!embedded && !standard14) reason = 'Font program is not embedded and is not a standard PDF font.';
   void doc;
-  return { key, baseFont, subtype, encoding, embedded, subset, hasToUnicode: tu instanceof PDFRawStream, twoByte, usedCodes: new Set(), toUni, fromUni, editable: !reason, reason };
+  return { key, baseFont, subtype, encoding, embedded, subset, standard14, hasToUnicode: tu instanceof PDFRawStream, twoByte, usedCodes: new Set(), toUni, fromUni, editable: !reason, reason };
 }
 
 export function readPageText(doc: PDFDocument, pageIndex: number): PageText {
@@ -174,7 +174,7 @@ export function checkReplacement(pt: PageText, seg: TextSegment, text: string): 
   for (const ch of Array.from(text)) {
     const c = f.fromUni.get(ch);
     if (c === undefined) { missing.add(ch); continue; }
-    if ((f.subset || f.twoByte) && !f.usedCodes.has(c)) { missing.add(ch); continue; } // glyph not proven present in subset
+    if (!f.standard14 && !f.usedCodes.has(c)) { missing.add(ch); continue; } // embedded fonts may be subsets (tagged or not): glyph must already be used with this font
     codes.push(c);
   }
   if (missing.size) return { ok: false, reason: `The original font${f.subset ? ' (a subset)' : ''} does not contain these characters: ${[...missing].map(c => JSON.stringify(c)).join(' ')}. Nothing was changed.` };
