@@ -390,7 +390,7 @@ export function MarkupEditor({ bytes: initialBytes, name: initialName, onSaveVer
               <label className="space-y-1"><span className="text-xs">Font color</span><Input type="color" className="h-8 p-1" value={hex(selected.fontColor ?? selected.color)} onChange={(e) => update(selected.id, { fontColor: rgb(e.target.value) })} /></label>
               <label className="space-y-1 col-span-2"><span className="text-xs">Alignment</span><select className="w-full rounded border bg-background p-1.5" value={selected.align ?? 0} onChange={(e) => update(selected.id, { align: Number(e.target.value) as 0 | 1 | 2 })}><option value={0}>Left</option><option value={1}>Center</option><option value={2}>Right</option></select></label></>}
           </div>
-          <p className="text-[11px] text-muted-foreground">Font: Helvetica (standard PDF font). Characters it can't show are saved as "?".</p>
+          <p className="text-[11px] text-muted-foreground">Font: Helvetica (standard PDF font). Unsupported characters block saving; they are never replaced with "?".</p>
           <div className="border-t pt-2 space-y-1">
             <Label>Comments</Label>
             {(selected.replies ?? []).map((r) => <div key={r.id} className="rounded bg-muted p-1.5"><div className="text-[11px] text-muted-foreground">{r.author} · {new Date(r.createdAt).toLocaleString()}</div><div>{r.text}</div></div>)}

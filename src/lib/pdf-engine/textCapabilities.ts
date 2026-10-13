@@ -1,4 +1,4 @@
-import { PDFDocument, PDFDict, PDFName } from 'pdf-lib';
+import { PDFDocument, PDFDict, PDFName, PDFArray } from 'pdf-lib';
 
 export interface FontCapability {
   resource: string;
@@ -20,11 +20,13 @@ export async function inspectPageFonts(bytes: Uint8Array, pageIndex: number): Pr
     if (!(font instanceof PDFDict)) return [];
     const base = font.lookupMaybe(PDFName.of('BaseFont'), PDFName)?.decodeText() ?? key.decodeText();
     const subtype = font.lookupMaybe(PDFName.of('Subtype'), PDFName)?.decodeText();
-    // Type0 descriptors live on descendant fonts. Flag them conservatively rather than guessing an encoding.
-    const descriptor = font.lookupMaybe(PDFName.of('FontDescriptor'), PDFDict);
+    const descendants = font.lookupMaybe(PDFName.of('DescendantFonts'), PDFArray);
+    const descendant = descendants?.size() ? doc.context.lookup(descendants.get(0)) : null;
+    const descriptor = (descendant instanceof PDFDict ? descendant : font).lookupMaybe(PDFName.of('FontDescriptor'), PDFDict);
+    const encoding = font.get(PDFName.of('Encoding'));
     return [{ resource: key.decodeText(), name: base, subset: /^[A-Z]{6}\+/.test(base),
       embedded: !!descriptor && ['FontFile', 'FontFile2', 'FontFile3'].some(k => descriptor.has(PDFName.of(k))),
-      complexEncoding: subtype === 'Type0' || subtype === 'Type3' || font.get(PDFName.of('Encoding')) instanceof PDFDict }];
+      complexEncoding: subtype === 'Type0' || subtype === 'Type3' || (!!encoding && doc.context.lookup(encoding) instanceof PDFDict) }];
   });
 }
 
