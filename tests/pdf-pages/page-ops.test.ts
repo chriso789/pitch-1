@@ -92,6 +92,17 @@ describe('page organizer', () => {
     expect(out.byteLength).toBeGreaterThan(A.bytes.byteLength);
   });
 
+  it('merges form fields (renaming clashes) and bookmarks from other PDFs', async () => {
+    const A2 = { id: 'a2', name: 'Copy.pdf', bytes: A.bytes };
+    const out = await compilePlan([...planFromSource(A, 3), ...planFromSource(B, 2), planFromSource(A2, 3)[0]], [A, B, A2]);
+    const d = await PDFDocument.load(out);
+    const names = d.getForm().getFields().map((f) => f.getName()).sort();
+    expect(names).toEqual(['A_field_1', 'A_field_1_2', 'A_field_2', 'A_field_3', 'B_field_1', 'B_field_2']);
+    d.getForm().getTextField('B_field_2').setText('filled'); await d.save();
+    const marks = readBookmarks(d).map((b) => b.title);
+    expect(marks).toEqual(['Sheet A-1', 'Sheet A-2', 'Sheet A-3', 'B', 'Copy']);
+  });
+
   it('splits into files and parses ranges', async () => {
     const parts = await splitPlan(planFromSource(A, 3), [A], 2);
     expect(await Promise.all(parts.map(async (b) => (await PDFDocument.load(b)).getPageCount()))).toEqual([2, 1]);
@@ -104,6 +115,6 @@ describe('page organizer', () => {
     const signed = { id: 's', name: 'S.pdf', bytes: await d.save() };
     const info = { s: await inspectPdf(signed.bytes), b: await inspectPdf(B.bytes) };
     const p = planFromSource(signed, 3); const w = planWarnings([p[0], ...planFromSource(B, 1)], [signed, B], info);
-    expect(w.join(' ')).toMatch(/digital signatures/); expect(w.join(' ')).toMatch(/2 original page/); expect(w.join(' ')).toMatch(/Form fields in "B.pdf"/);
+    expect(w.join(' ')).toMatch(/digital signatures/); expect(w.join(' ')).toMatch(/2 original page/); expect(w.join(' ')).toMatch(/Form fields from "B.pdf" will be merged/);
   });
 });
