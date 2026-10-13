@@ -107,8 +107,8 @@ export function planWarnings(plan: PlanPage[], sources: SourcePdf[], info: Recor
   if (changed && sources.some((s) => info[s.id]?.hasSignatures)) w.push('This document has digital signatures. Saving any change will invalidate them.');
   for (const s of sources.slice(1)) {
     if (!plan.some((p) => p.sourceId === s.id)) continue;
-    if (info[s.id]?.formFieldCount) w.push(`Form fields in "${s.name}" are not merged; their visible appearance is kept.`);
-    if (info[s.id]?.bookmarkCount) w.push(`Bookmarks in "${s.name}" are not merged.`);
+    if (info[s.id]?.formFieldCount) w.push(`Form fields from "${s.name}" will be merged and stay fillable; any field whose name already exists gets a "_2" style suffix.`);
+    if (info[s.id]?.bookmarkCount) w.push(`Bookmarks from "${s.name}" are added under a "${s.name}" heading (top-level bookmarks only; nested levels are not copied).`);
   }
   const used = new Set(plan.filter((p) => p.sourceId === base?.id).map((p) => p.sourceIndex));
   const removed = (info[base?.id]?.pageCount ?? 0) - used.size;
@@ -131,6 +131,7 @@ export async function compilePlan(plan: PlanPage[], sources: SourcePdf[], opts: 
   const seen = new Set<number>(); const dupIdx: number[] = [];
   for (const p of plan) if (p.sourceId === base.id) { if (seen.has(p.sourceIndex)) dupIdx.push(p.sourceIndex); else seen.add(p.sourceIndex); }
   const dupCopies = dupIdx.length ? await doc.copyPages(doc, dupIdx) : [];
+  const foreignPos = new Map<string, PDFPage>();
   // Remove all pages from the tree (objects stay alive), then insert in plan order.
   for (let i = doc.getPageCount() - 1; i >= 0; i--) doc.removePage(i);
   const usedBase = new Set<number>();
@@ -152,6 +153,9 @@ export async function compilePlan(plan: PlanPage[], sources: SourcePdf[], opts: 
       if (!src) throw new Error('Unknown source document');
       const [copy] = await doc.copyPages(src, [p.sourceIndex]);
       page = doc.addPage(copy);
+      mergeWidgets(doc, page);
+      const k = `${p.sourceId}:${p.sourceIndex}`;
+      if (!foreignPos.has(k)) foreignPos.set(k, page);
     }
     if (p.rotate) page.setRotation(degrees((page.getRotation().angle + p.rotate) % 360));
     if (p.crop) {
@@ -170,6 +174,12 @@ export async function compilePlan(plan: PlanPage[], sources: SourcePdf[], opts: 
   // bookmark destinations for removed pages are removed below.
   pruneOutlines(doc, new Set(doc.getPages().map((p) => p.ref.toString())));
 
+  if (!opts.bookmarks) {
+    for (const s of sources.slice(1)) {
+      const items = readBookmarks(otherDocs.get(s.id)!).map((b) => ({ title: b.title, page: b.page ? foreignPos.get(`${s.id}:${b.page - 1}`) : undefined })).filter((b) => b.page);
+      if (items.length) appendOutlineGroup(doc, s.name.replace(/\.pdf$/i, ''), items as { title: string; page: PDFPage }[]);
+    }
+  }
   if (opts.stamps) await applyStamps(doc, opts.stamps);
   if (opts.metadata) {
     const m = opts.metadata;
@@ -182,6 +192,52 @@ export async function compilePlan(plan: PlanPage[], sources: SourcePdf[], opts: 
   doc.setModificationDate(new Date());
   if (opts.bookmarks) setBookmarks(doc, opts.bookmarks);
   return doc.save({ useObjectStreams: true });
+}
+
+/** Register widgets copied from another PDF in this document's AcroForm so they stay fillable. */
+function mergeWidgets(doc: PDFDocument, page: PDFPage) {
+  const annots = page.node.Annots(); if (!annots) return;
+  let acro = doc.catalog.lookupMaybe(PDFName.of('AcroForm'), PDFDict);
+  const roots: PDFRef[] = [];
+  for (const r of annots.asArray()) {
+    if (!(r instanceof PDFRef)) continue;
+    const d = doc.context.lookup(r); if (!(d instanceof PDFDict) || d.get(PDFName.of('Subtype'))?.toString() !== '/Widget') continue;
+    let ref = r; let cur: PDFDict = d; let guard = 0;
+    while (guard++ < 50) { const pr = cur.get(PDFName.of('Parent')); if (!(pr instanceof PDFRef)) break; const pd = doc.context.lookup(pr); if (!(pd instanceof PDFDict)) break; ref = pr; cur = pd; }
+    if (!roots.some((x) => x.toString() === ref.toString())) roots.push(ref);
+  }
+  if (!roots.length) return;
+  if (!acro) { acro = doc.context.obj({ Fields: [] }) as PDFDict; doc.catalog.set(PDFName.of('AcroForm'), doc.context.register(acro)); }
+  let fields = acro.lookupMaybe(PDFName.of('Fields'), PDFArray);
+  if (!fields) { fields = doc.context.obj([]) as PDFArray; acro.set(PDFName.of('Fields'), fields); }
+  const nameOf = (r: unknown) => { const d = r instanceof PDFRef ? doc.context.lookup(r) : r; const t = d instanceof PDFDict ? d.lookup(PDFName.of('T')) : undefined; return t instanceof PDFString || t instanceof PDFHexString ? t.decodeText() : ''; };
+  const existing = new Set(fields.asArray().map(nameOf));
+  const present = new Set(fields.asArray().map((x) => x.toString()));
+  for (const ref of roots) {
+    if (present.has(ref.toString())) continue;
+    const d = doc.context.lookup(ref) as PDFDict; let name = nameOf(d);
+    if (name && existing.has(name)) { let n = 2; while (existing.has(`${name}_${n}`)) n++; name = `${name}_${n}`; d.set(PDFName.of('T'), PDFHexString.fromText(name)); }
+    existing.add(name); fields.push(ref); present.add(ref.toString());
+  }
+}
+
+function appendOutlineGroup(doc: PDFDocument, title: string, items: { title: string; page: PDFPage }[]) {
+  const ctx = doc.context;
+  let rootRef = doc.catalog.get(PDFName.of('Outlines'));
+  let root = doc.catalog.lookupMaybe(PDFName.of('Outlines'), PDFDict);
+  if (!root || !(rootRef instanceof PDFRef)) { root = ctx.obj({ Type: 'Outlines', Count: 0 }) as PDFDict; rootRef = ctx.register(root); doc.catalog.set(PDFName.of('Outlines'), rootRef); }
+  const groupRef = ctx.nextRef(); const kids = items.map(() => ctx.nextRef());
+  items.forEach((it, i) => {
+    const d = ctx.obj({ Title: PDFHexString.fromText(it.title), Parent: groupRef, Dest: [it.page.ref, 'Fit'] }) as PDFDict;
+    if (i > 0) d.set(PDFName.of('Prev'), kids[i - 1]); if (i < kids.length - 1) d.set(PDFName.of('Next'), kids[i + 1]);
+    ctx.assign(kids[i], d);
+  });
+  const group = ctx.obj({ Title: PDFHexString.fromText(title), Parent: rootRef, First: kids[0], Last: kids[kids.length - 1], Count: -kids.length, Dest: [items[0].page.ref, 'Fit'] }) as PDFDict;
+  const lastRef = root.get(PDFName.of('Last'));
+  if (lastRef instanceof PDFRef) { (ctx.lookup(lastRef) as PDFDict).set(PDFName.of('Next'), groupRef); group.set(PDFName.of('Prev'), lastRef); } else root.set(PDFName.of('First'), groupRef);
+  root.set(PDFName.of('Last'), groupRef);
+  const c = root.get(PDFName.of('Count')); root.set(PDFName.of('Count'), ctx.obj(Math.abs(Number(c?.toString() ?? 0)) + 1));
+  ctx.assign(groupRef, group);
 }
 
 function pruneOutlines(doc: PDFDocument, livePages: Set<string>) {

@@ -8,8 +8,9 @@
 
 ## PDF suite (Phase 2)
 - [x] 2A Page organizer (preview/dev only; prod opt-in `pitch.pageTools`) — needs signed-in test on real drawing sets
-- [ ] 2A Smart Docs integration of page organizer
-- [ ] 2B Markup and text editing
+- [x] 2A Smart Docs integration of page organizer (Pages/Markup buttons on PDF company docs)
+- [x] 2B Markup tools (preview/dev only) — needs signed-in test and Acrobat desktop check
+- [ ] 2B Genuine editing of existing PDF text (not supported safely by current engines)
 - [ ] 2C Drawing revision comparison
 - [ ] 2D OCR, conversions, protection, optimization
 - [ ] 2E Workflow automation across PITCH
