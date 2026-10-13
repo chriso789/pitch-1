@@ -11,6 +11,7 @@ const Pipeline = React.lazy(() => import("@/pages/Pipeline"));
 const Production = React.lazy(() => import("@/pages/Production"));
 const CommercialProjects = React.lazy(() => import("@/pages/commercial/CommercialProjects"));
 const CommercialProjectDetail = React.lazy(() => import("@/pages/commercial/CommercialProjectDetail"));
+const PlanMeasurePage = React.lazy(() => import("@/pages/commercial/PlanMeasurePage"));
 const ClientList = React.lazy(() => import("@/pages/ClientList"));
 const Calendar = React.lazy(() => import("@/pages/Calendar"));
 const StormCanvass = React.lazy(() => import("@/pages/StormCanvass"));
@@ -133,6 +134,7 @@ export default function ProtectedRoutes() {
         <Route path="/production" element={<ProtectedRoute><Production /></ProtectedRoute>} />
         <Route path="/commercial" element={<ProtectedRoute><CommercialProjects /></ProtectedRoute>} />
         <Route path="/commercial/:id" element={<ProtectedRoute><CommercialProjectDetail /></ProtectedRoute>} />
+        <Route path="/commercial/:id/plans/:documentId/measure" element={<ProtectedRoute><PlanMeasurePage /></ProtectedRoute>} />
         <Route path="/production/:projectId" element={<ProtectedRoute><ProductionDetail /></ProtectedRoute>} />
         <Route path="/client-list" element={<ProtectedRoute><ClientList /></ProtectedRoute>} />
         <Route path="/calendar" element={<ProtectedRoute><Calendar /></ProtectedRoute>} />
