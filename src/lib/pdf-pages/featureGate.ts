@@ -4,5 +4,5 @@ const PROD_HOSTS = ['pitch-crm.ai', 'www.pitch-crm.ai', 'pitch-1.lovable.app'];
 export function isPageToolsEnabled(): boolean {
   if (typeof window === 'undefined') return false;
   if (!PROD_HOSTS.includes(window.location.hostname)) return true;
-  try { return window.localStorage.getItem('pitch.pageTools') === '1'; } catch { return false; }
+  try { return window.localStorage.getItem('pitch.pageTools') !== '0'; } catch { return true; }
 }
