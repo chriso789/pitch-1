@@ -58,7 +58,7 @@ export function RevisionCompare({ tenantId, doc, bytes }: { tenantId: string; do
       const r = diffRasters(ga, gb, { dx, dy });
       const W = Math.min(ga.width, gb.width), H = Math.min(ga.height, gb.height);
       const dc = document.createElement('canvas'); dc.width = W; dc.height = H;
-      dc.getContext('2d')!.putImageData(new ImageData(r.overlay, W, H), 0, 0);
+      dc.getContext('2d')!.putImageData(new ImageData(r.overlay as unknown as Uint8ClampedArray<ArrayBuffer>, W, H), 0, 0);
       setRegions(r.regions);
       setImgs({ a: a.canvas.toDataURL('image/png'), b: b.canvas.toDataURL('image/png'), d: dc.toDataURL('image/png'), w: W, h: H });
     })().catch(e => toast.error(`Comparison failed: ${e.message}`));
