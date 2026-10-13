@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { PDFDocument, PDFName, PDFArray, PDFDict, rgb, StandardFonts } from 'pdf-lib';
+import { PDFDocument, PDFName, PDFArray, PDFDict, PDFString, rgb, StandardFonts } from 'pdf-lib';
 import { compilePlan, inspectPdf, planFromSource, parseRange, planWarnings, readBookmarks, splitPlan, setBookmarks, newKey, type SourcePdf, type PlanPage } from '@/lib/pdf-pages/pageOps';
 
 // Fixture: 3 large-format (36x24in) vector "drawing" sheets, each with a text label, a line
@@ -12,7 +12,7 @@ async function makeDrawingSet(n = 3, tag = 'A'): Promise<Uint8Array> {
     const p = doc.addPage([2592, 1728]);
     p.drawText(`${tag}-${i + 1}`, { x: 100, y: 1600, size: 48, font });
     p.drawLine({ start: { x: 200, y: 200 }, end: { x: 2200, y: 200 }, thickness: 2, color: rgb(0, 0, 0) });
-    const annot = doc.context.obj({ Type: 'Annot', Subtype: 'Line', Rect: [200, 190, 2200, 210], L: [200, 200, 2200, 200], Contents: `measure-${tag}-${i + 1}`, P: p.ref });
+    const annot = doc.context.obj({ Type: 'Annot', Subtype: 'Line', Rect: [200, 190, 2200, 210], L: [200, 200, 2200, 200], Contents: PDFString.of(`measure-${tag}-${i + 1}`), P: p.ref });
     p.node.addAnnot(doc.context.register(annot));
     form.createTextField(`${tag}_field_${i + 1}`).addToPage(p, { x: 100, y: 100, width: 200, height: 30 });
   }
@@ -23,9 +23,8 @@ async function makeDrawingSet(n = 3, tag = 'A'): Promise<Uint8Array> {
 const labelOf = async (bytes: Uint8Array) => {
   const d = await PDFDocument.load(bytes);
   return d.getPages().map((p) => {
-    const a = p.node.Annots(); if (!a) return null;
-    const dict = d.context.lookup(a.get(a.size() - 1 >= 0 ? a.asArray().findIndex((r) => (d.context.lookup(r) as PDFDict).get(PDFName.of('Subtype'))?.toString() === '/Line') : 0)) as PDFDict;
-    return dict.lookup(PDFName.of('Contents'))?.toString().replace(/[()]/g, '') ?? null;
+    const line = (p.node.Annots()?.asArray() ?? []).map((r) => d.context.lookup(r) as PDFDict).find((x) => x.get(PDFName.of('Subtype'))?.toString() === '/Line');
+    return line ? (line.lookup(PDFName.of('Contents')) as PDFString).decodeText() : null;
   });
 };
 
