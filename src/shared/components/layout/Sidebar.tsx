@@ -308,25 +308,11 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       featureKey: "permits"
     },
     {
-      name: "Referrals",
-      href: "referrals",
-      path: "/referrals",
-      icon: Gift,
-      description: "Referral links, payouts & credits"
-    },
-    {
       name: "Marketing Audit",
       href: "marketing",
       path: "/marketing",
       icon: BarChart,
       description: "Marketing costs & inbound attribution"
-    },
-    {
-      name: "Inspection Requests",
-      href: "inspection-requests",
-      path: "/inspection-requests",
-      icon: ShieldCheck,
-      description: "4-Point & Wind Mit website leads"
     }
   ].filter(item => !item.featureKey || hasFeature(item.featureKey));
 
