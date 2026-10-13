@@ -9,10 +9,10 @@ import { PDFDocument } from 'pdf-lib';
  */
 export interface EditableBytes { bytes: Uint8Array; decrypted: boolean }
 
-let wasmUrlPromise: Promise<string> | null = null;
+// Served as a static file (public/wasm) and loaded by URL in the browser only when needed.
 async function defaultWasmUrl(): Promise<string> {
-  wasmUrlPromise ??= import('@neslinesli93/qpdf-wasm/dist/qpdf.wasm?url').then(m => m.default as string);
-  return wasmUrlPromise;
+  if (typeof window === 'undefined') throw new Error('PDF unlocking is only available in the browser.');
+  return new URL('/wasm/qpdf.wasm', window.location.origin).href;
 }
 
 export async function isEncryptedPdf(bytes: Uint8Array): Promise<boolean> {
