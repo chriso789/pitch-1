@@ -71,16 +71,19 @@ function tokenize(src: Uint8Array): Tok[] {
 function inherited(page: PDFPage, key: string): PDFDict | undefined {
   let node: any = page.node;
   while (node) {
-    const v = node.lookup(PDFName.of(key));
+    let v: unknown; try { v = node.context.lookup(node.get(PDFName.of(key))); } catch { v = undefined; }
     if (v instanceof PDFDict) return v;
-    node = node.lookup(PDFName.of('Parent'));
+    try { node = node.context.lookup(node.get(PDFName.of('Parent'))); } catch { return undefined; }
     if (!(node instanceof PDFDict)) return undefined;
   }
 }
 
+function annotCount(p: PDFPage) { try { const a = p.doc.context.lookup(p.node.get(PDFName.of('Annots'))); return a instanceof PDFArray ? a.size() : 0; } catch { return -1; } }
+
 export function pageContentBytes(page: PDFPage): Uint8Array {
-  const c = page.node.Contents();
-  const streams = c instanceof PDFArray ? c.asArray().map(r => page.doc.context.lookup(r)) : [c];
+  const ctx = page.doc.context;
+  const raw = ctx.lookup(page.node.get(PDFName.of('Contents')));
+  const streams = raw instanceof PDFArray ? raw.asArray().map(r => { try { return ctx.lookup(r); } catch { return undefined; } }) : [raw];
   const parts = streams.map(s => s instanceof PDFRawStream ? decodePDFRawStream(s).decode() : s instanceof PDFStream ? (s as any).getContents() as Uint8Array : new Uint8Array());
   const total = parts.reduce((a, p) => a + p.length + 1, 0), out = new Uint8Array(total); let o = 0;
   for (const p of parts) { out.set(p, o); o += p.length; out[o++] = 10; }
@@ -132,9 +135,14 @@ export function readPageText(doc: PDFDocument, pageIndex: number): PageText {
   const page = doc.getPages()[pageIndex];
   if (!page) throw new Error('Page does not exist');
   if (doc.isEncrypted) return { segments: [], fonts: {}, content: new Uint8Array(), blocked: 'This PDF is encrypted (often owner-password protected). Its content streams cannot be decoded or rewritten without removing protection, so editing is blocked.' };
-  const fontDict = inherited(page, 'Resources')?.lookupMaybe(PDFName.of('Font'), PDFDict);
+  let fontDict: PDFDict | undefined;
+  try { const r = inherited(page, 'Resources'); const f = r ? doc.context.lookup(r.get(PDFName.of('Font'))) : undefined; fontDict = f instanceof PDFDict ? f : undefined; } catch { fontDict = undefined; }
   const fonts: Record<string, FontDiagnosis> = {};
-  fontDict?.entries().forEach(([k, v]) => { const f = doc.context.lookup(v); if (f instanceof PDFDict) fonts[k.decodeText()] = diagnoseFont(doc, k.decodeText(), f); });
+  fontDict?.entries().forEach(([k, v]) => {
+    const key = k.decodeText();
+    try { const f = doc.context.lookup(v); if (f instanceof PDFDict) fonts[key] = diagnoseFont(doc, key, f); }
+    catch (e) { fonts[key] = { key, baseFont: key, subtype: 'Unknown', encoding: 'unknown', embedded: false, subset: false, standard14: false, hasToUnicode: false, twoByte: false, usedCodes: new Set(), toUni: new Map(), fromUni: new Map(), editable: false, reason: `This font's internal data is damaged or incomplete (${(e as Error).message}), so its glyphs cannot be verified.` }; }
+  });
   const content = pageContentBytes(page);
   const toks = tokenize(content);
   const segments: TextSegment[] = []; let ops: Tok[] = []; let font: string | null = null;
@@ -195,7 +203,7 @@ export async function replaceSegmentText(bytes: Uint8Array, pageIndex: number, s
   const next = new Uint8Array(pt.content.length - (seg.strEnd - seg.strStart) + enc.length);
   next.set(pt.content.subarray(0, seg.strStart)); next.set(enc, seg.strStart); next.set(pt.content.subarray(seg.strEnd), seg.strStart + enc.length);
   const page = doc.getPages()[pageIndex];
-  const fieldCount = doc.getForm().getFields().length, annots = page.node.Annots()?.size() ?? 0;
+  const fieldCount = doc.getForm().getFields().length, annots = annotCount(page);
   page.node.set(PDFName.of('Contents'), doc.context.register(doc.context.flateStream(next)));
   const out = await doc.save();
   // Reopen and verify the operator itself changed, nothing else moved.
@@ -204,6 +212,6 @@ export async function replaceSegmentText(bytes: Uint8Array, pageIndex: number, s
   if (after.segments.length !== pt.segments.length) throw new Error('Verification failed: text object count changed');
   if (after.segments[segmentId].text !== text) throw new Error('Verification failed: replacement not found in the content stream');
   if (pt.segments.some((s, i) => i !== segmentId && after.segments[i].text !== s.text)) throw new Error('Verification failed: other text changed');
-  if (re.getForm().getFields().length !== fieldCount || (re.getPages()[pageIndex].node.Annots()?.size() ?? 0) !== annots) throw new Error('Verification failed: forms or annotations changed');
+  if (re.getForm().getFields().length !== fieldCount || annotCount(re.getPages()[pageIndex]) !== annots) throw new Error('Verification failed: forms or annotations changed');
   return out;
 }
