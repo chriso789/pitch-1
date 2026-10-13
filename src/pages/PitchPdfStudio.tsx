@@ -4,6 +4,7 @@ import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
 import { PageOrganizer } from "@/components/pdf-pages/PageOrganizer";
 import { isPageToolsEnabled } from "@/lib/pdf-pages/featureGate";
 import { MarkupEditor } from "@/components/pdf-markup/MarkupEditor";
+import { PdfLocalEditTools } from "@/components/pdf-engine/PdfLocalEditTools";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type Action = "merge" | "split" | "rotate" | "reverse" | "number" | "watermark" | "metadata";
@@ -16,7 +17,7 @@ const download = (bytes: Uint8Array, name: string) => {
 };
 const load = async (file: File) => PDFDocument.load(await file.arrayBuffer(), { updateMetadata: false });
 export default function PitchPdfStudio() {
-  if (isPageToolsEnabled()) return <GlobalLayout><main className="p-4 space-y-4"><header><h1 className="text-2xl font-bold">PITCH PDF Studio</h1><p className="text-sm text-muted-foreground">Organize pages and mark up PDFs in your browser. Originals stay unchanged.</p></header><Tabs defaultValue="pages"><TabsList><TabsTrigger value="pages">Pages</TabsTrigger><TabsTrigger value="markup">Markup</TabsTrigger></TabsList><TabsContent value="pages"><PageOrganizer /></TabsContent><TabsContent value="markup"><MarkupEditor /></TabsContent></Tabs></main></GlobalLayout>;
+  if (isPageToolsEnabled()) return <GlobalLayout><main className="p-4 space-y-4"><header><h1 className="text-2xl font-bold">PITCH PDF Studio</h1><p className="text-sm text-muted-foreground">Organize pages and mark up PDFs in your browser. Originals stay unchanged.</p></header><Tabs defaultValue="pages"><TabsList><TabsTrigger value="pages">Pages</TabsTrigger><TabsTrigger value="markup">Markup</TabsTrigger><TabsTrigger value="edit">Edit PDF / Forms</TabsTrigger></TabsList><TabsContent value="pages"><PageOrganizer /></TabsContent><TabsContent value="markup"><MarkupEditor /></TabsContent><TabsContent value="edit"><PdfLocalEditTools /></TabsContent></Tabs></main></GlobalLayout>;
   return <LegacyPdfStudio />;
 }
 function LegacyPdfStudio() {

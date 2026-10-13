@@ -37,7 +37,7 @@ const PdfWorkspaceEditor = () => {
 
   /** Opens the shared Page Organizer / Markup editor. Workspace files that aren't yet linked to a
    * `documents` row get a tenant-scoped copy (original untouched) so tools can save versions. */
-  const openPdfTool = async (tool: 'pages' | 'markup') => {
+  const openPdfTool = async (tool: 'pages' | 'markup', inspectText = false) => {
     const ws: any = wsDoc;
     if (!ws || !tenantId) return;
     try {
@@ -62,7 +62,7 @@ const PdfWorkspaceEditor = () => {
         docId = row.id;
         await (supabase as any).from('pdf_workspace_documents').update({ document_id: docId }).eq('id', ws.id).eq('tenant_id', tenantId);
       }
-      navigate(`/documents/${docId}/${tool}`);
+      navigate(`/documents/${docId}/${tool}${inspectText ? '?mode=text' : ''}`);
     } catch (e: any) {
       toast({ title: 'Could not open tool', description: e?.message ?? String(e), variant: 'destructive' });
     }
@@ -317,6 +317,7 @@ const PdfWorkspaceEditor = () => {
         <Button size="sm" variant="outline" onClick={() => openPdfTool('markup')}>
           Markup &amp; Annotate
         </Button>
+        <Button size="sm" variant="outline" onClick={() => openPdfTool('markup', true)}>Edit PDF</Button>
         <Button size="sm" onClick={() => setShowFinalize(true)} disabled={wsDoc.status === 'finalized'}>
           <ShieldCheck className="h-4 w-4 mr-1" />Finalize
         </Button>

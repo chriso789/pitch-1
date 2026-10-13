@@ -5,7 +5,7 @@
  * Falls back to overlay mode on corruption risk.
  */
 
-import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { PDFDocument, rgb, StandardFonts, degrees } from 'pdf-lib';
 import type { PdfEngineOperation, PdfEngineObject } from './engineTypes';
 import { PdfFontEngine } from './PdfFontEngine';
 import { PdfLayoutEngine } from './PdfLayoutEngine';
@@ -28,9 +28,10 @@ export class PdfBinaryRebuilder {
     originalPdfBytes: ArrayBuffer,
     operations: PdfEngineOperation[],
     objects: PdfEngineObject[],
-    preferredMode: ReconstructionMode = 'true_reconstruction'
+    preferredMode: ReconstructionMode = 'safe_overlay'
   ): Promise<ReconstructionResult> {
     const warnings: string[] = [];
+    if (preferredMode === 'true_reconstruction') warnings.push('True content reconstruction is not implemented. Text changes are overlays; original text remains extractable and replacement fonts may differ.');
     let objectsReconstructed = 0;
     let objectsFallback = 0;
 
@@ -70,7 +71,7 @@ export class PdfBinaryRebuilder {
       }
 
       const pdfBytes = await pdfDoc.save();
-      const actualMode = objectsFallback > objectsReconstructed ? 'safe_overlay' : preferredMode;
+      const actualMode = preferredMode === 'true_reconstruction' || objectsFallback > 0 ? 'safe_overlay' : preferredMode;
 
       return { pdfBytes, mode: actualMode, warnings, objectsReconstructed, objectsFallback };
     } catch (err) {
@@ -145,7 +146,7 @@ export class PdfBinaryRebuilder {
             });
           }
 
-          return layoutResult.overflow ? 'fallback' : 'reconstructed';
+          return 'fallback'; // Layout does not remove the original text stream.
         } else {
           // Safe overlay mode
           if (b.width && b.height) {
@@ -193,7 +194,6 @@ export class PdfBinaryRebuilder {
         if (pageIdx < 0 || pageIdx >= pages.length) return 'skipped';
         const page = pages[pageIdx];
         const current = page.getRotation().angle || 0;
-        const { degrees } = require('pdf-lib');
         page.setRotation(degrees(current + (p.degrees || 90)));
         return 'reconstructed';
       }

@@ -486,6 +486,7 @@ const SmartDocs = () => {
                       </div>
                     </div>
                     <div className="flex gap-2">
+                      {isPageToolsEnabled() && /\.pdf$/i.test(doc.file_path) && <Button size="sm" variant="outline" asChild><Link to={`/documents/${doc.id}/markup?mode=text`}><Pencil className="h-4 w-4 mr-1" />Edit PDF</Link></Button>}
                        <Button
                          size="sm"
                          variant="outline"
@@ -679,6 +680,7 @@ const SmartDocs = () => {
                       Download
                     </Button>
                     {isPageToolsEnabled() && /\.pdf$/i.test(doc.file_path) && <>
+                      <Button size="sm" variant="outline" asChild><Link to={`/documents/${doc.id}/markup?mode=text`}><Pencil className="h-4 w-4 mr-1" />Edit PDF</Link></Button>
                       <Button size="sm" variant="outline" asChild><Link to={`/documents/${doc.id}/pages`}>Pages</Link></Button>
                       <Button size="sm" variant="outline" asChild><Link to={`/documents/${doc.id}/markup`}>Markup</Link></Button>
                     </>}

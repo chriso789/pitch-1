@@ -97,7 +97,12 @@ function wrap(font: PDFFont, text: string, size: number, maxW: number): string[]
   }
   return out;
 }
-const safe = (font: PDFFont, s: string) => { const set = new Set(font.getCharacterSet()); return [...s].map((ch) => (set.has(ch.codePointAt(0)!) ? ch : '?')).join(''); };
+const safe = (font: PDFFont, s: string) => {
+  const set = new Set(font.getCharacterSet());
+  const unsupported = [...s].find(ch => ch !== '\n' && ch !== '\r' && !set.has(ch.codePointAt(0) ?? -1));
+  if (unsupported) throw new Error(`The available markup font cannot render "${unsupported}". No characters were substituted; choose supported text before saving.`);
+  return s;
+};
 
 /** Builds the appearance content (in absolute user-space coordinates). */
 function appearance(m: Markup, font: PDFFont, imgName: string | null): { ops: string; multiply?: boolean } {
