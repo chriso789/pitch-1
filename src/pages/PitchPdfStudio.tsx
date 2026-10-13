@@ -2,7 +2,7 @@ import { useState } from "react";
 import { PDFDocument, degrees } from "pdf-lib";
 import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
 
-type Action = "merge" | "split" | "rotate";
+type Action = "merge" | "split" | "rotate" | "reverse" | "number" | "watermark" | "metadata";
 const download = (bytes: Uint8Array, name: string) => {
   const blob = new Blob([new Uint8Array(bytes)], { type: "application/pdf" });
   const url = URL.createObjectURL(blob);
@@ -18,6 +18,7 @@ export default function PitchPdfStudio() {
   const [error, setError] = useState("");
   const [pageRange, setPageRange] = useState("1");
   const [angle, setAngle] = useState("90");
+  const [label, setLabel] = useState("DRAFT");
   const execute = async () => {
     if (!files.length) return;
     setBusy(true); setError("");
@@ -42,6 +43,24 @@ export default function PitchPdfStudio() {
         const result = await PDFDocument.create();
         (await result.copyPages(source, indices)).forEach(page => result.addPage(page));
         download(await result.save(), "pitch-extracted.pdf");
+      } else if (action === "reverse") {
+        const source = await load(files[0]);
+        const result = await PDFDocument.create();
+        (await result.copyPages(source, source.getPageIndices().reverse())).forEach(page => result.addPage(page));
+        download(await result.save(), "pitch-reversed.pdf");
+      } else if (action === "number" || action === "watermark" || action === "metadata") {
+        const source = await load(files[0]);
+        if (action === "metadata") {
+          source.setTitle(label); source.setProducer("PITCH PDF Studio");
+        } else {
+          const pages = source.getPages();
+          pages.forEach((page, i) => {
+            const { width, height } = page.getSize();
+            if (action === "number") page.drawText(`${i + 1} / ${pages.length}`, { x: width / 2 - 15, y: 18, size: 10 });
+            else page.drawText(label, { x: 35, y: height / 2, size: 35, opacity: 0.28, rotate: degrees(35) });
+          });
+        }
+        download(await source.save(), `pitch-${action}.pdf`);
       } else {
         const source = await load(files[0]);
         const rotation = Number(angle);
@@ -62,10 +81,11 @@ export default function PitchPdfStudio() {
         <p className="text-sm text-muted-foreground">{files.length} file(s) selected. Merge respects selection order.</p>
         <label className="block font-medium" htmlFor="pitch-pdf-operation">Operation</label>
         <select id="pitch-pdf-operation" className="w-full rounded border bg-background p-2" value={action} onChange={e => setAction(e.target.value as Action)}>
-          <option value="merge">Merge PDFs</option><option value="split">Extract pages</option><option value="rotate">Rotate all pages</option>
+          <option value="merge">Merge PDFs</option><option value="split">Extract pages</option><option value="rotate">Rotate all pages</option><option value="reverse">Reverse page order</option><option value="number">Add page numbers</option><option value="watermark">Add watermark</option><option value="metadata">Set PDF title metadata</option>
         </select>
         {action === "split" && <label className="block">Pages (example: 1,3-5)<input className="block w-full rounded border bg-background p-2" value={pageRange} onChange={e=>setPageRange(e.target.value)}/></label>}
         {action === "rotate" && <label className="block">Rotation<select className="block w-full rounded border bg-background p-2" value={angle} onChange={e=>setAngle(e.target.value)}><option value="90">90° clockwise</option><option value="180">180°</option><option value="270">270° clockwise</option></select></label>}
+        {(action === "watermark" || action === "metadata") && <label className="block">{action === "metadata" ? "Document title" : "Watermark text"}<input className="block w-full rounded border bg-background p-2" value={label} onChange={e=>setLabel(e.target.value.slice(0,120))}/></label>}
         {error && <p role="alert" className="text-destructive">{error}</p>}
         <button className="rounded bg-primary px-5 py-2 text-primary-foreground disabled:opacity-50" onClick={execute} disabled={busy || !files.length}>{busy ? "Processing…" : "Process and download PDF"}</button>
       </section>
