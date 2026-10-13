@@ -129,6 +129,8 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
     if (path.startsWith('/homeowner')) return 'homeowner';
     if (path.startsWith('/admin/monitoring')) return 'monitoring';
     if (path.startsWith('/settings/ai-admin')) return 'ai-admin';
+    if (path.startsWith('/marketing')) return 'marketing';
+    if (path.startsWith('/inspection-requests')) return 'inspection-requests';
     if (path.startsWith('/settings')) return 'settings';
     if (path.startsWith('/help')) return 'help';
     return 'dashboard';
@@ -288,13 +290,6 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       description: "Track invoices & payments",
       featureKey: "accounts_receivable"
     },
-    {
-      name: "Inspection Requests",
-      href: "inspection-requests",
-      path: "/inspection-requests",
-      icon: ShieldCheck,
-      description: "4-Point & Wind Mit website leads",
-    },
     // Documents is now an expandable section - see below
     {
       name: "Presentations",
@@ -318,6 +313,20 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       path: "/referrals",
       icon: Gift,
       description: "Referral links, payouts & credits"
+    },
+    {
+      name: "Marketing Audit",
+      href: "marketing",
+      path: "/marketing",
+      icon: BarChart,
+      description: "Marketing costs & inbound attribution"
+    },
+    {
+      name: "Inspection Requests",
+      href: "inspection-requests",
+      path: "/inspection-requests",
+      icon: ShieldCheck,
+      description: "4-Point & Wind Mit website leads"
     }
   ].filter(item => !item.featureKey || hasFeature(item.featureKey));
 
