@@ -187,7 +187,7 @@ export async function replaceSegmentText(bytes: Uint8Array, pageIndex: number, s
   const pt = readPageText(doc, pageIndex);
   if (pt.blocked) throw new Error(pt.blocked);
   const seg = pt.segments[segmentId]; if (!seg) throw new Error('Text object not found');
-  const chk = checkReplacement(pt, seg, text); if (!chk.ok) throw new Error(chk.reason);
+  const chk = checkReplacement(pt, seg, text); if ("reason" in chk) throw new Error(chk.reason);
   const f = pt.fonts[seg.fontKey!];
   const hex = '<' + chk.codes.map(c => c.toString(16).padStart(f.twoByte ? 4 : 2, '0')).join('') + '>';
   const operand = seg.op === 'TJ' ? `[${hex}]` : hex;

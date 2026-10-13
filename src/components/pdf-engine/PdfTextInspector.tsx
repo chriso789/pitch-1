@@ -122,7 +122,7 @@ export function PdfTextInspector({ bytes, onSaveVersion }: { bytes: Uint8Array; 
           : <>
             <Badge>Verified editable — original font</Badge>
             <Textarea aria-label="Replacement text" value={draft} onChange={e => setDraft(e.target.value)} disabled={busy} />
-            {check && !check.ok && <p className="text-xs text-destructive">{check.reason}</p>}
+            {check && "reason" in check && <p className="text-xs text-destructive">{check.reason}</p>}
             {seg?.kerned && <p className="text-xs text-muted-foreground">Original letter-spacing adjustments in this text will be removed; the font itself is unchanged.</p>}
             {onSaveVersion && <Button size="sm" disabled={busy || !check?.ok} onClick={apply}>{busy ? 'Saving…' : 'Replace text & save new version'}</Button>}
           </>}
