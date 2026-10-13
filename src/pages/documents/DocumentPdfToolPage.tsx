@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { ArrowLeft } from "lucide-react";
 import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
@@ -7,6 +7,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { PDFDocument } from "pdf-lib";
 import { PageOrganizer, type SaveResult } from "@/components/pdf-pages/PageOrganizer";
 import { MarkupEditor } from "@/components/pdf-markup/MarkupEditor";
+import { PdfTextInspector } from "@/components/pdf-engine/PdfTextInspector";
+import { Button } from "@/components/ui/button";
 import { isPageToolsEnabled } from "@/lib/pdf-pages/featureGate";
 import { loadDocumentPdf, saveDocumentVersion, reconcileMeasurements, type DocRow } from "@/lib/pdf-pages/documentVersions";
 
@@ -17,6 +19,8 @@ import { loadDocumentPdf, saveDocumentVersion, reconcileMeasurements, type DocRo
  */
 export default function DocumentPdfToolPage({ tool }: { tool: "pages" | "markup" }) {
   const { id: projectId, documentId } = useParams();
+  const [params, setParams] = useSearchParams();
+  const inspecting = params.get('mode') === 'text';
   const tenantId = useEffectiveTenantId();
   const [doc, setDoc] = useState<DocRow | null>(null);
   const [bytes, setBytes] = useState<Uint8Array | null>(null);
@@ -30,7 +34,7 @@ export default function DocumentPdfToolPage({ tool }: { tool: "pages" | "markup"
     }).catch((e) => { setFailed(e.message); toast.error(e.message); });
   }, [documentId, tenantId, projectId]);
 
-  const back = projectId ? `/commercial/${projectId}` : "/smart-docs";
+  const back = projectId ? `/commercial/${projectId}` : "/smartdocs";
 
   const savePages = async (r: SaveResult) => {
     if (!tenantId || !doc) throw new Error("No company selected");
@@ -56,11 +60,12 @@ export default function DocumentPdfToolPage({ tool }: { tool: "pages" | "markup"
   return (
     <div className="p-4 space-y-4">
       <div className="flex items-center gap-3"><Link to={back} className="text-sm inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" />{projectId ? "Project" : "Smart Docs"}</Link>
-        <h1 className="text-xl font-semibold truncate">{tool === "pages" ? "Organize pages" : "Markup"} · {doc?.filename ?? "Loading…"}</h1></div>
+        <h1 className="text-xl font-semibold truncate">{tool === "pages" ? "Organize pages" : inspecting ? "Edit PDF · Text inspection" : "Markup"} · {doc?.filename ?? "Loading…"}</h1></div>
+      {tool === 'markup' && <div className="flex flex-wrap gap-2"><Button variant={inspecting ? 'default' : 'outline'} onClick={() => setParams({ mode: 'text' })}>Edit PDF</Button><Button variant={!inspecting ? 'default' : 'outline'} onClick={() => setParams({})}>Markup &amp; Annotate</Button><Button variant="outline" asChild><Link to={projectId ? `/commercial/${projectId}/plans/${documentId}/pages` : `/documents/${documentId}/pages`}>Organize Pages</Link></Button></div>}
       {tool === "pages" && projectId && <p className="text-xs text-muted-foreground">Measurements stay valid when sheets are only reordered, duplicated or rotated, and are carried to the new version as drafts for re-approval. Resized sheets, and crops that cut through measured lines, are flagged instead of transferred.</p>}
       {failed ? <p className="text-destructive">{failed}</p> : bytes && doc ? (tool === "pages"
         ? <PageOrganizer initial={{ id: doc.id, name: doc.filename, bytes }} onSaveVersion={savePages} />
-        : <MarkupEditor bytes={bytes} name={doc.filename} onSaveVersion={saveMarkup} />) : <p className="text-muted-foreground">Loading…</p>}
+        : inspecting ? <PdfTextInspector bytes={bytes} /> : <MarkupEditor bytes={bytes} name={doc.filename} onSaveVersion={saveMarkup} />) : <p className="text-muted-foreground">Loading…</p>}
     </div>
   );
 }

@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { loadPDFFromArrayBuffer, renderPageToDataUrl, isPDF, clearPageCache, type PDFDocumentProxy } from "@/lib/pdfRenderer";
 import { resolveStorageBucket } from "@/lib/documents/resolveStorageBucket";
+import { Link } from "react-router-dom";
 
 // PDF render scale used in canvas - coordinates must be normalized when saving
 const PDF_RENDER_SCALE = 1.5;
@@ -894,6 +895,7 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
         
         <div className="flex items-center gap-4">
           {/* Page Navigation (PDF only) */}
+          {isDocumentPdf && <Button variant="outline" asChild><Link to={`/documents/${document.id}/markup?mode=text`}>Edit PDF</Link></Button>}
           {isDocumentPdf && totalPages > 1 && (
             <div className="flex items-center gap-2 px-3 py-1.5 bg-muted rounded-lg">
               <Button
