@@ -14,6 +14,7 @@ import { ChevronLeft, ChevronRight, AlertTriangle, ArrowUp, ArrowDown, ArrowLeft
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { readPageText, checkReplacement, checkRestyle, replaceSegmentText, rewriteSegment, pageFontChoices, STANDARD_CHOICES, type PageText, type FontChoice } from '@/lib/pdf-engine/contentTextEdit';
 import { openForEditing } from '@/lib/pdf-engine/decrypt';
+import { verifyOnlyEditedTextChanged, type PlacedText } from '@/lib/pdf-engine/textVerify';
 import { toast } from 'sonner';
 
 type Run = { text: string; font: string; size: number; raw: number[]; matrix: number[]; width: number; height: number };
@@ -21,17 +22,12 @@ type Run = { text: string; font: string; size: number; raw: number[]; matrix: nu
 const hexToRgb = (h: string): [number, number, number] => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255) as [number, number, number];
 
 /** Positions of every text item on a page (PDF user space) — used to prove nothing else moved. */
-async function textPositions(bytes: Uint8Array, pageIndex: number) {
+async function textPositions(bytes: Uint8Array, pageIndex: number): Promise<PlacedText[]> {
   const pdf = await pdfjs.getDocument({ data: bytes.slice() }).promise;
   try {
     const c = await (await pdf.getPage(pageIndex + 1)).getTextContent();
-    return c.items.filter((i): i is TextItem => 'str' in i && !!i.str.trim()).map(i => `${i.str.trim()}|${i.transform[4].toFixed(1)}|${i.transform[5].toFixed(1)}`);
+    return c.items.filter((i): i is TextItem => 'str' in i && !!i.str.trim()).map(i => ({ str: i.str, x: i.transform[4], y: i.transform[5] }));
   } finally { void pdf.destroy(); }
-}
-function sameExcept(before: string[], after: string[], removedKey: string, addedText: string) {
-  const b = [...before]; const bi = b.indexOf(removedKey); if (bi >= 0) b.splice(bi, 1);
-  const a = [...after]; const ai = a.findIndex(k => k.startsWith(addedText.trim() + '|')); if (ai >= 0) a.splice(ai, 1);
-  b.sort(); a.sort(); return a.length === b.length && a.every((k, i) => k === b[i]);
 }
 
 export function PdfTextInspector({ bytes, onSaveVersion }: { bytes: Uint8Array; onSaveVersion?: (b: Uint8Array, summary: string) => Promise<void> }) {
@@ -157,8 +153,13 @@ export function PdfTextInspector({ bytes, onSaveVersion }: { bytes: Uint8Array; 
         : await replaceSegmentText(work.bytes, pageIndex, seg.id, draft);
       // independent check with a second PDF engine: every other text item is exactly where it was
       const [before, after] = await Promise.all([textPositions(work.bytes, pageIndex), textPositions(out, pageIndex)]);
-      const key = `${run.text.trim()}|${run.raw[4].toFixed(1)}|${run.raw[5].toFixed(1)}`;
-      if (!sameExcept(before, after, key, draft)) throw new Error('Verification failed: other text on the page would move or change. Nothing was saved.');
+      const [ma, mb] = run.raw; const len = Math.hypot(ma, mb) || 1;
+      const v = verifyOnlyEditedTextChanged(before, after, {
+        original: { str: run.text, x: run.raw[4], y: run.raw[5] },
+        x: run.raw[4] + (restyled ? dx : 0), y: run.raw[5] + (restyled ? dy : 0),
+        dir: [ma / len, mb / len], size: restyled ? size : run.size, text: draft,
+      });
+      if ('reason' in v) throw new Error(`Verification failed: ${v.reason}. Nothing was saved.`);
       const summary = restyled
         ? `Edited text on page ${pageIndex + 1}: ${fontLabel(fontId)} ${size}pt${dx || dy ? `, moved ${dx}, ${dy} pt` : ''}${work.decrypted ? ' (unlocked from owner-protected original)' : ''}`
         : `Edited existing text on page ${pageIndex + 1} in original font ${font?.baseFont}${work.decrypted ? ' (unlocked from owner-protected original)' : ''}`;
