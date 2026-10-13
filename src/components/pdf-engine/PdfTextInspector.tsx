@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import '@/lib/pdfRenderer';
 import * as pdfjs from 'pdfjs-dist';
-import type { PDFDocumentProxy, PageViewport, TextItem } from 'pdfjs-dist/types/src/display/api';
+import type { PDFDocumentProxy, TextItem } from 'pdfjs-dist/types/src/display/api';
+type PageViewport = ReturnType<Awaited<ReturnType<PDFDocumentProxy['getPage']>>['getViewport']>;
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -162,7 +163,7 @@ export function PdfTextInspector({ bytes, onSaveVersion }: { bytes: Uint8Array; 
         ? `Edited text on page ${pageIndex + 1}: ${fontLabel(fontId)} ${size}pt${dx || dy ? `, moved ${dx}, ${dy} pt` : ''}${work.decrypted ? ' (unlocked from owner-protected original)' : ''}`
         : `Edited existing text on page ${pageIndex + 1} in original font ${font?.baseFont}${work.decrypted ? ' (unlocked from owner-protected original)' : ''}`;
       if (onSaveVersion) await onSaveVersion(out, summary);
-      else { const url = URL.createObjectURL(new Blob([out], { type: 'application/pdf' })); const a = document.createElement('a'); a.href = url; a.download = 'edited.pdf'; a.click(); URL.revokeObjectURL(url); toast.success('Edited PDF downloaded'); }
+      else { const url = URL.createObjectURL(new Blob([out.slice().buffer as ArrayBuffer], { type: 'application/pdf' })); const a = document.createElement('a'); a.href = url; a.download = 'edited.pdf'; a.click(); URL.revokeObjectURL(url); toast.success('Edited PDF downloaded'); }
     } catch (e) { toast.error((e as Error).message); } finally { setBusy(false); }
   };
 

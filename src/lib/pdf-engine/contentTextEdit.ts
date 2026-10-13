@@ -160,7 +160,7 @@ function diagnoseFont(key: string, font: PDFDict): FontDiagnosis {
       const fc = font.lookupMaybe(PDFName.of('FirstChar'), PDFNumber)?.asNumber(); const Ws = font.lookupMaybe(PDFName.of('Widths'), PDFArray);
       if (fc !== undefined && Ws) { widths = new Map(); Ws.asArray().forEach((_, k) => widths!.set(fc + k, (Ws.lookup(k) as PDFNumber).asNumber())); defaultWidth = fd?.lookupMaybe(PDFName.of('MissingWidth'), PDFNumber)?.asNumber() ?? 0; }
       else if (standard14 && STD_BY_BASE[plain]) {
-        const emb = StandardFontEmbedder.for(STD_BY_BASE[plain]); widths = new Map();
+        const emb = StandardFontEmbedder.for(STD_BY_BASE[plain] as unknown as Parameters<typeof StandardFontEmbedder.for>[0]); widths = new Map();
         toUni.forEach((u, c) => { try { widths!.set(c, emb.widthOfTextAtSize(u, 1000)); } catch { /* unencodable */ } });
       }
     }
