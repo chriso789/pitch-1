@@ -130,7 +130,7 @@ function appearance(m: Markup, font: PDFFont, imgName: string | null): { ops: st
     case 'rect': return { ops: `q ${local()} ${st} ${fillOp} ${n(-hw)} ${n(-hh)} ${n(2 * hw)} ${n(2 * hh)} re ${m.fill ? 'B' : 'S'} Q` };
     case 'ellipse': return { ops: `q ${local()} ${st} ${fillOp} ${ellipsePath(0, 0, hw, hh)} ${m.fill ? 'B' : 'S'} Q` };
     case 'cover': return { ops: `q ${local()} ${rgbOp(m.fill ?? [1, 1, 1], false)} ${n(-hw)} ${n(-hh)} ${n(2 * hw)} ${n(2 * hh)} re f ${m.text ? textBlock(-hw, -hh, 2 * hw, 2 * hh) : ''} Q` };
-    case 'text': return { ops: `q ${local()} ${m.fill ? `${fillOp} ${n(-hw)} ${n(-hh)} ${n(2 * hw)} ${n(2 * hh)} re f` : ''} ${m.width > 0 && m.fill !== undefined ? `${st} ${n(-hw)} ${n(-hh)} ${n(2 * hw)} ${n(2 * hh)} re S` : ''} ${textBlock(-hw, -hh, 2 * hw, 2 * hh)} Q` };
+    case 'text': return { ops: `q ${local()} ${m.fill ? `${fillOp} ${n(-hw)} ${n(-hh)} ${n(2 * hw)} ${n(2 * hh)} re f` : ''} ${m.width > 0 ? `${st} ${n(-hw)} ${n(-hh)} ${n(2 * hw)} ${n(2 * hh)} re S` : ''} ${textBlock(-hw, -hh, 2 * hw, 2 * hh)} Q` };
     case 'callout': {
       const a = m.points![0]; const corners = boxCorners(m);
       const mid = corners.map((c, i) => [(c[0] + corners[(i + 1) % 4][0]) / 2, (c[1] + corners[(i + 1) % 4][1]) / 2] as Pt);
