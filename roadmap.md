@@ -18,3 +18,4 @@
 - [ ] Measurement carry-over integration tests (reorder/duplicate/rotate/crop)
 - [ ] 2C revision comparison (side-by-side, overlay, alignment, diff, report, RFI/CO/takeoff tasks)
 - [ ] Markup Unicode font embedding + rotated-annotation interop warnings
+- [x] Week 1: Pages/Markup exposed from the main PDF editor; page tools on in production (opt-out pitch.pageTools=0)

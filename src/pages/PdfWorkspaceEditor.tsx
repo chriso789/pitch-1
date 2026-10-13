@@ -278,6 +278,18 @@ const PdfWorkspaceEditor = () => {
             <Layers className="h-3 w-3 mr-1" />Extracting objects...
           </Badge>
         )}
+        {(wsDoc as any).document_id ? (
+          <>
+            <Button size="sm" variant="outline" onClick={() => navigate(`/documents/${(wsDoc as any).document_id}/pages`)}>
+              <Layers className="h-4 w-4 mr-1" />Organize Pages
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => navigate(`/documents/${(wsDoc as any).document_id}/markup`)}>
+              Markup &amp; Annotate
+            </Button>
+          </>
+        ) : (
+          <Badge variant="outline" title="This workspace file is not linked to a saved document, so page and markup tools can't save versions yet.">Pages/Markup unavailable</Badge>
+        )}
         <Button size="sm" onClick={() => setShowFinalize(true)} disabled={wsDoc.status === 'finalized'}>
           <ShieldCheck className="h-4 w-4 mr-1" />Finalize
         </Button>
