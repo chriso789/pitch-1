@@ -79,9 +79,16 @@ export function MarkupEditor({ bytes: initialBytes, name: initialName, onSaveVer
     let cancelled = false;
     (async () => {
       try {
-        const { markups: ms, otherAnnotations } = await readMarkups(bytes);
-        const clean = await writeMarkups(bytes, []); // render without PITCH markups; the SVG layer draws them
-        const doc = await pdfjsLib.getDocument({ data: clean }).promise;
+        let ms: Awaited<ReturnType<typeof readMarkups>>['markups'] = []; let otherAnnotations: { page: number; subtype: string }[] = [];
+        let clean: Uint8Array = bytes;
+        try {
+          ({ markups: ms, otherAnnotations } = await readMarkups(bytes));
+          clean = await writeMarkups(bytes, []); // render without PITCH markups; the SVG layer draws them
+        } catch (e: any) {
+          console.warn('[MarkupEditor] structure read failed, showing original', e);
+          toast.warning("This PDF has damaged internal data. It's shown as-is; existing markups can't be re-edited, and saving may fail.");
+        }
+        const doc = await pdfjsLib.getDocument({ data: clean.slice() }).promise;
         if (cancelled) return;
         setHist({ stack: [ms], i: 0 }); setOthers(otherAnnotations.length); setPdf(doc); setPageIndex(0); setZoom(0);
       } catch (e: any) { toast.error(`Could not open PDF: ${e.message ?? e}`); }
