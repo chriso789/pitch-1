@@ -11,6 +11,7 @@
 - [x] 2A Smart Docs integration of page organizer (Pages/Markup buttons on PDF company docs)
 - [x] 2B Markup tools (preview/dev only) — needs signed-in test and Acrobat desktop check
 - [ ] 2B Genuine editing of existing PDF text (not supported safely by current engines)
+- [ ] Select existing PDF text and edit with its exact original font — assess genuine content-editing engine and font availability; no cover-overlay substitute
 - [ ] 2C Drawing revision comparison
 - [ ] 2D OCR, conversions, protection, optimization
 - [ ] 2E Workflow automation across PITCH
