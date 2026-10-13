@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
-import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
+import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.js';
 import { readPageText, replaceSegmentText } from '@/lib/pdf-engine/contentTextEdit';
 import { verifyOnlyEditedTextChanged, type PlacedText } from '@/lib/pdf-engine/textVerify';
 
