@@ -3,6 +3,8 @@ import { Link, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { ArrowLeft } from "lucide-react";
 import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
+import { supabase } from "@/integrations/supabase/client";
+import { PDFDocument } from "pdf-lib";
 import { PageOrganizer, type SaveResult } from "@/components/pdf-pages/PageOrganizer";
 import { MarkupEditor } from "@/components/pdf-markup/MarkupEditor";
 import { isPageToolsEnabled } from "@/lib/pdf-pages/featureGate";
@@ -37,7 +39,7 @@ export default function DocumentPdfToolPage({ tool }: { tool: "pages" | "markup"
     if (projectId) {
       const rec = await reconcileMeasurements({ tenantId, sourceDocId: doc.id, newDocId: v.id, projectId, map: r.pageMap, cropBoxes: r.cropBoxes });
       const carried = rec.filter((x) => x.status === "carried"), bad = rec.filter((x) => x.status === "invalidated");
-      await (await import("@/integrations/supabase/client")).supabase.from("documents").update({ metadata: { ...(doc.metadata ?? {}), page_map: r.pageMap, versions_root_id: doc.metadata?.versions_root_id ?? doc.id, edited_from_document_id: doc.id, version_number: v.version, version_kind: "pages", measurement_reconciliation: rec } } as any).eq("id", v.id).eq("tenant_id", tenantId);
+      await (supabase as any).from("documents").update({ metadata: { ...(doc.metadata ?? {}), page_map: r.pageMap, versions_root_id: doc.metadata?.versions_root_id ?? doc.id, edited_from_document_id: doc.id, version_number: v.version, version_kind: "pages", measurement_reconciliation: rec } }).eq("id", v.id).eq("tenant_id", tenantId);
       if (carried.length) msg += ` Measurements on ${carried.length} sheet(s) were carried over as drafts and must be re-approved.`;
       if (bad.length) toast.warning(`Measurements on sheet(s) ${bad.map((b) => b.page + 1).join(", ")} were NOT carried over: ${bad[0].reason}`);
     }
@@ -46,7 +48,7 @@ export default function DocumentPdfToolPage({ tool }: { tool: "pages" | "markup"
   const saveMarkup = async (out: Uint8Array, summary: string) => {
     if (!tenantId || !doc) throw new Error("No company selected");
     const v = await saveDocumentVersion({ tenantId, doc, bytes: out, kind: "markup", summary });
-    if (projectId) await reconcileMeasurements({ tenantId, sourceDocId: doc.id, newDocId: v.id, projectId, map: Array.from({ length: (await (await import("pdf-lib")).PDFDocument.load(out, { ignoreEncryption: true })).getPageCount() }, (_, i) => ({ out: i, sourceId: doc.id, sourceIndex: i, rotate: 0, cropped: false, resized: false })), cropBoxes: {} });
+    if (projectId) await reconcileMeasurements({ tenantId, sourceDocId: doc.id, newDocId: v.id, projectId, map: Array.from({ length: (await PDFDocument.load(out, { ignoreEncryption: true })).getPageCount() }, (_, i) => ({ out: i, sourceId: doc.id, sourceIndex: i, rotate: 0, cropped: false, resized: false })), cropBoxes: {} });
     toast.success(`Saved "${v.filename}". The original is unchanged${projectId ? "; measurements were carried over as drafts" : ""}.`);
   };
 

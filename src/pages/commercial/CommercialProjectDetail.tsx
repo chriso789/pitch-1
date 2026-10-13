@@ -407,7 +407,8 @@ function Files({ projectId, onImport }: any) {
         <Card key={k}><CardHeader className="py-3"><CardTitle className="text-sm capitalize">{k} ({list.length})</CardTitle></CardHeader><CardContent className="space-y-1">
           {list.map((d: any) => <div key={d.id} className="flex items-center gap-2"><button onClick={() => open(d)} className="text-sm text-primary hover:underline text-left">{d.filename}</button>
             {measureOn && /\.pdf$/i.test(d.file_path) && <Link to={`/commercial/${projectId}/plans/${d.id}/measure`} className="text-xs border rounded px-2 py-0.5 hover:bg-muted">Measure</Link>}
-            {isPageToolsEnabled() && /\.pdf$/i.test(d.file_path) && <Link to={`/commercial/${projectId}/plans/${d.id}/pages`} className="text-xs border rounded px-2 py-0.5 hover:bg-muted">Pages</Link>}</div>)}
+            {isPageToolsEnabled() && /\.pdf$/i.test(d.file_path) && <Link to={`/commercial/${projectId}/plans/${d.id}/pages`} className="text-xs border rounded px-2 py-0.5 hover:bg-muted">Pages</Link>}
+            {isPageToolsEnabled() && /\.pdf$/i.test(d.file_path) && <Link to={`/commercial/${projectId}/plans/${d.id}/markup`} className="text-xs border rounded px-2 py-0.5 hover:bg-muted">Markup</Link>}</div>)}
         </CardContent></Card>))}
       {!docs.length && <p className="text-muted-foreground text-sm">No files yet.</p>}
     </div>

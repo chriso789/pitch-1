@@ -1,3 +1,5 @@
+import { Link } from "react-router-dom";
+import { isPageToolsEnabled } from "@/lib/pdf-pages/featureGate";
 import React, { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -675,6 +677,10 @@ const SmartDocs = () => {
                       <Download className="h-4 w-4" />
                       Download
                     </Button>
+                    {isPageToolsEnabled() && /\.pdf$/i.test(doc.file_path) && <>
+                      <Button size="sm" variant="outline" asChild><Link to={`/documents/${doc.id}/pages`}>Pages</Link></Button>
+                      <Button size="sm" variant="outline" asChild><Link to={`/documents/${doc.id}/markup`}>Markup</Link></Button>
+                    </>}
                     <Button
                       size="sm"
                       variant="outline"
