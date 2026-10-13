@@ -10,6 +10,8 @@ import { MarkupEditor } from "@/components/pdf-markup/MarkupEditor";
 import { PdfTextInspector } from "@/components/pdf-engine/PdfTextInspector";
 import { PdfFormEditor } from "@/components/pdf-engine/PdfFormEditor";
 import { PdfFillSign } from "@/components/pdf-engine/PdfFillSign";
+import { RevisionCompare } from "@/components/pdf-compare/RevisionCompare";
+import { isCompareEnabled } from "@/lib/pdf-pages/featureGate";
 import { Button } from "@/components/ui/button";
 import { isPageToolsEnabled } from "@/lib/pdf-pages/featureGate";
 import { loadDocumentPdf, saveDocumentVersion, reconcileMeasurements, type DocRow } from "@/lib/pdf-pages/documentVersions";
@@ -25,6 +27,7 @@ export default function DocumentPdfToolPage({ tool }: { tool: "pages" | "markup"
   const inspecting = params.get('mode') === 'text';
   const filling = params.get('mode') === 'forms';
   const signing = params.get('mode') === 'sign';
+  const comparing = params.get('mode') === 'compare' && isCompareEnabled();
   const tenantId = useEffectiveTenantId();
   const [doc, setDoc] = useState<DocRow | null>(null);
   const [bytes, setBytes] = useState<Uint8Array | null>(null);
@@ -68,16 +71,16 @@ export default function DocumentPdfToolPage({ tool }: { tool: "pages" | "markup"
   return (
     <div className="p-4 space-y-4">
       <div className="flex items-center gap-3"><Link to={back} className="text-sm inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" />{projectId ? "Project" : "Smart Docs"}</Link>
-        <h1 className="text-xl font-semibold truncate">{tool === "pages" ? "Organize pages" : inspecting ? "Edit PDF · Text inspection" : signing ? "Fill & Sign" : filling ? "Fill Forms" : "Markup"} · {doc?.filename ?? "Loading…"}</h1></div>
+        <h1 className="text-xl font-semibold truncate">{tool === "pages" ? "Organize pages" : inspecting ? "Edit PDF · Text inspection" : comparing ? "Compare Revisions" : signing ? "Fill & Sign" : filling ? "Fill Forms" : "Markup"} · {doc?.filename ?? "Loading…"}</h1></div>
       <div className="flex flex-wrap gap-2">
-        {([['text','Edit PDF'],['sign','Fill & Sign'],['forms','Fill Forms'],['','Markup & Annotate']] as const).map(([m,l]) => <Button key={l} variant={tool === 'markup' && (params.get('mode') ?? '') === m ? 'default' : 'outline'} asChild><Link to={`${projectId ? `/commercial/${projectId}/plans/${documentId}/markup` : `/documents/${documentId}/markup`}${m ? `?mode=${m}` : ''}`}>{l}</Link></Button>)}
+        {([['text','Edit PDF'],['sign','Fill & Sign'],['forms','Fill Forms'],['','Markup & Annotate'], ...(isCompareEnabled() ? [['compare','Compare Revisions']] : [])] as [string, string][]).map(([m,l]) => <Button key={l} variant={tool === 'markup' && (params.get('mode') ?? '') === m ? 'default' : 'outline'} asChild><Link to={`${projectId ? `/commercial/${projectId}/plans/${documentId}/markup` : `/documents/${documentId}/markup`}${m ? `?mode=${m}` : ''}`}>{l}</Link></Button>)}
         <Button variant={tool === 'pages' ? 'default' : 'outline'} asChild><Link to={projectId ? `/commercial/${projectId}/plans/${documentId}/pages` : `/documents/${documentId}/pages`}>Organize Pages</Link></Button>
         <Button variant="outline" disabled={!bytes} onClick={() => { if (!bytes || !doc) return; const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/pdf' })); const a = document.createElement('a'); a.href = url; a.download = doc.filename; a.click(); setTimeout(() => URL.revokeObjectURL(url), 60000); }}>Export PDF</Button>
       </div>
       {tool === "pages" && projectId && <p className="text-xs text-muted-foreground">Measurements stay valid when sheets are only reordered, duplicated or rotated, and are carried to the new version as drafts for re-approval. Resized sheets, and crops that cut through measured lines, are flagged instead of transferred.</p>}
       {failed ? <p className="text-destructive">{failed}</p> : bytes && doc ? (tool === "pages"
         ? <PageOrganizer initial={{ id: doc.id, name: doc.filename, bytes }} onSaveVersion={savePages} />
-        : inspecting ? <PdfTextInspector bytes={bytes} /> : signing ? <PdfFillSign bytes={bytes} name={doc.filename} onSaveVersion={saveMarkup} /> : filling ? <PdfFormEditor bytes={bytes} name={doc.filename} onSaveVersion={saveMarkup} /> : <MarkupEditor bytes={bytes} name={doc.filename} onSaveVersion={saveMarkup} />) : <p className="text-muted-foreground">Loading…</p>}
+        : inspecting ? <PdfTextInspector bytes={bytes} /> : comparing && tenantId ? <RevisionCompare tenantId={tenantId} doc={doc} bytes={bytes} /> : signing ? <PdfFillSign bytes={bytes} name={doc.filename} onSaveVersion={saveMarkup} /> : filling ? <PdfFormEditor bytes={bytes} name={doc.filename} onSaveVersion={saveMarkup} /> : <MarkupEditor bytes={bytes} name={doc.filename} onSaveVersion={saveMarkup} />) : <p className="text-muted-foreground">Loading…</p>}
     </div>
   );
 }
