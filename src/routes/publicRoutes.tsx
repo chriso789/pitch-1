@@ -2,6 +2,7 @@ import React, { Suspense } from "react";
 import { Route, Routes } from "react-router-dom";
 import { HomeownerProtectedRoute } from "@/components/auth/HomeownerProtectedRoute";
 
+const __OrgHarness = React.lazy(() => import("@/pages/__OrgHarness"));
 const Pricing = React.lazy(() => import("@/pages/Pricing"));
 const Features = React.lazy(() => import("@/pages/Features"));
 const DemoRequest = React.lazy(() => import("@/pages/DemoRequest"));
@@ -39,6 +40,7 @@ export default function PublicRoutes() {
   return (
     <Suspense fallback={<PageLoader />}>
       <Routes>
+        <Route path="/__org-harness" element={<__OrgHarness />} />
         <Route path="/demo-request" element={<DemoRequest />} />
         <Route path="/book-demo/:token" element={<BookDemo />} />
         <Route path="/request-setup-link" element={<RequestSetupLink />} />
