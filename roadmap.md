@@ -11,7 +11,9 @@
 - [x] 2A Smart Docs integration of page organizer (Pages/Markup buttons on PDF company docs)
 - [x] 2B Markup tools (preview/dev only) — needs signed-in test and Acrobat desktop check
 - [ ] 2B Genuine editing of existing PDF text (not supported safely by current engines)
-- [x] Genuine existing-text editing (content-stream Tj/TJ splice, original font, glyph-proven, reopen-verified; 3 tests) — remaining: text split across operators, form XObjects, Type3, non-Identity CID, encrypted PDFs
+- [x] Genuine existing-text editing (content-stream Tj/TJ splice, original font, glyph-proven, reopen-verified; 3 tests)
+- [x] Move / font / size / colour editing of existing text (old operator removed, line advance preserved; 5 tests) and local unlocking of owner-protected PDFs (verified on official ACORD 25 sample)
+- [ ] Remaining text-edit gaps: text split across operators, form XObjects, Type3, non-Identity CID, password-protected PDFs
 - [ ] (old) Select existing PDF text and edit with its exact original font — audit internal engine/PDFCraft, verify exports independently, publish written gaps before any paid SDK approval; no cover-overlay substitute
 - [x] Expose text inspection and Fill Forms in Smart Docs/workspace/studio; unsupported fonts are disclosed without substitution
 - [x] Verify AcroForm fill/download/reopen with local embedded-font fixture and independent Poppler rendering (26 targeted tests pass)
