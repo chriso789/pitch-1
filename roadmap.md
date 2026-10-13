@@ -14,7 +14,8 @@
 - [ ] Select existing PDF text and edit with its exact original font — audit internal engine/PDFCraft, verify exports independently, publish written gaps before any paid SDK approval; no cover-overlay substitute
 - [x] Expose text inspection and Fill Forms in Smart Docs/workspace/studio; unsupported fonts are disclosed without substitution
 - [x] Verify AcroForm fill/download/reopen with local embedded-font fixture and independent Poppler rendering (26 targeted tests pass)
-- [ ] Complete signature capture and authenticated stored-version save/reopen — signing implementation and external-project session unavailable
+- [x] Fill & Sign tab (drawn/typed signature, initials, text, date, check; image marks, not certificate signing; 3 tests)
+- [ ] Authenticated stored-version save/reopen check — and authenticated stored-version save/reopen — signing implementation and external-project session unavailable
 - [ ] Audit insurance certificate — blocked if source file/authenticated access unavailable
 - [ ] 2C Drawing revision comparison
 - [ ] 2D OCR, conversions, protection, optimization
