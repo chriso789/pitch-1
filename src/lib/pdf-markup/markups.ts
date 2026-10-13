@@ -151,6 +151,11 @@ const SUBTYPE: Record<MarkupType, string> = { text: 'FreeText', callout: 'FreeTe
 const pdfDate = (iso: string) => { const d = new Date(iso); const p = (x: number) => String(x).padStart(2, '0'); return `D:${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}Z`; };
 const KEY = PDFName.of('PITCHMarkup');
 
+/** Annots lookup that tolerates broken references (common in exported insurance/ACORD PDFs). */
+function safeAnnots(p: { node: { Annots(): PDFArray | undefined; set(k: PDFName, v: any): void } }): PDFArray | undefined {
+  try { return p.node.Annots(); } catch { p.node.set(PDFName.of('Annots'), PDFArray.withContext ? undefined as any : undefined); return undefined; }
+}
+
 function isPitch(doc: PDFDocument, r: unknown): boolean {
   const d = r instanceof PDFRef ? doc.context.lookup(r) : r;
   return d instanceof PDFDict && (d.has(KEY) || d.has(PDFName.of('PITCHReply')));
@@ -163,7 +168,7 @@ export async function writeMarkups(bytes: Uint8Array, markups: Markup[], opts: W
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false });
   const pages = doc.getPages();
   for (const p of pages) {
-    const a = p.node.Annots(); if (!a) continue;
+    const a = safeAnnots(p as any); if (!a) { try { p.node.delete?.(PDFName.of('Annots')); } catch { /* ignore */ } continue; }
     const keep = a.asArray().filter((r) => !isPitch(doc, r));
     p.node.set(PDFName.of('Annots'), doc.context.obj(keep));
   }
@@ -239,7 +244,7 @@ export async function readMarkups(bytes: Uint8Array): Promise<ReadResult> {
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false });
   const markups: Markup[] = []; const other: ReadResult['otherAnnotations'] = [];
   doc.getPages().forEach((p, pi) => {
-    for (const r of p.node.Annots()?.asArray() ?? []) {
+    for (const r of safeAnnots(p as any)?.asArray() ?? []) {
       const d = doc.context.lookup(r); if (!(d instanceof PDFDict)) continue;
       const raw = d.lookup(KEY);
       if (raw instanceof PDFHexString || raw instanceof PDFString) {
