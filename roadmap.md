@@ -11,7 +11,8 @@
 - [x] 2A Smart Docs integration of page organizer (Pages/Markup buttons on PDF company docs)
 - [x] 2B Markup tools (preview/dev only) — needs signed-in test and Acrobat desktop check
 - [ ] 2B Genuine editing of existing PDF text (not supported safely by current engines)
-- [ ] Select existing PDF text and edit with its exact original font — audit internal engine/PDFCraft, verify exports independently, publish written gaps before any paid SDK approval; no cover-overlay substitute
+- [x] Genuine existing-text editing (content-stream Tj/TJ splice, original font, glyph-proven, reopen-verified; 3 tests) — remaining: text split across operators, form XObjects, Type3, non-Identity CID, encrypted PDFs
+- [ ] (old) Select existing PDF text and edit with its exact original font — audit internal engine/PDFCraft, verify exports independently, publish written gaps before any paid SDK approval; no cover-overlay substitute
 - [x] Expose text inspection and Fill Forms in Smart Docs/workspace/studio; unsupported fonts are disclosed without substitution
 - [x] Verify AcroForm fill/download/reopen with local embedded-font fixture and independent Poppler rendering (26 targeted tests pass)
 - [x] Fill & Sign tab (drawn/typed signature, initials, text, date, check; image marks, not certificate signing; 3 tests)

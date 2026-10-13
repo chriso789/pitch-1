@@ -80,7 +80,7 @@ export default function DocumentPdfToolPage({ tool }: { tool: "pages" | "markup"
       {tool === "pages" && projectId && <p className="text-xs text-muted-foreground">Measurements stay valid when sheets are only reordered, duplicated or rotated, and are carried to the new version as drafts for re-approval. Resized sheets, and crops that cut through measured lines, are flagged instead of transferred.</p>}
       {failed ? <p className="text-destructive">{failed}</p> : bytes && doc ? (tool === "pages"
         ? <PageOrganizer initial={{ id: doc.id, name: doc.filename, bytes }} onSaveVersion={savePages} />
-        : inspecting ? <PdfTextInspector bytes={bytes} /> : comparing && tenantId ? <RevisionCompare tenantId={tenantId} doc={doc} bytes={bytes} /> : signing ? <PdfFillSign bytes={bytes} name={doc.filename} onSaveVersion={saveMarkup} /> : filling ? <PdfFormEditor bytes={bytes} name={doc.filename} onSaveVersion={saveMarkup} /> : <MarkupEditor bytes={bytes} name={doc.filename} onSaveVersion={saveMarkup} />) : <p className="text-muted-foreground">Loading…</p>}
+        : inspecting ? <PdfTextInspector bytes={bytes} onSaveVersion={saveMarkup} /> : comparing && tenantId ? <RevisionCompare tenantId={tenantId} doc={doc} bytes={bytes} /> : signing ? <PdfFillSign bytes={bytes} name={doc.filename} onSaveVersion={saveMarkup} /> : filling ? <PdfFormEditor bytes={bytes} name={doc.filename} onSaveVersion={saveMarkup} /> : <MarkupEditor bytes={bytes} name={doc.filename} onSaveVersion={saveMarkup} />) : <p className="text-muted-foreground">Loading…</p>}
     </div>
   );
 }
