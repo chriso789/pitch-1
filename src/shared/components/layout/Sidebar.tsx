@@ -41,7 +41,6 @@ import {
   Truck,
   Wallet,
   Gift,
-  ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -320,13 +319,6 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       path: "/marketing",
       icon: BarChart,
       description: "Marketing costs & inbound attribution"
-    },
-    {
-      name: "Inspection Requests",
-      href: "inspection-requests",
-      path: "/inspection-requests",
-      icon: ShieldCheck,
-      description: "4-Point & Wind Mit website leads"
     }
   ].filter(item => !item.featureKey || hasFeature(item.featureKey));
 
