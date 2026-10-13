@@ -21,6 +21,7 @@ import { CommitmentsTab } from "@/components/commercial/CommitmentsTab";
 import { ProcurementTab } from "@/components/commercial/ProcurementTab";
 import { ActualCostsTab } from "@/components/commercial/ActualCostsTab";
 import { defaultCostType } from "@/lib/commercial/budget";
+import { isPlanMeasureEnabled } from "@/lib/plan-measure/featureGate";
 
 const db = supabase as any;
 const STATUS_STYLE: Record<string, string> = {
@@ -393,6 +394,7 @@ function Bids({ projectId, tenantId }: any) {
 }
 
 function Files({ projectId, onImport }: any) {
+  const measureOn = isPlanMeasureEnabled();
   const [docs, setDocs] = useState<any[]>([]);
   useEffect(() => { db.from("documents").select("id, filename, file_path, document_type, created_at").contains("metadata", { commercial_project_id: projectId }).order("created_at", { ascending: false }).then(({ data }: any) => setDocs(data || [])); }, [projectId]);
   const open = async (d: any) => { const { data } = await supabase.storage.from("documents").createSignedUrl(d.file_path, 600); if (data) window.open(data.signedUrl, "_blank"); };
@@ -402,7 +404,8 @@ function Files({ projectId, onImport }: any) {
       <div className="flex gap-2"><Button variant="outline" onClick={onImport}><Upload className="h-4 w-4 mr-1" />Upload project folder</Button><Button variant="outline" asChild><Link to="/blueprints">Run blueprint takeoff</Link></Button></div>
       {Object.entries(groups).map(([k, list]: any) => (
         <Card key={k}><CardHeader className="py-3"><CardTitle className="text-sm capitalize">{k} ({list.length})</CardTitle></CardHeader><CardContent className="space-y-1">
-          {list.map((d: any) => <button key={d.id} onClick={() => open(d)} className="block text-sm text-primary hover:underline text-left">{d.filename}</button>)}
+          {list.map((d: any) => <div key={d.id} className="flex items-center gap-2"><button onClick={() => open(d)} className="text-sm text-primary hover:underline text-left">{d.filename}</button>
+            {measureOn && /\.pdf$/i.test(d.file_path) && <Link to={`/commercial/${projectId}/plans/${d.id}/measure`} className="text-xs border rounded px-2 py-0.5 hover:bg-muted">Measure</Link>}</div>)}
         </CardContent></Card>))}
       {!docs.length && <p className="text-muted-foreground text-sm">No files yet.</p>}
     </div>
