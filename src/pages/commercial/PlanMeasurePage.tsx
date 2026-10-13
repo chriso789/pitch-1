@@ -331,6 +331,14 @@ export default function PlanMeasurePage() {
           <Button size="sm" onClick={saveMeasuredCopy} disabled={saving || !ms.length}>{saving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}Save measured copy</Button>
         </div>
       </header>
+      {Array.isArray(doc?.metadata?.measurement_reconciliation) && doc.metadata.measurement_reconciliation.some((r: any) => r.status !== "none") && (
+        <div className="border-b bg-muted/50 px-3 py-2 text-xs space-y-0.5" role="status">
+          <div className="font-medium">This is an edited version of another drawing. Measurement review:</div>
+          {doc.metadata.measurement_reconciliation.filter((r: any) => r.status !== "none").map((r: any) => (
+            <div key={r.page} className={r.status === "invalidated" ? "text-destructive" : ""}>
+              Sheet {r.page + 1} (was sheet {r.sourcePage + 1}): {r.status === "carried" ? `${r.measurements} measurement(s) and ${r.scales} scale(s) carried over as drafts. Review and re-approve before sending to takeoff.` : `not carried over. ${r.reason}`}
+            </div>))}
+        </div>)}
       <div className="flex flex-1 min-h-0">
         <aside className="w-40 border-r overflow-y-auto p-2 space-y-2">
           {pdf && Array.from({ length: pdf.numPages }, (_, i) => <Thumb key={i} pdf={pdf} index={i} active={i === pageIndex} count={ms.filter((m) => m.page_index === i).length} scaled={scales.some((s) => s.page_index === i && s.verified)} onClick={() => { setPageIndex(i); setDraft({ pts: [], snapped: [] }); }} />)}
