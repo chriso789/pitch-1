@@ -7,13 +7,17 @@ import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
-import { inspectPageFonts, TEXT_EDIT_GAP, type FontCapability } from '@/lib/pdf-engine/textCapabilities';
+import { PDFDocument } from 'pdf-lib';
+import { readPageText, checkReplacement, replaceSegmentText, type PageText } from '@/lib/pdf-engine/contentTextEdit';
+import { toast } from 'sonner';
 
-export function PdfTextInspector({ bytes }: { bytes: Uint8Array }) {
+export function PdfTextInspector({ bytes, onSaveVersion }: { bytes: Uint8Array; onSaveVersion?: (b: Uint8Array, summary: string) => Promise<void> }) {
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null);
   const [pageIndex, setPageIndex] = useState(0);
   const [runs, setRuns] = useState<{ text: string; font: string; size: number; matrix: number[]; width: number; height: number }[]>([]);
-  const [fonts, setFonts] = useState<FontCapability[]>([]);
+  const [pt, setPt] = useState<PageText | null>(null);
+  const [draft, setDraft] = useState('');
+  const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -33,7 +37,7 @@ export function PdfTextInspector({ bytes }: { bytes: Uint8Array }) {
     if (!doc) return;
     let cancelled = false;
     let render: ReturnType<Awaited<ReturnType<PDFDocumentProxy['getPage']>>['render']> | undefined;
-    setSelected(null); setRuns([]); setFonts([]); setError(''); setLoading(true);
+    setSelected(null); setRuns([]); setPt(null); setError(''); setLoading(true);
     (async () => {
       const page = await doc.getPage(pageIndex + 1);
       const base = page.getViewport({ scale: 1 });
@@ -55,15 +59,32 @@ export function PdfTextInspector({ bytes }: { bytes: Uint8Array }) {
         return { text: item.str, font: item.fontName, size: Math.hypot(item.transform[2], item.transform[3]), width: item.width * scale, height,
           matrix: [Math.cos(angle), Math.sin(angle), -Math.sin(angle), Math.cos(angle), tx[4] + height * ascent * Math.sin(angle), tx[5] - height * ascent * Math.cos(angle)] };
       }));
-      try { const found = await inspectPageFonts(bytes, pageIndex); if (!cancelled) setFonts(found); }
-      catch { if (!cancelled) setError('Font resources could not be verified. Original-font editing is blocked.'); }
+      try { const d = await PDFDocument.load(bytes.slice(), { updateMetadata: false, ignoreEncryption: true }); if (!cancelled) setPt(readPageText(d, pageIndex)); }
+      catch (e) { if (!cancelled) setError(`The page's content could not be read for editing: ${(e as Error).message}`); }
     })().catch(e => { if (!cancelled) setError(e.message); }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; render?.cancel(); };
   }, [doc, pageIndex, bytes]);
 
   const run = selected === null ? null : runs[selected];
+  // Map the selected visual text area to the real content-stream operator (nth identical occurrence).
+  const seg = (() => {
+    if (!run || !pt) return null;
+    const norm = (x: string) => x.replace(/\s+/g, ' ').trim();
+    const nth = runs.slice(0, selected!).filter(r => norm(r.text) === norm(run.text)).length;
+    return pt.segments.filter(s => norm(s.text) === norm(run.text))[nth] ?? null;
+  })();
+  const font = seg?.fontKey ? pt?.fonts[seg.fontKey] : undefined;
+  const check = seg && pt && draft !== seg.text ? checkReplacement(pt, seg, draft) : null;
+  useEffect(() => { setDraft(seg?.text ?? ''); }, [seg?.id, pt]); // eslint-disable-line react-hooks/exhaustive-deps
+  const reason = !run ? '' : pt?.blocked ? pt.blocked : !seg ? 'This text area does not map to exactly one text operator on the page (it may be split across operators, drawn inside a reusable form object, or be outlined/scanned).' : !font ? `Font resource /${seg.fontKey} is missing from the page resources.` : font.reason ?? '';
+  const apply = async () => {
+    if (!seg || !onSaveVersion) return;
+    setBusy(true);
+    try { const out = await replaceSegmentText(bytes, pageIndex, seg.id, draft); await onSaveVersion(out, `Edited existing text on page ${pageIndex + 1} in original font ${font?.baseFont}`); }
+    catch (e) { toast.error((e as Error).message); } finally { setBusy(false); }
+  };
   return <section className="space-y-3">
-    <Alert><AlertTriangle className="h-4 w-4" /><AlertDescription>{TEXT_EDIT_GAP}</AlertDescription></Alert>
+    <Alert><AlertTriangle className="h-4 w-4" /><AlertDescription>Select text to see its real font. Text can be changed only when its original font is verified to contain every new character; the actual text in the PDF is replaced (no cover-up box, no substitute font) and saved as a new version.</AlertDescription></Alert>
     <div className="flex items-center gap-2">
       <Button size="icon" variant="outline" aria-label="Previous text page" disabled={!doc || pageIndex === 0 || loading} onClick={() => setPageIndex(i => i - 1)}><ChevronLeft className="h-4 w-4" /></Button>
       <span className="text-sm">Page {pageIndex + 1} / {doc?.numPages ?? '…'}</span>
@@ -71,8 +92,9 @@ export function PdfTextInspector({ bytes }: { bytes: Uint8Array }) {
       <Badge variant="secondary">{runs.length} text areas</Badge>
     </div>
     {error && <p role="alert" className="text-destructive text-sm">{error}</p>}
+    {pt?.blocked && <p role="alert" className="text-destructive text-sm">{pt.blocked}</p>}
     {!loading && !runs.length && !error && <p role="status" className="text-sm text-muted-foreground">No selectable text on this page. It may be scanned or outlined; OCR cannot recover its exact original font.</p>}
-    <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
+    <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_300px]">
       <div ref={wrapper} className="overflow-auto border rounded-md p-3 max-h-[70vh]">
         {loading && <p role="status">Reading page…</p>}
         <div className="relative" style={{ width: dimensions.width, height: dimensions.height }}>
@@ -84,11 +106,27 @@ export function PdfTextInspector({ bytes }: { bytes: Uint8Array }) {
           </svg>}
         </div>
       </div>
-      <aside className="space-y-3 min-w-0">
-        {run && <><label className="text-sm font-medium" htmlFor="original-text">Original text</label><Textarea id="original-text" readOnly value={run.text} aria-label="Selected original text" />
-          <p className="text-xs text-muted-foreground">Font resource: {run.font} · {run.size.toFixed(2)} pt</p><Badge variant="outline">Original text: read-only</Badge></>}
-        <h3 className="font-medium text-sm">Page fonts</h3>
-        {fonts.map(f => <div key={f.resource} className="border-b pb-2 text-xs break-words"><p>{f.name}</p><p className="text-muted-foreground">/{f.resource} · {f.subset ? 'Subset — original font file may be required' : f.embedded ? 'Embedded font' : 'Font program not embedded'}{f.complexEncoding ? ' · Complex encoding — unsupported' : ''}</p></div>)}
+      <aside className="space-y-3 min-w-0 text-sm">
+        {!run && <p className="text-muted-foreground">Click any text on the page.</p>}
+        {run && <>
+          <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-xs break-words">
+            <dt className="text-muted-foreground">Viewer alias</dt><dd>{run.font} (internal, not the font name)</dd>
+            <dt className="text-muted-foreground">Size</dt><dd>{run.size.toFixed(2)} pt</dd>
+            {seg && <><dt className="text-muted-foreground">PDF resource</dt><dd>/{seg.fontKey} · operator {seg.op}{seg.kerned ? ' (kerned)' : ''}</dd></>}
+            {font && <><dt className="text-muted-foreground">Font</dt><dd>{font.baseFont.replace(/^[A-Z]{6}\+/, '')}</dd>
+              <dt className="text-muted-foreground">Type</dt><dd>{font.subtype} · {font.encoding}</dd>
+              <dt className="text-muted-foreground">Program</dt><dd>{font.embedded ? 'Embedded' : font.standard14 ? 'Standard PDF font' : 'Not embedded'}{font.subset ? ' · subset' : ''}</dd>
+              <dt className="text-muted-foreground">Glyphs available</dt><dd>{font.standard14 ? 'Full standard set' : `${font.usedCodes.size} proven in this page`}</dd></>}
+          </dl>
+          {reason ? <><Badge variant="outline">Read-only</Badge><p className="text-xs text-destructive">{reason}</p><Textarea readOnly value={run.text} aria-label="Selected original text" /></>
+          : <>
+            <Badge>Verified editable — original font</Badge>
+            <Textarea aria-label="Replacement text" value={draft} onChange={e => setDraft(e.target.value)} disabled={busy} />
+            {check && !check.ok && <p className="text-xs text-destructive">{check.reason}</p>}
+            {seg?.kerned && <p className="text-xs text-muted-foreground">Original letter-spacing adjustments in this text will be removed; the font itself is unchanged.</p>}
+            {onSaveVersion && <Button size="sm" disabled={busy || !check?.ok} onClick={apply}>{busy ? 'Saving…' : 'Replace text & save new version'}</Button>}
+          </>}
+        </>}
       </aside>
     </div>
   </section>;

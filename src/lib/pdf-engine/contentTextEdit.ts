@@ -183,7 +183,7 @@ export function checkReplacement(pt: PageText, seg: TextSegment, text: string): 
 
 /** Replace one segment's text in the actual content stream; returns verified new PDF bytes. */
 export async function replaceSegmentText(bytes: Uint8Array, pageIndex: number, segmentId: number, text: string): Promise<Uint8Array> {
-  const doc = await PDFDocument.load(bytes.slice(), { updateMetadata: false });
+  const doc = await PDFDocument.load(bytes.slice(), { updateMetadata: false, ignoreEncryption: true });
   const pt = readPageText(doc, pageIndex);
   if (pt.blocked) throw new Error(pt.blocked);
   const seg = pt.segments[segmentId]; if (!seg) throw new Error('Text object not found');
