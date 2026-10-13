@@ -26,12 +26,12 @@ describe('genuine content-stream text editing', () => {
     const out = await replaceSegmentText(src, 0, seg.id, 'Policy XYZ');
     expect(src).toEqual(copy);
     const t = text(out);
-    expect(t).toContain('Policy XYZ'); expect(t).not.toContain('Policy ABC'); expect(t).toContain('Keep me');
+    expect(t).toContain('Policy XYZ'); expect(t).not.toContain('Policy ABC'); expect(readPageText(await PDFDocument.load(out), 0).segments.some(s => s.text === 'Keep me')).toBe(true);
     expect((await PDFDocument.load(out)).getForm().getFields()).toHaveLength(1);
   });
   it('embedded subset font: allows only glyphs proven present, edits with original font', async () => {
     const d = await PDFDocument.create(); d.registerFontkit(fontkit);
-    const f = await d.embedFont(readFileSync(ttfPath()), { subset: true });
+    const f = await d.embedFont(Uint8Array.from(readFileSync(ttfPath())).buffer, { subset: true });
     d.addPage([400, 300]).drawText('Hello World', { x: 40, y: 200, size: 14, font: f });
     const src = await d.save();
     const pt = readPageText(await PDFDocument.load(src), 0);
