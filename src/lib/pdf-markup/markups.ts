@@ -152,8 +152,8 @@ const pdfDate = (iso: string) => { const d = new Date(iso); const p = (x: number
 const KEY = PDFName.of('PITCHMarkup');
 
 /** Annots lookup that tolerates broken references (common in exported insurance/ACORD PDFs). */
-function safeAnnots(p: { node: { Annots(): PDFArray | undefined; set(k: PDFName, v: any): void } }): PDFArray | undefined {
-  try { return p.node.Annots(); } catch { p.node.set(PDFName.of('Annots'), PDFArray.withContext ? undefined as any : undefined); return undefined; }
+function safeAnnots(p: { node: { Annots(): PDFArray | undefined } }): PDFArray | undefined {
+  try { return p.node.Annots(); } catch { return undefined; }
 }
 
 function isPitch(doc: PDFDocument, r: unknown): boolean {
