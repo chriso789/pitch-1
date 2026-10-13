@@ -18,7 +18,7 @@ import { PDFDocument } from "pdf-lib";
 
 type Thumbs = Record<string, string>; // `${sourceId}:${index}` -> dataURL
 
-export interface SaveResult { bytes: Uint8Array; pageMap: ReturnType<typeof pageMap>; summary: string }
+export interface SaveResult { bytes: Uint8Array; pageMap: ReturnType<typeof pageMap>; summary: string; cropBoxes: Record<number, [number, number, number, number] | null> }
 
 interface Props {
   initial?: SourcePdf | null;
@@ -199,7 +199,10 @@ export function PageOrganizer({ initial, onSaveVersion, saveLabel = "Save new ve
     if (!onSaveVersion) return;
     if (warnings.some((w) => /signature/.test(w)) && !window.confirm("Saving will invalidate the digital signatures in this document. Continue?")) return;
     const bytes = await build();
-    await onSaveVersion({ bytes, pageMap: pageMap(plan), summary: `${plan.length} pages${stamps() ? ", stamped" : ""}` });
+    const chk = await PDFDocument.load(bytes, { ignoreEncryption: true });
+    const cropBoxes: SaveResult['cropBoxes'] = {};
+    plan.forEach((p, i) => { if (p.crop) { const b = chk.getPage(i).getCropBox(); cropBoxes[i] = [b.x, b.y, b.x + b.width, b.y + b.height]; } });
+    await onSaveVersion({ bytes, pageMap: pageMap(plan), cropBoxes, summary: `${plan.length} pages${stamps() ? ", stamped" : ""}` });
   });
   const loadBookmarks = async () => { if (!sources[0]) return; const d = await PDFDocument.load(sources[0].bytes, { ignoreEncryption: true }); setMarks(readBookmarks(d).map((b) => ({ ...b, page: Math.max(1, plan.findIndex((p) => p.sourceId === sources[0].id && p.sourceIndex === b.page - 1) + 1) }))); };
 
