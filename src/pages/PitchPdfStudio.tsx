@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { PDFDocument, degrees } from "pdf-lib";
 import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
+import { PageOrganizer } from "@/components/pdf-pages/PageOrganizer";
+import { isPageToolsEnabled } from "@/lib/pdf-pages/featureGate";
 
 type Action = "merge" | "split" | "rotate" | "reverse" | "number" | "watermark" | "metadata";
 const download = (bytes: Uint8Array, name: string) => {
@@ -12,6 +14,10 @@ const download = (bytes: Uint8Array, name: string) => {
 };
 const load = async (file: File) => PDFDocument.load(await file.arrayBuffer(), { updateMetadata: false });
 export default function PitchPdfStudio() {
+  if (isPageToolsEnabled()) return <GlobalLayout><main className="p-4 space-y-4"><header><h1 className="text-2xl font-bold">PITCH PDF Studio · Page Organizer</h1><p className="text-sm text-muted-foreground">Merge, split, reorder, rotate, crop, resize, number, stamp and watermark PDFs in your browser. Originals stay unchanged.</p></header><PageOrganizer /></main></GlobalLayout>;
+  return <LegacyPdfStudio />;
+}
+function LegacyPdfStudio() {
   const [files, setFiles] = useState<File[]>([]);
   const [action, setAction] = useState<Action>("merge");
   const [busy, setBusy] = useState(false);

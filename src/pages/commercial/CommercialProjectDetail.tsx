@@ -22,6 +22,7 @@ import { ProcurementTab } from "@/components/commercial/ProcurementTab";
 import { ActualCostsTab } from "@/components/commercial/ActualCostsTab";
 import { defaultCostType } from "@/lib/commercial/budget";
 import { isPlanMeasureEnabled } from "@/lib/plan-measure/featureGate";
+import { isPageToolsEnabled } from "@/lib/pdf-pages/featureGate";
 
 const db = supabase as any;
 const STATUS_STYLE: Record<string, string> = {
@@ -405,7 +406,8 @@ function Files({ projectId, onImport }: any) {
       {Object.entries(groups).map(([k, list]: any) => (
         <Card key={k}><CardHeader className="py-3"><CardTitle className="text-sm capitalize">{k} ({list.length})</CardTitle></CardHeader><CardContent className="space-y-1">
           {list.map((d: any) => <div key={d.id} className="flex items-center gap-2"><button onClick={() => open(d)} className="text-sm text-primary hover:underline text-left">{d.filename}</button>
-            {measureOn && /\.pdf$/i.test(d.file_path) && <Link to={`/commercial/${projectId}/plans/${d.id}/measure`} className="text-xs border rounded px-2 py-0.5 hover:bg-muted">Measure</Link>}</div>)}
+            {measureOn && /\.pdf$/i.test(d.file_path) && <Link to={`/commercial/${projectId}/plans/${d.id}/measure`} className="text-xs border rounded px-2 py-0.5 hover:bg-muted">Measure</Link>}
+            {isPageToolsEnabled() && /\.pdf$/i.test(d.file_path) && <Link to={`/commercial/${projectId}/plans/${d.id}/pages`} className="text-xs border rounded px-2 py-0.5 hover:bg-muted">Pages</Link>}</div>)}
         </CardContent></Card>))}
       {!docs.length && <p className="text-muted-foreground text-sm">No files yet.</p>}
     </div>
