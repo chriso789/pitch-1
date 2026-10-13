@@ -1,4 +1,12 @@
 # Roadmap — PDF Studio
+## Marketing audit
+- [x] Move Inspection Requests below Marketing Audit in the lower navigation.
+- [x] Add tenant-isolated, immutable marketing cost ledger and channel reporting.
+- [x] Display existing CRM source/campaign/placement evidence; generic sources stay unattributed.
+- [x] Calculation tests and policy inspection; live provider synchronization explicitly not connected.
+- [ ] Automatic Facebook/Google/Yelp spend and inbound event sync — blocked on company-specific provider connections and verified event mappings; five previously configured placements not found in available history.
+- [ ] Authenticated save/readback and cross-company browser checks — external Supabase managed session unavailable.
+
 - [x] Phase 1 Plan Measurement (built; signed-in test with a real plan set pending user)
 - [ ] Phase 2 Page Tools
 - [ ] Phase 3 Markup Tools
