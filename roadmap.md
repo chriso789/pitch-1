@@ -14,3 +14,7 @@
 - [ ] 2C Drawing revision comparison
 - [ ] 2D OCR, conversions, protection, optimization
 - [ ] 2E Workflow automation across PITCH
+- [x] Smart Docs storage path fix (tenant-folder uploads; legacy files readable by owning company only)
+- [ ] Measurement carry-over integration tests (reorder/duplicate/rotate/crop)
+- [ ] 2C revision comparison (side-by-side, overlay, alignment, diff, report, RFI/CO/takeoff tasks)
+- [ ] Markup Unicode font embedding + rotated-annotation interop warnings
