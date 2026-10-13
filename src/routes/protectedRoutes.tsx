@@ -4,6 +4,7 @@ import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { FeatureProtectedRoute } from "@/components/auth/FeatureProtectedRoute";
 
 const PitchPdfStudio = React.lazy(() => import("@/pages/PitchPdfStudio"));
+const PlanPagesPage = React.lazy(() => import("@/pages/commercial/PlanPagesPage"));
 const Dashboard = React.lazy(() => import("@/pages/Dashboard"));
 const AbcValidateDebug = React.lazy(() => import("@/pages/AbcValidateDebug"));
 const SrsPricingHistoryDebug = React.lazy(() => import("@/pages/SrsPricingHistoryDebug"));
@@ -134,6 +135,7 @@ export default function ProtectedRoutes() {
         <Route path="/production" element={<ProtectedRoute><Production /></ProtectedRoute>} />
         <Route path="/commercial" element={<ProtectedRoute><CommercialProjects /></ProtectedRoute>} />
         <Route path="/commercial/:id" element={<ProtectedRoute><CommercialProjectDetail /></ProtectedRoute>} />
+        <Route path="/commercial/:id/plans/:documentId/pages" element={<ProtectedRoute><PlanPagesPage /></ProtectedRoute>} />
         <Route path="/commercial/:id/plans/:documentId/measure" element={<ProtectedRoute><PlanMeasurePage /></ProtectedRoute>} />
         <Route path="/production/:projectId" element={<ProtectedRoute><ProductionDetail /></ProtectedRoute>} />
         <Route path="/client-list" element={<ProtectedRoute><ClientList /></ProtectedRoute>} />

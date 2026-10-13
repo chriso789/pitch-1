@@ -103,7 +103,6 @@ export function PageOrganizer({ initial, onSaveVersion, saveLabel = "Save new ve
       if (!append) {
         setHist({ stack: [pages], i: 0 });
         setMeta({ title: ins.metadata.title ?? "", author: ins.metadata.author ?? "", subject: ins.metadata.subject ?? "", keywords: (ins.metadata.keywords ?? []).join(", ") });
-        try { setMarks(ins.bookmarkCount ? null : null); } catch { /* noop */ }
       }
       renderThumbs(src, 220).then((t) => setThumbs((o) => ({ ...o, ...t }))).catch(() => toast.error("Could not draw page previews"));
       return pages;
