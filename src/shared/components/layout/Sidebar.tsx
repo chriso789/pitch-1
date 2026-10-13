@@ -308,6 +308,13 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       featureKey: "permits"
     },
     {
+      name: "Referrals",
+      href: "referrals",
+      path: "/referrals",
+      icon: Gift,
+      description: "Referral links, payouts & credits"
+    },
+    {
       name: "Marketing Audit",
       href: "marketing",
       path: "/marketing",
