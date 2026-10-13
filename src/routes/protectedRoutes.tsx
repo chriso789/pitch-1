@@ -3,6 +3,7 @@ import { Route, Routes } from "react-router-dom";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { FeatureProtectedRoute } from "@/components/auth/FeatureProtectedRoute";
 
+const PitchPdfStudio = React.lazy(() => import("@/pages/PitchPdfStudio"));
 const Dashboard = React.lazy(() => import("@/pages/Dashboard"));
 const AbcValidateDebug = React.lazy(() => import("@/pages/AbcValidateDebug"));
 const SrsPricingHistoryDebug = React.lazy(() => import("@/pages/SrsPricingHistoryDebug"));
@@ -229,6 +230,7 @@ export default function ProtectedRoutes() {
         <Route path="/my-money" element={<ProtectedRoute><MyMoney /></ProtectedRoute>} />
         <Route path="/draw-report" element={<ProtectedRoute><DrawReport /></ProtectedRoute>} />
         <Route path="/ai-agent-dashboard" element={<ProtectedRoute><AIAgentDashboardPage /></ProtectedRoute>} />
+        <Route path="/documents/pdf-studio" element={<ProtectedRoute><PitchPdfStudio /></ProtectedRoute>} />
         <Route path="/documents/pdf-workspace" element={<ProtectedRoute><PdfWorkspaceList /></ProtectedRoute>} />
         <Route path="/documents/pdf-workspace/:documentId" element={<ProtectedRoute><PdfWorkspaceEditor /></ProtectedRoute>} />
         <Route path="/supplements" element={<ProtectedRoute><SupplementEngine /></ProtectedRoute>} />
