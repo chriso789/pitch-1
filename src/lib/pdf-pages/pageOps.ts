@@ -127,10 +127,13 @@ export async function compilePlan(plan: PlanPage[], sources: SourcePdf[], opts: 
   const otherDocs = new Map<string, PDFDocument>();
   for (const s of sources.slice(1)) otherDocs.set(s.id, await load(s.bytes));
 
+  // Pre-copy duplicates while indices are still valid.
+  const seen = new Set<number>(); const dupIdx: number[] = [];
+  for (const p of plan) if (p.sourceId === base.id) { if (seen.has(p.sourceIndex)) dupIdx.push(p.sourceIndex); else seen.add(p.sourceIndex); }
+  const dupCopies = dupIdx.length ? await doc.copyPages(doc, dupIdx) : [];
   // Remove all pages from the tree (objects stay alive), then insert in plan order.
   for (let i = doc.getPageCount() - 1; i >= 0; i--) doc.removePage(i);
   const usedBase = new Set<number>();
-  const firstPos = new Map<number, number>();
   for (const p of plan) {
     let page: PDFPage;
     if (!p.sourceId) {
@@ -139,12 +142,10 @@ export async function compilePlan(plan: PlanPage[], sources: SourcePdf[], opts: 
       const orig = originals[p.sourceIndex];
       if (!orig) throw new Error(`Page ${p.sourceIndex + 1} does not exist in ${base.name}`);
       if (usedBase.has(p.sourceIndex)) {
-        const [copy] = await doc.copyPages(doc, [p.sourceIndex]); // deep copy for duplicates
-        page = doc.addPage(copy);
+        page = doc.addPage(dupCopies.shift()!); // deep copy for duplicates
       } else {
         // Reinsert the original page object -> keeps refs from bookmarks/forms valid.
         doc.addPage(orig); page = orig; usedBase.add(p.sourceIndex);
-        firstPos.set(p.sourceIndex, doc.getPageCount() - 1);
       }
     } else {
       const src = otherDocs.get(p.sourceId);
