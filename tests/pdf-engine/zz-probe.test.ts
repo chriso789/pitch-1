@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { readPageText } from '@/lib/pdf-engine/contentTextEdit';
 it('probe', async () => {
   for (const f of ['a1','a2','a3','a4','a5','a6']) {
-    const b = readFileSync(`/tmp/acord/${f}.pdf`);
+    const b = Uint8Array.from(readFileSync(`/tmp/acord/${f}.pdf`));
     try {
       const d = await PDFDocument.load(b, { updateMetadata: false, ignoreEncryption: true });
       const pt = readPageText(d, 0);
