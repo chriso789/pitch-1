@@ -1,15 +1,13 @@
 import { it } from 'vitest';
 import { PDFDocument } from 'pdf-lib';
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { readPageText } from '@/lib/pdf-engine/contentTextEdit';
+import { openForEditing } from '@/lib/pdf-engine/decrypt';
 it('probe', async () => {
-  for (const f of ['a1','a2','a3','a4','a5','a6']) {
-    const b = Uint8Array.from(readFileSync(`/tmp/acord/${f}.pdf`));
-    try {
-      const d = await PDFDocument.load(b, { updateMetadata: false, ignoreEncryption: true });
-      const pt = readPageText(d, 0);
-      const fonts = Object.values(pt.fonts).map(x => `${x.key}:${x.baseFont}:${x.editable ? 'OK' : x.reason}`);
-      console.log(f, 'enc', d.isEncrypted, 'segs', pt.segments.length, pt.blocked ?? '', '\n  ', fonts.join('\n   '), '\n  sample:', pt.segments.slice(0,5).map(s=>s.text).join(' | '));
-    } catch (e) { console.log(f, 'ERR', (e as Error).stack?.split('\n').slice(0,8).join('\n')); }
-  }
+  const b = Uint8Array.from(readFileSync(`/tmp/acord/a1.pdf`));
+  const r = await openForEditing(b, { wasmPath: resolve('node_modules/@neslinesli93/qpdf-wasm/dist/qpdf.wasm') });
+  const d = await PDFDocument.load(r.bytes);
+  const pt = readPageText(d, 0);
+  console.log(r.decrypted, pt.segments.length, Object.values(pt.fonts).map(f=>f.baseFont+':'+(f.reason??'OK')), pt.segments.slice(0,4).map(s=>s.text));
 }, 60000);
