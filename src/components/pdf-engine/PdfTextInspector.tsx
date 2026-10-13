@@ -159,7 +159,7 @@ export function PdfTextInspector({ bytes, onSaveVersion }: { bytes: Uint8Array; 
         x: run.raw[4] + (restyled ? dx : 0), y: run.raw[5] + (restyled ? dy : 0),
         dir: [ma / len, mb / len], size: restyled ? size : run.size, text: draft,
       });
-      if (!v.ok) throw new Error(`Verification failed: ${v.reason}. Nothing was saved.`);
+      if ('reason' in v) throw new Error(`Verification failed: ${v.reason}. Nothing was saved.`);
       const summary = restyled
         ? `Edited text on page ${pageIndex + 1}: ${fontLabel(fontId)} ${size}pt${dx || dy ? `, moved ${dx}, ${dy} pt` : ''}${work.decrypted ? ' (unlocked from owner-protected original)' : ''}`
         : `Edited existing text on page ${pageIndex + 1} in original font ${font?.baseFont}${work.decrypted ? ' (unlocked from owner-protected original)' : ''}`;
