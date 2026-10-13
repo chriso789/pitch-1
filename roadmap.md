@@ -1,4 +1,10 @@
 # Roadmap — PDF Studio
+## Marketing audit
+- [ ] Move Inspection Requests below Marketing Audit in the lower navigation.
+- [ ] Add tenant-isolated marketing spend records and channel reporting.
+- [ ] Track inbound CRM leads by evidenced source and campaign; expose unknown attribution.
+- [ ] Verify calculations and access rules; disclose live provider synchronization limits.
+
 - [x] Phase 1 Plan Measurement (built; signed-in test with a real plan set pending user)
 - [ ] Phase 2 Page Tools
 - [ ] Phase 3 Markup Tools
