@@ -34,6 +34,39 @@ const PdfWorkspaceEditor = () => {
   const navigate = useNavigate();
   const tenantId = useEffectiveTenantId();
   const { user } = useAuth();
+
+  /** Opens the shared Page Organizer / Markup editor. Workspace files that aren't yet linked to a
+   * `documents` row get a tenant-scoped copy (original untouched) so tools can save versions. */
+  const openPdfTool = async (tool: 'pages' | 'markup') => {
+    const ws: any = wsDoc;
+    if (!ws || !tenantId) return;
+    try {
+      let docId: string | null = ws.document_id ?? null;
+      if (!docId) {
+        const { supabase } = await import("@/integrations/supabase/client");
+        const srcBucket = ws.current_bucket || ws.original_bucket;
+        const srcPath = ws.current_path || ws.original_path;
+        const { data: blob, error: dErr } = await supabase.storage.from(srcBucket).download(srcPath);
+        if (dErr || !blob) throw dErr || new Error('Could not load the PDF');
+        const name = (ws.original_filename || ws.title || 'document.pdf').replace(/[^\w.\-]+/g, '_');
+        const path = `${tenantId}/pdf-workspace/${ws.id}/${Date.now()}-${name}`;
+        const { error: upErr } = await supabase.storage.from('documents').upload(path, blob, { contentType: 'application/pdf' });
+        if (upErr) throw upErr;
+        const { data: row, error: insErr } = await (supabase as any).from('documents').insert({
+          tenant_id: tenantId, filename: ws.original_filename || ws.title, file_path: path, file_size: blob.size,
+          mime_type: 'application/pdf', document_type: 'pdf_workspace', uploaded_by: user?.id,
+          pipeline_entry_id: ws.pipeline_entry_id ?? null, contact_id: ws.contact_id ?? null,
+          metadata: { pdf_workspace_document_id: ws.id },
+        }).select('id').single();
+        if (insErr) throw insErr;
+        docId = row.id;
+        await (supabase as any).from('pdf_workspace_documents').update({ document_id: docId }).eq('id', ws.id).eq('tenant_id', tenantId);
+      }
+      navigate(`/documents/${docId}/${tool}`);
+    } catch (e: any) {
+      toast({ title: 'Could not open tool', description: e?.message ?? String(e), variant: 'destructive' });
+    }
+  };
   const { toast } = useToast();
   const { document: wsDoc, isLoading, pdfUrl, isPdfLoading } = usePdfWorkspaceDocument(documentId);
   const { versions } = usePdfWorkspaceVersions(documentId);
@@ -278,18 +311,12 @@ const PdfWorkspaceEditor = () => {
             <Layers className="h-3 w-3 mr-1" />Extracting objects...
           </Badge>
         )}
-        {(wsDoc as any).document_id ? (
-          <>
-            <Button size="sm" variant="outline" onClick={() => navigate(`/documents/${(wsDoc as any).document_id}/pages`)}>
-              <Layers className="h-4 w-4 mr-1" />Organize Pages
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => navigate(`/documents/${(wsDoc as any).document_id}/markup`)}>
-              Markup &amp; Annotate
-            </Button>
-          </>
-        ) : (
-          <Badge variant="outline" title="This workspace file is not linked to a saved document, so page and markup tools can't save versions yet.">Pages/Markup unavailable</Badge>
-        )}
+        <Button size="sm" variant="outline" onClick={() => openPdfTool('pages')}>
+          <Layers className="h-4 w-4 mr-1" />Organize Pages
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => openPdfTool('markup')}>
+          Markup &amp; Annotate
+        </Button>
         <Button size="sm" onClick={() => setShowFinalize(true)} disabled={wsDoc.status === 'finalized'}>
           <ShieldCheck className="h-4 w-4 mr-1" />Finalize
         </Button>
