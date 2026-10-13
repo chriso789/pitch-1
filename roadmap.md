@@ -22,6 +22,9 @@
 - [ ] 2E Workflow automation across PITCH
 - [x] Smart Docs storage path fix (tenant-folder uploads; legacy files readable by owning company only)
 - [ ] Measurement carry-over integration tests (reorder/duplicate/rotate/crop)
-- [ ] 2C revision comparison (side-by-side, overlay, alignment, diff, report, RFI/CO/takeoff tasks)
+- [x] 2C revision comparison: side-by-side (synced scroll), overlay w/ transparency, size/rotation normalization, manual nudge, anti-alias-filtered diff, region report (4 tests; prod opt-in pitch.compare=1)
+- [ ] 2C remaining: saved comparison records + create RFI/CO/takeoff tasks from regions; annotation/measurement-record diff
+- [ ] Authenticated integration tests — BLOCKED: external Supabase, no test credentials available to agent
+- [ ] 2D OCR/conversions, 2E protection, 2F automation, final integration
 - [ ] Markup Unicode font embedding + rotated-annotation interop warnings
 - [x] Week 1: Pages/Markup exposed from the main PDF editor; page tools on in production (opt-out pitch.pageTools=0)
