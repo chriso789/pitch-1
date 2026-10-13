@@ -29376,6 +29376,65 @@ export type Database = {
           },
         ]
       }
+      marketing_cost_entries: {
+        Row: {
+          amount_cents: number
+          campaign: string
+          channel: string
+          created_at: string
+          created_by: string
+          currency: string
+          entry_type: string
+          expense_date: string
+          id: string
+          notes: string
+          placement: string
+          reference: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          amount_cents: number
+          campaign?: string
+          channel: string
+          created_at?: string
+          created_by?: string
+          currency: string
+          entry_type?: string
+          expense_date: string
+          id?: string
+          notes?: string
+          placement?: string
+          reference?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          amount_cents?: number
+          campaign?: string
+          channel?: string
+          created_at?: string
+          created_by?: string
+          currency?: string
+          entry_type?: string
+          expense_date?: string
+          id?: string
+          notes?: string
+          placement?: string
+          reference?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketing_cost_entries_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       marketing_sessions: {
         Row: {
           analytics_consent: boolean | null
