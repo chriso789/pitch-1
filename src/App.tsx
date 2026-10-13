@@ -46,7 +46,6 @@ import AdminRoutes from "./routes/adminRoutes";
 import SettingsRoutes from "./routes/settingsRoutes";
 
 // Lazy-loaded public page components (customer-facing, no auth required)
-const __MkHarness = React.lazy(() => import("@/pages/__MkHarness"));
 const ViewQuote = React.lazy(() => import("@/pages/ViewQuote"));
 const PublicSignatureCapture = React.lazy(() => import("@/pages/PublicSignatureCapture"));
 const PublicProposalView = React.lazy(() => import("@/pages/PublicProposalView"));
@@ -184,7 +183,6 @@ const AppContent = () => {
         <Route path="/developer/intuit-review-readiness" element={<Suspense fallback={<PageLoader />}>{React.createElement(React.lazy(() => import("@/pages/developer/IntuitReviewReadinessPage")))}</Suspense>} />
 
         {/* Direct public marketing routes (not through PublicRoutes wrapper) */}
-        <Route path="/__mk-harness" element={<__MkHarness />} />
         <Route path="/pricing" element={<Pricing />} />
         <Route path="/features" element={<Features />} />
         <Route path="/demo-request" element={<DemoRequest />} />
