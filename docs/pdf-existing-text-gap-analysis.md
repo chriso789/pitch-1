@@ -61,6 +61,8 @@ At an **illustrative** external engineering rate of $100–$150/hour, 80–240 h
 ## Verification and remaining blockers
 - Automated fixtures: regular text PDF, image-only scan, embedded subset/Type0 resource classification, genuine fillable forms, unsupported Unicode, read-only fields, choice validation, and immutable source bytes.
 - Synthetic embedded-font resource tests verify diagnostics only, not real font editing.
+- All 26 targeted tests pass. Browser fixture testing selected actual embedded-font text, filled an AcroForm field, downloaded the result and reopened it in the forms UI. Independent Poppler extraction and rendering confirmed the saved field and preserved page text. Visual QA found no clipped text, overlap or font-rendering defects in that fixture; this is not a test of the customer's certificate or authenticated storage.
+- Initial audit-test issues were corrected: global setup requires jsdom, and Poppler raw extraction avoids layout-induced interleaving of overlapping original/replacement runs. These test adjustments do not make the overlay engines genuine editors.
 - User insurance certificate `ff276039-3b03-4955-8c83-663af39ced92`: no uploaded source located; this external unmanaged Supabase project has no available authenticated test session. No authenticated certificate editing/storage/reopen claim is made.
 - Digital signatures, conversions/OCR and drawing comparison remain roadmap work, not completed by this audit.
 - GitHub synchronization is managed by Lovable; no manual commit/push or commit hash was produced.

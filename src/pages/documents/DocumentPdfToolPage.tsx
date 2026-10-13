@@ -50,14 +50,16 @@ export default function DocumentPdfToolPage({ tool }: { tool: "pages" | "markup"
       if (bad.length) toast.warning(`Measurements on sheet(s) ${bad.map((b) => b.page + 1).join(", ")} were NOT carried over: ${bad[0].reason}`);
     }
     toast.success(msg);
-    setDoc({ ...doc, id: v.id, filename: v.filename, metadata: { ...(doc.metadata ?? {}), versions_root_id: doc.metadata?.versions_root_id ?? doc.id } }); setBytes(r.bytes);
+    const saved = await loadDocumentPdf(tenantId, v.id);
+    setDoc(saved.doc); setBytes(saved.bytes);
   };
   const saveMarkup = async (out: Uint8Array, summary: string) => {
     if (!tenantId || !doc) throw new Error("No company selected");
     const v = await saveDocumentVersion({ tenantId, doc, bytes: out, kind: "markup", summary });
     if (projectId) await reconcileMeasurements({ tenantId, sourceDocId: doc.id, newDocId: v.id, projectId, map: Array.from({ length: (await PDFDocument.load(out, { ignoreEncryption: true })).getPageCount() }, (_, i) => ({ out: i, sourceId: doc.id, sourceIndex: i, rotate: 0, cropped: false, resized: false })), cropBoxes: {} });
     toast.success(`Saved "${v.filename}". The original is unchanged${projectId ? "; measurements were carried over as drafts" : ""}.`);
-    setDoc({ ...doc, id: v.id, filename: v.filename, metadata: { ...(doc.metadata ?? {}), versions_root_id: doc.metadata?.versions_root_id ?? doc.id } }); setBytes(out);
+    const saved = await loadDocumentPdf(tenantId, v.id);
+    setDoc(saved.doc); setBytes(saved.bytes);
   };
 
   if (!isPageToolsEnabled()) return <div className="p-10 text-center text-muted-foreground">These PDF tools are still being verified and aren't switched on for this site yet.</div>;
