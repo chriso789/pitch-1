@@ -5,6 +5,7 @@ import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 import { loadPDFFromArrayBuffer } from '@/lib/pdfRenderer';
 import { addSearchableLayer, LOW_CONFIDENCE, type PageOcr } from '@/lib/pdf-ocr/searchableLayer';
+import { OCR_LANGUAGES, ocrLangString } from '@/lib/pdf-ocr/languages';
 
 const SCALE = 2; // ~144 dpi render for recognition
 
@@ -27,13 +28,14 @@ const download = (blob: Blob, name: string) => { const u = URL.createObjectURL(b
 export function PdfOcrPanel({ bytes, name, onSaveVersion }: { bytes: Uint8Array; name: string; onSaveVersion: (out: Uint8Array, summary: string) => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [langs, setLangs] = useState<string[]>([]);
   const [results, setResults] = useState<(PageOcr & { text: string; meanConf: number; existing: number })[]>([]);
 
   const runOcr = async () => {
     setBusy(true); setProgress(0); setResults([]);
     try {
       const { createWorker } = await import('tesseract.js');
-      const worker = await createWorker('eng');
+      const worker = await createWorker(ocrLangString(langs));
       const pdf = await renderPages(bytes);
       const out: typeof results = [];
       for (let i = 0; i < pdf.numPages; i++) {
@@ -79,6 +81,11 @@ export function PdfOcrPanel({ bytes, name, onSaveVersion }: { bytes: Uint8Array;
 
   return <div className="space-y-3">
     <p className="text-xs text-muted-foreground">Reads text from scanned pages on this computer (nothing is uploaded). Recognized text is a best guess: it is never used as a measurement, quantity or price. Making the file searchable saves a new version with invisible text under the scan — what you see doesn't change and the original stays as it is.</p>
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      <span className="text-muted-foreground">Languages (English always on):</span>
+      {OCR_LANGUAGES.filter(l => l.code !== 'eng').map(l => <Button key={l.code} size="sm" variant={langs.includes(l.code) ? 'default' : 'outline'} disabled={busy}
+        onClick={() => setLangs(v => v.includes(l.code) ? v.filter(x => x !== l.code) : [...v, l.code])}>{l.label}</Button>)}
+    </div>
     <div className="flex flex-wrap gap-2">
       <Button onClick={runOcr} disabled={busy}>Read text from pages</Button>
       <Button variant="outline" onClick={makeSearchable} disabled={busy || !results.length}>Make searchable (new version)</Button>

@@ -1,11 +1,12 @@
 /** Batch OCR hook: recognizes only pages with no real text, then adds the invisible searchable layer. */
 import { loadPDFFromArrayBuffer } from '@/lib/pdfRenderer';
 import { addSearchableLayer, type PageOcr } from './searchableLayer';
+import { ocrLangString } from './languages';
 
-export async function ocrSearchable(bytes: Uint8Array): Promise<{ bytes: Uint8Array; note: string }> {
+export async function ocrSearchable(bytes: Uint8Array, langs?: string[]): Promise<{ bytes: Uint8Array; note: string }> {
   const pdf: any = await loadPDFFromArrayBuffer(bytes.slice().buffer);
   const { createWorker } = await import('tesseract.js');
-  const worker = await createWorker('eng');
+  const worker = await createWorker(ocrLangString(langs));
   const pages: PageOcr[] = [];
   try {
     for (let i = 0; i < pdf.numPages; i++) {
