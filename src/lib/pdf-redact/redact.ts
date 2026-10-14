@@ -34,7 +34,7 @@ export async function applyRedactions(src: Uint8Array, pages: FlattenedPage[]): 
     const n = page.node;
     n.delete(PDFName.of('Annots')); n.delete(PDFName.of('Contents'));
     n.delete(PDFName.of('Group')); n.delete(PDFName.of('Thumb')); n.delete(PDFName.of('PieceInfo'));
-    n.set(PDFName.of('Resources'), doc.context.obj({}));
+    n.set(PDFName.of('Resources'), doc.context.obj({ XObject: {} }));
     const img = await doc.embedJpg(p.jpeg);
     page.drawImage(img, { x: box.x, y: box.y, width: box.width, height: box.height });
   }
