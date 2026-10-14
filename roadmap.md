@@ -52,3 +52,12 @@
 - [x] 2G Compress (lossless / photo resize, page-count verified) + Repair (rebuilds broken files) — "Compress & Repair" tab, prod opt-in pitch.health=1; signed-in test pending
 - [ ] Markup Unicode font embedding + rotated-annotation interop warnings
 - [x] Week 1: Pages/Markup exposed from the main PDF editor; page tools on in production (opt-out pitch.pageTools=0)
+
+## UltraScan document scanner
+- [x] Stage 1–2 (already existed): live edge detection, auto-capture when steady, perspective/crop, manual corners, multi-page, blur/glare/shadow warnings
+- [x] Stage 3: paper-light shadow/yellow-cast correction; modes Auto / Ultra Clean / Original Color / B&W / Grayscale / Original (`src/lib/scan-restore/restore.ts`)
+- [x] Stage 4 (part): ink-preservation check flags pages where cleanup lightened handwriting/signatures; Before/After toggle in review; flagged pages need acknowledgment
+- [x] Untouched camera photos saved beside the PDF (`*_originals/page_N.jpg`, paths in metadata)
+- [ ] Stage 4 rest: per-page mode switch after capture; OCR confidence in quality score; neural shadow model (DeshScan MIT) evaluation in a worker
+- [ ] Stage 5: searchable PDF via existing OCR layer; scanner entry points on contacts, jobs, commercial projects, permits
+- [ ] Stage 6: real-device test set (dark desk, truck, clipboard, hard shadows, faint signatures) — needs real phones/photos
