@@ -6,7 +6,9 @@ Statuses: **Built** (code + synthetic tests), **Verified** (signed-in, real docu
 Page Organizer, Markup Editor, Fill & Sign / form editor, original-text editor, measurement (native PdfCraft WASM), comparison (raster, comments, measurements, saved records, review items), OCR (6 Latin languages, rotated pages), Convert to PDF, Protect, Redact, Compress & Repair, Batch tasks.
 
 ## Rollout switches
-All PDF Studio switches now live in one registry: `src/lib/pdf-pages/featureGate.ts` (`isPdfToolEnabled`). Production defaults: Organize Pages on; every other tool off until verified. A per-browser override is kept for acceptance testing only.
+Per company, in Settings → PDF Tools (`/settings/pdf-tools`), changeable only by owner/corporate/office admin/master. Stored in `tenant_pdf_tool_settings`; the database refuses to save a PDF version or conversion made with a tool that is off for that company. Defaults: page tools on, everything else off. The browser override was removed.
+
+Not yet executed: signed-in cross-company test of these switches (no test account in this environment).
 
 ## Fixed in this pass
 - Removed the stale "Original text editing is unavailable" constant that contradicted the working, tested editor.
