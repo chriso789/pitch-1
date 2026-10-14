@@ -14,3 +14,10 @@ export function isCompareEnabled(): boolean {
   if (!PROD_HOSTS.includes(window.location.hostname)) return true;
   try { return window.localStorage.getItem('pitch.compare') === '1'; } catch { return false; }
 }
+
+/** OCR & conversions (Phase 2D): on in preview/dev; production opt-in via localStorage['pitch.ocr']='1'. */
+export function isOcrEnabled(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (!PROD_HOSTS.includes(window.location.hostname)) return true;
+  try { return window.localStorage.getItem('pitch.ocr') === '1'; } catch { return false; }
+}
