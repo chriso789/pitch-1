@@ -65,7 +65,7 @@ describe('UltraScan post-capture adjustments', () => {
   });
   it('strong cleanup that erases ink is still flagged for review', () => {
     const src = page();
-    const out = restoreScan(src, 'auto', { brightness: 60, contrast: 0.5 });
+    const out = restoreScan(src, 'auto', { brightness: 60, contrast: 1.5 });
     expect(checkInkPreservation(src, out).needsReview).toBe(true);
   });
   it('gentle intensity keeps the faint stroke', () => {
