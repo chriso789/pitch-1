@@ -26,6 +26,7 @@ export function PdfRedactPanel({ bytes, onSaveVersion }: { bytes: Uint8Array; on
   const [boxes, setBoxes] = useState<Record<number, RedactBox[]>>({});
   const [drag, setDrag] = useState<RedactBox | null>(null);
   const [busy, setBusy] = useState(false);
+  const [searchable, setSearchable] = useState(true);
   const host = useRef<HTMLDivElement>(null);
 
   useEffect(() => { loadPDFFromArrayBuffer(bytes.slice().buffer).then(setPdf).catch((e: any) => toast.error(e.message)); }, [bytes]);
@@ -51,7 +52,14 @@ export function PdfRedactPanel({ bytes, onSaveVersion }: { bytes: Uint8Array; on
       // Independent check with PDF.js: redacted pages must have no readable text.
       const check: any = await loadPDFFromArrayBuffer(out.slice().buffer);
       for (const i of marked) if ((await (await check.getPage(i + 1)).getTextContent()).items.length) throw new Error(`Page ${i + 1} still has readable text; nothing was saved.`);
-      await onSaveVersion(out, `Redacted ${marked.length} page(s)`);
+      let final = out, note = '';
+      if (searchable) {
+        // Re-read only what is still visible on the flattened pages; blacked-out areas have nothing to read.
+        const { ocrSearchable } = await import('@/lib/pdf-ocr/batchOcr');
+        const r = await ocrSearchable(out);
+        final = r.bytes; note = `; ${r.note}`;
+      }
+      await onSaveVersion(final, `Redacted ${marked.length} page(s)${note}`);
       setBoxes({});
     } catch (e: any) { toast.error(e.message ?? String(e)); }
     setBusy(false);
@@ -66,6 +74,7 @@ export function PdfRedactPanel({ bytes, onSaveVersion }: { bytes: Uint8Array; on
       <Button size="sm" variant="outline" disabled={page >= pdf.numPages - 1} onClick={() => setPage(p => p + 1)}>Next</Button>
       <Button size="sm" variant="ghost" disabled={!boxes[page]?.length} onClick={() => setBoxes(b => ({ ...b, [page]: (b[page] ?? []).slice(0, -1) }))}>Undo box</Button>
       {marked.length > 0 && <Badge variant="secondary">{marked.length} page(s) marked</Badge>}
+      <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={searchable} onChange={e => setSearchable(e.target.checked)} /> Keep visible text searchable</label>
       <Button size="sm" variant="destructive" disabled={busy || !marked.length} onClick={apply}>Apply redactions (new version)</Button>
     </div>
     <div ref={host} className="relative border select-none touch-none cursor-crosshair" style={{ width: VIEW_W, maxWidth: '100%' }}
