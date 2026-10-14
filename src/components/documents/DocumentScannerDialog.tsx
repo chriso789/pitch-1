@@ -23,7 +23,7 @@ import {
 } from '@/utils/documentEdgeDetectionOpenCV';
 import { CornerStabilityBuffer, validateQuadrilateral, StabilityResult } from '@/utils/documentStability';
 import { applyPerspectiveTransformPro } from '@/utils/documentEnhancementPro';
-import { restoreScan, checkInkPreservation, estimatePaper, SCAN_MODES, type ScanMode } from '@/lib/scan-restore/restore';
+import { restoreScan, checkInkPreservation, estimatePaper, SCAN_MODES, DEFAULT_RESTORE_OPTIONS, type ScanMode } from '@/lib/scan-restore/restore';
 import { ManualCropOverlay } from './ManualCropOverlay';
 import { ScannerQAReview } from './ScannerQAReview';
 import { analyzeFrameQuality, evaluateQualityGate, QualityFlags, QualityGateResult } from '@/utils/documentQuality';
@@ -79,6 +79,20 @@ interface CapturedPage {
   /** Cleanup erased a meaningful share of ink: user must review before saving. */
   inkReview?: boolean;
   inkLossRatio?: number;
+  /** Crop corners in original-image pixels, so the page can be re-edited later. */
+  corners?: DetectedCornersExt;
+  /** Current post-capture settings, always applied to `originalBlob`. */
+  edit?: PageEdit;
+  /** Previous settings for Undo. */
+  editHistory?: PageEdit[];
+}
+
+interface PageEdit {
+  mode: ScanMode;
+  intensity: number;
+  brightness: number;
+  contrast: number;
+  corners: DetectedCornersExt;
 }
 
 const SCANNER_VERSION = '2.4.0';
@@ -615,6 +629,8 @@ export function DocumentScannerDialog({
         beforePreview: beforeBlob ? urlRegRef.current.create(beforeBlob) : undefined,
         inkReview,
         inkLossRatio,
+        corners,
+        edit: { mode: scanMode, ...DEFAULT_RESTORE_OPTIONS, corners },
         confidence: corners.confidence ?? null,
         pageSize,
         deskewAngle,
@@ -839,6 +855,83 @@ export function DocumentScannerDialog({
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  // --------------------------------------------------------------------------
+  // Post-capture editing: always rebuilt from the untouched camera image.
+  // --------------------------------------------------------------------------
+  const [editBusy, setEditBusy] = useState(false);
+  const [showBefore, setShowBefore] = useState(false);
+  const [recrop, setRecrop] = useState<{ index: number; url: string; width: number; height: number } | null>(null);
+
+  const renderEdit = async (page: CapturedPage, e: PageEdit) => {
+    if (!page.originalBlob) throw new Error('This page has no original photo to re-edit. Retake it instead.');
+    const bmp = await createImageBitmap(page.originalBlob);
+    const src = document.createElement('canvas');
+    src.width = bmp.width; src.height = bmp.height;
+    src.getContext('2d')!.drawImage(bmp, 0, 0); bmp.close?.();
+    const spec = getPageSpec(page.pageSizeOverride as DetectedPageSize ?? page.pageSize);
+    let c = applyPerspectiveTransformPro(src, e.corners, spec.outputWidth, spec.outputHeight);
+    const ctx = c.getContext('2d')!;
+    const w = ctx.getImageData(0, 0, c.width, c.height);
+    const img = { data: w.data, width: w.width, height: w.height };
+    const beforeBlob: Blob | null = await new Promise((r) => c.toBlob((b) => r(b), 'image/jpeg', 0.8));
+    const cleaned = restoreScan(img, e.mode, e);
+    const ink = e.mode === 'original' && e.brightness === 0 && e.contrast === 1
+      ? { needsReview: false, lossRatio: 0 }
+      : checkInkPreservation(img, cleaned, estimatePaper(img));
+    ctx.putImageData(new ImageData(cleaned.data as Uint8ClampedArray<ArrayBuffer>, cleaned.width, cleaned.height), 0, 0);
+    const { canvas: desk, angle } = deskewCanvas(c); c = desk;
+    let blob: Blob = await new Promise((r, j) => c.toBlob((b) => (b ? r(b) : j(new Error('encode failed'))), 'image/jpeg', 0.95));
+    const rot = page.rotationApplied;
+    if (rot) blob = await rotateBlob(blob, rot === 270 ? -90 : (rot as 90 | 180));
+    const swap = rot === 90 || rot === 270;
+    return { blob, beforeBlob, ink, angle, outW: swap ? c.height : c.width, outH: swap ? c.width : c.height };
+  };
+
+  const applyEdit = async (indices: number[], patch: Partial<PageEdit>, opts: { undo?: boolean } = {}) => {
+    setEditBusy(true);
+    try {
+      const results = await Promise.all(indices.map(async (i) => {
+        const page = capturedPages[i];
+        if (!page?.edit) return null;
+        let e: PageEdit, history = page.editHistory ?? [];
+        if (opts.undo) { if (!history.length) return null; e = history[history.length - 1]; history = history.slice(0, -1); }
+        else { e = { ...page.edit, ...patch }; history = [...history, page.edit].slice(-20); }
+        const r = await renderEdit(page, e);
+        return { i, e, history, r };
+      }));
+      setCapturedPages((prev) => {
+        const next = [...prev];
+        for (const x of results) {
+          if (!x || !next[x.i]) continue;
+          const old = next[x.i];
+          urlRegRef.current.revoke(old.preview);
+          if (old.beforePreview) urlRegRef.current.revoke(old.beforePreview);
+          next[x.i] = {
+            ...old, blob: x.r.blob, preview: urlRegRef.current.create(x.r.blob),
+            beforePreview: x.r.beforeBlob ? urlRegRef.current.create(x.r.beforeBlob) : undefined,
+            scanMode: x.e.mode, colorMode: x.e.mode === 'bw' ? 'bw' : 'color',
+            inkReview: x.r.ink.needsReview, inkLossRatio: x.r.ink.lossRatio,
+            deskewAngle: x.r.angle, outputWidth: x.r.outW, outputHeight: x.r.outH,
+            corners: x.e.corners, edit: x.e, editHistory: x.history, edgeCleanupApplied: false,
+          };
+        }
+        return next;
+      });
+      const flagged = results.filter((x) => x?.r.ink.needsReview).length;
+      if (flagged) toast({ title: 'Check the ink', description: `${flagged} page(s) may have lost handwriting or signatures. Compare Before/After or lower the cleanup.`, variant: 'destructive' });
+    } catch (err: any) {
+      toast({ title: 'Could not re-edit page', description: err.message, variant: 'destructive' });
+    } finally { setEditBusy(false); }
+  };
+
+  const openRecrop = async (index: number) => {
+    const page = capturedPages[index];
+    if (!page?.originalBlob) { toast({ title: 'No original photo', description: 'Retake this page to change its crop.', variant: 'destructive' }); return; }
+    const bmp = await createImageBitmap(page.originalBlob);
+    setRecrop({ index, url: urlRegRef.current.create(page.originalBlob), width: bmp.width, height: bmp.height });
+    bmp.close?.();
   };
 
   const startRetake = (index: number) => {
@@ -1426,6 +1519,23 @@ export function DocumentScannerDialog({
     : opencvFailed ? 'Using fallback scanner'
     : 'Initializing…';
 
+  if (recrop) {
+    const page = capturedPages[recrop.index];
+    return (
+      <ManualCropOverlay
+        imageUrl={recrop.url}
+        initialCorners={page?.edit?.corners ?? null}
+        imageWidth={recrop.width}
+        imageHeight={recrop.height}
+        onConfirm={(c) => {
+          const i = recrop.index; urlRegRef.current.revoke(recrop.url); setRecrop(null);
+          applyEdit([i], { corners: { ...(page?.edit?.corners ?? {}), ...c } as DetectedCornersExt });
+        }}
+        onCancel={() => { urlRegRef.current.revoke(recrop.url); setRecrop(null); }}
+      />
+    );
+  }
+
   // Manual crop overlay
   if (showManualCrop && manualCropImage) {
     return (
@@ -1717,8 +1827,53 @@ export function DocumentScannerDialog({
         {previewPage && previewIndex !== null && (
           <div className="absolute inset-0 z-50 bg-black/90 flex flex-col" onClick={() => setPreviewIndex(null)}>
             <div className="flex-1 flex items-center justify-center p-4" onClick={(e) => e.stopPropagation()}>
-              <img src={previewPage.preview} alt={`Page ${previewIndex + 1}`} className="max-w-full max-h-full object-contain" />
+              <img src={showBefore && previewPage.beforePreview ? previewPage.beforePreview : previewPage.preview} alt={`Page ${previewIndex + 1}`} className="max-w-full max-h-full object-contain" />
             </div>
+            {previewPage.edit && (
+              <div className="flex-shrink-0 bg-background border-t p-3 space-y-2 text-sm" onClick={(e) => e.stopPropagation()}>
+                {previewPage.inkReview && (
+                  <p className="text-destructive text-xs">This cleanup may have removed handwriting or a signature. Compare Before/After, lower the cleanup, or choose Original.</p>
+                )}
+                <div className="flex flex-wrap gap-1">
+                  {SCAN_MODES.map((m) => (
+                    <Button key={m.mode} size="sm" disabled={editBusy}
+                      variant={previewPage.edit!.mode === m.mode ? 'default' : 'outline'}
+                      onClick={() => applyEdit([previewIndex], { mode: m.mode })}>{m.label}</Button>
+                  ))}
+                </div>
+                {([
+                  ['intensity', 'Cleanup strength', 0.5, 1.5, 0.1],
+                  ['brightness', 'Brightness', -60, 60, 5],
+                  ['contrast', 'Contrast', 0.5, 1.5, 0.05],
+                ] as const).map(([k, label, min, max, step]) => (
+                  <label key={k} className="flex items-center gap-2">
+                    <span className="w-32 text-muted-foreground">{label}</span>
+                    <input type="range" min={min} max={max} step={step} disabled={editBusy}
+                      key={`${previewIndex}-${k}-${previewPage.edit![k]}`}
+                      defaultValue={previewPage.edit![k]} className="flex-1 accent-primary"
+                      onPointerUp={(ev) => applyEdit([previewIndex], { [k]: Number((ev.target as HTMLInputElement).value) })}
+                      onKeyUp={(ev) => applyEdit([previewIndex], { [k]: Number((ev.target as HTMLInputElement).value) })} />
+                    <span className="w-10 text-right tabular-nums">{previewPage.edit![k]}</span>
+                  </label>
+                ))}
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" disabled={!previewPage.beforePreview}
+                    onPointerDown={() => setShowBefore(true)} onPointerUp={() => setShowBefore(false)} onPointerLeave={() => setShowBefore(false)}>
+                    Hold for Before
+                  </Button>
+                  <Button size="sm" variant="outline" disabled={editBusy} onClick={() => openRecrop(previewIndex)}>Adjust corners</Button>
+                  <Button size="sm" variant="outline" disabled={editBusy || !previewPage.editHistory?.length} onClick={() => applyEdit([previewIndex], {}, { undo: true })}>Undo</Button>
+                  <Button size="sm" variant="outline" disabled={editBusy}
+                    onClick={() => applyEdit([previewIndex], { ...DEFAULT_RESTORE_OPTIONS, corners: previewPage.corners ?? previewPage.edit!.corners, mode: 'auto' })}>Reset</Button>
+                  <Button size="sm" variant="outline" disabled={editBusy || capturedPages.length < 2}
+                    onClick={() => {
+                      const { mode, intensity, brightness, contrast } = previewPage.edit!;
+                      applyEdit(capturedPages.map((_, i) => i), { mode, intensity, brightness, contrast });
+                    }}>Apply to all pages</Button>
+                  {editBusy && <span className="text-muted-foreground self-center">Reprocessing…</span>}
+                </div>
+              </div>
+            )}
             <div className="flex-shrink-0 bg-background border-t flex flex-wrap gap-2 p-3 justify-center" onClick={(e) => e.stopPropagation()}>
               <Button size="sm" variant="outline" onClick={() => rotatePage(previewIndex, -90)}>
                 <RotateCcw className="h-4 w-4 mr-1" /> Rotate L
