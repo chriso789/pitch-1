@@ -61790,6 +61790,41 @@ export type Database = {
           },
         ]
       }
+      tenant_pdf_tool_settings: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          tenant_id: string
+          tool: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          tenant_id: string
+          tool: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          tenant_id?: string
+          tool?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_pdf_tool_settings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_qbo_settings: {
         Row: {
           created_at: string
@@ -68331,6 +68366,11 @@ export type Database = {
       normalize_street: { Args: { street: string }; Returns: string }
       normalize_supplier_name: { Args: { input: string }; Returns: string }
       pdf_compare_member: { Args: { _tenant: string }; Returns: boolean }
+      pdf_tool_admin: { Args: { _tenant: string }; Returns: boolean }
+      pdf_tool_enabled: {
+        Args: { _tenant: string; _tool: string }
+        Returns: boolean
+      }
       pipeline_stage_avg_durations: {
         Args: { p_tenant_id: string }
         Returns: {
