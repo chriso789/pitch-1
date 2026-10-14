@@ -1160,6 +1160,16 @@ export function DocumentScannerDialog({
       const { error: uploadError } = await supabase.storage
         .from('documents').upload(fileName, pdfBlob, { contentType: 'application/pdf' });
       if (uploadError) throw uploadError;
+      // Keep the untouched camera photos next to the PDF (never altered).
+      const originalPhotoPaths: string[] = [];
+      for (let i = 0; i < capturedPages.length; i++) {
+        const ob = capturedPages[i].originalBlob;
+        if (!ob) continue;
+        const op = `${profile.tenant_id}/${pipelineEntryId}/${timestamp}_${documentType}_originals/page_${i + 1}.jpg`;
+        const { error: oe } = await supabase.storage.from('documents').upload(op, ob, { contentType: 'image/jpeg' });
+        if (oe) throw new Error(`Could not save original photo for page ${i + 1}: ${oe.message}`);
+        originalPhotoPaths.push(op);
+      }
       telemetryRef.current.mark('uploadMs', performance.now() - uploadStart);
       setUploadProgress(80);
 
@@ -1202,6 +1212,9 @@ export function DocumentScannerDialog({
         compressed,
         scanner_session_id: scannerSessionIdRef.current,
         qa_reviewed: true,
+        original_photo_paths: originalPhotoPaths,
+        cleanup_modes_per_page: capturedPages.map(p => p.scanMode ?? null),
+        ink_review_pages: capturedPages.map((p, i) => (p.inkReview ? i + 1 : null)).filter(Boolean),
         qa_warnings_acknowledged: qaAcknowledged,
         actual_size_bytes: pdfBlob.size,
         page_size_overrides: capturedPages.map(p => p.pageSizeOverride ?? null),

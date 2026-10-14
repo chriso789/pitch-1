@@ -19,6 +19,9 @@ export interface QAReviewPage {
   duplicateWarning?: boolean;
   quality?: any;
   edgeCleanupApplied?: boolean;
+  beforePreview?: string;
+  inkReview?: boolean;
+  scanModeLabel?: string;
 }
 
 interface Props {
@@ -65,9 +68,12 @@ export function ScannerQAReview({
   const glare = pages.filter(p => p.quality?.glare_detected).length;
   const manualCrop = pages.filter(p => p.cropMode === 'manual').length;
   const dupes = pages.filter(p => p.duplicateWarning).length;
+  const inkPages = pages.filter(p => p.inkReview).length;
+  const [showBefore, setShowBefore] = useState<Record<number, boolean>>({});
   if (blurry) warnings.push({ key: 'blurry', label: 'Blurry pages', count: blurry, severity: 'warn' });
   if (shadow) warnings.push({ key: 'shadow', label: 'Heavy shadow pages', count: shadow, severity: 'warn' });
   if (glare) warnings.push({ key: 'glare', label: 'Glare-overridden pages', count: glare, severity: 'warn' });
+  if (inkPages) warnings.push({ key: 'ink', label: 'Cleanup may have lightened handwriting or signatures — compare Before/After, or retake with Original Color', count: inkPages, severity: 'warn' });
   if (dupes) warnings.push({ key: 'dupes', label: 'Possible duplicate pages', count: dupes, severity: 'warn' });
   if (manualCrop) warnings.push({ key: 'manual', label: 'Manual-crop pages', count: manualCrop, severity: 'info' });
   if (uniqueSizes.length > 1) warnings.push({ key: 'mixed', label: 'Mixed page sizes', count: uniqueSizes.length, severity: 'info' });
@@ -154,14 +160,26 @@ export function ScannerQAReview({
           {pages.map((p, i) => (
             <div key={i} className={cn(
               'rounded-md border bg-card overflow-hidden flex flex-col',
-              p.duplicateWarning && 'ring-2 ring-warning/60',
+              (p.duplicateWarning || p.inkReview) && 'ring-2 ring-warning/60',
             )}>
               <div className="relative aspect-[3/4] bg-muted">
-                <img src={p.preview} alt={`Page ${i + 1}`} className="w-full h-full object-cover cursor-pointer"
+                <img src={showBefore[i] && p.beforePreview ? p.beforePreview : p.preview} alt={`Page ${i + 1}`} className="w-full h-full object-cover cursor-pointer"
                   onClick={() => onPreview(i)} />
                 <div className="absolute top-1 left-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">
                   {i + 1}
                 </div>
+                {p.beforePreview && (
+                  <button type="button"
+                    className="absolute bottom-1 left-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded"
+                    onClick={() => setShowBefore(v => ({ ...v, [i]: !v[i] }))}>
+                    {showBefore[i] ? 'Before' : `After${p.scanModeLabel ? ` · ${p.scanModeLabel}` : ''}`}
+                  </button>
+                )}
+                {p.inkReview && (
+                  <div className="absolute bottom-1 right-1 bg-warning text-warning-foreground text-[10px] px-1.5 py-0.5 rounded">
+                    check ink
+                  </div>
+                )}
                 {p.duplicateWarning && (
                   <div className="absolute top-1 right-1 bg-warning text-warning-foreground text-[10px] px-1.5 py-0.5 rounded">
                     dup?
