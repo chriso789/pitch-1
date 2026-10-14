@@ -1,4 +1,4 @@
-import { PDFDocument, StandardFonts, TextRenderingMode, pushGraphicsState, popGraphicsState, setTextRenderingMode, beginText, endText, setFontAndSize, moveText, showText, PDFName, PDFDict, PDFArray } from 'pdf-lib';
+import { PDFDocument, StandardFonts, TextRenderingMode, pushGraphicsState, popGraphicsState, setTextRenderingMode, beginText, endText, setFontAndSize, showText, setTextMatrix, PDFOperator, PDFNumber } from 'pdf-lib';
 
 /** One OCR word with its box in rendered-image pixels (origin top-left). */
 export interface OcrWordPx { text: string; x0: number; y0: number; x1: number; y1: number; confidence: number }
@@ -38,21 +38,20 @@ export async function addSearchableLayer(src: Uint8Array, pages: PageOcr[]): Pro
     page.node.newFontDictionary('PITCHOcr', font.ref);
     const box = page.getCropBox();
     const { ok, skipped: bad } = partitionWords(p.words); skipped += bad.length;
-    const ops = [pushGraphicsState(), beginText(), setTextRenderingMode(TextRenderingMode.Invisible)];
+    const ops: PDFOperator[] = [pushGraphicsState(), beginText(), setTextRenderingMode(TextRenderingMode.Invisible)];
     for (const w of ok) {
       const u = pxToUser(w, p.imageWidth, p.imageHeight, box);
       const size = Math.max(1, u.height);
       const natural = font.widthOfTextAtSize(w.text, size);
       ops.push(setFontAndSize(key, size));
       // Horizontal scaling (Tz) makes the selection box match the word width on the scan.
-      ops.push({ toString: () => `${natural > 0 ? ((u.width / natural) * 100).toFixed(2) : 100} Tz` } as any);
-      ops.push({ toString: () => `1 0 0 1 ${u.x.toFixed(2)} ${u.y.toFixed(2)} Tm` } as any);
+      ops.push(PDFOperator.of('Tz' as any, [PDFNumber.of(natural > 0 ? (u.width / natural) * 100 : 100)]));
+      ops.push(setTextMatrix(1, 0, 0, 1, u.x, u.y));
       ops.push(showText(font.encodeText(w.text)));
       written++;
     }
     ops.push(endText(), popGraphicsState());
     page.pushOperators(...ops);
   }
-  void moveText; void PDFName; void PDFDict; void PDFArray;
   return { bytes: await doc.save({ useObjectStreams: false }), written, skipped, skippedRotatedPages };
 }
