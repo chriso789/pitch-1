@@ -20,7 +20,7 @@ describe('PDF file health', () => {
   it('rebuilds a file with a broken index', async () => {
     const src = await make();
     const txt = new TextDecoder('latin1').decode(src);
-    const broken = new TextEncoder().encode(txt.replace(/startxref\s+\d+/, 'startxref\n999999'));
+    const broken = new Uint8Array(Buffer.from(txt.replace(/startxref\s+\d+/, 'startxref\n999999'), 'latin1'));
     const r = await repairPdf(broken, { wasmPath });
     expect(r.pages).toBe(3);
   }, 30000);
