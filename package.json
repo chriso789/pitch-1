@@ -89,6 +89,7 @@
     "jspdf": "^3.0.1",
     "konva": "^10.0.12",
     "lucide-react": "^0.462.0",
+    "mammoth": "1",
     "mapbox-gl": "^3.16.0",
     "next-themes": "^0.3.0",
     "papaparse": "^5.5.3",
