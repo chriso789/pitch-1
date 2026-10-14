@@ -38,3 +38,14 @@ describe('pdf batch workflow', () => {
     expect(r.log).toHaveLength(5);
   });
 });
+
+describe('pdf batch ocr hook', () => {
+  it('runs the injected OCR step and refuses without it', async () => {
+    const src = await make(2);
+    await expect(runWorkflow(src, [{ type: 'ocr' }])).rejects.toThrow(/not available/);
+    const r = await runWorkflow(src, [{ type: 'ocr' }, { type: 'keep_pages', pages: '1' }], { ocr: async b => ({ bytes: b, note: 'ocr ran' }) });
+    expect(r.log[0]).toBe('ocr ran');
+    expect(r.pagesOut).toBe(1);
+    expect(validateSteps([{ type: 'ocr' }, { type: 'ocr' }])).toMatch(/one step/);
+  });
+});
