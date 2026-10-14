@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -503,14 +504,17 @@ function MaterialForm({
     tags: material?.tags?.join(', ') || ''
   });
   const [saving, setSaving] = useState(false);
+  const effectiveTenantId = useEffectiveTenantId();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!effectiveTenantId) { toast.error('Select a company first'); return; }
     setSaving(true);
 
     try {
       const { error } = await supabase.rpc('api_upsert_material' as any, {
         p_code: formData.code,
+        p_tenant_id: effectiveTenantId,
         p_name: formData.name,
         p_category_id: formData.category_id || null,
         p_uom: formData.uom,

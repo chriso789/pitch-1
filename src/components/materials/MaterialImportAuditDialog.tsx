@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,6 +71,7 @@ export function MaterialImportAuditDialog({
   existingMaterials,
   onImportComplete
 }: MaterialImportAuditDialogProps) {
+  const effectiveTenantId = useEffectiveTenantId();
   const [step, setStep] = useState<Step>('upload');
   const [auditSummary, setAuditSummary] = useState<ImportAuditSummary | null>(null);
   const [allItems, setAllItems] = useState<AuditItem[]>([]);
@@ -496,7 +498,8 @@ export function MaterialImportAuditDialog({
       }));
 
       const { data, error } = await supabase.rpc('api_bulk_import_materials' as any, {
-        p_materials: importData
+        p_materials: importData,
+        p_tenant_id: effectiveTenantId,
       });
 
       if (error) throw error;
