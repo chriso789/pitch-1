@@ -1,4 +1,4 @@
-import { PDFDocument, PDFName, PDFDict, PDFRef } from 'pdf-lib';
+import { PDFDocument, PDFName, PDFDict, PDFRef, PDFArray, PDFStream, type PDFObject } from 'pdf-lib';
 
 /** Redaction box as fractions (0–1) of the page's unrotated crop box, origin top-left. */
 export interface RedactBox { x: number; y: number; w: number; h: number }
@@ -38,6 +38,7 @@ export async function applyRedactions(src: Uint8Array, pages: FlattenedPage[]): 
     const img = await doc.embedJpg(p.jpeg);
     page.drawImage(img, { x: box.x, y: box.y, width: box.width, height: box.height });
   }
+  collectGarbage(doc); // removed objects must not survive as orphans in the file
   const out = await doc.save({ useObjectStreams: false });
   await verifyRedacted(out, [...targets]);
   return out;
@@ -57,4 +58,19 @@ export async function verifyRedacted(bytes: Uint8Array, pageIndexes: number[]) {
     const img = d.context.lookup(entries[0][1] as PDFRef) as any;
     if (img?.dict?.get(PDFName.of('Subtype'))?.toString() !== '/Image') throw new Error(`Redaction check failed: page ${i + 1} is not a flat image.`);
   }
+}
+
+/** Deletes every object not reachable from the trailer, so removed content is truly gone from the bytes. */
+export function collectGarbage(doc: PDFDocument) {
+  const ctx = doc.context, seen = new Set<string>();
+  const visit = (o: PDFObject | undefined) => {
+    if (!o) return;
+    if (o instanceof PDFRef) { const k = o.toString(); if (seen.has(k)) return; seen.add(k); visit(ctx.lookup(o)); return; }
+    if (o instanceof PDFDict) { for (const [, v] of o.entries()) visit(v); return; }
+    if (o instanceof PDFArray) { for (const v of o.asArray()) visit(v); return; }
+    if (o instanceof PDFStream) visit(o.dict);
+  };
+  const t = ctx.trailerInfo as any;
+  [t.Root, t.Info, t.Encrypt, t.ID].forEach(visit);
+  for (const [ref] of ctx.enumerateIndirectObjects()) if (!seen.has(ref.toString())) ctx.delete(ref);
 }
