@@ -30,4 +30,4 @@ export async function inspectPageFonts(bytes: Uint8Array, pageIndex: number): Pr
   });
 }
 
-export const TEXT_EDIT_GAP = 'Original text editing is unavailable: the installed engines cannot replace PDF text streams or reuse their original font encodings. No font will be substituted.';
+// Editing capability is decided per segment by contentTextEdit.ts (readPageText/checkReplacement); no global 'unavailable' message.
