@@ -11,6 +11,7 @@ import { loadDocumentPdf, saveDocumentVersion, type DocRow } from '@/lib/pdf-pag
 import { runWorkflow, validateSteps, STEP_LABELS, MAX_DOCS, type BatchStep } from '@/lib/pdf-batch/workflow';
 import { isBatchEnabled } from '@/lib/pdf-pages/featureGate';
 import { ocrSearchable } from '@/lib/pdf-ocr/batchOcr';
+import { OCR_LANGUAGES } from '@/lib/pdf-ocr/languages';
 import { toast } from 'sonner';
 
 const defaults: Record<BatchStep['type'], BatchStep> = {
@@ -131,6 +132,7 @@ export default function PdfBatchPage() {
                 )}
                 {st.type === 'page_numbers' && <Input value={st.format} onChange={e => setStep(i, { format: e.target.value })} />}
                 {st.type === 'watermark' && <div className="flex gap-2"><Input value={st.text} onChange={e => setStep(i, { text: e.target.value })} /><Input type="number" step="0.05" min="0.05" max="1" className="w-24" value={st.opacity} onChange={e => setStep(i, { opacity: +e.target.value })} /></div>}
+                {st.type === 'ocr' && <div className="flex flex-wrap gap-1 text-xs items-center"><span className="text-muted-foreground">English +</span>{OCR_LANGUAGES.filter(l => l.code !== 'eng').map(l => { const on = (st.langs ?? []).includes(l.code); return <Button key={l.code} size="sm" variant={on ? 'default' : 'outline'} onClick={() => setStep(i, { langs: on ? (st.langs ?? []).filter(x => x !== l.code) : [...(st.langs ?? []), l.code] })}>{l.label}</Button>; })}</div>}
                 {st.type === 'set_title' && <Input value={st.title} onChange={e => setStep(i, { title: e.target.value })} placeholder="Title" />}
               </div>
             ))}
