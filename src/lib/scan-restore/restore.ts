@@ -93,10 +93,35 @@ function normalize(img: Img, paper: Float32Array[]): Float32Array {
   return n;
 }
 
-export function restoreScan(img: Img, mode: ScanMode): Img {
+/** Post-capture adjustments. Defaults (1, 0, 1) are a no-op. */
+export interface RestoreOptions {
+  /** Cleanup strength, 0.5 (gentle) – 1.5 (strong). */
+  intensity?: number;
+  /** Added to every channel, -60 – 60. */
+  brightness?: number;
+  /** Contrast around mid-grey, 0.5 – 1.5. */
+  contrast?: number;
+}
+export const DEFAULT_RESTORE_OPTIONS: Required<RestoreOptions> = { intensity: 1, brightness: 0, contrast: 1 };
+
+/** Brightness/contrast applied in place on an RGBA buffer. */
+export function applyTone(img: Img, brightness = 0, contrast = 1): Img {
+  if (brightness === 0 && contrast === 1) return img;
+  const d = img.data;
+  for (let p = 0; p < d.length; p += 4) {
+    d[p] = clamp((d[p] - 128) * contrast + 128 + brightness);
+    d[p + 1] = clamp((d[p + 1] - 128) * contrast + 128 + brightness);
+    d[p + 2] = clamp((d[p + 2] - 128) * contrast + 128 + brightness);
+  }
+  return img;
+}
+
+export function restoreScan(img: Img, mode: ScanMode, opts: RestoreOptions = {}): Img {
+  const { intensity = 1, brightness = 0, contrast = 1 } = opts;
+  const t = Math.min(1.5, Math.max(0.5, intensity));
   const { data, width: W, height: H } = img;
   const out = new Uint8ClampedArray(data.length);
-  if (mode === 'original') { out.set(data); return { data: out, width: W, height: H }; }
+  if (mode === 'original') { out.set(data); return applyTone({ data: out, width: W, height: H }, brightness, contrast); }
   const paper = estimatePaper(img);
   for (let i = 0; i < W * H; i++) {
     const p = i * 4;
@@ -106,19 +131,20 @@ export function restoreScan(img: Img, mode: ScanMode): Img {
     if (mode === 'originalColor') {
       // Gentle: 80% corrected, keeps ink hue; only near-paper tones go white.
       R = 0.8 * r + 0.2 * data[p]; G = 0.8 * g + 0.2 * data[p + 1]; B = 0.8 * b + 0.2 * data[p + 2];
-      if (L > 245) R = G = B = 255;
+      if (L > 245 - (t - 1) * 10) R = G = B = 255;
     } else if (mode === 'bw') {
       // Threshold on paper-normalized luma; 228 (same as the ink check) keeps faint pencil/pen strokes.
-      R = G = B = L < 228 ? 0 : 255;
+      R = G = B = L < 228 - (t - 1) * 30 ? 0 : 255;
     } else {
-      const k = mode === 'ultraClean' ? 1.35 : 1.15, white = mode === 'ultraClean' ? 232 : 242;
+      const k0 = mode === 'ultraClean' ? 1.35 : 1.15, w0 = mode === 'ultraClean' ? 232 : 242;
+      const k = 1 + (k0 - 1) * t, white = Math.min(252, Math.max(220, w0 - (t - 1) * 20));
       const s = (v: number) => (L >= white ? 255 : 255 - (255 - v) * k);
       R = s(r); G = s(g); B = s(b);
       if (mode === 'grayscale') { const y = luma(R, G, B); R = G = B = y; }
     }
     out[p] = clamp(R); out[p + 1] = clamp(G); out[p + 2] = clamp(B); out[p + 3] = 255;
   }
-  return { data: out, width: W, height: H };
+  return applyTone({ data: out, width: W, height: H }, brightness, contrast);
 }
 
 export interface InkCheck {

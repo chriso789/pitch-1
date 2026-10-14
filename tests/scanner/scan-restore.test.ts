@@ -51,3 +51,28 @@ describe('UltraScan restoration', () => {
     expect(r.needsReview).toBe(true);
   });
 });
+
+describe('UltraScan post-capture adjustments', () => {
+  it('default options match the original call exactly', () => {
+    const src = page();
+    expect(Array.from(restoreScan(src, 'auto', { intensity: 1, brightness: 0, contrast: 1 }).data))
+      .toEqual(Array.from(restoreScan(src, 'auto').data));
+  });
+  it('reprocessing never mutates the source image', () => {
+    const src = page(); const copy = Array.from(src.data);
+    restoreScan(src, 'ultraClean', { intensity: 1.5, brightness: 30, contrast: 1.4 });
+    expect(Array.from(src.data)).toEqual(copy);
+  });
+  it('strong cleanup that erases ink is still flagged for review', () => {
+    const src = page();
+    const out = restoreScan(src, 'auto', { brightness: 60, contrast: 0.5 });
+    expect(checkInkPreservation(src, out).needsReview).toBe(true);
+  });
+  it('gentle intensity keeps the faint stroke', () => {
+    const src = page();
+    for (const m of ['auto', 'ultraClean', 'bw'] as const) {
+      const out = restoreScan(src, m, { intensity: 0.5 });
+      expect(px(out, 220, 201)[0], m).toBeLessThan(245);
+    }
+  });
+});
