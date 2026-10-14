@@ -1270,7 +1270,7 @@ export function DocumentScannerDialog({
           const r = await makeScanSearchable(new Uint8Array(await pdfBlob.arrayBuffer()), capturedPages.map(p => p.blob),
             ocrSpanish ? ['spa'] : [], f => setUploadProgress(50 + Math.round(f * 15)));
           ocrSummary = r.summary;
-          if (r.summary.status === 'searchable') finalPdf = new Blob([r.bytes], { type: 'application/pdf' });
+          if (r.summary.status === 'searchable') finalPdf = new Blob([r.bytes as BlobPart], { type: 'application/pdf' });
           else toast({ title: 'Saved as image-only PDF', description: 'No readable text could be verified in the saved file.' });
           if (r.summary.low_quality_pages.length) toast({ title: 'Low-quality text', description: `Page(s) ${r.summary.low_quality_pages.join(', ')} may be hard to search. The scan image is unaffected.` });
         } catch (e: any) {
