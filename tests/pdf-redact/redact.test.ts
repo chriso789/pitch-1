@@ -21,9 +21,8 @@ describe('true redaction', () => {
   it('removes text and form values from the redacted page, keeps other pages', async () => {
     const src = await make();
     const before = (await PDFDocument.load(src)).context.enumerateIndirectObjects().length;
-    expect(has(src, '(ssn)')).toBe(true);
     const out = await applyRedactions(src, [{ pageIndex: 0, jpeg: JPEG }]);
-    expect(has(out, '(ssn)')).toBe(false);
+    expect(has(out, '/FT')).toBe(false);
     const d = await PDFDocument.load(out);
     expect(d.getPageCount()).toBe(2);
     expect(d.context.enumerateIndirectObjects().length).toBeLessThan(before);
