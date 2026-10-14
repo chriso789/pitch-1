@@ -870,7 +870,7 @@ export function DocumentScannerDialog({
     const src = document.createElement('canvas');
     src.width = bmp.width; src.height = bmp.height;
     src.getContext('2d')!.drawImage(bmp, 0, 0); bmp.close?.();
-    const spec = getPageSpec(page.pageSizeOverride as DetectedPageSize ?? page.pageSize);
+    const spec = getPageSpec(page.pageSizeOverride ?? page.pageSize);
     let c = applyPerspectiveTransformPro(src, e.corners, spec.outputWidth, spec.outputHeight);
     const ctx = c.getContext('2d')!;
     const w = ctx.getImageData(0, 0, c.width, c.height);
@@ -1864,7 +1864,7 @@ export function DocumentScannerDialog({
                   <Button size="sm" variant="outline" disabled={editBusy} onClick={() => openRecrop(previewIndex)}>Adjust corners</Button>
                   <Button size="sm" variant="outline" disabled={editBusy || !previewPage.editHistory?.length} onClick={() => applyEdit([previewIndex], {}, { undo: true })}>Undo</Button>
                   <Button size="sm" variant="outline" disabled={editBusy}
-                    onClick={() => applyEdit([previewIndex], { ...DEFAULT_RESTORE_OPTIONS, corners: previewPage.corners ?? previewPage.edit!.corners, mode: 'auto' })}>Reset</Button>
+                    onClick={() => applyEdit([previewIndex], { ...DEFAULT_RESTORE_OPTIONS, corners: previewPage.editHistory?.[0]?.corners ?? previewPage.edit!.corners, mode: 'auto' })}>Reset</Button>
                   <Button size="sm" variant="outline" disabled={editBusy || capturedPages.length < 2}
                     onClick={() => {
                       const { mode, intensity, brightness, contrast } = previewPage.edit!;
