@@ -28,3 +28,10 @@ export function isProtectEnabled(): boolean {
   if (!PROD_HOSTS.includes(window.location.hostname)) return true;
   try { return window.localStorage.getItem('pitch.protect') === '1'; } catch { return false; }
 }
+
+/** Batch PDF tasks (Phase 2F): on in preview/dev; production opt-in via localStorage['pitch.batch']='1'. */
+export function isBatchEnabled(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (!PROD_HOSTS.includes(window.location.hostname)) return true;
+  try { return window.localStorage.getItem('pitch.batch') === '1'; } catch { return false; }
+}
