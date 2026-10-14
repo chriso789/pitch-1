@@ -1,44 +1,27 @@
-/** Page Organizer (Phase 2A) rollout switch: on in preview/dev; production needs
- * localStorage['pitch.pageTools']='1' until real-document acceptance testing is signed off. */
+/**
+ * Single registry for PDF Studio rollout switches. Preview/dev: everything on.
+ * Production: each tool stays off until its signed-in acceptance test passes (see docs/PDF_FEATURE_MATRIX.md);
+ * a per-browser override `localStorage['pitch.<key>']` exists for acceptance testing only.
+ * Planned: replace the browser override with a tenant-scoped flag table (docs/PDF_MASTER_ROADMAP.md).
+ */
 const PROD_HOSTS = ['pitch-crm.ai', 'www.pitch-crm.ai', 'pitch-1.lovable.app'];
-export function isPageToolsEnabled(): boolean {
-  if (typeof window === 'undefined') return false;
-  if (!PROD_HOSTS.includes(window.location.hostname)) return true;
-  try { return window.localStorage.getItem('pitch.pageTools') !== '0'; } catch { return true; }
-}
+export type PdfTool = 'pageTools' | 'compare' | 'ocr' | 'protect' | 'batch' | 'health';
+/** Production default per tool; pageTools is the only one released (opt-out). */
+export const PDF_TOOL_PROD_DEFAULT: Record<PdfTool, boolean> = { pageTools: true, compare: false, ocr: false, protect: false, batch: false, health: false };
 
-/** Revision comparison (Phase 2C): on in preview/dev; production is opt-in via
- * localStorage['pitch.compare']='1' until signed-in acceptance testing on real drawing sets. */
-export function isCompareEnabled(): boolean {
+export function isPdfToolEnabled(tool: PdfTool): boolean {
   if (typeof window === 'undefined') return false;
   if (!PROD_HOSTS.includes(window.location.hostname)) return true;
-  try { return window.localStorage.getItem('pitch.compare') === '1'; } catch { return false; }
+  try {
+    const v = window.localStorage.getItem(`pitch.${tool}`);
+    return v === null ? PDF_TOOL_PROD_DEFAULT[tool] : v === '1';
+  } catch { return PDF_TOOL_PROD_DEFAULT[tool]; }
 }
-
-/** OCR & conversions (Phase 2D): on in preview/dev; production opt-in via localStorage['pitch.ocr']='1'. */
-export function isOcrEnabled(): boolean {
-  if (typeof window === 'undefined') return false;
-  if (!PROD_HOSTS.includes(window.location.hostname)) return true;
-  try { return window.localStorage.getItem('pitch.ocr') === '1'; } catch { return false; }
-}
-
-/** Protection (Phase 2E): on in preview/dev; production opt-in via localStorage['pitch.protect']='1'. */
-export function isProtectEnabled(): boolean {
-  if (typeof window === 'undefined') return false;
-  if (!PROD_HOSTS.includes(window.location.hostname)) return true;
-  try { return window.localStorage.getItem('pitch.protect') === '1'; } catch { return false; }
-}
-
-/** Batch PDF tasks (Phase 2F): on in preview/dev; production opt-in via localStorage['pitch.batch']='1'. */
-export function isBatchEnabled(): boolean {
-  if (typeof window === 'undefined') return false;
-  if (!PROD_HOSTS.includes(window.location.hostname)) return true;
-  try { return window.localStorage.getItem('pitch.batch') === '1'; } catch { return false; }
-}
-
-/** File health — compress & repair (Phase 2G): on in preview/dev; production opt-in via localStorage['pitch.health']='1'. */
-export function isHealthEnabled(): boolean {
-  if (typeof window === 'undefined') return false;
-  if (!PROD_HOSTS.includes(window.location.hostname)) return true;
-  try { return window.localStorage.getItem('pitch.health') === '1'; } catch { return false; }
-}
+export const isPageToolsEnabled = () => isPdfToolEnabled('pageTools');
+export const isCompareEnabled = () => isPdfToolEnabled('compare');
+/** Also gates Convert to PDF. */
+export const isOcrEnabled = () => isPdfToolEnabled('ocr');
+/** Also gates Redact. */
+export const isProtectEnabled = () => isPdfToolEnabled('protect');
+export const isBatchEnabled = () => isPdfToolEnabled('batch');
+export const isHealthEnabled = () => isPdfToolEnabled('health');
