@@ -39,7 +39,8 @@
 - [ ] Measurement carry-over integration tests (reorder/duplicate/rotate/crop)
 - [x] 2C revision comparison: side-by-side (synced scroll), overlay w/ transparency, size/rotation normalization, manual nudge, anti-alias-filtered diff, region report (4 tests; prod opt-in pitch.compare=1)
 - [x] 2C saved comparison records (permanent) + RFI / change-order review / takeoff review items per change area (status-only edits)
-- [ ] 2C remaining: annotation/measurement-record diff; signed-in save test
+- [x] 2C annotation/markup diff per page (added/removed/text changed)
+- [ ] 2C remaining: measurement-record diff; signed-in save test
 - [ ] Authenticated integration tests — BLOCKED: external Supabase, no test credentials available to agent
 - [x] 2E protection: AES-256 protected copy (download only, verified), metadata removal, password removal (prod opt-in pitch.protect=1)
 - [x] 2E true redaction: marked pages flattened, content/annotations/fields deleted, orphan objects purged, double-checked
