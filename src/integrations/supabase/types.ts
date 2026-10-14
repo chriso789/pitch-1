@@ -36041,6 +36041,36 @@ export type Database = {
         }
         Relationships: []
       }
+      pdf_batch_templates: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          name: string
+          steps: Json
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          name: string
+          steps: Json
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          name?: string
+          steps?: Json
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       pdf_collab_sessions: {
         Row: {
           created_at: string | null
