@@ -8,6 +8,7 @@ const AIAdminPage = React.lazy(() => import("@/pages/settings/AIAdminPage"));
 const CompanyReferralSettingsPage = React.lazy(() => import("@/pages/app/settings/CompanyReferralSettingsPage"));
 const QuickBooksMappingsPage = React.lazy(() => import("@/pages/settings/QuickBooksMappingsPage"));
 const ReputationSettingsPage = React.lazy(() => import("@/pages/app/settings/ReputationSettingsPage"));
+const PdfToolSettingsPage = React.lazy(() => import("@/pages/app/settings/PdfToolSettingsPage"));
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-background">
@@ -24,6 +25,7 @@ export default function SettingsRoutes() {
         <Route path="ai-admin" element={<ProtectedRoute><AIAdminPage /></ProtectedRoute>} />
         <Route path="company-referrals" element={<ProtectedRoute><CompanyReferralSettingsPage /></ProtectedRoute>} />
         <Route path="reputation" element={<ProtectedRoute><ReputationSettingsPage /></ProtectedRoute>} />
+        <Route path="pdf-tools" element={<ProtectedRoute><PdfToolSettingsPage /></ProtectedRoute>} />
         <Route path="quickbooks/mappings" element={<ProtectedRoute><QuickBooksMappingsPage /></ProtectedRoute>} />
         <Route path="integrations/quickbooks/mappings" element={<ProtectedRoute><QuickBooksMappingsPage /></ProtectedRoute>} />
       </Routes>
