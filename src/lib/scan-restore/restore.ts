@@ -108,8 +108,8 @@ export function restoreScan(img: Img, mode: ScanMode): Img {
       R = 0.8 * r + 0.2 * data[p]; G = 0.8 * g + 0.2 * data[p + 1]; B = 0.8 * b + 0.2 * data[p + 2];
       if (L > 245) R = G = B = 255;
     } else if (mode === 'bw') {
-      // Threshold on paper-normalized luma; 215 keeps faint pencil/pen strokes.
-      R = G = B = L < 215 ? 0 : 255;
+      // Threshold on paper-normalized luma; 228 (same as the ink check) keeps faint pencil/pen strokes.
+      R = G = B = L < 228 ? 0 : 255;
     } else {
       const k = mode === 'ultraClean' ? 1.35 : 1.15, white = mode === 'ultraClean' ? 232 : 242;
       const s = (v: number) => (L >= white ? 255 : 255 - (255 - v) * k);
