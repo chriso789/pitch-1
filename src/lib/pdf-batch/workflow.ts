@@ -12,7 +12,7 @@ export type BatchStep =
   | { type: 'watermark'; text: string; opacity: number }
   | { type: 'set_title'; title: string }
   | { type: 'strip_metadata' }
-  | { type: 'ocr' };
+  | { type: 'ocr'; langs?: string[] };
 
 export const STEP_LABELS: Record<BatchStep['type'], string> = {
   rotate: 'Rotate pages',
@@ -25,7 +25,7 @@ export const STEP_LABELS: Record<BatchStep['type'], string> = {
 };
 
 /** Browser-only steps are injected so the core stays testable without a canvas. */
-export interface WorkflowHooks { ocr?: (bytes: Uint8Array) => Promise<{ bytes: Uint8Array; note: string }> }
+export interface WorkflowHooks { ocr?: (bytes: Uint8Array, langs?: string[]) => Promise<{ bytes: Uint8Array; note: string }> }
 
 export const MAX_DOCS = 25;
 export const MAX_BYTES = 50 * 1024 * 1024;
@@ -79,7 +79,7 @@ export async function runWorkflow(src: Uint8Array, steps: BatchStep[], hooks: Wo
     const count = doc.getPageCount();
     if (st.type === 'ocr') {
       if (!hooks.ocr) throw new Error('Text recognition is not available here');
-      const r = await hooks.ocr(await doc.save());
+      const r = await hooks.ocr(await doc.save(), st.langs);
       doc = await PDFDocument.load(r.bytes, { updateMetadata: false });
       log.push(r.note);
     } else if (st.type === 'rotate') {
