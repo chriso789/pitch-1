@@ -101,7 +101,7 @@ export function enhanceDocumentPro(
 /**
  * Apply perspective transform with high-quality bilinear interpolation
  */
-function applyPerspectiveTransformPro(
+export function applyPerspectiveTransformPro(
   sourceCanvas: HTMLCanvasElement,
   corners: DetectedCorners,
   outputWidth: number,

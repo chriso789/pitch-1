@@ -18,3 +18,4 @@
 - Fill Forms writes actual AcroForm field values with read-back verification; appearance-font failures block output, and digital-signature fields remain unsupported to avoid false signing claims.
 - PDF batch tasks run through `src/lib/pdf-batch/workflow.ts` `runWorkflow` (validated typed steps, bounded files/size, reopen check) and save each result via `saveDocumentVersion` with the steps recorded in metadata, so batches never overwrite originals and stay auditable.
 - Image/Word→PDF conversion goes through `src/lib/pdf-convert/toPdf.ts`: JPEG/PNG are embedded unchanged, .docx is re-typeset from its structure (not a layout copy), and characters the standard fonts can't draw block conversion rather than being substituted; results save as new tenant-scoped documents.
+- Subdirectories may have their own `AGENTS.md`; read it before changing files there.
