@@ -35,3 +35,10 @@ export function isBatchEnabled(): boolean {
   if (!PROD_HOSTS.includes(window.location.hostname)) return true;
   try { return window.localStorage.getItem('pitch.batch') === '1'; } catch { return false; }
 }
+
+/** File health — compress & repair (Phase 2G): on in preview/dev; production opt-in via localStorage['pitch.health']='1'. */
+export function isHealthEnabled(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (!PROD_HOSTS.includes(window.location.hostname)) return true;
+  try { return window.localStorage.getItem('pitch.health') === '1'; } catch { return false; }
+}

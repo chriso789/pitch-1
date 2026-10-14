@@ -7,7 +7,7 @@ import { PDFDocument, PDFName } from 'pdf-lib';
 export interface Permissions { print: boolean; copy: boolean; modify: boolean; annotate: boolean; fillForms: boolean }
 export const ALL_ALLOWED: Permissions = { print: true, copy: true, modify: true, annotate: true, fillForms: true };
 
-async function qpdfRun(args: string[], input: Uint8Array, wasmPath?: string): Promise<{ code: number; out?: Uint8Array }> {
+export async function qpdfRun(args: string[], input: Uint8Array, wasmPath?: string): Promise<{ code: number; out?: Uint8Array }> {
   const createModule = (await import('@neslinesli93/qpdf-wasm')).default as unknown as (a: Record<string, unknown>) => Promise<any>;
   const path = wasmPath ?? new URL('/wasm/qpdf.wasm', window.location.origin).href;
   const q = await createModule({ locateFile: () => path, noInitialRun: true, print: () => {}, printErr: () => {} });
