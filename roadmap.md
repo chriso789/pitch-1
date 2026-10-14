@@ -58,6 +58,8 @@
 - [x] Stage 3: paper-light shadow/yellow-cast correction; modes Auto / Ultra Clean / Original Color / B&W / Grayscale / Original (`src/lib/scan-restore/restore.ts`)
 - [x] Stage 4 (part): ink-preservation check flags pages where cleanup lightened handwriting/signatures; Before/After toggle in review; flagged pages need acknowledgment
 - [x] Untouched camera photos saved beside the PDF (`*_originals/page_N.jpg`, paths in metadata)
-- [ ] Stage 4 rest: per-page mode switch after capture; OCR confidence in quality score; neural shadow model (DeshScan MIT) evaluation in a worker
+- [x] Stage 4a: post-capture re-edit from the untouched photo (mode, strength, brightness, contrast, corners, undo, reset, apply-to-all, ink re-check)
+- [ ] Stage 4b: shadow-model benchmark (DeshScan etc.) — blocked on real signed-contract photos; licenses for code and weights checked separately
+- [ ] Stage 6: real iOS/Android device QA — blocked on devices/field rep
 - [ ] Stage 5: searchable PDF via existing OCR layer; scanner entry points on contacts, jobs, commercial projects, permits
 - [ ] Stage 6: real-device test set (dark desk, truck, clipboard, hard shadows, faint signatures) — needs real phones/photos
