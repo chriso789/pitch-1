@@ -34,7 +34,7 @@ export function estimatePaper(img: Img): Float32Array[] {
   const out: Float32Array[] = [];
   for (let c = 0; c < 3; c++) {
     // Downsample: brightest pixel per block (paper, not ink).
-    let small = new Float32Array(sw * sh);
+    let small: Float32Array = new Float32Array(sw * sh);
     for (let by = 0; by < sh; by++) for (let bx = 0; bx < sw; bx++) {
       let m = 0;
       const y1 = Math.min(H, (by + 1) * step), x1 = Math.min(W, (bx + 1) * step);

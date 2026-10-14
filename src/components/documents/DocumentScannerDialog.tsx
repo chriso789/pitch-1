@@ -538,7 +538,7 @@ export function DocumentScannerDialog({
         const cleaned = restoreScan(warpedImg, scanMode);
         const ink = checkInkPreservation(warpedImg, cleaned, paper);
         inkReview = ink.needsReview; inkLossRatio = ink.lossRatio;
-        wctx.putImageData(new ImageData(cleaned.data, cleaned.width, cleaned.height), 0, 0);
+        wctx.putImageData(new ImageData(cleaned.data as Uint8ClampedArray<ArrayBuffer>, cleaned.width, cleaned.height), 0, 0);
       }
       const originalBlob: Blob | null = await new Promise((r) => sourceCanvas.toBlob((b) => r(b), 'image/jpeg', 0.95));
 
