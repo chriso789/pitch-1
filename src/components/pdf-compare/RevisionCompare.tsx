@@ -10,6 +10,7 @@ import { loadDocumentPdf, type DocRow } from '@/lib/pdf-pages/documentVersions';
 import { diffRasters, revisionReport, type ChangeRegion } from '@/lib/pdf-compare/diff';
 import { ComparisonRecords } from './ComparisonRecords';
 import { AnnotationChanges } from './AnnotationChanges';
+import { MeasurementChanges } from './MeasurementChanges';
 
 const WIDTH = 1100; // both sheets rendered to the same width → compensates for different sheet sizes; PDF.js applies /Rotate and crop boxes
 
@@ -110,6 +111,7 @@ export function RevisionCompare({ tenantId, doc, bytes }: { tenantId: string; do
         </>)}</div>}
     {view === 'diff' && imgs && <p className="text-xs text-muted-foreground">Green = added in this version, red = removed. Boxes group nearby changes.</p>}
     {other && <AnnotationChanges before={other} after={bytes} page={page} />}
+    {otherId && <MeasurementChanges tenantId={tenantId} baseId={otherId} revisedId={doc.id} page={page} />}
     <ComparisonRecords tenantId={tenantId} revisedId={doc.id} baseId={otherId} page={page} dx={dx} dy={dy}
       size={otherId && imgs ? { w: imgs.w, h: imgs.h } : null} regions={regions}
       onOpen={s => { setOtherId(s.baseId); setPage(s.page); setDx(s.dx); setDy(s.dy); setView('diff'); }} />
