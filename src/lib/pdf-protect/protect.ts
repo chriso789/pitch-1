@@ -10,7 +10,7 @@ export const ALL_ALLOWED: Permissions = { print: true, copy: true, modify: true,
 export async function qpdfRun(args: string[], input: Uint8Array, wasmPath?: string): Promise<{ code: number; out?: Uint8Array }> {
   const createModule = (await import('@neslinesli93/qpdf-wasm')).default as unknown as (a: Record<string, unknown>) => Promise<any>;
   const path = wasmPath ?? new URL('/wasm/qpdf.wasm', window.location.origin).href;
-  const q = await createModule({ locateFile: () => path, noInitialRun: true, print: () => {}, printErr: () => {} });
+  const q = await createModule({ locateFile: () => path, noInitialRun: true, print: () => {}, printErr: (m: string) => { if ((globalThis as any).__QDBG) console.log("ERR", m); } });
   q.FS.writeFile('/in.pdf', input);
   let code: number;
   try { code = q.callMain(args.map(a => a === '$IN' ? '/in.pdf' : a === '$OUT' ? '/out.pdf' : a)); }
