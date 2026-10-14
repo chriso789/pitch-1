@@ -39,7 +39,8 @@
 - [ ] 2C remaining: annotation/measurement-record diff; signed-in save test
 - [ ] Authenticated integration tests — BLOCKED: external Supabase, no test credentials available to agent
 - [x] 2E protection: AES-256 protected copy (download only, verified), metadata removal, password removal (prod opt-in pitch.protect=1)
-- [ ] 2E remaining: true redaction (content removal), signed-in test
+- [x] 2E true redaction: marked pages flattened, content/annotations/fields deleted, orphan objects purged, double-checked
+- [ ] 2E remaining: signed-in test; searchable text on redacted pages (OCR re-layer)
 - [ ] 2F automation, final integration
 - [ ] Markup Unicode font embedding + rotated-annotation interop warnings
 - [x] Week 1: Pages/Markup exposed from the main PDF editor; page tools on in production (opt-out pitch.pageTools=0)
