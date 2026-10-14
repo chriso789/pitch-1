@@ -63,3 +63,9 @@
 - [ ] Stage 6: real iOS/Android device QA — blocked on devices/field rep
 - [ ] Stage 5: searchable PDF via existing OCR layer; scanner entry points on contacts, jobs, commercial projects, permits
 - [ ] Stage 6: real-device test set (dark desk, truck, clipboard, hard shadows, faint signatures) — needs real phones/photos
+
+## UltraScan Phase 5–6
+- [x] 5A Searchable scanned PDFs (local OCR, English + Spanish, invisible layer behind image, reopen-verified, image-only option)
+- [~] 5B CRM integration — scanner accepts record type/ID, name, category; uses active company. Open: add Scan buttons on contacts, jobs, commercial projects, permits, contracts, Smart Docs, mobile.
+- [ ] 5C Shadow-model benchmark — blocked: needs real photographed documents with ground-truth text.
+- [ ] 6 Mobile acceptance — blocked: needs real iPhone/Android devices.
