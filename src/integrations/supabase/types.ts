@@ -36852,6 +36852,139 @@ export type Database = {
           },
         ]
       }
+      pdf_revision_comparisons: {
+        Row: {
+          base_document_id: string
+          created_at: string
+          created_by: string
+          id: string
+          notes: string | null
+          offset_x: number
+          offset_y: number
+          page: number
+          regions: Json
+          render_height: number
+          render_width: number
+          revised_document_id: string
+          tenant_id: string
+        }
+        Insert: {
+          base_document_id: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          notes?: string | null
+          offset_x?: number
+          offset_y?: number
+          page: number
+          regions?: Json
+          render_height: number
+          render_width: number
+          revised_document_id: string
+          tenant_id: string
+        }
+        Update: {
+          base_document_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          notes?: string | null
+          offset_x?: number
+          offset_y?: number
+          page?: number
+          regions?: Json
+          render_height?: number
+          render_width?: number
+          revised_document_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pdf_revision_comparisons_base_document_id_fkey"
+            columns: ["base_document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pdf_revision_comparisons_revised_document_id_fkey"
+            columns: ["revised_document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pdf_revision_comparisons_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pdf_revision_review_items: {
+        Row: {
+          comparison_id: string
+          created_at: string
+          created_by: string
+          id: string
+          item_type: string
+          notes: string | null
+          region_index: number
+          resolved_at: string | null
+          resolved_by: string | null
+          status: string
+          tenant_id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          comparison_id: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          item_type: string
+          notes?: string | null
+          region_index: number
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          tenant_id: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          comparison_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          item_type?: string
+          notes?: string | null
+          region_index?: number
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          tenant_id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pdf_revision_review_items_comparison_id_fkey"
+            columns: ["comparison_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_revision_comparisons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pdf_revision_review_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pdf_search_index: {
         Row: {
           id: string
@@ -68168,6 +68301,7 @@ export type Database = {
       normalize_phone: { Args: { phone_text: string }; Returns: string }
       normalize_street: { Args: { street: string }; Returns: string }
       normalize_supplier_name: { Args: { input: string }; Returns: string }
+      pdf_compare_member: { Args: { _tenant: string }; Returns: boolean }
       pipeline_stage_avg_durations: {
         Args: { p_tenant_id: string }
         Returns: {
