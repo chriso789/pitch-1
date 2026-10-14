@@ -1245,13 +1245,32 @@ export function DocumentScannerDialog({
       }
       setUploadProgress(50);
 
+      // Searchable layer: OCR runs locally on each processed page image; the text sits invisibly
+      // behind the unchanged scan image and is never used to rewrite or "correct" wording.
+      let finalPdf: Blob = pdfBlob;
+      let ocrSummary: ScanOcrSummary | null = null;
+      if (searchablePdf) {
+        try {
+          const r = await makeScanSearchable(new Uint8Array(await pdfBlob.arrayBuffer()), capturedPages.map(p => p.blob),
+            ocrSpanish ? ['spa'] : [], f => setUploadProgress(50 + Math.round(f * 15)));
+          ocrSummary = r.summary;
+          if (r.summary.status === 'searchable') finalPdf = new Blob([r.bytes], { type: 'application/pdf' });
+          else toast({ title: 'Saved as image-only PDF', description: 'No readable text could be verified in the saved file.' });
+          if (r.summary.low_quality_pages.length) toast({ title: 'Low-quality text', description: `Page(s) ${r.summary.low_quality_pages.join(', ')} may be hard to search. The scan image is unaffected.` });
+        } catch (e: any) {
+          ocrSummary = { status: 'failed', languages: '', pages: [], words_written: 0, words_skipped: 0, verified_searchable: false, low_quality_pages: [], error: String(e?.message ?? e) };
+          toast({ title: 'Text recognition failed', description: 'Saving the scan as an image-only PDF.' });
+        }
+      }
+
       const timestamp = Date.now();
-      const sanitizedLabel = documentLabel.replace(/\s+/g, '_');
-      const fileName = `${profile.tenant_id}/${pipelineEntryId}/${timestamp}_${documentType}.pdf`;
+      const sanitizedLabel = (documentName?.trim() || documentLabel).replace(/[^\w.-]+/g, '_');
+      const folder = recordId ?? pipelineEntryId;
+      const fileName = `${tenantId}/${folder}/${timestamp}_${documentType}.pdf`;
 
       const uploadStart = performance.now();
       const { error: uploadError } = await supabase.storage
-        .from('documents').upload(fileName, pdfBlob, { contentType: 'application/pdf' });
+        .from('documents').upload(fileName, finalPdf, { contentType: 'application/pdf' });
       if (uploadError) throw uploadError;
       // Keep the untouched camera photos next to the PDF (never altered).
       const originalPhotoPaths: string[] = [];
@@ -1624,6 +1643,16 @@ export function DocumentScannerDialog({
             <Switch checked={autoCapture} onCheckedChange={setAutoCapture} className="scale-75" />
             Auto-capture
           </label>
+          <label className="flex items-center gap-1.5 cursor-pointer" title="Adds invisible, searchable text behind the scan image. The scan itself is never replaced.">
+            <Switch checked={searchablePdf} onCheckedChange={setSearchablePdf} className="scale-75" aria-label="Searchable PDF" />
+            Searchable PDF
+          </label>
+          {searchablePdf && (
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <Switch checked={ocrSpanish} onCheckedChange={setOcrSpanish} className="scale-75" aria-label="Also read Spanish" />
+              + Spanish
+            </label>
+          )}
           <label className="flex items-center gap-1.5 cursor-pointer">
             <Switch checked={burnPageNumbers} onCheckedChange={setBurnPageNumbers} className="scale-75" />
             Burn page #
