@@ -9,7 +9,7 @@ async function make() {
   const d = await PDFDocument.create(); const f = await d.embedFont(StandardFonts.Helvetica);
   for (const t of ['SSN 123-45-6789', 'Keep me']) d.addPage([300, 300]).drawText(t, { x: 20, y: 150, font: f, size: 12 });
   const form = d.getForm(); form.createTextField('ssn').setText('123-45-6789'); form.getTextField('ssn').addToPage(d.getPage(0), { x: 10, y: 10 });
-  return d.save();
+  return d.save({ useObjectStreams: false });
 }
 const has = (b: Uint8Array, s: string) => new TextDecoder('latin1').decode(b).includes(s);
 
