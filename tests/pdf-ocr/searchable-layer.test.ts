@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { PDFDocument, degrees } from 'pdf-lib';
+import { PDFDocument, PDFName, degrees } from 'pdf-lib';
 import { addSearchableLayer, partitionWords, pxToUser } from '@/lib/pdf-ocr/searchableLayer';
 
 const word = (text: string, x0 = 100, y0 = 100) => ({ text, x0, y0, x1: x0 + 200, y1: y0 + 40, confidence: 90 });
@@ -25,7 +25,8 @@ describe('OCR searchable layer', () => {
     expect(r.written).toBe(2); expect(r.skippedRotatedPages).toEqual([2]);
     const out = await PDFDocument.load(r.bytes);
     expect(out.getPageCount()).toBe(2);
-    const text = new TextDecoder('latin1').decode(r.bytes);
-    expect(text).toContain('3 Tr'); expect(text).toContain('PITCHOcr');
+    const fonts = out.getPage(0).node.Resources()!.lookup(PDFName.of('Font')) as any;
+    expect(fonts.has(PDFName.of('PITCHOcr'))).toBe(true);
+    expect(out.getPage(1).node.Contents()).toBeUndefined();
   });
 });
