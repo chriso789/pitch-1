@@ -11,7 +11,8 @@ export type BatchStep =
   | { type: 'page_numbers'; format: string }
   | { type: 'watermark'; text: string; opacity: number }
   | { type: 'set_title'; title: string }
-  | { type: 'strip_metadata' };
+  | { type: 'strip_metadata' }
+  | { type: 'ocr' };
 
 export const STEP_LABELS: Record<BatchStep['type'], string> = {
   rotate: 'Rotate pages',
@@ -20,7 +21,11 @@ export const STEP_LABELS: Record<BatchStep['type'], string> = {
   watermark: 'Add watermark',
   set_title: 'Set document title',
   strip_metadata: 'Remove hidden details',
+  ocr: 'Make scanned pages searchable',
 };
+
+/** Browser-only steps are injected so the core stays testable without a canvas. */
+export interface WorkflowHooks { ocr?: (bytes: Uint8Array) => Promise<{ bytes: Uint8Array; note: string }> }
 
 export const MAX_DOCS = 25;
 export const MAX_BYTES = 50 * 1024 * 1024;
@@ -45,6 +50,7 @@ export function resolvePages(spec: string, count: number): number[] {
 export function validateSteps(steps: BatchStep[]): string | null {
   if (!steps.length) return 'Add at least one step';
   if (steps.length > MAX_STEPS) return `At most ${MAX_STEPS} steps`;
+  if (steps.filter(s => s.type === 'ocr').length > 1) return 'Text recognition can only be one step';
   for (const [i, st] of steps.entries()) {
     const n = `Step ${i + 1}`;
     if (st.type === 'watermark') {
@@ -61,7 +67,7 @@ export function validateSteps(steps: BatchStep[]): string | null {
 
 export interface BatchResult { bytes: Uint8Array; pagesIn: number; pagesOut: number; log: string[] }
 
-export async function runWorkflow(src: Uint8Array, steps: BatchStep[]): Promise<BatchResult> {
+export async function runWorkflow(src: Uint8Array, steps: BatchStep[], hooks: WorkflowHooks = {}): Promise<BatchResult> {
   const err = validateSteps(steps);
   if (err) throw new Error(err);
   if (src.byteLength > MAX_BYTES) throw new Error('File is larger than 50 MB');
@@ -71,7 +77,12 @@ export async function runWorkflow(src: Uint8Array, steps: BatchStep[]): Promise<
   const log: string[] = [];
   for (const st of steps) {
     const count = doc.getPageCount();
-    if (st.type === 'rotate') {
+    if (st.type === 'ocr') {
+      if (!hooks.ocr) throw new Error('Text recognition is not available here');
+      const r = await hooks.ocr(await doc.save());
+      doc = await PDFDocument.load(r.bytes, { updateMetadata: false });
+      log.push(r.note);
+    } else if (st.type === 'rotate') {
       const idx = resolvePages(st.pages, count);
       for (const i of idx) { const p = doc.getPage(i); p.setRotation(degrees((p.getRotation().angle + st.angle) % 360)); }
       log.push(`Rotated ${idx.length} page(s) by ${st.angle}°`);

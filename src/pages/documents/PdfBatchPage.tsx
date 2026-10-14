@@ -10,6 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { loadDocumentPdf, saveDocumentVersion, type DocRow } from '@/lib/pdf-pages/documentVersions';
 import { runWorkflow, validateSteps, STEP_LABELS, MAX_DOCS, type BatchStep } from '@/lib/pdf-batch/workflow';
 import { isBatchEnabled } from '@/lib/pdf-pages/featureGate';
+import { ocrSearchable } from '@/lib/pdf-ocr/batchOcr';
+import { toast } from 'sonner';
 
 const defaults: Record<BatchStep['type'], BatchStep> = {
   rotate: { type: 'rotate', pages: 'all', angle: 90 },
@@ -18,7 +20,10 @@ const defaults: Record<BatchStep['type'], BatchStep> = {
   watermark: { type: 'watermark', text: 'DRAFT', opacity: 0.2 },
   set_title: { type: 'set_title', title: '' },
   strip_metadata: { type: 'strip_metadata' },
+  ocr: { type: 'ocr' },
 };
+
+interface Template { id: string; name: string; steps: BatchStep[]; created_by: string }
 
 type Status = { state: 'waiting' | 'running' | 'saved' | 'failed' | 'preview'; note?: string };
 
@@ -30,6 +35,22 @@ export default function PdfBatchPage() {
   const [steps, setSteps] = useState<BatchStep[]>([]);
   const [status, setStatus] = useState<Record<string, Status>>({});
   const [busy, setBusy] = useState(false);
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [tplName, setTplName] = useState('');
+  const db = supabase as any;
+  const loadTemplates = () => tenantId && db.from('pdf_batch_templates').select('id, name, steps, created_by').eq('tenant_id', tenantId).order('created_at', { ascending: false }).then(({ data }: any) => setTemplates(data ?? []));
+  useEffect(() => { loadTemplates(); }, [tenantId]);
+  async function saveTemplate() {
+    if (!tenantId || stepError || !tplName.trim()) return;
+    const { error } = await db.from('pdf_batch_templates').insert({ tenant_id: tenantId, name: tplName.trim(), steps });
+    if (error) return toast.error(error.message);
+    setTplName(''); toast.success('Steps saved'); loadTemplates();
+  }
+  async function deleteTemplate(id: string) {
+    const { error } = await db.from('pdf_batch_templates').delete().eq('id', id).eq('tenant_id', tenantId);
+    if (error) return toast.error(error.message);
+    loadTemplates();
+  }
 
   useEffect(() => {
     if (!tenantId) return;
@@ -52,7 +73,7 @@ export default function PdfBatchPage() {
       setStatus(s => ({ ...s, [id]: { state: 'running' } }));
       try {
         const { doc, bytes } = await loadDocumentPdf(tenantId, id);
-        const r = await runWorkflow(bytes, steps);
+        const r = await runWorkflow(bytes, steps, { ocr: ocrSearchable });
         if (previewOnly) {
           const url = URL.createObjectURL(new Blob([r.bytes as BlobPart], { type: 'application/pdf' }));
           window.open(url, '_blank');
@@ -118,6 +139,19 @@ export default function PdfBatchPage() {
               <SelectContent>{Object.entries(STEP_LABELS).map(([k, l]) => <SelectItem key={k} value={k}>{l}</SelectItem>)}</SelectContent>
             </Select>
             {steps.length > 0 && stepError && <p className="text-sm text-destructive">{stepError}</p>}
+            {steps.some(s => s.type === 'ocr') && <p className="text-xs text-muted-foreground">Text recognition runs on this computer and only on pages without real text. Recognized text is a best guess and is never used as a measurement or price.</p>}
+            <div className="border-t pt-3 space-y-2">
+              <p className="text-sm font-medium">Saved step lists</p>
+              <div className="flex gap-2"><Input placeholder="Name these steps" value={tplName} onChange={e => setTplName(e.target.value)} /><Button variant="outline" disabled={!!stepError || !tplName.trim()} onClick={saveTemplate}>Save</Button></div>
+              {templates.map(t => (
+                <div key={t.id} className="flex items-center gap-2 text-sm">
+                  <span className="flex-1 truncate">{t.name} · {t.steps.length} step(s)</span>
+                  <Button size="sm" variant="outline" onClick={() => setSteps(t.steps.map(x => ({ ...x })))}>Use</Button>
+                  <Button size="sm" variant="ghost" onClick={() => deleteTemplate(t.id)}>Delete</Button>
+                </div>
+              ))}
+              {!templates.length && <p className="text-xs text-muted-foreground">None yet — saved lists are shared with your company.</p>}
+            </div>
           </CardContent>
         </Card>
       </div>
