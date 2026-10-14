@@ -30,7 +30,8 @@
 - [ ] Audit insurance certificate — blocked if source file/authenticated access unavailable
 - [ ] 2C Drawing revision comparison
 - [x] 2D OCR (local Tesseract, confidence flags, invisible searchable layer as new version) + page→PNG export, text export (prod opt-in pitch.ocr=1)
-- [ ] 2D remaining: Office/image→PDF conversions, rotated-page OCR layer, non-English, signed-in test
+- [x] 2D Image/Word→PDF conversion at /documents/convert (4 tests; prod opt-in pitch.ocr=1)
+- [ ] 2D remaining: rotated-page OCR layer, non-English, signed-in test
 - [ ] 2E Workflow automation across PITCH
 - [x] Smart Docs storage path fix (tenant-folder uploads; legacy files readable by owning company only)
 - [ ] Measurement carry-over integration tests (reorder/duplicate/rotate/crop)
