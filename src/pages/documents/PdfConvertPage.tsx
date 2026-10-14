@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { imagesToPdf, docxToPdf, sniffImage, MAX_FILES, MAX_BYTES, type ImageInput } from '@/lib/pdf-convert/toPdf';
-import { isOcrEnabled } from '@/lib/pdf-pages/featureGate';
+import { isOcrEnabled, usePdfToolGate } from '@/lib/pdf-pages/featureGate';
 import { toast } from 'sonner';
 
 /** Re-encode browser-readable images (WebP, GIF, BMP…) to PNG; JPEG/PNG pass through untouched. */
@@ -23,6 +23,7 @@ async function toImageInput(f: File): Promise<ImageInput> {
 }
 
 export default function PdfConvertPage() {
+  usePdfToolGate();
   const tenantId = useEffectiveTenantId();
   const [mode, setMode] = useState<'images' | 'word'>('images');
   const [files, setFiles] = useState<File[]>([]);
@@ -32,7 +33,7 @@ export default function PdfConvertPage() {
   const [result, setResult] = useState<{ bytes: Uint8Array; warnings: string[] } | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
 
-  if (!isOcrEnabled()) return <div className="p-6">Convert to PDF isn't turned on here yet.</div>;
+  if (!isOcrEnabled()) return <div className="p-6">Convert to PDF isn't switched on for your company. A company admin can turn it on in Settings → PDF Tools.</div>;
 
   const total = files.reduce((s, f) => s + f.size, 0);
   const tooBig = total > MAX_BYTES || files.length > MAX_FILES;
@@ -67,7 +68,7 @@ export default function PdfConvertPage() {
     const { data, error } = await db.from('documents').insert({
       tenant_id: tenantId, filename: `${base}.pdf`, file_path: path, file_size: result.bytes.byteLength, mime_type: 'application/pdf',
       document_type: 'company_resource', description: `Converted from ${mode === 'images' ? `${files.length} image(s)` : 'a Word file'}`,
-      metadata: { converted_from: mode, source_files: files.map(f => f.name).slice(0, MAX_FILES) },
+      metadata: { pdf_tool: 'ocr', converted_from: mode, source_files: files.map(f => f.name).slice(0, MAX_FILES) },
     }).select('id').single();
     if (error) { await supabase.storage.from('smartdoc-assets').remove([path]); setBusy(false); return toast.error(error.message); }
     setSaved(data.id); setBusy(false); toast.success('Saved to company documents');

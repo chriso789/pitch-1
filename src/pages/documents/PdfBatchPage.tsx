@@ -9,7 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { loadDocumentPdf, saveDocumentVersion, type DocRow } from '@/lib/pdf-pages/documentVersions';
 import { runWorkflow, validateSteps, STEP_LABELS, MAX_DOCS, type BatchStep } from '@/lib/pdf-batch/workflow';
-import { isBatchEnabled } from '@/lib/pdf-pages/featureGate';
+import { isBatchEnabled, usePdfToolGate } from '@/lib/pdf-pages/featureGate';
 import { ocrSearchable } from '@/lib/pdf-ocr/batchOcr';
 import { OCR_LANGUAGES } from '@/lib/pdf-ocr/languages';
 import { toast } from 'sonner';
@@ -29,6 +29,7 @@ interface Template { id: string; name: string; steps: BatchStep[]; created_by: s
 type Status = { state: 'waiting' | 'running' | 'saved' | 'failed' | 'preview'; note?: string };
 
 export default function PdfBatchPage() {
+  usePdfToolGate();
   const tenantId = useEffectiveTenantId();
   const [docs, setDocs] = useState<DocRow[]>([]);
   const [search, setSearch] = useState('');
@@ -80,7 +81,7 @@ export default function PdfBatchPage() {
           window.open(url, '_blank');
           setStatus(s => ({ ...s, [id]: { state: 'preview', note: `${r.pagesIn} → ${r.pagesOut} pages · not saved` } }));
         } else {
-          const v = await saveDocumentVersion({ tenantId, doc, bytes: r.bytes, kind: 'markup', summary: `Batch: ${r.log.join('; ')}`, metadata: { batch_workflow: { steps, log: r.log, ran_at: new Date().toISOString() } } });
+          const v = await saveDocumentVersion({ tenantId, doc, bytes: r.bytes, kind: 'markup', tool: 'batch', summary: `Batch: ${r.log.join('; ')}`, metadata: { batch_workflow: { steps, log: r.log, ran_at: new Date().toISOString() } } });
           setStatus(s => ({ ...s, [id]: { state: 'saved', note: `New version v${v.version} · ${r.pagesOut} pages` } }));
         }
       } catch (e: any) {

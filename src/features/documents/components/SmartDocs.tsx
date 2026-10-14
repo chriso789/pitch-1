@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { isPageToolsEnabled } from "@/lib/pdf-pages/featureGate";
+import { isPageToolsEnabled, usePdfToolGate } from "@/lib/pdf-pages/featureGate";
 import React, { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -80,6 +80,7 @@ interface TaggedDocument extends CompanyDoc {
 }
 
 const SmartDocs = () => {
+  usePdfToolGate();
   const [templates, setTemplates] = useState<SmartDocTemplate[]>([]);
   const [folders, setFolders] = useState<SmartDocFolder[]>([]);
   const [companyDocs, setCompanyDocs] = useState<CompanyDoc[]>([]);

@@ -1,0 +1,1 @@
+REVOKE EXECUTE ON FUNCTION public.documents_pdf_tool_guard() FROM anon, authenticated, public;

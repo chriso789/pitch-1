@@ -21,7 +21,7 @@ export async function loadDocumentPdf(tenantId: string, documentId: string) {
   return { doc: doc as DocRow, bytes: new Uint8Array(await blob.arrayBuffer()) };
 }
 
-export async function saveDocumentVersion(args: { tenantId: string; doc: DocRow; bytes: Uint8Array; kind: 'pages' | 'markup'; summary: string; metadata?: Record<string, any> }) {
+export async function saveDocumentVersion(args: { tenantId: string; doc: DocRow; bytes: Uint8Array; kind: 'pages' | 'markup'; tool: import('./featureGate').PdfTool; summary: string; metadata?: Record<string, any> }) {
   const { tenantId, doc, bytes, kind, summary } = args;
   if (doc.tenant_id !== tenantId) throw new Error('This document belongs to a different company');
   const root = doc.metadata?.versions_root_id ?? doc.metadata?.pages_from_document_id ?? doc.id;
@@ -38,7 +38,7 @@ export async function saveDocumentVersion(args: { tenantId: string; doc: DocRow;
   const { data: row, error } = await db.from('documents').insert({
     tenant_id: tenantId, filename, file_path: path, file_size: bytes.byteLength, mime_type: 'application/pdf', document_type: doc.document_type,
     description: `${kind === 'pages' ? 'Page edits' : 'Markups'} v${version}: ${summary}`,
-    metadata: { ...(doc.metadata ?? {}), ...(args.metadata ?? {}), versions_root_id: root, edited_from_document_id: doc.id, version_number: version, version_kind: kind, measurement_reconciliation: args.metadata?.measurement_reconciliation ?? null },
+    metadata: { ...(doc.metadata ?? {}), ...(args.metadata ?? {}), pdf_tool: args.tool, versions_root_id: root, edited_from_document_id: doc.id, version_number: version, version_kind: kind, measurement_reconciliation: args.metadata?.measurement_reconciliation ?? null },
   }).select('id').single();
   if (error) { await supabase.storage.from(bucket).remove([path]); throw error; }
   return { id: row.id as string, filename, version };
