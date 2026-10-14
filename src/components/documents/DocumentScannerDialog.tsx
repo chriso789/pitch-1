@@ -22,7 +22,8 @@ import {
   detectDocumentEdgesOpenCV, loadOpenCV, isOpenCVAvailable, DetectedCornersExt,
 } from '@/utils/documentEdgeDetectionOpenCV';
 import { CornerStabilityBuffer, validateQuadrilateral, StabilityResult } from '@/utils/documentStability';
-import { enhanceDocumentPro } from '@/utils/documentEnhancementPro';
+import { applyPerspectiveTransformPro } from '@/utils/documentEnhancementPro';
+import { restoreScan, checkInkPreservation, estimatePaper, SCAN_MODES, type ScanMode } from '@/lib/scan-restore/restore';
 import { ManualCropOverlay } from './ManualCropOverlay';
 import { ScannerQAReview } from './ScannerQAReview';
 import { analyzeFrameQuality, evaluateQualityGate, QualityFlags, QualityGateResult } from '@/utils/documentQuality';
@@ -69,9 +70,18 @@ interface CapturedPage {
   imageHash?: string;
   edgeCleanupApplied?: boolean;
   duplicateWarning?: boolean;
+  /** Cleanup mode used for this page (UltraScan). */
+  scanMode?: ScanMode;
+  /** Untouched camera frame, uploaded alongside the PDF and never altered. */
+  originalBlob?: Blob;
+  /** Cropped/straightened page before cleanup, shown as "Before" in review. */
+  beforePreview?: string;
+  /** Cleanup erased a meaningful share of ink: user must review before saving. */
+  inkReview?: boolean;
+  inkLossRatio?: number;
 }
 
-const SCANNER_VERSION = '2.3.0';
+const SCANNER_VERSION = '2.4.0';
 const HOLD_STILL_MS = 350;
 const AUTOCAPTURE_HOLD_MS = 1000;
 const AUTOCAPTURE_COOLDOWN_MS = 1500;
@@ -113,6 +123,7 @@ export function DocumentScannerDialog({
 
   // Preferences
   const [scanPreset, setScanPreset] = useState<ScanPreset>(DEFAULT_SCAN_PRESET);
+  const [scanMode, setScanMode] = useState<ScanMode>(SCAN_PRESETS[DEFAULT_SCAN_PRESET].colorMode === 'bw' ? 'bw' : 'auto');
   const [pdfProfile, setPdfProfile] = useState<PdfProfile>(DEFAULT_PDF_PROFILE);
   const [autoCapture, setAutoCapture] = useState(false);
   const [burnPageNumbers, setBurnPageNumbers] = useState(false);
@@ -514,14 +525,22 @@ export function DocumentScannerDialog({
       const spec = getPageSpec(pageSize);
 
       const preset = SCAN_PRESETS[scanPreset];
-      let enhanced = enhanceDocumentPro(sourceCanvas, corners, {
-        mode: preset.colorMode,
-        illuminationCorrection: preset.illuminationCorrection,
-        whiteBackground: preset.whiteBackground,
-        sharpen: preset.sharpen,
-        outputWidth: spec.outputWidth,
-        outputHeight: spec.outputHeight,
-      });
+      // UltraScan: crop/straighten only, then clean up with the chosen mode and
+      // check that no ink (signatures, initials, faint pen) was erased.
+      let enhanced = applyPerspectiveTransformPro(sourceCanvas, corners, spec.outputWidth, spec.outputHeight);
+      const wctx = enhanced.getContext('2d')!;
+      const warped = wctx.getImageData(0, 0, enhanced.width, enhanced.height);
+      const warpedImg = { data: warped.data, width: warped.width, height: warped.height };
+      const beforeBlob: Blob | null = await new Promise((r) => enhanced.toBlob((b) => r(b), 'image/jpeg', 0.8));
+      let inkReview = false, inkLossRatio = 0;
+      if (scanMode !== 'original') {
+        const paper = estimatePaper(warpedImg);
+        const cleaned = restoreScan(warpedImg, scanMode);
+        const ink = checkInkPreservation(warpedImg, cleaned, paper);
+        inkReview = ink.needsReview; inkLossRatio = ink.lossRatio;
+        wctx.putImageData(new ImageData(cleaned.data, cleaned.width, cleaned.height), 0, 0);
+      }
+      const originalBlob: Blob | null = await new Promise((r) => sourceCanvas.toBlob((b) => r(b), 'image/jpeg', 0.95));
 
       // Post-warp deskew (±5°)
       const { canvas: deskewed, angle: deskewAngle } = deskewCanvas(enhanced);
@@ -589,8 +608,13 @@ export function DocumentScannerDialog({
         blob,
         preview,
         cropMode,
-        colorMode: preset.colorMode,
+        colorMode: scanMode === 'bw' ? 'bw' : 'color',
         preset: scanPreset,
+        scanMode,
+        originalBlob: originalBlob ?? undefined,
+        beforePreview: beforeBlob ? urlRegRef.current.create(beforeBlob) : undefined,
+        inkReview,
+        inkLossRatio,
         confidence: corners.confidence ?? null,
         pageSize,
         deskewAngle,
@@ -622,7 +646,7 @@ export function DocumentScannerDialog({
       console.error('Processing error:', error);
       return false;
     }
-  }, [capturedPages, scanPreset, burnPageNumbers, retakeIndex]);
+  }, [capturedPages, scanPreset, scanMode, burnPageNumbers, retakeIndex]);
 
   // ============================================================================
   // Capture
@@ -1436,7 +1460,7 @@ export function DocumentScannerDialog({
         </DialogHeader>
 
         {/* Top controls */}
-        <div className="flex-shrink-0 px-3 py-2 border-b grid grid-cols-2 gap-2 bg-muted/20">
+        <div className="flex-shrink-0 px-3 py-2 border-b grid grid-cols-3 gap-2 bg-muted/20">
           <div>
             <Label className="text-xs text-muted-foreground">Scan Mode</Label>
             <Select value={scanPreset} onValueChange={(v) => setScanPreset(v as ScanPreset)}>
@@ -1444,6 +1468,17 @@ export function DocumentScannerDialog({
               <SelectContent>
                 {Object.values(SCAN_PRESETS).map(p => (
                   <SelectItem key={p.preset} value={p.preset}>{p.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs text-muted-foreground">Cleanup</Label>
+            <Select value={scanMode} onValueChange={(v) => setScanMode(v as ScanMode)}>
+              <SelectTrigger className="h-8 text-xs" aria-label="Cleanup mode"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {SCAN_MODES.map(m => (
+                  <SelectItem key={m.mode} value={m.mode}>{m.label} — {m.hint}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -1846,6 +1881,9 @@ export function DocumentScannerDialog({
                 duplicateWarning: p.duplicateWarning,
                 quality: p.quality,
                 edgeCleanupApplied: p.edgeCleanupApplied,
+                beforePreview: p.beforePreview,
+                inkReview: p.inkReview,
+                scanModeLabel: SCAN_MODES.find(m => m.mode === p.scanMode)?.label,
               }))}
               pdfProfile={pdfProfile}
               onBack={() => setShowQA(false)}
