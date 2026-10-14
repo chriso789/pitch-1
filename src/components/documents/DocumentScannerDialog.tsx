@@ -17,6 +17,8 @@ import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { hasHomeIndicator } from '@/utils/mobileDetection';
 import jsPDF from 'jspdf';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { makeScanSearchable, type ScanOcrSummary } from '@/lib/scan-ocr/scanSearchable';
 import { detectDocumentEdges, DetectedCorners } from '@/utils/documentEdgeDetection';
 import {
   detectDocumentEdgesOpenCV, loadOpenCV, isOpenCVAvailable, DetectedCornersExt,
@@ -106,6 +108,12 @@ interface DocumentScannerDialogProps {
   documentType: string;
   documentLabel: string;
   pipelineEntryId: string;
+  /** Record the scan belongs to (lead, contact, job, commercial project, permit, contract…). Defaults to the pipeline entry. */
+  recordType?: 'pipeline_entry' | 'contact' | 'job' | 'project' | 'commercial_project' | 'permit' | 'contract' | 'smart_doc';
+  recordId?: string;
+  /** Optional document name / category chosen by the user. */
+  documentName?: string;
+  documentCategory?: string;
   onUploadComplete?: () => void;
 }
 
@@ -115,8 +123,15 @@ export function DocumentScannerDialog({
   documentType,
   documentLabel,
   pipelineEntryId,
+  recordType = 'pipeline_entry',
+  recordId,
+  documentName,
+  documentCategory,
   onUploadComplete,
 }: DocumentScannerDialogProps) {
+  const effectiveTenantId = useEffectiveTenantId();
+  const [searchablePdf, setSearchablePdf] = useState(true);
+  const [ocrSpanish, setOcrSpanish] = useState(true);
   // Core capture state
   const [capturedPages, setCapturedPages] = useState<CapturedPage[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -1214,7 +1229,8 @@ export function DocumentScannerDialog({
       if (!user) throw new Error('Not authenticated');
       const { data: profile } = await supabase
         .from('profiles').select('tenant_id').eq('id', user.id).single();
-      if (!profile?.tenant_id) throw new Error('Tenant not found');
+      const tenantId = effectiveTenantId ?? profile?.tenant_id;
+      if (!tenantId) throw new Error('Tenant not found');
 
       setUploadProgress(10);
       const profileCfg = PDF_PROFILES[pdfProfile];
@@ -1277,7 +1293,7 @@ export function DocumentScannerDialog({
       for (let i = 0; i < capturedPages.length; i++) {
         const ob = capturedPages[i].originalBlob;
         if (!ob) continue;
-        const op = `${profile.tenant_id}/${pipelineEntryId}/${timestamp}_${documentType}_originals/page_${i + 1}.jpg`;
+        const op = `${tenantId}/${folder}/${timestamp}_${documentType}_originals/page_${i + 1}.jpg`;
         const { error: oe } = await supabase.storage.from('documents').upload(op, ob, { contentType: 'image/jpeg' });
         if (oe) throw new Error(`Could not save original photo for page ${i + 1}: ${oe.message}`);
         originalPhotoPaths.push(op);
@@ -1325,6 +1341,12 @@ export function DocumentScannerDialog({
         scanner_session_id: scannerSessionIdRef.current,
         qa_reviewed: true,
         original_photo_paths: originalPhotoPaths,
+        record_type: recordType,
+        record_id: recordId ?? pipelineEntryId,
+        document_category: documentCategory ?? documentType,
+        captured_by: user.id,
+        searchable_pdf_requested: searchablePdf,
+        ocr: ocrSummary,
         cleanup_modes_per_page: capturedPages.map(p => p.scanMode ?? null),
         ink_review_pages: capturedPages.map((p, i) => (p.inkReview ? i + 1 : null)).filter(Boolean),
         qa_warnings_acknowledged: qaAcknowledged,
@@ -1383,12 +1405,12 @@ export function DocumentScannerDialog({
 
       const { data: insertedDoc, error: dbError } = await supabase
         .from('documents').insert({
-          tenant_id: profile.tenant_id,
-          pipeline_entry_id: pipelineEntryId,
+          tenant_id: tenantId,
+          pipeline_entry_id: recordType === 'pipeline_entry' ? pipelineEntryId : (pipelineEntryId || null),
           document_type: documentType,
           filename: `${sanitizedLabel}.pdf`,
           file_path: fileName,
-          file_size: pdfBlob.size,
+          file_size: finalPdf.size,
           mime_type: 'application/pdf',
           uploaded_by: user.id,
           description: `Scanned ${capturedPages.length}-page ${documentLabel}`,
@@ -1396,11 +1418,11 @@ export function DocumentScannerDialog({
           scan_source: capturedPages.every(p => p.captureMethod === 'imported_pdf_rebuilt') ? 'imported_pdf' : 'camera',
           metadata: scanMetadata,
           scan_quality: scanQuality,
-          ocr_status: 'processing',
+          ocr_status: ocrSummary?.status === 'searchable' ? 'completed' : 'processing',
         } as any).select('id').single();
       if (dbError) throw dbError;
 
-      if (insertedDoc?.id) {
+      if (insertedDoc?.id && ocrSummary?.status !== 'searchable') {
         supabase.functions.invoke('ocr-scanned-document', { body: { document_id: insertedDoc.id } })
           .catch(e => console.warn('[scanner] OCR invoke failed:', e));
       }
