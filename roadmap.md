@@ -41,6 +41,7 @@
 - [x] 2E protection: AES-256 protected copy (download only, verified), metadata removal, password removal (prod opt-in pitch.protect=1)
 - [x] 2E true redaction: marked pages flattened, content/annotations/fields deleted, orphan objects purged, double-checked
 - [ ] 2E remaining: signed-in test; searchable text on redacted pages (OCR re-layer)
-- [ ] 2F automation, final integration
+- [x] 2F batch PDF tasks at /documents/batch (rotate, keep pages, numbers, watermark, title, remove details; preview, new versions with recorded steps; 3 tests; prod opt-in pitch.batch=1)
+- [ ] 2F remaining: OCR/redact/protect as batch steps, saved workflow templates, signed-in test
 - [ ] Markup Unicode font embedding + rotated-annotation interop warnings
 - [x] Week 1: Pages/Markup exposed from the main PDF editor; page tools on in production (opt-out pitch.pageTools=0)
