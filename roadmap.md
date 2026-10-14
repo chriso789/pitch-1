@@ -29,7 +29,8 @@
 - [ ] Authenticated stored-version save/reopen check — and authenticated stored-version save/reopen — signing implementation and external-project session unavailable
 - [ ] Audit insurance certificate — blocked if source file/authenticated access unavailable
 - [ ] 2C Drawing revision comparison
-- [ ] 2D OCR, conversions, protection, optimization
+- [x] 2D OCR (local Tesseract, confidence flags, invisible searchable layer as new version) + page→PNG export, text export (prod opt-in pitch.ocr=1)
+- [ ] 2D remaining: Office/image→PDF conversions, rotated-page OCR layer, non-English, signed-in test
 - [ ] 2E Workflow automation across PITCH
 - [x] Smart Docs storage path fix (tenant-folder uploads; legacy files readable by owning company only)
 - [ ] Measurement carry-over integration tests (reorder/duplicate/rotate/crop)
