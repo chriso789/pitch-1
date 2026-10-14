@@ -56,12 +56,21 @@ export async function compressPdf(src: Uint8Array, opts: CompressOptions = {}): 
 
 /** Rebuilds the file's internal index and structure. Never invents content. */
 export async function repairPdf(src: Uint8Array, opts: { wasmPath?: string } = {}): Promise<{ bytes: Uint8Array; pages: number; warnings: boolean }> {
-  const r = await qpdfRun(['--object-streams=preserve', '$IN', '$OUT'], src, opts.wasmPath);
-  if (!ok(r.code) || !r.out) throw new Error('This file is too damaged to rebuild.');
+  let r = await qpdfRun(['--object-streams=preserve', '$IN', '$OUT'], src, opts.wasmPath);
+  let fixed = false;
+  if (!ok(r.code) || !r.out) {
+    // Second route: pdf-lib reads objects in file order (ignores a broken index), then qpdf re-checks the rebuild.
+    let resaved: Uint8Array;
+    try { resaved = await (await PDFDocument.load(src.slice(), { updateMetadata: false, throwOnInvalidObject: false })).save({ useObjectStreams: false }); }
+    catch { throw new Error('This file is too damaged to rebuild.'); }
+    r = await qpdfRun(['--object-streams=preserve', '$IN', '$OUT'], resaved, opts.wasmPath);
+    if (!ok(r.code) || !r.out) throw new Error('This file is too damaged to rebuild.');
+    fixed = true;
+  }
   let pages = 0;
   try { pages = await pageCount(r.out); } catch { throw new Error('The rebuilt file still cannot be opened.'); }
   if (!pages) throw new Error('No pages could be recovered.');
-  return { bytes: r.out, pages, warnings: r.code === 3 };
+  return { bytes: r.out, pages, warnings: fixed || r.code === 3 };
 }
 
 /** Browser JPEG re-encoder (canvas). */
