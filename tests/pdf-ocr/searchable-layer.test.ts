@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { PDFDocument, PDFName, degrees } from 'pdf-lib';
-import { addSearchableLayer, partitionWords, pxToUser } from '@/lib/pdf-ocr/searchableLayer';
+import { addSearchableLayer, partitionWords, pxToUser, placeWord } from '@/lib/pdf-ocr/searchableLayer';
 
 const word = (text: string, x0 = 100, y0 = 100) => ({ text, x0, y0, x1: x0 + 200, y1: y0 + 40, confidence: 90 });
 
