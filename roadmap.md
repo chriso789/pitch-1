@@ -34,7 +34,8 @@
 - [x] Smart Docs storage path fix (tenant-folder uploads; legacy files readable by owning company only)
 - [ ] Measurement carry-over integration tests (reorder/duplicate/rotate/crop)
 - [x] 2C revision comparison: side-by-side (synced scroll), overlay w/ transparency, size/rotation normalization, manual nudge, anti-alias-filtered diff, region report (4 tests; prod opt-in pitch.compare=1)
-- [ ] 2C remaining: saved comparison records + create RFI/CO/takeoff tasks from regions; annotation/measurement-record diff
+- [x] 2C saved comparison records (permanent) + RFI / change-order review / takeoff review items per change area (status-only edits)
+- [ ] 2C remaining: annotation/measurement-record diff; signed-in save test
 - [ ] Authenticated integration tests — BLOCKED: external Supabase, no test credentials available to agent
 - [ ] 2D OCR/conversions, 2E protection, 2F automation, final integration
 - [ ] Markup Unicode font embedding + rotated-annotation interop warnings
