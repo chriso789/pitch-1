@@ -49,5 +49,6 @@
 - [x] 2F batch PDF tasks at /documents/batch (rotate, keep pages, numbers, watermark, title, remove details; preview, new versions with recorded steps; 3 tests; prod opt-in pitch.batch=1)
 - [x] 2F searchable-text (OCR) batch step + company-shared saved step lists
 - [ ] 2F remaining: signed-in test. Redact/Protect intentionally not batch steps (redaction needs per-file boxes; protected copies are download-only)
+- [x] 2G Compress (lossless / photo resize, page-count verified) + Repair (rebuilds broken files) — "Compress & Repair" tab, prod opt-in pitch.health=1; signed-in test pending
 - [ ] Markup Unicode font embedding + rotated-annotation interop warnings
 - [x] Week 1: Pages/Markup exposed from the main PDF editor; page tools on in production (opt-out pitch.pageTools=0)
