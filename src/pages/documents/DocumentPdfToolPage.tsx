@@ -17,7 +17,7 @@ import { PdfProtectPanel } from "@/components/pdf-protect/PdfProtectPanel";
 import { PdfRedactPanel } from "@/components/pdf-redact/PdfRedactPanel";
 import { PdfOcrPanel } from "@/components/pdf-ocr/PdfOcrPanel";
 import { Button } from "@/components/ui/button";
-import { isPageToolsEnabled } from "@/lib/pdf-pages/featureGate";
+import { isPageToolsEnabled, usePdfToolGate } from "@/lib/pdf-pages/featureGate";
 import { loadDocumentPdf, saveDocumentVersion, reconcileMeasurements, type DocRow } from "@/lib/pdf-pages/documentVersions";
 
 /**
@@ -26,6 +26,7 @@ import { loadDocumentPdf, saveDocumentVersion, reconcileMeasurements, type DocRo
  * Routes: /commercial/:id/plans/:documentId/(pages|markup) and /documents/:documentId/(pages|markup)
  */
 export default function DocumentPdfToolPage({ tool }: { tool: "pages" | "markup" }) {
+  usePdfToolGate();
   const { id: projectId, documentId } = useParams();
   const [params, setParams] = useSearchParams();
   const inspecting = params.get('mode') === 'text';
@@ -53,7 +54,7 @@ export default function DocumentPdfToolPage({ tool }: { tool: "pages" | "markup"
 
   const savePages = async (r: SaveResult) => {
     if (!tenantId || !doc) throw new Error("No company selected");
-    const v = await saveDocumentVersion({ tenantId, doc, bytes: r.bytes, kind: "pages", summary: r.summary, metadata: { page_map: r.pageMap } });
+    const v = await saveDocumentVersion({ tenantId, doc, bytes: r.bytes, kind: "pages", tool: "pageTools", summary: r.summary, metadata: { page_map: r.pageMap } });
     let msg = `Saved "${v.filename}". The original is unchanged.`;
     if (projectId) {
       const rec = await reconcileMeasurements({ tenantId, sourceDocId: doc.id, newDocId: v.id, projectId, map: r.pageMap, cropBoxes: r.cropBoxes });
@@ -68,14 +69,14 @@ export default function DocumentPdfToolPage({ tool }: { tool: "pages" | "markup"
   };
   const saveMarkup = async (out: Uint8Array, summary: string) => {
     if (!tenantId || !doc) throw new Error("No company selected");
-    const v = await saveDocumentVersion({ tenantId, doc, bytes: out, kind: "markup", summary });
+    const v = await saveDocumentVersion({ tenantId, doc, bytes: out, kind: "markup", tool: ocring ? "ocr" : (protecting || redacting) ? "protect" : healing ? "health" : "pageTools", summary });
     if (projectId) await reconcileMeasurements({ tenantId, sourceDocId: doc.id, newDocId: v.id, projectId, map: Array.from({ length: (await PDFDocument.load(out, { ignoreEncryption: true })).getPageCount() }, (_, i) => ({ out: i, sourceId: doc.id, sourceIndex: i, rotate: 0, cropped: false, resized: false })), cropBoxes: {} });
     toast.success(`Saved "${v.filename}". The original is unchanged${projectId ? "; measurements were carried over as drafts" : ""}.`);
     const saved = await loadDocumentPdf(tenantId, v.id);
     setDoc(saved.doc); setBytes(saved.bytes);
   };
 
-  if (!isPageToolsEnabled()) return <div className="p-10 text-center text-muted-foreground">These PDF tools are still being verified and aren't switched on for this site yet.</div>;
+  if (!isPageToolsEnabled()) return <div className="p-10 text-center text-muted-foreground">These PDF tools are still being verified and aren't switched on for your company. A company admin can turn them on in Settings → PDF Tools.</div>;
   return (
     <div className="p-4 space-y-4">
       <div className="flex items-center gap-3"><Link to={back} className="text-sm inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" />{projectId ? "Project" : "Smart Docs"}</Link>

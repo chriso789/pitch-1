@@ -9,7 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { loadDocumentPdf, saveDocumentVersion, type DocRow } from '@/lib/pdf-pages/documentVersions';
 import { runWorkflow, validateSteps, STEP_LABELS, MAX_DOCS, type BatchStep } from '@/lib/pdf-batch/workflow';
-import { isBatchEnabled } from '@/lib/pdf-pages/featureGate';
+import { isBatchEnabled, usePdfToolGate } from '@/lib/pdf-pages/featureGate';
 import { ocrSearchable } from '@/lib/pdf-ocr/batchOcr';
 import { OCR_LANGUAGES } from '@/lib/pdf-ocr/languages';
 import { toast } from 'sonner';
@@ -29,6 +29,7 @@ interface Template { id: string; name: string; steps: BatchStep[]; created_by: s
 type Status = { state: 'waiting' | 'running' | 'saved' | 'failed' | 'preview'; note?: string };
 
 export default function PdfBatchPage() {
+  usePdfToolGate();
   const tenantId = useEffectiveTenantId();
   const [docs, setDocs] = useState<DocRow[]>([]);
   const [search, setSearch] = useState('');

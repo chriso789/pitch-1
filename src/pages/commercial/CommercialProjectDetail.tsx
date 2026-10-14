@@ -22,7 +22,7 @@ import { ProcurementTab } from "@/components/commercial/ProcurementTab";
 import { ActualCostsTab } from "@/components/commercial/ActualCostsTab";
 import { defaultCostType } from "@/lib/commercial/budget";
 import { isPlanMeasureEnabled } from "@/lib/plan-measure/featureGate";
-import { isPageToolsEnabled } from "@/lib/pdf-pages/featureGate";
+import { isPageToolsEnabled, usePdfToolGate } from "@/lib/pdf-pages/featureGate";
 
 const db = supabase as any;
 const STATUS_STYLE: Record<string, string> = {
@@ -31,6 +31,7 @@ const STATUS_STYLE: Record<string, string> = {
 };
 
 export default function CommercialProjectDetail() {
+  usePdfToolGate();
   const { id } = useParams<{ id: string }>();
   const tenantId = useEffectiveTenantId();
   const [p, setP] = useState<any>(null);

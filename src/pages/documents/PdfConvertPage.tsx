@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { imagesToPdf, docxToPdf, sniffImage, MAX_FILES, MAX_BYTES, type ImageInput } from '@/lib/pdf-convert/toPdf';
-import { isOcrEnabled } from '@/lib/pdf-pages/featureGate';
+import { isOcrEnabled, usePdfToolGate } from '@/lib/pdf-pages/featureGate';
 import { toast } from 'sonner';
 
 /** Re-encode browser-readable images (WebP, GIF, BMP…) to PNG; JPEG/PNG pass through untouched. */
@@ -23,6 +23,7 @@ async function toImageInput(f: File): Promise<ImageInput> {
 }
 
 export default function PdfConvertPage() {
+  usePdfToolGate();
   const tenantId = useEffectiveTenantId();
   const [mode, setMode] = useState<'images' | 'word'>('images');
   const [files, setFiles] = useState<File[]>([]);
