@@ -21,3 +21,10 @@ export function isOcrEnabled(): boolean {
   if (!PROD_HOSTS.includes(window.location.hostname)) return true;
   try { return window.localStorage.getItem('pitch.ocr') === '1'; } catch { return false; }
 }
+
+/** Protection (Phase 2E): on in preview/dev; production opt-in via localStorage['pitch.protect']='1'. */
+export function isProtectEnabled(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (!PROD_HOSTS.includes(window.location.hostname)) return true;
+  try { return window.localStorage.getItem('pitch.protect') === '1'; } catch { return false; }
+}
