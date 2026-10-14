@@ -34,7 +34,7 @@ export async function applyRedactions(src: Uint8Array, pages: FlattenedPage[]): 
     const n = page.node;
     n.delete(PDFName.of('Annots')); n.delete(PDFName.of('Contents'));
     n.delete(PDFName.of('Group')); n.delete(PDFName.of('Thumb')); n.delete(PDFName.of('PieceInfo'));
-    n.set(PDFName.of('Resources'), doc.context.obj({ XObject: {} }));
+    n.set(PDFName.of('Resources'), doc.context.obj({ XObject: {}, Font: {}, ExtGState: {} }));
     const img = await doc.embedJpg(p.jpeg);
     page.drawImage(img, { x: box.x, y: box.y, width: box.width, height: box.height });
   }
@@ -50,8 +50,8 @@ export async function verifyRedacted(bytes: Uint8Array, pageIndexes: number[]) {
     const n = d.getPage(i).node;
     if (n.lookup(PDFName.of('Annots'))) throw new Error(`Redaction check failed: page ${i + 1} still has annotations.`);
     const res = n.lookup(PDFName.of('Resources'), PDFDict);
-    const keys = res.keys().map(k => k.asString());
-    if (keys.some(k => k !== '/XObject')) throw new Error(`Redaction check failed: page ${i + 1} still has fonts or drawings.`);
+    const leftover = res.entries().filter(([k, v]) => k.asString() !== '/XObject' && !(v instanceof PDFDict && v.entries().length === 0));
+    if (leftover.length) throw new Error(`Redaction check failed: page ${i + 1} still has fonts or drawings.`);
     const xo = res.lookup(PDFName.of('XObject'), PDFDict);
     const entries = xo.entries();
     if (entries.length !== 1) throw new Error(`Redaction check failed: page ${i + 1} has extra content.`);
