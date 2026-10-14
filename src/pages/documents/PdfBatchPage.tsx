@@ -80,7 +80,7 @@ export default function PdfBatchPage() {
           window.open(url, '_blank');
           setStatus(s => ({ ...s, [id]: { state: 'preview', note: `${r.pagesIn} → ${r.pagesOut} pages · not saved` } }));
         } else {
-          const v = await saveDocumentVersion({ tenantId, doc, bytes: r.bytes, kind: 'markup', summary: `Batch: ${r.log.join('; ')}`, metadata: { batch_workflow: { steps, log: r.log, ran_at: new Date().toISOString() } } });
+          const v = await saveDocumentVersion({ tenantId, doc, bytes: r.bytes, kind: 'markup', tool: 'batch', summary: `Batch: ${r.log.join('; ')}`, metadata: { batch_workflow: { steps, log: r.log, ran_at: new Date().toISOString() } } });
           setStatus(s => ({ ...s, [id]: { state: 'saved', note: `New version v${v.version} · ${r.pagesOut} pages` } }));
         }
       } catch (e: any) {
