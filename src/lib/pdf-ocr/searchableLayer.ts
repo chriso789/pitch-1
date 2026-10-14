@@ -29,13 +29,12 @@ export interface LayerResult { bytes: Uint8Array; written: number; skipped: numb
 export async function addSearchableLayer(src: Uint8Array, pages: PageOcr[]): Promise<LayerResult> {
   const doc = await PDFDocument.load(src, { ignoreEncryption: false });
   const font = await doc.embedFont(StandardFonts.Helvetica);
-  const key = doc.getPage(0).node.newFontDictionary('PITCHOcr', font.ref);
   let written = 0, skipped = 0; const skippedRotatedPages: number[] = [];
   for (const p of pages) {
     const page = doc.getPage(p.pageIndex);
     const rot = ((page.getRotation().angle % 360) + 360) % 360;
     if (rot !== 0) { skippedRotatedPages.push(p.pageIndex + 1); skipped += p.words.length; continue; }
-    page.node.newFontDictionary('PITCHOcr', font.ref);
+    const key = page.node.newFontDictionary('PITCHOcr', font.ref);
     const box = page.getCropBox();
     const { ok, skipped: bad } = partitionWords(p.words); skipped += bad.length;
     const ops: PDFOperator[] = [pushGraphicsState(), beginText(), setTextRenderingMode(TextRenderingMode.Invisible)];

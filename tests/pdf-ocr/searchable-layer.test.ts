@@ -26,7 +26,7 @@ describe('OCR searchable layer', () => {
     const out = await PDFDocument.load(r.bytes);
     expect(out.getPageCount()).toBe(2);
     const fonts = out.getPage(0).node.Resources()!.lookup(PDFName.of('Font')) as any;
-    expect(fonts.has(PDFName.of('PITCHOcr'))).toBe(true);
+    expect(fonts.keys().some((k: any) => k.asString().startsWith('/PITCHOcr'))).toBe(true);
     expect(out.getPage(1).node.Contents()).toBeUndefined();
   });
 });
