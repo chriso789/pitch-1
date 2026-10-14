@@ -66919,10 +66919,9 @@ export type Database = {
         }
         Returns: boolean
       }
-      api_bulk_import_materials: {
-        Args: { p_materials: Json }
-        Returns: number
-      }
+      api_bulk_import_materials:
+        | { Args: { p_materials: Json }; Returns: number }
+        | { Args: { p_materials: Json; p_tenant_id: string }; Returns: number }
       api_bulk_sync_template_items_to_catalog: {
         Args: { p_template_id: string; p_tenant_id: string }
         Returns: number
