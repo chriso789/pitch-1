@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { RecordScanDocuments } from '@/components/documents/RecordScanDocuments';
 import { isPageToolsEnabled, usePdfToolGate } from "@/lib/pdf-pages/featureGate";
 import React, { useState, useEffect } from "react";
 import { toast } from "sonner";
@@ -430,6 +431,7 @@ const SmartDocs = () => {
           </p>
         </div>
         <div className="flex gap-2">
+          <RecordScanDocuments buttonOnly recordType="smart_doc" recordId="library" />
           <Button onClick={() => setShowProfessionalTemplates(true)} variant="outline">
             <Sparkles className="mr-2 h-4 w-4" />
             Professional Templates

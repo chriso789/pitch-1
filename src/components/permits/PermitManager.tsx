@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { RecordScanDocuments } from '@/components/documents/RecordScanDocuments';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -225,9 +226,7 @@ export const PermitManager: React.FC<PermitManagerProps> = ({
                           : '-'}
                       </TableCell>
                       <TableCell>
-                        <Button variant="ghost" size="sm">
-                          <ExternalLink className="h-4 w-4" />
-                        </Button>
+                        <RecordScanDocuments buttonOnly recordType="permit" recordId={permit.id} />
                       </TableCell>
                     </TableRow>
                   ))}
