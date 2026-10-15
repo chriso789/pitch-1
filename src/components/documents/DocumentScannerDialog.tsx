@@ -1233,10 +1233,28 @@ export function DocumentScannerDialog({
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
-      const { data: profile } = await supabase
-        .from('profiles').select('tenant_id').eq('id', user.id).single();
-      const tenantId = effectiveTenantId ?? profile?.tenant_id;
-      if (!tenantId) throw new Error('Tenant not found');
+      // Never fall back to the home company: the scan must go to the company selected in this tab.
+      const tenantId = effectiveTenantId;
+      if (!tenantId) throw new Error('Company not selected yet — pages are kept, try again in a moment.');
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        setUploadStatus('waiting_for_connection');
+        throw new Error('No connection. Pages are saved on this device; upload will retry when you reconnect.');
+      }
+      setUploadStatus('uploading');
+      const uploadId = getOrCreateUploadId(tenantId, sessionKey, documentType);
+      // A previous attempt may have saved the row before the connection dropped: reuse it.
+      const { data: already } = await (supabase as any).from('documents').select('id')
+        .eq('tenant_id', tenantId).eq('metadata->>client_upload_id', uploadId).maybeSingle();
+      if (already?.id) {
+        clearUploadId(tenantId, sessionKey, documentType);
+        clearScanSession(sessionKey, documentType).catch(() => {});
+        setUploadStatus('completed');
+        toast({ title: 'Already saved', description: 'This scan was saved on an earlier attempt — no duplicate created.' });
+        setCapturedPages([]);
+        onOpenChange(false);
+        onUploadComplete?.();
+        return;
+      }
 
       setUploadProgress(10);
       const profileCfg = PDF_PROFILES[pdfProfile];
