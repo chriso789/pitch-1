@@ -162,7 +162,7 @@ export function InvoiceShareActions({
       <InvoicePreviewDialog
         open={previewOpen}
         onOpenChange={setPreviewOpen}
-        urlOrPath={previewOpen ? pdfPath : null}
+        urlOrPath={previewOpen ? `/storage/v1/object/sign/documents/${pdfPath}` : null}
         title={`Invoice ${invoiceNumber}`}
       />
       <Button
