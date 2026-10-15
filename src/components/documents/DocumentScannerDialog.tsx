@@ -123,7 +123,7 @@ export function DocumentScannerDialog({
   onOpenChange,
   documentType,
   documentLabel,
-  pipelineEntryId: sessionKey,
+  pipelineEntryId,
   recordType = 'pipeline_entry',
   recordId,
   documentName,
@@ -300,7 +300,7 @@ export function DocumentScannerDialog({
       const res = await saveScanSession({
         id: `${sessionKey}::${documentType}`,
         scannerSessionId: scannerSessionIdRef.current,
-        pipelineEntryId,
+        pipelineEntryId: sessionKey,
         documentType,
         documentLabel,
         scanPreset,
@@ -993,13 +993,13 @@ export function DocumentScannerDialog({
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
-      const { data: profile } = await supabase
-        .from('profiles').select('tenant_id').eq('id', user.id).single();
-      if (!profile?.tenant_id) throw new Error('Tenant not found');
+      // Save under the company selected in this tab, never the home company.
+      const importTenantId = effectiveTenantId;
+      if (!importTenantId) throw new Error('No active company selected');
 
       const timestamp = Date.now();
-      const sanitizedLabel = documentLabel.replace(/\s+/g, '_');
-      const fileName = `${profile.tenant_id}/${pipelineEntryId}/${timestamp}_${documentType}.pdf`;
+      const sanitizedLabel = (documentName?.trim() || documentLabel).replace(/[^\w.-]+/g, '_');
+      const fileName = `${importTenantId}/${sessionKey}/${timestamp}_${documentType}.pdf`;
       setUploadProgress(40);
 
       const { error: uploadError } = await supabase.storage
@@ -1025,8 +1025,10 @@ export function DocumentScannerDialog({
 
       const { data: insertedDoc, error: dbError } = await supabase
         .from('documents').insert({
-          tenant_id: profile.tenant_id,
-          pipeline_entry_id: pipelineEntryId,
+          tenant_id: importTenantId,
+          pipeline_entry_id: recordType === 'pipeline_entry' ? (recordId ?? pipelineEntryId ?? null) : (pipelineEntryId || null),
+          contact_id: recordType === 'contact' ? recordId ?? null : null,
+          project_id: (recordType === 'project' || recordType === 'job') ? recordId ?? null : null,
           document_type: documentType,
           filename: `${sanitizedLabel}.pdf`,
           file_path: fileName,
