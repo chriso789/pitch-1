@@ -43,7 +43,7 @@ export async function handleInvoiceTrack(req: Request): Promise<Response> {
   const service = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
   const { data: delivery } = await service
     .from("invoice_email_deliveries")
-    .select("id, tenant_id, project_id, pitch_invoice_id, contact_id, recipient_email")
+    .select("id, tenant_id, project_id, pitch_invoice_id, contact_id, recipient_email, created_by")
     .eq("id", d)
     .maybeSingle();
   if (!delivery) return k === "open" ? pixel() : k === "view" ? json({ ok: false, error: "link_not_found" }, 404) : text("Link not found");
@@ -87,9 +87,10 @@ export async function handleInvoiceTrack(req: Request): Promise<Response> {
       .eq("id", invoice.pipeline_entry_id)
       .eq("tenant_id", delivery.tenant_id)
       .maybeSingle();
-    const uid = (pe as any)?.assigned_to;
-    if (uid) {
-      await service.from("user_notifications").insert({
+    // Notify the person who sent the email AND the assigned rep, immediately.
+    const recipients = [...new Set([(delivery as any).created_by, (pe as any)?.assigned_to].filter(Boolean))] as string[];
+    if (recipients.length) {
+      const { error: nErr } = await service.from("user_notifications").insert(recipients.map((uid) => ({
         user_id: uid,
         tenant_id: delivery.tenant_id,
         type: "invoice_viewed",
@@ -98,7 +99,8 @@ export async function handleInvoiceTrack(req: Request): Promise<Response> {
         icon: "eye",
         metadata: { pitch_invoice_id: invoice.id, pipeline_entry_id: invoice.pipeline_entry_id, delivery_id: delivery.id },
         is_read: false,
-      }).then(() => {}, (e: unknown) => console.error("[invoice-track] notify failed", e));
+      })));
+      if (nErr) console.error("[invoice-track] notify failed", nErr.message);
     }
   }
 
