@@ -23,6 +23,7 @@ import {
 import { Eye, Loader2, Mail, MessageSquare, Share2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { InvoiceReadStatus } from './InvoiceReadStatus';
+import { InvoicePreviewDialog } from './InvoicePreviewDialog';
 
 interface Props {
   invoiceId: string;
@@ -73,20 +74,24 @@ export function InvoiceShareActions({
   const safeNumber = invoiceNumber.replace(/[^A-Za-z0-9_-]/g, '_');
   const pdfPath = `${tenantId}/${pipelineEntryId}/invoices/${safeNumber}.pdf`;
 
+  const [previewOpen, setPreviewOpen] = useState(false);
   const openView = async () => {
     setViewing(true);
     try {
+      // Confirm the PDF exists, then show it in-app (never navigate to the storage host,
+      // which ad/privacy blockers often block).
       const { data, error } = await supabase.storage
         .from('documents')
-        .createSignedUrl(pdfPath, 60 * 60);
+        .createSignedUrl(pdfPath, 60);
       if (error || !data?.signedUrl) throw error ?? new Error('no_url');
-      window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+      setPreviewOpen(true);
     } catch (e) {
       toast.error('Invoice PDF not available yet. Save the invoice first.');
     } finally {
       setViewing(false);
     }
   };
+
 
   const openShare = (channel: Channel) => {
     setOpenChannel(channel);
@@ -154,6 +159,12 @@ export function InvoiceShareActions({
   return (
     <div className="flex items-center gap-1">
       <InvoiceReadStatus invoiceId={invoiceId} tenantId={tenantId} refreshKey={sentCount} />
+      <InvoicePreviewDialog
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        urlOrPath={previewOpen ? `/storage/v1/object/sign/documents/${pdfPath}` : null}
+        title={`Invoice ${invoiceNumber}`}
+      />
       <Button
         variant="ghost"
         size="icon"
