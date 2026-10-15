@@ -26,7 +26,8 @@ import {
 } from '@/utils/documentEdgeDetectionOpenCV';
 import { CornerStabilityBuffer, validateQuadrilateral, StabilityResult } from '@/utils/documentStability';
 import { applyPerspectiveTransformPro } from '@/utils/documentEnhancementPro';
-import { restoreScan, checkInkPreservation, estimatePaper, SCAN_MODES, DEFAULT_RESTORE_OPTIONS, type ScanMode } from '@/lib/scan-restore/restore';
+import { SCAN_MODES, DEFAULT_RESTORE_OPTIONS, type ScanMode } from '@/lib/scan-restore/restore';
+import { restoreScanAsync } from '@/lib/scan-restore/restoreAsync';
 import { ManualCropOverlay } from './ManualCropOverlay';
 import { ScannerQAReview } from './ScannerQAReview';
 import { analyzeFrameQuality, evaluateQualityGate, QualityFlags, QualityGateResult } from '@/utils/documentQuality';
@@ -571,9 +572,7 @@ export function DocumentScannerDialog({
       const beforeBlob: Blob | null = await new Promise((r) => enhanced.toBlob((b) => r(b), 'image/jpeg', 0.8));
       let inkReview = false, inkLossRatio = 0;
       if (scanMode !== 'original') {
-        const paper = estimatePaper(warpedImg);
-        const cleaned = restoreScan(warpedImg, scanMode);
-        const ink = checkInkPreservation(warpedImg, cleaned, paper);
+        const { img: cleaned, ink } = await restoreScanAsync(warpedImg, scanMode, {}, true);
         inkReview = ink.needsReview; inkLossRatio = ink.lossRatio;
         wctx.putImageData(new ImageData(cleaned.data as Uint8ClampedArray<ArrayBuffer>, cleaned.width, cleaned.height), 0, 0);
       }
@@ -899,10 +898,8 @@ export function DocumentScannerDialog({
     const w = ctx.getImageData(0, 0, c.width, c.height);
     const img = { data: w.data, width: w.width, height: w.height };
     const beforeBlob: Blob | null = await new Promise((r) => c.toBlob((b) => r(b), 'image/jpeg', 0.8));
-    const cleaned = restoreScan(img, e.mode, e);
-    const ink = e.mode === 'original' && e.brightness === 0 && e.contrast === 1
-      ? { needsReview: false, lossRatio: 0 }
-      : checkInkPreservation(img, cleaned, estimatePaper(img));
+    const untouched = e.mode === 'original' && e.brightness === 0 && e.contrast === 1;
+    const { img: cleaned, ink } = await restoreScanAsync(img, e.mode, e, !untouched);
     ctx.putImageData(new ImageData(cleaned.data as Uint8ClampedArray<ArrayBuffer>, cleaned.width, cleaned.height), 0, 0);
     const { canvas: desk, angle } = deskewCanvas(c); c = desk;
     let blob: Blob = await new Promise((r, j) => c.toBlob((b) => (b ? r(b) : j(new Error('encode failed'))), 'image/jpeg', 0.95));
