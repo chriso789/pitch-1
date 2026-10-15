@@ -1064,8 +1064,19 @@ const CompanyAdminPage = () => {
                       <LogoUploader
                         logoUrl={formData.logo_url || null}
                         tenantIdOverride={selectedCompany?.id}
-                        onLogoUploaded={(url) => setFormData({ ...formData, logo_url: url })}
-                        onLogoRemoved={() => setFormData({ ...formData, logo_url: '' })}
+                        onLogoUploaded={async (url) => {
+                          setFormData((prev) => ({ ...prev, logo_url: url }));
+                          if (selectedCompany?.id) {
+                            const { error } = await supabase.from('tenants').update({ logo_url: url }).eq('id', selectedCompany.id);
+                            if (error) {
+                              toast({ title: 'Logo not saved', description: error.message, variant: 'destructive' });
+                            } else {
+                              fetchCompanies();
+                              refreshCompanySwitcher();
+                            }
+                          }
+                        }}
+                        onLogoRemoved={() => setFormData((prev) => ({ ...prev, logo_url: '' }))}
                       />
                     </CardContent>
                   </Card>
