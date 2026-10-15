@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RecordScanDocuments } from '@/components/documents/RecordScanDocuments';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -114,6 +115,7 @@ const MobileJobPhotos = () => {
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <h1 className="text-lg font-semibold text-foreground flex-1">Job Photos</h1>
+        {jobId && <RecordScanDocuments buttonOnly recordType="job" recordId={jobId} />}
         <label className="cursor-pointer">
           <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleUpload} />
           <Button asChild variant="default" size="sm" disabled={uploading}>

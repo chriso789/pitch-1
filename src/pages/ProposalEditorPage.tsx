@@ -1,4 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom';
+import { RecordScanDocuments } from '@/components/documents/RecordScanDocuments';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ProposalBuilder } from '@/components/proposals/ProposalBuilder';
@@ -29,6 +30,7 @@ const ProposalEditorPage = () => {
               Build a professional proposal with Good/Better/Best pricing
             </p>
           </div>
+          <div className="ml-auto"><RecordScanDocuments buttonOnly recordType="project" recordId={projectId} /></div>
         </div>
 
         {/* Proposal Builder */}
