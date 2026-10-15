@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatLicenseLine } from "@/lib/companyLicenses";
 import { type LineItem } from '@/hooks/useEstimatePricing';
 import { type PDFComponentOptions, getDefaultOptions } from './PDFComponentOptions';
 import { safeText } from '@/lib/safeText';
@@ -201,7 +202,7 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
               </div>
               {companyInfo?.license_number && (
                 <p className="text-xs text-gray-500 mt-1">
-                  License #{companyInfo.license_number}
+                  {formatLicenseLine(companyInfo.license_number, "License #")}
                 </p>
               )}
             </div>
@@ -673,7 +674,7 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
                 {companyInfo?.name || companyName}
               </p>
               {companyInfo?.license_number && (
-                <p className="text-xs text-gray-500 mt-0.5">License #{companyInfo.license_number}</p>
+                <p className="text-xs text-gray-500 mt-0.5">{formatLicenseLine(companyInfo.license_number, "License #")}</p>
               )}
             </div>
             

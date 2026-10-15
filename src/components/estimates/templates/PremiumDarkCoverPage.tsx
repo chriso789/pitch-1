@@ -5,6 +5,7 @@
  * Designed for companies that want to communicate premium quality and exclusivity.
  */
 import React from 'react';
+import { formatLicenseLine } from "@/lib/companyLicenses";
 import { CoverPageProps } from './types';
 
 const PAGE_WIDTH = 816;
@@ -119,7 +120,7 @@ export const PremiumDarkCoverPage: React.FC<CoverPageProps> = ({
             {companyInfo?.email && <div className="text-[#555] mt-0.5">{companyInfo.email}</div>}
           </div>
           <div className="text-right text-[#444]">
-            {companyInfo?.license_number && <div>License #{companyInfo.license_number}</div>}
+            {companyInfo?.license_number && <div>{formatLicenseLine(companyInfo.license_number, "License #")}</div>}
             {companyInfo?.brand_certifications && (
               <div className="text-[10px] text-[#444] mt-0.5 max-w-[200px] text-right">{companyInfo.brand_certifications}</div>
             )}

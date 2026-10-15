@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { LicenseListInput } from "@/components/settings/LicenseListInput";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -213,13 +214,7 @@ export const CompanyOnboarding = ({ onComplete }: CompanyOnboardingProps) => {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="licenseNumber">License Number</Label>
-                  <Input
-                    id="licenseNumber"
-                    value={licenseNumber}
-                    onChange={(e) => setLicenseNumber(e.target.value)}
-                    placeholder="e.g., CCC1234567"
-                  />
+                  <LicenseListInput value={licenseNumber} onChange={setLicenseNumber} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="phone">Phone</Label>

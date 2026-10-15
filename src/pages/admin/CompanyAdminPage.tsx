@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { LicenseListInput } from "@/components/settings/LicenseListInput";
 import { GlobalLayout } from '@/shared/components/layout/GlobalLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -1002,11 +1003,9 @@ const CompanyAdminPage = () => {
               </div>
 
               <div className="space-y-2">
-                <Label>License Number</Label>
-                <Input
-                  placeholder="CCC1234567"
+                <LicenseListInput
                   value={formData.license_number}
-                  onChange={(e) => setFormData({ ...formData, license_number: e.target.value })}
+                  onChange={(v) => setFormData({ ...formData, license_number: v })}
                 />
               </div>
             </div>
@@ -1086,10 +1085,9 @@ const CompanyAdminPage = () => {
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label>License Number</Label>
-                          <Input
+                          <LicenseListInput
                             value={formData.license_number}
-                            onChange={(e) => setFormData({ ...formData, license_number: e.target.value })}
+                            onChange={(v) => setFormData({ ...formData, license_number: v })}
                           />
                         </div>
                       </div>

@@ -5,6 +5,7 @@
  * Designed for companies that want a high-end architectural/design studio feel.
  */
 import React from 'react';
+import { formatLicenseLine } from "@/lib/companyLicenses";
 import { CoverPageProps } from './types';
 
 const PAGE_WIDTH = 816;
@@ -87,7 +88,7 @@ export const ModernMinimalCoverPage: React.FC<CoverPageProps> = ({
           <div className="text-right space-y-0.5">
             {companyInfo?.phone && <div>{companyInfo.phone}</div>}
             {companyInfo?.email && <div>{companyInfo.email}</div>}
-            {companyInfo?.license_number && <div>Lic #{companyInfo.license_number}</div>}
+            {companyInfo?.license_number && <div>{formatLicenseLine(companyInfo.license_number, "Lic #")}</div>}
             {companyInfo?.brand_certifications && (
               <div className="text-[9px] text-gray-400 max-w-[220px]">{companyInfo.brand_certifications}</div>
             )}

@@ -6,6 +6,7 @@
  * on both the printed PDF and the embedded online quote viewer.
  */
 import React from 'react';
+import { formatLicenseLine } from "@/lib/companyLicenses";
 
 const PAGE_WIDTH = 816;
 const PAGE_HEIGHT = 1056;
@@ -260,7 +261,7 @@ export const EstimateCoverPage: React.FC<EstimateCoverPageProps> = ({
                 )}
                 {companyInfo?.license_number && (
                   <div className="text-[10px] text-gray-400 tracking-wider">
-                    LIC #{companyInfo.license_number}
+                    {formatLicenseLine(companyInfo.license_number, "LIC #")}
                   </div>
                 )}
                 {companyInfo?.brand_certifications && (
