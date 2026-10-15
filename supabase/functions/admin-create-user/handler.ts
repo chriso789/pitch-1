@@ -122,10 +122,11 @@ const handler = async (req: Request): Promise<Response> => {
       .select("role, tenant_id")
       .eq("user_id", user.id);
 
-    const callerRole =
-      roleRows?.find((r: { tenant_id: string | null }) => r.tenant_id === callerTenantId)?.role ||
-      roleRows?.[0]?.role ||
-      profile?.role;
+    // Roles come only from user_roles (never profiles), matched to the active company.
+    const isMasterCaller = (roleRows ?? []).some((r: { role: string }) => r.role === 'master');
+    let callerRole: string | undefined = isMasterCaller
+      ? 'master'
+      : roleRows?.find((r: { tenant_id: string | null }) => r.tenant_id === callerTenantId)?.role;
 
     const allowedRoles = ['master', 'corporate', 'office_admin', 'owner'];
 
