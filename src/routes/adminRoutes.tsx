@@ -1,6 +1,6 @@
 import React, { Suspense } from "react";
 import { Route, Routes } from "react-router-dom";
-import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { AdminRoute } from "@/components/auth/AdminRoute";
 
 const CompanyAdminPage = React.lazy(() => import("@/pages/admin/CompanyAdminPage"));
 const MonitoringPage = React.lazy(() => import("@/pages/admin/MonitoringPage"));
@@ -24,15 +24,15 @@ export default function AdminRoutes() {
   return (
     <Suspense fallback={<PageLoader />}>
       <Routes>
-        <Route path="companies" element={<ProtectedRoute><CompanyAdminPage /></ProtectedRoute>} />
-        <Route path="monitoring" element={<ProtectedRoute><MonitoringPage /></ProtectedRoute>} />
-        <Route path="phone-settings" element={<ProtectedRoute><PhoneSettings /></ProtectedRoute>} />
-        <Route path="activity" element={<ProtectedRoute><ActivityDashboardPage /></ProtectedRoute>} />
-        <Route path="portal-users" element={<ProtectedRoute><HomeownerPortalAdmin /></ProtectedRoute>} />
-        <Route path="audit-logs" element={<ProtectedRoute><AuditLogs /></ProtectedRoute>} />
-        <Route path="measurement-skills" element={<ProtectedRoute><MeasurementSkillsPage /></ProtectedRoute>} />
-        <Route path="measurement-skills/:jobId" element={<ProtectedRoute><MeasurementJobPipelinePage /></ProtectedRoute>} />
-        <Route path="providers/inventory" element={<ProtectedRoute><ProviderSourceInventoryPage /></ProtectedRoute>} />
+        <Route path="companies" element={<AdminRoute><CompanyAdminPage /></AdminRoute>} />
+        <Route path="monitoring" element={<AdminRoute><MonitoringPage /></AdminRoute>} />
+        <Route path="phone-settings" element={<AdminRoute><PhoneSettings /></AdminRoute>} />
+        <Route path="activity" element={<AdminRoute><ActivityDashboardPage /></AdminRoute>} />
+        <Route path="portal-users" element={<AdminRoute><HomeownerPortalAdmin /></AdminRoute>} />
+        <Route path="audit-logs" element={<AdminRoute><AuditLogs /></AdminRoute>} />
+        <Route path="measurement-skills" element={<AdminRoute><MeasurementSkillsPage /></AdminRoute>} />
+        <Route path="measurement-skills/:jobId" element={<AdminRoute><MeasurementJobPipelinePage /></AdminRoute>} />
+        <Route path="providers/inventory" element={<AdminRoute><ProviderSourceInventoryPage /></AdminRoute>} />
       </Routes>
     </Suspense>
   );
