@@ -33,6 +33,7 @@ import { analyzeFrameQuality, evaluateQualityGate, QualityFlags, QualityGateResu
 import { classifyAspectRatio, dominantPageSize, getPageSpec, DetectedPageSize } from '@/utils/documentPageSize';
 import { deskewCanvas } from '@/utils/documentDeskew';
 import { getTorchCapability, setTorch } from '@/utils/cameraTorch';
+import { reorderPages } from '@/lib/scan-records/reorderPages';
 import {
   SCAN_PRESETS, DEFAULT_SCAN_PRESET, ScanPreset,
   PDF_PROFILES, DEFAULT_PDF_PROFILE, PdfProfile,
@@ -154,6 +155,8 @@ export function DocumentScannerDialog({
   const [qualityGate, setQualityGate] = useState<QualityGateResult | null>(null);
   const [torchSupported, setTorchSupported] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
+  const [dragFrom, setDragFrom] = useState<number | null>(null);
+  const [dragOver, setDragOver] = useState<number | null>(null);
 
   // Preferences
   const [scanPreset, setScanPreset] = useState<ScanPreset>(DEFAULT_SCAN_PRESET);
@@ -1858,7 +1861,7 @@ export function DocumentScannerDialog({
                   onClick={handleToggleTorch}
                   aria-label={torchOn ? 'Turn torch off' : 'Turn torch on'}
                   className={cn(
-                    'absolute top-4 right-4 h-10 w-10 rounded-full flex items-center justify-center shadow-lg',
+                    'absolute top-[max(1rem,env(safe-area-inset-top))] right-[max(1rem,env(safe-area-inset-right))] h-11 w-11 rounded-full flex items-center justify-center shadow-lg',
                     torchOn ? 'bg-warning text-warning-foreground' : 'bg-black/60 text-white',
                   )}
                 >
@@ -1879,40 +1882,58 @@ export function DocumentScannerDialog({
           <canvas ref={canvasRef} className="hidden" />
         </div>
 
-        {/* Thumbnails */}
+        {/* Thumbnails — drag (mouse or finger) to reorder; controls always visible on touch screens */}
         {capturedPages.length > 0 && (
-          <div className="flex-shrink-0 border-t bg-muted/50 p-2 overflow-x-auto">
+          <div className="flex-shrink-0 border-t bg-muted/50 p-2 overflow-x-auto pb-[max(0.5rem,env(safe-area-inset-bottom))] pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))]">
             <div className="flex gap-2 min-w-min">
               {capturedPages.map((page, index) => (
                 <div
                   key={`${index}-${page.preview}`}
+                  data-page-index={index}
                   className={cn(
                     'relative group flex-shrink-0 w-20 h-24 rounded-md overflow-hidden border-2',
                     retakeIndex === index ? 'border-warning ring-2 ring-warning/50' : 'border-border',
+                    dragFrom === index && 'opacity-50 ring-2 ring-primary',
+                    dragOver === index && dragFrom !== index && 'border-primary',
                   )}
                 >
                   <img src={page.preview} alt={`Page ${index + 1}`} className="w-full h-full object-cover cursor-pointer"
                     onClick={() => setPreviewIndex(index)} />
-                  <div className="absolute top-0 left-0 bg-black/60 text-white text-xs px-1.5 py-0.5 rounded-br">
-                    {index + 1}
+                  <div
+                    role="button"
+                    aria-label={`Drag to reorder page ${index + 1}`}
+                    className="absolute top-0 left-0 bg-black/60 text-white text-xs px-2 py-1 rounded-br cursor-grab touch-none select-none min-w-[28px] min-h-[24px]"
+                    onPointerDown={(e) => { if (isUploading) return; (e.target as HTMLElement).setPointerCapture(e.pointerId); setDragFrom(index); setDragOver(index); }}
+                    onPointerMove={(e) => {
+                      if (dragFrom === null) return;
+                      const el = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-page-index]') as HTMLElement | null;
+                      if (el) setDragOver(Number(el.dataset.pageIndex));
+                    }}
+                    onPointerUp={() => {
+                      if (dragFrom !== null && dragOver !== null) setCapturedPages(prev => reorderPages(prev, dragFrom, dragOver));
+                      setDragFrom(null); setDragOver(null);
+                    }}
+                    onPointerCancel={() => { setDragFrom(null); setDragOver(null); }}
+                  >
+                    ⠿ {index + 1}
                   </div>
-                  <div className="absolute bottom-0 inset-x-0 flex justify-between bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="absolute bottom-0 inset-x-0 flex justify-between bg-black/60 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity">
                     <button onClick={() => movePage(index, -1)} disabled={isUploading || index === 0}
-                      className="p-1 text-white disabled:opacity-30" aria-label="Move left">
-                      <ArrowLeft className="h-3 w-3" />
+                      className="p-1.5 text-white disabled:opacity-30" aria-label="Move left">
+                      <ArrowLeft className="h-3.5 w-3.5" />
                     </button>
-                    <button onClick={() => setPreviewIndex(index)} className="p-1 text-white" aria-label="Preview">
-                      <Eye className="h-3 w-3" />
+                    <button onClick={() => setPreviewIndex(index)} className="p-1.5 text-white" aria-label="Preview">
+                      <Eye className="h-3.5 w-3.5" />
                     </button>
                     <button onClick={() => movePage(index, 1)} disabled={isUploading || index === capturedPages.length - 1}
-                      className="p-1 text-white disabled:opacity-30" aria-label="Move right">
-                      <ArrowRight className="h-3 w-3" />
+                      className="p-1.5 text-white disabled:opacity-30" aria-label="Move right">
+                      <ArrowRight className="h-3.5 w-3.5" />
                     </button>
                   </div>
                   <button onClick={() => removePage(index)} disabled={isUploading}
-                    className="absolute top-0 right-0 p-1 bg-destructive text-destructive-foreground rounded-bl opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="absolute top-0 right-0 p-1.5 bg-destructive text-destructive-foreground rounded-bl opacity-100 sm:opacity-0 sm:group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity"
                     aria-label="Delete page">
-                    <Trash2 className="h-3 w-3" />
+                    <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
               ))}
