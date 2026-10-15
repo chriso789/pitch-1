@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ScanLine, Download, ExternalLink, FileText, Pencil } from 'lucide-react';
+import { ScanLine, Download, ExternalLink, FileText, Pencil, Link2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -9,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { DocumentScannerDialog } from '@/components/documents/DocumentScannerDialog';
-import { recordDocumentFilter, SCAN_CATEGORIES, type ScanRecordType } from '@/lib/scan-records/recordLink';
+import { recordDocumentFilter, SCAN_CATEGORIES, LINKABLE_RECORD_TYPES, type ScanRecordType } from '@/lib/scan-records/recordLink';
 
 interface Props {
   recordType: ScanRecordType;
@@ -30,6 +31,27 @@ export function RecordScanDocuments({ recordType, recordId, pipelineEntryId, tit
   const [name, setName] = useState('');
   const [category, setCategory] = useState('other');
   const [docs, setDocs] = useState<any[]>([]);
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [candidates, setCandidates] = useState<any[]>([]);
+  const canLink = LINKABLE_RECORD_TYPES.includes(recordType);
+
+  const openLink = async () => {
+    if (!tenantId) return;
+    setLinkOpen(true);
+    const { data } = await (supabase as any).from('documents')
+      .select('id, filename, created_at, page_count').eq('tenant_id', tenantId)
+      .not('scan_source', 'is', null).order('created_at', { ascending: false }).limit(100);
+    setCandidates(data || []);
+  };
+  const linkDoc = async (documentId: string) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    const { error } = await (supabase as any).from('document_record_links').insert({
+      tenant_id: tenantId, document_id: documentId, record_type: recordType, record_id: recordId, linked_by: user?.id,
+    });
+    if (error && error.code !== '23505') { toast.error('Could not link scan', { description: error.message }); return; }
+    toast.success('Scan linked');
+    setLinkOpen(false); load(); onSaved?.();
+  };
 
   const load = useCallback(async () => {
     if (!tenantId || buttonOnly) return;
@@ -39,7 +61,19 @@ export function RecordScanDocuments({ recordType, recordId, pipelineEntryId, tit
       .eq('tenant_id', tenantId);
     q = f.kind === 'column' ? q.eq(f.column, f.value) : q.contains('metadata', f.value);
     const { data } = await q.order('created_at', { ascending: false }).limit(200);
-    setDocs(data || []);
+    let all = data || [];
+    if (LINKABLE_RECORD_TYPES.includes(recordType)) {
+      const { data: links } = await (supabase as any).from('document_record_links')
+        .select('document_id').eq('tenant_id', tenantId).eq('record_type', recordType).eq('record_id', recordId);
+      const ids = (links || []).map((l: any) => l.document_id).filter((id: string) => !all.some((d: any) => d.id === id));
+      if (ids.length) {
+        const { data: linked } = await (supabase as any).from('documents')
+          .select('id, filename, file_path, document_type, created_at, ocr_status, page_count, scan_source')
+          .eq('tenant_id', tenantId).in('id', ids);
+        all = [...all, ...(linked || [])];
+      }
+    }
+    setDocs(all);
   }, [tenantId, recordType, recordId, buttonOnly]);
   useEffect(() => { load(); }, [load]);
 
@@ -56,6 +90,11 @@ export function RecordScanDocuments({ recordType, recordId, pipelineEntryId, tit
         <Button size="sm" onClick={() => setSetupOpen(true)} disabled={!tenantId} aria-label="Scan Document">
           <ScanLine className="h-4 w-4 mr-1" />Scan Document
         </Button>
+        {canLink && (
+          <Button size="sm" variant="outline" onClick={openLink} disabled={!tenantId} aria-label="Link existing scan">
+            <Link2 className="h-4 w-4 mr-1" />Link existing scan
+          </Button>
+        )}
       </div>
 
       {!buttonOnly && (docs.length === 0
@@ -90,6 +129,23 @@ export function RecordScanDocuments({ recordType, recordId, pipelineEntryId, tit
             <p className="text-xs text-muted-foreground">Use the camera or import photos. The scan is saved to this record in the current company.</p>
           </div>
           <DialogFooter><Button onClick={() => { setSetupOpen(false); setScanOpen(true); }}>Open scanner</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={linkOpen} onOpenChange={setLinkOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Link an existing scan</DialogTitle></DialogHeader>
+          <p className="text-xs text-muted-foreground">Scans from this company only. The scan keeps its original lead, job or project; no file is copied.</p>
+          <ul className="max-h-80 overflow-y-auto divide-y rounded-md border">
+            {candidates.length === 0 && <li className="p-3 text-sm text-muted-foreground">No scans found.</li>}
+            {candidates.map(c => (
+              <li key={c.id} className="flex items-center gap-2 p-2">
+                <span className="text-sm flex-1 min-w-0 truncate">{c.filename}</span>
+                <span className="text-xs text-muted-foreground">{new Date(c.created_at).toLocaleDateString()}</span>
+                <Button size="sm" onClick={() => linkDoc(c.id)}>Link</Button>
+              </li>
+            ))}
+          </ul>
         </DialogContent>
       </Dialog>
 

@@ -34,3 +34,6 @@ export function recordLinkColumns(type: ScanRecordType, recordId: string | undef
     project_id: type === 'project' ? recordId ?? null : null,
   };
 }
+
+/** Records that support linking an already-saved scan (no file copy; audited link row). */
+export const LINKABLE_RECORD_TYPES: ScanRecordType[] = ['contract'];

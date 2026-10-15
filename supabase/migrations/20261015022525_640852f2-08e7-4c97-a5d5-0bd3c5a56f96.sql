@@ -1,0 +1,1 @@
+REVOKE EXECUTE ON FUNCTION public.document_record_link_guard() FROM authenticated;
