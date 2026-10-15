@@ -1020,6 +1020,8 @@ export function DocumentScannerDialog({
         original_filename: file.name,
         final_size_bytes: file.size,
         imported_pdf_mode: 'original' as const,
+        record_type: recordType,
+        record_id: sessionKey,
         original_file_size_bytes: file.size,
       };
 
@@ -1028,7 +1030,7 @@ export function DocumentScannerDialog({
           tenant_id: importTenantId,
           pipeline_entry_id: recordType === 'pipeline_entry' ? (recordId ?? pipelineEntryId ?? null) : (pipelineEntryId || null),
           contact_id: recordType === 'contact' ? recordId ?? null : null,
-          project_id: (recordType === 'project' || recordType === 'job') ? recordId ?? null : null,
+          project_id: recordType === 'project' ? recordId ?? null : null,
           document_type: documentType,
           filename: `${sanitizedLabel}.pdf`,
           file_path: fileName,
@@ -1412,7 +1414,7 @@ export function DocumentScannerDialog({
           tenant_id: tenantId,
           pipeline_entry_id: recordType === 'pipeline_entry' ? (recordId ?? pipelineEntryId ?? null) : (pipelineEntryId || null),
           contact_id: recordType === 'contact' ? recordId ?? null : null,
-          project_id: (recordType === 'project' || recordType === 'job') ? recordId ?? null : null,
+          project_id: recordType === 'project' ? recordId ?? null : null,
           document_type: documentType,
           filename: `${sanitizedLabel}.pdf`,
           file_path: fileName,
