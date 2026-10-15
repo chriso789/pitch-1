@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Loader2, ExternalLink, Download } from 'lucide-react';
 import { loadInvoiceBlobUrl } from '@/lib/invoices/loadInvoiceBlob';
+import { PdfCanvasViewer } from './PdfCanvasViewer';
 
 interface Props {
   open: boolean;
@@ -95,11 +96,7 @@ export function InvoicePreviewDialog({ open, onOpenChange, urlOrPath, title }: P
                 <img src={signedUrl} alt={title || 'Invoice'} className="max-w-full max-h-full object-contain" />
               </div>
             ) : (
-              <iframe
-                src={signedUrl}
-                title={title || 'Invoice'}
-                className="w-full h-full border-0"
-              />
+              <PdfCanvasViewer url={signedUrl} />
             )
           )}
         </div>
