@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import type { CompanyInfo } from '@/hooks/useCompanyInfo';
 import { generateInvoicePdfBlob } from '@/lib/invoices/invoicePdfGenerator';
 import { format } from 'date-fns';
+import { formatLicenseLine } from '@/lib/companyLicenses';
 
 const escape = (s: any) =>
   String(s ?? '')
@@ -62,7 +63,7 @@ function buildCompletionCertHtml(data: CompletionCertData): string {
           ${company.address ? escape(company.address) + '<br/>' : ''}
           ${company.phone ? 'Phone: ' + escape(company.phone) : ''}
           ${company.email ? ' &nbsp;•&nbsp; ' + escape(company.email) : ''}
-          ${company.license_number ? '<br/>License #' + escape(company.license_number) : ''}
+          ${company.license_number ? '<br/>' + escape(formatLicenseLine(company.license_number, 'License #')) : ''}
         </div>
       </div>
       <div style="text-align:right">

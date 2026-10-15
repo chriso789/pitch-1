@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
+import { formatLicenseLine } from '@/lib/companyLicenses';
 
 export interface ChangeOrderRecord {
   id: string;
@@ -191,7 +192,7 @@ export const ChangeOrderDocumentView: React.FC<Props> = ({
             </div>
             {company?.license_number && (
               <div className="text-[10px] text-gray-500 mt-0.5">
-                License #{company.license_number}
+                {formatLicenseLine(company.license_number, "License #")}
               </div>
             )}
           </div>

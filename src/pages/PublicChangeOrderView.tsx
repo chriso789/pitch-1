@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { CheckCircle2, Loader2, Download } from 'lucide-react';
+import { formatLicenseLine } from '@/lib/companyLicenses';
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n || 0);
@@ -135,7 +136,7 @@ export default function PublicChangeOrderView() {
                 <h2 className="text-xl font-bold">{company.name}</h2>
                 {company.address_street && <p className="text-sm text-muted-foreground">{company.address_street} {company.address_city}, {company.address_state} {company.address_zip}</p>}
                 {(company.phone || company.email) && <p className="text-sm text-muted-foreground">{company.phone} {company.email && `• ${company.email}`}</p>}
-                {company.license_number && <p className="text-xs text-muted-foreground">License #{company.license_number}</p>}
+                {company.license_number && <p className="text-xs text-muted-foreground">{formatLicenseLine(company.license_number, "License #")}</p>}
               </div>
             </div>
             <div className="text-right">

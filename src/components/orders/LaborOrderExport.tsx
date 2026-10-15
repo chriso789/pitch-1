@@ -13,6 +13,7 @@ import {
 import { Download, Mail, Loader2, MailCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { formatLicenseLine } from "@/lib/companyLicenses";
 import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
 import jsPDF from "jspdf";
 
@@ -173,7 +174,7 @@ export function LaborOrderExport({
         let ch = 19;
         if (companyInfo.phone) { doc.text(companyInfo.phone, pageWidth - margin, ch, { align: 'right' }); ch += 4.5; }
         if (companyInfo.email) { doc.text(companyInfo.email, pageWidth - margin, ch, { align: 'right' }); ch += 4.5; }
-        if (companyInfo.license_number) doc.text(`Lic #${companyInfo.license_number}`, pageWidth - margin, ch, { align: 'right' });
+        if (companyInfo.license_number) doc.text(formatLicenseLine(companyInfo.license_number, "Lic #"), pageWidth - margin, ch, { align: 'right' });
       }
 
       let yPos = headerH + 10;

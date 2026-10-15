@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertTriangle, ExternalLink, CheckCircle2, Mail, Phone } from "lucide-react";
+import { formatLicenseLine } from "@/lib/companyLicenses";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
@@ -374,7 +375,7 @@ export default function CustomerInvoicePortalPage() {
             )}
             {tenant.license_number && (
               <div className="text-xs text-muted-foreground pt-1">
-                License #{tenant.license_number}
+                {formatLicenseLine(tenant.license_number, "License #")}
               </div>
             )}
           </CardContent>

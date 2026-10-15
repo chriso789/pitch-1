@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { formatLicenseLine } from '@/lib/companyLicenses';
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(value);
@@ -45,7 +46,7 @@ export function buildCapOutHtml(data: CapOutPdfData): string {
     ? `<img src="${data.companyLogoUrl}" alt="${companyName} logo" crossorigin="anonymous" />`
     : `<div style="font-size:24px;font-weight:800;color:${brandColor};letter-spacing:-0.01em;">${companyName}</div>`;
 
-  const companyTagParts = [data.companyLicense ? `Lic. ${data.companyLicense}` : null, data.companyWebsite].filter(Boolean);
+  const companyTagParts = [data.companyLicense ? formatLicenseLine(data.companyLicense, 'Lic. ') : null, data.companyWebsite].filter(Boolean);
   const companyTag = companyTagParts.length
     ? `<div style="font-size:10px;color:#64748b;margin-top:2px;">${companyTagParts.join(' · ')}</div>`
     : '';
@@ -292,7 +293,7 @@ export async function generateCapOutPdfBlob(data: CapOutPdfData): Promise<Blob> 
   const contact = [data.locationPhone || data.companyPhone, data.locationEmail || data.companyEmail].filter(Boolean).join(' · ');
   if (contact) pdf.text(contact, pageWidth - margin, y + 57, { align: 'right', maxWidth: 260 });
 
-  const companyTag = [data.companyLicense ? `Lic. ${data.companyLicense}` : null, data.companyWebsite].filter(Boolean).join(' · ');
+  const companyTag = [data.companyLicense ? formatLicenseLine(data.companyLicense, 'Lic. ') : null, data.companyWebsite].filter(Boolean).join(' · ');
   if (companyTag) pdf.text(companyTag, margin, y + 78, { maxWidth: 220 });
   y += 90;
   pdf.setDrawColor(brandR, brandG, brandB);

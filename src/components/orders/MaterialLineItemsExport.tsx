@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import jsPDF from "jspdf";
+import { formatLicenseLine } from "@/lib/companyLicenses";
 
 interface MaterialItem {
   id: string;
@@ -101,7 +102,7 @@ export function MaterialLineItemsExport({
       const contactLine = [companyInfo?.phone, companyInfo?.email].filter(Boolean).join('  •  ');
       if (contactLine) { doc.text(contactLine, textX, metaY); metaY += 4.5; }
       if (companyInfo?.address) { doc.text(companyInfo.address, textX, metaY); metaY += 4.5; }
-      if (companyInfo?.license_number) { doc.text(`License #${companyInfo.license_number}`, textX, metaY); metaY += 4.5; }
+      if (companyInfo?.license_number) { doc.text(formatLicenseLine(companyInfo.license_number, "License #"), textX, metaY); metaY += 4.5; }
 
       // Divider under header
       doc.setDrawColor(229, 231, 235);
