@@ -3,6 +3,7 @@ import { Download, Mail, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useMaterialOrderEmail } from "@/hooks/useMaterialOrderEmail";
 import jsPDF from "jspdf";
+import { formatLicenseLine } from "@/lib/companyLicenses";
 
 interface CompanyInfo {
   name?: string;
@@ -57,7 +58,7 @@ export function MaterialOrderExport({ order, items, projectAddress, companyInfo 
           headerY += 5;
         }
         if (companyInfo.license_number) {
-          doc.text(`License: ${companyInfo.license_number}`, pageWidth - margin, headerY, { align: 'right' });
+          doc.text(formatLicenseLine(companyInfo.license_number, "License: "), pageWidth - margin, headerY, { align: 'right' });
         }
       }
 
