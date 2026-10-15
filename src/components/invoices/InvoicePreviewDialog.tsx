@@ -2,19 +2,7 @@ import { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Loader2, ExternalLink, Download } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
-
-const BUCKET = 'project-invoices';
-
-function extractInvoicePath(value: string): string | null {
-  if (!value) return null;
-  const pub = value.match(/\/storage\/v1\/object\/public\/project-invoices\/(.+?)(?:\?|$)/);
-  if (pub) return decodeURIComponent(pub[1]);
-  const sig = value.match(/\/storage\/v1\/object\/sign\/project-invoices\/(.+?)\?/);
-  if (sig) return decodeURIComponent(sig[1]);
-  if (!/^https?:\/\//i.test(value) && !value.startsWith('/')) return value;
-  return null;
-}
+import { loadInvoiceBlobUrl } from '@/lib/invoices/loadInvoiceBlob';
 
 interface Props {
   open: boolean;
@@ -28,6 +16,8 @@ export function InvoicePreviewDialog({ open, onOpenChange, urlOrPath, title }: P
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [fileType, setFileType] = useState('');
+
   useEffect(() => {
     if (!open || !urlOrPath) {
       setSignedUrl(null);
@@ -36,39 +26,30 @@ export function InvoicePreviewDialog({ open, onOpenChange, urlOrPath, title }: P
     }
 
     let cancelled = false;
+    let created: string | null = null;
     (async () => {
       setLoading(true);
       setError(null);
-      const path = extractInvoicePath(urlOrPath);
-
-      if (!path) {
-        if (!cancelled) {
-          setSignedUrl(urlOrPath);
-          setLoading(false);
-        }
-        return;
+      try {
+        const { url, type } = await loadInvoiceBlobUrl(urlOrPath);
+        created = url;
+        if (cancelled) { URL.revokeObjectURL(url); return; }
+        setSignedUrl(url);
+        setFileType(type);
+      } catch (e: any) {
+        if (!cancelled) setError(e?.message || 'Could not load preview');
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-
-      const { data, error: signErr } = await supabase.storage
-        .from(BUCKET)
-        .createSignedUrl(path, 60 * 10);
-
-      if (cancelled) return;
-      if (signErr || !data?.signedUrl) {
-        setError(signErr?.message || 'Could not load preview');
-      } else {
-        setSignedUrl(data.signedUrl);
-      }
-      setLoading(false);
     })();
 
     return () => {
       cancelled = true;
+      if (created) URL.revokeObjectURL(created);
     };
   }, [open, urlOrPath]);
 
-  const isPdf = signedUrl?.toLowerCase().includes('.pdf');
-  const isImage = signedUrl && /\.(png|jpe?g|gif|webp|heic)/i.test(signedUrl);
+  const isImage = fileType.startsWith('image/');
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
