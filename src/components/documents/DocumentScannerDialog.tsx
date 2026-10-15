@@ -1486,6 +1486,14 @@ export function DocumentScannerDialog({
     }
   };
 
+  // Auto-retry once when the connection returns after a failed/offline attempt; same upload id, so no duplicate.
+  useEffect(() => {
+    if (uploadStatus !== 'waiting_for_connection') return;
+    const on = () => { if (capturedPages.length && !isUploading) handleBatchUpload(true); };
+    window.addEventListener('online', on);
+    return () => window.removeEventListener('online', on);
+  });
+
   const handleClose = () => {
     if (capturedPages.length > 0 && !isUploading) {
       const proceed = confirm(
@@ -2010,6 +2018,7 @@ export function DocumentScannerDialog({
               <Loader2 className="h-4 w-4 animate-spin text-primary" />
               <div className="flex-1"><Progress value={uploadProgress} className="h-2" /></div>
               <span className="text-sm text-muted-foreground">{Math.round(uploadProgress)}%</span>
+              <span className="text-xs text-muted-foreground" aria-live="polite">{SCAN_UPLOAD_STATUS_LABEL[uploadStatus]}</span>
             </div>
           </div>
         )}
