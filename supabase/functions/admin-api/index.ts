@@ -12,14 +12,17 @@ const app = createRouter("admin-api");
 
 app.get("/__health", (c) => jsonOk(c, { fn: "admin-api", ok: true }));
 
-// Migrated routes — legacy handlers do their own auth, so register BEFORE the auth middleware.
+// All administrative mutations require a valid authenticated identity.
+// Individual handlers MUST additionally authorize role, tenant and target resource.
+app.use("/*", requireAuth);
+
+// Legacy handlers retain their more-specific authorization checks.
 app.post("/user/create", (c) => createUserHandle(c.req.raw));
 app.post("/user/delete", (c) => deleteUserHandle(c.req.raw));
 app.post("/user/password/update", (c) => updatePasswordHandle(c.req.raw));
 app.post("/sms-templates/cleanup", (c) => cleanupSmsTemplatesHandle(c.req.raw));
 
-// Routes below still gated by router auth.
-app.use("/*", requireAuth);
+// Scaffolded routes additionally require a valid tenant context.
 app.use("/*", requireTenant);
 
 app.post("/user/role/update", (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
