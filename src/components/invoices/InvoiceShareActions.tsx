@@ -23,6 +23,7 @@ import {
 import { Eye, Loader2, Mail, MessageSquare, Share2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { InvoiceReadStatus } from './InvoiceReadStatus';
+import { InvoicePreviewDialog } from './InvoicePreviewDialog';
 
 interface Props {
   invoiceId: string;
@@ -158,6 +159,12 @@ export function InvoiceShareActions({
   return (
     <div className="flex items-center gap-1">
       <InvoiceReadStatus invoiceId={invoiceId} tenantId={tenantId} refreshKey={sentCount} />
+      <InvoicePreviewDialog
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        urlOrPath={previewOpen ? pdfPath : null}
+        title={`Invoice ${invoiceNumber}`}
+      />
       <Button
         variant="ghost"
         size="icon"
