@@ -107,7 +107,8 @@ interface DocumentScannerDialogProps {
   onOpenChange: (open: boolean) => void;
   documentType: string;
   documentLabel: string;
-  pipelineEntryId: string;
+  /** Lead (pipeline entry) when scanning from a lead; optional for other records. */
+  pipelineEntryId?: string;
   /** Record the scan belongs to (lead, contact, job, commercial project, permit, contract…). Defaults to the pipeline entry. */
   recordType?: 'pipeline_entry' | 'contact' | 'job' | 'project' | 'commercial_project' | 'permit' | 'contract' | 'smart_doc';
   recordId?: string;
@@ -122,13 +123,14 @@ export function DocumentScannerDialog({
   onOpenChange,
   documentType,
   documentLabel,
-  pipelineEntryId,
+  pipelineEntryId: sessionKey,
   recordType = 'pipeline_entry',
   recordId,
   documentName,
   documentCategory,
   onUploadComplete,
 }: DocumentScannerDialogProps) {
+  const sessionKey = recordId ?? pipelineEntryId ?? 'unlinked';
   const effectiveTenantId = useEffectiveTenantId();
   const [searchablePdf, setSearchablePdf] = useState(true);
   const [ocrSpanish, setOcrSpanish] = useState(true);
@@ -255,7 +257,7 @@ export function DocumentScannerDialog({
       autoStableSinceRef.current = null;
       scannerSessionIdRef.current = makeScannerSessionId();
       // Check for unfinished session
-      loadScanSession(pipelineEntryId, documentType).then((existing) => {
+      loadScanSession(sessionKey, documentType).then((existing) => {
         if (existing && existing.pages.length > 0) {
           setResumePromptSession({ pages: existing.pages.length, updatedAt: existing.updatedAt });
           setPendingResumePages(existing.pages);
@@ -296,7 +298,7 @@ export function DocumentScannerDialog({
     if (!autosaveEnabledRef.current) return;
     const t = setTimeout(async () => {
       const res = await saveScanSession({
-        id: `${pipelineEntryId}::${documentType}`,
+        id: `${sessionKey}::${documentType}`,
         scannerSessionId: scannerSessionIdRef.current,
         pipelineEntryId,
         documentType,
@@ -1281,7 +1283,7 @@ export function DocumentScannerDialog({
 
       const timestamp = Date.now();
       const sanitizedLabel = (documentName?.trim() || documentLabel).replace(/[^\w.-]+/g, '_');
-      const folder = recordId ?? pipelineEntryId;
+      const folder = sessionKey;
       const fileName = `${tenantId}/${folder}/${timestamp}_${documentType}.pdf`;
 
       const uploadStart = performance.now();
@@ -1342,7 +1344,7 @@ export function DocumentScannerDialog({
         qa_reviewed: true,
         original_photo_paths: originalPhotoPaths,
         record_type: recordType,
-        record_id: recordId ?? pipelineEntryId,
+        record_id: sessionKey,
         document_category: documentCategory ?? documentType,
         captured_by: user.id,
         searchable_pdf_requested: searchablePdf,
@@ -1406,7 +1408,9 @@ export function DocumentScannerDialog({
       const { data: insertedDoc, error: dbError } = await supabase
         .from('documents').insert({
           tenant_id: tenantId,
-          pipeline_entry_id: recordType === 'pipeline_entry' ? pipelineEntryId : (pipelineEntryId || null),
+          pipeline_entry_id: recordType === 'pipeline_entry' ? (recordId ?? pipelineEntryId ?? null) : (pipelineEntryId || null),
+          contact_id: recordType === 'contact' ? recordId ?? null : null,
+          project_id: (recordType === 'project' || recordType === 'job') ? recordId ?? null : null,
           document_type: documentType,
           filename: `${sanitizedLabel}.pdf`,
           file_path: fileName,
@@ -1434,7 +1438,7 @@ export function DocumentScannerDialog({
       urlRegRef.current.revokeAll();
       setCapturedPages([]);
       // Clear persisted scan session once the upload succeeds.
-      clearScanSession(pipelineEntryId, documentType).catch(() => {});
+      clearScanSession(sessionKey, documentType).catch(() => {});
       onOpenChange(false);
       onUploadComplete?.();
     } catch (err: any) {
@@ -1455,7 +1459,7 @@ export function DocumentScannerDialog({
         `Click OK to keep, Cancel to discard.`
       );
       if (!proceed) {
-        clearScanSession(pipelineEntryId, documentType).catch(() => {});
+        clearScanSession(sessionKey, documentType).catch(() => {});
       }
     }
     onOpenChange(false);
@@ -2020,7 +2024,7 @@ export function DocumentScannerDialog({
               </p>
               <div className="flex gap-2 justify-end">
                 <Button variant="ghost" size="sm" onClick={async () => {
-                  await clearScanSession(pipelineEntryId, documentType);
+                  await clearScanSession(sessionKey, documentType);
                   setResumePromptSession(null);
                   setPendingResumePages(null);
                 }}>Discard</Button>
