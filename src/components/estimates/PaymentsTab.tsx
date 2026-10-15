@@ -102,6 +102,13 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   const [editPaymentNotes, setEditPaymentNotes] = useState('');
   const { data: companyInfo } = useCompanyInfo();
   const [showInvoiceDialog, setShowInvoiceDialog] = useState(false);
+  // Always pull the latest selling price / line items when the invoice builder opens.
+  React.useEffect(() => {
+    if (!showInvoiceDialog) return;
+    queryClient.invalidateQueries({ queryKey: ['enhanced-estimate-line-items', pipelineEntryId] });
+    queryClient.invalidateQueries({ queryKey: ['legacy-estimate-line-items', pipelineEntryId] });
+    queryClient.invalidateQueries({ queryKey: ['invoice-builder-change-orders', pipelineEntryId] });
+  }, [showInvoiceDialog, pipelineEntryId, queryClient]);
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('check');
@@ -154,6 +161,8 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   // Fetch latest estimate from enhanced_estimates (any status except void/cancelled)
   const { data: enhancedEstimates } = useQuery({
     queryKey: ['enhanced-estimate-line-items', pipelineEntryId],
+    staleTime: 0,
+    refetchOnMount: 'always',
     queryFn: async () => {
       const { data, error } = await supabase
         .from('enhanced_estimates')
@@ -170,6 +179,8 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   // Fallback: fetch from legacy estimates table if enhanced_estimates is empty
   const { data: legacyEstimates } = useQuery({
     queryKey: ['legacy-estimate-line-items', pipelineEntryId],
+    staleTime: 0,
+    refetchOnMount: 'always',
     queryFn: async () => {
       const { data, error } = await supabase
         .from('estimates')
@@ -188,6 +199,8 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   // can be added to the invoice builder.
   const { data: approvedChangeOrders } = useQuery({
     queryKey: ['invoice-builder-change-orders', pipelineEntryId],
+    staleTime: 0,
+    refetchOnMount: 'always',
     queryFn: async () => {
       const { data: projects } = await supabase
         .from('projects')

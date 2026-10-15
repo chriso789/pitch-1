@@ -42,6 +42,9 @@ export function useLiveDataSync() {
       qc.invalidateQueries({ queryKey: ['project-budget-items'] });
       qc.invalidateQueries({ queryKey: ['materials'] });
       qc.invalidateQueries({ queryKey: ['labor'] });
+      qc.invalidateQueries({ queryKey: ['enhanced-estimate-line-items'] });
+      qc.invalidateQueries({ queryKey: ['legacy-estimate-line-items'] });
+      qc.invalidateQueries({ queryKey: ['invoice-builder-change-orders'] });
     };
 
     const invalidatePayments = () => {
@@ -61,6 +64,7 @@ export function useLiveDataSync() {
     const invalidateChangeOrders = () => {
       qc.invalidateQueries({ queryKey: ['change-orders'] });
       qc.invalidateQueries({ queryKey: ['change_orders'] });
+      qc.invalidateQueries({ queryKey: ['invoice-builder-change-orders'] });
       qc.invalidateQueries({ queryKey: ['ar-projects'] });
     };
 
