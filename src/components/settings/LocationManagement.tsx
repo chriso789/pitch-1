@@ -105,6 +105,7 @@ export const LocationManagement = ({ tenantId }: LocationManagementProps = {}) =
         .from('locations')
         .select('*, tenant_id, telnyx_phone_number, phone_porting_status, phone_setup_metadata')
         .eq('tenant_id', effectiveTenantId)
+        .neq('is_active', false)
         .order('name');
 
       if (error) throw error;
@@ -232,13 +233,20 @@ export const LocationManagement = ({ tenantId }: LocationManagementProps = {}) =
   const handleDelete = async (locationId: string) => {
     if (!confirm('Are you sure you want to delete this location?')) return;
 
+    const previous = locations;
+    setLocations((prev) => prev.filter((l) => l.id !== locationId));
     try {
-      const { error } = await supabase
+      const { data: updated, error } = await supabase
         .from('locations')
         .update({ is_active: false })
-        .eq('id', locationId);
+        .eq('id', locationId)
+        .select('id');
 
       if (error) throw error;
+      if (!updated || updated.length === 0) {
+        setLocations(previous);
+        throw new Error("You don't have permission to delete this location");
+      }
       
       toast({
         title: "Success",
