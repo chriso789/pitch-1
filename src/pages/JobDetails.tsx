@@ -1,3 +1,4 @@
+import { RecordScanDocuments } from '@/components/documents/RecordScanDocuments';
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -745,6 +746,7 @@ const JobDetails = () => {
         </TabsContent>
 
         <TabsContent value="documents">
+          <div className="mb-4"><RecordScanDocuments recordType="job" recordId={job.id} title="Scanned job documents" /></div>
           <JobDocumentManager jobId={job.id} />
         </TabsContent>
 

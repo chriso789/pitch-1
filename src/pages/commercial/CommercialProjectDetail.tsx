@@ -1,3 +1,4 @@
+import { RecordScanDocuments } from '@/components/documents/RecordScanDocuments';
 import { useEffect, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
@@ -398,12 +399,13 @@ function Bids({ projectId, tenantId }: any) {
 function Files({ projectId, onImport }: any) {
   const measureOn = isPlanMeasureEnabled();
   const [docs, setDocs] = useState<any[]>([]);
-  useEffect(() => { db.from("documents").select("id, filename, file_path, document_type, created_at").contains("metadata", { commercial_project_id: projectId }).order("created_at", { ascending: false }).then(({ data }: any) => setDocs(data || [])); }, [projectId]);
+  const reload = () => { db.from("documents").select("id, filename, file_path, document_type, created_at").contains("metadata", { commercial_project_id: projectId }).order("created_at", { ascending: false }).then(({ data }: any) => setDocs(data || [])); };
+  useEffect(reload, [projectId]);
   const open = async (d: any) => { const { data } = await supabase.storage.from("documents").createSignedUrl(d.file_path, 600); if (data) window.open(data.signedUrl, "_blank"); };
   const groups = docs.reduce((a: any, d) => { const k = d.document_type.replace("commercial_", ""); (a[k] ??= []).push(d); return a; }, {});
   return (
     <div className="space-y-3">
-      <div className="flex gap-2"><Button variant="outline" onClick={onImport}><Upload className="h-4 w-4 mr-1" />Upload project folder</Button><Button variant="outline" asChild><Link to="/blueprints">Run blueprint takeoff</Link></Button></div>
+      <div className="flex gap-2"><Button variant="outline" onClick={onImport}><Upload className="h-4 w-4 mr-1" />Upload project folder</Button><Button variant="outline" asChild><Link to="/blueprints">Run blueprint takeoff</Link></Button><RecordScanDocuments recordType="commercial_project" recordId={projectId} buttonOnly onSaved={reload} /></div>
       {Object.entries(groups).map(([k, list]: any) => (
         <Card key={k}><CardHeader className="py-3"><CardTitle className="text-sm capitalize">{k} ({list.length})</CardTitle></CardHeader><CardContent className="space-y-1">
           {list.map((d: any) => <div key={d.id} className="flex items-center gap-2"><button onClick={() => open(d)} className="text-sm text-primary hover:underline text-left">{d.filename}</button>

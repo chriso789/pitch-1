@@ -1,3 +1,4 @@
+import { recordLinkColumns, type ScanRecordType } from '@/lib/scan-records/recordLink';
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   X, Camera, Trash2, RotateCcw, Loader2, FileText, Image as ImageIcon,
@@ -110,7 +111,7 @@ interface DocumentScannerDialogProps {
   /** Lead (pipeline entry) when scanning from a lead; optional for other records. */
   pipelineEntryId?: string;
   /** Record the scan belongs to (lead, contact, job, commercial project, permit, contract…). Defaults to the pipeline entry. */
-  recordType?: 'pipeline_entry' | 'contact' | 'job' | 'project' | 'commercial_project' | 'permit' | 'contract' | 'smart_doc';
+  recordType?: ScanRecordType;
   recordId?: string;
   /** Optional document name / category chosen by the user. */
   documentName?: string;
@@ -1029,9 +1030,7 @@ export function DocumentScannerDialog({
       const { data: insertedDoc, error: dbError } = await supabase
         .from('documents').insert({
           tenant_id: importTenantId,
-          pipeline_entry_id: recordType === 'pipeline_entry' ? (recordId ?? pipelineEntryId ?? null) : (pipelineEntryId || null),
-          contact_id: recordType === 'contact' ? recordId ?? null : null,
-          project_id: recordType === 'project' ? recordId ?? null : null,
+          ...recordLinkColumns(recordType, recordId, pipelineEntryId),
           document_type: documentType,
           filename: `${sanitizedLabel}.pdf`,
           file_path: fileName,
@@ -1414,9 +1413,7 @@ export function DocumentScannerDialog({
       const { data: insertedDoc, error: dbError } = await supabase
         .from('documents').insert({
           tenant_id: tenantId,
-          pipeline_entry_id: recordType === 'pipeline_entry' ? (recordId ?? pipelineEntryId ?? null) : (pipelineEntryId || null),
-          contact_id: recordType === 'contact' ? recordId ?? null : null,
-          project_id: recordType === 'project' ? recordId ?? null : null,
+          ...recordLinkColumns(recordType, recordId, pipelineEntryId),
           document_type: documentType,
           filename: `${sanitizedLabel}.pdf`,
           file_path: fileName,

@@ -1,3 +1,4 @@
+import { RecordScanDocuments } from '@/components/documents/RecordScanDocuments';
 import { useState, useEffect } from "react";
 import { safeText } from "@/lib/safeText";
 import { BackButton } from "@/shared/components/BackButton";
@@ -898,9 +899,7 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-center text-muted-foreground py-8">
-                Document library coming soon...
-              </div>
+              <RecordScanDocuments recordType="project" recordId={projectId} />
             </CardContent>
           </Card>
         </TabsContent>
