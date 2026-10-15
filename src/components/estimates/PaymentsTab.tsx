@@ -102,6 +102,13 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   const [editPaymentNotes, setEditPaymentNotes] = useState('');
   const { data: companyInfo } = useCompanyInfo();
   const [showInvoiceDialog, setShowInvoiceDialog] = useState(false);
+  // Always pull the latest selling price / line items when the invoice builder opens.
+  React.useEffect(() => {
+    if (!showInvoiceDialog) return;
+    queryClient.invalidateQueries({ queryKey: ['enhanced-estimate-line-items', pipelineEntryId] });
+    queryClient.invalidateQueries({ queryKey: ['legacy-estimate-line-items', pipelineEntryId] });
+    queryClient.invalidateQueries({ queryKey: ['invoice-builder-change-orders', pipelineEntryId] });
+  }, [showInvoiceDialog, pipelineEntryId, queryClient]);
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('check');
