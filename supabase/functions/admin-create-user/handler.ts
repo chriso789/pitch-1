@@ -194,6 +194,24 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
+    // Caller's role must be held in the TARGET company, and they cannot grant a role above their own.
+    if (!isMasterCaller) {
+      callerRole = roleRows?.find((r: { tenant_id: string | null }) => r.tenant_id === targetTenantId)?.role;
+      if (!callerRole || !allowedRoles.includes(callerRole)) {
+        return new Response(
+          JSON.stringify({ error: "You are not an admin of that company" }),
+          { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+      const level: Record<string, number> = { owner: 2, corporate: 3, office_admin: 4, regional_manager: 5, sales_manager: 6, project_manager: 7 };
+      if ((level[role] ?? 0) < (level[callerRole] ?? 999)) {
+        return new Response(
+          JSON.stringify({ error: "You cannot grant a role higher than your own" }),
+          { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+    }
+
     // supabaseAdmin already created above for role check
 
     console.log('Creating user with invite link:', email, 'role:', role);
