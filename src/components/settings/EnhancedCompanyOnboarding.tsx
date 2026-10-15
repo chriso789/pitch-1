@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { LicenseListInput } from "@/components/settings/LicenseListInput";
 import { 
   Building2, Palette, MapPin, Users, Settings, CheckCircle2, 
   ChevronRight, ChevronLeft, Check, Loader2, Eye, EyeOff
@@ -472,12 +473,9 @@ export function EnhancedCompanyOnboarding({ open, onOpenChange, onComplete }: En
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="company-license">License Number</Label>
-              <Input
-                id="company-license"
-                placeholder="CCC123456"
+              <LicenseListInput
                 value={company.license_number}
-                onChange={(e) => setCompany({ ...company, license_number: e.target.value })}
+                onChange={(v) => setCompany({ ...company, license_number: v })}
               />
             </div>
             <div className="space-y-2">

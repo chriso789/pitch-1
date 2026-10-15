@@ -5,6 +5,7 @@
  * Designed for companies that emphasize hands-on craftsmanship and personal touch.
  */
 import React from 'react';
+import { formatLicenseLine } from "@/lib/companyLicenses";
 import { CoverPageProps } from './types';
 
 const PAGE_WIDTH = 816;
@@ -125,7 +126,7 @@ export const WarmCraftsmanCoverPage: React.FC<CoverPageProps> = ({
           <div className="flex gap-6 text-xs">
             {companyInfo?.phone && <span className="text-[#C9956B]">{companyInfo.phone}</span>}
             {companyInfo?.email && <span className="text-[#F5F0E8]/60">{companyInfo.email}</span>}
-            {companyInfo?.license_number && <span className="text-[#F5F0E8]/40">Lic #{companyInfo.license_number}</span>}
+            {companyInfo?.license_number && <span className="text-[#F5F0E8]/40">{formatLicenseLine(companyInfo.license_number, "Lic #")}</span>}
           </div>
         </div>
       </div>

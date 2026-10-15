@@ -5,6 +5,7 @@
  * ensuring text/rows are never cut mid-page and footer is always at bottom.
  */
 import { safeText } from '@/lib/safeText';
+import { formatLicenseLine } from "@/lib/companyLicenses";
 import React, { useMemo } from 'react';
 import { type LineItem } from '@/hooks/useEstimatePricing';
 import { type PDFComponentOptions, getDefaultOptions } from './PDFComponentOptions';
@@ -349,7 +350,7 @@ const PageHeader: React.FC<{
               {companyInfo?.email && <span>{companyInfo.email}</span>}
             </div>
             {companyInfo?.license_number && (
-              <p className="text-[10px] text-gray-500 mt-0.5">License #{companyInfo.license_number}</p>
+              <p className="text-[10px] text-gray-500 mt-0.5">{formatLicenseLine(companyInfo.license_number, "License #")}</p>
             )}
           </div>
         )}
@@ -412,7 +413,7 @@ const PageFooter: React.FC<{
               {companyInfo?.name || companyName}
             </p>
             {companyInfo?.license_number && (
-              <p className="text-[7px] text-gray-500">License #{companyInfo.license_number}</p>
+              <p className="text-[7px] text-gray-500">{formatLicenseLine(companyInfo.license_number, "License #")}</p>
             )}
           </div>
         </div>

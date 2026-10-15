@@ -5,6 +5,7 @@
  * Layout: Top branding bar → full-width photo → centered customer block → bottom info strip.
  */
 import React from 'react';
+import { formatLicenseLine } from "@/lib/companyLicenses";
 import { CoverPageProps } from './types';
 
 const PAGE_WIDTH = 816;
@@ -59,7 +60,7 @@ export const ClassicCoverPage: React.FC<CoverPageProps> = ({
           </div>
           <div className="text-right space-y-1">
             {companyInfo?.license_number && (
-              <div className="text-[9px] text-white/50">License #{companyInfo.license_number}</div>
+              <div className="text-[9px] text-white/50">{formatLicenseLine(companyInfo.license_number, "License #")}</div>
             )}
             {companyInfo?.brand_certifications && (
               <div className="text-[9px] text-[#C9A96E]/80 max-w-[200px] text-right">{companyInfo.brand_certifications}</div>
