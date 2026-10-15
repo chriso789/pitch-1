@@ -68,7 +68,7 @@ export function InvoicePreviewDialog({ open, onOpenChange, urlOrPath, title }: P
                   Open
                 </Button>
                 <Button variant="outline" size="sm" asChild>
-                  <a href={signedUrl} download>
+                  <a href={signedUrl} download={`${title || "invoice"}${fileType === "application/pdf" ? ".pdf" : ""}`}>
                     <Download className="h-3.5 w-3.5 mr-1" />
                     Download
                   </a>
