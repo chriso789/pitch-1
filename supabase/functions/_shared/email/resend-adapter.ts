@@ -132,7 +132,14 @@ export const resendAdapter: TransactionalEmailProvider = {
           "X-Entity-Ref-ID": input.idempotencyKey,
         },
       };
-      if (input.replyTo) body.reply_to = input.replyTo;
+      if (input.replyTo) {
+        body.reply_to = input.replyTo;
+        // Standard read-receipt request: mail apps that support it (Outlook, Apple Mail,
+        // Thunderbird) ask the customer to send a "read" reply to the sender's inbox.
+        const h = body.headers as Record<string, string>;
+        h["Disposition-Notification-To"] = input.replyTo;
+        h["Return-Receipt-To"] = input.replyTo;
+      }
       if (input.tags && input.tags.length) body.tags = input.tags;
 
       const res = await fetch(RESEND_ENDPOINT, {
