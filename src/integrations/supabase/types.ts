@@ -18240,6 +18240,44 @@ export type Database = {
           },
         ]
       }
+      document_record_links: {
+        Row: {
+          document_id: string
+          id: string
+          linked_at: string
+          linked_by: string
+          record_id: string
+          record_type: string
+          tenant_id: string
+        }
+        Insert: {
+          document_id: string
+          id?: string
+          linked_at?: string
+          linked_by?: string
+          record_id: string
+          record_type: string
+          tenant_id: string
+        }
+        Update: {
+          document_id?: string
+          id?: string
+          linked_at?: string
+          linked_by?: string
+          record_id?: string
+          record_type?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_record_links_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       document_review_queue: {
         Row: {
           assigned_to: string | null
