@@ -8,6 +8,7 @@ import React, { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format, formatDistanceToNow } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
+import { RecordScanDocuments } from "@/components/documents/RecordScanDocuments";
 import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -53,6 +54,7 @@ type EnvelopeRow = {
   sender_name: string | null;
   sender_email: string | null;
   generated_pdf_path: string | null;
+  pipeline_entry_id: string | null;
   signed_pdf_path: string | null;
   document_url: string | null;
   recipients: {
@@ -89,7 +91,7 @@ export const PortalSignatureTracking: React.FC = () => {
         .from("signature_envelopes")
         .select(
           `id, title, status, sent_at, completed_at, created_at, created_by,
-           generated_pdf_path, signed_pdf_path, document_url,
+           generated_pdf_path, signed_pdf_path, document_url, pipeline_entry_id,
            signature_recipients(id, recipient_name, recipient_email, status, signed_at)`
         )
         .eq("tenant_id", tenantId!)
@@ -148,6 +150,7 @@ export const PortalSignatureTracking: React.FC = () => {
         sender_name: senderMap.get(e.created_by)?.name || null,
         sender_email: senderMap.get(e.created_by)?.email || null,
         generated_pdf_path: e.generated_pdf_path,
+        pipeline_entry_id: e.pipeline_entry_id || null,
         signed_pdf_path: e.signed_pdf_path,
         document_url: e.document_url,
         recipients: e.signature_recipients || [],
@@ -445,6 +448,12 @@ export const PortalSignatureTracking: React.FC = () => {
                               Remind
                             </Button>
                           )}
+                          <RecordScanDocuments
+                            buttonOnly
+                            recordType="contract"
+                            recordId={row.id}
+                            pipelineEntryId={row.pipeline_entry_id || undefined}
+                          />
                         </div>
                       </TableCell>
                     </TableRow>
