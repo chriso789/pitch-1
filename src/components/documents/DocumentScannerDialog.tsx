@@ -46,6 +46,7 @@ import {
   makeScannerSessionId, PersistedScanPage,
   purgeExpiredScanSessions, DEFAULT_SESSION_TTL_MS,
 } from '@/utils/scannerSessionStore';
+import { getOrCreateUploadId, clearUploadId, scanUploadPaths, SCAN_UPLOAD_STATUS_LABEL, type ScanUploadStatus } from '@/lib/scan-records/uploadIdentity';
 import { renderImportedPdf, getPdfjsDiagnostics } from '@/utils/scannerPdfImport';
 import { ScannerTelemetry } from '@/utils/scannerTelemetry';
 import { ObjectUrlRegistry, detectDeviceMemoryProfile, downscaleCanvasInPlace } from '@/utils/scannerMobileGuards';
@@ -138,6 +139,7 @@ export function DocumentScannerDialog({
   // Core capture state
   const [capturedPages, setCapturedPages] = useState<CapturedPage[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<ScanUploadStatus>('saved_on_device');
   const [uploadProgress, setUploadProgress] = useState(0);
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -1306,19 +1308,21 @@ export function DocumentScannerDialog({
       const timestamp = Date.now();
       const sanitizedLabel = (documentName?.trim() || documentLabel).replace(/[^\w.-]+/g, '_');
       const folder = sessionKey;
-      const fileName = `${tenantId}/${folder}/${timestamp}_${documentType}.pdf`;
+      const paths = scanUploadPaths(tenantId, folder, uploadId, documentType, capturedPages.length);
+      const fileName = paths.pdf;
+      void timestamp;
 
       const uploadStart = performance.now();
       const { error: uploadError } = await supabase.storage
-        .from('documents').upload(fileName, finalPdf, { contentType: 'application/pdf' });
+        .from('documents').upload(fileName, finalPdf, { contentType: 'application/pdf', upsert: true });
       if (uploadError) throw uploadError;
       // Keep the untouched camera photos next to the PDF (never altered).
       const originalPhotoPaths: string[] = [];
       for (let i = 0; i < capturedPages.length; i++) {
         const ob = capturedPages[i].originalBlob;
         if (!ob) continue;
-        const op = `${tenantId}/${folder}/${timestamp}_${documentType}_originals/page_${i + 1}.jpg`;
-        const { error: oe } = await supabase.storage.from('documents').upload(op, ob, { contentType: 'image/jpeg' });
+        const op = paths.originals[i];
+        const { error: oe } = await supabase.storage.from('documents').upload(op, ob, { contentType: 'image/jpeg', upsert: true });
         if (oe) throw new Error(`Could not save original photo for page ${i + 1}: ${oe.message}`);
         originalPhotoPaths.push(op);
       }
@@ -1336,6 +1340,7 @@ export function DocumentScannerDialog({
       capturedPages.forEach(p => { shadowSeverityCounts[p.shadowSeverity]++; });
 
       const scanMetadata = {
+        client_upload_id: uploadId,
         scanned: true,
         document_type: documentType,
         document_label: documentLabel,
@@ -1445,7 +1450,14 @@ export function DocumentScannerDialog({
           scan_quality: scanQuality,
           ocr_status: ocrSummary?.status === 'searchable' ? 'completed' : 'processing',
         } as any).select('id').single();
-      if (dbError) throw dbError;
+      // 23505 = the row from an earlier attempt already exists (unique upload id): treat as saved.
+      if (dbError && (dbError as any).code !== '23505') throw dbError;
+      // Only confirmed once the server returns the saved row for this company.
+      const { data: confirmed } = await (supabase as any).from('documents').select('id, tenant_id')
+        .eq('tenant_id', tenantId).eq('metadata->>client_upload_id', uploadId).maybeSingle();
+      if (!confirmed?.id) throw new Error('The server did not confirm the saved document. Pages kept — retry.');
+      setUploadStatus(ocrSummary?.status === 'searchable' ? 'completed' : 'processing_ocr');
+      clearUploadId(tenantId, sessionKey, documentType);
 
       if (insertedDoc?.id && ocrSummary?.status !== 'searchable') {
         supabase.functions.invoke('ocr-scanned-document', { body: { document_id: insertedDoc.id } })
@@ -1465,6 +1477,7 @@ export function DocumentScannerDialog({
     } catch (err: any) {
       console.error('PDF generation error:', err);
       // Failure-recovery: keep pages + autosave so the user can retry from QA.
+      setUploadStatus(s => s === 'waiting_for_connection' ? s : (navigator.onLine === false ? 'waiting_for_connection' : 'failed'));
       toast({ title: 'Upload Failed', description: (err?.message || 'Failed to create PDF.') + ' Pages preserved — try again.', variant: 'destructive' });
       setShowQA(true);
     } finally {
