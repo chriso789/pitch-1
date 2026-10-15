@@ -1,3 +1,4 @@
+import { RecordScanDocuments } from '@/components/documents/RecordScanDocuments';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -552,13 +553,7 @@ const ContactProfile = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-center py-12">
-                  <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">Document Management</h3>
-                  <p className="text-muted-foreground">
-                    Document management features will be available here.
-                  </p>
-                </div>
+                <RecordScanDocuments recordType="contact" recordId={id!} />
               </CardContent>
             </Card>
           </TabsContent>
