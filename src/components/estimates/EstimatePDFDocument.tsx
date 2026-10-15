@@ -5,7 +5,7 @@
  * ensuring text/rows are never cut mid-page and footer is always at bottom.
  */
 import { safeText } from '@/lib/safeText';
-import { formatLicenseLine } from "@/lib/companyLicenses";
+import { formatLicenseLine, parseLicenses } from "@/lib/companyLicenses";
 import React, { useMemo } from 'react';
 import { type LineItem } from '@/hooks/useEstimatePricing';
 import { type PDFComponentOptions, getDefaultOptions } from './PDFComponentOptions';
@@ -644,7 +644,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
           <WhyChooseUs
             key="why-choose-us-page"
             companyName={companyInfo?.name || companyName}
-            licenseNumber={companyInfo?.license_number}
+            licenseNumber={parseLicenses(companyInfo?.license_number).map((l) => l.number).join(", ") || undefined}
             establishedYear={companyInfo?.established_year}
             brandStory={companyInfo?.brand_story}
             brandMission={companyInfo?.brand_mission}
