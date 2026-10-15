@@ -1021,6 +1021,7 @@ export function DocumentScannerDialog({
         final_size_bytes: file.size,
         imported_pdf_mode: 'original' as const,
         record_type: recordType,
+        ...(recordType === 'commercial_project' && recordId ? { commercial_project_id: recordId } : {}),
         record_id: sessionKey,
         original_file_size_bytes: file.size,
       };
@@ -1348,6 +1349,7 @@ export function DocumentScannerDialog({
         qa_reviewed: true,
         original_photo_paths: originalPhotoPaths,
         record_type: recordType,
+        ...(recordType === 'commercial_project' && recordId ? { commercial_project_id: recordId } : {}),
         record_id: sessionKey,
         document_category: documentCategory ?? documentType,
         captured_by: user.id,
