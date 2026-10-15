@@ -122,10 +122,11 @@ const handler = async (req: Request): Promise<Response> => {
       .select("role, tenant_id")
       .eq("user_id", user.id);
 
-    const callerRole =
-      roleRows?.find((r: { tenant_id: string | null }) => r.tenant_id === callerTenantId)?.role ||
-      roleRows?.[0]?.role ||
-      profile?.role;
+    // Roles come only from user_roles (never profiles), matched to the active company.
+    const isMasterCaller = (roleRows ?? []).some((r: { role: string }) => r.role === 'master');
+    let callerRole: string | undefined = isMasterCaller
+      ? 'master'
+      : roleRows?.find((r: { tenant_id: string | null }) => r.tenant_id === callerTenantId)?.role;
 
     const allowedRoles = ['master', 'corporate', 'office_admin', 'owner'];
 
@@ -191,6 +192,24 @@ const handler = async (req: Request): Promise<Response> => {
         JSON.stringify({ error: `Invalid role: "${role}". Must be one of: ${validRoles.join(', ')}` }),
         { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
+    }
+
+    // Caller's role must be held in the TARGET company, and they cannot grant a role above their own.
+    if (!isMasterCaller) {
+      callerRole = roleRows?.find((r: { tenant_id: string | null }) => r.tenant_id === targetTenantId)?.role;
+      if (!callerRole || !allowedRoles.includes(callerRole)) {
+        return new Response(
+          JSON.stringify({ error: "You are not an admin of that company" }),
+          { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+      const level: Record<string, number> = { owner: 2, corporate: 3, office_admin: 4, regional_manager: 5, sales_manager: 6, project_manager: 7 };
+      if ((level[role] ?? 0) < (level[callerRole] ?? 999)) {
+        return new Response(
+          JSON.stringify({ error: "You cannot grant a role higher than your own" }),
+          { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
     }
 
     // supabaseAdmin already created above for role check
