@@ -1,3 +1,4 @@
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { deleteAutoDraftsForPipeline } from '@/lib/estimateAutoDraftCleanup';
 // Force rebuild - clear HMR cache v2
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
@@ -726,12 +727,16 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     return () => { supabase.removeChannel(channel); };
   }, [pipelineEntryId, fetchAssignedRepRates]);
 
+  const effectiveTenantId = useEffectiveTenantId();
+  const effectiveTenantIdRef = useRef<string | null>(effectiveTenantId);
+  effectiveTenantIdRef.current = effectiveTenantId;
+
   useEffect(() => {
     fetchTemplates();
     loadSelectedTemplate();
     fetchCompanyAndEstimateSettings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [effectiveTenantId]);
 
   // Ref to remember that a share/preview was requested via URL and should
   // open the Preview panel as soon as the estimate finishes loading.
@@ -1475,7 +1480,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         .eq('id', user.id)
         .single();
 
-      const tenantId = profile?.active_tenant_id || profile?.tenant_id;
+      const tenantId = effectiveTenantIdRef.current || profile?.active_tenant_id || profile?.tenant_id;
       if (!tenantId) throw new Error('No tenant found');
 
       const result = await supabaseClient
