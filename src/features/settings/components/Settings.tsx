@@ -312,13 +312,13 @@ export const Settings = () => {
         filteredTabs = filteredTabs.filter(tab => !masterBackendTabs.includes(tab.tab_key));
       }
 
-      // Restrict ALL "Platform" category tabs to the COB owner only
-      const SYSTEM_OWNER_EMAIL = 'chrisobrien91@gmail.com';
-      const isSystemOwner = currentUser?.email?.toLowerCase() === SYSTEM_OWNER_EMAIL;
+      // Restrict ALL "Platform" category tabs to platform masters only.
+      // Verified server-side via the has_role function (user_roles table) —
+      // never by email address or client-stored identity.
       // "System" category (Reports, Health, Developer, AI Admin, Security, Edge Functions, Cache)
       // is no longer rendered in the sidebar — those tools now live inside Platform Admin.
       filteredTabs = filteredTabs.filter(tab => TAB_TO_CATEGORY[tab.tab_key] !== 'system');
-      if (!isSystemOwner) {
+      if (!isPlatformMaster) {
         filteredTabs = filteredTabs.filter(
           tab => TAB_TO_CATEGORY[tab.tab_key] !== 'platform'
         );
