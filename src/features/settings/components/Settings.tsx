@@ -55,6 +55,7 @@ import { RoofTrainingLab } from "@/components/settings/RoofTrainingLab";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useQuery } from "@tanstack/react-query";
 import { ApprovalRequirementsSettings } from "@/components/settings/ApprovalRequirementsSettings";
 import { EstimateFinePrintSettings } from "@/components/settings/EstimateFinePrintSettings";
 import { WarrantySettings } from "@/components/settings/WarrantySettings";
@@ -203,6 +204,21 @@ export const Settings = () => {
   const { toast } = useToast();
   const { activeCompany, activeCompanyId } = useCompanySwitcher();
   const isMobile = useIsMobile();
+
+  // Platform-master check, verified server-side via has_role (user_roles).
+  const { data: isPlatformMaster = false } = useQuery({
+    queryKey: ['is-platform-master', currentUser?.id],
+    queryFn: async () => {
+      if (!currentUser?.id) return false;
+      const { data } = await supabase.rpc('has_role', {
+        _user_id: currentUser.id,
+        _role: 'master' as never,
+      });
+      return data === true;
+    },
+    enabled: !!currentUser?.id,
+    staleTime: 60_000,
+  });
   
   // URL query param support for deep linking (e.g., /settings?tab=estimates)
   const [searchParams] = useSearchParams();
