@@ -1,17 +1,25 @@
-# Security warning triage — 2026-10-16
+# Security warning triage — 2026-10-16 (updated same day)
 
 Sources: database linter (268 findings) and the project security scan (90 findings).
 Status re-checked against live policies on 2026-10-16. Nothing was weakened to silence a warning.
 
-## Linter (268) by class
+## Linter (268 → 239) by class
 | Class | Count | Severity | Subsystem | Exploitability / status |
 |---|---|---|---|---|
 | Signed-in users can execute SECURITY DEFINER function | 179 | Medium | DB functions | Present. Only exploitable where a function skips its own tenant/role check. Needs per-function review; highest priority: functions touching documents, invoices, user_roles. |
-| Public (anon) can execute SECURITY DEFINER function | 71 | High | DB functions | Present. Revoke EXECUTE from anon except functions used by public pages (invoice viewer, closeout portal, webhooks). Needs per-function caller audit before revoking. |
+| Public (anon) can execute SECURITY DEFINER function | 71 → 42 | High | DB functions | **Reduced 2026-10-16.** Revoked PUBLIC/anon EXECUTE on 29 internal functions (number generators, emit_domain_event, log_function_error, check_rate_limit, increment_estimate_views, get_workspace_bootstrap, resolve_request_tenant_id, crew portal helpers). Remaining 42 are intentional: RLS policy helpers (has_role, get_user_tenant_id, …) and public-page functions (demo requests, referral links, invoice portal tokens, presentation/signature sessions). |
 | Function search_path mutable | 14 | Low | DB functions (mostly PostGIS `st_*`) | Present. Extension-owned; low practical risk (no untrusted schema create). |
 | Extension in public | 2 | Low | PostGIS | Present; moving PostGIS breaks geometry columns. Accept. |
 | RLS disabled (`spatial_ref_sys`) | 1 | Low | PostGIS reference table | Present; static public reference data, owned by extension. Accept. |
 | Leaked password protection off | 1 | Medium | Auth | Present; dashboard switch (owner action). |
+
+## Fixed 2026-10-16 (second pass)
+- `admin-update-password`: removed hardcoded name-based ("Chris O'Brien") authorization exception; roles now read from `user_roles` scoped to the target user's company; hierarchy enforced (office_admin < corporate < owner < master); self-update allowed; errors sanitized (401/403/404/400, no internal messages); min password length raised to 8.
+- `Settings.tsx`: platform tabs no longer gated on a hardcoded email address; server-verified `has_role('master')` check instead.
+- Insert policies tightened (were `WITH CHECK (true)`, anyone could forge rows): `ai_call_transcripts` (now tenant-scoped), `material_import_batches` (tenant required + tenant-less rows no longer visible to all), `training_pairs` (tenant-scoped). Edge functions use the service role and are unaffected.
+- `MaterialImportAuditDialog` now saves `tenant_id` on import batch rows.
+- `.env` added to `.gitignore` (history scan: only public VITE_ publishable keys were ever committed; no service-role or secret keys found).
+- Address validation classifier: premise addresses with inferred/replaced/spell-corrected components were marked `valid`; now correctly `needs_review` (test was failing before this fix).
 
 ## Scan (90) — critical/high items
 | Finding | Severity | Subsystem | Status |

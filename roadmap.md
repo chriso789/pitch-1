@@ -1,14 +1,20 @@
 # Security Remediation Roadmap (per assessment doc)
 
-1. [ ] Verify latest commit contains UltraScan A–F work
-2. [ ] Admin API routes: consistent server-side auth (adminRoutes + edge functions done earlier; verify remaining)
-3. [ ] Remove hardcoded identity-based password authorization exception
-4. [ ] Sanitize production API errors
-5. [ ] Env-file protections + scan git history for exposed credentials
-6. [ ] Audit public (anon-executable) SECURITY DEFINER functions; restrict unnecessary EXECUTE
-7. [ ] Fix unauthorized record creation on call transcripts (ai_call_transcripts WITH CHECK true)
-8. [ ] Triage 268 linter warnings by severity; fix confirmed critical/high
-9. [ ] Two-company isolation tests (BLOCKED: needs test accounts/credentials)
-10. [ ] Full TypeScript check + build
-11. [ ] Claude Code security review (runs in user's GitHub repo — document)
-12. [ ] Report FIXED / TESTED / MERGED / DEPLOYED / BLOCKED per item
+1. [x] Verify latest commit contains UltraScan A–F work (228fc1d0c "Completed UltraScan A–E")
+2. [x] Admin API routes server-side auth (adminRoutes.tsx + admin-create-user/admin-delete-user done earlier)
+3. [x] Remove hardcoded identity-based password authorization exception (admin-update-password/handler.ts)
+4. [x] Sanitize production API errors (admin-update-password now returns generic 401/403/404/500)
+5. [x] Env-file protections (.env gitignored) + git history scan (only public publishable keys ever committed)
+6. [x] Audit public SECURITY DEFINER functions; revoked anon/PUBLIC EXECUTE on 29 internal functions (71→42)
+7. [x] Fix unauthorized record creation: ai_call_transcripts, material_import_batches, training_pairs insert policies tenant-scoped
+8. [x] Triage 268 linter warnings by severity (docs/SECURITY_WARNING_TRIAGE.md); fixed confirmed highs
+9. [ ] Two-company isolation tests — BLOCKED: needs two test companies + test user credentials
+10. [x] Full TypeScript check (tsgo, 0 errors) + build OK + 82/82 tests pass (7 skipped = isolation)
+11. [ ] Claude Code security review — BLOCKED: runs in user's GitHub repo (workflows already present)
+12. [x] FIXED/TESTED/MERGED/DEPLOYED/BLOCKED report delivered
+
+## Remaining (from earlier turns)
+- 179 signed-in SECURITY DEFINER functions need per-function tenant/role check review
+- Leaked-password protection + MFA: dashboard switches (owner action)
+- Vulnerable deps (pdf-maker, formula calc, drawing canvas, PDF.js) — updates need regression testing
+- Email verification, rate limits, webhook signatures, file-upload validation, XSS audit, debug settings
