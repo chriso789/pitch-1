@@ -2000,7 +2000,13 @@ export function DocumentScannerDialog({
                       const { mode, intensity, brightness, contrast } = previewPage.edit!;
                       applyEdit(capturedPages.map((_, i) => i), { mode, intensity, brightness, contrast });
                     }}>Apply to all pages</Button>
-                  {editBusy && <span className="text-muted-foreground self-center">Reprocessing…</span>}
+                  {editBusy && (
+                    <div className="flex items-center gap-2 w-full" role="status" aria-label="Cleanup progress">
+                      <Progress value={editProgress?.total ? (editProgress.done / editProgress.total) * 100 : 0} className="h-2 flex-1" />
+                      <span className="text-muted-foreground text-xs">{editProgress ? `${editProgress.done}/${editProgress.total}` : 'Reprocessing…'}</span>
+                      <Button size="sm" variant="ghost" onClick={() => editAbortRef.current?.abort()}>Cancel</Button>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
