@@ -1,3 +1,4 @@
+import { deleteAutoDraftsForPipeline } from '@/lib/estimateAutoDraftCleanup';
 // Force rebuild - clear HMR cache v2
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';

@@ -1,3 +1,4 @@
+import { deleteAutoDraftsForPipeline, isStaleAutoDraft } from '@/lib/estimateAutoDraftCleanup';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Parser as ExprParser } from 'expr-eval';
 import { cn } from '@/lib/utils';
@@ -387,6 +388,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
   const isRestoringDraftRef = React.useRef(false);
   const autoDraftTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoDraftInitializedRef = React.useRef(false);
+  const savedFingerprintRef = React.useRef<string | null>(null);
   
   // Filtering and sorting state
   const [filterStatus, setFilterStatus] = useState<string>('all');
@@ -570,7 +572,8 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
         // than the server auto-draft.
         const snapshot = readLatestEstimateSnapshot(pipelineEntryId);
         const draftTs = draft ? new Date((draft as any).updated_at || 0).getTime() : 0;
-        if (snapshotHasContent(snapshot) && snapshot!.ts > draftTs) {
+        if (snapshot && snapshot.ts <= latestSavedTs) clearEstimateSnapshots(pipelineEntryId);
+        if (snapshotHasContent(snapshot) && snapshot!.ts > draftTs && snapshot!.ts > latestSavedTs) {
           isRestoringDraftRef.current = true;
           if (draft) setDraftEstimateId(draft.id);
           if (snapshot!.editingEstimateId) setEditingEstimateId(snapshot!.editingEstimateId);
