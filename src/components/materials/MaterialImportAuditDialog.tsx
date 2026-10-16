@@ -515,6 +515,7 @@ export function MaterialImportAuditDialog({
       try {
         const { data: userData } = await supabase.auth.getUser();
         await supabase.from('material_import_batches' as any).insert({
+          tenant_id: effectiveTenantId,
           source_filename: sourceFileName || null,
           source_type: 'csv',
           items_count: selectedItems.length,

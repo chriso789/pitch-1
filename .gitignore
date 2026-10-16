@@ -23,3 +23,8 @@ dist-ssr
 *.sln
 *.sw?
 vendor/
+
+# Environment files (public keys only today, but never commit env files)
+.env
+.env.*
+!.env.example

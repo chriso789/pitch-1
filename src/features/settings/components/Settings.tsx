@@ -55,6 +55,7 @@ import { RoofTrainingLab } from "@/components/settings/RoofTrainingLab";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useQuery } from "@tanstack/react-query";
 import { ApprovalRequirementsSettings } from "@/components/settings/ApprovalRequirementsSettings";
 import { EstimateFinePrintSettings } from "@/components/settings/EstimateFinePrintSettings";
 import { WarrantySettings } from "@/components/settings/WarrantySettings";
@@ -203,6 +204,21 @@ export const Settings = () => {
   const { toast } = useToast();
   const { activeCompany, activeCompanyId } = useCompanySwitcher();
   const isMobile = useIsMobile();
+
+  // Platform-master check, verified server-side via has_role (user_roles).
+  const { data: isPlatformMaster = false } = useQuery({
+    queryKey: ['is-platform-master', currentUser?.id],
+    queryFn: async () => {
+      if (!currentUser?.id) return false;
+      const { data } = await supabase.rpc('has_role', {
+        _user_id: currentUser.id,
+        _role: 'master' as never,
+      });
+      return data === true;
+    },
+    enabled: !!currentUser?.id,
+    staleTime: 60_000,
+  });
   
   // URL query param support for deep linking (e.g., /settings?tab=estimates)
   const [searchParams] = useSearchParams();
@@ -282,7 +298,7 @@ export const Settings = () => {
     if (currentUser?.profileLoaded === true && currentUser?.role) {
       loadTabConfiguration();
     }
-  }, [currentUser?.role, currentUser?.profileLoaded, activeCompanyId]);
+  }, [currentUser?.role, currentUser?.profileLoaded, activeCompanyId, isPlatformMaster]);
 
   const masterBackendTabs = [
     'platform-admin', 'developer', 'health', 'edge-functions', 
@@ -312,13 +328,13 @@ export const Settings = () => {
         filteredTabs = filteredTabs.filter(tab => !masterBackendTabs.includes(tab.tab_key));
       }
 
-      // Restrict ALL "Platform" category tabs to the COB owner only
-      const SYSTEM_OWNER_EMAIL = 'chrisobrien91@gmail.com';
-      const isSystemOwner = currentUser?.email?.toLowerCase() === SYSTEM_OWNER_EMAIL;
+      // Restrict ALL "Platform" category tabs to platform masters only.
+      // Verified server-side via the has_role function (user_roles table) —
+      // never by email address or client-stored identity.
       // "System" category (Reports, Health, Developer, AI Admin, Security, Edge Functions, Cache)
       // is no longer rendered in the sidebar — those tools now live inside Platform Admin.
       filteredTabs = filteredTabs.filter(tab => TAB_TO_CATEGORY[tab.tab_key] !== 'system');
-      if (!isSystemOwner) {
+      if (!isPlatformMaster) {
         filteredTabs = filteredTabs.filter(
           tab => TAB_TO_CATEGORY[tab.tab_key] !== 'platform'
         );

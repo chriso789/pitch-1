@@ -109,6 +109,9 @@ export function classifyGoogleAddressValidation(payload: any): ClassifiedAddress
     PREMISE_LIKE.has(validationGranularity!) &&
     addressComplete === true &&
     !hasUnconfirmed &&
+    !hasInferred &&
+    !hasReplaced &&
+    !hasSpell &&
     missing.length === 0 &&
     unresolved.length === 0 &&
     dpv !== 'N'
