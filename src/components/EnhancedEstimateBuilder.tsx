@@ -546,9 +546,24 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
           .eq('status', 'draft')
           .order('updated_at', { ascending: false })
           .limit(20);
-        const draft = (data || []).find(
+        let draft = (data || []).find(
           (r: any) => r?.property_details?.is_auto_draft === true
         );
+        // If a real estimate was saved after this draft, the draft is leftover — drop it.
+        const { data: savedRows } = await supabase
+          .from('enhanced_estimates')
+          .select('id, updated_at, created_at, property_details')
+          .eq('pipeline_entry_id', pipelineEntryId)
+          .order('updated_at', { ascending: false })
+          .limit(50);
+        const savedTimes = (savedRows || [])
+          .filter((r: any) => r?.property_details?.is_auto_draft !== true)
+          .map((r: any) => r.updated_at || r.created_at);
+        const latestSavedTs = Math.max(0, ...savedTimes.map((t: any) => new Date(t || 0).getTime()));
+        if (draft && isStaleAutoDraft((draft as any).updated_at, savedTimes)) {
+          await deleteAutoDraftsForPipeline(pipelineEntryId);
+          draft = undefined;
+        }
 
         // A local snapshot is written on every keystroke, so it is usually the
         // freshest copy after an unexpected refresh. Prefer it when it is newer
@@ -621,6 +636,11 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
     if (!pipelineEntryId) return;
     if (editingEstimateId) return; // editing an existing estimate – different flow
     if (isRestoringDraftRef.current) return;
+    // Nothing changed since the last real save → no draft needed
+    if (
+      savedFingerprintRef.current &&
+      savedFingerprintRef.current === JSON.stringify({ lineItems, propertyDetails })
+    ) return;
 
     const hasContent =
       lineItems.some((i) => (i.item_name || '').trim()) ||
@@ -1885,7 +1905,13 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
       await loadSavedEstimates();
       
       // Clear editing state, recovery copies and unsaved changes after saving
-      if (pipelineEntryId) clearEstimateSnapshots(pipelineEntryId);
+      if (pipelineEntryId) {
+        clearEstimateSnapshots(pipelineEntryId);
+        await deleteAutoDraftsForPipeline(pipelineEntryId, newEstimate?.id);
+        loadSavedEstimates();
+      }
+      // Don't immediately re-create a draft from the just-saved form contents
+      savedFingerprintRef.current = JSON.stringify({ lineItems, propertyDetails });
       setEditingEstimateId(null);
       setHasUnsavedChanges(false);
       setShowDraftRecovered(false);

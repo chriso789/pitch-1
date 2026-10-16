@@ -2092,6 +2092,9 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       queryClient.invalidateQueries({ queryKey: ['hyperlink-data', pipelineEntryId] });
 
       clearTradeEstimateSnapshots(pipelineEntryId);
+      deleteAutoDraftsForPipeline(pipelineEntryId).then(() =>
+        queryClient.invalidateQueries({ queryKey: ['saved-estimates', pipelineEntryId] })
+      );
       setShowDraftRecovered(false);
 
       toast({
@@ -2167,6 +2170,9 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
 
       // Show success immediately after database save
       clearTradeEstimateSnapshots(pipelineEntryId);
+      deleteAutoDraftsForPipeline(pipelineEntryId).then(() =>
+        queryClient.invalidateQueries({ queryKey: ['saved-estimates', pipelineEntryId] })
+      );
       setShowDraftRecovered(false);
       toast({
         title: 'Changes Saved',
