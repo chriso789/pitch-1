@@ -298,7 +298,7 @@ export const Settings = () => {
     if (currentUser?.profileLoaded === true && currentUser?.role) {
       loadTabConfiguration();
     }
-  }, [currentUser?.role, currentUser?.profileLoaded, activeCompanyId]);
+  }, [currentUser?.role, currentUser?.profileLoaded, activeCompanyId, isPlatformMaster]);
 
   const masterBackendTabs = [
     'platform-admin', 'developer', 'health', 'edge-functions', 
