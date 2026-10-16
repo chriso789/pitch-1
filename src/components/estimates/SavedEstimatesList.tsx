@@ -1,3 +1,4 @@
+import { isStaleAutoDraft } from '@/lib/estimateAutoDraftCleanup';
 import React, { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
@@ -301,9 +302,14 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
   // without giving the user anything actionable to do.
   const displayedEstimates = [...(estimates || [])];
 
-  // Auto-saved drafts are listed separately in their own "Estimate Drafts" section
+  // Auto-saved drafts are listed separately in their own "Estimate Drafts" section.
+  // A draft only stays visible if it holds unsaved work, i.e. it was touched
+  // after the most recently saved estimate.
   const savedRows = displayedEstimates.filter((e) => !e.is_auto_draft);
-  const draftRows = displayedEstimates.filter((e) => !!e.is_auto_draft);
+  const savedTimes = savedRows.map((e: any) => e.updated_at || e.created_at);
+  const draftRows = displayedEstimates.filter(
+    (e: any) => !!e.is_auto_draft && !isStaleAutoDraft(e.updated_at || e.created_at, savedTimes)
+  );
 
   // Fetch signature envelopes linked to estimates for this pipeline entry
   const { data: signatureEnvelopes, refetch: refetchEnvelopes } = useQuery({

@@ -1,3 +1,4 @@
+import { deleteAutoDraftsForPipeline } from '@/lib/estimateAutoDraftCleanup';
 // Force rebuild - clear HMR cache v2
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -2092,6 +2093,9 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       queryClient.invalidateQueries({ queryKey: ['hyperlink-data', pipelineEntryId] });
 
       clearTradeEstimateSnapshots(pipelineEntryId);
+      deleteAutoDraftsForPipeline(pipelineEntryId).then(() =>
+        queryClient.invalidateQueries({ queryKey: ['saved-estimates', pipelineEntryId] })
+      );
       setShowDraftRecovered(false);
 
       toast({
@@ -2167,6 +2171,9 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
 
       // Show success immediately after database save
       clearTradeEstimateSnapshots(pipelineEntryId);
+      deleteAutoDraftsForPipeline(pipelineEntryId).then(() =>
+        queryClient.invalidateQueries({ queryKey: ['saved-estimates', pipelineEntryId] })
+      );
       setShowDraftRecovered(false);
       toast({
         title: 'Changes Saved',
