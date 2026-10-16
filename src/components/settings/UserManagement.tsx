@@ -233,11 +233,11 @@ export const UserManagement = () => {
   const users = userData?.users || [];
   const currentUser = userData?.currentUser;
 
-  // Auto-set tenant for non-master users when dialog opens.
-  // Prefer the company currently selected in this tab.
+  // New users are always added to the company selected in this tab
+  // (for every role, including master), so its locations load right away.
   useEffect(() => {
     const defaultTenant = activeCompanyId || currentUser?.tenant_id;
-    if (isAddUserOpen && currentUser?.role !== 'master' && defaultTenant) {
+    if (isAddUserOpen && defaultTenant) {
       setNewUser(prev => ({
         ...prev,
         selected_tenant_id: defaultTenant
@@ -847,19 +847,7 @@ export const UserManagement = () => {
                       </div>
                     </div>
 
-                     {/* Company Assignment - always assign to current company */}
-                     <div className="space-y-2">
-                       <Label>Company</Label>
-                       <div className="flex items-center gap-2 p-2 border rounded-md bg-muted">
-                         <Building2 className="h-4 w-4 text-muted-foreground" />
-                         <span className="text-sm">{currentUser?.resolved_company_name || 'Your Company'}</span>
-                       </div>
-                       <p className="text-xs text-muted-foreground">
-                         New user will be added to this company
-                       </p>
-                     </div>
-
-                    {/* Location Assignment */}
+                    {/* Location Assignment (user is always added to the company selected in this tab) */}
                     {newUser.selected_tenant_id && (
                       <div className="space-y-2">
                         <Label className="flex items-center gap-2">
