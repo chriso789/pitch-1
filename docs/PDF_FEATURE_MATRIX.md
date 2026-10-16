@@ -34,3 +34,14 @@ Columns: **Real engine** = what actually executes in PITCH. "Native PdfCraft" me
 
 ## Code needing review (possibly unused or legacy)
 `src/lib/pdf-editor/apryseAdapter.ts` (paid SDK adapter — not licensed, must stay unused), `PdfCollaborativeEngine.ts`, `PdfBinaryRebuilder.ts`, `PdfAiRewriter.ts`, the older `src/pages/PdfEngineEditor.tsx` path alongside `PdfWorkspaceEditor.tsx`. None are removed until their routes are traced.
+
+## UltraScan (2026-10-16)
+| Feature | Built | Automated test | Real device | Signed-in |
+|---|---|---|---|---|
+| Background cleanup + progress + cancel | Yes | Yes | Pending | Pending |
+| Memory-bounded multipage processing | Yes | Yes | Pending | — |
+| Orientation transforms | Yes | Yes (math) | Pending | — |
+| Upload retry / session refresh / no duplicates | Yes | Yes (fake server) | Pending | Pending |
+| Draft recovery after reload/background | Yes | Yes (IndexedDB) | Pending | — |
+| Two-company scan isolation | Policies exist | Harness only | — | **Pending** |
+| Shadow benchmark | Synthetic | Yes | Real photos pending | — |
