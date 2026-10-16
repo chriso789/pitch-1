@@ -28,6 +28,9 @@ import { CornerStabilityBuffer, validateQuadrilateral, StabilityResult } from '@
 import { applyPerspectiveTransformPro } from '@/utils/documentEnhancementPro';
 import { SCAN_MODES, DEFAULT_RESTORE_OPTIONS, type ScanMode } from '@/lib/scan-restore/restore';
 import { restoreScanAsync } from '@/lib/scan-restore/restoreAsync';
+import { runBatch, type BatchProgress } from '@/lib/scan-restore/batchRunner';
+import { chooseConcurrency, currentDeviceMemory } from '@/lib/scan-records/memoryBudget';
+import { withUploadRetry, throwing, classifyUploadError, UploadFailure, UPLOAD_FAILURE_MESSAGE } from '@/lib/scan-records/uploadRetry';
 import { ManualCropOverlay } from './ManualCropOverlay';
 import { ScannerQAReview } from './ScannerQAReview';
 import { analyzeFrameQuality, evaluateQualityGate, QualityFlags, QualityGateResult } from '@/utils/documentQuality';
@@ -883,6 +886,8 @@ export function DocumentScannerDialog({
   // Post-capture editing: always rebuilt from the untouched camera image.
   // --------------------------------------------------------------------------
   const [editBusy, setEditBusy] = useState(false);
+  const [editProgress, setEditProgress] = useState<BatchProgress | null>(null);
+  const editAbortRef = useRef<AbortController | null>(null);
   const [showBefore, setShowBefore] = useState(false);
   const [recrop, setRecrop] = useState<{ index: number; url: string; width: number; height: number } | null>(null);
 
@@ -911,8 +916,12 @@ export function DocumentScannerDialog({
 
   const applyEdit = async (indices: number[], patch: Partial<PageEdit>, opts: { undo?: boolean } = {}) => {
     setEditBusy(true);
+    const ac = new AbortController(); editAbortRef.current = ac;
+    setEditProgress({ done: 0, total: indices.length });
     try {
-      const results = await Promise.all(indices.map(async (i) => {
+      const first = capturedPages[indices[0]];
+      const concurrency = chooseConcurrency(first?.sourceWidth || 3000, first?.sourceHeight || 4000, currentDeviceMemory());
+      const batch = await runBatch(indices, async (i) => {
         const page = capturedPages[i];
         if (!page?.edit) return null;
         let e: PageEdit, history = page.editHistory ?? [];
@@ -920,7 +929,10 @@ export function DocumentScannerDialog({
         else { e = { ...page.edit, ...patch }; history = [...history, page.edit].slice(-20); }
         const r = await renderEdit(page, e);
         return { i, e, history, r };
-      }));
+      }, { concurrency, signal: ac.signal, onProgress: setEditProgress });
+      const results = batch.results;
+      if (batch.cancelled) toast({ title: 'Cleanup cancelled', description: 'Pages already finished keep the new cleanup; the rest are unchanged.' });
+      if (batch.errors.length) toast({ title: 'Some pages were not re-edited', description: batch.errors.map(x => `Page ${x.index + 1}: ${x.error.message}`).join('; '), variant: 'destructive' });
       setCapturedPages((prev) => {
         const next = [...prev];
         for (const x of results) {
@@ -943,7 +955,7 @@ export function DocumentScannerDialog({
       if (flagged) toast({ title: 'Check the ink', description: `${flagged} page(s) may have lost handwriting or signatures. Compare Before/After or lower the cleanup.`, variant: 'destructive' });
     } catch (err: any) {
       toast({ title: 'Could not re-edit page', description: err.message, variant: 'destructive' });
-    } finally { setEditBusy(false); }
+    } finally { setEditBusy(false); setEditProgress(null); editAbortRef.current = null; }
   };
 
   const openRecrop = async (index: number) => {
@@ -1313,17 +1325,18 @@ export function DocumentScannerDialog({
       void timestamp;
 
       const uploadStart = performance.now();
-      const { error: uploadError } = await supabase.storage
-        .from('documents').upload(fileName, finalPdf, { contentType: 'application/pdf', upsert: true });
-      if (uploadError) throw uploadError;
+      const refreshSession = async () => !(await supabase.auth.refreshSession()).error;
+      await withUploadRetry(() => throwing(supabase.storage
+        .from('documents').upload(fileName, finalPdf, { contentType: 'application/pdf', upsert: true })), { refreshSession });
       // Keep the untouched camera photos next to the PDF (never altered).
       const originalPhotoPaths: string[] = [];
       for (let i = 0; i < capturedPages.length; i++) {
         const ob = capturedPages[i].originalBlob;
         if (!ob) continue;
         const op = paths.originals[i];
-        const { error: oe } = await supabase.storage.from('documents').upload(op, ob, { contentType: 'image/jpeg', upsert: true });
-        if (oe) throw new Error(`Could not save original photo for page ${i + 1}: ${oe.message}`);
+        try {
+          await withUploadRetry(() => throwing(supabase.storage.from('documents').upload(op, ob, { contentType: 'image/jpeg', upsert: true })), { refreshSession });
+        } catch (oe: any) { throw new UploadFailure(oe?.kind ?? classifyUploadError(oe), new Error(`Could not save original photo for page ${i + 1}: ${oe.message}`)); }
         originalPhotoPaths.push(op);
       }
       telemetryRef.current.mark('uploadMs', performance.now() - uploadStart);
@@ -1478,7 +1491,9 @@ export function DocumentScannerDialog({
       console.error('PDF generation error:', err);
       // Failure-recovery: keep pages + autosave so the user can retry from QA.
       setUploadStatus(s => s === 'waiting_for_connection' ? s : (navigator.onLine === false ? 'waiting_for_connection' : 'failed'));
-      toast({ title: 'Upload Failed', description: (err?.message || 'Failed to create PDF.') + ' Pages preserved — try again.', variant: 'destructive' });
+      const kind = err instanceof UploadFailure ? err.kind : classifyUploadError(err);
+      if (kind === 'network') setUploadStatus('waiting_for_connection');
+      toast({ title: 'Upload Failed', description: `${UPLOAD_FAILURE_MESSAGE[kind]} (${err?.message || 'Failed to create PDF.'})`, variant: 'destructive' });
       setShowQA(true);
     } finally {
       setIsUploading(false);
@@ -1985,7 +2000,13 @@ export function DocumentScannerDialog({
                       const { mode, intensity, brightness, contrast } = previewPage.edit!;
                       applyEdit(capturedPages.map((_, i) => i), { mode, intensity, brightness, contrast });
                     }}>Apply to all pages</Button>
-                  {editBusy && <span className="text-muted-foreground self-center">Reprocessing…</span>}
+                  {editBusy && (
+                    <div className="flex items-center gap-2 w-full" role="status" aria-label="Cleanup progress">
+                      <Progress value={editProgress?.total ? (editProgress.done / editProgress.total) * 100 : 0} className="h-2 flex-1" />
+                      <span className="text-muted-foreground text-xs">{editProgress ? `${editProgress.done}/${editProgress.total}` : 'Reprocessing…'}</span>
+                      <Button size="sm" variant="ghost" onClick={() => editAbortRef.current?.abort()}>Cancel</Button>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

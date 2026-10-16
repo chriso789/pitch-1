@@ -25,3 +25,15 @@ XFA, digital signing, preflight/validation, accessibility tagging, XFDF import/e
 | Redaction rasterizes the whole marked page | Object-level content removal not implemented | PdfCraft `redact` crate → WASM (license OK, build untested) |
 | No digital signatures | No signing engine | PdfCraft `sign` crate or a separately approved service |
 | Signed-in verification | No signed-in session in the test environment | User session / test account |
+
+## UltraScan mobile reliability (2026-10-16)
+| Milestone | Status | Implementation | Evidence |
+|---|---|---|---|
+| A Background processing, progress, cancel | Done (software) | `src/lib/scan-restore/restoreAsync.ts`, `restore.worker.ts`, `batchRunner.ts`; progress bar + Cancel in `DocumentScannerDialog.tsx` page editor | restore-async, mobile-reliability tests |
+| A Memory pressure | Done (software) | `src/lib/scan-records/memoryBudget.ts` limits parallel pages by device memory; originals never dropped | mobile-reliability |
+| A Orientation | Transform math done; browser viewport test pending (scanner is sign-in only) | `src/lib/scan-records/orientation.ts` | mobile-reliability |
+| B Recovery/upload | Done (software) | `src/lib/scan-records/uploadRetry.ts` wired into PDF + original-photo uploads (retry, session refresh, quota/permission messages); `uploadIdentity.ts`; `scannerSessionStore.ts` | upload-recovery |
+| C Security | Harness built; **live run pending** (needs 2 test companies) | `tests/scanner/security-harness.test.ts` | 7 skipped |
+| D Benchmark | Synthetic done; real-photo/OCR CER pending | `tests/scanner/shadow-benchmark.test.ts` | metrics in PDF_TEST_RESULTS |
+| E Warning triage | Done; 1 high fixed (satellite storage writes) | `docs/SECURITY_WARNING_TRIAGE.md`, migration | live policy query |
+| F Final acceptance | **Pending** — five-page signed contract on a real phone | — | — |

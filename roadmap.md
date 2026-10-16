@@ -69,3 +69,15 @@
 - [~] 5B CRM integration — scanner accepts record type/ID, name, category; uses active company. Open: add Scan buttons on contacts, jobs, commercial projects, permits, contracts, Smart Docs, mobile.
 - [ ] 5C Shadow-model benchmark — blocked: needs real photographed documents with ground-truth text.
 - [ ] 6 Mobile acceptance — blocked: needs real iPhone/Android devices.
+
+## UltraScan mobile reliability milestone (A–F)
+- [x] A background cleanup, progress, cancel, memory budget, orientation transforms
+- [ ] A browser viewport test of scanner — blocked: scanner requires sign-in, no session available
+- [x] B retry/refresh/quota/duplicate handling, draft recovery tests
+- [x] C authenticated isolation harness built
+- [ ] C live isolation run — blocked: needs two isolated test companies + accounts
+- [x] D synthetic shadow benchmark (B&W speckle defect recorded)
+- [ ] D OCR error rate / real photos / neural models — blocked: real photos; model licenses
+- [x] E warning triage; satellite storage writes locked to service role
+- [ ] E fix anon-executable functions and open inserts — needs per-function caller audit
+- [ ] F real-phone five-page signed-contract acceptance — blocked: device
