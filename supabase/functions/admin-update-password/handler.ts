@@ -10,171 +10,137 @@ interface UpdatePasswordRequest {
   newPassword: string;
 }
 
+// Role hierarchy for password administration. Roles are read ONLY from the
+// protected user_roles table (via has_role), never from profiles.
+const ROLE_LEVEL: Record<string, number> = {
+  master: 6,
+  owner: 5,
+  corporate: 4,
+  office_admin: 3,
+};
+
+const json = (status: number, body: Record<string, unknown>) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json", ...corsHeaders },
+  });
+
 const handler = async (req: Request): Promise<Response> => {
-  // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    // Initialize Supabase Admin Client
     const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false
-        }
-      }
+      { auth: { autoRefreshToken: false, persistSession: false } },
     );
 
-    // Get the authorization header to verify the requesting user
     const authHeader = req.headers.get("authorization");
     if (!authHeader) {
-      throw new Error("No authorization header");
+      return json(401, { error: "Not signed in" });
     }
 
-    // Initialize regular client to verify the requesting user
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_ANON_KEY") ?? "",
     );
 
-    // Verify the requesting user
-    const { data: { user: requestingUser }, error: authError } = await supabase.auth.getUser(
-      authHeader.replace("Bearer ", "")
-    );
-
+    const { data: { user: requestingUser }, error: authError } =
+      await supabase.auth.getUser(authHeader.replace("Bearer ", ""));
     if (authError || !requestingUser) {
-      throw new Error("Invalid authentication");
+      return json(401, { error: "Not signed in" });
     }
 
-    // Get the requesting user's profile
-    const { data: requestingProfile, error: profileError } = await supabaseAdmin
-      .from("profiles")
-      .select("*")
-      .eq("id", requestingUser.id)
-      .single();
-
-    if (profileError || !requestingProfile) {
-      throw new Error("Could not find requesting user profile");
+    let body: UpdatePasswordRequest;
+    try {
+      body = await req.json();
+    } catch {
+      return json(400, { error: "Invalid request" });
+    }
+    const { userId, newPassword } = body;
+    if (!userId || !newPassword || typeof newPassword !== "string") {
+      return json(400, { error: "Invalid request" });
+    }
+    if (newPassword.length < 8) {
+      return json(400, { error: "Password must be at least 8 characters long" });
     }
 
-    const { userId, newPassword }: UpdatePasswordRequest = await req.json();
-
-    if (!userId || !newPassword) {
-      throw new Error("Missing userId or newPassword");
-    }
-
-    if (newPassword.length < 6) {
-      throw new Error("Password must be at least 6 characters long");
-    }
-
-    // Get the target user's profile
+    // Resolve the target user's home tenant.
     const { data: targetProfile, error: targetError } = await supabaseAdmin
       .from("profiles")
-      .select("*")
+      .select("id, tenant_id")
       .eq("id", userId)
       .single();
-
     if (targetError || !targetProfile) {
-      throw new Error("Could not find target user profile");
+      return json(404, { error: "User not found" });
     }
 
-    // Define role hierarchy
-    const roleHierarchy: Record<string, number> = {
-      'master': 6,
-      'corporate': 5,
-      'office_admin': 4,
-      'regional_manager': 3,
-      'sales_manager': 2,
-      'project_manager': 1
-    };
-
-    const requestingRoleLevel = roleHierarchy[requestingProfile.role] || 0;
-    const targetRoleLevel = roleHierarchy[targetProfile.role] || 0;
-
-    // Check permissions - allow if:
-    // 1. User is updating their own password
-    // 2. User is master role (can update anyone)
-    // 3. User is admin role (can update manager, sales_rep, technician, user)
-    // 4. User is manager role (can update sales_rep, technician, user)
-    // 5. User is Chris O'Brien variation with manager+ role updating another Chris O'Brien variation
-    const canUpdate = (
-      requestingUser.id === userId || // Own password
-      requestingProfile.role === 'master' || // Master can update anyone
-      (requestingProfile.role === 'corporate' && targetRoleLevel < 5) || // Corporate can update below corporate
-      (requestingProfile.role === 'office_admin' && targetRoleLevel < 4) || // Office Admin can update below
-      (
-        // Chris O'Brien variations with elevated role (special case)
-        (
-          requestingProfile.first_name?.toLowerCase().includes('chris') && 
-          requestingProfile.last_name?.toLowerCase().includes('brien') &&
-          ['corporate', 'office_admin', 'master'].includes(requestingProfile.role)
-        ) && (
-          targetProfile.first_name?.toLowerCase().includes('chris') && 
-          targetProfile.last_name?.toLowerCase().includes('brien') &&
-          ['corporate', 'office_admin', 'master'].includes(targetProfile.role)
-        )
-      )
+    // Resolve the caller's roles in the TARGET user's company from user_roles.
+    const { data: roleRows, error: roleError } = await supabaseAdmin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", requestingUser.id)
+      .eq("tenant_id", targetProfile.tenant_id);
+    if (roleError) {
+      console.error("admin-update-password role lookup failed:", roleError.message);
+      return json(500, { error: "Could not verify permissions" });
+    }
+    const callerLevel = Math.max(
+      0,
+      ...(roleRows ?? []).map((r) => ROLE_LEVEL[r.role as string] ?? 0),
     );
+
+    // Target's own level (for hierarchy comparison).
+    const { data: targetRoleRows } = await supabaseAdmin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userId)
+      .eq("tenant_id", targetProfile.tenant_id);
+    const targetLevel = Math.max(
+      0,
+      ...(targetRoleRows ?? []).map((r) => ROLE_LEVEL[r.role as string] ?? 0),
+    );
+
+    // Allowed if: updating own password, or caller holds an admin role in the
+    // target's company strictly above the target's level. Master (platform)
+    // may update anyone. No identity/name-based exceptions.
+    const isSelf = requestingUser.id === userId;
+    const isMaster = (roleRows ?? []).some((r) => r.role === "master");
+    const canUpdate =
+      isSelf || isMaster || (callerLevel >= 3 && callerLevel > targetLevel);
 
     if (!canUpdate) {
-      throw new Error("Insufficient permissions to update this user's password");
+      return json(403, { error: "Not allowed" });
     }
 
-    // Update the user's password using admin client
     const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
       userId,
-      { password: newPassword }
+      { password: newPassword },
     );
-
     if (updateError) {
-      throw updateError;
+      console.error("admin-update-password update failed:", updateError.message);
+      return json(400, { error: "Password could not be updated" });
     }
 
-    // Log the password change for security audit
-    await supabaseAdmin
-      .from("audit_log")
-      .insert({
-        tenant_id: requestingProfile.tenant_id,
-        table_name: "auth.users",
-        record_id: userId,
-        action: "PASSWORD_UPDATE",
-        old_values: null,
-        new_values: { updated_by: requestingUser.id, method: "admin_direct" },
-        changed_by: requestingUser.id
-      });
+    await supabaseAdmin.from("audit_log").insert({
+      tenant_id: targetProfile.tenant_id,
+      table_name: "auth.users",
+      record_id: userId,
+      action: "PASSWORD_UPDATE",
+      old_values: null,
+      new_values: { updated_by: requestingUser.id, method: "admin_direct" },
+      changed_by: requestingUser.id,
+    });
 
-    return new Response(
-      JSON.stringify({ 
-        success: true, 
-        message: "Password updated successfully" 
-      }),
-      {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-          ...corsHeaders,
-        },
-      }
+    return json(200, { success: true, message: "Password updated successfully" });
+  } catch (error) {
+    console.error(
+      "Error in admin-update-password function:",
+      error instanceof Error ? error.message : String(error),
     );
-
-  } catch (error: any) {
-    console.error("Error in admin-update-password function:", error);
-    return new Response(
-      JSON.stringify({ 
-        error: error instanceof Error ? error.message : String(error) || "An unexpected error occurred" 
-      }),
-      {
-        status: 400,
-        headers: {
-          "Content-Type": "application/json",
-          ...corsHeaders,
-        },
-      }
-    );
+    return json(500, { error: "An unexpected error occurred" });
   }
 };
 
