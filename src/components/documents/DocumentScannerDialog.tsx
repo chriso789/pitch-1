@@ -911,8 +911,12 @@ export function DocumentScannerDialog({
 
   const applyEdit = async (indices: number[], patch: Partial<PageEdit>, opts: { undo?: boolean } = {}) => {
     setEditBusy(true);
+    const ac = new AbortController(); editAbortRef.current = ac;
+    setEditProgress({ done: 0, total: indices.length });
     try {
-      const results = await Promise.all(indices.map(async (i) => {
+      const first = capturedPages[indices[0]];
+      const concurrency = chooseConcurrency(first?.sourceWidth || 3000, first?.sourceHeight || 4000, currentDeviceMemory());
+      const batch = await runBatch(indices, async (i) => {
         const page = capturedPages[i];
         if (!page?.edit) return null;
         let e: PageEdit, history = page.editHistory ?? [];
@@ -920,7 +924,10 @@ export function DocumentScannerDialog({
         else { e = { ...page.edit, ...patch }; history = [...history, page.edit].slice(-20); }
         const r = await renderEdit(page, e);
         return { i, e, history, r };
-      }));
+      }, { concurrency, signal: ac.signal, onProgress: setEditProgress });
+      const results = batch.results;
+      if (batch.cancelled) toast({ title: 'Cleanup cancelled', description: 'Pages already finished keep the new cleanup; the rest are unchanged.' });
+      if (batch.errors.length) toast({ title: 'Some pages were not re-edited', description: batch.errors.map(x => `Page ${x.index + 1}: ${x.error.message}`).join('; '), variant: 'destructive' });
       setCapturedPages((prev) => {
         const next = [...prev];
         for (const x of results) {
