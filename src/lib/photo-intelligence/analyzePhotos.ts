@@ -57,7 +57,7 @@ export async function listAnalyzedPhotoIds(tenantId: string): Promise<Set<string
 
 /** Live invoker: calls the existing ai-image-analyzer edge function (legacy
  * shim → ai-api /image/analyze). Returns bare analysis JSON, no envelope. */
-async function invokeAnalyzer(body: { image_data: string; analysis_type: string; step_id: string; step_title: string }) {
+async function invokeAnalyzer(body: { image_data: string; analysis_type: string; step_id: string; step_title: string }): Promise<{ data: AiImageAnalyzerResponse | null; error: { message: string } | null }> {
   const { data, error } = await supabase.functions.invoke<AiImageAnalyzerResponse>('ai-image-analyzer', { body });
   if (error) return { data: null, error: { message: error.message ?? 'invoke_failed' } };
   if (!data) return { data: null, error: { message: 'empty_response' } };
