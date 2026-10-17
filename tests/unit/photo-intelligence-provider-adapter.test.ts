@@ -32,14 +32,11 @@ describe('ai-image-analyzer provider adapter', () => {
     expect(result.warnings.join(' ')).toMatch(/rate limited/);
   });
 
-  it('live provider surfaces request failure as a warning, not a throw', async () => {
+  it('live provider treats a request failure as an error, never as "no damage"', async () => {
     const provider = createAiImageAnalyzerProvider({
       invoke: async () => ({ data: null, error: { message: 'network down' } }),
     });
-    const result = await provider.analyze(photo);
-    expect(result.providerId).toBe(AI_IMAGE_ANALYZER_PROVIDER_ID);
-    expect(result.detections).toHaveLength(0);
-    expect(result.warnings[0]).toMatch(/network down/);
+    await expect(provider.analyze(photo)).rejects.toThrow(/network down/);
   });
 
   it('live provider maps a successful response end-to-end', async () => {
