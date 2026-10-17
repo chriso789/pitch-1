@@ -6,7 +6,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
-import { useAuth } from '@/hooks/useAuth';
+import { useAuth } from '@/contexts/AuthContext';
 import { listFindings, listEvidence, evidencePhotoUrl, type PhotoFinding, type FindingEvidence } from '@/lib/photo-intelligence/findings';
 import { composeReport, findUntraceableEntries, SEVERITY_ORDER, type PhotoIntelligenceReport } from '@/lib/photo-intelligence/reportModel';
 import { saveReportVersion, listReportVersions } from '@/lib/photo-intelligence/reports';
