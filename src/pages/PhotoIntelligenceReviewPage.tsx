@@ -47,6 +47,28 @@ export default function PhotoIntelligenceReviewPage() {
     }
   };
 
+  const { data: evidenceByFinding = {} } = useQuery({
+    queryKey: ['photo-finding-evidence', tenantId, findings.map((f) => f.id).join(',')],
+    queryFn: async () => {
+      const out: Record<string, FindingEvidence[]> = {};
+      for (const f of findings) out[f.id] = await listEvidence(f.id);
+      return out;
+    },
+    enabled: !!tenantId && findings.length > 0,
+  });
+
+  const saveAnnotations = async (json: Record<string, unknown>) => {
+    if (!annotating) return;
+    setSavingAnn(true);
+    try {
+      await saveEvidenceAnnotations(annotating.evidence.id, json, 'manual');
+      setAnnotating(null);
+      qc.invalidateQueries({ queryKey: ['photo-finding-evidence'] });
+    } finally {
+      setSavingAnn(false);
+    }
+  };
+
   const grouped = groupByBuilding(findings);
 
   return (
