@@ -8,14 +8,21 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { useAuth } from '@/contexts/AuthContext';
 import { listFindings, listEvidence, evidencePhotoUrl, type PhotoFinding, type FindingEvidence } from '@/lib/photo-intelligence/findings';
-import { composeReport, findUntraceableEntries, SEVERITY_ORDER, type PhotoIntelligenceReport } from '@/lib/photo-intelligence/reportModel';
+import { composeReport, findUntraceableEntries, SEVERITY_ORDER, type PhotoIntelligenceReport, type ReportSiteOverview } from '@/lib/photo-intelligence/reportModel';
+import { generatePhotoReportPdf } from '@/lib/photo-intelligence/reportPdf';
+import { loadReportImage } from '@/lib/photo-intelligence/reportImages';
+import { assertReportExportable } from '@/lib/photo-intelligence/reportExportGuard';
+import { SiteOverviewEditor } from '@/components/photo-intelligence/SiteOverviewEditor';
+import { supabase } from '@/integrations/supabase/client';
+import { formatLicenseLine } from '@/lib/companyLicenses';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { saveReportVersion, listReportVersions } from '@/lib/photo-intelligence/reports';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
-import { Printer, Save, ShieldAlert } from 'lucide-react';
+import { Download, Save, ShieldAlert } from 'lucide-react';
 
 export default function PhotoIntelligenceReportPage() {
   const tenantId = useEffectiveTenantId();
@@ -24,10 +31,25 @@ export default function PhotoIntelligenceReportPage() {
   const [inspectorName, setInspectorName] = useState('');
   const [address, setAddress] = useState('');
   const [busy, setBusy] = useState(false);
+  const [selectedVersionId, setSelectedVersionId] = useState('');
+  const [resolution, setResolution] = useState('1800');
+  const [siteOverview, setSiteOverview] = useState<ReportSiteOverview | null>(null);
+
+  const { data: branding } = useQuery({
+    queryKey: ['photo-report-branding', tenantId],
+    enabled: !!tenantId,
+    queryFn: async () => {
+      if (!tenantId) throw new Error('No company selected');
+      const { data, error } = await supabase.from('tenants').select('name, logo_url, phone, email, settings').eq('id', tenantId).single();
+      if (error) throw error;
+      const settings = data.settings as Record<string, unknown> | null;
+      return { companyName: data.name, logoUrl: data.logo_url, phone: data.phone, email: data.email, licenseLine: formatLicenseLine(typeof settings?.license_number === 'string' ? settings.license_number : '') };
+    },
+  });
 
   const { data: findings = [] } = useQuery({
     queryKey: ['photo-findings', tenantId],
-    queryFn: () => listFindings(tenantId!),
+    queryFn: () => tenantId ? listFindings(tenantId) : Promise.resolve([]),
     enabled: !!tenantId,
   });
 
@@ -43,7 +65,7 @@ export default function PhotoIntelligenceReportPage() {
 
   const { data: versions = [] } = useQuery({
     queryKey: ['photo-intel-reports', tenantId],
-    queryFn: () => listReportVersions(tenantId!),
+    queryFn: () => tenantId ? listReportVersions(tenantId, null) : Promise.resolve([]),
     enabled: !!tenantId,
   });
 
@@ -54,7 +76,7 @@ export default function PhotoIntelligenceReportPage() {
     if (approved.length === 0) return null;
     try {
       return composeReport({
-        branding: { companyName: 'PITCH CRM' },
+        branding: branding ?? { companyName: 'Company not loaded' },
         property: {
           address: address || 'Address not set',
           inspectedAt: new Date().toISOString(),
@@ -63,12 +85,13 @@ export default function PhotoIntelligenceReportPage() {
         findings: approved,
         evidenceByFinding,
         approval: null,
+        siteOverview,
         version: (versions[0]?.version ?? 0) + 1,
       });
     } catch {
       return null;
     }
-  }, [approved, evidenceByFinding, address, inspectorName, versions]);
+  }, [approved, evidenceByFinding, address, inspectorName, versions, branding, siteOverview]);
 
   const untraceable = report ? findUntraceableEntries(report) : [];
 
@@ -83,6 +106,7 @@ export default function PhotoIntelligenceReportPage() {
       const toSave = status === 'approved'
         ? { ...report, approval: { approvedBy: inspectorName.trim(), approvedAt: new Date().toISOString() } }
         : report;
+      if (status === 'approved') assertReportExportable(toSave);
       await saveReportVersion(tenantId, null, toSave, status, user.id);
       qc.invalidateQueries({ queryKey: ['photo-intel-reports'] });
       toast.success(`Report version ${toSave.version} saved (${status}).`);
@@ -93,7 +117,29 @@ export default function PhotoIntelligenceReportPage() {
     }
   };
 
-  const latestApproved = versions.find((v) => v.status === 'approved');
+  const approvedVersions = versions.filter((v) => v.status === 'approved');
+  const selectedVersion = approvedVersions.find((v) => v.id === selectedVersionId) ?? approvedVersions[0];
+  const paths = [...new Set([...evidenceByFinding.values()].flat().map((e) => e.storage_path).filter((p): p is string => !!p))];
+  const exportPdf = async () => {
+    if (!tenantId || !selectedVersion) return;
+    setBusy(true);
+    try {
+      const bytes = await generatePhotoReportPdf(selectedVersion.report, {
+        resolveImage: (path) => loadReportImage(tenantId, path, Number(resolution)),
+        resolveLogo: async (url) => {
+          const response = await fetch(url);
+          if (!response.ok) throw new Error('Company logo could not be loaded.');
+          return new Uint8Array(await response.arrayBuffer());
+        },
+      });
+      const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+      const a = document.createElement('a');
+      a.href = url; a.download = `inspection-report-v${selectedVersion.version}.pdf`; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast.success(`Approved version ${selectedVersion.version} exported.`);
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Report export failed.'); }
+    finally { setBusy(false); }
+  };
 
   return (
     <div className="p-6 space-y-4 max-w-5xl mx-auto">
@@ -119,13 +165,17 @@ export default function PhotoIntelligenceReportPage() {
         </div>
         <Button variant="outline" disabled={!report || busy} onClick={() => save('draft')}><Save className="h-4 w-4 mr-1" /> Save draft version</Button>
         <Button disabled={!report || busy || !inspectorName.trim()} onClick={() => save('approved')}>Approve & save version</Button>
-        <Button variant="secondary" disabled={!latestApproved} onClick={() => window.print()}>
-          <Printer className="h-4 w-4 mr-1" /> Export PDF
+        <Select value={selectedVersion?.id ?? ''} onValueChange={setSelectedVersionId}><SelectTrigger className="w-44" aria-label="Approved export version"><SelectValue placeholder="Approved version" /></SelectTrigger><SelectContent>{approvedVersions.map((v) => <SelectItem value={v.id} key={v.id}>Version {v.version}</SelectItem>)}</SelectContent></Select>
+        <Select value={resolution} onValueChange={setResolution}><SelectTrigger className="w-44" aria-label="Photo resolution"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="1200">Compact photos</SelectItem><SelectItem value="1800">Standard photos</SelectItem><SelectItem value="2600">Detailed photos</SelectItem></SelectContent></Select>
+        <Button variant="secondary" disabled={!selectedVersion || busy} onClick={exportPdf}>
+          <Download className="h-4 w-4 mr-1" /> Export PDF
         </Button>
       </div>
-      {!latestApproved && report && (
+      {!selectedVersion && report && (
         <p className="text-xs text-muted-foreground">Export is available after an approved version is saved.</p>
       )}
+
+      {paths.length > 0 && <SiteOverviewEditor key={tenantId} paths={paths} value={siteOverview} onChange={setSiteOverview} />}
 
       {!report ? (
         <Card><CardContent className="pt-4 text-sm text-muted-foreground">No approved findings yet — approve findings in the review workspace first.</CardContent></Card>

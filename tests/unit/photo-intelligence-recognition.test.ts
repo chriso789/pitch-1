@@ -94,13 +94,13 @@ describe('recognition validation', () => {
 });
 
 describe('cross-photo association', () => {
-  it('groups the same building+component+category across photos into one finding', () => {
+  it('never merges matching categories without inspector-verified physical identity', () => {
     const b1 = validateDetections(resultWith([good]), photo).proposals[0];
     const b2 = validateDetections(resultWith([good]), { ...photo, photoId: 'p2' }).proposals[0];
     const other = validateDetections(resultWith([{ ...good, damageCategory: 'Ponding / drainage' }]), photo).proposals[0];
     const groups = associateCrossPhoto([b1, b2, other]);
-    expect(groups).toHaveLength(2);
-    expect(groups.find((g) => g.length === 2)).toEqual([0, 1]);
+    expect(groups).toEqual([[0], [1], [2]]);
+    expect(associateCrossPhoto([b1, b2, other], new Map([[0, 'defect-A'], [1, 'defect-A']]))).toEqual([[0, 1], [2]]);
   });
 });
 

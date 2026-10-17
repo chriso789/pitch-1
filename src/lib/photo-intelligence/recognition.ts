@@ -99,8 +99,8 @@ export function clampConfidence(c: unknown): number | null {
 function normPoint(p: Point, w?: number, h?: number): Point | null {
   if (!isFinite(p.x) || !isFinite(p.y)) return null;
   // Pixel coordinates when size is known and values exceed 1
-  if (w && h && (p.x > 1 || p.y > 1)) return { x: p.x / w, y: p.y / h };
-  return p;
+  if (w && h) return { x: p.x / w, y: p.y / h };
+  return null;
 }
 
 /** Convert a raw detection into an annotation; null when geometry is unusable. */
@@ -116,12 +116,13 @@ export function detectionToAnnotation(d: RawDetection, photo: RecognitionPhoto, 
     const src = d.polygonNorm ?? d.polygonPx?.map((p) => normPoint(p, photo.widthPx, photo.heightPx)).filter((p): p is Point => !!p);
     if (!src || src.length < 3) return null;
     const ann: Annotation = { ...base, kind: 'polygon', points: src };
-    return validateAnnotation(ann) === null ? ann : null;
+    return src.every((p) => p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1) && validateAnnotation(ann) === null ? ann : null;
   }
   const b = d.bboxNorm ?? (d.bboxPx && photo.widthPx && photo.heightPx
     ? { x: d.bboxPx.x / photo.widthPx, y: d.bboxPx.y / photo.heightPx, width: d.bboxPx.width / photo.widthPx, height: d.bboxPx.height / photo.heightPx }
     : undefined);
   if (!b) return null;
+  if (![b.x, b.y, b.width, b.height].every(Number.isFinite) || b.x < 0 || b.y < 0 || b.x + b.width > 1 || b.y + b.height > 1) return null;
   const ann: Annotation = { ...base, kind: 'bbox', origin: { x: b.x, y: b.y }, size: { x: b.width, y: b.height } };
   return validateAnnotation(ann) === null ? ann : null;
 }
@@ -175,15 +176,12 @@ export function validateDetections(result: RecognitionResult, photo: Recognition
  * proposal indexes (into `proposals`); each group should become ONE finding
  * with multiple evidence rows.
  */
-export function associateCrossPhoto(proposals: DamageProposal[]): number[][] {
-  const key = (p: DamageProposal) =>
-    `${(p.buildingLabel ?? '').toLowerCase()}|${p.component.toLowerCase()}|${(p.damageCategory ?? '').toLowerCase()}`;
+export function associateCrossPhoto(proposals: DamageProposal[], inspectorVerifiedIdentity?: ReadonlyMap<number, string>): number[][] {
   const groups = new Map<string, number[]>();
-  proposals.forEach((p, i) => {
-    const k = key(p);
-    const arr = groups.get(k) ?? [];
-    arr.push(i);
-    groups.set(k, arr);
+  proposals.forEach((_, i) => {
+    const identity = inspectorVerifiedIdentity?.get(i)?.trim();
+    const key = identity ? `verified:${identity}` : `unverified:${i}`;
+    groups.set(key, [...(groups.get(key) ?? []), i]);
   });
   return [...groups.values()];
 }
