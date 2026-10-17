@@ -112,7 +112,7 @@ export async function analyzeRecordPhotos(
     onProgress?: (p: AnalysisProgress) => void;
   } = {},
 ): Promise<AnalysisOutcome> {
-  const provider = createAiImageAnalyzerProvider(invokeAnalyzer);
+  const provider = createAiImageAnalyzerProvider({ invoke: (body) => invokeAnalyzer(body) });
   const already = opts.force ? new Set<string>() : await listAnalyzedPhotoIds(tenantId);
   const queue = photos.filter((p) => !already.has(p.id));
   const skippedDuplicates = photos.length - queue.length;
