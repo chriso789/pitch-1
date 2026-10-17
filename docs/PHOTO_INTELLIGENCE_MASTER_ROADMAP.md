@@ -25,3 +25,6 @@ Reference benchmark: 7552 Navarre Parkway Storm Damage Photo Report (19 pages, 2
 - No trained detection/segmentation model exists yet — Phase 2 requires choosing vision models (no purchases without approval).
 - Navarre report contains annotated images, not unannotated originals; a true recognition benchmark needs the original drone files.
 - Authenticated end-to-end tests require test accounts (not available in sandbox).
+
+## Reference demonstration status (2026-10-17)
+BLOCKED: only the plan text and one screenshot were uploaded — the Navarre report PDF containing the 22 photographs is not in the workspace uploads. Import of the reference dataset (22 photos + findings, labeled reference_label) cannot proceed until the PDF or photos are provided.
