@@ -1,4 +1,4 @@
-import { corsHeaders } from '../_shared/cors.ts';
+import { corsHeaders } from '../../_shared/cors.ts';
 
 interface ImageAnalysisRequest {
   image_data: string; // base64 encoded image
