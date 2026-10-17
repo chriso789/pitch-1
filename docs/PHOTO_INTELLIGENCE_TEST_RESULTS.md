@@ -32,3 +32,7 @@
 ## 2026-10-17 (proposal persistence) — Phase 2→1 bridge
 - `persistProposals` in findings.ts: grouped AI proposals become ONE finding per group (detection_source 'ai', review_status 'pending', ai_model_version recorded) with one evidence row per photo and geometry-only annotations (source 'ai'). Approval remains blocked by the DB guard until an inspector approves.
 - Build OK; findings tests 4/4 still pass.
+
+## 2026-10-17 (navigation) — sidebar entry
+- "Photo Intelligence" added to the sidebar (Camera icon, routes to /photo-intelligence; active-section matcher covers /photo-intelligence/report). Build OK. Full PI suite: 41/41 passed.
+- Remaining honest gaps: no live vision-model call has been made; reference demo blocked (Navarre 22-photo PDF not in uploads); signed-in/cross-company tests need test accounts; report PDF is print-based, styled PDF template and site overview map not built.
