@@ -8,6 +8,7 @@ import { loadRecordPhotos, analyzeRecordPhotos, type RecordPhoto, type AnalysisP
 import { PhotoAnnotationEditor } from '@/components/photo-intelligence/PhotoAnnotationEditor';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Pencil } from 'lucide-react';
+import { BackButton } from '@/shared/components/BackButton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -114,6 +115,7 @@ export default function PhotoIntelligenceReviewPage() {
   return (
     <div className="container mx-auto max-w-5xl p-6 space-y-6">
       <div>
+        <BackButton fallbackPath="/dashboard" label="Back" />
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">Photo Intelligence — Inspector Review</h1>
           <Button variant="outline" size="sm" asChild>
