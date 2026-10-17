@@ -18,6 +18,7 @@ export interface PhotoFinding {
   condition_description: string | null;
   detection_source: DetectionSource;
   ai_confidence: number | null;
+  ai_model_version: string | null;
   severity: Severity;
   urgency: string;
   water_exposure_concern: boolean;
