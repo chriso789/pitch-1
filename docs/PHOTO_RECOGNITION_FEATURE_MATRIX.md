@@ -13,7 +13,7 @@ Status: implemented | partial | blocked | not-started
 | Damage segmentation polygons | partial | editor + geometry library built (`annotations.ts`, PhotoAnnotationEditor); not yet wired into review UI; no model |
 | Cross-photo grouping / dedup | partial | `associateCrossPhoto` groups by building+component+category; GPS/visual matching not started |
 | Inspector review workspace UI | not-started | Phase 4 |
-| Report builder integration | not-started | reuse `src/lib/photos/exportPhotoReport.ts` + inspection PDF modules |
+| Report builder integration | partial | composition model + preview page at `/photo-intelligence/report` (2026-10-17); versioned saves via `photo_intelligence_reports`; export = print-to-PDF of approved version only; site overview map and styled PDF template not yet built |
 | Estimating integration | not-started | approved findings + validated sources only |
 | Benchmarking dataset/metrics | blocked | needs unannotated originals + labeled test set |
 | "No visible damage" documentation | not-started | must record inspected-clear areas |
