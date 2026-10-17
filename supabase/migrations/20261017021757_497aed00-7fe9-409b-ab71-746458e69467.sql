@@ -1,0 +1,1 @@
+REVOKE EXECUTE ON FUNCTION public.photo_finding_approval_guard() FROM anon, authenticated;
