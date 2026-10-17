@@ -2,7 +2,10 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { useAuth } from '@/contexts/AuthContext';
-import { listFindings, reviewFinding, groupByBuilding, type PhotoFinding } from '@/lib/photo-intelligence/findings';
+import { listFindings, listEvidence, reviewFinding, groupByBuilding, saveEvidenceAnnotations, evidencePhotoUrl, type PhotoFinding, type FindingEvidence } from '@/lib/photo-intelligence/findings';
+import { PhotoAnnotationEditor } from '@/components/photo-intelligence/PhotoAnnotationEditor';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Pencil } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -21,6 +24,8 @@ export default function PhotoIntelligenceReviewPage() {
   const qc = useQueryClient();
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
+  const [annotating, setAnnotating] = useState<{ evidence: FindingEvidence; finding: PhotoFinding } | null>(null);
+  const [savingAnn, setSavingAnn] = useState(false);
 
   const { data: findings = [], isLoading } = useQuery({
     queryKey: ['photo-findings', tenantId],
@@ -42,12 +47,39 @@ export default function PhotoIntelligenceReviewPage() {
     }
   };
 
+  const { data: evidenceByFinding = {} } = useQuery({
+    queryKey: ['photo-finding-evidence', tenantId, findings.map((f) => f.id).join(',')],
+    queryFn: async () => {
+      const out: Record<string, FindingEvidence[]> = {};
+      for (const f of findings) out[f.id] = await listEvidence(f.id);
+      return out;
+    },
+    enabled: !!tenantId && findings.length > 0,
+  });
+
+  const saveAnnotations = async (json: Record<string, unknown>) => {
+    if (!annotating) return;
+    setSavingAnn(true);
+    try {
+      await saveEvidenceAnnotations(annotating.evidence.id, json, 'manual');
+      setAnnotating(null);
+      qc.invalidateQueries({ queryKey: ['photo-finding-evidence'] });
+    } finally {
+      setSavingAnn(false);
+    }
+  };
+
   const grouped = groupByBuilding(findings);
 
   return (
     <div className="container mx-auto max-w-5xl p-6 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Photo Intelligence — Inspector Review</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold">Photo Intelligence — Inspector Review</h1>
+          <Button variant="outline" size="sm" asChild>
+            <a href="/photo-intelligence/report">View report</a>
+          </Button>
+        </div>
         <p className="text-muted-foreground text-sm mt-1">
           Review proposed damage findings. Only approved findings appear in customer reports.
           AI proposals are unverified until you approve them.
@@ -83,6 +115,20 @@ export default function PhotoIntelligenceReviewPage() {
                 <p className="text-sm"><span className="font-medium">{f.component}</span>{f.material ? ` · ${f.material}` : ''} — {f.visible_condition}</p>
                 {f.condition_description && <p className="text-sm text-muted-foreground">{f.condition_description}</p>}
                 {f.limitations && <p className="text-xs text-muted-foreground">Limitations: {f.limitations}</p>}
+                {(evidenceByFinding[f.id] ?? []).length > 0 && (
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {(evidenceByFinding[f.id] ?? []).map((ev) => (
+                      <div key={ev.id} className="flex items-center gap-1">
+                        {ev.storage_path && (
+                          <img src={evidencePhotoUrl(ev.storage_path)} alt="" className="h-14 w-14 rounded border object-cover" />
+                        )}
+                        <Button size="sm" variant="outline" onClick={() => setAnnotating({ evidence: ev, finding: f })} disabled={!ev.storage_path}>
+                          <Pencil className="h-3 w-3 mr-1" /> Annotate
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {f.recommended_verification && <p className="text-xs">Verify: {f.recommended_verification}</p>}
                 {f.measured_quantity != null && (
                   <p className="text-xs">Quantity: {f.measured_quantity} {f.measured_unit ?? ''} (source: {f.measurement_source})</p>
@@ -113,6 +159,24 @@ export default function PhotoIntelligenceReviewPage() {
           </CardContent>
         </Card>
       ))}
+      <Dialog open={!!annotating} onOpenChange={(o) => !o && setAnnotating(null)}>
+        <DialogContent className="max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>
+              Annotate evidence — {annotating?.finding.finding_ref}
+            </DialogTitle>
+          </DialogHeader>
+          {annotating?.evidence.storage_path && (
+            <PhotoAnnotationEditor
+              imageUrl={evidencePhotoUrl(annotating.evidence.storage_path)}
+              initialAnnotations={annotating.evidence.annotation}
+              findings={findings.map((f) => ({ id: f.id, finding_ref: f.finding_ref, component: f.component }))}
+              onSave={saveAnnotations}
+              saving={savingAnn}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

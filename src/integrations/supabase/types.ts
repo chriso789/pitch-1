@@ -38730,6 +38730,39 @@ export type Database = {
         }
         Relationships: []
       }
+      photo_intelligence_reports: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          project_id: string | null
+          report: Json
+          status: string
+          tenant_id: string
+          version: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          project_id?: string | null
+          report: Json
+          status?: string
+          tenant_id: string
+          version: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          project_id?: string | null
+          report?: Json
+          status?: string
+          tenant_id?: string
+          version?: number
+        }
+        Relationships: []
+      }
       pipeline_activities: {
         Row: {
           activity_type: string

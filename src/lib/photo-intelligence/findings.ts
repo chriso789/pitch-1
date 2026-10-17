@@ -18,6 +18,7 @@ export interface PhotoFinding {
   condition_description: string | null;
   detection_source: DetectionSource;
   ai_confidence: number | null;
+  ai_model_version: string | null;
   severity: Severity;
   urgency: string;
   water_exposure_concern: boolean;
@@ -65,6 +66,91 @@ export async function listEvidence(findingId: string): Promise<FindingEvidence[]
   const { data, error } = await (supabase.from as any)('photo_finding_evidence').select('*').eq('finding_id', findingId);
   if (error) throw error;
   return (data ?? []) as FindingEvidence[];
+}
+
+/**
+ * Persist AI damage proposals as findings + evidence. Proposals always land
+ * as detection_source 'ai', review_status 'pending' — inspector approval is
+ * enforced by the photo_finding_approval_guard trigger. Groups (from
+ * associateCrossPhoto) become ONE finding with one evidence row per photo.
+ */
+export async function persistProposals(
+  tenantId: string,
+  proposals: import('./recognition').DamageProposal[],
+  groups: number[][],
+  photoMeta: Map<string, { storagePath: string | null }>,
+  userId: string,
+): Promise<PhotoFinding[]> {
+  const created: PhotoFinding[] = [];
+  let seq = 0;
+  for (const group of groups) {
+    const members = group.map((i) => proposals[i]).filter(Boolean);
+    if (members.length === 0) continue;
+    const first = members[0];
+    seq += 1;
+    const finding = await createFinding(tenantId, {
+      finding_ref: `AI-${Date.now().toString(36)}-${seq}`,
+      building_label: first.buildingLabel,
+      component: first.component,
+      visible_condition: first.noVisibleDamage ? 'No visible damage' : first.condition,
+      condition_description: first.condition,
+      detection_source: 'ai',
+      ai_confidence: first.confidence,
+      ai_model_version: `${first.providerId}/${first.modelId}`,
+    }, userId);
+    for (const p of members) {
+      const meta = photoMeta.get(p.photoId);
+      await addEvidence(tenantId, finding.id, { photoId: p.photoId, storagePath: meta?.storagePath ?? null, role: 'supporting' }, userId);
+      const ev = (await listEvidence(finding.id)).find((e) => e.photo_id === p.photoId);
+      if (ev) await saveEvidenceAnnotations(ev.id, { version: 1, annotations: [p.annotation] } as Record<string, unknown>, 'ai');
+    }
+    created.push(finding);
+  }
+  return created;
+}
+
+/**
+ * Persist annotation geometry on an evidence row. Geometry only — the
+ * original photo bytes are never touched. `annotation_source` records how
+ * the marks were made ('manual' for the editor, 'ai' for engine proposals,
+ * 'reference_label' for imported report labels).
+ */
+export async function saveEvidenceAnnotations(
+  evidenceId: string,
+  annotation: Record<string, unknown>,
+  source: DetectionSource = 'manual',
+): Promise<void> {
+  const { error } = await (supabase.from as any)('photo_finding_evidence')
+    .update({ annotation, annotation_source: source })
+    .eq('id', evidenceId);
+  if (error) throw error;
+}
+
+/** Attach a photo to a finding as evidence (many photos per finding). */
+export async function addEvidence(
+  tenantId: string,
+  findingId: string,
+  opts: { photoId?: string | null; storagePath?: string | null; role?: FindingEvidence['evidence_role'] },
+  userId: string,
+): Promise<FindingEvidence> {
+  const { data, error } = await (supabase.from as any)('photo_finding_evidence')
+    .insert({
+      tenant_id: tenantId,
+      finding_id: findingId,
+      photo_id: opts.photoId ?? null,
+      storage_path: opts.storagePath ?? null,
+      evidence_role: opts.role ?? 'supporting',
+      created_by: userId,
+    })
+    .select().single();
+  if (error) throw error;
+  return data as FindingEvidence;
+}
+
+/** Resolve the display URL for an evidence photo in the customer-photos bucket. */
+export function evidencePhotoUrl(storagePath: string): string {
+  const { data } = supabase.storage.from('customer-photos').getPublicUrl(storagePath);
+  return data.publicUrl;
 }
 
 /**

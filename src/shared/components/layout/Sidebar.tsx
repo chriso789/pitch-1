@@ -41,6 +41,7 @@ import {
   Truck,
   Wallet,
   Gift,
+  Camera,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -129,6 +130,7 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
     if (path.startsWith('/admin/monitoring')) return 'monitoring';
     if (path.startsWith('/settings/ai-admin')) return 'ai-admin';
     if (path.startsWith('/marketing')) return 'marketing';
+    if (path.startsWith('/photo-intelligence')) return 'photo-intelligence';
     if (path.startsWith('/inspection-requests')) return 'inspection-requests';
     if (path.startsWith('/settings')) return 'settings';
     if (path.startsWith('/help')) return 'help';
@@ -319,6 +321,13 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       path: "/marketing",
       icon: BarChart,
       description: "Marketing costs & inbound attribution"
+    },
+    {
+      name: "Photo Intelligence",
+      href: "photo-intelligence",
+      path: "/photo-intelligence",
+      icon: Camera,
+      description: "Damage findings review & reports"
     }
   ].filter(item => !item.featureKey || hasFeature(item.featureKey));
 
