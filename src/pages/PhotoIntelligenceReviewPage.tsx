@@ -74,7 +74,12 @@ export default function PhotoIntelligenceReviewPage() {
   return (
     <div className="container mx-auto max-w-5xl p-6 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Photo Intelligence — Inspector Review</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold">Photo Intelligence — Inspector Review</h1>
+          <Button variant="outline" size="sm" asChild>
+            <a href="/photo-intelligence/report">View report</a>
+          </Button>
+        </div>
         <p className="text-muted-foreground text-sm mt-1">
           Review proposed damage findings. Only approved findings appear in customer reports.
           AI proposals are unverified until you approve them.
