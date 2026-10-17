@@ -24,3 +24,7 @@
 - Report preview at `/photo-intelligence/report`: composes from approved findings only; export blocked until an approved version exists; every save is a new immutable version in `photo_intelligence_reports` (tenant RLS, unique tenant+project+version).
 - Build OK after import fix (useAuth from contexts/AuthContext).
 - All Photo Intelligence unit tests still green (32+ earlier batches). Signed-in save/cross-company checks: still pending test accounts.
+
+## 2026-10-17 (POC adapter) — Phase 2 controlled POC
+- `photo-intelligence-provider-adapter.test.ts`: 5/5 passed — adapter for the EXISTING ai-image-analyzer (gpt-4o-mini, existing key, no purchase). Coordinated insights → ai/pending proposals; coordinate-less observations are rejected with an explicit reason and a warning (geometry is never invented); request failures surface as warnings, never throws.
+- No live model call has been made. A real POC run still needs a signed-in session and sample photos.
