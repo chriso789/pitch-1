@@ -3,7 +3,8 @@
  * Renders the composed report from APPROVED findings only. Export requires a
  * recorded inspector approval. Every save creates a new immutable version.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { useAuth } from '@/contexts/AuthContext';
@@ -26,6 +27,8 @@ import { Download, Save, ShieldAlert } from 'lucide-react';
 
 export default function PhotoIntelligenceReportPage() {
   const tenantId = useEffectiveTenantId();
+  const [searchParams] = useSearchParams();
+  const projectId = searchParams.get('projectId');
   const { user } = useAuth();
   const qc = useQueryClient();
   const [inspectorName, setInspectorName] = useState('');
@@ -34,6 +37,10 @@ export default function PhotoIntelligenceReportPage() {
   const [selectedVersionId, setSelectedVersionId] = useState('');
   const [resolution, setResolution] = useState('1800');
   const [siteOverview, setSiteOverview] = useState<ReportSiteOverview | null>(null);
+  const [inspectedAt, setInspectedAt] = useState(new Date().toISOString().slice(0, 10));
+  useEffect(() => {
+    setSiteOverview(null); setAddress(''); setInspectorName(''); setSelectedVersionId('');
+  }, [tenantId, projectId]);
 
   const { data: branding } = useQuery({
     queryKey: ['photo-report-branding', tenantId],
@@ -48,8 +55,8 @@ export default function PhotoIntelligenceReportPage() {
   });
 
   const { data: findings = [] } = useQuery({
-    queryKey: ['photo-findings', tenantId],
-    queryFn: () => tenantId ? listFindings(tenantId) : Promise.resolve([]),
+    queryKey: ['photo-findings', tenantId, projectId],
+    queryFn: async () => tenantId ? (await listFindings(tenantId, projectId ? { projectId } : {})).filter((f) => f.project_id === projectId) : [],
     enabled: !!tenantId,
   });
 
@@ -64,8 +71,8 @@ export default function PhotoIntelligenceReportPage() {
   });
 
   const { data: versions = [] } = useQuery({
-    queryKey: ['photo-intel-reports', tenantId],
-    queryFn: () => tenantId ? listReportVersions(tenantId, null) : Promise.resolve([]),
+    queryKey: ['photo-intel-reports', tenantId, projectId],
+    queryFn: () => tenantId ? listReportVersions(tenantId, projectId) : Promise.resolve([]),
     enabled: !!tenantId,
   });
 
@@ -73,13 +80,13 @@ export default function PhotoIntelligenceReportPage() {
   const unapprovedCount = findings.length - approved.length;
 
   const report: PhotoIntelligenceReport | null = useMemo(() => {
-    if (approved.length === 0) return null;
+    if (approved.length === 0 || !branding) return null;
     try {
       return composeReport({
         branding: branding ?? { companyName: 'Company not loaded' },
         property: {
           address: address || 'Address not set',
-          inspectedAt: new Date().toISOString(),
+          inspectedAt,
           inspectorName: inspectorName || 'Inspector not recorded',
         },
         findings: approved,
@@ -91,14 +98,14 @@ export default function PhotoIntelligenceReportPage() {
     } catch {
       return null;
     }
-  }, [approved, evidenceByFinding, address, inspectorName, versions, branding, siteOverview]);
+  }, [approved, evidenceByFinding, address, inspectorName, versions, branding, siteOverview, inspectedAt]);
 
   const untraceable = report ? findUntraceableEntries(report) : [];
 
   const save = async (status: 'draft' | 'approved') => {
     if (!report || !tenantId || !user) return;
-    if (status === 'approved' && !inspectorName.trim()) {
-      toast.error('Record the inspector name before approving the report.');
+    if (status === 'approved' && (!inspectorName.trim() || !address.trim() || !inspectedAt)) {
+      toast.error('Record the property address, inspection date and inspector name before approval.');
       return;
     }
     setBusy(true);
@@ -107,7 +114,7 @@ export default function PhotoIntelligenceReportPage() {
         ? { ...report, approval: { approvedBy: inspectorName.trim(), approvedAt: new Date().toISOString() } }
         : report;
       if (status === 'approved') assertReportExportable(toSave);
-      await saveReportVersion(tenantId, null, toSave, status, user.id);
+      await saveReportVersion(tenantId, projectId, toSave, status, user.id);
       qc.invalidateQueries({ queryKey: ['photo-intel-reports'] });
       toast.success(`Report version ${toSave.version} saved (${status}).`);
     } catch (e: any) {
@@ -163,6 +170,7 @@ export default function PhotoIntelligenceReportPage() {
           <label className="text-xs text-muted-foreground">Inspector name (required to approve)</label>
           <Input value={inspectorName} onChange={(e) => setInspectorName(e.target.value)} placeholder="Inspector" className="w-56" />
         </div>
+        <div><label className="text-xs text-muted-foreground">Inspection date</label><Input type="date" value={inspectedAt} onChange={(e) => setInspectedAt(e.target.value)} /></div>
         <Button variant="outline" disabled={!report || busy} onClick={() => save('draft')}><Save className="h-4 w-4 mr-1" /> Save draft version</Button>
         <Button disabled={!report || busy || !inspectorName.trim()} onClick={() => save('approved')}>Approve & save version</Button>
         <Select value={selectedVersion?.id ?? ''} onValueChange={setSelectedVersionId}><SelectTrigger className="w-44" aria-label="Approved export version"><SelectValue placeholder="Approved version" /></SelectTrigger><SelectContent>{approvedVersions.map((v) => <SelectItem value={v.id} key={v.id}>Version {v.version}</SelectItem>)}</SelectContent></Select>

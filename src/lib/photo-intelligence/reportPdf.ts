@@ -36,8 +36,10 @@ export async function generatePhotoReportPdf(report: PhotoIntelligenceReport, op
   let y = H - M;
   const newPage = (title: string) => {
     page = pdf.addPage([W, H]);
-    page.drawText(report.branding.companyName, { x: M, y: H - M, size: 10, font, color: accent });
-    page.drawText(title, { x: M, y: H - M - 30, size: 17, font, color: ink });
+    const companySize = Math.min(10, 10 * WIDTH / Math.max(WIDTH, font.widthOfTextAtSize(report.branding.companyName, 10)));
+    page.drawText(report.branding.companyName, { x: M, y: H - M, size: companySize, font, color: accent });
+    const titleSize = Math.min(17, 17 * WIDTH / Math.max(WIDTH, font.widthOfTextAtSize(title, 17)));
+    page.drawText(title, { x: M, y: H - M - 30, size: titleSize, font, color: ink });
     page.drawLine({ start: { x: M, y: H - M - 43 }, end: { x: W - M, y: H - M - 43 }, color: rule });
     y = H - M - 65;
   };

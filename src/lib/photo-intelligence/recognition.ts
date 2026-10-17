@@ -170,9 +170,9 @@ export function validateDetections(result: RecognitionResult, photo: Recognition
 }
 
 /**
- * Associate proposals across photos of the same inspection: same building,
- * component and damage category with overlapping bounding regions are likely
- * the same physical finding photographed more than once. Returns groups of
+ * Associate only inspector-verified physical identities across photos.
+ * Matching categories or image-relative coordinates across viewpoints do not
+ * prove a shared defect. Unverified proposals stay separate. Returns groups of
  * proposal indexes (into `proposals`); each group should become ONE finding
  * with multiple evidence rows.
  */
