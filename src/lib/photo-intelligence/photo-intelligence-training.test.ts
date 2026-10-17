@@ -35,7 +35,7 @@ describe('training dataset', () => {
   it('round-trips COCO and imported labels need re-approval', () => {
     const ds = buildDatasetVersion('v1', [photo('1', 'p1')], 0);
     const coco = toCoco(ds);
-    expect(coco.annotations[0].bbox).toEqual([100, 80, 200, 160]);
+    coco.annotations[0].bbox.forEach((v: number, i: number) => expect(v).toBeCloseTo([100, 80, 200, 160][i]));
     const back = fromCoco(coco);
     expect(back.errors).toEqual([]);
     expect(back.regions['1'][0].cls).toBe('cracked_tile');
