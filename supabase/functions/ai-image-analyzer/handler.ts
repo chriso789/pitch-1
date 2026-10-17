@@ -126,6 +126,17 @@ export const handle = async (req) => {
                       "recommendation": "specific action needed"
                     }
                   ],
+                  "detections": [
+                    {
+                      "component": "shingles|ridge_cap|ridge_vent|siding|sheathing|house_wrap|underlayment|flashing|gutters|roof_decking|other",
+                      "condition": "missing_shingles|torn_tabs|ridge_cap_loss|open_ridge_vent|displaced_siding|exposed_sheathing|torn_house_wrap|exposed_underlayment|granule_loss|nail_pops|water_damage|no_visible_damage|other",
+                      "description": "what is visibly wrong at this location",
+                      "severity": "minor|moderate|severe|critical",
+                      "confidence": 0.0,
+                      "bbox": [0.0, 0.0, 0.0, 0.0],
+                      "polygon": [[0.0, 0.0]]
+                    }
+                  ],
                   "measurements": {
                     "estimated_pitch": "degrees or ratio if determinable",
                     "visible_area": "rough size estimate if applicable"
