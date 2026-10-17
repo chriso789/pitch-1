@@ -17,6 +17,9 @@ import { createAiImageAnalyzerProvider, type AiImageAnalyzerResponse } from './p
 import { validateDetections, associateCrossPhoto, type DamageProposal, type RecognitionPhoto } from './recognition';
 import { persistProposals } from './findings';
 
+/** Flipped only once the self-hosted engine is deployed with validated weights. */
+export const PITCH_VISION_ENGINE_READY = false;
+
 export interface RecordPhoto {
   id: string;
   file_url: string | null;
@@ -132,6 +135,12 @@ export async function analyzeRecordPhotos(
     onProgress?: (p: AnalysisProgress) => void;
   } = {},
 ): Promise<AnalysisOutcome> {
+  // PITCH owns its recognition engine: no external AI APIs. Until the
+  // self-hosted engine (worker /vision/detect-damage) is deployed with
+  // validated weights, analysis stops clearly instead of calling OpenAI.
+  if (!PITCH_VISION_ENGINE_READY) {
+    throw new Error('PITCH damage-recognition engine is not trained yet. Mark damage manually with the annotation tools for now.');
+  }
   const provider = createAiImageAnalyzerProvider({ invoke: (body) => invokeAnalyzer(body) });
   const already = opts.force ? new Set<string>() : await listAnalyzedPhotoIds(tenantId);
   const queue = photos.filter((p) => !already.has(p.id));
