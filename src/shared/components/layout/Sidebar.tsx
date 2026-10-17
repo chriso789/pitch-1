@@ -130,6 +130,7 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
     if (path.startsWith('/admin/monitoring')) return 'monitoring';
     if (path.startsWith('/settings/ai-admin')) return 'ai-admin';
     if (path.startsWith('/marketing')) return 'marketing';
+    if (path.startsWith('/photo-intelligence')) return 'photo-intelligence';
     if (path.startsWith('/inspection-requests')) return 'inspection-requests';
     if (path.startsWith('/settings')) return 'settings';
     if (path.startsWith('/help')) return 'help';
