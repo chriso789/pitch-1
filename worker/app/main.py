@@ -136,3 +136,13 @@ async def _unhandled(_, exc: Exception):
         status_code=500,
         content={"ok": False, "error": str(exc), "code": "worker_unhandled"},
     )
+
+
+# ── PITCH-owned photo damage recognition (no external AI API) ──
+from fastapi import UploadFile, File
+from .vision import detect_damage
+
+
+@app.post("/vision/detect-damage", dependencies=[Depends(require_worker_key)])
+async def vision_detect_damage(image: UploadFile = File(...)):
+    return detect_damage(await image.read())
