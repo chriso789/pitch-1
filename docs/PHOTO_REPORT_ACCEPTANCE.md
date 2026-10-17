@@ -16,7 +16,16 @@ A PITCH photo-intelligence report is acceptable only when ALL hold:
 ## Definition of done (end-to-end)
 Inspector uploads a property photo collection → PITCH proposes candidate components/damage grouped by building → inspector approves/edits → professional PDF report generated → approved quantities with validated sources optionally flow to estimating with estimator approval.
 
-Current state: NOT met. Phase 1 (data model) only; recognition engine and UI not built.
+Current state: NOT met. Annotation/review/report software exists; real evidence, live recognition and authenticated acceptance are still pending.
 
 ## Status 2026-10-17
-Report composition model (`reportModel.ts`) enforces criteria 1 (unapproved findings throw), traceability checks (`findUntraceableEntries`), and no-damage documentation. Preview page and versioned saves now exist at `/photo-intelligence/report` (export = print of an approved version only). Styled PDF template, site overview map, and appendix pagination are not yet built; no report has been accepted against real evidence.
+Report composition model (`reportModel.ts`) enforces criteria 1 (unapproved findings throw), traceability checks (`findUntraceableEntries`), and no-damage documentation. Preview page and versioned saves exist at `/photo-intelligence/report`.
+
+## Separate acceptance tracks (2026-10-17 continuation)
+**Report generation — software tested, real reference acceptance pending.** `reportPdf.ts` replaces browser printing. Exports selected approved snapshots with company branding, Unicode text, priorities, building inventory, image-relative aerial map, annotated photos, evidence/finding IDs, source labels, recommendations, limitations, original-photo appendix and numbered pages. Missing evidence (including clear areas) blocks export. Six-page synthetic PDF visually verified; not Navarre acceptance.
+
+**Independent recognition — NOT accepted.** `benchmark.ts` provides inspector-label scoring without feeding labels/captions into predictions. Unannotated originals required for independent accuracy; masked/annotated images exploratory only. Real model POC blocked by absent suitable originals/session and identified analyzer routing/auth/coordinate-response defects. No service changes deployed or provider call made.
+
+**Inspector workflow/security — pending.** Signed-in review→save approved version→export→reopen through UI and two-company isolation have not been performed. Existing schema approval triggers are not newly verified by unit PDF tests.
+
+**Reference handoff:** Upload `7552 Navarre Parkway Storm Damage Photo Report 2.pdf` into this Lovable conversation. The current uploaded Markdown refers to the PDF but does not contain it. Preserve attribution, all 22 views and source labels; inspector-confirm overlapping defects before grouping. No publication approval requested or used.

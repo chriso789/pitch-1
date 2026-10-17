@@ -22,7 +22,7 @@ export async function listReportVersions(tenantId: string, projectId?: string | 
     .select('*')
     .eq('tenant_id', tenantId)
     .order('version', { ascending: false });
-  if (projectId) q = q.eq('project_id', projectId);
+  if (projectId !== undefined) q = projectId === null ? q.is('project_id', null) : q.eq('project_id', projectId);
   const { data, error } = await q;
   if (error) throw error;
   return (data ?? []) as SavedReport[];

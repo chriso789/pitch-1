@@ -1,5 +1,8 @@
 # Architecture Decisions
 
+- Photo Intelligence PDF export compiles a selected approved immutable report snapshot with an embedded Unicode font; original evidence and annotation geometry remain separate, and untraceable evidence blocks export.
+- Photo Intelligence building maps store image-relative callouts in report versions, never geographic coordinates or quantities; cross-photo merging requires inspector-verified physical identity because matching defect categories do not prove the same occurrence.
+
 - Marketing Audit reads explicitly tenant- and location-scoped contacts and an immutable integer-cent cost ledger; company spend and location leads are not combined into CPL, currencies are never mixed, and missing source evidence stays unattributed to prevent misleading performance claims.
 
 - Final paid-in-full invoices generate a concise homeowner-facing Work Performed summary through `estimate-scope-narrative`; they never expose raw estimate line items as the invoice description.- Commercial budgets are created only by the `commercial_award_version` RPC from an approved estimate version's snapshot; awards and original budget values are immutable, and later changes must go through budget/change records, never edits to the estimate or originals.

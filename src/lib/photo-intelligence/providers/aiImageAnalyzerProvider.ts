@@ -22,7 +22,7 @@ export const AI_IMAGE_ANALYZER_PROVIDER_ID = 'ai-image-analyzer';
 export interface AiImageAnalyzerResponse {
   roof_type?: string;
   condition_rating?: string;
-  insights?: string[] | { title?: string; description?: string; severity?: string; bbox?: number[]; polygon?: number[][] }[];
+  insights?: string[] | { title?: string; description?: string; severity?: string; confidence?: number; bbox?: number[]; polygon?: number[][] }[];
   measurements?: unknown;
   summary?: string;
   priority_actions?: string[];
@@ -54,7 +54,7 @@ export function mapAnalyzerResponse(res: AiImageAnalyzerResponse, modelId: strin
         polygonNorm: polygon.map((p) => ({ x: Number(p[0]), y: Number(p[1]) })),
         component: ins.title ?? res.roof_type ?? 'roof',
         condition: ins.description ?? ins.title ?? '',
-        confidence: severityToConfidence(ins.severity),
+        confidence: ins.confidence,
       });
     } else if (bbox) {
       detections.push({
@@ -62,7 +62,7 @@ export function mapAnalyzerResponse(res: AiImageAnalyzerResponse, modelId: strin
         bboxNorm: { x: Number(bbox[0]), y: Number(bbox[1]), width: Number(bbox[2]), height: Number(bbox[3]) },
         component: ins.title ?? res.roof_type ?? 'roof',
         condition: ins.description ?? ins.title ?? '',
-        confidence: severityToConfidence(ins.severity),
+        confidence: ins.confidence,
       });
     } else {
       detections.push({
@@ -78,15 +78,6 @@ export function mapAnalyzerResponse(res: AiImageAnalyzerResponse, modelId: strin
   }
   if (res.error) warnings.push(`Analyzer error: ${res.error}`);
   return { providerId: AI_IMAGE_ANALYZER_PROVIDER_ID, modelId, detections, warnings };
-}
-
-function severityToConfidence(s?: string): number | undefined {
-  switch ((s ?? '').toLowerCase()) {
-    case 'critical': case 'high': return 0.9;
-    case 'moderate': case 'medium': return 0.7;
-    case 'low': case 'minor': return 0.5;
-    default: return undefined;
-  }
 }
 
 export interface AnalyzerInvoker {
