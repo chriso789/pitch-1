@@ -42,7 +42,27 @@ export async function loadRecordPhotos(
   else return [];
   const { data, error } = await q;
   if (error) throw error;
-  return (data ?? []) as RecordPhoto[];
+  const rows = (data ?? []) as RecordPhoto[];
+  // The customer-photos bucket is private: stored public URLs return 400.
+  // Resolve each storage path to a short-lived signed URL instead.
+  const paths = rows.map((r) => storagePathOf(r)).filter((p): p is string => !!p);
+  if (paths.length === 0) return rows;
+  const { data: signed } = await supabase.storage.from('customer-photos').createSignedUrls(paths, 3600);
+  const byPath = new Map((signed ?? []).filter((s: any) => s.signedUrl).map((s: any) => [s.path, s.signedUrl as string]));
+  return rows.map((r) => {
+    const p = storagePathOf(r);
+    return p && byPath.has(p) ? { ...r, file_url: byPath.get(p)! } : r;
+  });
+}
+
+/** Storage object path inside the customer-photos bucket. */
+function storagePathOf(r: RecordPhoto): string | null {
+  const marker = '/customer-photos/';
+  if (r.file_url && r.file_url.includes(marker)) {
+    return decodeURIComponent(r.file_url.split(marker)[1].split('?')[0]);
+  }
+  if (r.file_name && r.file_name.includes('/')) return r.file_name;
+  return null;
 }
 
 /** Storage paths / photo ids that already have analysis evidence — dedupe guard. */
