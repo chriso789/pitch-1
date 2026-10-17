@@ -28,3 +28,7 @@
 ## 2026-10-17 (POC adapter) — Phase 2 controlled POC
 - `photo-intelligence-provider-adapter.test.ts`: 5/5 passed — adapter for the EXISTING ai-image-analyzer (gpt-4o-mini, existing key, no purchase). Coordinated insights → ai/pending proposals; coordinate-less observations are rejected with an explicit reason and a warning (geometry is never invented); request failures surface as warnings, never throws.
 - No live model call has been made. A real POC run still needs a signed-in session and sample photos.
+
+## 2026-10-17 (proposal persistence) — Phase 2→1 bridge
+- `persistProposals` in findings.ts: grouped AI proposals become ONE finding per group (detection_source 'ai', review_status 'pending', ai_model_version recorded) with one evidence row per photo and geometry-only annotations (source 'ai'). Approval remains blocked by the DB guard until an inspector approves.
+- Build OK; findings tests 4/4 still pass.
