@@ -62,7 +62,7 @@ async function invokeAnalyzer(body: { image_data: string; analysis_type: string;
   if (error) return { data: null, error: { message: error.message ?? 'invoke_failed' } };
   if (!data) return { data: null, error: { message: 'empty_response' } };
   if ((data as any).error) return { data: null, error: { message: String((data as any).error) } };
-  return { data, error: null };
+  return { data: data as AiImageAnalyzerResponse, error: null };
 }
 
 /** Fetch a photo and return a data URL for the vision request. */
