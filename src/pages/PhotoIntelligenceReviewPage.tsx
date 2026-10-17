@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { useAuth } from '@/contexts/AuthContext';
 import { listFindings, listEvidence, reviewFinding, groupByBuilding, saveEvidenceAnnotations, evidencePhotoUrl, type PhotoFinding, type FindingEvidence } from '@/lib/photo-intelligence/findings';
+import { loadRecordPhotos, analyzeRecordPhotos, type RecordPhoto, type AnalysisProgress } from '@/lib/photo-intelligence/analyzePhotos';
 import { PhotoAnnotationEditor } from '@/components/photo-intelligence/PhotoAnnotationEditor';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Pencil } from 'lucide-react';
