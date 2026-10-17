@@ -84,6 +84,33 @@ export async function saveEvidenceAnnotations(
   if (error) throw error;
 }
 
+/** Attach a photo to a finding as evidence (many photos per finding). */
+export async function addEvidence(
+  tenantId: string,
+  findingId: string,
+  opts: { photoId?: string | null; storagePath?: string | null; role?: FindingEvidence['evidence_role'] },
+  userId: string,
+): Promise<FindingEvidence> {
+  const { data, error } = await (supabase.from as any)('photo_finding_evidence')
+    .insert({
+      tenant_id: tenantId,
+      finding_id: findingId,
+      photo_id: opts.photoId ?? null,
+      storage_path: opts.storagePath ?? null,
+      evidence_role: opts.role ?? 'supporting',
+      created_by: userId,
+    })
+    .select().single();
+  if (error) throw error;
+  return data as FindingEvidence;
+}
+
+/** Resolve the display URL for an evidence photo in the customer-photos bucket. */
+export function evidencePhotoUrl(storagePath: string): string {
+  const { data } = supabase.storage.from('customer-photos').getPublicUrl(storagePath);
+  return data.publicUrl;
+}
+
 /**
  * Record a human review action and apply the resulting status.
  * Approval is enforced by the photo_finding_approval_guard trigger: the review
