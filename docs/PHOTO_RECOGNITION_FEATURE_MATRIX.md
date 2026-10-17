@@ -35,3 +35,9 @@ Full Photo Intelligence run (`npx vitest run tests/unit/photo-intelligence`): 7 
 - annotations 18, recognition 8, provider-adapter 7, report 6, findings 4, benchmark 4, pdf 4.
 - The earlier "49" was the full suite before 2 adapter tests were added; the "25" was a subset (adapter 7 + recognition 8 + report 6 + findings 4) — annotations, benchmark and pdf were not run that time.
 - Still not run: signed-in live analysis on a real photo, coordinate-overlay check, damaged/undamaged recognition benchmark. Navarre 19-page PDF still not in project uploads.
+
+## Update 2026-10-17 — Self-hosted engine direction
+- Live run on 16 tile-roof photos: all 16 rejected by OpenAI ("no credits remaining"); the UI wrongly said "no damage". Fixed: service failures now show as errors.
+- Decision: PITCH owns recognition; no OpenAI/Lovable AI per photo. App analysis is switched off until the engine has validated weights.
+- Built: worker `/vision/detect-damage` (ONNX Runtime, local weights, returns `model_not_trained` + zero detections without weights). Classes include cracked/displaced tile.
+- Next (unblocked): labeling export/import (CVAT format), dataset split tooling, training script (open-source detector), benchmark wiring. Blocked: labeled originals, worker hosting/GPU approval.
