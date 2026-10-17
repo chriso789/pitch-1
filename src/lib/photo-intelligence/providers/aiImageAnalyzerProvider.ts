@@ -114,12 +114,9 @@ export function createAiImageAnalyzerProvider(invoker: AnalyzerInvoker, modelId 
     modelId,
     async analyze(photo: RecognitionPhoto): Promise<RecognitionResult> {
       const { data, error } = await invoker.invoke({ image_data: photo.imageRef, analysis_type: 'damage', step_id: photo.photoId, step_title: 'Damage analysis' });
-      if (error) {
-        return { providerId: AI_IMAGE_ANALYZER_PROVIDER_ID, modelId, detections: [], warnings: [`Analyzer request failed: ${error.message}`] };
-      }
-      if (!data) {
-        return { providerId: AI_IMAGE_ANALYZER_PROVIDER_ID, modelId, detections: [], warnings: ['Analyzer returned no data'] };
-      }
+      // A failed request is a failure, never "no damage found".
+      if (error) throw new Error(`AI analysis service failed: ${error.message}`);
+      if (!data) throw new Error('AI analysis service returned no data');
       return mapAnalyzerResponse(data, data.analysis_metadata?.model_used ?? modelId);
     },
   };
