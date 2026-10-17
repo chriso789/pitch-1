@@ -24,16 +24,54 @@ export default function PhotoIntelligenceReviewPage() {
   const tenantId = useEffectiveTenantId();
   const { user } = useAuth();
   const qc = useQueryClient();
+  const [searchParams] = useSearchParams();
+  const leadId = searchParams.get('leadId') ?? undefined;
+  const projectId = searchParams.get('projectId') ?? undefined;
+  const contactId = searchParams.get('contactId') ?? undefined;
+  const recordScope = leadId || projectId || contactId ? { leadId, projectId, contactId } : null;
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [annotating, setAnnotating] = useState<{ evidence: FindingEvidence; finding: PhotoFinding } | null>(null);
   const [savingAnn, setSavingAnn] = useState(false);
+  const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set());
+  const [analyzing, setAnalyzing] = useState(false);
+  const [progress, setProgress] = useState<AnalysisProgress | null>(null);
 
   const { data: findings = [], isLoading } = useQuery({
-    queryKey: ['photo-findings', tenantId],
-    queryFn: () => listFindings(tenantId!),
+    queryKey: ['photo-findings', tenantId, projectId ?? 'all'],
+    queryFn: () => listFindings(tenantId!, projectId ? { projectId } : {}),
     enabled: !!tenantId,
   });
+
+  const { data: recordPhotos = [] } = useQuery<RecordPhoto[]>({
+    queryKey: ['photo-intel-record-photos', tenantId, leadId, projectId, contactId],
+    queryFn: () => loadRecordPhotos(tenantId!, recordScope!),
+    enabled: !!tenantId && !!recordScope,
+  });
+
+  const runAnalysis = async (photos: RecordPhoto[]) => {
+    if (!tenantId || !user || photos.length === 0 || analyzing) return;
+    setAnalyzing(true);
+    setProgress(null);
+    try {
+      const outcome = await analyzeRecordPhotos(tenantId, user.id, photos, {
+        projectId: projectId ?? null,
+        onProgress: setProgress,
+      });
+      if (outcome.findingsCreated > 0) {
+        toast.success(`${outcome.findingsCreated} finding${outcome.findingsCreated === 1 ? '' : 's'} ready for review`);
+      } else if (outcome.errors.length === 0 && outcome.proposals === 0) {
+        toast.info('Analysis completed — no placeable damage candidates detected');
+      }
+      for (const err of outcome.errors) toast.error(`${err.fileName}: ${err.message}`);
+      if (outcome.skippedDuplicates > 0) toast.info(`${outcome.skippedDuplicates} photo${outcome.skippedDuplicates === 1 ? '' : 's'} skipped (already analyzed)`);
+      qc.invalidateQueries({ queryKey: ['photo-findings', tenantId] });
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Analysis failed');
+    } finally {
+      setAnalyzing(false);
+    }
+  };
 
   const act = async (f: PhotoFinding, action: 'approve' | 'reject' | 'needs_closeup') => {
     if (!user) return;
