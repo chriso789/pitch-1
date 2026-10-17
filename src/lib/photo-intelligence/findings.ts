@@ -68,6 +68,47 @@ export async function listEvidence(findingId: string): Promise<FindingEvidence[]
 }
 
 /**
+ * Persist AI damage proposals as findings + evidence. Proposals always land
+ * as detection_source 'ai', review_status 'pending' — inspector approval is
+ * enforced by the photo_finding_approval_guard trigger. Groups (from
+ * associateCrossPhoto) become ONE finding with one evidence row per photo.
+ */
+export async function persistProposals(
+  tenantId: string,
+  proposals: import('./recognition').DamageProposal[],
+  groups: number[][],
+  photoMeta: Map<string, { storagePath: string | null }>,
+  userId: string,
+): Promise<PhotoFinding[]> {
+  const created: PhotoFinding[] = [];
+  let seq = 0;
+  for (const group of groups) {
+    const members = group.map((i) => proposals[i]).filter(Boolean);
+    if (members.length === 0) continue;
+    const first = members[0];
+    seq += 1;
+    const finding = await createFinding(tenantId, {
+      finding_ref: `AI-${Date.now().toString(36)}-${seq}`,
+      building_label: first.buildingLabel,
+      component: first.component,
+      visible_condition: first.noVisibleDamage ? 'No visible damage' : first.condition,
+      condition_description: first.condition,
+      detection_source: 'ai',
+      ai_confidence: first.confidence,
+      ai_model_version: `${first.providerId}/${first.modelId}`,
+    }, userId);
+    for (const p of members) {
+      const meta = photoMeta.get(p.photoId);
+      await addEvidence(tenantId, finding.id, { photoId: p.photoId, storagePath: meta?.storagePath ?? null, role: 'supporting' }, userId);
+      const ev = (await listEvidence(finding.id)).find((e) => e.photo_id === p.photoId);
+      if (ev) await saveEvidenceAnnotations(ev.id, { version: 1, annotations: [p.annotation] } as Record<string, unknown>, 'ai');
+    }
+    created.push(finding);
+  }
+  return created;
+}
+
+/**
  * Persist annotation geometry on an evidence row. Geometry only — the
  * original photo bytes are never touched. `annotation_source` records how
  * the marks were made ('manual' for the editor, 'ai' for engine proposals,
