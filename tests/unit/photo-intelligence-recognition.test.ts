@@ -109,7 +109,7 @@ describe('provider contract (test harness)', () => {
     const stub: RecognitionProvider = {
       providerId: 'stub',
       modelId: 'stub-1',
-      analyze: async () => resultWith([good]),
+      analyze: async () => ({ ...resultWith([good]), providerId: 'stub', modelId: 'stub-1' }),
     };
     const result = await stub.analyze(photo);
     const batch = validateDetections(result, photo);
