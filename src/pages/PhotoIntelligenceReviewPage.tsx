@@ -110,6 +110,20 @@ export default function PhotoIntelligenceReviewPage() {
                 <p className="text-sm"><span className="font-medium">{f.component}</span>{f.material ? ` · ${f.material}` : ''} — {f.visible_condition}</p>
                 {f.condition_description && <p className="text-sm text-muted-foreground">{f.condition_description}</p>}
                 {f.limitations && <p className="text-xs text-muted-foreground">Limitations: {f.limitations}</p>}
+                {(evidenceByFinding[f.id] ?? []).length > 0 && (
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {(evidenceByFinding[f.id] ?? []).map((ev) => (
+                      <div key={ev.id} className="flex items-center gap-1">
+                        {ev.storage_path && (
+                          <img src={evidencePhotoUrl(ev.storage_path)} alt="" className="h-14 w-14 rounded border object-cover" />
+                        )}
+                        <Button size="sm" variant="outline" onClick={() => setAnnotating({ evidence: ev, finding: f })} disabled={!ev.storage_path}>
+                          <Pencil className="h-3 w-3 mr-1" /> Annotate
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {f.recommended_verification && <p className="text-xs">Verify: {f.recommended_verification}</p>}
                 {f.measured_quantity != null && (
                   <p className="text-xs">Quantity: {f.measured_quantity} {f.measured_unit ?? ''} (source: {f.measurement_source})</p>
@@ -140,6 +154,24 @@ export default function PhotoIntelligenceReviewPage() {
           </CardContent>
         </Card>
       ))}
+      <Dialog open={!!annotating} onOpenChange={(o) => !o && setAnnotating(null)}>
+        <DialogContent className="max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>
+              Annotate evidence — {annotating?.finding.finding_ref}
+            </DialogTitle>
+          </DialogHeader>
+          {annotating?.evidence.storage_path && (
+            <PhotoAnnotationEditor
+              imageUrl={evidencePhotoUrl(annotating.evidence.storage_path)}
+              initialAnnotations={annotating.evidence.annotation}
+              findings={findings.map((f) => ({ id: f.id, finding_ref: f.finding_ref, component: f.component }))}
+              onSave={saveAnnotations}
+              saving={savingAnn}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
