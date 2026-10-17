@@ -23,6 +23,10 @@ export interface AiImageAnalyzerResponse {
   roof_type?: string;
   condition_rating?: string;
   insights?: string[] | { title?: string; description?: string; severity?: string; confidence?: number; bbox?: number[]; polygon?: number[][] }[];
+  detections?: {
+    component?: string; condition?: string; description?: string; severity?: string;
+    confidence?: number; bbox?: number[]; polygon?: number[][];
+  }[];
   measurements?: unknown;
   summary?: string;
   priority_actions?: string[];
@@ -39,6 +43,25 @@ export interface AiImageAnalyzerResponse {
  */
 export function mapAnalyzerResponse(res: AiImageAnalyzerResponse, modelId: string): RecognitionResult {
   const detections: RawDetection[] = [];
+  // Structured detections with model-supplied coordinates (preferred path).
+  for (const det of Array.isArray(res.detections) ? res.detections : []) {
+    const bbox = Array.isArray(det.bbox) && det.bbox.length === 4 ? det.bbox : null;
+    const polygon = Array.isArray(det.polygon) && det.polygon.length >= 3 ? det.polygon : null;
+    const base = {
+      component: det.component ?? res.roof_type ?? 'roof',
+      condition: det.description || det.condition || '',
+      damageCategory: det.condition ?? undefined,
+      confidence: det.confidence,
+      noVisibleDamage: det.condition === 'no_visible_damage',
+    };
+    if (polygon) {
+      detections.push({ ...base, kind: 'polygon', polygonNorm: polygon.map((p) => ({ x: Number(p[0]), y: Number(p[1]) })) });
+    } else if (bbox) {
+      detections.push({ ...base, kind: 'bbox', bboxNorm: { x: Number(bbox[0]), y: Number(bbox[1]), width: Number(bbox[2]), height: Number(bbox[3]) } });
+    } else {
+      detections.push({ ...base, kind: 'bbox' });
+    }
+  }
   const insights = Array.isArray(res.insights) ? res.insights : [];
   for (const ins of insights) {
     if (typeof ins === 'string') {
@@ -81,7 +104,7 @@ export function mapAnalyzerResponse(res: AiImageAnalyzerResponse, modelId: strin
 }
 
 export interface AnalyzerInvoker {
-  invoke(body: { image_data: string; analysis_type: string }): Promise<{ data: AiImageAnalyzerResponse | null; error: { message: string } | null }>;
+  invoke(body: { image_data: string; analysis_type: string; step_id: string; step_title: string }): Promise<{ data: AiImageAnalyzerResponse | null; error: { message: string } | null }>;
 }
 
 /** Live provider. The invoker is injected so tests never touch the network. */
@@ -90,7 +113,7 @@ export function createAiImageAnalyzerProvider(invoker: AnalyzerInvoker, modelId 
     providerId: AI_IMAGE_ANALYZER_PROVIDER_ID,
     modelId,
     async analyze(photo: RecognitionPhoto): Promise<RecognitionResult> {
-      const { data, error } = await invoker.invoke({ image_data: photo.imageRef, analysis_type: 'damage' });
+      const { data, error } = await invoker.invoke({ image_data: photo.imageRef, analysis_type: 'damage', step_id: photo.photoId, step_title: 'Damage analysis' });
       if (error) {
         return { providerId: AI_IMAGE_ANALYZER_PROVIDER_ID, modelId, detections: [], warnings: [`Analyzer request failed: ${error.message}`] };
       }
