@@ -29,3 +29,12 @@ Report composition model (`reportModel.ts`) enforces criteria 1 (unapproved find
 **Inspector workflow/security — pending.** Signed-in review→save approved version→export→reopen through UI and two-company isolation have not been performed. Existing schema approval triggers are not newly verified by unit PDF tests.
 
 **Reference handoff:** Upload `7552 Navarre Parkway Storm Damage Photo Report 2.pdf` into this Lovable conversation. The current uploaded Markdown refers to the PDF but does not contain it. Preserve attribution, all 22 views and source labels; inspector-confirm overlapping defects before grouping. No publication approval requested or used.
+
+## Update 2026-10-17 — Photos-tab AI Analysis wiring (Phases 2 + 3 integration)
+- Photos tab now has an "AI Analyze" action that opens Photo Intelligence scoped to the current lead/project/contact photos (`PhotoControlCenter.tsx` → `/photo-intelligence?leadId|projectId|contactId`).
+- Review page (`PhotoIntelligenceReviewPage.tsx`) loads the record's photos, supports per-photo selection or Analyze All, shows live progress/errors, skips already-analyzed photos, and persists findings as detection_source=ai / review_status=pending linked to the project.
+- Orchestration in `src/lib/photo-intelligence/analyzePhotos.ts`; findings may now carry `project_id`/`job_id` via `persistProposals` opts.
+- ai-api routing repaired: `serveRouter` dispatch, `/image/analyze` now behind requireAuth + requireTenant (verified live: 401 without/with invalid token); `x-pitch-tenant` accepted as tenant header (validated against user access).
+- Analyzer handler now requests JSON output, prompts for mandatory normalized coordinates + confidence, and sanitizes detections server-side: only model-supplied in-bounds bbox/polygon geometry is kept; nothing is fabricated or clamped into place.
+- Adapter maps structured `detections` (bbox/polygon, damage category, confidence, no_visible_damage flag); coordinate-less candidates are rejected downstream with reasons.
+- Tests: 7 adapter tests + 18 recognition/findings/report tests pass. Signed-in end-to-end run with a real photo remains PENDING (no session can be minted for this user-managed backend); Navarre reference demo still BLOCKED on the actual 19-page PDF.

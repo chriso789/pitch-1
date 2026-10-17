@@ -47,3 +47,12 @@
 - Harness build/typecheck log: build OK following Blob buffer compatibility repair. No manual build/typecheck run.
 - Not tested: Navarre reproduction, live model call, genuine precision/recall, authenticated save/export, cross-company isolation, real-device acceptance. No claims inferred from synthetic tests.
 - Read-only local revision observed before final documentation edits: `5c80cdc4f100eb5dcb347d242bf8a059831c765f`. This is not proof of remote GitHub main synchronization; automatic sync happens after replies and current-turn final SHA is not yet available.
+
+## Update 2026-10-17 — Photos-tab AI Analysis wiring (Phases 2 + 3 integration)
+- Photos tab now has an "AI Analyze" action that opens Photo Intelligence scoped to the current lead/project/contact photos (`PhotoControlCenter.tsx` → `/photo-intelligence?leadId|projectId|contactId`).
+- Review page (`PhotoIntelligenceReviewPage.tsx`) loads the record's photos, supports per-photo selection or Analyze All, shows live progress/errors, skips already-analyzed photos, and persists findings as detection_source=ai / review_status=pending linked to the project.
+- Orchestration in `src/lib/photo-intelligence/analyzePhotos.ts`; findings may now carry `project_id`/`job_id` via `persistProposals` opts.
+- ai-api routing repaired: `serveRouter` dispatch, `/image/analyze` now behind requireAuth + requireTenant (verified live: 401 without/with invalid token); `x-pitch-tenant` accepted as tenant header (validated against user access).
+- Analyzer handler now requests JSON output, prompts for mandatory normalized coordinates + confidence, and sanitizes detections server-side: only model-supplied in-bounds bbox/polygon geometry is kept; nothing is fabricated or clamped into place.
+- Adapter maps structured `detections` (bbox/polygon, damage category, confidence, no_visible_damage flag); coordinate-less candidates are rejected downstream with reasons.
+- Tests: 7 adapter tests + 18 recognition/findings/report tests pass. Signed-in end-to-end run with a real photo remains PENDING (no session can be minted for this user-managed backend); Navarre reference demo still BLOCKED on the actual 19-page PDF.
