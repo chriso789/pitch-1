@@ -126,6 +126,59 @@ export default function PhotoIntelligenceReviewPage() {
         </p>
       </div>
 
+      {recordScope && (
+        <Card>
+          <CardHeader><CardTitle className="text-lg">Analyze this record's photos</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            {recordPhotos.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No photos found for this record yet. Upload photos on the record's Photos tab first.</p>
+            ) : (
+              <>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" disabled={analyzing} onClick={() => runAnalysis(recordPhotos)}>
+                    {analyzing ? 'Analyzing…' : `Analyze All (${recordPhotos.length})`}
+                  </Button>
+                  <Button
+                    size="sm" variant="outline" disabled={analyzing || selectedPhotos.size === 0}
+                    onClick={() => runAnalysis(recordPhotos.filter((p) => selectedPhotos.has(p.id)))}
+                  >
+                    Analyze Selected ({selectedPhotos.size})
+                  </Button>
+                </div>
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                  {recordPhotos.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setSelectedPhotos((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(p.id)) next.delete(p.id); else next.add(p.id);
+                        return next;
+                      })}
+                      className={`relative border rounded overflow-hidden aspect-square ${selectedPhotos.has(p.id) ? 'ring-2 ring-primary' : ''}`}
+                      title={p.file_name ?? 'Photo'}
+                    >
+                      {p.file_url && <img src={p.file_url} alt={p.file_name ?? 'Photo'} className="object-cover w-full h-full" />}
+                      {selectedPhotos.has(p.id) && (
+                        <span className="absolute top-1 right-1 bg-primary text-primary-foreground rounded-full p-0.5"><Check className="h-3 w-3" /></span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+                {progress && (
+                  <p className="text-sm text-muted-foreground">
+                    Analyzed {progress.done}/{progress.total}
+                    {progress.currentFile ? ` — ${progress.currentFile}` : ''}
+                    {progress.proposals > 0 ? ` · ${progress.proposals} candidate${progress.proposals === 1 ? '' : 's'}` : ''}
+                    {progress.errors.length > 0 ? ` · ${progress.errors.length} failed` : ''}
+                  </p>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {isLoading && <p className="text-muted-foreground">Loading findings…</p>}
       {!isLoading && findings.length === 0 && (
         <Card><CardContent className="py-8 text-center text-muted-foreground">
