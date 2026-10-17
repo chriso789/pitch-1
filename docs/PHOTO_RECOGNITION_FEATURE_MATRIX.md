@@ -29,3 +29,9 @@ Live recognition remains BLOCKED on suitable originals, auth session, coordinate
 - Analyzer handler now requests JSON output, prompts for mandatory normalized coordinates + confidence, and sanitizes detections server-side: only model-supplied in-bounds bbox/polygon geometry is kept; nothing is fabricated or clamped into place.
 - Adapter maps structured `detections` (bbox/polygon, damage category, confidence, no_visible_damage flag); coordinate-less candidates are rejected downstream with reasons.
 - Tests: 7 adapter tests + 18 recognition/findings/report tests pass. Signed-in end-to-end run with a real photo remains PENDING (no session can be minted for this user-managed backend); Navarre reference demo still BLOCKED on the actual 19-page PDF.
+
+## Update 2026-10-17 — Test count reconciliation
+Full Photo Intelligence run (`npx vitest run tests/unit/photo-intelligence`): 7 files, 51 passed, 0 failed, 0 skipped.
+- annotations 18, recognition 8, provider-adapter 7, report 6, findings 4, benchmark 4, pdf 4.
+- The earlier "49" was the full suite before 2 adapter tests were added; the "25" was a subset (adapter 7 + recognition 8 + report 6 + findings 4) — annotations, benchmark and pdf were not run that time.
+- Still not run: signed-in live analysis on a real photo, coordinate-overlay check, damaged/undamaged recognition benchmark. Navarre 19-page PDF still not in project uploads.
