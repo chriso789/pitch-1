@@ -43,7 +43,7 @@ describe('report composition', () => {
   });
 
   it('composes an approved report sorted by severity', () => {
-    const low = { ...base, id: 'f2', finding_ref: 'F-002', severity: 'low' as const, building_label: 'Building A' };
+    const low = { ...base, id: 'f2', finding_ref: 'F-002', severity: 'low' as const, building_label: 'Building A', water_exposure_concern: false };
     const report = composeReport({ ...args, findings: [low, base] });
     expect(report.buildings).toHaveLength(1);
     expect(report.buildings[0].findings.map((f) => f.severity)).toEqual(['high', 'low']);
