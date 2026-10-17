@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { describe, it, expect } from 'vitest';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { PDFDocument } from 'pdf-lib';
@@ -16,8 +15,7 @@ describe('programmatic report export gates', () => {
   });
   it('rejects invented/out-of-image building locations', () => { expect(() => assertReportExportable({ ...report, siteOverview: { ...report.siteOverview, storagePath: 'x', attribution: 'x', markers: [{ buildingLabel: 'A', x: 2, y: 0.2 }] } })).toThrow(/within/); });
   it('creates a reopenable, paginated PDF from an immutable approved version', async () => {
-    const fontPath = process.env.PHOTO_REPORT_TEST_FONT;
-    if (!fontPath) throw new Error('Set PHOTO_REPORT_TEST_FONT to a licensed Unicode TTF fixture.');
+    const fontPath = process.env.PHOTO_REPORT_TEST_FONT ?? 'tests/fixtures/photo-report/DejaVuSans-subset.ttf';
     const pngPath = process.env.PHOTO_REPORT_TEST_IMAGE;
     const png = pngPath ? new Uint8Array(readFileSync(pngPath)) : new Uint8Array(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jD1sAAAAASUVORK5CYII=', 'base64'));
     const before = JSON.stringify(report);
