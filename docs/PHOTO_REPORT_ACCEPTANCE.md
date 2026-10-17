@@ -19,4 +19,4 @@ Inspector uploads a property photo collection → PITCH proposes candidate compo
 Current state: NOT met. Phase 1 (data model) only; recognition engine and UI not built.
 
 ## Status 2026-10-17
-Report composition model (`reportModel.ts`) enforces criteria 1 (unapproved findings throw), traceability checks (`findUntraceableEntries`), and no-damage documentation. PDF rendering, preview/edit UI, site overview, and evidence appendix pages are not yet built — no report has been generated or accepted.
+Report composition model (`reportModel.ts`) enforces criteria 1 (unapproved findings throw), traceability checks (`findUntraceableEntries`), and no-damage documentation. Preview page and versioned saves now exist at `/photo-intelligence/report` (export = print of an approved version only). Styled PDF template, site overview map, and appendix pagination are not yet built; no report has been accepted against real evidence.
