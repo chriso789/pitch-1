@@ -20,3 +20,4 @@
 - PDF Studio tools are switched per company in `tenant_pdf_tool_settings` (admins only) and the `documents_pdf_tool_guard` trigger refuses PDF versions/conversions whose `metadata.pdf_tool` is off, so hiding buttons is never the only control and no browser override exists.
 - Subdirectories may have their own `AGENTS.md`; read it before changing files there.
 - Photo Intelligence damage recognition runs only on PITCH-controlled weights via the worker `/vision/detect-damage` (ONNX, CPU first); no external AI API is called per photo, and classes not validated on inspector-labeled originals return no findings.
+- Photo Intelligence training uses only inspector-approved labels (approver ≠ labeler), splits train/val by property, and evaluation refuses training photos; classes are promoted per roof system only after passing measured gates.
