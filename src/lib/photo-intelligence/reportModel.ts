@@ -10,6 +10,8 @@
  */
 
 import type { PhotoFinding, FindingEvidence } from './findings';
+import type { Annotation } from './annotations';
+import { parseAnnotationSet } from './annotations';
 
 export interface ReportBranding {
   companyName: string;
@@ -41,6 +43,16 @@ export interface ReportFindingEntry {
   recommendedVerification: string | null;
   /** Original-photo storage paths backing this finding (never annotated copies). */
   evidencePhotoPaths: string[];
+  roofPlane?: string | null;
+  detectionSource?: PhotoFinding['detection_source'];
+  evidence?: { evidenceId: string; photoId: string | null; storagePath: string; source: FindingEvidence['annotation_source']; annotations: Annotation[] }[];
+}
+
+/** Locations are image-relative only, never geographic coordinates or quantities. */
+export interface ReportSiteOverview {
+  storagePath: string;
+  attribution: string;
+  markers: { buildingLabel: string; x: number; y: number }[];
 }
 
 export interface ReportBuildingSection {
@@ -55,6 +67,8 @@ export interface PhotoIntelligenceReport {
   executiveSummary: string;
   buildings: ReportBuildingSection[];
   noDamageAreas: string[];
+  noDamageFindings?: ReportFindingEntry[];
+  siteOverview?: ReportSiteOverview | null;
   priorityCounts: Record<PhotoFinding['severity'], number>;
   waterEntryConcerns: ReportFindingEntry[];
   limitations: string[];
@@ -85,6 +99,7 @@ export function composeReport(args: {
   approval?: { approvedBy: string; approvedAt: string } | null;
   version?: number;
   now?: string;
+  siteOverview?: ReportSiteOverview | null;
 }): PhotoIntelligenceReport {
   const { findings, evidenceByFinding } = args;
 
@@ -107,12 +122,18 @@ export function composeReport(args: {
     condition: f.visible_condition,
     description: f.condition_description ?? null,
     severity: f.severity,
+    roofPlane: f.roof_plane,
+    detectionSource: f.detection_source,
     waterExposureConcern: f.water_exposure_concern,
     limitations: f.limitations ?? null,
     recommendedVerification: f.recommended_verification ?? null,
     evidencePhotoPaths: (evidenceByFinding.get(f.id) ?? [])
       .map((e) => e.storage_path)
       .filter((p): p is string => !!p),
+    evidence: (evidenceByFinding.get(f.id) ?? []).filter((e) => !!e.storage_path).map((e) => ({
+      evidenceId: e.id, photoId: e.photo_id, storagePath: e.storage_path ?? '',
+      source: e.annotation_source, annotations: parseAnnotationSet(e.annotation),
+    })),
   });
 
   const damage = findings.filter((f) => !isNoDamageFinding(f));
@@ -156,6 +177,8 @@ export function composeReport(args: {
     executiveSummary,
     buildings,
     noDamageAreas: noDamage.map((f) => `${f.building_label?.trim() || 'Unassigned building'} — ${f.component}: ${f.visible_condition}`),
+    noDamageFindings: noDamage.map(toEntry),
+    siteOverview: args.siteOverview ?? null,
     priorityCounts,
     waterEntryConcerns,
     limitations,
@@ -186,5 +209,5 @@ function buildExecutiveSummary(
 
 /** Every finding entry must trace to at least one original photo. */
 export function findUntraceableEntries(report: PhotoIntelligenceReport): ReportFindingEntry[] {
-  return report.buildings.flatMap((b) => b.findings).filter((e) => e.evidencePhotoPaths.length === 0);
+  return [...report.buildings.flatMap((b) => b.findings), ...(report.noDamageFindings ?? [])].filter((e) => e.evidencePhotoPaths.length === 0);
 }

@@ -14,7 +14,7 @@ describe('ai-image-analyzer provider adapter', () => {
     expect(batch.proposals).toHaveLength(1);
     expect(batch.proposals[0].detectionSource).toBe('ai');
     expect(batch.proposals[0].reviewStatus).toBe('pending');
-    expect(batch.proposals[0].confidence).toBe(0.9);
+    expect(batch.proposals[0].confidence).toBeNull(); // Severity is not confidence.
   });
 
   it('rejects coordinate-less observations with a reason and warns — never invents geometry', () => {
