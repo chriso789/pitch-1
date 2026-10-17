@@ -68,6 +68,23 @@ export async function listEvidence(findingId: string): Promise<FindingEvidence[]
 }
 
 /**
+ * Persist annotation geometry on an evidence row. Geometry only — the
+ * original photo bytes are never touched. `annotation_source` records how
+ * the marks were made ('manual' for the editor, 'ai' for engine proposals,
+ * 'reference_label' for imported report labels).
+ */
+export async function saveEvidenceAnnotations(
+  evidenceId: string,
+  annotation: Record<string, unknown>,
+  source: DetectionSource = 'manual',
+): Promise<void> {
+  const { error } = await (supabase.from as any)('photo_finding_evidence')
+    .update({ annotation, annotation_source: source })
+    .eq('id', evidenceId);
+  if (error) throw error;
+}
+
+/**
  * Record a human review action and apply the resulting status.
  * Approval is enforced by the photo_finding_approval_guard trigger: the review
  * row must exist (with reviewed_by = auth user) before the finding flips to approved.
