@@ -2,10 +2,10 @@
 // Legacy `ai-*` one-offs forward here via shims.
 
 import { createRouter, serveRouter, jsonOk, jsonErr, requireAuth, requireTenant } from "../_shared/router.ts";
-import { handle as errorFixerHandle } from "../ai-error-fixer/handler.ts";
-import { handle as imageAnalyzerHandle } from "../ai-image-analyzer/handler.ts";
-import { handle as commandProcessorHandle } from "../ai-command-processor/handler.ts";
-import { handle as adminAgentHandle } from "../ai-admin-agent/handler.ts";
+import { handle as errorFixerHandle } from "./handlers/error-fixer.ts";
+import { handle as imageAnalyzerHandle } from "./handlers/image-analyzer.ts";
+import { handle as commandProcessorHandle } from "./handlers/command-processor.ts";
+import { handle as adminAgentHandle } from "./handlers/admin-agent.ts";
 
 const app = createRouter("ai-api");
 
