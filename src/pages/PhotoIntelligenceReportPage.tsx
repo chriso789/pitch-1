@@ -132,7 +132,7 @@ export default function PhotoIntelligenceReportPage() {
           return new Uint8Array(await response.arrayBuffer());
         },
       });
-      const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+      const url = URL.createObjectURL(new Blob([new Uint8Array(bytes).buffer], { type: 'application/pdf' }));
       const a = document.createElement('a');
       a.href = url; a.download = `inspection-report-v${selectedVersion.version}.pdf`; a.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
