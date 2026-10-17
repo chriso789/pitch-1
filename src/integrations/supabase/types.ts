@@ -38537,6 +38537,199 @@ export type Database = {
           },
         ]
       }
+      photo_finding_evidence: {
+        Row: {
+          annotation: Json | null
+          annotation_source: string
+          created_at: string
+          created_by: string | null
+          evidence_role: string
+          finding_id: string
+          id: string
+          photo_id: string | null
+          storage_path: string | null
+          tenant_id: string
+        }
+        Insert: {
+          annotation?: Json | null
+          annotation_source?: string
+          created_at?: string
+          created_by?: string | null
+          evidence_role?: string
+          finding_id: string
+          id?: string
+          photo_id?: string | null
+          storage_path?: string | null
+          tenant_id: string
+        }
+        Update: {
+          annotation?: Json | null
+          annotation_source?: string
+          created_at?: string
+          created_by?: string | null
+          evidence_role?: string
+          finding_id?: string
+          id?: string
+          photo_id?: string | null
+          storage_path?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "photo_finding_evidence_finding_id_fkey"
+            columns: ["finding_id"]
+            isOneToOne: false
+            referencedRelation: "photo_findings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      photo_finding_reviews: {
+        Row: {
+          action: string
+          created_at: string
+          finding_id: string
+          id: string
+          new_status: string | null
+          notes: string | null
+          previous_status: string | null
+          reviewed_by: string
+          tenant_id: string
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          finding_id: string
+          id?: string
+          new_status?: string | null
+          notes?: string | null
+          previous_status?: string | null
+          reviewed_by: string
+          tenant_id: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          finding_id?: string
+          id?: string
+          new_status?: string | null
+          notes?: string | null
+          previous_status?: string | null
+          reviewed_by?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "photo_finding_reviews_finding_id_fkey"
+            columns: ["finding_id"]
+            isOneToOne: false
+            referencedRelation: "photo_findings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      photo_findings: {
+        Row: {
+          ai_confidence: number | null
+          ai_model_version: string | null
+          approved_at: string | null
+          approved_by: string | null
+          building_label: string | null
+          component: string
+          condition_description: string | null
+          created_at: string
+          created_by: string | null
+          detection_source: string
+          elevation: string | null
+          estimate_link_id: string | null
+          evidence_quality: string | null
+          finding_ref: string
+          id: string
+          job_id: string | null
+          limitations: string | null
+          material: string | null
+          measured_quantity: number | null
+          measured_unit: string | null
+          measurement_source: string | null
+          project_id: string | null
+          recommended_verification: string | null
+          review_status: string
+          roof_plane: string | null
+          severity: string
+          tenant_id: string
+          updated_at: string
+          urgency: string
+          visible_condition: string
+          water_exposure_concern: boolean
+        }
+        Insert: {
+          ai_confidence?: number | null
+          ai_model_version?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          building_label?: string | null
+          component?: string
+          condition_description?: string | null
+          created_at?: string
+          created_by?: string | null
+          detection_source?: string
+          elevation?: string | null
+          estimate_link_id?: string | null
+          evidence_quality?: string | null
+          finding_ref: string
+          id?: string
+          job_id?: string | null
+          limitations?: string | null
+          material?: string | null
+          measured_quantity?: number | null
+          measured_unit?: string | null
+          measurement_source?: string | null
+          project_id?: string | null
+          recommended_verification?: string | null
+          review_status?: string
+          roof_plane?: string | null
+          severity?: string
+          tenant_id: string
+          updated_at?: string
+          urgency?: string
+          visible_condition?: string
+          water_exposure_concern?: boolean
+        }
+        Update: {
+          ai_confidence?: number | null
+          ai_model_version?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          building_label?: string | null
+          component?: string
+          condition_description?: string | null
+          created_at?: string
+          created_by?: string | null
+          detection_source?: string
+          elevation?: string | null
+          estimate_link_id?: string | null
+          evidence_quality?: string | null
+          finding_ref?: string
+          id?: string
+          job_id?: string | null
+          limitations?: string | null
+          material?: string | null
+          measured_quantity?: number | null
+          measured_unit?: string | null
+          measurement_source?: string | null
+          project_id?: string | null
+          recommended_verification?: string | null
+          review_status?: string
+          roof_plane?: string | null
+          severity?: string
+          tenant_id?: string
+          updated_at?: string
+          urgency?: string
+          visible_condition?: string
+          water_exposure_concern?: boolean
+        }
+        Relationships: []
+      }
       pipeline_activities: {
         Row: {
           activity_type: string
