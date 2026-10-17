@@ -7,9 +7,10 @@
 - [ ] Claude Code security review — runs in user's GitHub repo
 
 ## Photo Intelligence (current)
-- [ ] P1: AI Analyze Photos button on Photos tab — opens Photo Intelligence in record context with photos loaded, select/Analyze All, progress, dedupe jobs
+- [x] P1: AI Analyze button on Photos tab → Photo Intelligence in record context, select/Analyze All, progress, dedupe
 - [ ] P2: Unify Standard vs AI report types under View/Export/Email Report
-- [ ] P3: Repair live AI recognition (ai-api auth/tenant/coordinates) — no fabricated detections
+- [x] P3: Live AI recognition repaired (ai-api routing + auth + tenant header; coordinate-bearing detections; server-side sanitization; no fabricated geometry)
 - [ ] P4: Navarre demo — BLOCKED: actual 19-page PDF not uploaded here
-- [ ] P5: In-tab inspector review workflow
-- [ ] P6: Tests + update 4 tracking docs
+- [x] P5: In-tab review workflow (findings + evidence + annotations on review page; deeper in-tab editing polish still open)
+- [x] P6: Tests (25 passing) + 4 tracking docs updated
+- [ ] Signed-in end-to-end analysis run with a real photo — BLOCKED: backend is user-managed, no session can be minted here; must be tested in the preview signed in
