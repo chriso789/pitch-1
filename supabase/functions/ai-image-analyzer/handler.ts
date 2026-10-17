@@ -205,6 +205,33 @@ export const handle = async (req) => {
       };
     }
 
+    // Sanitize detections: keep only entries with REAL model-supplied
+    // normalized coordinates. Never synthesize, shift, or clamp geometry —
+    // a detection without valid coordinates is passed through without them
+    // so the client rejects it as unplaceable instead of trusting a guess.
+    const validCoord = (n: unknown) => typeof n === 'number' && isFinite(n) && n >= 0 && n <= 1;
+    const rawDetections = Array.isArray(analysis.detections) ? analysis.detections : [];
+    analysis.detections = rawDetections
+      .filter((d: any) => d && typeof d === 'object')
+      .map((d: any) => {
+        const bbox = Array.isArray(d.bbox) && d.bbox.length === 4 && d.bbox.every(validCoord)
+          && (d.bbox[2] > 0) && (d.bbox[3] > 0) && (d.bbox[0] + d.bbox[2] <= 1) && (d.bbox[1] + d.bbox[3] <= 1)
+          ? d.bbox : undefined;
+        const polygon = Array.isArray(d.polygon) && d.polygon.length >= 3
+          && d.polygon.every((p: any) => Array.isArray(p) && p.length >= 2 && validCoord(p[0]) && validCoord(p[1]))
+          ? d.polygon.map((p: any) => [p[0], p[1]]) : undefined;
+        return {
+          component: typeof d.component === 'string' ? d.component : 'other',
+          condition: typeof d.condition === 'string' ? d.condition : 'other',
+          description: typeof d.description === 'string' ? d.description : '',
+          severity: typeof d.severity === 'string' ? d.severity : 'unknown',
+          confidence: typeof d.confidence === 'number' && isFinite(d.confidence)
+            ? Math.min(1, Math.max(0, d.confidence)) : undefined,
+          ...(bbox ? { bbox } : {}),
+          ...(polygon ? { polygon } : {}),
+        };
+      });
+
     // Add metadata
     analysis.analysis_metadata = {
       step_id,

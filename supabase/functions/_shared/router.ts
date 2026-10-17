@@ -200,7 +200,10 @@ export async function requireTenant(c: Context<RouterEnv>, next: Next) {
     .select("tenant_id,active_tenant_id")
     .eq("id", userId)
     .maybeSingle();
-  const requestedTenantId = c.req.header("x-tenant-id")?.trim() || null;
+  // The browser client sends x-pitch-tenant for per-tab company selection;
+  // x-tenant-id is the older explicit header. Both are validated against
+  // the user's actual company access below — neither is trusted blindly.
+  const requestedTenantId = c.req.header("x-tenant-id")?.trim() || c.req.header("x-pitch-tenant")?.trim() || null;
   if (requestedTenantId) {
     const hasProfileAccess = profileResult.data?.tenant_id === requestedTenantId || profileResult.data?.active_tenant_id === requestedTenantId;
     const { data: requestedAccess } = hasProfileAccess
