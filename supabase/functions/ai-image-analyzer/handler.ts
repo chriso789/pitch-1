@@ -137,6 +137,7 @@ export const handle = async (req) => {
                       "polygon": [[0.0, 0.0]]
                     }
                   ],
+                  "detections_notes": "bbox is [x, y, width, height] and polygon points are [x, y], all normalized 0..1 from the top-left; include bbox and/or polygon per detection, never both absent",
                   "measurements": {
                     "estimated_pitch": "degrees or ratio if determinable",
                     "visible_area": "rough size estimate if applicable"
@@ -159,7 +160,8 @@ export const handle = async (req) => {
           }
         ],
         max_tokens: 1500,
-        temperature: 0.3
+        temperature: 0.3,
+        response_format: { type: 'json_object' }
       }),
     });
 
