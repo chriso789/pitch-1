@@ -56,3 +56,8 @@
 - Analyzer handler now requests JSON output, prompts for mandatory normalized coordinates + confidence, and sanitizes detections server-side: only model-supplied in-bounds bbox/polygon geometry is kept; nothing is fabricated or clamped into place.
 - Adapter maps structured `detections` (bbox/polygon, damage category, confidence, no_visible_damage flag); coordinate-less candidates are rejected downstream with reasons.
 - Tests: 7 adapter tests + 18 recognition/findings/report tests pass. Signed-in end-to-end run with a real photo remains PENDING (no session can be minted for this user-managed backend); Navarre reference demo still BLOCKED on the actual 19-page PDF.
+
+## Update 2026-10-17 — Training pipeline foundation
+- Added `src/lib/photo-intelligence/training/` (taxonomy per roof system, dataset versioning, COCO/YOLO export, COCO re-import, property-grouped split, per-system evaluation with ECE and promotion gates) and `worker/training/train_detector.py` (open-source YOLO-seg, CPU default, checkpoint resume, ONNX export + manifest marked `trained_unvalidated`).
+- `npx vitest run` Photo Intelligence: 8 files, 57 passed (51 prior + 6 new), 0 failed.
+- Not done yet: database tables + labeling queue UI, dataset dashboard, evaluation CLI wiring, model registry/rollback. No model trained; no infrastructure provisioned.
