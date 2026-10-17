@@ -319,6 +319,13 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       path: "/marketing",
       icon: BarChart,
       description: "Marketing costs & inbound attribution"
+    },
+    {
+      name: "Photo Intelligence",
+      href: "photo-intelligence",
+      path: "/photo-intelligence",
+      icon: Camera,
+      description: "Damage findings review & reports"
     }
   ].filter(item => !item.featureKey || hasFeature(item.featureKey));
 
