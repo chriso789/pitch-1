@@ -17,3 +17,6 @@ A PITCH photo-intelligence report is acceptable only when ALL hold:
 Inspector uploads a property photo collection → PITCH proposes candidate components/damage grouped by building → inspector approves/edits → professional PDF report generated → approved quantities with validated sources optionally flow to estimating with estimator approval.
 
 Current state: NOT met. Phase 1 (data model) only; recognition engine and UI not built.
+
+## Status 2026-10-17
+Report composition model (`reportModel.ts`) enforces criteria 1 (unapproved findings throw), traceability checks (`findUntraceableEntries`), and no-damage documentation. PDF rendering, preview/edit UI, site overview, and evidence appendix pages are not yet built — no report has been generated or accepted.

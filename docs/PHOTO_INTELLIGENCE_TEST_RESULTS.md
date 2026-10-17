@@ -12,3 +12,9 @@
 - Building/finding association ≥98%
 - 100% of estimate quantities have approved measurement source
 - 100% of published findings human-reviewed; 100% originals preserved
+
+## 2026-10-17 — Phase 3 + Phase 6 + Phase 2 interface (sandbox)
+- `photo-intelligence-annotations.test.ts`: 18/18 passed — geometry validation, polygon vertex edit/insert/delete, hit-testing, translation clamping, callout numbering, undo/redo, geometry-only JSON round-trip (asserts no image bytes are stored).
+- `photo-intelligence-report.test.ts`: 6/6 passed — unapproved findings block report; severity sorting; no-damage areas separated; untraceable-photo detection; finding→photo traceability; approval metadata never assumed.
+- `photo-intelligence-recognition.test.ts`: 8/8 passed — pixel→normalized conversion, forced ai/pending provenance, rejection reasons, confidence clamping, cross-photo grouping, stub provider end-to-end. NOTE: stub provider only — no real vision model has been run; no detection capability is claimed.
+- Build: OK. Signed-in save/cross-company tests: still pending (no test accounts).
