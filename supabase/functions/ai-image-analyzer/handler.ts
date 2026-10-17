@@ -48,14 +48,23 @@ export const handle = async (req) => {
         analysisPrompt = `Analyze this photo for roofing damage and issues. This is a ${step_title} photo.
 
         Please identify and categorize any:
-        1. DAMAGE TYPES: Missing/damaged shingles, exposed decking, nail pops, etc.
+        1. DAMAGE TYPES: Missing/damaged shingles, torn tabs, ridge cap loss, open ridge vents, displaced siding, exposed sheathing, torn house wrap, exposed underlayment, exposed decking, nail pops, etc.
         2. SEVERITY: Rate each issue (minor, moderate, severe, critical)
         3. WATER DAMAGE: Signs of leaks, water stains, or moisture issues
         4. WEAR PATTERNS: Normal aging vs. premature wear
         5. SAFETY HAZARDS: Any immediate concerns requiring urgent attention
         6. REPAIR SCOPE: Estimate if repairs are patch work or require larger sections
 
-        Be specific about locations and extent of damage for accurate repair estimates.`;
+        LOCALIZATION IS MANDATORY: every distinct observation in "detections" MUST include
+        normalized image coordinates (bbox and/or polygon) marking exactly where in the
+        image the condition is visible. Coordinates are fractions of image width/height
+        in the range 0..1, origin at the TOP-LEFT corner. If you cannot localize an
+        observation to a specific region, leave it OUT of "detections" (you may still
+        mention it in "insights"). NEVER invent or approximate coordinates you are not
+        confident about, and never fabricate damage that is not visible in the pixels.
+        Include a "confidence" (0..1) for every detection. If the visible area shows no
+        damage, return one detection with condition "no_visible_damage" covering the
+        visible roof area instead of an empty list.`;
         break;
 
       case 'components':
