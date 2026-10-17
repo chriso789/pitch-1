@@ -115,7 +115,7 @@ export function fromCoco(coco: ReturnType<typeof toCoco>): { regions: Record<str
     const im = byId.get(a.image_id); const cls = cats.get(a.category_id);
     if (!im || !cls || !ALL_DAMAGE_CLASSES.includes(cls)) { errors.push(`annotation ${a.id}: unknown image or class`); continue; }
     const seg: number[] = a.segmentation?.[0] ?? [];
-    let polygon = [] as { x: number; y: number }[];
+    let polygon: { x: number; y: number }[] = [];
     for (let k = 0; k + 1 < seg.length; k += 2) polygon.push({ x: seg[k] / im.width, y: seg[k + 1] / im.height });
     if (polygon.length < 3) {
       const [x, y, w, h] = a.bbox;
