@@ -59,3 +59,36 @@ describe('ai-image-analyzer provider adapter', () => {
     expect(batch.proposals[0].component).toBe('Ridge vent');
   });
 });
+
+import { mapAnalyzerResponse } from '@/lib/photo-intelligence/providers/aiImageAnalyzerProvider';
+
+describe('structured detections contract (repaired service)', () => {
+  it('maps model-supplied bbox detections with confidence and damage category', () => {
+    const result = mapAnalyzerResponse({
+      detections: [{
+        component: 'shingles', condition: 'missing_shingles',
+        description: 'Missing shingles on south slope', severity: 'severe',
+        confidence: 0.82, bbox: [0.1, 0.2, 0.3, 0.25],
+      }],
+    }, 'gpt-4o-mini');
+    expect(result.detections).toHaveLength(1);
+    expect(result.detections[0].bboxNorm).toEqual({ x: 0.1, y: 0.2, width: 0.3, height: 0.25 });
+    expect(result.detections[0].damageCategory).toBe('missing_shingles');
+    expect(result.detections[0].confidence).toBe(0.82);
+  });
+
+  it('flags no_visible_damage detections and rejects coordinate-less detections downstream', () => {
+    const withCoords = mapAnalyzerResponse({
+      detections: [{ component: 'roof', condition: 'no_visible_damage', bbox: [0, 0, 1, 1], confidence: 0.9 }],
+    }, 'gpt-4o-mini');
+    expect(withCoords.detections[0].noVisibleDamage).toBe(true);
+
+    const noCoords = mapAnalyzerResponse({
+      detections: [{ component: 'siding', condition: 'displaced_siding', confidence: 0.7 }],
+    }, 'gpt-4o-mini');
+    const photo = { photoId: 'p1', imageRef: 'data:image/jpeg;base64,x' };
+    const batch = validateDetections(noCoords, photo);
+    expect(batch.proposals).toHaveLength(0);
+    expect(batch.rejected).toHaveLength(1);
+  });
+});
