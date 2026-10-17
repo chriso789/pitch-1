@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { useAuth } from '@/contexts/AuthContext';
 import { listFindings, listEvidence, reviewFinding, groupByBuilding, saveEvidenceAnnotations, evidencePhotoUrl, type PhotoFinding, type FindingEvidence } from '@/lib/photo-intelligence/findings';
+import { loadRecordPhotos, analyzeRecordPhotos, type RecordPhoto, type AnalysisProgress } from '@/lib/photo-intelligence/analyzePhotos';
 import { PhotoAnnotationEditor } from '@/components/photo-intelligence/PhotoAnnotationEditor';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Pencil } from 'lucide-react';
@@ -22,16 +24,54 @@ export default function PhotoIntelligenceReviewPage() {
   const tenantId = useEffectiveTenantId();
   const { user } = useAuth();
   const qc = useQueryClient();
+  const [searchParams] = useSearchParams();
+  const leadId = searchParams.get('leadId') ?? undefined;
+  const projectId = searchParams.get('projectId') ?? undefined;
+  const contactId = searchParams.get('contactId') ?? undefined;
+  const recordScope = leadId || projectId || contactId ? { leadId, projectId, contactId } : null;
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [annotating, setAnnotating] = useState<{ evidence: FindingEvidence; finding: PhotoFinding } | null>(null);
   const [savingAnn, setSavingAnn] = useState(false);
+  const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set());
+  const [analyzing, setAnalyzing] = useState(false);
+  const [progress, setProgress] = useState<AnalysisProgress | null>(null);
 
   const { data: findings = [], isLoading } = useQuery({
-    queryKey: ['photo-findings', tenantId],
-    queryFn: () => listFindings(tenantId!),
+    queryKey: ['photo-findings', tenantId, projectId ?? 'all'],
+    queryFn: () => listFindings(tenantId!, projectId ? { projectId } : {}),
     enabled: !!tenantId,
   });
+
+  const { data: recordPhotos = [] } = useQuery<RecordPhoto[]>({
+    queryKey: ['photo-intel-record-photos', tenantId, leadId, projectId, contactId],
+    queryFn: () => loadRecordPhotos(tenantId!, recordScope!),
+    enabled: !!tenantId && !!recordScope,
+  });
+
+  const runAnalysis = async (photos: RecordPhoto[]) => {
+    if (!tenantId || !user || photos.length === 0 || analyzing) return;
+    setAnalyzing(true);
+    setProgress(null);
+    try {
+      const outcome = await analyzeRecordPhotos(tenantId, user.id, photos, {
+        projectId: projectId ?? null,
+        onProgress: setProgress,
+      });
+      if (outcome.findingsCreated > 0) {
+        toast.success(`${outcome.findingsCreated} finding${outcome.findingsCreated === 1 ? '' : 's'} ready for review`);
+      } else if (outcome.errors.length === 0 && outcome.proposals === 0) {
+        toast.info('Analysis completed — no placeable damage candidates detected');
+      }
+      for (const err of outcome.errors) toast.error(`${err.fileName}: ${err.message}`);
+      if (outcome.skippedDuplicates > 0) toast.info(`${outcome.skippedDuplicates} photo${outcome.skippedDuplicates === 1 ? '' : 's'} skipped (already analyzed)`);
+      qc.invalidateQueries({ queryKey: ['photo-findings', tenantId] });
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Analysis failed');
+    } finally {
+      setAnalyzing(false);
+    }
+  };
 
   const act = async (f: PhotoFinding, action: 'approve' | 'reject' | 'needs_closeup') => {
     if (!user) return;
@@ -77,7 +117,7 @@ export default function PhotoIntelligenceReviewPage() {
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">Photo Intelligence — Inspector Review</h1>
           <Button variant="outline" size="sm" asChild>
-            <a href="/photo-intelligence/report">View report</a>
+            <a href={`/photo-intelligence/report${projectId ? `?projectId=${projectId}` : ''}`}>View report</a>
           </Button>
         </div>
         <p className="text-muted-foreground text-sm mt-1">
@@ -85,6 +125,59 @@ export default function PhotoIntelligenceReviewPage() {
           AI proposals are unverified until you approve them.
         </p>
       </div>
+
+      {recordScope && (
+        <Card>
+          <CardHeader><CardTitle className="text-lg">Analyze this record's photos</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            {recordPhotos.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No photos found for this record yet. Upload photos on the record's Photos tab first.</p>
+            ) : (
+              <>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" disabled={analyzing} onClick={() => runAnalysis(recordPhotos)}>
+                    {analyzing ? 'Analyzing…' : `Analyze All (${recordPhotos.length})`}
+                  </Button>
+                  <Button
+                    size="sm" variant="outline" disabled={analyzing || selectedPhotos.size === 0}
+                    onClick={() => runAnalysis(recordPhotos.filter((p) => selectedPhotos.has(p.id)))}
+                  >
+                    Analyze Selected ({selectedPhotos.size})
+                  </Button>
+                </div>
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                  {recordPhotos.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setSelectedPhotos((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(p.id)) next.delete(p.id); else next.add(p.id);
+                        return next;
+                      })}
+                      className={`relative border rounded overflow-hidden aspect-square ${selectedPhotos.has(p.id) ? 'ring-2 ring-primary' : ''}`}
+                      title={p.file_name ?? 'Photo'}
+                    >
+                      {p.file_url && <img src={p.file_url} alt={p.file_name ?? 'Photo'} className="object-cover w-full h-full" />}
+                      {selectedPhotos.has(p.id) && (
+                        <span className="absolute top-1 right-1 bg-primary text-primary-foreground rounded-full p-0.5"><Check className="h-3 w-3" /></span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+                {progress && (
+                  <p className="text-sm text-muted-foreground">
+                    Analyzed {progress.done}/{progress.total}
+                    {progress.currentFile ? ` — ${progress.currentFile}` : ''}
+                    {progress.proposals > 0 ? ` · ${progress.proposals} candidate${progress.proposals === 1 ? '' : 's'}` : ''}
+                    {progress.errors.length > 0 ? ` · ${progress.errors.length} failed` : ''}
+                  </p>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {isLoading && <p className="text-muted-foreground">Loading findings…</p>}
       {!isLoading && findings.length === 0 && (

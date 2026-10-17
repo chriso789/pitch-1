@@ -38,3 +38,12 @@ BLOCKED: only the plan text and one screenshot were uploaded — the Navarre rep
 - Tests: 49/49 Photo Intelligence tests passed; security harness: 1 status check passed, 7 live cases skipped. Six-page synthetic report rendered and inspected in full, searchable accented text/approved version/reference labels verified via pdftotext. Synthetic QA is not the Navarre demonstration.
 - Navarre upload check: current attachment is `Lovable_has_made_substantial_progress_but_its_pasted.md` (instructions); no 7552/Navarre PDF present. A file uploaded to a separate ChatGPT conversation is not accessible here.
 - Nothing published; no database policies or live AI service changed. Signed-in export/save/overview and two-company tests remain pending.
+
+## Update 2026-10-17 — Photos-tab AI Analysis wiring (Phases 2 + 3 integration)
+- Photos tab now has an "AI Analyze" action that opens Photo Intelligence scoped to the current lead/project/contact photos (`PhotoControlCenter.tsx` → `/photo-intelligence?leadId|projectId|contactId`).
+- Review page (`PhotoIntelligenceReviewPage.tsx`) loads the record's photos, supports per-photo selection or Analyze All, shows live progress/errors, skips already-analyzed photos, and persists findings as detection_source=ai / review_status=pending linked to the project.
+- Orchestration in `src/lib/photo-intelligence/analyzePhotos.ts`; findings may now carry `project_id`/`job_id` via `persistProposals` opts.
+- ai-api routing repaired: `serveRouter` dispatch, `/image/analyze` now behind requireAuth + requireTenant (verified live: 401 without/with invalid token); `x-pitch-tenant` accepted as tenant header (validated against user access).
+- Analyzer handler now requests JSON output, prompts for mandatory normalized coordinates + confidence, and sanitizes detections server-side: only model-supplied in-bounds bbox/polygon geometry is kept; nothing is fabricated or clamped into place.
+- Adapter maps structured `detections` (bbox/polygon, damage category, confidence, no_visible_damage flag); coordinate-less candidates are rejected downstream with reasons.
+- Tests: 7 adapter tests + 18 recognition/findings/report tests pass. Signed-in end-to-end run with a real photo remains PENDING (no session can be minted for this user-managed backend); Navarre reference demo still BLOCKED on the actual 19-page PDF.

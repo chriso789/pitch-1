@@ -48,14 +48,23 @@ export const handle = async (req) => {
         analysisPrompt = `Analyze this photo for roofing damage and issues. This is a ${step_title} photo.
 
         Please identify and categorize any:
-        1. DAMAGE TYPES: Missing/damaged shingles, exposed decking, nail pops, etc.
+        1. DAMAGE TYPES: Missing/damaged shingles, torn tabs, ridge cap loss, open ridge vents, displaced siding, exposed sheathing, torn house wrap, exposed underlayment, exposed decking, nail pops, etc.
         2. SEVERITY: Rate each issue (minor, moderate, severe, critical)
         3. WATER DAMAGE: Signs of leaks, water stains, or moisture issues
         4. WEAR PATTERNS: Normal aging vs. premature wear
         5. SAFETY HAZARDS: Any immediate concerns requiring urgent attention
         6. REPAIR SCOPE: Estimate if repairs are patch work or require larger sections
 
-        Be specific about locations and extent of damage for accurate repair estimates.`;
+        LOCALIZATION IS MANDATORY: every distinct observation in "detections" MUST include
+        normalized image coordinates (bbox and/or polygon) marking exactly where in the
+        image the condition is visible. Coordinates are fractions of image width/height
+        in the range 0..1, origin at the TOP-LEFT corner. If you cannot localize an
+        observation to a specific region, leave it OUT of "detections" (you may still
+        mention it in "insights"). NEVER invent or approximate coordinates you are not
+        confident about, and never fabricate damage that is not visible in the pixels.
+        Include a "confidence" (0..1) for every detection. If the visible area shows no
+        damage, return one detection with condition "no_visible_damage" covering the
+        visible roof area instead of an empty list.`;
         break;
 
       case 'components':
@@ -117,6 +126,18 @@ export const handle = async (req) => {
                       "recommendation": "specific action needed"
                     }
                   ],
+                  "detections": [
+                    {
+                      "component": "shingles|ridge_cap|ridge_vent|siding|sheathing|house_wrap|underlayment|flashing|gutters|roof_decking|other",
+                      "condition": "missing_shingles|torn_tabs|ridge_cap_loss|open_ridge_vent|displaced_siding|exposed_sheathing|torn_house_wrap|exposed_underlayment|granule_loss|nail_pops|water_damage|no_visible_damage|other",
+                      "description": "what is visibly wrong at this location",
+                      "severity": "minor|moderate|severe|critical",
+                      "confidence": 0.0,
+                      "bbox": [0.0, 0.0, 0.0, 0.0],
+                      "polygon": [[0.0, 0.0]]
+                    }
+                  ],
+                  "detections_notes": "bbox is [x, y, width, height] and polygon points are [x, y], all normalized 0..1 from the top-left; include bbox and/or polygon per detection, never both absent",
                   "measurements": {
                     "estimated_pitch": "degrees or ratio if determinable",
                     "visible_area": "rough size estimate if applicable"
@@ -139,7 +160,8 @@ export const handle = async (req) => {
           }
         ],
         max_tokens: 1500,
-        temperature: 0.3
+        temperature: 0.3,
+        response_format: { type: 'json_object' }
       }),
     });
 
@@ -182,6 +204,33 @@ export const handle = async (req) => {
         estimated_costs: {}
       };
     }
+
+    // Sanitize detections: keep only entries with REAL model-supplied
+    // normalized coordinates. Never synthesize, shift, or clamp geometry —
+    // a detection without valid coordinates is passed through without them
+    // so the client rejects it as unplaceable instead of trusting a guess.
+    const validCoord = (n: unknown) => typeof n === 'number' && isFinite(n) && n >= 0 && n <= 1;
+    const rawDetections = Array.isArray(analysis.detections) ? analysis.detections : [];
+    analysis.detections = rawDetections
+      .filter((d: any) => d && typeof d === 'object')
+      .map((d: any) => {
+        const bbox = Array.isArray(d.bbox) && d.bbox.length === 4 && d.bbox.every(validCoord)
+          && (d.bbox[2] > 0) && (d.bbox[3] > 0) && (d.bbox[0] + d.bbox[2] <= 1) && (d.bbox[1] + d.bbox[3] <= 1)
+          ? d.bbox : undefined;
+        const polygon = Array.isArray(d.polygon) && d.polygon.length >= 3
+          && d.polygon.every((p: any) => Array.isArray(p) && p.length >= 2 && validCoord(p[0]) && validCoord(p[1]))
+          ? d.polygon.map((p: any) => [p[0], p[1]]) : undefined;
+        return {
+          component: typeof d.component === 'string' ? d.component : 'other',
+          condition: typeof d.condition === 'string' ? d.condition : 'other',
+          description: typeof d.description === 'string' ? d.description : '',
+          severity: typeof d.severity === 'string' ? d.severity : 'unknown',
+          confidence: typeof d.confidence === 'number' && isFinite(d.confidence)
+            ? Math.min(1, Math.max(0, d.confidence)) : undefined,
+          ...(bbox ? { bbox } : {}),
+          ...(polygon ? { polygon } : {}),
+        };
+      });
 
     // Add metadata
     analysis.analysis_metadata = {
