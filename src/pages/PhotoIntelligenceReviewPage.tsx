@@ -2,7 +2,10 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { useAuth } from '@/contexts/AuthContext';
-import { listFindings, reviewFinding, groupByBuilding, type PhotoFinding } from '@/lib/photo-intelligence/findings';
+import { listFindings, listEvidence, reviewFinding, groupByBuilding, saveEvidenceAnnotations, evidencePhotoUrl, type PhotoFinding, type FindingEvidence } from '@/lib/photo-intelligence/findings';
+import { PhotoAnnotationEditor } from '@/components/photo-intelligence/PhotoAnnotationEditor';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Pencil } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -21,6 +24,8 @@ export default function PhotoIntelligenceReviewPage() {
   const qc = useQueryClient();
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
+  const [annotating, setAnnotating] = useState<{ evidence: FindingEvidence; finding: PhotoFinding } | null>(null);
+  const [savingAnn, setSavingAnn] = useState(false);
 
   const { data: findings = [], isLoading } = useQuery({
     queryKey: ['photo-findings', tenantId],
