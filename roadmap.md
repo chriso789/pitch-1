@@ -1,10 +1,11 @@
 # Security Remediation Roadmap (per assessment doc)
 
 ## Photo Intelligence continuation (2026-10-17)
-- [ ] Programmatic PDF export from the selected approved saved version, with annotated evidence, original appendix, branding and pagination.
-- [ ] Reviewable aerial overview with image-relative building markers; no invented geographic coordinates or measurements.
-- [ ] Independent recognition benchmark harness; real recognition remains pending a suitable original image and authorized session.
-- [ ] Update all four Photo Intelligence tracking documents and run relevant tests.
+- [x] Programmatic PDF export from the selected approved saved version, with annotated evidence, original appendix, branding and pagination (synthetic acceptance only).
+- [x] Reviewable aerial overview with image-relative building markers; no invented geographic coordinates or measurements (signed-in acceptance pending).
+- [x] Independent recognition benchmark harness; real accuracy remains pending suitable originals and authorized session.
+- [x] Update all four Photo Intelligence tracking documents and run relevant tests (49 passed).
+- [ ] Live recognition — blocked: original photos and authorized test session absent; existing analyzer dispatch/auth and coordinate contract need verified repair before activation.
 - [ ] Navarre demonstration — blocked: supplied continuation Markdown references a PDF, but no Navarre PDF is mounted in uploads.
 - [ ] Authenticated save/isolation acceptance — blocked: external unmanaged authentication has no test session.
 

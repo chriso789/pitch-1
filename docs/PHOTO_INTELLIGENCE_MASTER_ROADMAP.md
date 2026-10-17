@@ -22,9 +22,19 @@ Reference benchmark: 7552 Navarre Parkway Storm Damage Photo Report (19 pages, 2
 - Do not claim recognition works until the actual model is tested on unannotated originals against inspector-reviewed labels.
 
 ## Blockers
-- No trained detection/segmentation model exists yet — Phase 2 requires choosing vision models (no purchases without approval).
+- Actual recognition not activated: existing `ai-image-analyzer` does not request coordinates; its legacy shim dispatch and grouped route authentication order need verified repairs before a real POC. Existing gpt-4o-mini selection preserved; no model purchase or live call.
 - Navarre report contains annotated images, not unannotated originals; a true recognition benchmark needs the original drone files.
-- Authenticated end-to-end tests require test accounts (not available in sandbox).
+- Authenticated end-to-end testing unavailable for this externally managed Supabase project; two-company credentials not supplied.
 
 ## Reference demonstration status (2026-10-17)
 BLOCKED: only the plan text and one screenshot were uploaded — the Navarre report PDF containing the 22 photographs is not in the workspace uploads. Import of the reference dataset (22 photos + findings, labeled reference_label) cannot proceed until the PDF or photos are provided.
+
+## Continuation 2026-10-17 02:52 UTC
+- Programmatic PDF exporter: `reportPdf.ts`, `reportExportGuard.ts`, `reportImages.ts`. Embedded Unicode font, company branding, cover, summary, priorities/water-entry concerns, building inventory, annotated evidence with persistent IDs/provenance, original-image appendix, pagination and reopen verification. Browser print removed. Export reads the selected approved saved snapshot, not the current draft. Photo resolution choices prepare export copies only; source files unchanged.
+- `SiteOverviewEditor.tsx`: choose an existing aerial evidence image, attribution, editable numbered building callouts; stored in immutable report versions. Coordinates are image-relative only, not geographic positions or quantities. Actual Navarre map remains blocked on source PDF.
+- Report findings/saved versions filtered to the selected project (`?projectId=`) or unassigned records only. Company branding follows the per-tab selected tenant; draft map resets on company/project change.
+- Recognition safety: provider no longer fabricates confidence from severity; out-of-image geometry rejected; cross-photo merging now requires inspector-verified physical identity. No category-based automatic defect merging.
+- `benchmark.ts`: independent one-to-one IoU/category scoring, hard negatives, duplicate false positives, and pairwise association false merges/splits. Annotated/masked images blocked from independent-accuracy claims. No measured model accuracy yet.
+- Tests: 49/49 Photo Intelligence tests passed; security harness: 1 status check passed, 7 live cases skipped. Six-page synthetic report rendered and inspected in full, searchable accented text/approved version/reference labels verified via pdftotext. Synthetic QA is not the Navarre demonstration.
+- Navarre upload check: current attachment is `Lovable_has_made_substantial_progress_but_its_pasted.md` (instructions); no 7552/Navarre PDF present. A file uploaded to a separate ChatGPT conversation is not accessible here.
+- Nothing published; no database policies or live AI service changed. Signed-in export/save/overview and two-company tests remain pending.
