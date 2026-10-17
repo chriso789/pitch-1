@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
-import { useAuth } from '@/hooks/useAuth';
+import { useAuth } from '@/contexts/AuthContext';
 import { listFindings, reviewFinding, groupByBuilding, type PhotoFinding } from '@/lib/photo-intelligence/findings';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
