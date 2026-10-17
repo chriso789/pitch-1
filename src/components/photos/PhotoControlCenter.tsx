@@ -145,6 +145,15 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
   const [pendingPreviews, setPendingPreviews] = useState<PendingPreview[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const navigate = useNavigate();
+  /** Opens the Photo Intelligence workspace scoped to this record's photos. */
+  const handleOpenAiAnalysis = useCallback(() => {
+    const params = new URLSearchParams();
+    if (leadId) params.set('leadId', leadId);
+    if (projectId) params.set('projectId', projectId);
+    if (contactId) params.set('contactId', contactId);
+    navigate(`/photo-intelligence?${params.toString()}`);
+  }, [navigate, leadId, projectId, contactId]);
 
 
   const projectCoords =
@@ -757,9 +766,19 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
             {selectedPhotos.size > 0 ? `Email (${selectedPhotos.size})` : 'Email Report'}
           </Button>
 
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-11 w-full text-sm sm:h-9 sm:w-auto"
+            onClick={handleOpenAiAnalysis}
+            disabled={photos.length === 0}
+            title="Analyze this record's photos for damage with AI, then review the findings"
+          >
+            <Sparkles className="h-4 w-4 mr-1.5" />
+            AI Analyze
+          </Button>
 
-
-          <div className="hidden flex-1 sm:block" />
+           <div className="hidden flex-1 sm:block" />
 
           {photos.length > 0 && (
             <div className="col-span-2 grid grid-cols-3 gap-2 sm:hidden">
