@@ -94,7 +94,7 @@ export function toCoco(ds: DatasetVersion, subset?: 'train' | 'val') {
   photos.forEach((p, i) => p.regions.forEach((r) => {
     const b = bboxOf(r.polygon);
     const seg = r.polygon.flatMap((q) => [q.x * p.width, q.y * p.height]);
-    annotations.push({ id: annotations.length + 1, image_id: i + 1, category_id: classIndex(r.cls) + 1, bbox: [b.x0 * p.width, b.y0 * p.height, b.w * p.width, b.h * p.height], area: b.w * p.width * b.h * p.height, segmentation: [seg], iscrowd: 0 }));
+    annotations.push({ id: annotations.length + 1, image_id: i + 1, category_id: classIndex(r.cls) + 1, bbox: [b.x0 * p.width, b.y0 * p.height, b.w * p.width, b.h * p.height], area: b.w * p.width * b.h * p.height, segmentation: [seg], iscrowd: 0 });
   });
   return { info: { version: ds.version, date_created: ds.createdAt }, images, annotations, categories: ds.classes.map((c, i) => ({ id: i + 1, name: c })) };
 }
