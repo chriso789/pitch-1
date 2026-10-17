@@ -8,6 +8,7 @@ import { loadRecordPhotos, analyzeRecordPhotos, type RecordPhoto, type AnalysisP
 import { PhotoAnnotationEditor } from '@/components/photo-intelligence/PhotoAnnotationEditor';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Pencil } from 'lucide-react';
+import { BackButton } from '@/shared/components/BackButton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
