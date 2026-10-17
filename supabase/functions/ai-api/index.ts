@@ -33,4 +33,6 @@ app.post("/sales/coach", (c) => jsonErr(c, "not_migrated", "Route scaffolded; lo
 app.post("/crm-agent", (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
 app.post("/homeowner/chat", (c) => jsonErr(c, "not_migrated", "Route scaffolded; logic not yet migrated.", 501));
 
-Deno.serve(app.fetch);
+// serveRouter dispatches x-route / __route to the Hono routes — bare
+// app.fetch returns 404 for every shim and edgeApi caller.
+serveRouter(app);
