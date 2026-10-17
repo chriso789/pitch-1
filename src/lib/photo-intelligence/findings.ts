@@ -80,6 +80,7 @@ export async function persistProposals(
   groups: number[][],
   photoMeta: Map<string, { storagePath: string | null }>,
   userId: string,
+  opts: { projectId?: string | null; jobId?: string | null } = {},
 ): Promise<PhotoFinding[]> {
   const created: PhotoFinding[] = [];
   let seq = 0;
@@ -97,6 +98,8 @@ export async function persistProposals(
       detection_source: 'ai',
       ai_confidence: first.confidence,
       ai_model_version: `${first.providerId}/${first.modelId}`,
+      project_id: opts.projectId ?? null,
+      job_id: opts.jobId ?? null,
     }, userId);
     for (const p of members) {
       const meta = photoMeta.get(p.photoId);
