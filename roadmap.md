@@ -1,5 +1,13 @@
 # Security Remediation Roadmap (per assessment doc)
 
+## Photo Intelligence continuation (2026-10-17)
+- [ ] Programmatic PDF export from the selected approved saved version, with annotated evidence, original appendix, branding and pagination.
+- [ ] Reviewable aerial overview with image-relative building markers; no invented geographic coordinates or measurements.
+- [ ] Independent recognition benchmark harness; real recognition remains pending a suitable original image and authorized session.
+- [ ] Update all four Photo Intelligence tracking documents and run relevant tests.
+- [ ] Navarre demonstration — blocked: supplied continuation Markdown references a PDF, but no Navarre PDF is mounted in uploads.
+- [ ] Authenticated save/isolation acceptance — blocked: external unmanaged authentication has no test session.
+
 1. [x] Verify latest commit contains UltraScan A–F work (228fc1d0c "Completed UltraScan A–E")
 2. [x] Admin API routes server-side auth (adminRoutes.tsx + admin-create-user/admin-delete-user done earlier)
 3. [x] Remove hardcoded identity-based password authorization exception (admin-update-password/handler.ts)
