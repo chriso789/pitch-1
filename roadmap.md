@@ -7,6 +7,11 @@
 - [ ] Claude Code security review — runs in user's GitHub repo
 
 ## Photo Intelligence (current)
+- [ ] M1: Persistent original-photo labeling and independent approval queue
+- [ ] M2: Versioned property-isolated datasets and training readiness dashboard
+- [ ] M3: Licensed model registry, comparison, promotion and rollback audit
+- [ ] Damage-only local CPU/optional GPU training execution and regression tests
+- [ ] Update four Photo Intelligence tracking documents; verify GitHub sync if available
 - [x] P1: AI Analyze button on Photos tab → Photo Intelligence in record context, select/Analyze All, progress, dedupe
 - [ ] P2: Unify Standard vs AI report types under View/Export/Email Report
 - [x] P3: Live AI recognition repaired (ai-api routing + auth + tenant header; coordinate-bearing detections; server-side sanitization; no fabricated geometry)
