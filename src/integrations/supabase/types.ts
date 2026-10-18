@@ -68936,6 +68936,10 @@ export type Database = {
         Args: { m: string; note: string; rollback?: boolean }
         Returns: undefined
       }
+      photo_damage_model_evaluate: {
+        Args: { hash: string; m: string; predictions: Json }
+        Returns: undefined
+      }
       photo_damage_model_register: {
         Args: {
           config: Json
