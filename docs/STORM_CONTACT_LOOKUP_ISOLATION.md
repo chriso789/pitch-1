@@ -29,3 +29,10 @@
 - Scope service property reads/updates to tenant; use authenticated RLS client for contact cache, scope DNC/log inserts to resolved tenant.
 - Remove speculative API-key warning and duplicate display; stop success handling after failures.
 - Remaining schema/cache policy issues need staging verification before any live migration; no clean six-gate claim.
+
+## Repair verification
+- Restored and deployed `property-data-api`; legacy shim now reaches the handler (invalid-token POST returns 401, not missing-service 404).
+- Handler validates JWT, active membership/company and tenant-owned property before provider calls. Body company/address no longer authorize or override stored property data.
+- Property service-role queries explicitly filter tenant; cache uses authenticated RLS client. Browser uses selected company and displays one retry error, without speculative key claims or false success handling.
+- Five concrete authorization tests pass: signed out, missing membership, cross-company property, inactive company, authorized switched-company property. Preview build is OK.
+- Verdict remains FAIL for strict Gate 1/cache schema and existing switched-company cache policies. No live migrations or policy changes performed. Authenticated provider-result/cache checks remain pending because this external backend has no test session available.

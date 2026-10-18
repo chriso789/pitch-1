@@ -1,7 +1,8 @@
 # Roadmap
 
 ## Homeowner lookup
-- [ ] Diagnose and repair Storm Canvass contact lookup failure; verify error handling and company isolation
+- [x] Restore missing Storm lookup service; remove duplicate/speculative warning; selected-company checks; 5 authorization tests passed; deployed legacy endpoint rejects invalid tokens with 401
+- [ ] Signed-in homeowner lookup/provider results and switched-company cache persistence — BLOCKED: external managed account unavailable; cache schema/policy fixes need staging and approval
 
 ## JAE Enterprise menu
 - [x] Restore JAE Storm Canvass switch; verify saved access and platform flag; selected-company hook regression tests: 3 passed
