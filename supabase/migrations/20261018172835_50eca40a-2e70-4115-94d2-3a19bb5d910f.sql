@@ -1,0 +1,1 @@
+UPDATE public.tenants SET features_enabled = array_append(COALESCE(features_enabled, ARRAY[]::text[]), 'storm_canvass'), updated_at = now() WHERE id = '4739eecc-6072-4c9a-ae75-93334048bf11' AND subscription_tier = 'enterprise' AND subscription_status = 'active' AND is_active = true AND NOT ('storm_canvass' = ANY(COALESCE(features_enabled, ARRAY[]::text[])));
