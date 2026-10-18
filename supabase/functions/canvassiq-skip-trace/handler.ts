@@ -10,6 +10,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { batchDataSkipTrace } from "../_shared/public_data/sources/batchdata/skipTrace.ts";
 import { peopleSearch } from "../_shared/public_data/sources/universal/peopleSearch.ts";
+import { authorizeLookup } from './access.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -49,27 +50,38 @@ export const handle = async (req) => {
   }
 
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-    );
+    const url = Deno.env.get('SUPABASE_URL');
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+    if (!url || !serviceKey || !anonKey) throw new Error('Service configuration unavailable');
+    const authHeader = req.headers.get('Authorization') || '';
+    if (!authHeader.startsWith('Bearer ')) return new Response(JSON.stringify({ code: 'unauthorized', error: 'Sign in to look up contacts.' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    const supabase = createClient(url, serviceKey, { auth: { persistSession: false } });
+    const userClient = createClient(url, anonKey, { global: { headers: { Authorization: authHeader } }, auth: { persistSession: false } });
 
     const body: RequestBody = await req.json();
-    const { property_id, owner_name, address, tenant_id } = body;
+    const { property_id } = body;
 
-    if (!property_id || !tenant_id) {
+    if (!property_id) {
       return new Response(
-        JSON.stringify({ error: 'Missing required fields: property_id, tenant_id' }),
+        JSON.stringify({ error: 'Missing property', code: 'invalid_request' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
     }
 
-    console.log(`[skip-trace] Property: ${property_id}`);
+    const access = await authorizeLookup(userClient, supabase, req.headers.get('x-pitch-tenant') || req.headers.get('x-tenant-id'), property_id);
+    if (access.status !== 200 || !access.tenantId || !access.property) return new Response(JSON.stringify({ code: access.code, error: 'Contact lookup is not permitted for this property.' }), { status: access.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    const tenant_id = access.tenantId;
+    const owner_name = access.property.owner_name;
+    let address: RequestBody['address'];
+    try { address = typeof access.property.address === 'string' ? JSON.parse(access.property.address) : access.property.address; }
+    catch { address = { formatted: access.property.address }; }
+    address = address || {};
 
     // =============================================
     // STEP 1: Check cache (< 30 days)
     // =============================================
-    const { data: cached } = await supabase
+    const { data: cached } = await userClient
       .from('canvass_property_contacts')
       .select('*')
       .eq('property_id', property_id)
@@ -139,11 +151,12 @@ export const handle = async (req) => {
         .from('canvassiq_properties')
         .select('owner_name')
         .eq('id', property_id)
+        .eq('tenant_id', tenant_id)
         .maybeSingle();
       resolvedOwnerName = propRow?.owner_name || '';
     }
 
-    console.log(`[skip-trace] Calling BatchData: ${street}, ${city} ${state} ${zip}`);
+    console.log('[skip-trace] Calling contact provider');
 
     let result = null as Awaited<ReturnType<typeof batchDataSkipTrace>>;
     try {
@@ -164,7 +177,7 @@ export const handle = async (req) => {
     if (phones.length === 0 && emails.length === 0) {
       const searchName = [firstName, lastName].filter(Boolean).join(' ') || resolvedOwnerName || '';
       if (searchName) {
-        console.log('[skip-trace] Falling back to Firecrawl peopleSearch for:', searchName);
+        console.log('[skip-trace] Trying fallback provider');
         const fc = await peopleSearch({ ownerName: searchName, city, state, street });
         if (fc) {
           phones = (fc.phones || []).map((p) => ({ number: p.number, type: p.type }));
@@ -227,7 +240,7 @@ export const handle = async (req) => {
       enriched_at: new Date().toISOString(),
     };
 
-    await supabase
+    await userClient
       .from('canvass_property_contacts')
       .upsert(contactRow, { onConflict: 'property_id' });
 
@@ -240,7 +253,7 @@ export const handle = async (req) => {
     if (phones.length > 0) updatePayload.phone_numbers = phones.map(p => p.number);
     if (emails.length > 0) updatePayload.emails = emails;
 
-    await supabase.from('canvassiq_properties').update(updatePayload).eq('id', property_id);
+    await supabase.from('canvassiq_properties').update(updatePayload).eq('id', property_id).eq('tenant_id', tenant_id);
 
     // Log enrichment
     try {
@@ -254,7 +267,7 @@ export const handle = async (req) => {
       });
     } catch { /* table may not exist */ }
 
-    console.log(`[skip-trace] Done: ${fullName}, ${phones.length} phones, ${emails.length} emails`);
+    console.log(`[skip-trace] Done: ${phones.length} phones, ${emails.length} emails`);
 
     return new Response(
       JSON.stringify({
@@ -280,9 +293,9 @@ export const handle = async (req) => {
     );
 
   } catch (error) {
-    console.error('[skip-trace] Error:', error);
+    console.error('[skip-trace] Request failed');
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
+      JSON.stringify({ code: 'lookup_failed', error: 'Contact lookup failed. Please retry.' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   }

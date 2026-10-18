@@ -20,6 +20,7 @@ import { useFieldMobileMode } from '@/hooks/useFieldMobileMode';
 import PropertyInfoPanelMobileBody from './property-panel/PropertyInfoPanelMobileBody';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserProfile } from '@/contexts/UserProfileContext';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import FastEstimateModal from './FastEstimateModal';
@@ -69,6 +70,7 @@ export default function PropertyInfoPanel({
   onNavigate,
 }: PropertyInfoPanelProps) {
   const { profile } = useUserProfile();
+  const effectiveTenantId = useEffectiveTenantId();
   const isAppMode = useIsAppFieldMode();
   const { isFieldMobileMode } = useFieldMobileMode();
   const [selectedOwner, setSelectedOwner] = useState<string | null>(null);
@@ -112,7 +114,7 @@ export default function PropertyInfoPanel({
 
   // Step 1 (FREE): County scrape for owner/parcel/assessed value
   const handlePublicLookup = useCallback(async (forceBypass = false) => {
-    if (!property?.id || !profile?.tenant_id) return;
+    if (!property?.id || !effectiveTenantId) return;
     const addr = parseAddr();
     const requestPropertyId = property.id;
     const isStale = () => activePropertyIdRef.current !== requestPropertyId;
@@ -125,7 +127,7 @@ export default function PropertyInfoPanel({
           lat: property.lat || addr?.lat,
           lng: property.lng || addr?.lng,
           address: addr?.formatted || addr?.street || '',
-          tenant_id: profile.tenant_id,
+          tenant_id: effectiveTenantId,
           property_id: property.id,
           force: forceBypass,
         }
@@ -202,11 +204,11 @@ export default function PropertyInfoPanel({
     } finally {
       setPublicLookupLoading(false);
     }
-  }, [property?.id, property?.lat, property?.address, profile?.tenant_id, parseAddr]);
+  }, [property?.id, property?.lat, property?.address, effectiveTenantId, parseAddr]);
 
   // Step 2 (PAID): BatchData skip trace for phones/emails
   const handleSkipTrace = useCallback(async (silent = false) => {
-    if (!property?.id || !profile?.tenant_id) {
+    if (!property?.id || !effectiveTenantId) {
       toast.error('Missing property data');
       return;
     }
@@ -223,6 +225,7 @@ export default function PropertyInfoPanel({
       console.log('[handleSkipTrace] canvassiq-skip-trace (BatchData) for:', property.id);
 
       const { data: skipData, error: skipError } = await supabase.functions.invoke('canvassiq-skip-trace', {
+        headers: { 'x-pitch-tenant': effectiveTenantId },
         body: {
           property_id: property.id,
           owner_name: validOwner(localProperty.owner_name) || '',
@@ -233,13 +236,13 @@ export default function PropertyInfoPanel({
             zip: addr?.zip || '',
             formatted: addr?.formatted || '',
           },
-          tenant_id: profile.tenant_id,
+          tenant_id: effectiveTenantId,
         }
       });
 
-      if (skipError && !isStale()) {
-        console.warn('[handleSkipTrace] skip-trace error:', skipError);
-        setSkipTraceError('Contact lookup unavailable — API key may need updating');
+      if (skipError || skipData?.success === false || skipData?.ok === false) {
+        if (!isStale()) setSkipTraceError('Contact lookup failed. Please retry. You can still enter homeowner details.');
+        return;
       }
 
       if (isStale()) return;
@@ -288,13 +291,12 @@ export default function PropertyInfoPanel({
         toast.warning('No contact data found for this property');
       }
     } catch (err: any) {
-      console.error('[handleSkipTrace] Error:', err?.message || err);
-      if (!silent) toast.error(err?.message || 'Failed to get contact info');
+      if (!isStale()) setSkipTraceError('Contact lookup failed. Please retry. You can still enter homeowner details.');
     } finally {
       setEnriching(false);
       enrichingRef.current = false;
     }
-  }, [property?.id, property?.address, profile?.tenant_id, localProperty?.owner_name, parseAddr]);
+  }, [property?.id, property?.address, effectiveTenantId, localProperty?.owner_name, parseAddr]);
 
   // Convenience: full enrich (both steps)
   const handleEnrich = useCallback(async (forceBypass = false) => {
@@ -1274,9 +1276,6 @@ export default function PropertyInfoPanel({
                 )}
                 {enriching ? 'Looking up contacts…' : 'Get Contact Info'}
               </Button>
-              {skipTraceError && (
-                <p className="text-[10px] text-destructive mt-1.5">{skipTraceError}</p>
-              )}
             </div>
           )}
 
@@ -1290,7 +1289,7 @@ export default function PropertyInfoPanel({
           </Button>
 
           {/* Skip-trace failure feedback */}
-          {skipTraceError && phoneNumbers?.length === 0 && emails?.length === 0 && !enriching && (
+          {skipTraceError && !enriching && (
             <Alert variant="destructive" className="mb-4 py-2">
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription className="text-xs flex items-center justify-between">
