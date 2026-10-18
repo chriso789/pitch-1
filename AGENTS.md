@@ -19,5 +19,6 @@
 - Fill Forms writes actual AcroForm field values with read-back verification; appearance-font failures block output, and digital-signature fields remain unsupported to avoid false signing claims.
 - PDF Studio tools are switched per company in `tenant_pdf_tool_settings` (admins only) and the `documents_pdf_tool_guard` trigger refuses PDF versions/conversions whose `metadata.pdf_tool` is off, so hiding buttons is never the only control and no browser override exists.
 - Subdirectories may have their own `AGENTS.md`; read it before changing files there.
+- Feature menus use `useEffectiveTenantId` and refresh explicit company switches; tier labels never override switches.
 - Photo Intelligence damage recognition runs only on PITCH-controlled weights via the worker `/vision/detect-damage` (ONNX, CPU first); no external AI API is called per photo, and classes not validated on inspector-labeled originals return no findings.
 - Photo Intelligence training uses only inspector-approved labels (approver ≠ labeler), splits train/val by property, and evaluation refuses training photos; classes are promoted per roof system only after passing measured gates.

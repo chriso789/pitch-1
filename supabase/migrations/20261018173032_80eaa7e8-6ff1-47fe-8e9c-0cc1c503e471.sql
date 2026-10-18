@@ -1,0 +1,1 @@
+select t.name, t.subscription_tier, 'storm_canvass'=ANY(t.features_enabled) as storm_canvass_enabled, coalesce((select disabled from public.platform_feature_flags where feature_key='storm_canvass'),false) as platform_disabled from public.tenants t where t.id='4739eecc-6072-4c9a-ae75-93334048bf11';

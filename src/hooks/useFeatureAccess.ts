@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useActiveTenantId } from '@/hooks/useActiveTenantId';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { useUserProfile } from '@/contexts/UserProfileContext';
 import { usePlatformFeatureFlags } from '@/hooks/usePlatformFeatureFlags';
 
 /**
@@ -60,7 +61,8 @@ export const GATED_FEATURE_KEYS: ReadonlySet<string> = new Set([
  *    an explicit empty array `[]` means everything off.
  */
 export const useFeatureAccess = () => {
-  const { activeTenantId, profile } = useActiveTenantId();
+  const activeTenantId = useEffectiveTenantId();
+  const { profile } = useUserProfile();
   const userRole = profile?.role;
   const { isPlatformDisabled, getReason, isLoading: platformLoading } =
     usePlatformFeatureFlags();
@@ -82,6 +84,7 @@ export const useFeatureAccess = () => {
     },
     enabled: !!activeTenantId,
     staleTime: 30 * 1000,
+    refetchInterval: 10 * 1000,
     gcTime: 5 * 60 * 1000,
   });
 

@@ -1,5 +1,9 @@
 # Roadmap
 
+## JAE Enterprise menu
+- [x] Restore JAE Storm Canvass switch; verify saved access and platform flag; selected-company hook regression tests: 3 passed
+- [ ] Signed-in JAE menu verification — BLOCKED: external Supabase session unavailable in this sandbox
+
 ## Security (pending)
 - [ ] Two-company isolation tests — BLOCKED: no test-company credentials
 - [ ] 268 DB warnings severity triage — in progress
