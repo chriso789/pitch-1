@@ -121,6 +121,7 @@ const InspectionRequestsPage = React.lazy(() => import("@/pages/InspectionReques
 const MarketingAuditPage = React.lazy(() => import("@/pages/MarketingAuditPage"));
 const PhotoIntelligenceReviewPage = React.lazy(() => import("@/pages/PhotoIntelligenceReviewPage"));
 const PhotoIntelligenceReportPage = React.lazy(() => import("@/pages/PhotoIntelligenceReportPage"));
+const PhotoIntelligenceTrainingPage = React.lazy(() => import("@/pages/PhotoIntelligenceTrainingPage"));
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-background">
@@ -236,6 +237,7 @@ export default function ProtectedRoutes() {
         <Route path="/marketing" element={<ProtectedRoute><MarketingAuditPage /></ProtectedRoute>} />
         <Route path="/photo-intelligence" element={<ProtectedRoute><PhotoIntelligenceReviewPage /></ProtectedRoute>} />
         <Route path="/photo-intelligence/report" element={<ProtectedRoute><PhotoIntelligenceReportPage /></ProtectedRoute>} />
+        <Route path="/photo-intelligence/training" element={<ProtectedRoute><PhotoIntelligenceTrainingPage /></ProtectedRoute>} />
         <Route path="/marketing-assets" element={<ProtectedRoute><MarketingAssetsPage /></ProtectedRoute>} />
         <Route path="/proposals/good-better-best" element={<ProtectedRoute><GoodBetterBestBuilderPage /></ProtectedRoute>} />
         <Route path="/reviews/automated" element={<ProtectedRoute><AutomatedReviewCollectionPage /></ProtectedRoute>} />
