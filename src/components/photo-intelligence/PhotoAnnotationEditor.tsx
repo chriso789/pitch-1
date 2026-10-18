@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   type Annotation,
   type Point,
@@ -97,6 +97,8 @@ export function PhotoAnnotationEditor({
   const dragRef = useRef<{ mode: 'pan' | 'move' | 'vertex' | 'draw'; start: Point; vertexIndex?: number; annotationId?: string; panStart?: Point } | null>(null);
 
   const annotations = history.present;
+  const [imageRatio, setImageRatio] = useState(4 / 3);
+  useEffect(() => { onChange?.(serializeAnnotations(annotations)); }, [annotations, onChange]);
   const selected = useMemo(() => annotations.find((a) => a.id === selectedId) ?? null, [annotations, selectedId]);
 
   const commit = useCallback((next: Annotation[]) => {
@@ -380,7 +382,7 @@ export function PhotoAnnotationEditor({
             'relative w-full overflow-hidden rounded-md border bg-black select-none touch-none',
             tool === 'pan' ? 'cursor-grab' : tool === 'select' ? 'cursor-default' : 'cursor-crosshair',
           )}
-          style={{ aspectRatio: '4 / 3' }}
+          style={{ aspectRatio: imageRatio }}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
@@ -391,7 +393,7 @@ export function PhotoAnnotationEditor({
             style={{ transform: `translate(${pan.x * 100}%, ${pan.y * 100}%) scale(${zoom})` }}
           >
             {/* The original photo — rendered read-only, never modified. */}
-            <img src={imageUrl} alt="Inspection photo" className="absolute inset-0 h-full w-full object-contain pointer-events-none" draggable={false} />
+            <img src={imageUrl} alt="Inspection photo" className="absolute inset-0 h-full w-full object-contain pointer-events-none" draggable={false} onLoad={(e) => { const img = e.currentTarget; if (img.naturalHeight) setImageRatio(img.naturalWidth / img.naturalHeight); }} />
             <svg className="absolute inset-0 h-full w-full" viewBox="0 0 1 1" preserveAspectRatio="none">
               {annotations.map((a) => (
                 <g key={a.id} opacity={selectedId && selectedId !== a.id ? 0.55 : 1}>
