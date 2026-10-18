@@ -1,0 +1,1 @@
+select id,name,features_enabled from public.tenants where id='4739eecc-6072-4c9a-ae75-93334048bf11'; select feature_key,disabled from public.platform_feature_flags where feature_key='storm_canvass';
