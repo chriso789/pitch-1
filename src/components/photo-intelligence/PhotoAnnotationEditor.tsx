@@ -65,6 +65,7 @@ export interface PhotoAnnotationEditorProps {
   onSave: (annotationJson: Record<string, unknown>) => Promise<void>;
   saving?: boolean;
   damageCategories?: readonly string[];
+  onChange?: (json: unknown) => void;
 }
 
 /**
@@ -81,6 +82,7 @@ export function PhotoAnnotationEditor({
   onSave,
   saving,
   damageCategories = DAMAGE_CATEGORIES,
+  onChange,
 }: PhotoAnnotationEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [tool, setTool] = useState<EditorTool>('select');
@@ -457,7 +459,7 @@ export function PhotoAnnotationEditor({
                 <Select value={selected.damageCategory ?? ''} onValueChange={(v) => updateSelected({ damageCategory: v || null })}>
                   <SelectTrigger><SelectValue placeholder="Choose…" /></SelectTrigger>
                   <SelectContent>
-                    {damageCategories.map((c) => <SelectItem key={c} value={c}>{c.replaceAll('_', ' ')}</SelectItem>)}
+                    {damageCategories.map((c) => <SelectItem key={c} value={c}>{c.replace(/_/g, ' ')}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </label>
