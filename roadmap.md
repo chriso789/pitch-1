@@ -1,5 +1,8 @@
 # Roadmap
 
+## JAE Enterprise menu
+- [ ] Diagnose and restore Storm Canvass menu access; verify selected-company entitlement rules
+
 ## Security (pending)
 - [ ] Two-company isolation tests — BLOCKED: no test-company credentials
 - [ ] 268 DB warnings severity triage — in progress
