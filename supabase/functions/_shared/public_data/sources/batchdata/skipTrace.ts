@@ -71,8 +71,8 @@ async function fetchBatchData(
     });
 
     if (!res.ok) {
-      const text = await res.text();
-      console.error(`[batchdata] API error ${res.status}: ${text.slice(0, 300)}`);
+      await res.text();
+      console.error(`[batchdata] API error ${res.status}`);
       throw new Error(`BatchData API error: ${res.status}`);
     }
 
@@ -115,7 +115,7 @@ async function fetchBatchData(
       .filter((r: string) => r && r.length > 1)
       .slice(0, 10);
 
-    console.log(`[batchdata] Found: ${name.first} ${name.last}, ${phones.length} phones, ${emails.length} emails, age=${age}`);
+    console.log(`[batchdata] Found ${phones.length} phones, ${emails.length} emails`);
 
     return {
       firstName: name.first || null,

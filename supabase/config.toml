@@ -1,5 +1,8 @@
 project_id = "alxelfrbjzkmtnsulcei"
 
+[functions.property-data-api]
+verify_jwt = false
+
 [functions.portal-invoice]
 verify_jwt = false
 
