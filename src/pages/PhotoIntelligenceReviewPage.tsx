@@ -118,9 +118,12 @@ export default function PhotoIntelligenceReviewPage() {
         <BackButton fallbackPath="/dashboard" label="Back" />
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">Photo Intelligence — Inspector Review</h1>
+          <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" asChild><a href="/photo-intelligence/training">Labeling &amp; model training</a></Button>
           <Button variant="outline" size="sm" asChild>
             <a href={`/photo-intelligence/report${projectId ? `?projectId=${projectId}` : ''}`}>View report</a>
           </Button>
+          </div>
         </div>
         <p className="text-muted-foreground text-sm mt-1">
           Review proposed damage findings. Only approved findings appear in customer reports.

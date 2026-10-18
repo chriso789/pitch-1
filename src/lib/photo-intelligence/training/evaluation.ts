@@ -4,6 +4,7 @@
  * photos that were in the training split.
  */
 import type { DatasetVersion } from './dataset';
+import { isValidClassForSystem } from './taxonomy';
 
 export interface Box { x0: number; y0: number; x1: number; y1: number }
 export interface Prediction { photoId: string; cls: string; box: Box; confidence: number }
@@ -20,17 +21,29 @@ export interface ClassMetrics { tp: number; fp: number; fn: number; precision: n
 
 export interface EvaluationReport {
   datasetVersion: string;
+  partition: 'val' | 'test';
   photosEvaluated: number;
   bySystem: Record<string, Record<string, ClassMetrics>>;
   /** Expected calibration error over all predictions (10 bins). */
   ece: number | null;
 }
 
-export function evaluate(ds: DatasetVersion, preds: Prediction[], iouThreshold = 0.5): EvaluationReport {
-  const val = ds.photos.filter((p) => ds.split[p.photoId] === 'val');
+export function evaluate(ds: DatasetVersion, preds: Prediction[], iouThreshold = 0.5, partition: 'val' | 'test' = 'val'): EvaluationReport {
+  const properties = new Map<string, string>();
+  for (const p of ds.photos) {
+    const previous = properties.get(p.propertyId);
+    if (previous && previous !== ds.split[p.photoId]) throw new Error('Property leakage between dataset partitions');
+    properties.set(p.propertyId, ds.split[p.photoId]);
+  }
+  const val = ds.photos.filter((p) => ds.split[p.photoId] === partition);
   const valIds = new Set(val.map((p) => p.photoId));
   const leaked = preds.find((p) => !valIds.has(p.photoId));
   if (leaked) throw new Error(`Prediction on non-validation photo ${leaked.photoId}; training photos cannot be used to claim accuracy`);
+  for (const pr of preds) {
+    const p = val.find((v) => v.photoId === pr.photoId);
+    const b = pr.box;
+    if (!p || !isValidClassForSystem(p.roofSystem, pr.cls) || !Number.isFinite(pr.confidence) || pr.confidence < 0 || pr.confidence > 1 || !Object.values(b).every(Number.isFinite) || b.x0 < 0 || b.y0 < 0 || b.x1 > 1 || b.y1 > 1 || b.x1 <= b.x0 || b.y1 <= b.y0) throw new Error('Invalid prediction');
+  }
 
   const bySystem: EvaluationReport['bySystem'] = {};
   const acc: Record<string, Record<string, { tp: number; fp: number; fn: number; ious: number[] }>> = {};
@@ -73,12 +86,13 @@ export function evaluate(ds: DatasetVersion, preds: Prediction[], iouThreshold =
       ece += (bin.length / calib.length) * Math.abs(conf - accu);
     }
   }
-  return { datasetVersion: ds.version, photosEvaluated: val.length, bySystem, ece };
+  return { datasetVersion: ds.version, partition, photosEvaluated: val.length, bySystem, ece };
 }
 
 /** A class is promotable only with enough validation support and passing P/R. */
 export function promotableClasses(r: EvaluationReport, minSupport = 30, minPrecision = 0.9, minRecall = 0.9): string[] {
   const out: string[] = [];
+  if (r.partition !== 'test') return out;
   for (const [s, classes] of Object.entries(r.bySystem)) for (const [c, m] of Object.entries(classes)) {
     if (m.tp + m.fn >= minSupport && (m.precision ?? 0) >= minPrecision && (m.recall ?? 0) >= minRecall) out.push(`${s}:${c}`);
   }

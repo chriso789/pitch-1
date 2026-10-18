@@ -38537,6 +38537,122 @@ export type Database = {
           },
         ]
       }
+      photo_damage_deployments: {
+        Row: {
+          action: string
+          actor_id: string
+          created_at: string
+          id: string
+          model_id: string
+          notes: string
+          previous_model_id: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          action: string
+          actor_id?: string
+          created_at?: string
+          id?: string
+          model_id: string
+          notes: string
+          previous_model_id?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string
+          created_at?: string
+          id?: string
+          model_id?: string
+          notes?: string
+          previous_model_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "photo_damage_deployments_model_id_fkey"
+            columns: ["model_id"]
+            isOneToOne: false
+            referencedRelation: "photo_damage_models"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "photo_damage_deployments_previous_model_id_fkey"
+            columns: ["previous_model_id"]
+            isOneToOne: false
+            referencedRelation: "photo_damage_models"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      photo_damage_models: {
+        Row: {
+          approved_by: string | null
+          checkpoint_path: string
+          checkpoint_sha256: string
+          configuration: Json
+          created_at: string
+          created_by: string
+          dataset_id: string
+          framework: string
+          id: string
+          license_approved_by: string | null
+          license_evidence: string
+          metrics: Json | null
+          status: string
+          tenant_id: string
+          updated_at: string
+          version: string
+        }
+        Insert: {
+          approved_by?: string | null
+          checkpoint_path: string
+          checkpoint_sha256: string
+          configuration: Json
+          created_at?: string
+          created_by?: string
+          dataset_id: string
+          framework?: string
+          id?: string
+          license_approved_by?: string | null
+          license_evidence: string
+          metrics?: Json | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+          version: string
+        }
+        Update: {
+          approved_by?: string | null
+          checkpoint_path?: string
+          checkpoint_sha256?: string
+          configuration?: Json
+          created_at?: string
+          created_by?: string
+          dataset_id?: string
+          framework?: string
+          id?: string
+          license_approved_by?: string | null
+          license_evidence?: string
+          metrics?: Json | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+          version?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "photo_damage_models_dataset_id_fkey"
+            columns: ["dataset_id"]
+            isOneToOne: false
+            referencedRelation: "photo_training_datasets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       photo_finding_evidence: {
         Row: {
           annotation: Json | null
@@ -38760,6 +38876,187 @@ export type Database = {
           status?: string
           tenant_id?: string
           version?: number
+        }
+        Relationships: []
+      }
+      photo_training_datasets: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          manifest: Json
+          tenant_id: string
+          updated_at: string
+          version: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          manifest: Json
+          tenant_id: string
+          updated_at?: string
+          version: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          manifest?: Json
+          tenant_id?: string
+          updated_at?: string
+          version?: string
+        }
+        Relationships: []
+      }
+      photo_training_events: {
+        Row: {
+          action: string
+          actor_id: string
+          created_at: string
+          id: string
+          label_id: string | null
+          model_id: string | null
+          notes: string | null
+          revision: number | null
+          snapshot: Json
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          action: string
+          actor_id?: string
+          created_at?: string
+          id?: string
+          label_id?: string | null
+          model_id?: string | null
+          notes?: string | null
+          revision?: number | null
+          snapshot?: Json
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string
+          created_at?: string
+          id?: string
+          label_id?: string | null
+          model_id?: string | null
+          notes?: string | null
+          revision?: number | null
+          snapshot?: Json
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "photo_training_events_label_id_fkey"
+            columns: ["label_id"]
+            isOneToOne: false
+            referencedRelation: "photo_training_labels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      photo_training_labels: {
+        Row: {
+          annotations: Json
+          approved_by: string | null
+          created_at: string
+          id: string
+          labeled_by: string
+          no_visible_damage: boolean
+          original_id: string
+          regions: Json
+          revision: number
+          roof_system: string
+          status: string
+          tags: string[]
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          annotations?: Json
+          approved_by?: string | null
+          created_at?: string
+          id?: string
+          labeled_by: string
+          no_visible_damage?: boolean
+          original_id: string
+          regions?: Json
+          revision?: number
+          roof_system: string
+          status?: string
+          tags?: string[]
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          annotations?: Json
+          approved_by?: string | null
+          created_at?: string
+          id?: string
+          labeled_by?: string
+          no_visible_damage?: boolean
+          original_id?: string
+          regions?: Json
+          revision?: number
+          roof_system?: string
+          status?: string
+          tags?: string[]
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "photo_training_labels_original_id_fkey"
+            columns: ["original_id"]
+            isOneToOne: true
+            referencedRelation: "photo_training_originals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      photo_training_originals: {
+        Row: {
+          created_at: string
+          file_name: string
+          height: number
+          id: string
+          property_id: string
+          sha256: string
+          storage_path: string
+          tenant_id: string
+          updated_at: string
+          uploaded_by: string
+          width: number
+        }
+        Insert: {
+          created_at?: string
+          file_name: string
+          height: number
+          id?: string
+          property_id: string
+          sha256: string
+          storage_path: string
+          tenant_id: string
+          updated_at?: string
+          uploaded_by?: string
+          width: number
+        }
+        Update: {
+          created_at?: string
+          file_name?: string
+          height?: number
+          id?: string
+          property_id?: string
+          sha256?: string
+          storage_path?: string
+          tenant_id?: string
+          updated_at?: string
+          uploaded_by?: string
+          width?: number
         }
         Relationships: []
       }
@@ -68634,6 +68931,78 @@ export type Database = {
       pdf_tool_enabled: {
         Args: { _tenant: string; _tool: string }
         Returns: boolean
+      }
+      photo_damage_model_activate: {
+        Args: { m: string; note: string; rollback?: boolean }
+        Returns: undefined
+      }
+      photo_damage_model_evaluate: {
+        Args: { hash: string; m: string; predictions: Json }
+        Returns: undefined
+      }
+      photo_damage_model_register: {
+        Args: {
+          config: Json
+          d: string
+          hash: string
+          license: string
+          path: string
+          t: string
+          v: string
+        }
+        Returns: string
+      }
+      photo_damage_model_review: {
+        Args: {
+          execution_verified: boolean
+          license_verified: boolean
+          m: string
+          note: string
+        }
+        Returns: undefined
+      }
+      photo_training_access: { Args: { t: string }; Returns: boolean }
+      photo_training_class_valid: {
+        Args: { c: string; s: string }
+        Returns: boolean
+      }
+      photo_training_dataset_create: {
+        Args: { t: string; v: string }
+        Returns: string
+      }
+      photo_training_label_review: {
+        Args: {
+          decision: string
+          expected_revision: number
+          l: string
+          note: string
+        }
+        Returns: undefined
+      }
+      photo_training_label_save: {
+        Args: {
+          a: Json
+          expected_revision?: number
+          n: boolean
+          o: string
+          r: Json
+          s: string
+          submit?: boolean
+          tags_input: string[]
+        }
+        Returns: string
+      }
+      photo_training_original_add: {
+        Args: {
+          h: number
+          hash: string
+          name: string
+          path: string
+          property: string
+          t: string
+          w: number
+        }
+        Returns: string
       }
       pipeline_stage_avg_durations: {
         Args: { p_tenant_id: string }
