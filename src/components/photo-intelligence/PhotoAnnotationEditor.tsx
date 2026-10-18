@@ -64,6 +64,7 @@ export interface PhotoAnnotationEditorProps {
   /** Called with geometry-only JSON to persist on the evidence row. */
   onSave: (annotationJson: Record<string, unknown>) => Promise<void>;
   saving?: boolean;
+  damageCategories?: readonly string[];
 }
 
 /**
@@ -79,6 +80,7 @@ export function PhotoAnnotationEditor({
   findings = [],
   onSave,
   saving,
+  damageCategories = DAMAGE_CATEGORIES,
 }: PhotoAnnotationEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [tool, setTool] = useState<EditorTool>('select');
@@ -455,7 +457,7 @@ export function PhotoAnnotationEditor({
                 <Select value={selected.damageCategory ?? ''} onValueChange={(v) => updateSelected({ damageCategory: v || null })}>
                   <SelectTrigger><SelectValue placeholder="Choose…" /></SelectTrigger>
                   <SelectContent>
-                    {DAMAGE_CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    {damageCategories.map((c) => <SelectItem key={c} value={c}>{c.replaceAll('_', ' ')}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </label>

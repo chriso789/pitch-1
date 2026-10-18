@@ -12,7 +12,8 @@ export interface LabelRegion {
   polygon: { x: number; y: number }[];
 }
 
-export type LabelStatus = 'draft' | 'approved' | 'rejected';
+export type LabelStatus = 'draft' | 'pending' | 'approved' | 'rejected' | 'correction_requested';
+export type DatasetSplit = 'train' | 'val' | 'test';
 
 export interface TrainingPhoto {
   photoId: string;
@@ -24,6 +25,7 @@ export interface TrainingPhoto {
   width: number;
   height: number;
   fileName: string;
+  storagePath?: string;
   noVisibleDamage: boolean;
   regions: LabelRegion[];
   status: LabelStatus;
@@ -38,7 +40,7 @@ export interface DatasetVersion {
   createdAt: string;
   classes: string[];
   photos: TrainingPhoto[];
-  split: Record<string, 'train' | 'val'>;
+  split: Record<string, DatasetSplit>;
   excluded: { photoId: string; reason: string }[];
 }
 
@@ -46,12 +48,15 @@ export function validatePhoto(p: TrainingPhoto): string | null {
   if (p.status !== 'approved') return 'not_approved';
   if (!p.approvedBy) return 'missing_approver';
   if (p.approvedBy === p.labeledBy) return 'self_approved';
+  if (!p.propertyId.trim() || !p.sha256 || p.width <= 0 || p.height <= 0) return 'invalid_original';
   if (p.noVisibleDamage && p.regions.length) return 'negative_with_regions';
   if (!p.noVisibleDamage && !p.regions.length) return 'no_regions';
   for (const r of p.regions) {
     if (!isValidClassForSystem(p.roofSystem, r.cls)) return `class_not_in_system:${r.cls}`;
     if (r.polygon.length < 3) return 'degenerate_polygon';
     if (r.polygon.some((q) => !(q.x >= 0 && q.x <= 1 && q.y >= 0 && q.y <= 1))) return 'out_of_bounds';
+    const area = r.polygon.reduce((sum, q, i) => { const next = r.polygon[(i + 1) % r.polygon.length]; return sum + q.x * next.y - next.x * q.y; }, 0);
+    if (Math.abs(area) < 0.000002) return 'degenerate_polygon';
   }
   return null;
 }
@@ -63,7 +68,9 @@ function hash32(s: string): number {
   return h >>> 0;
 }
 
-export function buildDatasetVersion(version: string, photos: TrainingPhoto[], valFraction = 0.2, createdAt = new Date().toISOString()): DatasetVersion {
+export function buildDatasetVersion(version: string, photos: TrainingPhoto[], valFraction = 0.2, createdAt = new Date().toISOString(), testFraction = 0.1): DatasetVersion {
+  if (valFraction < 0 || valFraction > 1 || testFraction < 0 || testFraction > 1) throw new Error('Invalid split fractions');
+  const heldOut = Math.min(testFraction, 1 - valFraction);
   const excluded: DatasetVersion['excluded'] = [];
   const seen = new Map<string, string>();
   const kept: TrainingPhoto[] = [];
@@ -76,7 +83,10 @@ export function buildDatasetVersion(version: string, photos: TrainingPhoto[], va
     kept.push(p);
   }
   const split: DatasetVersion['split'] = {};
-  for (const p of kept) split[p.photoId] = (hash32(p.propertyId) % 1000) / 1000 < valFraction ? 'val' : 'train';
+  for (const p of kept) {
+    const score = (hash32(p.propertyId) % 1000) / 1000;
+    split[p.photoId] = score < heldOut ? 'test' : score < heldOut + valFraction ? 'val' : 'train';
+  }
   return { version, createdAt, classes: ALL_DAMAGE_CLASSES, photos: kept, split, excluded };
 }
 
@@ -87,14 +97,16 @@ function bboxOf(poly: { x: number; y: number }[]) {
 }
 
 /** COCO export (pixel coordinates). Negatives appear as images with no annotations. */
-export function toCoco(ds: DatasetVersion, subset?: 'train' | 'val') {
+export function toCoco(ds: DatasetVersion, subset?: DatasetSplit) {
   const photos = ds.photos.filter((p) => !subset || ds.split[p.photoId] === subset);
   const images = photos.map((p, i) => ({ id: i + 1, file_name: p.fileName, width: p.width, height: p.height, pitch_photo_id: p.photoId, pitch_property_id: p.propertyId, roof_system: p.roofSystem }));
-  const annotations: any[] = [];
+  const annotations: { id: number; image_id: number; category_id: number; bbox: number[]; area: number; segmentation: number[][]; iscrowd: number }[] = [];
   photos.forEach((p, i) => p.regions.forEach((r) => {
     const b = bboxOf(r.polygon);
     const seg = r.polygon.flatMap((q) => [q.x * p.width, q.y * p.height]);
-    annotations.push({ id: annotations.length + 1, image_id: i + 1, category_id: classIndex(r.cls) + 1, bbox: [b.x0 * p.width, b.y0 * p.height, b.w * p.width, b.h * p.height], area: b.w * p.width * b.h * p.height, segmentation: [seg], iscrowd: 0 });
+    const category = ds.classes.indexOf(r.cls);
+    if (category < 0) throw new Error(`Class missing from dataset: ${r.cls}`);
+    annotations.push({ id: annotations.length + 1, image_id: i + 1, category_id: category + 1, bbox: [b.x0 * p.width, b.y0 * p.height, b.w * p.width, b.h * p.height], area: b.w * p.width * b.h * p.height, segmentation: [seg], iscrowd: 0 });
   }));
   return { info: { version: ds.version, date_created: ds.createdAt }, images, annotations, categories: ds.classes.map((c, i) => ({ id: i + 1, name: c })) };
 }
