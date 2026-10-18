@@ -1,7 +1,8 @@
 # Roadmap
 
 ## JAE Enterprise menu
-- [ ] Diagnose and restore Storm Canvass menu access; verify selected-company entitlement rules
+- [x] Restore JAE Storm Canvass switch; verify saved access and platform flag; selected-company hook regression tests: 3 passed
+- [ ] Signed-in JAE menu verification — BLOCKED: external Supabase session unavailable in this sandbox
 
 ## Security (pending)
 - [ ] Two-company isolation tests — BLOCKED: no test-company credentials
