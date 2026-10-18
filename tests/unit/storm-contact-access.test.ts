@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { authorizeLookup } from '../../supabase/functions/canvassiq-skip-trace/access';
+import { authorizeLookup } from '../../supabase/functions/_shared/skip-trace/access';
 
 function setup(signedIn = true, membership = true, propertyTenant = 'jae', active = true) {
   const queries: Array<{ table: string; filters: Record<string, unknown> }> = [];

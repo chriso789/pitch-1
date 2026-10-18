@@ -8,8 +8,8 @@
  */
 
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
-import { batchDataSkipTrace } from "../_shared/public_data/sources/batchdata/skipTrace.ts";
-import { peopleSearch } from "../_shared/public_data/sources/universal/peopleSearch.ts";
+import { batchDataSkipTrace } from "../public_data/sources/batchdata/skipTrace.ts";
+import { peopleSearch } from "../public_data/sources/universal/peopleSearch.ts";
 import { authorizeLookup } from './access.ts';
 
 const corsHeaders = {

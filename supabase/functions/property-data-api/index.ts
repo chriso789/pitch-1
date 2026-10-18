@@ -2,7 +2,7 @@
 // Legacy `canvassiq-*` skip-trace/enrichment functions forward here.
 
 import { createRouter, jsonOk, jsonErr, requireAuth, requireTenant, serveRouter } from "../_shared/router.ts";
-import { handle as skipTraceHandle } from "../canvassiq-skip-trace/handler.ts";
+import { handle as skipTraceHandle } from "../_shared/skip-trace/handler.ts";
 
 const app = createRouter("property-data-api");
 
