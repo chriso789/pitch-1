@@ -4,10 +4,13 @@
  * manifests, and train/validation splits grouped by property so the same
  * property never appears in both. Original photos are referenced, never edited.
  */
-import { ALL_DAMAGE_CLASSES, classIndex, isValidClassForSystem, type RoofSystem } from './taxonomy';
+import { ALL_CONDITION_CLASSES, isTrainableClass, isValidClassForSystem, conditionKind, type RoofSystem } from './taxonomy';
+import { isLearningPhoto } from './conditions';
 
 export interface LabelRegion {
   cls: string;
+  component?: string;
+  reason?: string;
   /** Normalized polygon (0..1). bbox is derived from it. */
   polygon: { x: number; y: number }[];
 }
@@ -49,7 +52,7 @@ export function validatePhoto(p: TrainingPhoto): string | null {
   if (!p.approvedBy) return 'missing_approver';
   if (p.approvedBy === p.labeledBy) return 'self_approved';
   if (!p.propertyId.trim() || !p.sha256 || p.width <= 0 || p.height <= 0) return 'invalid_original';
-  if (p.noVisibleDamage && p.regions.length) return 'negative_with_regions';
+  if (p.noVisibleDamage && p.regions.some((r) => conditionKind(r.cls) !== 'normal')) return 'negative_with_regions';
   if (!p.noVisibleDamage && !p.regions.length) return 'no_regions';
   for (const r of p.regions) {
     if (!isValidClassForSystem(p.roofSystem, r.cls)) return `class_not_in_system:${r.cls}`;
@@ -87,7 +90,7 @@ export function buildDatasetVersion(version: string, photos: TrainingPhoto[], va
     const score = (hash32(p.propertyId) % 1000) / 1000;
     split[p.photoId] = score < heldOut ? 'test' : score < heldOut + valFraction ? 'val' : 'train';
   }
-  return { version, createdAt, classes: ALL_DAMAGE_CLASSES, photos: kept, split, excluded };
+  return { version, createdAt, classes: ALL_CONDITION_CLASSES.filter(isTrainableClass), photos: kept, split, excluded };
 }
 
 function bboxOf(poly: { x: number; y: number }[]) {
@@ -98,10 +101,10 @@ function bboxOf(poly: { x: number; y: number }[]) {
 
 /** COCO export (pixel coordinates). Negatives appear as images with no annotations. */
 export function toCoco(ds: DatasetVersion, subset?: DatasetSplit) {
-  const photos = ds.photos.filter((p) => !subset || ds.split[p.photoId] === subset);
+  const photos = ds.photos.filter((p) => isLearningPhoto(p) && (!subset || ds.split[p.photoId] === subset));
   const images = photos.map((p, i) => ({ id: i + 1, file_name: p.fileName, width: p.width, height: p.height, pitch_photo_id: p.photoId, pitch_property_id: p.propertyId, roof_system: p.roofSystem }));
   const annotations: { id: number; image_id: number; category_id: number; bbox: number[]; area: number; segmentation: number[][]; iscrowd: number }[] = [];
-  photos.forEach((p, i) => p.regions.forEach((r) => {
+  photos.forEach((p, i) => p.regions.filter((r) => isTrainableClass(r.cls)).forEach((r) => {
     const b = bboxOf(r.polygon);
     const seg = r.polygon.flatMap((q) => [q.x * p.width, q.y * p.height]);
     const category = ds.classes.indexOf(r.cls);
@@ -113,7 +116,9 @@ export function toCoco(ds: DatasetVersion, subset?: DatasetSplit) {
 
 /** YOLO segmentation label text for one photo ("cls x1 y1 x2 y2 ..."). Empty string for negatives. */
 export function toYoloLabel(p: TrainingPhoto): string {
-  return p.regions.map((r) => [classIndex(r.cls), ...r.polygon.flatMap((q) => [q.x.toFixed(6), q.y.toFixed(6)])].join(' ')).join('\n');
+  if (!isLearningPhoto(p)) throw new Error("Uncertain photos require review before learning export");
+  const classes = ALL_CONDITION_CLASSES.filter(isTrainableClass);
+  return p.regions.filter((r) => isTrainableClass(r.cls)).map((r) => [classes.indexOf(r.cls), ...r.polygon.flatMap((q) => [q.x.toFixed(6), q.y.toFixed(6)])].join(' ')).join('\n');
 }
 
 /** Import corrected COCO back into PITCH label regions keyed by pitch_photo_id. Unknown classes are reported, not guessed. */
@@ -125,7 +130,7 @@ export function fromCoco(coco: ReturnType<typeof toCoco>): { regions: Record<str
   for (const im of coco.images) regions[im.pitch_photo_id] = [];
   for (const a of coco.annotations) {
     const im = byId.get(a.image_id); const cls = cats.get(a.category_id);
-    if (!im || !cls || !ALL_DAMAGE_CLASSES.includes(cls)) { errors.push(`annotation ${a.id}: unknown image or class`); continue; }
+    if (!im || !cls || !ALL_CONDITION_CLASSES.includes(cls)) { errors.push(`annotation ${a.id}: unknown image or class`); continue; }
     const seg: number[] = a.segmentation?.[0] ?? [];
     let polygon: { x: number; y: number }[] = [];
     for (let k = 0; k + 1 < seg.length; k += 2) polygon.push({ x: seg[k] / im.width, y: seg[k + 1] / im.height });

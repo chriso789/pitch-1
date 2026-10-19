@@ -1,4 +1,4 @@
-"""Local damage-only training using BSD-licensed TorchVision, no pretrained weights.
+"""Local roof-condition training using BSD-licensed TorchVision, no pretrained weights.
 
 python worker/training/train_detector.py --data export --out runs/v1 --epochs 1
 Synthetic runs validate software only, never recognition accuracy. No deployment.
@@ -33,6 +33,10 @@ def load_manifest(root):
     return manifest
 
 
+def learning_photo(photo):
+    return not any(r['cls'].startswith(('uncertain_', 'not_assessable_')) for r in photo['regions'])
+
+
 def create_model(classes, size=320, smoke=False):
     from torchvision.models.detection import fasterrcnn_resnet50_fpn, FasterRCNN
     if smoke:
@@ -64,9 +68,9 @@ def train(root, out, epochs=1, device='cpu', resume=False, size=320, smoke=False
     torch.manual_seed(0)
     torch.set_num_threads(2)
     ds = load_manifest(root)
-    train_photos = [p for p in ds['photos'] if ds['split'][p['photoId']] == 'train']
+    train_photos = [p for p in ds['photos'] if ds['split'][p['photoId']] == 'train' and learning_photo(p)]
     if not train_photos or not ds['classes']:
-        raise ValueError('Approved training photos and damage classes required')
+        raise ValueError('Approved training photos and condition classes required')
     model = create_model(len(ds['classes']), size, smoke).to(device)
     optimizer = torch.optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
     out.mkdir(parents=True, exist_ok=True)
@@ -86,6 +90,7 @@ def train(root, out, epochs=1, device='cpu', resume=False, size=320, smoke=False
             image = image_tensor(root, p).to(device)
             boxes, labels = [], []
             for r in p['regions']:
+                if r['cls'] not in ds['classes']: raise ValueError('Condition class missing from manifest')
                 xs = [q['x'] for q in r['polygon']]; ys = [q['y'] for q in r['polygon']]
                 boxes.append([min(xs)*p['width'], min(ys)*p['height'], max(xs)*p['width'], max(ys)*p['height']])
                 labels.append(ds['classes'].index(r['cls']) + 1)
@@ -101,7 +106,7 @@ def train(root, out, epochs=1, device='cpu', resume=False, size=320, smoke=False
     predictions = []
     with torch.no_grad():
         for p in ds['photos']:
-            if ds['split'][p['photoId']] != 'test':
+            if ds['split'][p['photoId']] != 'test' or not learning_photo(p):
                 continue
             result = model([image_tensor(root, p).to(device)])[0]
             for b, score, label in zip(result['boxes'].cpu(), result['scores'].cpu(), result['labels'].cpu()):
@@ -117,7 +122,7 @@ def train(root, out, epochs=1, device='cpu', resume=False, size=320, smoke=False
                 'classes': ds['classes'], 'label_offset': 1, 'checkpoint_sha256': digest, 'checkpoint_path': str(checkpoint),
                 'status': 'synthetic_software_test' if smoke else 'trained_unvalidated', 'epochs': start+epochs,
                 'size': size, 'device': device, 'losses': losses, 'code_license': 'BSD-3-Clause',
-                'customer_deployment': False, 'onnx_export_verified': False}
+                'customer_deployment': False, 'review_only_photos': sum(not learning_photo(p) for p in ds['photos']), 'onnx_export_verified': False}
     (out / 'pitch_model_manifest.json').write_text(json.dumps(manifest, indent=2))
     return manifest
 

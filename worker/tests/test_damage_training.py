@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from PIL import Image
-from worker.training.train_detector import load_manifest, train
+from worker.training.train_detector import load_manifest, train, learning_photo
 
 
 class DamageTrainingTests(unittest.TestCase):
@@ -53,6 +53,24 @@ class DamageTrainingTests(unittest.TestCase):
             root = Path(tmp); self.dataset(root)
             (root/'images/0.png').write_bytes(b'changed')
             with self.assertRaisesRegex(ValueError, 'integrity'): load_manifest(root)
+
+    def test_uncertain_is_not_healthy_background(self):
+        self.assertFalse(learning_photo({'regions': [{'cls': 'uncertain_close_up_required'}]}))
+        self.assertFalse(learning_photo({'regions': [{'cls': 'not_assessable_glare'}]}))
+        self.assertTrue(learning_photo({'regions': [{'cls': 'normal_tile_alignment'}, {'cls': 'maintenance_debris'}]}))
+
+    def test_small_balanced_cpu_experiment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); ds = self.dataset(root)
+            ds['classes'] = ['cracked_tile', 'normal_tile_alignment', 'maintenance_debris']
+            ds['photos'][1]['regions'] = [{'cls': 'normal_tile_alignment', 'polygon': ds['photos'][0]['regions'][0]['polygon']}]
+            ds['photos'][2]['regions'] = [{'cls': 'not_assessable_glare', 'polygon': ds['photos'][0]['regions'][0]['polygon']}]
+            (root / 'manifest.json').write_text(json.dumps(ds))
+            result = train(root, root/'run', size=64, smoke=True)
+            self.assertEqual(result['classes'], ds['classes'])
+            self.assertEqual(result['review_only_photos'], 1)
+            self.assertEqual(len(result['losses']), 2)
+            self.assertFalse(result['customer_deployment'])
 
 
 if __name__ == '__main__': unittest.main()

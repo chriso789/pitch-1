@@ -4,7 +4,8 @@
  * photos that were in the training split.
  */
 import type { DatasetVersion } from './dataset';
-import { isValidClassForSystem } from './taxonomy';
+import { isValidClassForSystem, isTrainableClass, conditionKind, type ConditionKind } from './taxonomy';
+import { isLearningPhoto } from './conditions';
 
 export interface Box { x0: number; y0: number; x1: number; y1: number }
 export interface Prediction { photoId: string; cls: string; box: Box; confidence: number }
@@ -26,23 +27,29 @@ export interface EvaluationReport {
   bySystem: Record<string, Record<string, ClassMetrics>>;
   /** Expected calibration error over all predictions (10 bins). */
   ece: number | null;
+  byCondition: Partial<Record<ConditionKind, ClassMetrics>>;
+  damageFalsePositivesOnNormalPhotos: number;
+  normalPhotosEvaluated: number;
+  reviewOnlyPhotos: number;
 }
 
 export function evaluate(ds: DatasetVersion, preds: Prediction[], iouThreshold = 0.5, partition: 'val' | 'test' = 'val'): EvaluationReport {
+  if (!Number.isFinite(iouThreshold) || iouThreshold <= 0 || iouThreshold > 1) throw new Error('Invalid IoU threshold');
   const properties = new Map<string, string>();
   for (const p of ds.photos) {
     const previous = properties.get(p.propertyId);
     if (previous && previous !== ds.split[p.photoId]) throw new Error('Property leakage between dataset partitions');
     properties.set(p.propertyId, ds.split[p.photoId]);
   }
-  const val = ds.photos.filter((p) => ds.split[p.photoId] === partition);
+  const partitionPhotos = ds.photos.filter((p) => ds.split[p.photoId] === partition);
+  const val = partitionPhotos.filter(isLearningPhoto);
   const valIds = new Set(val.map((p) => p.photoId));
   const leaked = preds.find((p) => !valIds.has(p.photoId));
   if (leaked) throw new Error(`Prediction on non-validation photo ${leaked.photoId}; training photos cannot be used to claim accuracy`);
   for (const pr of preds) {
     const p = val.find((v) => v.photoId === pr.photoId);
     const b = pr.box;
-    if (!p || !isValidClassForSystem(p.roofSystem, pr.cls) || !Number.isFinite(pr.confidence) || pr.confidence < 0 || pr.confidence > 1 || !Object.values(b).every(Number.isFinite) || b.x0 < 0 || b.y0 < 0 || b.x1 > 1 || b.y1 > 1 || b.x1 <= b.x0 || b.y1 <= b.y0) throw new Error('Invalid prediction');
+    if (!p || !isTrainableClass(pr.cls) || !isValidClassForSystem(p.roofSystem, pr.cls) || !Number.isFinite(pr.confidence) || pr.confidence < 0 || pr.confidence > 1 || !Object.values(b).every(Number.isFinite) || b.x0 < 0 || b.y0 < 0 || b.x1 > 1 || b.y1 > 1 || b.x1 <= b.x0 || b.y1 <= b.y0) throw new Error('Invalid prediction');
   }
 
   const bySystem: EvaluationReport['bySystem'] = {};
@@ -86,7 +93,21 @@ export function evaluate(ds: DatasetVersion, preds: Prediction[], iouThreshold =
       ece += (bin.length / calib.length) * Math.abs(conf - accu);
     }
   }
-  return { datasetVersion: ds.version, partition, photosEvaluated: val.length, bySystem, ece };
+  const byCondition: EvaluationReport['byCondition'] = {};
+  for (const classes of Object.values(acc)) for (const [cls, m] of Object.entries(classes)) {
+    const kind = conditionKind(cls);
+    const v = byCondition[kind] ?? { tp: 0, fp: 0, fn: 0, precision: null, recall: null, meanIoU: null };
+    v.tp += m.tp; v.fp += m.fp; v.fn += m.fn;
+    v.precision = v.tp + v.fp ? v.tp / (v.tp + v.fp) : null;
+    v.recall = v.tp + v.fn ? v.tp / (v.tp + v.fn) : null;
+    byCondition[kind] = v;
+  }
+  const normal = val.filter((p) => p.noVisibleDamage || (p.regions.length > 0 && p.regions.every((r) => conditionKind(r.cls) === 'normal')));
+  const normalIds = new Set(normal.map((p) => p.photoId));
+  return { datasetVersion: ds.version, partition, photosEvaluated: val.length, bySystem, ece, byCondition,
+    damageFalsePositivesOnNormalPhotos: preds.filter((p) => normalIds.has(p.photoId) && conditionKind(p.cls) === 'damage').length,
+    normalPhotosEvaluated: normal.length, reviewOnlyPhotos: partitionPhotos.length - val.length };
+
 }
 
 /** A class is promotable only with enough validation support and passing P/R. */

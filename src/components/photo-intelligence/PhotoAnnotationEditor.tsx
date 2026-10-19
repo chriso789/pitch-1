@@ -51,6 +51,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { conditionKind, CONDITION_KINDS } from '@/lib/photo-intelligence/training/taxonomy';
 
 export type EditorTool = 'select' | 'pan' | 'polygon' | 'bbox' | 'circle' | 'arrow' | 'callout';
 
@@ -66,6 +67,7 @@ export interface PhotoAnnotationEditorProps {
   saving?: boolean;
   damageCategories?: readonly string[];
   onChange?: (json: unknown) => void;
+  conditionLabeling?: boolean;
 }
 
 /**
@@ -83,6 +85,7 @@ export function PhotoAnnotationEditor({
   saving,
   damageCategories = DAMAGE_CATEGORIES,
   onChange,
+  conditionLabeling = false,
 }: PhotoAnnotationEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [tool, setTool] = useState<EditorTool>('select');
@@ -242,9 +245,10 @@ export function PhotoAnnotationEditor({
       return;
     }
     if (drag.mode === 'vertex' && drag.annotationId != null && drag.vertexIndex != null) {
+      const vertexIndex = drag.vertexIndex;
       commit(
         annotations.map((a) =>
-          a.id === drag.annotationId && a.kind === 'polygon' ? movePolygonVertex(a, drag.vertexIndex!, p) : a,
+          a.id === drag.annotationId && a.kind === 'polygon' ? movePolygonVertex(a, vertexIndex, p) : a,
         ),
       );
       return;
@@ -337,7 +341,7 @@ export function PhotoAnnotationEditor({
           [
             ['select', MousePointer2, 'Select / edit'],
             ['pan', Hand, 'Pan'],
-            ['polygon', Hexagon, 'Damage polygon'],
+            ['polygon', Hexagon, 'Region polygon'],
             ['bbox', Square, 'Bounding box'],
             ['circle', Circle, 'Circle'],
             ['arrow', ArrowRight, 'Arrow'],
@@ -379,7 +383,7 @@ export function PhotoAnnotationEditor({
         <div
           ref={containerRef}
           className={cn(
-            'relative w-full overflow-hidden rounded-md border bg-black select-none touch-none',
+            'relative w-full overflow-hidden rounded-md border bg-muted select-none touch-none',
             tool === 'pan' ? 'cursor-grab' : tool === 'select' ? 'cursor-default' : 'cursor-crosshair',
           )}
           style={{ aspectRatio: imageRatio }}
@@ -433,11 +437,7 @@ export function PhotoAnnotationEditor({
 
         {/* Selection panel */}
         <div className="space-y-3 rounded-md border p-3 text-sm">
-          {!selected && (
-            <p className="text-muted-foreground">
-              Draw over the photo to mark damage. Select a mark to assign its building, component, damage category and finding.
-            </p>
-          )}
+          {!selected && <p className="text-muted-foreground">No region selected</p>}
           {selected && (
             <>
               <div className="flex items-center justify-between">
@@ -456,15 +456,17 @@ export function PhotoAnnotationEditor({
                 <span className="text-muted-foreground">Component</span>
                 <Input value={selected.component ?? ''} placeholder="e.g. Shingles, ridge vent, flashing" onChange={(e) => updateSelected({ component: e.target.value || null })} />
               </label>
+              {conditionLabeling && <div className="flex flex-wrap gap-1" role="group" aria-label="Region condition">{CONDITION_KINDS.map((kind) => <Button key={kind} size="sm" variant={selected.damageCategory && conditionKind(selected.damageCategory) === kind ? 'default' : 'outline'} onClick={() => { const category = damageCategories.find((c) => conditionKind(c) === kind); if (category) updateSelected({ damageCategory: category }); }}>{kind.replace(/_/g, ' ')}</Button>)}</div>}
               <label className="block space-y-1">
-                <span className="text-muted-foreground">Damage category</span>
+                <span className="text-muted-foreground">{conditionLabeling ? 'Condition category' : 'Damage category'}</span>
                 <Select value={selected.damageCategory ?? ''} onValueChange={(v) => updateSelected({ damageCategory: v || null })}>
                   <SelectTrigger><SelectValue placeholder="Choose…" /></SelectTrigger>
                   <SelectContent>
-                    {damageCategories.map((c) => <SelectItem key={c} value={c}>{c.replace(/_/g, ' ')}</SelectItem>)}
+                    {damageCategories.filter((c) => !conditionLabeling || !selected.damageCategory || conditionKind(c) === conditionKind(selected.damageCategory)).map((c) => <SelectItem key={c} value={c}>{c.replace(/_/g, ' ')}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </label>
+              {conditionLabeling && selected.damageCategory && conditionKind(selected.damageCategory) === 'normal' && <Button size="sm" variant="outline" onClick={() => commit(annotations.map((a) => a.kind === 'polygon' || a.kind === 'bbox' || a.kind === 'circle' ? { ...a, damageCategory: selected.damageCategory, component: selected.component } : a))}>Apply normal category to all regions</Button>}
               {findings.length > 0 && (
                 <label className="block space-y-1">
                   <span className="text-muted-foreground">Linked finding</span>

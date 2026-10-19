@@ -12,6 +12,7 @@
 import type { PhotoFinding, FindingEvidence } from './findings';
 import type { Annotation } from './annotations';
 import { parseAnnotationSet } from './annotations';
+import { ALL_CONDITION_CLASSES, conditionKind, type ConditionKind } from './training/taxonomy';
 
 export interface ReportBranding {
   companyName: string;
@@ -68,6 +69,8 @@ export interface PhotoIntelligenceReport {
   buildings: ReportBuildingSection[];
   noDamageAreas: string[];
   noDamageFindings?: ReportFindingEntry[];
+  maintenanceFindings?: ReportFindingEntry[];
+  unassessedFindings?: ReportFindingEntry[];
   siteOverview?: ReportSiteOverview | null;
   priorityCounts: Record<PhotoFinding['severity'], number>;
   waterEntryConcerns: ReportFindingEntry[];
@@ -80,7 +83,12 @@ export interface PhotoIntelligenceReport {
 
 export const SEVERITY_ORDER: PhotoFinding['severity'][] = ['immediate', 'high', 'moderate', 'low', 'cosmetic', 'unknown'];
 
-const NO_DAMAGE_CONDITION = /no visible damage/i;
+const NO_DAMAGE_CONDITION = /no visible (damage|concern)/i;
+
+export function reportCondition(f: PhotoFinding): ConditionKind {
+  if (isNoDamageFinding(f)) return 'normal';
+  return ALL_CONDITION_CLASSES.includes(f.visible_condition) ? conditionKind(f.visible_condition) : 'damage';
+}
 
 /** True when a finding records an inspected area with no visible damage. */
 export function isNoDamageFinding(f: PhotoFinding): boolean {
@@ -136,8 +144,10 @@ export function composeReport(args: {
     })),
   });
 
-  const damage = findings.filter((f) => !isNoDamageFinding(f));
-  const noDamage = findings.filter(isNoDamageFinding);
+  const damage = findings.filter((f) => reportCondition(f) === 'damage');
+  const noDamage = findings.filter((f) => reportCondition(f) === 'normal');
+  const maintenance = findings.filter((f) => reportCondition(f) === 'maintenance');
+  const unassessed = findings.filter((f) => ['uncertain', 'not_assessable'].includes(reportCondition(f)));
 
   const byBuilding = new Map<string, ReportFindingEntry[]>();
   for (const f of damage) {
@@ -166,9 +176,11 @@ export function composeReport(args: {
   const needsVerification = damage.filter((f) => f.recommended_verification);
   if (needsVerification.length > 0) recommendedNextSteps.push('Complete the recommended close-up or core verifications listed per finding.');
   if (noDamage.length > 0) recommendedNextSteps.push('Re-inspect documented no-damage areas after the next major weather event.');
+  if (maintenance.length > 0) recommendedNextSteps.push('Arrange cleaning or service for the photographed maintenance concerns.');
+  if (unassessed.length > 0) recommendedNextSteps.push('Obtain close-up or physical inspection of uncertain and inadequately assessed areas.');
   if (recommendedNextSteps.length === 0) recommendedNextSteps.push('No further action recommended at this time.');
 
-  const executiveSummary = buildExecutiveSummary(args.property, damage, noDamage, priorityCounts, waterEntryConcerns.length);
+  const executiveSummary = buildExecutiveSummary(args.property, damage, noDamage, priorityCounts, waterEntryConcerns.length) + ` ${maintenance.length} maintenance observation(s); ${unassessed.length} area(s) require further assessment. No visible concern does not exclude concealed defects.`;
 
   return {
     branding: args.branding,
@@ -178,6 +190,8 @@ export function composeReport(args: {
     buildings,
     noDamageAreas: noDamage.map((f) => `${f.building_label?.trim() || 'Unassigned building'} — ${f.component}: ${f.visible_condition}`),
     noDamageFindings: noDamage.map(toEntry),
+    maintenanceFindings: maintenance.map(toEntry),
+    unassessedFindings: unassessed.map(toEntry),
     siteOverview: args.siteOverview ?? null,
     priorityCounts,
     waterEntryConcerns,
@@ -209,5 +223,9 @@ function buildExecutiveSummary(
 
 /** Every finding entry must trace to at least one original photo. */
 export function findUntraceableEntries(report: PhotoIntelligenceReport): ReportFindingEntry[] {
-  return [...report.buildings.flatMap((b) => b.findings), ...(report.noDamageFindings ?? [])].filter((e) => e.evidencePhotoPaths.length === 0);
+  return reportEntries(report).filter((e) => e.evidencePhotoPaths.length === 0);
+}
+
+export function reportEntries(report: PhotoIntelligenceReport): ReportFindingEntry[] {
+  return [...report.buildings.flatMap((b) => b.findings), ...(report.noDamageFindings ?? []), ...(report.maintenanceFindings ?? []), ...(report.unassessedFindings ?? [])];
 }

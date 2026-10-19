@@ -21,4 +21,4 @@
 - Read nested `AGENTS.md`. Grouped handlers live in `_shared` for bundling.
 - Feature menus use `useEffectiveTenantId` and refresh explicit company switches; tier labels never override switches.
 - Photo Intelligence damage recognition runs only on PITCH-controlled weights via the worker `/vision/detect-damage` (ONNX, CPU first); no external AI API is called per photo, and classes not validated on inspector-labeled originals return no findings.
-- Photo Intelligence training uses only inspector-approved labels (approver ≠ labeler), splits train/val by property, and evaluation refuses training photos; classes are promoted per roof system only after passing measured gates.
+- Condition learning uses independent approvals, property-isolated tests and manifest class order; uncertain photos stay review-only, never background. Promotion requires measured gates.

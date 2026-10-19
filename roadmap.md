@@ -15,11 +15,16 @@
 - [ ] Claude Code security review — runs in user's GitHub repo
 
 ## Photo Intelligence (current)
-- [ ] M1: Persistent original-photo labeling and independent approval queue
-- [ ] M2: Versioned property-isolated datasets and training readiness dashboard
-- [ ] M3: Licensed model registry, comparison, promotion and rollback audit
-- [ ] Damage-only local CPU/optional GPU training execution and regression tests
-- [ ] Update four Photo Intelligence tracking documents; verify GitHub sync if available
+- [x] Expand condition taxonomy/editor, bulk normal regions, uncertainty queue and approved normal/damage dashboard; authenticated acceptance pending
+- [x] Extend local dataset/export/CPU experiments and independent condition evaluation; 64 JS and 5 CPU tests passed, synthetic only
+- [x] Balance reviewed report model/preview/PDF and update four tracking documents
+- [ ] Condition dataset/evaluation SQL and server promotion hardening — BLOCKED: staging verification/approval; whitelist expansion applied without staging, no RLS changed
+- [ ] Material/component staged training, automatic suggestions and native/ONNX parity — BLOCKED: independently approved representative component/material data and validated weights
+- [ ] Real approved clay-tile training/accuracy and signed-in acceptance — BLOCKED: approved originals from multiple properties and authenticated session unavailable
+- [ ] M1/M2/M3 signed-in labeling, dataset and model registry acceptance — BLOCKED: authenticated account unavailable; software exists, condition SQL staging incomplete
+- [x] Local CPU train/resume, balanced targets, held-out export and evaluation CLI exercised on synthetic originals; 5 CPU tests passed
+- [x] Four Photo Intelligence tracking documents updated
+- [ ] GitHub sync — BLOCKED: remote main c8f22b35b651668bd4d0ce1e70139c7803d9d6fe (2026-10-18T17:42:37Z) differs from local observed db1e4ef9f50425d8605b88fe49d803140b39b36c; automatic synchronization not confirmed
 - [x] P1: AI Analyze button on Photos tab → Photo Intelligence in record context, select/Analyze All, progress, dedupe
 - [ ] P2: Unify Standard vs AI report types under View/Export/Email Report
 - [x] P3: Live AI recognition repaired (ai-api routing + auth + tenant header; coordinate-bearing detections; server-side sanitization; no fabricated geometry)
