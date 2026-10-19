@@ -79,6 +79,7 @@ import SquareConnectionCard from "@/components/settings/SquareConnectionCard";
 
 import { MyMoneyContent } from "@/pages/MyMoney";
 import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
+import { CompanyTrainingContribution } from "@/components/photo-intelligence/CompanyTrainingContribution";
 import { CompanyReferralSettingsPanel } from "@/components/company-referrals/settings/CompanyReferralSettingsPanel";
 import { CompanyReferralPartnersTable } from "@/components/company-referrals/settings/CompanyReferralPartnersTable";
 import { CreateCompanyReferralPartnerDialog } from "@/components/company-referrals/settings/CreateCompanyReferralPartnerDialog";
@@ -454,6 +455,7 @@ export const Settings = () => {
               <TabsTrigger value="lead-sources">Lead Sources</TabsTrigger>
               <TabsTrigger value="approval-requirements">Approval Requirements</TabsTrigger>
               <TabsTrigger value="estimate-pdf">Estimate PDF</TabsTrigger>
+              <TabsTrigger value="ai-training">AI Training</TabsTrigger>
             </TabsList>
             <TabsContent value="settings">
               <GeneralSettings />
@@ -475,6 +477,9 @@ export const Settings = () => {
                 <EstimateFinePrintSettings />
                 <WarrantySettings />
               </div>
+            </TabsContent>
+            <TabsContent value="ai-training">
+              <CompanyTrainingContribution tenantId={effectiveTenantId} />
             </TabsContent>
           </Tabs>
         );
