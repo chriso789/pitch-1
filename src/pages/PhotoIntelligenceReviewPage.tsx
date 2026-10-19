@@ -60,10 +60,10 @@ export default function PhotoIntelligenceReviewPage() {
         onProgress: setProgress,
       });
       if (outcome.findingsCreated > 0) {
-        toast.success(`${outcome.findingsCreated} finding${outcome.findingsCreated === 1 ? '' : 's'} ready for review`);
-      } else if (outcome.errors.length === 0 && outcome.proposals === 0) {
-        toast.info('Analysis completed — no placeable damage candidates detected');
+        toast.success(`${outcome.findingsCreated} possible anomal${outcome.findingsCreated === 1 ? 'y' : 'ies'} marked for inspector review (not confirmed damage)`);
       }
+      if (outcome.noUnusualRegions) toast.info(`${outcome.noUnusualRegions} photo${outcome.noUnusualRegions === 1 ? '' : 's'} analyzed — no unusual regions found`);
+      if (outcome.notAssessable) toast.warning(`${outcome.notAssessable} photo${outcome.notAssessable === 1 ? '' : 's'} could not be assessed (blurry, dark or overexposed)`);
       for (const err of outcome.errors) toast.error(`${err.fileName}: ${err.message}`);
       if (outcome.skippedDuplicates > 0) toast.info(`${outcome.skippedDuplicates} photo${outcome.skippedDuplicates === 1 ? '' : 's'} skipped (already analyzed)`);
       qc.invalidateQueries({ queryKey: ['photo-findings', tenantId] });
