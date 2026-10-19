@@ -14,11 +14,11 @@ export function annotationRegions(json: unknown, system: RoofSystem): LabelRegio
     else if (a.kind === 'bbox') polygon = [{ x: a.origin.x, y: a.origin.y }, { x: a.origin.x + a.size.x, y: a.origin.y }, { x: a.origin.x + a.size.x, y: a.origin.y + a.size.y }, { x: a.origin.x, y: a.origin.y + a.size.y }];
     else polygon = Array.from({ length: 32 }, (_, i) => ({ x: a.center.x + a.radius * Math.cos(i * Math.PI / 16), y: a.center.y + a.radius * Math.sin(i * Math.PI / 16) }));
     if (polygon.some((p) => p.x < 0 || p.x > 1 || p.y < 0 || p.y > 1)) throw new Error('Damage regions must remain inside the original image');
-    out.push({ cls: a.damageCategory, polygon });
+    out.push({ cls: a.damageCategory, polygon, component: a.component ?? undefined, reason: a.notes ?? undefined });
   }
   return out;
 }
 
 export function regionAnnotations(regions: LabelRegion[]): Annotation[] {
-  return regions.map((r, i) => ({ id: `import-${i}`, kind: 'polygon', color: '#ef4444', points: r.polygon, damageCategory: r.cls }));
+  return regions.map((r, i) => ({ id: `import-${i}`, kind: 'polygon', color: '#ef4444', points: r.polygon, damageCategory: r.cls, component: r.component, notes: r.reason }));
 }
