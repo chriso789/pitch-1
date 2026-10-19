@@ -15,9 +15,11 @@
 - [ ] Claude Code security review — runs in user's GitHub repo
 
 ## Photo Intelligence (current)
-- [ ] Expand condition taxonomy, inspector labeling and correction workflow
-- [ ] Extend dataset export, local experiments and independent condition evaluation
-- [ ] Balance reviewed reports and update condition-recognition tracking documentation
+- [x] Expand condition taxonomy/editor, bulk normal regions, uncertainty queue and approved normal/damage dashboard; authenticated acceptance pending
+- [x] Extend local dataset/export/CPU experiments and independent condition evaluation; 64 JS and 5 CPU tests passed, synthetic only
+- [x] Balance reviewed report model/preview/PDF and update four tracking documents
+- [ ] Condition dataset/evaluation SQL and server promotion hardening — BLOCKED: staging verification/approval; whitelist expansion applied without staging, no RLS changed
+- [ ] Material/component staged training, automatic suggestions and native/ONNX parity — BLOCKED: independently approved representative component/material data and validated weights
 - [ ] Real approved clay-tile training/accuracy and signed-in acceptance — BLOCKED: approved originals from multiple properties and authenticated session unavailable
 - [ ] M1: Persistent original-photo labeling and independent approval queue
 - [ ] M2: Versioned property-isolated datasets and training readiness dashboard

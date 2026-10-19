@@ -1,5 +1,20 @@
 # Photo Recognition Feature Matrix
 
+## Current condition update — 2026-10-19
+| Condition capability | Status | Evidence / limitation |
+|---|---|---|
+| Balanced taxonomy and condition labels | implemented | `training/taxonomy.ts`, editor condition controls; normal groups, defects, maintenance, uncertainty |
+| Bulk normal region assignment and uncertainty review | partial | Editor and queue implemented; authenticated save/review unverified |
+| Normal versus damage approved examples/counts | implemented | Training readiness, distinct approved photos per class |
+| Small local CPU experiments | implemented | TorchVision synthetic train/resume tests: 5 passed; not actual tile-photo learning |
+| Safe uncertainty exclusions | partial | COCO, worker and local evaluator enforce; SQL dataset/evaluation still pending staging |
+| Condition/normal false-positive evaluation | implemented | Local `evaluation.ts` and CLI; bbox metrics, not polygon accuracy |
+| Balanced evidence-backed report sections | partial | Model/preview/PDF plus evidence test; authenticated real-file acceptance pending |
+| Material→component→condition staged recognizer | not-started | Current experimental detector is joint, no trained material/component stages |
+| Model activation / real accuracy | blocked | Approved originals, independent unseen-property tests, staging SQL and model parity missing |
+
+Historical entries below do not establish current live model capability. No external inference was used in this update; no model installed or app published.
+
 Status: implemented | partial | blocked | not-started
 
 | Feature | Status | Notes |

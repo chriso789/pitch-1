@@ -1,5 +1,14 @@
 # Photo Intelligence Test Results
 
+## 2026-10-19 — Balanced roof conditions
+- `bun run test -- src/lib/photo-intelligence/training/conditions.test.ts src/lib/photo-intelligence/photo-intelligence-training.test.ts tests/unit/photo-intelligence-*.test.ts`: **9 files, 64 passed, 0 failed** (57 existing plus 6 condition rules and 1 balanced-report evidence rule).
+- `/tmp/pitch-condition-venv/bin/python -m unittest worker.tests.test_damage_training`: **5 passed**. Local CPU trained/resumed the synthetic small backbone, retained held-out-only output, independently approved originals, normal targets and uncertainty exclusions. No paid computer or model license purchased. Isolated temporary CPU dependencies installed.
+- Conditions tests: six-system class acceptance, normal shadows/mortar maintenance, uncertainty not background, small internal experiments without production approval, no-concern consistency, false defects on normal photos, missed broken tiles, and review-only metric exclusion.
+- Report test: normal, maintenance and not-assessable never count as damage; all require original evidence.
+- Running app route `/photo-intelligence/training` redirects to `/login`; screenshot confirms sign-in screen. **Authenticated labeling/review/save/export/registry and two-company isolation not tested.** No real accuracy score exists.
+- SQL class whitelist expanded; no RLS changed, but prior staging approval was not obtained. Remaining SQL hardening is documented, not deployed. 241 pre-existing linter findings reported, not triaged as part of this condition task.
+- Material/component recognition, polygon segmentation accuracy, customer-photo training, native/ONNX parity and production switch remain unverified. Current local metric is bounding-box IoU.
+
 ## 2026-10-17 — Phase 1 (data model)
 - Migration applied: `photo_findings`, `photo_finding_evidence`, `photo_finding_reviews` with tenant RLS and grants.
 - Trigger tests (approval guard, measurement-source guard): pending — run against DB with test accounts.

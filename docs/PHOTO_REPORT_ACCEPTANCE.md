@@ -1,5 +1,10 @@
 # Photo Report Acceptance Criteria
 
+## Balanced conditions — 2026-10-19
+Approved report composition and PDF/preview now separate visible defects, maintenance, visually normal components and unassessed/uncertain areas. All sections retain persistent finding IDs, original evidence and inspector approval. Normal observations never add to damage severity totals. Unassessed areas trigger further inspection recommendations; no visible concern does not prove concealed defects absent.
+
+Software tests pass, but real approved photographs and signed-in save→export→reopen remain pending. The current trained-model acceptance is **NOT met**: no customer model, material/component stages or measured accuracy. Local CPU synthetic execution is infrastructure evidence only. SQL persistence/evaluation hardening requires staging approval; no publication authorized.
+
 A PITCH photo-intelligence report is acceptable only when ALL hold:
 
 1. Every confirmed finding is human-approved (`review_status='approved'` with recorded review).

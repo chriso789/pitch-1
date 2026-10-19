@@ -1,5 +1,15 @@
 # Photo Intelligence Master Roadmap
 
+## Current condition update — 2026-10-19 (supersedes historical damage-only status)
+- Implemented expanded taxonomy across six systems; normal groups, visible defects, maintenance, uncertainty and not-assessable. Label editor has condition buttons, category filtering and bulk-normal-region assignment; independent review retains corrections and an uncertainty queue. Dashboard counts regions and distinct approved photos and shows normal/damage examples side by side.
+- Local dataset/export/worker exclude review-only uncertainty from learning and evaluation, retain negatives, enforce independent approval and property splits. Experimental readiness is separate from validation and production. Local CPU TorchVision tests ran successfully without purchased hosting or pretrained weights.
+- Balanced approved report model/preview/PDF separate defects, maintenance, visually normal and unassessed observations; every category retains original-evidence gates.
+- Local evaluation CLI and tests report normal-photo false positives, missed defects, per-system/per-condition P/R, bbox IoU, calibration and excluded-review counts. This is not polygon segmentation or measured material/component-stage accuracy.
+- **Partial:** component-first material→component→condition pipeline is not trained; current experiment is a joint detector. Automatic suggestions remain off without validated PITCH weights. Corrected labels still require fresh second-inspector approval.
+- **Persistence limitation:** class-validator SQL was expanded live, without prior staging approval (no RLS changed). Remaining dataset/evaluation SQL hardening is not applied; see `PHOTO_CONDITION_STAGING.md`. Condition results are blocked from registry import/promotion in the UI until staging acceptance; this is not a substitute for server hardening.
+- **Blocked:** real 16-photo training/analysis and accuracy need actual originals, independent labels, unseen properties and an authenticated account. GitHub synchronization is unverified. Nothing published or worker-installed.
+- 64 Photo Intelligence tests and 5 local CPU tests passed; CPU tests use synthetic images, not customer recognition evidence.
+
 Reference benchmark: 7552 Navarre Parkway Storm Damage Photo Report (19 pages, 22 photos). Used as taxonomy/quality benchmark only, never as ground truth or branding source.
 
 ## Phases
