@@ -9,7 +9,7 @@ licensing, **not** a legal warranty and **not** evidence of roofing accuracy.
 | Role | Choice | Weights license | Size (FP32) | Notes |
 |---|---|---|---|---|
 | Feature extraction / similarity | **DINOv2 Small** (Meta) | Apache-2.0 (code + weights, explicit) | ~84 MB | Best-cleared general visual features; needs downstream heads for classification/segmentation |
-| Segmentation (component boundaries) | **SAM 2.1 Tiny** (Meta) | Apache-2.0 (code + checkpoints, explicit) | ~156 MB | Promptable masks, no semantic labels; ONNX export is integration work — worker preferred |
+| Segmentation (component boundaries) | **SAM 2.1 Tiny** (Meta) | Apache-2.0 (code + checkpoints, explicit) | ~156 MB | Promptable masks, no semantic labels; ONNX export is integration work — worker preferred. **Next Phase-2 step.** |
 | Object detection (backup) | **DETR R50** (Meta) | Apache-2.0 | ~166 MB | Export needed; worker preferred |
 | Material classification (domain lead) | **RoofSense** (ResNet18-D + DeepLabV3+) | Code MIT, weights CC-BY-4.0 | — | **Checked 2026-10-19: NOT adopted.** Model card/repo confirm multimodal aerial-imagery + LiDAR data-fusion inputs (trained on Dutch aerial data); PITCH photos are ground-level CRM uploads, so inputs do not match. Windows-only end-user install. Revisit only for aerial+LiDAR workflows. |
 | Zero-shot / text-image similarity (optional) | **CLIP** (OpenAI) | MIT | image encoder ~350 MB | No masks; model card requires context-specific evaluation |
