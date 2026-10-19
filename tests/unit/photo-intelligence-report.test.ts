@@ -81,4 +81,13 @@ describe('report composition', () => {
     const approved = composeReport({ ...args, findings: [base], approval: { approvedBy: 'u1', approvedAt: '2026-10-02T00:00:00Z' } });
     expect(approved.approval?.approvedBy).toBe('u1');
   });
+  it('normal, maintenance and unassessed observations are not counted as defects and retain evidence requirements', () => {
+    const report = composeReport({ ...args, findings: ['normal_tile_alignment', 'maintenance_debris', 'not_assessable_glare'].map((visible_condition, i) => ({ ...base, id: `condition-${i}`, visible_condition })) });
+    expect(report.buildings).toHaveLength(0);
+    expect(report.priorityCounts.high).toBe(0);
+    expect(report.noDamageFindings).toHaveLength(1);
+    expect(report.maintenanceFindings).toHaveLength(1);
+    expect(report.unassessedFindings).toHaveLength(1);
+    expect(findUntraceableEntries(report)).toHaveLength(3);
+  });
 });
