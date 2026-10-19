@@ -4,6 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserProfile } from '@/contexts/UserProfileContext';
+import { fetchCanvassPhotos } from '@/lib/canvass/canvassPhotos';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -48,44 +49,26 @@ export function PropertyPhotoGallery() {
   const [showAnnotationTool, setShowAnnotationTool] = useState(false);
   const [comparePhotos, setComparePhotos] = useState<{ before?: PhotoData; after?: PhotoData }>({});
 
-  // Fetch photos for this property
+  // Fetch photos for this property (canvass_photos records with signed URLs)
   const { data: photos = [], isLoading } = useQuery({
     queryKey: ['property-photos', propertyId, profile?.tenant_id],
     queryFn: async () => {
       if (!profile?.tenant_id || !propertyId) return [];
-      
-      const { data, error } = await supabase
-        .from('canvass_activity_log')
-        .select('*')
-        .eq('tenant_id', profile.tenant_id)
-        .eq('activity_type', 'photo_uploaded')
-        .order('created_at', { ascending: false });
-      
-      if (error) throw error;
-      
-      // Filter by property and extract photo data
-      return (data || [])
-        .filter((log: any) => {
-          const activityData = typeof log.activity_data === 'string' 
-            ? JSON.parse(log.activity_data) 
-            : log.activity_data;
-          return activityData?.property_id === propertyId;
-        })
-        .map((log: any) => {
-          const activityData = typeof log.activity_data === 'string'
-            ? JSON.parse(log.activity_data)
-            : log.activity_data;
-          return {
-            id: log.id,
-            photo_url: activityData.photo_url,
-            category: activityData.category || 'other',
-            notes: activityData.notes,
-            latitude: log.latitude,
-            longitude: log.longitude,
-            created_at: log.created_at,
-            transcription: activityData.transcription,
-          } as PhotoData;
-        });
+
+      const records = await fetchCanvassPhotos({
+        tenantId: profile.tenant_id,
+        propertyId,
+      });
+
+      return records.map((r) => ({
+        id: r.id,
+        photo_url: r.signed_url ?? '',
+        category: r.category,
+        notes: r.notes ?? undefined,
+        latitude: r.latitude ?? undefined,
+        longitude: r.longitude ?? undefined,
+        created_at: r.created_at,
+      })) as PhotoData[];
     },
     enabled: !!profile?.tenant_id && !!propertyId,
   });

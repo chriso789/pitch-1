@@ -8176,6 +8176,68 @@ export type Database = {
           },
         ]
       }
+      canvass_photos: {
+        Row: {
+          category: string
+          created_at: string
+          file_size: number | null
+          id: string
+          latitude: number | null
+          longitude: number | null
+          mime_type: string | null
+          notes: string | null
+          property_address: string | null
+          property_id: string | null
+          storage_path: string
+          taken_at: string | null
+          tenant_id: string
+          updated_at: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          category?: string
+          created_at?: string
+          file_size?: number | null
+          id?: string
+          latitude?: number | null
+          longitude?: number | null
+          mime_type?: string | null
+          notes?: string | null
+          property_address?: string | null
+          property_id?: string | null
+          storage_path: string
+          taken_at?: string | null
+          tenant_id: string
+          updated_at?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          file_size?: number | null
+          id?: string
+          latitude?: number | null
+          longitude?: number | null
+          mime_type?: string | null
+          notes?: string | null
+          property_address?: string | null
+          property_id?: string | null
+          storage_path?: string
+          taken_at?: string | null
+          tenant_id?: string
+          updated_at?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "canvass_photos_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "canvassiq_properties"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       canvass_pin_mutations: {
         Row: {
           client_created_at: string | null
@@ -67921,6 +67983,10 @@ export type Database = {
       }
       can_view_all_tenants: { Args: never; Returns: boolean }
       can_view_hidden_users: { Args: never; Returns: boolean }
+      canvass_photo_tenant_allowed: {
+        Args: { _tenant_id: string }
+        Returns: boolean
+      }
       capture_branding_snapshot: {
         Args: { p_tenant_id: string }
         Returns: Json

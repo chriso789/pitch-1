@@ -1501,6 +1501,7 @@ export default function PropertyInfoPanel({
         <CanvassPhotoCapture
           open={showPhotoCapture}
           onOpenChange={setShowPhotoCapture}
+          propertyId={property?.id}
           propertyAddress={property?.address?.street || property?.owner_address}
           userLocation={userLocation}
         />
