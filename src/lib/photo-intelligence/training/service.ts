@@ -3,6 +3,7 @@ import type { Database, Json } from '@/integrations/supabase/types';
 import { safeStorageUpload } from '@/lib/storage/safeUpload';
 import { zipSync, strToU8 } from 'fflate';
 import { toCoco, type DatasetVersion } from './dataset';
+import { isTrainableClass } from './taxonomy';
 
 export type Original = Database['public']['Tables']['photo_training_originals']['Row'] & { url: string };
 export type Label = Database['public']['Tables']['photo_training_labels']['Row'];
@@ -56,7 +57,8 @@ export function downloadBlob(blob: Blob, name: string) {
 }
 
 export async function exportDataset(ds: SavedDataset) {
-  const manifest = ds.manifest as unknown as DatasetVersion;
+  const saved = ds.manifest as unknown as DatasetVersion;
+  const manifest = { ...saved, classes: saved.classes.filter(isTrainableClass) };
   const files: Record<string, Uint8Array> = { 'manifest.json': strToU8(JSON.stringify(manifest, null, 2)) };
   for (const split of ['train', 'val', 'test'] as const) files[`${split}.json`] = strToU8(JSON.stringify(toCoco(manifest, split)));
   let total = 0;
