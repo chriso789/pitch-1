@@ -14,8 +14,13 @@
 
 import type { ComponentModel, ComponentRegion } from './componentRecognition';
 import type { GrayImage } from '../patternAnalysis';
+import dinov2SmallAsset from '../../../../public/models/photo-intelligence/dinov2-small.onnx.asset.json';
 
-export const MODEL_BASE_PATH = '/models/photo-intelligence';
+/** Self-hosted weight URLs (large files live in the asset store, pointer JSON in the repo). */
+export const MODEL_URLS = {
+  componentSegmenter: '/models/photo-intelligence/component-segmenter.onnx',
+  dinov2Small: dinov2SmallAsset.url,
+} as const;
 
 export interface LoadedOnnxModel {
   modelId: string;
