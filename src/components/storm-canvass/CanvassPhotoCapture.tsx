@@ -18,10 +18,12 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
-import { useUserProfile } from '@/contexts/UserProfileContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import { openDB, IDBPDatabase } from 'idb';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { uploadCanvassPhoto } from '@/lib/canvass/canvassPhotos';
+import { savePhotoOffline, getPendingPhotoCount } from './OfflinePhotoSyncManager';
+import { VoiceNoteRecorder } from './VoiceNoteRecorder';
 import { VoiceNoteRecorder } from './VoiceNoteRecorder';
 
 interface CanvassPhotoCaptureProps {
