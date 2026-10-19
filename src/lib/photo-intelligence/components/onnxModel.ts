@@ -80,6 +80,12 @@ export function backboneOnlyModel(loaded: LoadedOnnxModel): ComponentModel {
  * Load the best available component model, or null when none is installed.
  * Order mirrors the audit decision: a verified segmentation model first.
  */
+/** Load the DINOv2 similarity model alone (feature extraction only; no regions). */
+export async function loadSimilarityModel(): Promise<ReturnType<typeof dinov2SimilarityModel> | null> {
+  const loaded = await tryLoadSession(MODEL_URLS.dinov2Small);
+  return loaded ? dinov2SimilarityModel(loaded) : null;
+}
+
 export async function loadComponentModel(): Promise<ComponentModel | null> {
   const [encoder, decoder] = await Promise.all([
     tryLoadSession(MODEL_URLS.sam2Encoder),
