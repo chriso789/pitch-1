@@ -6,7 +6,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { PhotoAnnotationEditor } from '@/components/photo-intelligence/PhotoAnnotationEditor';
 import { BENCHMARK_COMPONENT_CLASSES } from '@/lib/photo-intelligence/benchmarkHarness';
-import { approveCandidate, approvedToExamples, inventoryCompanyPhotos, loadCandidates, saveReferenceCrops, type InventoryPhoto } from '@/lib/photo-intelligence/components/referenceCandidates';
+import { type ComponentCondition, approveCandidate, approvedToExamples, inventoryCompanyPhotos, loadCandidates, saveReferenceCrops, type InventoryPhoto } from '@/lib/photo-intelligence/components/referenceCandidates';
 import { heldOutEvaluation, type HeldOutReport, type SplitMetrics } from '@/lib/photo-intelligence/components/heldOutEvaluation';
 import { recommendForLabeling, triagePhotos, type TriagedPhoto } from '@/lib/photo-intelligence/components/photoTriage';
 import { proposeRegions, proposalsToAnnotations, type ProposalReport } from '@/lib/photo-intelligence/components/regionProposals';
@@ -40,6 +40,9 @@ export function ReferenceLibraryTab({ tenantId, userId }: { tenantId: string; us
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [assignCls, setAssignCls] = useState<string>(BENCHMARK_COMPONENT_CLASSES[0]);
   const [approveSel, setApproveSel] = useState<Set<string>>(new Set());
+  const [conditions, setConditions] = useState<Record<string, ComponentCondition>>({});
+  const [assignCond, setAssignCond] = useState<ComponentCondition | ''>('');
+  const [comment, setComment] = useState('');
 
   const photos = useQuery({ queryKey: ['ref-inventory', tenantId], queryFn: () => inventoryCompanyPhotos(tenantId, 500) });
   const cands = useQuery({ queryKey: ['ref-candidates', tenantId], queryFn: () => loadCandidates(tenantId) });
@@ -87,6 +90,7 @@ export function ReferenceLibraryTab({ tenantId, userId }: { tenantId: string; us
 
   const assignPicked = () => {
     const anns = parseAnnotationSet(json).map((a) => (picked.has(a.id) ? { ...a, damageCategory: assignCls } : a));
+    if (assignCond) setConditions((c) => { const n = { ...c }; picked.forEach((id) => { n[id] = assignCond; }); return n; });
     setJson(serializeAnnotations(anns)); setPicked(new Set()); setEditorKey((k) => k + 1);
   };
 
@@ -125,15 +129,16 @@ export function ReferenceLibraryTab({ tenantId, userId }: { tenantId: string; us
           <h3 className="font-medium">Awaiting second-inspector approval ({pending.length})</h3>
           <Button size="sm" className="ml-auto" disabled={busy || !approveSel.size} onClick={async () => {
             setBusy(true);
-            try { for (const id of approveSel) await approveCandidate(id, userId); toast.success(`${approveSel.size} approved`); setApproveSel(new Set()); refresh(); }
+            try { for (const id of approveSel) await approveCandidate(id, userId, comment); setComment(''); toast.success(`${approveSel.size} approved`); setApproveSel(new Set()); refresh(); }
             catch (e) { toast.error((e as Error).message); } finally { setBusy(false); }
           }}>Approve {approveSel.size || ''} I checked</Button>
+          <input className="border rounded px-2 py-1 text-sm bg-background" placeholder="Reviewer comment (optional)" value={comment} onChange={(e) => setComment(e.target.value)} />
         </div>
         {pending.map((r) => {
           const mine = r.labeled_by === userId;
           return <label key={r.id} className="flex items-center gap-3 text-sm border rounded p-2">
             <Checkbox disabled={mine} checked={approveSel.has(r.id)} onCheckedChange={(v) => setApproveSel((s) => { const n = new Set(s); if (v) n.add(r.id); else n.delete(r.id); return n; })} />
-            <Badge variant="outline">{nice(r.cls)}</Badge><span className="text-muted-foreground">{r.source_property_key}</span>
+            <Badge variant="outline">{nice(r.cls)}</Badge>{r.condition && <Badge variant="secondary">{nice(r.condition)}</Badge>}<span className="text-muted-foreground">{r.source_property_key}</span>
             {mine && <span className="ml-auto text-xs text-muted-foreground">You labeled this — another inspector must approve</span>}
           </label>;
         })}
@@ -152,7 +157,7 @@ export function ReferenceLibraryTab({ tenantId, userId }: { tenantId: string; us
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-6">
           {shown.map((p) => {
             const t = triageById.get(p.id);
-            return <button key={p.id} className="border rounded overflow-hidden text-left" onClick={() => { setJson({}); setProposal(null); setPicked(new Set()); setEditorKey((k) => k + 1); setEditing(p); }}>
+            return <button key={p.id} className="border rounded overflow-hidden text-left" onClick={() => { setJson({}); setConditions({}); setProposal(null); setPicked(new Set()); setEditorKey((k) => k + 1); setEditing(p); }}>
               <img src={p.url!} alt="" loading="lazy" className="aspect-square w-full object-cover" />
               <div className="p-1 text-xs text-muted-foreground truncate">
                 {rows.filter((r) => r.source_photo_id === p.id).length} labels
@@ -180,6 +185,9 @@ export function ReferenceLibraryTab({ tenantId, userId }: { tenantId: string; us
               <select className="border rounded px-2 py-1 bg-background" value={assignCls} onChange={(e) => setAssignCls(e.target.value)}>
                 {BENCHMARK_COMPONENT_CLASSES.map((c) => <option key={c} value={c}>{nice(c)}</option>)}
               </select>
+              <select className="border rounded px-2 py-1 bg-background" value={assignCond} onChange={(e) => setAssignCond(e.target.value as ComponentCondition | '')}>
+                <option value="">condition: not set</option><option value="normal">normal</option><option value="possible_damage">possible damage</option><option value="maintenance">maintenance</option><option value="uncertain">uncertain</option>
+              </select>
               <Button size="sm" disabled={!picked.size} onClick={assignPicked}>Assign to {picked.size} selected</Button>
             </div>
             <div className="space-y-1">
@@ -188,7 +196,7 @@ export function ReferenceLibraryTab({ tenantId, userId }: { tenantId: string; us
                 return <label key={r.id} className="flex items-center gap-2">
                   <Checkbox checked={picked.has(r.id)} onCheckedChange={(v) => setPicked((s) => { const n = new Set(s); if (v) n.add(r.id); else n.delete(r.id); return n; })} />
                   <span>Outline {i + 1} · group {r.group + 1}</span>
-                  {ann?.damageCategory ? <Badge>{nice(ann.damageCategory)}</Badge> : <Badge variant="outline">unlabeled</Badge>}
+                  {conditions[r.id] && <Badge variant="secondary">{nice(conditions[r.id])}</Badge>}{ann?.damageCategory ? <Badge>{nice(ann.damageCategory)}</Badge> : <Badge variant="outline">unlabeled</Badge>}
                   <span className="text-muted-foreground">{r.suggestion.cls ? `suggests ${nice(r.suggestion.cls)} ${r.suggestion.similarity?.toFixed(2)} (margin ${r.suggestion.margin?.toFixed(2)})` : 'unknown'}{r.suggestion.runnerUp ? ` · next ${nice(r.suggestion.runnerUp.cls)} ${r.suggestion.runnerUp.similarity.toFixed(2)}` : ''}</span>
                 </label>;
               })}
@@ -201,7 +209,7 @@ export function ReferenceLibraryTab({ tenantId, userId }: { tenantId: string; us
               setBusy(true);
               try {
                 const unlabeled = parseAnnotationSet(j).filter((a) => proposalIds.has(a.id) && !a.damageCategory).length;
-                const n = await saveReferenceCrops(tenantId, editing, j);
+                const n = await saveReferenceCrops(tenantId, editing, j, conditions);
                 toast.success(`${n} label(s) saved — awaiting a second inspector${unlabeled ? `; ${unlabeled} unlabeled outline(s) skipped` : ''}`);
                 setEditing(null); refresh();
               } catch (e) { toast.error((e as Error).message); } finally { setBusy(false); }

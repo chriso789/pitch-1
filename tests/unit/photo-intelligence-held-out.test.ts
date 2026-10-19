@@ -50,3 +50,11 @@ describe('region grouping', () => {
     expect(groupBySimilarity([Float32Array.from([1, 0]), Float32Array.from([0.99, 0.05]), Float32Array.from([0, 1]), null])).toEqual([0, 0, 1, -1]);
   });
 });
+
+import { dedupeExamples } from '@/lib/photo-intelligence/components/heldOutEvaluation';
+describe('near-duplicate examples', () => {
+  it('collapses repeats within one property but keeps the same look at another property', () => {
+    const r = dedupeExamples([ex('a', 'clay_tile', 'p1', [1, 0]), ex('b', 'clay_tile', 'p1', [1, 0.01]), ex('c', 'clay_tile', 'p2', [1, 0])]);
+    expect(r.map((e) => e.id)).toEqual(['a', 'c']);
+  });
+});
