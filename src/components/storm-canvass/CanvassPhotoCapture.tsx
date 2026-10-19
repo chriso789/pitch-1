@@ -89,8 +89,7 @@ export function CanvassPhotoCapture({
   useEffect(() => {
     async function checkPending() {
       try {
-        const db = await getOfflineDB();
-        const count = await db.count(STORE_NAME);
+        const count = await getPendingPhotoCount();
         setPendingCount(count);
       } catch (e) {
         console.warn('Failed to check pending photos:', e);
