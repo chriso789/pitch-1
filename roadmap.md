@@ -39,3 +39,10 @@
 - [x] P5: In-tab review workflow (findings + evidence + annotations on review page; deeper in-tab editing polish still open)
 - [x] P6: Tests (25 passing) + 4 tracking docs updated
 - [ ] Signed-in end-to-end analysis run with a real photo — BLOCKED: backend is user-managed, no session can be minted here; must be tested in the preview signed in
+
+## First real model milestone (2026-10-19)
+- [x] Training readiness per roof type: normal, damaged, maintenance, uncertain, difficult look-alikes, unique properties
+- [x] Clay/concrete tile normal-vs-damaged target with readiness blockers (30 approved/class, 3 properties/class)
+- [ ] Real training + held-out evaluation — blocked: 0 canvass photos, 0 labels, 0 approvals in live data
+- [ ] Authenticated cross-company tests — blocked: no test sign-in available in this environment
+- [ ] Recognition stays off until a real trained model passes acceptance
