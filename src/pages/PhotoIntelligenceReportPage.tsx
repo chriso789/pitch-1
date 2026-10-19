@@ -242,11 +242,12 @@ export default function PhotoIntelligenceReportPage() {
 
             {report.noDamageAreas.length > 0 && (
               <section>
-                <h2 className="font-semibold mb-1">Areas inspected — no visible damage</h2>
+                <h2 className="font-semibold mb-1">Components appearing visually normal</h2>
                 <ul className="list-disc pl-5 text-sm">{report.noDamageAreas.map((a) => <li key={a}>{a}</li>)}</ul>
               </section>
             )}
 
+            {([['Maintenance recommendations', report.maintenanceFindings ?? []], ['Areas not adequately assessed', report.unassessedFindings ?? []]] as const).map(([title, entries]) => entries.length > 0 && <section key={title}><h2 className="font-semibold mb-1">{title}</h2>{entries.map((e) => <div key={e.findingId} className="border-b py-2 text-sm"><p>{e.findingRef} · {e.buildingLabel} · {e.component}: {e.condition.replace(/_/g, ' ')}</p>{e.recommendedVerification && <p>{e.recommendedVerification}</p>}<div className="flex flex-wrap gap-2">{e.evidencePhotoPaths.map((p) => <img key={p} src={evidencePhotoUrl(p)} alt={`Evidence for ${e.findingRef}`} className="h-20 w-20 object-cover" />)}</div></div>)}</section>)}
             {report.limitations.length > 0 && (
               <section>
                 <h2 className="font-semibold mb-1">Inspection limitations</h2>

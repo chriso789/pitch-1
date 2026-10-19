@@ -2,7 +2,7 @@ import { PDFDocument, rgb, type PDFPage, type PDFFont } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import fontAsset from '@/assets/photo-report-unicode.ttf.asset.json';
 import { assertReportExportable } from './reportExportGuard';
-import type { PhotoIntelligenceReport, ReportFindingEntry } from './reportModel';
+import { reportEntries, type PhotoIntelligenceReport, type ReportFindingEntry } from './reportModel';
 import { validateAnnotation, type Annotation, type Point } from './annotations';
 
 // Print palette: centralized roles, independent of the application's dark theme.
@@ -108,7 +108,7 @@ export async function generatePhotoReportPdf(report: PhotoIntelligenceReport, op
     report.siteOverview.markers.forEach((m, i) => text(`${i + 1}. ${m.buildingLabel}`));
     text('Building locations are relative to this photograph. Geographic coordinates and roof quantities are not inferred.', 9, muted);
   } else text('Aerial overview not supplied. Building assignments below are inspector-recorded labels, not a measured site map.');
-  const entries = [...report.buildings.flatMap((b) => b.findings), ...(report.noDamageFindings ?? [])];
+  const entries = reportEntries(report);
   for (const building of report.buildings) {
     newPage(`Building inventory: ${building.buildingLabel}`);
     for (const entry of building.findings) {
@@ -118,8 +118,16 @@ export async function generatePhotoReportPdf(report: PhotoIntelligenceReport, op
     }
   }
   if (report.noDamageAreas.length) {
-    newPage('Areas with no visible damage');
+    newPage('Components appearing visually normal');
     report.noDamageAreas.forEach((s) => text(s));
+  }
+  for (const [title, observations] of [['Maintenance recommendations', report.maintenanceFindings ?? []], ['Areas not adequately assessed', report.unassessedFindings ?? []]] as const) {
+    if (!observations.length) continue;
+    newPage(title);
+    for (const entry of observations) {
+      text(`${entry.findingRef} — ${entry.buildingLabel} | ${entry.component}: ${entry.condition.replace(/_/g, ' ')}`);
+      if (entry.recommendedVerification) text(entry.recommendedVerification);
+    }
   }
   for (const entry of entries) {
     newPage(`Finding ${entry.findingRef} — photographic evidence`);
