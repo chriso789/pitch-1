@@ -22,3 +22,4 @@
 - Feature menus use `useEffectiveTenantId` and refresh explicit company switches; tier labels never override switches.
 - Photo Intelligence runs only PITCH code: pattern analysis yields pending possible-anomaly regions (never damage); component names come from the DINOv2 reference classifier (similarity+margin, hard negatives, else unknown).
 - Training requires independent approval/property splits; canvass originals use trusted hashes and bucket references. Rep categories aren't labels; offline retries retain originals. Uncertainty is review-only; promotion requires measured gates.
+- Platform-wide Photo Intelligence training needs company opt-in (photo_training_contributions via set_photo_training_contribution) and a counts-only, audited platform_training_overview; never aggregate other companies' photos through the active tenant.

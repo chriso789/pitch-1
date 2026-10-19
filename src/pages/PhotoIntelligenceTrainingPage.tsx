@@ -27,6 +27,7 @@ import { useSearchParams } from 'react-router-dom';
 import { approvedCanvassCounts } from '@/lib/photo-intelligence/training/canvass';
 import { trainingReadiness } from '@/lib/photo-intelligence/training/readiness';
 import { addBenchmarkPhoto, annotationsToComponentDetections, BENCHMARK_COMPONENT_CLASSES, componentDetectionsToAnnotations, createBenchmarkSet, loadBenchmarkItems, loadBenchmarkSets, reviewBenchmarkItem, saveBenchmarkLabels, scoreBenchmarkSet, type BenchmarkItem } from '@/lib/photo-intelligence/benchmarkHarness';
+import { PlatformTrainingTab } from '@/components/photo-intelligence/PlatformTrainingTab';
 import { ReferenceLibraryTab } from '@/components/photo-intelligence/ReferenceLibraryTab';
 
 type Editing = { photo: Original; label?: Label };
@@ -108,7 +109,7 @@ export default function PhotoIntelligenceTrainingPage() {
     {query.isError && <p role="alert" className="text-destructive">{query.error.message}</p>}
     {!tenant && <p>Choose a company to open its training records.</p>}
     <Tabs value={tab} onValueChange={setTab}>
-      <TabsList className="flex h-auto flex-wrap justify-start"><TabsTrigger value="labeling">Labeling</TabsTrigger><TabsTrigger value="review">Approval queue ({pending.length})</TabsTrigger><TabsTrigger value="readiness">Training readiness</TabsTrigger><TabsTrigger value="models">Model registry</TabsTrigger><TabsTrigger value="benchmark">Benchmark</TabsTrigger><TabsTrigger value="reference">Reference library</TabsTrigger></TabsList>
+      <TabsList className="flex h-auto flex-wrap justify-start"><TabsTrigger value="labeling">Labeling</TabsTrigger><TabsTrigger value="review">Approval queue ({pending.length})</TabsTrigger><TabsTrigger value="readiness">Training readiness</TabsTrigger><TabsTrigger value="models">Model registry</TabsTrigger><TabsTrigger value="benchmark">Benchmark</TabsTrigger><TabsTrigger value="reference">Reference library</TabsTrigger><TabsTrigger value="platform">Shared training</TabsTrigger></TabsList>
       <TabsContent value="labeling" className="space-y-5">
         <div className="flex flex-wrap gap-3"><Select value={source} onValueChange={setSource}><SelectTrigger className="w-52"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All photo sources</SelectItem><SelectItem value="live_canvass">Live Canvassing</SelectItem><SelectItem value="inspector_upload">Inspector uploads</SelectItem></SelectContent></Select><Select value={queue} onValueChange={setQueue}><SelectTrigger className="w-60"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="unlabeled">Awaiting labels / verification</SelectItem><SelectItem value="all">All review statuses</SelectItem></SelectContent></Select>{selectedPhotoId && <Button variant="outline" onClick={() => setParams({ source })}>All photos</Button>}</div>
         {!!data?.registrationWarnings.length && <p role="alert" className="text-destructive">{data.registrationWarnings.length} canvassing photo registrations need retry or corrected property association.</p>}
@@ -169,6 +170,7 @@ export default function PhotoIntelligenceTrainingPage() {
           </div>
         </>}
       </TabsContent>
+      <TabsContent value="platform"><PlatformTrainingTab tenantId={tenant} /></TabsContent>
       <TabsContent value="reference">{tenant && user && <ReferenceLibraryTab tenantId={tenant} userId={user.id} />}</TabsContent>
     </Tabs>
     <Dialog open={!!benchEditing} onOpenChange={(open) => { if (!open) setBenchEditing(null); }}><DialogContent className="max-w-6xl max-h-[95vh] overflow-y-auto"><DialogHeader><DialogTitle>{benchEditing?.property_key} · Component labels (benchmark)</DialogTitle></DialogHeader>{benchEditing?.url && <PhotoAnnotationEditor key={benchEditing.id} imageUrl={benchEditing.url} initialAnnotations={benchJson} damageCategories={[...BENCHMARK_COMPONENT_CLASSES]} saving={busy} onChange={setBenchJson} onSave={async (json) => { setBenchJson(json); await benchPerform(() => saveBenchmarkLabels(benchEditing.id, annotationsToComponentDetections(json, benchEditing.id)), 'Component labels saved as draft — a second inspector must review'); }} />}</DialogContent></Dialog>
