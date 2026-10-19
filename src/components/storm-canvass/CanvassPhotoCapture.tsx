@@ -24,7 +24,6 @@ import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { uploadCanvassPhoto } from '@/lib/canvass/canvassPhotos';
 import { savePhotoOffline, getPendingPhotoCount } from './OfflinePhotoSyncManager';
 import { VoiceNoteRecorder } from './VoiceNoteRecorder';
-import { VoiceNoteRecorder } from './VoiceNoteRecorder';
 
 interface CanvassPhotoCaptureProps {
   open: boolean;
