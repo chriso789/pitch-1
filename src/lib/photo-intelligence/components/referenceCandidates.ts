@@ -74,11 +74,6 @@ export async function loadCandidates(tenantId: string): Promise<(ReferenceCandid
   return data ?? [];
 }
 
-export async function approveCandidate(id: string, userId: string, comment?: string) {
-  const { error } = await (supabase.from as any)('photo_reference_candidates').update({ approved_by: userId, approved_at: new Date().toISOString(), review_comment: comment?.trim() || null }).eq('id', id).is('approved_by', null);
-  if (error) throw error;
-}
-
 export function approvedToExamples(rows: (ReferenceCandidate & { embedding: number[] })[]): CalibrationExample[] {
   return rows.filter((r) => r.approved_by && (r.review_status ?? 'approved') === 'approved' && Array.isArray(r.embedding) && r.embedding.length).map((r) => ({
     id: r.id, cls: r.cls as ReferenceClass, embedding: Float32Array.from(r.embedding.map(Number)), libraryVersion: 1,

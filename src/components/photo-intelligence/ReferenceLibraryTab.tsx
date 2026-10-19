@@ -12,7 +12,7 @@ import { recommendForLabeling, type TriagedPhoto } from '@/lib/photo-intelligenc
 import { proposeRegions, proposalsToAnnotations, type ProposalReport } from '@/lib/photo-intelligence/components/regionProposals';
 import { parseAnnotationSet, serializeAnnotations } from '@/lib/photo-intelligence/annotations';
 import { toast } from 'sonner';
-import { loadProposals, loadTriage, p95, runProposalBatch, runTriage as runTriageJob } from '@/lib/photo-intelligence/components/photoProcessing';
+import { loadProposals, loadRuns, loadTriage, p95, type PhotoRunResult, runProposalBatch, runTriage as runTriageJob } from '@/lib/photo-intelligence/components/photoProcessing';
 
 const pct = (v: number | null) => (v === null ? '—' : `${Math.round(v * 100)}%`);
 const nice = (c: string) => c.replace(/_/g, ' ');
@@ -39,6 +39,7 @@ export function ReferenceLibraryTab({ tenantId, userId }: { tenantId: string; us
   const proposalsQ = useQuery({ queryKey: ['ref-proposals', tenantId], queryFn: () => loadProposals(tenantId) });
   const [progress, setProgress] = useState<string>('');
   const [batchTimes, setBatchTimes] = useState<number[]>([]);
+  const runsQ = useQuery({ queryKey: ['ref-runs', tenantId], queryFn: () => loadRuns(tenantId!), enabled: !!tenantId });
   const [onlyRecommended, setOnlyRecommended] = useState(false);
   const [proposal, setProposal] = useState<ProposalReport | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -87,8 +88,10 @@ export function ReferenceLibraryTab({ tenantId, userId }: { tenantId: string; us
     if (!pick.length) { toast.info('All recommended photos already have outlines.'); return; }
     setBusy(true);
     try {
-      const times = await runProposalBatch(tenantId, pick, library, (n, t) => setProgress(`Outlining ${n}/${t}`));
-      setBatchTimes(times);
+      const assess = new Map((triageQ.data ?? []).map((t) => [t.id, t.assessable] as [string, boolean]));
+      const results = await runProposalBatch(tenantId, pick, library, (n, t) => setProgress(`Outlining ${n}/${t}`), assess);
+      setBatchTimes(results.map((r) => r.durationMs));
+      await qc.invalidateQueries({ queryKey: ['ref-runs', tenantId] });
       await qc.invalidateQueries({ queryKey: ['ref-proposals', tenantId] });
     } catch (e) { toast.error((e as Error).message); } finally { setBusy(false); setProgress(''); }
   };
