@@ -112,6 +112,7 @@ export function OfflinePhotoSyncManager({ className, compact = false }: OfflineP
     setIsSyncing(true);
     setSyncProgress(0);
     
+    try {
     const database = await getDB();
     const queued = queueForSession(await database.getAll('offlinePhotos'), tenantId, user.id);
     let successCount = 0;
@@ -154,8 +155,6 @@ export function OfflinePhotoSyncManager({ className, compact = false }: OfflineP
       setSyncProgress(((i + 1) / queued.length) * 100);
     }
     
-    setIsSyncing(false);
-    syncingRef.current = false;
     await loadPendingPhotos();
     
     if (successCount > 0) {
@@ -171,6 +170,12 @@ export function OfflinePhotoSyncManager({ className, compact = false }: OfflineP
         description: `${failCount} photo${failCount > 1 ? 's' : ''} retained for retry`,
         variant: 'destructive',
       });
+    }
+    } catch {
+      toast({ title: 'Sync unavailable', description: 'Photos remain on this device. Please retry.', variant: 'destructive' });
+    } finally {
+      setIsSyncing(false);
+      syncingRef.current = false;
     }
   };
 

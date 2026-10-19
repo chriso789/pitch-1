@@ -8,6 +8,7 @@
 //   Deno.serve(app.fetch);
 
 import { Hono, type Context, type Next } from "jsr:@hono/hono";
+import type { ContentfulStatusCode } from "jsr:@hono/hono/utils/http-status";
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 
 export const corsHeaders: Record<string, string> = {
@@ -114,7 +115,7 @@ export function serveRouter(app: Hono<RouterEnv>) {
     // Public links and tracking pixels cannot set custom headers, so they may
     // provide the routed path as a query parameter instead.
     let route = req.headers.get("x-route") ?? url.searchParams.get("__route") ?? "";
-    let bodyBytes: Uint8Array | null = null;
+    let bodyBytes: Uint8Array<ArrayBuffer> | null = null;
     const mayHaveBody = req.method !== "GET" && req.method !== "HEAD";
 
     if (mayHaveBody) {
@@ -147,14 +148,14 @@ export function serveRouter(app: Hono<RouterEnv>) {
 }
 
 // ---- response helpers ----
-export function jsonOk<T>(c: Context<RouterEnv>, data: T, status = 200) {
+export function jsonOk<T>(c: Context<RouterEnv>, data: T, status: ContentfulStatusCode = 200) {
   return c.json({ ok: true, data, requestId: c.get("requestId") }, status);
 }
 export function jsonErr(
   c: Context<RouterEnv>,
   code: string,
   message: string,
-  status = 400,
+  status: ContentfulStatusCode = 400,
   details?: unknown,
 ) {
   return c.json(

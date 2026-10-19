@@ -112,8 +112,7 @@ export async function checkRateLimit(
         tenant_id: null, // Can be populated if available
         created_at: now.toISOString(),
       })
-      .then(() => {})
-      .catch((err) => console.error('Failed to log rate limit:', err));
+      .then(() => {}, () => console.error('Failed to log rate limit'));
 
     return {
       allowed: true,
