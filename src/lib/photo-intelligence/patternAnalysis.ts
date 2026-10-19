@@ -14,7 +14,7 @@ import type { RawDetection, RecognitionResult } from './recognition';
 export const PATTERN_PROVIDER_ID = 'pitch-pattern';
 export const PATTERN_MODEL_ID = 'cv-grid-v1';
 
-export interface GrayImage { width: number; height: number; /** RGBA bytes */ data: Uint8ClampedArray; /** Optional algorithmic-observation note from the model layer. */ evidenceNote?: string }
+export interface GrayImage { width: number; height: number; /** RGBA bytes */ data: Uint8ClampedArray }
 
 export interface QualityReport {
   brightness: number; contrast: number; sharpness: number;
