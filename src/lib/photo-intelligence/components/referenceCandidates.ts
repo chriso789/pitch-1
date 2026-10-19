@@ -64,11 +64,11 @@ export async function saveReferenceCrops(tenantId: string, photo: InventoryPhoto
   return rows.length;
 }
 
-export interface ReferenceCandidate { id: string; source_photo_id: string; source_property_key: string; cls: string; labeled_by: string; approved_by: string | null; created_at: string; condition?: string | null }
+export interface ReferenceCandidate { id: string; source_photo_id: string; source_property_key: string; cls: string; labeled_by: string; approved_by: string | null; created_at: string; condition?: string | null; review_status?: string; review_comment?: string | null }
 
 export async function loadCandidates(tenantId: string): Promise<(ReferenceCandidate & { embedding: number[] })[]> {
   const { data, error } = await (supabase.from as any)('photo_reference_candidates')
-    .select('id, source_photo_id, source_property_key, cls, labeled_by, approved_by, created_at, embedding, condition')
+    .select('id, source_photo_id, source_property_key, cls, labeled_by, approved_by, created_at, embedding, condition, review_status, review_comment')
     .eq('tenant_id', tenantId).eq('embedding_model_id', MODEL).order('created_at', { ascending: false }).limit(2000);
   if (error) throw error;
   return data ?? [];
@@ -80,7 +80,7 @@ export async function approveCandidate(id: string, userId: string, comment?: str
 }
 
 export function approvedToExamples(rows: (ReferenceCandidate & { embedding: number[] })[]): CalibrationExample[] {
-  return rows.filter((r) => r.approved_by && Array.isArray(r.embedding) && r.embedding.length).map((r) => ({
+  return rows.filter((r) => r.approved_by && (r.review_status ?? 'approved') === 'approved' && Array.isArray(r.embedding) && r.embedding.length).map((r) => ({
     id: r.id, cls: r.cls as ReferenceClass, embedding: Float32Array.from(r.embedding.map(Number)), libraryVersion: 1,
     sourcePhotoId: r.source_photo_id, sourceRegionId: r.id, approvedBy: r.approved_by!, propertyKey: r.source_property_key,
   }));
@@ -90,4 +90,12 @@ export function approvedToExamples(rows: (ReferenceCandidate & { embedding: numb
 export async function loadTenantLibrary(tenantId: string): Promise<VersionedReferenceLibrary> {
   try { return { version: 1, embeddingModelId: MODEL, examples: approvedToExamples(await loadCandidates(tenantId)) }; }
   catch { return { version: 1, embeddingModelId: MODEL, examples: [] }; }
+}
+
+export type ReviewAction = 'approved' | 'rejected' | 'needs_correction';
+/** Independent review via the server function: blocks self-review, other companies and re-review; reject/correction need a reason; every action is logged. */
+export async function reviewCandidate(id: string, action: ReviewAction, reason?: string) {
+  if (action !== 'approved' && !reason?.trim()) throw new Error('A reason is required to reject or request a correction.');
+  const { error } = await (supabase.rpc as any)('review_reference_candidate', { _id: id, _action: action, _reason: reason?.trim() || null });
+  if (error) throw error;
 }

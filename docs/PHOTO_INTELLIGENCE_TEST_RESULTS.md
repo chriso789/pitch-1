@@ -85,3 +85,6 @@
 ## 2026-10-19
 102 Photo Intelligence unit tests pass (synthetic data only). Live data: 457 photos, 41 properties, 3 companies, 0 labels, 0 approved examples. No real-photo accuracy or timing measured.
 Blocked test: open Training → Reference library as inspector A, Propose outlines on a recommended photo, assign types, save; sign in as inspector B, approve; Evaluate on held-out properties.
+
+## 2026-10-19 (execution workflow)
+Added saved quality/duplicate results, saved outline batches (10 at a time, timed), and server-checked review (approve / reject with reason / request correction, history logged, no self-review). Processing has NOT been run on real photos: it runs in a signed-in inspector's browser under their own permissions, and no session is available in the build environment. Live counts: 457 photos, 0 checked, 0 outlines, 0 labels.

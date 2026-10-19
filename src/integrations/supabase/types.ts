@@ -39038,6 +39038,9 @@ export type Database = {
           labeled_by: string
           polygon: Json
           review_comment: string | null
+          review_status: string
+          reviewed_at: string | null
+          reviewed_by: string | null
           source_photo_id: string
           source_property_key: string
           tenant_id: string
@@ -39055,6 +39058,9 @@ export type Database = {
           labeled_by?: string
           polygon: Json
           review_comment?: string | null
+          review_status?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
           source_photo_id: string
           source_property_key: string
           tenant_id: string
@@ -39072,6 +39078,9 @@ export type Database = {
           labeled_by?: string
           polygon?: Json
           review_comment?: string | null
+          review_status?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
           source_photo_id?: string
           source_property_key?: string
           tenant_id?: string
@@ -39120,6 +39129,95 @@ export type Database = {
           source_finding_id?: string | null
           source_photo_id?: string
           source_region_id?: string
+        }
+        Relationships: []
+      }
+      photo_reference_reviews: {
+        Row: {
+          action: string
+          candidate_id: string
+          created_at: string
+          id: string
+          previous_cls: string | null
+          reason: string | null
+          reviewer_id: string
+          tenant_id: string
+        }
+        Insert: {
+          action: string
+          candidate_id: string
+          created_at?: string
+          id?: string
+          previous_cls?: string | null
+          reason?: string | null
+          reviewer_id: string
+          tenant_id: string
+        }
+        Update: {
+          action?: string
+          candidate_id?: string
+          created_at?: string
+          id?: string
+          previous_cls?: string | null
+          reason?: string | null
+          reviewer_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "photo_reference_reviews_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "photo_reference_candidates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      photo_region_proposals: {
+        Row: {
+          created_at: string
+          created_by: string
+          embedder_model: string | null
+          group_index: number
+          id: string
+          polygon: Json
+          property_key: string
+          segmenter_model: string | null
+          source_photo_id: string
+          status: string
+          suggestion: Json | null
+          tenant_id: string
+          timings_ms: Json | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string
+          embedder_model?: string | null
+          group_index?: number
+          id?: string
+          polygon: Json
+          property_key: string
+          segmenter_model?: string | null
+          source_photo_id: string
+          status?: string
+          suggestion?: Json | null
+          tenant_id: string
+          timings_ms?: Json | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          embedder_model?: string | null
+          group_index?: number
+          id?: string
+          polygon?: Json
+          property_key?: string
+          segmenter_model?: string | null
+          source_photo_id?: string
+          status?: string
+          suggestion?: Json | null
+          tenant_id?: string
+          timings_ms?: Json | null
         }
         Relationships: []
       }
@@ -39313,6 +39411,48 @@ export type Database = {
           updated_at?: string
           uploaded_by?: string
           width?: number
+        }
+        Relationships: []
+      }
+      photo_triage_results: {
+        Row: {
+          assessable: boolean
+          brightness: number | null
+          dhash: string | null
+          issues: string[]
+          photo_id: string
+          processed_at: string
+          processed_by: string
+          processing_ms: number | null
+          property_key: string
+          sharpness: number | null
+          tenant_id: string
+        }
+        Insert: {
+          assessable?: boolean
+          brightness?: number | null
+          dhash?: string | null
+          issues?: string[]
+          photo_id: string
+          processed_at?: string
+          processed_by?: string
+          processing_ms?: number | null
+          property_key: string
+          sharpness?: number | null
+          tenant_id: string
+        }
+        Update: {
+          assessable?: boolean
+          brightness?: number | null
+          dhash?: string | null
+          issues?: string[]
+          photo_id?: string
+          processed_at?: string
+          processed_by?: string
+          processing_ms?: number | null
+          property_key?: string
+          sharpness?: number | null
+          tenant_id?: string
         }
         Relationships: []
       }
@@ -69410,6 +69550,10 @@ export type Database = {
         Returns: Json
       }
       resolve_request_tenant_id: { Args: never; Returns: string }
+      review_reference_candidate: {
+        Args: { _action: string; _id: string; _reason?: string }
+        Returns: undefined
+      }
       rollback_estimate_to_version: {
         Args: { estimate_id_param: string; version_id_param: string }
         Returns: boolean

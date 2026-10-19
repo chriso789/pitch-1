@@ -6,12 +6,13 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { PhotoAnnotationEditor } from '@/components/photo-intelligence/PhotoAnnotationEditor';
 import { BENCHMARK_COMPONENT_CLASSES } from '@/lib/photo-intelligence/benchmarkHarness';
-import { type ComponentCondition, approveCandidate, approvedToExamples, inventoryCompanyPhotos, loadCandidates, saveReferenceCrops, type InventoryPhoto } from '@/lib/photo-intelligence/components/referenceCandidates';
+import { type ComponentCondition, reviewCandidate, type ReviewAction, approvedToExamples, inventoryCompanyPhotos, loadCandidates, saveReferenceCrops, type InventoryPhoto } from '@/lib/photo-intelligence/components/referenceCandidates';
 import { heldOutEvaluation, type HeldOutReport, type SplitMetrics } from '@/lib/photo-intelligence/components/heldOutEvaluation';
-import { recommendForLabeling, triagePhotos, type TriagedPhoto } from '@/lib/photo-intelligence/components/photoTriage';
+import { recommendForLabeling, type TriagedPhoto } from '@/lib/photo-intelligence/components/photoTriage';
 import { proposeRegions, proposalsToAnnotations, type ProposalReport } from '@/lib/photo-intelligence/components/regionProposals';
 import { parseAnnotationSet, serializeAnnotations } from '@/lib/photo-intelligence/annotations';
 import { toast } from 'sonner';
+import { loadProposals, loadTriage, p95, runProposalBatch, runTriage as runTriageJob } from '@/lib/photo-intelligence/components/photoProcessing';
 
 const pct = (v: number | null) => (v === null ? '—' : `${Math.round(v * 100)}%`);
 const nice = (c: string) => c.replace(/_/g, ' ');
@@ -33,8 +34,11 @@ export function ReferenceLibraryTab({ tenantId, userId }: { tenantId: string; us
   const [editorKey, setEditorKey] = useState(0);
   const [busy, setBusy] = useState(false);
   const [report, setReport] = useState<HeldOutReport | null>(null);
-  const [triage, setTriage] = useState<TriagedPhoto[] | null>(null);
-  const [triageDone, setTriageDone] = useState(0);
+  const triageQ = useQuery({ queryKey: ['ref-triage', tenantId], queryFn: () => loadTriage(tenantId) });
+  const triage: TriagedPhoto[] | null = triageQ.data?.length ? triageQ.data : null;
+  const proposalsQ = useQuery({ queryKey: ['ref-proposals', tenantId], queryFn: () => loadProposals(tenantId) });
+  const [progress, setProgress] = useState<string>('');
+  const [batchTimes, setBatchTimes] = useState<number[]>([]);
   const [onlyRecommended, setOnlyRecommended] = useState(false);
   const [proposal, setProposal] = useState<ProposalReport | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -49,7 +53,8 @@ export function ReferenceLibraryTab({ tenantId, userId }: { tenantId: string; us
   const rows = cands.data ?? [];
   const approved = useMemo(() => approvedToExamples(rows), [rows]);
   const props = new Set(approved.map((a) => a.propertyKey)).size;
-  const pending = rows.filter((r) => !r.approved_by);
+  const pending = rows.filter((r) => (r.review_status ?? (r.approved_by ? 'approved' : 'pending')) === 'pending');
+  const rejected = rows.filter((r) => r.review_status === 'rejected' || r.review_status === 'needs_correction');
   const refresh = () => qc.invalidateQueries({ queryKey: ['ref-candidates', tenantId] });
   const library = useMemo(() => ({ version: 1, embeddingModelId: 'dinov2-small', examples: approved }), [approved]);
 
@@ -70,8 +75,22 @@ export function ReferenceLibraryTab({ tenantId, userId }: { tenantId: string; us
   const shown = allPhotos.filter((p) => p.url && (!onlyRecommended || recommended.has(p.id)));
 
   const runTriage = async () => {
-    setBusy(true); setTriageDone(0);
-    try { setTriage(await triagePhotos(allPhotos, setTriageDone)); } finally { setBusy(false); }
+    setBusy(true);
+    try {
+      await runTriageJob(tenantId, allPhotos, new Set((triageQ.data ?? []).map((t) => t.id)), (n, t) => setProgress(`Checked ${n}/${t}`));
+      await qc.invalidateQueries({ queryKey: ['ref-triage', tenantId] });
+    } catch (e) { toast.error((e as Error).message); } finally { setBusy(false); setProgress(''); }
+  };
+  const runBatch = async (count: number) => {
+    const have = new Set((proposalsQ.data ?? []).map((p) => p.source_photo_id));
+    const pick = allPhotos.filter((p) => recommended.has(p.id) && !have.has(p.id)).slice(0, count);
+    if (!pick.length) { toast.info('All recommended photos already have outlines.'); return; }
+    setBusy(true);
+    try {
+      const times = await runProposalBatch(tenantId, pick, library, (n, t) => setProgress(`Outlining ${n}/${t}`));
+      setBatchTimes(times);
+      await qc.invalidateQueries({ queryKey: ['ref-proposals', tenantId] });
+    } catch (e) { toast.error((e as Error).message); } finally { setBusy(false); setProgress(''); }
   };
 
   const runProposals = async () => {
@@ -127,12 +146,12 @@ export function ReferenceLibraryTab({ tenantId, userId }: { tenantId: string; us
       <section className="space-y-2">
         <div className="flex items-center gap-2">
           <h3 className="font-medium">Awaiting second-inspector approval ({pending.length})</h3>
-          <Button size="sm" className="ml-auto" disabled={busy || !approveSel.size} onClick={async () => {
+          {(['approved', 'rejected', 'needs_correction'] as ReviewAction[]).map((act) => <Button key={act} size="sm" variant={act === 'approved' ? 'default' : 'outline'} className={act === 'approved' ? 'ml-auto' : ''} disabled={busy || !approveSel.size} onClick={async () => {
             setBusy(true);
-            try { for (const id of approveSel) await approveCandidate(id, userId, comment); setComment(''); toast.success(`${approveSel.size} approved`); setApproveSel(new Set()); refresh(); }
+            try { for (const id of approveSel) await reviewCandidate(id, act, comment); setComment(''); toast.success(`${approveSel.size} ${nice(act)}`); setApproveSel(new Set()); refresh(); }
             catch (e) { toast.error((e as Error).message); } finally { setBusy(false); }
-          }}>Approve {approveSel.size || ''} I checked</Button>
-          <input className="border rounded px-2 py-1 text-sm bg-background" placeholder="Reviewer comment (optional)" value={comment} onChange={(e) => setComment(e.target.value)} />
+          }}>{act === 'approved' ? 'Approve' : act === 'rejected' ? 'Reject' : 'Request correction'} {approveSel.size || ''}</Button>)}
+          <input className="border rounded px-2 py-1 text-sm bg-background" placeholder="Reason (required to reject or request correction)" value={comment} onChange={(e) => setComment(e.target.value)} />
         </div>
         {pending.map((r) => {
           const mine = r.labeled_by === userId;
@@ -144,10 +163,17 @@ export function ReferenceLibraryTab({ tenantId, userId }: { tenantId: string; us
         })}
       </section>
 
+      {rejected.length > 0 && <section className="space-y-1"><h3 className="font-medium">Rejected or needs correction ({rejected.length})</h3>
+        {rejected.map((r) => <div key={r.id} className="text-sm border rounded p-2 flex gap-2"><Badge variant="outline">{nice(r.cls)}</Badge><Badge variant="secondary">{nice(r.review_status!)}</Badge><span className="text-muted-foreground">{r.review_comment}</span></div>)}
+      </section>}
+
       <section className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="font-medium">Company photos</h3>
-          <Button size="sm" variant="outline" disabled={busy || !allPhotos.length} onClick={runTriage}>{busy && !triage ? `Checking ${triageDone}/${allPhotos.length}…` : 'Check quality & duplicates'}</Button>
+          <Button size="sm" variant="outline" disabled={busy || !allPhotos.length} onClick={runTriage}>{triage ? `Check new photos (${triage.length}/${allPhotos.length} checked)` : 'Check quality & duplicates'}</Button>
+          <Button size="sm" variant="outline" disabled={busy || !recommended.size} onClick={() => runBatch(10)}>Propose outlines for 10 recommended</Button>
+          {progress && <span className="text-sm">{progress}…</span>}
+          <span className="text-sm text-muted-foreground">{proposalsQ.data?.length ?? 0} saved outlines on {new Set((proposalsQ.data ?? []).map((p) => p.source_photo_id)).size} photos{batchTimes.length ? ` · last batch avg ${Math.round(batchTimes.reduce((a, b) => a + b, 0) / batchTimes.length)} ms, p95 ${Math.round(p95(batchTimes)!)} ms per photo` : ''}</span>
           {triage && <>
             <span className="text-sm text-muted-foreground">{triage.filter((t) => !t.assessable).length} too dark/blurry · {triage.filter((t) => t.duplicateOf).length} near-duplicates · {recommended.size} recommended across {new Set(triage.filter((t) => recommended.has(t.id)).map((t) => t.propertyKey)).size} properties</span>
             <label className="flex items-center gap-2 text-sm"><Checkbox checked={onlyRecommended} onCheckedChange={(v) => setOnlyRecommended(!!v)} />Show recommended only</label>
@@ -157,7 +183,7 @@ export function ReferenceLibraryTab({ tenantId, userId }: { tenantId: string; us
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-6">
           {shown.map((p) => {
             const t = triageById.get(p.id);
-            return <button key={p.id} className="border rounded overflow-hidden text-left" onClick={() => { setJson({}); setConditions({}); setProposal(null); setPicked(new Set()); setEditorKey((k) => k + 1); setEditing(p); }}>
+            return <button key={p.id} className="border rounded overflow-hidden text-left" onClick={() => { const saved = (proposalsQ.data ?? []).filter((x) => x.source_photo_id === p.id && x.status === 'unverified'); setJson(saved.length ? serializeAnnotations(proposalsToAnnotations(saved.map((x) => ({ id: x.id, polygon: x.polygon, embedding: null, group: x.group_index, suggestion: x.suggestion ?? { kind: 'unknown', cls: null, similarity: null, margin: null, runnerUp: null } })))) : {}); setConditions({}); setProposal(null); setPicked(new Set()); setEditorKey((k) => k + 1); setEditing(p); }}>
               <img src={p.url!} alt="" loading="lazy" className="aspect-square w-full object-cover" />
               <div className="p-1 text-xs text-muted-foreground truncate">
                 {rows.filter((r) => r.source_photo_id === p.id).length} labels

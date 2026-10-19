@@ -70,3 +70,4 @@ BLOCKED: only the plan text and one screenshot were uploaded — the Navarre rep
 ## 2026-10-19 — Reference data preparation
 Done: quality/duplicate triage, diverse 100-photo recommendation, SAM outline proposals (unlabeled), DINOv2 grouping, bulk component + separate condition assignment, bulk approval of checked items with reviewer comment, reference/calibration/test property split, near-duplicate removal before scoring, per-photo stage timings.
 Blocked: real labeling (needs two signed-in inspectors); rejecting another inspector's label needs an approval-rule change (not made without approval); condition recognition waits for evaluated component recognition.
+- 2026-10-19: Reject/request-correction review shipped (user-authorized). Next real step: signed-in run of quality check, then outlines on 10 photos, before expanding to 100.
