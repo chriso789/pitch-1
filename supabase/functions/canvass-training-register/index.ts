@@ -3,7 +3,7 @@ import { createRouter, requireAuth, requireTenant, userClient, serviceClient, js
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { originalImageIdentity } from './image.ts';
 
-const app = createRouter('canvass-training-register');
+export const app = createRouter('canvass-training-register');
 const Body = z.object({ photoId: z.string().uuid() }).strict();
 // Auth mode: authenticated tenant route. Hash is computed from RLS-readable bytes,
 // never accepted from the caller. Elevated writes repeat membership/property checks.
@@ -35,4 +35,4 @@ app.post('*', requireAuth, requireTenant, async (c) => {
   return jsonOk(c, { originalId });
 });
 app.onError((_, c) => jsonErr(c, 'unavailable', 'Photo registration unavailable; retry later', 503));
-Deno.serve(app.fetch);
+if (import.meta.main) Deno.serve(app.fetch);
