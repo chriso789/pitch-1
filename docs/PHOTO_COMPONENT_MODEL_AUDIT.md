@@ -26,6 +26,10 @@ self-host assets, pin JS/WASM versions).
 - **FastViT** — Apple custom license, no patent grant. **MobileSAM** — no explicit separate weights statement.
 - **Roofpedia / RID / RoofNet** — dataset/weight rights unclear; research leads only.
 
+## Installed
+
+- **DINOv2-Small** (quantized ONNX, Xenova export of Meta's Apache-2.0 weights), stored in the asset store (sha256 starts `eb9f4214e171323e`, 24,451,943 bytes), served from a PITCH-controlled URL. Loaded lazily by `src/lib/photo-intelligence/components/onnxModel.ts`. A feature backbone alone yields **zero** component regions by design — see `backboneOnlyModel`.
+
 ## Open before Phase 2 integration
 
 1. Download and hash chosen checkpoints; preserve LICENSE/NOTICE files.
