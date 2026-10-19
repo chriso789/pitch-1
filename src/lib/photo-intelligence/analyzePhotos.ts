@@ -180,6 +180,7 @@ export async function analyzeRecordPhotos(
         // Phase 3: component layer runs first; without a verified component
         // model it honestly reports model_not_available and refinement only
         // labels regions as unmatched — never upgrades them to damage.
+        let dinoNote: string | null = null;
         const components = await recognizeComponents(img, componentModel ?? undefined);
         // DINOv2 neighbour-similarity evidence: how much each patch looks like
         // its surroundings. Used as inspector-visible evidence only — it never
@@ -188,10 +189,11 @@ export async function analyzeRecordPhotos(
           const sim = await similarityModel.patchSimilarity(img);
           if (sim) {
             const avg = sim.reduce((a, b) => a + b, 0) / sim.length;
-            img.evidenceNote = `Surface self-similarity ${avg.toFixed(2)} (1 = perfectly uniform look); local patches that stand out from neighbours are the anomalies below. This is an algorithmic observation, not a diagnosis.`;
+            dinoNote = `Surface self-similarity ${avg.toFixed(2)} (1 = perfectly uniform look); local patches that stand out from neighbours are the anomalies below. This is an algorithmic observation, not a diagnosis.`;
           }
         }
         const out = matchAnomaliesToRegions(refineWithComponents(analyzePattern(img), components), components);
+        if (dinoNote) out.result.warnings = [...(out.result.warnings ?? []), dinoNote];
         if (out.status === 'no_unusual_regions') noUnusualRegions += 1;
         if (out.status === 'not_assessable') notAssessable += 1;
         result = out.result;
