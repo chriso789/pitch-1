@@ -55,6 +55,52 @@ export async function loadReferenceLibrary(): Promise<VersionedReferenceLibrary>
   }
 }
 
+// ---------------------------------------------------------------------------
+// Applying the library during analysis (experimental reference classifier)
+// ---------------------------------------------------------------------------
+
+import { classifyRegion, DEFAULT_THRESHOLDS, type ClassificationThresholds } from './referenceClassifier';
+import { poolRegionEmbedding, type DinoImageFeatures } from './regionEmbedding';
+
+export interface ClassifiableDetection {
+  polygonNorm?: { x: number; y: number }[];
+  component?: string;
+  condition?: string;
+}
+
+/**
+ * Classify each detection region against the reference library using the
+ * image's already-computed DINOv2 features (no extra inference). Regions
+ * that clear both thresholds get a component label WITH its evidence;
+ * hard-negative matches keep the anomaly but note the harmless look-alike;
+ * everything else stays unclassified. Nothing is auto-confirmed or
+ * auto-dismissed — every word added is labelled an algorithmic observation.
+ */
+export function applyReferenceClassification<T extends ClassifiableDetection>(
+  detections: T[],
+  features: DinoImageFeatures | null,
+  library: VersionedReferenceLibrary,
+  thresholds: ClassificationThresholds = DEFAULT_THRESHOLDS,
+): T[] {
+  if (!features || !library.examples.length) return detections;
+  return detections.map((d) => {
+    if (!d.polygonNorm) return d;
+    const emb = poolRegionEmbedding(features, d.polygonNorm);
+    if (!emb) return d;
+    const r = classifyRegion(emb, library, thresholds);
+    const base = (d.condition ?? '').trim();
+    if (r.kind === 'component') {
+      const note = `Algorithmic observation, not a diagnosis: this region visually resembles approved reference examples of ${r.cls.replace(/_/g, ' ')} (similarity ${r.similarity.toFixed(2)}, margin ${r.margin.toFixed(2)}). An inspector must confirm both the component and its condition.`;
+      return { ...d, component: r.cls, condition: base.includes(note) ? base : `${base} ${note}`.trim() };
+    }
+    if (r.kind === 'hard_negative') {
+      const note = `Algorithmic observation, not a diagnosis: this region more closely resembles approved reference examples of ${r.cls.replace(/_/g, ' ')} — a common harmless variation — than any roofing component (similarity ${r.similarity.toFixed(2)}). It remains a possible anomaly for inspector review and is not auto-dismissed.`;
+      return { ...d, condition: base.includes(note) ? base : `${base} ${note}`.trim() };
+    }
+    return d;
+  });
+}
+
 /**
  * Promote an inspector correction into the shared reference library.
  * Both the labeler and a DIFFERENT approver are required; the embedding
