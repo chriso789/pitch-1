@@ -87,11 +87,14 @@ function cellFeatures(img: GrayImage, cols: number, rows: number): CellFeat[] {
   return feats;
 }
 
-function robustZ(values: number[]): number[] {
+/** Minimum meaningful spread per feature, so near-identical cells don't produce huge z-scores. */
+const MIN_SPREAD: Record<string, number> = { mean: 4, std: 3, edge: 3, chromaA: 3, chromaB: 3, ori: 0.15 };
+
+function robustZ(values: number[], minSpread: number): number[] {
   const sorted = [...values].sort((x, y) => x - y);
   const med = sorted[Math.floor(sorted.length / 2)];
   const dev = values.map((v) => Math.abs(v - med)).sort((x, y) => x - y);
-  const mad = dev[Math.floor(dev.length / 2)] * 1.4826 || 1e-6;
+  const mad = Math.max(dev[Math.floor(dev.length / 2)] * 1.4826, minSpread, 0.05 * Math.abs(med));
   return values.map((v) => (v - med) / mad);
 }
 
@@ -119,7 +122,7 @@ export function analyzePattern(img: GrayImage): PatternOutcome {
   }
   const feats = cellFeatures(img, cols, rows);
   const keys: (keyof CellFeat)[] = ['mean', 'std', 'edge', 'chromaA', 'chromaB', 'ori'];
-  const z = keys.map((k) => robustZ(feats.map((f) => f[k])));
+  const z = keys.map((k) => robustZ(feats.map((f) => f[k]), MIN_SPREAD[k]));
   const score = feats.map((_, i) => Math.max(...z.map((zk) => Math.abs(zk[i]))));
   const driver = feats.map((_, i) => keys[z.reduce((best, zk, k) => (Math.abs(zk[i]) > Math.abs(z[best][i]) ? k : best), 0)]);
   const flagged = score.map((s) => s >= Z_THRESHOLD);
