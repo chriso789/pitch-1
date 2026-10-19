@@ -16,6 +16,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { createAiImageAnalyzerProvider, type AiImageAnalyzerResponse } from './providers/aiImageAnalyzerProvider';
 import { validateDetections, associateCrossPhoto, type DamageProposal, type RecognitionPhoto } from './recognition';
 import { persistProposals } from './findings';
+import { analyzePattern, loadImageForAnalysis } from './patternAnalysis';
 
 /** Flipped only once the self-hosted engine is deployed with validated weights. */
 export const PITCH_VISION_ENGINE_READY = false;
@@ -119,6 +120,10 @@ export interface AnalysisOutcome {
   errors: { photoId: string; fileName: string; message: string }[];
   skippedDuplicates: number;
   warnings: string[];
+  /** Photos analyzed successfully with nothing unusual (valid result, not a failure). */
+  noUnusualRegions?: number;
+  /** Photos that could not be assessed (blur, darkness, exposure). */
+  notAssessable?: number;
 }
 
 /**
@@ -138,9 +143,8 @@ export async function analyzeRecordPhotos(
   // PITCH owns its recognition engine: no external AI APIs. Until the
   // self-hosted engine (worker /vision/detect-damage) is deployed with
   // validated weights, analysis stops clearly instead of calling OpenAI.
-  if (!PITCH_VISION_ENGINE_READY) {
-    throw new Error('PITCH damage-recognition engine is not trained yet. Mark damage manually with the annotation tools for now.');
-  }
+  // Until then, PITCH's own pattern analysis (no training needed) proposes
+  // possible-anomaly regions for inspector review — never confirmed damage.
   const provider = createAiImageAnalyzerProvider({ invoke: (body) => invokeAnalyzer(body) });
   const already = opts.force ? new Set<string>() : await listAnalyzedPhotoIds(tenantId);
   const queue = photos.filter((p) => !already.has(p.id));
@@ -159,9 +163,19 @@ export async function analyzeRecordPhotos(
     emit();
     try {
       if (!photo.file_url) throw new Error('Photo has no file URL');
-      const dataUrl = await photoToDataUrl(photo.file_url);
-      const recPhoto: RecognitionPhoto = { photoId: photo.id, imageRef: dataUrl };
-      const result = await provider.analyze(recPhoto);
+      let recPhoto: RecognitionPhoto;
+      let result;
+      if (PITCH_VISION_ENGINE_READY) {
+        recPhoto = { photoId: photo.id, imageRef: await photoToDataUrl(photo.file_url) };
+        result = await provider.analyze(recPhoto);
+      } else {
+        const img = await loadImageForAnalysis(photo.file_url);
+        recPhoto = { photoId: photo.id, imageRef: photo.file_url, widthPx: img.srcWidth, heightPx: img.srcHeight };
+        const out = analyzePattern(img);
+        if (out.status === 'no_unusual_regions') noUnusualRegions += 1;
+        if (out.status === 'not_assessable') notAssessable += 1;
+        result = out.result;
+      }
       const batch = validateDetections(result, recPhoto);
       allProposals.push(...batch.proposals);
       warnings.push(...batch.warnings.map((w) => `${photo.file_name ?? photo.id}: ${w}`));
@@ -187,5 +201,7 @@ export async function analyzeRecordPhotos(
     errors: progress.errors,
     skippedDuplicates,
     warnings,
+    noUnusualRegions,
+    notAssessable,
   };
 }
