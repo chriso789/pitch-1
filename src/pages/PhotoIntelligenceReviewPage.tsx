@@ -25,6 +25,7 @@ import { Check, X, Camera, AlertTriangle } from 'lucide-react';
 export default function PhotoIntelligenceReviewPage() {
   const tenantId = useEffectiveTenantId();
   const { user } = useAuth();
+  const canAccessTrainer = useHasTrainingAccess('reviewer');
   const qc = useQueryClient();
   const [searchParams] = useSearchParams();
   const leadId = searchParams.get('leadId') ?? undefined;
