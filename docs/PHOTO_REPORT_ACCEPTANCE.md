@@ -52,3 +52,6 @@ Report composition model (`reportModel.ts`) enforces criteria 1 (unapproved find
 - Analyzer handler now requests JSON output, prompts for mandatory normalized coordinates + confidence, and sanitizes detections server-side: only model-supplied in-bounds bbox/polygon geometry is kept; nothing is fabricated or clamped into place.
 - Adapter maps structured `detections` (bbox/polygon, damage category, confidence, no_visible_damage flag); coordinate-less candidates are rejected downstream with reasons.
 - Tests: 7 adapter tests + 18 recognition/findings/report tests pass. Signed-in end-to-end run with a real photo remains PENDING (no session can be minted for this user-managed backend); Navarre reference demo still BLOCKED on the actual 19-page PDF.
+
+## 2026-10-19
+Acceptance not yet met: no approved examples exist, so no recognition on unseen properties can be shown. Reports continue to include only inspector-approved observations.
