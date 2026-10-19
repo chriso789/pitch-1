@@ -1,0 +1,12 @@
+revoke all on function public.photo_training_label_save(uuid, text, jsonb, jsonb, boolean, text[], boolean, integer) from public, anon;
+revoke all on function public.photo_training_label_review(uuid, text, text, integer) from public, anon;
+revoke all on function public.photo_training_dataset_create(uuid, text) from public, anon;
+revoke all on function public.photo_training_original_add(uuid, text, text, text, text, integer, integer) from public, anon;
+revoke all on function public.photo_training_access(uuid) from public, anon;
+revoke all on function public.photo_damage_model_register(uuid, uuid, text, jsonb, text, text, text) from public, anon;
+revoke all on function public.photo_damage_model_evaluate(uuid, text, jsonb) from public, anon;
+revoke all on function public.photo_damage_model_review(uuid, text, boolean, boolean) from public, anon;
+revoke all on function public.photo_damage_model_activate(uuid, text, boolean) from public, anon;
+revoke all on function public.review_reference_candidate(uuid, text, text) from public, anon;
+revoke all on function public.platform_training_overview() from public, anon;
+grant execute on function public.review_reference_candidate(uuid, text, text) to authenticated;
