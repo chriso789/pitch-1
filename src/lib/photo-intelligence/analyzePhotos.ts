@@ -206,10 +206,9 @@ export async function analyzeRecordPhotos(
                     detections: applyReferenceClassification(pattern.result.detections, features, library),
                   },
                 };
-                const avg = features.patches.length
-                  ? features.patches.reduce((a, b) => a + b[0], 0) / features.patches.length
-                  : null;
-                if (avg !== null) {
+                const sim = await similarityModel.patchSimilarity(img);
+                if (sim) {
+                  const avg = sim.reduce((a, b) => a + b, 0) / sim.length;
                   dinoNote = `Surface self-similarity ${avg.toFixed(2)} (1 = perfectly uniform look); local patches that stand out from neighbours are the anomalies below. This is an algorithmic observation, not a diagnosis.`;
                 }
               }
