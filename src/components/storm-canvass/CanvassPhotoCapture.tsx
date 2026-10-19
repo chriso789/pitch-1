@@ -60,6 +60,7 @@ export function CanvassPhotoCapture({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [capturedAt, setCapturedAt] = useState<string | null>(null);
   const [category, setCategory] = useState<PhotoCategory>('roof_damage');
   const [notes, setNotes] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -177,18 +178,8 @@ export function CanvassPhotoCapture({
     // Draw video frame to canvas
     ctx.drawImage(video, 0, 0);
 
-    // Add timestamp overlay
-    const timestamp = new Date().toLocaleString();
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-    ctx.fillRect(0, canvas.height - 40, canvas.width, 40);
-    ctx.fillStyle = 'white';
-    ctx.font = '16px monospace';
-    ctx.fillText(timestamp, 10, canvas.height - 15);
-
-    // Add GPS if available
-    if (gpsLocation) {
-      ctx.fillText(`📍 ${gpsLocation.lat.toFixed(6)}, ${gpsLocation.lng.toFixed(6)}`, 10, canvas.height - 55);
-    }
+    // Preserve unstamped pixels; GPS/time are separate metadata.
+    setCapturedAt(new Date().toISOString());
 
     // Get image data
     const imageData = canvas.toDataURL('image/jpeg', 0.8);
@@ -218,11 +209,12 @@ export function CanvassPhotoCapture({
           blob,
           fileName: `${Date.now()}.jpg`,
           category,
+          notes,
           propertyId: propertyId ?? undefined,
           propertyAddress: propertyAddress ?? undefined,
-          latitude: gpsLocation?.lat ?? 0,
-          longitude: gpsLocation?.lng ?? 0,
-          timestamp: new Date().toISOString(),
+          latitude: gpsLocation?.lat ?? null,
+          longitude: gpsLocation?.lng ?? null,
+          timestamp: capturedAt ?? new Date().toISOString(),
           tenantId,
           userId: user.id,
         });
@@ -243,6 +235,7 @@ export function CanvassPhotoCapture({
         propertyAddress,
         category,
         notes,
+        takenAt: capturedAt ?? new Date().toISOString(),
         latitude: gpsLocation?.lat ?? null,
         longitude: gpsLocation?.lng ?? null,
       });

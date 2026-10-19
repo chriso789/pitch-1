@@ -39088,6 +39088,10 @@ export type Database = {
           id: string
           property_id: string
           sha256: string
+          source_kind: string
+          source_metadata: Json
+          source_photo_id: string | null
+          storage_bucket: string
           storage_path: string
           tenant_id: string
           updated_at: string
@@ -39101,6 +39105,10 @@ export type Database = {
           id?: string
           property_id: string
           sha256: string
+          source_kind?: string
+          source_metadata?: Json
+          source_photo_id?: string | null
+          storage_bucket?: string
           storage_path: string
           tenant_id: string
           updated_at?: string
@@ -39114,6 +39122,10 @@ export type Database = {
           id?: string
           property_id?: string
           sha256?: string
+          source_kind?: string
+          source_metadata?: Json
+          source_photo_id?: string | null
+          storage_bucket?: string
           storage_path?: string
           tenant_id?: string
           updated_at?: string
@@ -67987,6 +67999,10 @@ export type Database = {
         Args: { _tenant_id: string }
         Returns: boolean
       }
+      canvass_training_reference_locked: {
+        Args: { path: string }
+        Returns: boolean
+      }
       capture_branding_snapshot: {
         Args: { p_tenant_id: string }
         Returns: Json
@@ -69028,6 +69044,16 @@ export type Database = {
         Returns: undefined
       }
       photo_training_access: { Args: { t: string }; Returns: boolean }
+      photo_training_canvass_register: {
+        Args: {
+          actor: string
+          h: number
+          hash: string
+          photo: string
+          w: number
+        }
+        Returns: string
+      }
       photo_training_class_valid: {
         Args: { c: string; s: string }
         Returns: boolean

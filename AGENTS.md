@@ -20,5 +20,5 @@
 - PDF Studio tools are switched per company in `tenant_pdf_tool_settings` (admins only) and the `documents_pdf_tool_guard` trigger refuses PDF versions/conversions whose `metadata.pdf_tool` is off, so hiding buttons is never the only control and no browser override exists.
 - Read nested `AGENTS.md`. Grouped handlers live in `_shared` for bundling.
 - Feature menus use `useEffectiveTenantId` and refresh explicit company switches; tier labels never override switches.
-- Photo Intelligence damage recognition runs only on PITCH-controlled weights via the worker `/vision/detect-damage` (ONNX, CPU first); no external AI API is called per photo, and classes not validated on inspector-labeled originals return no findings.
-- Condition learning uses independent approvals, property-isolated tests and manifest class order; uncertain photos stay review-only, never background. Promotion requires measured gates.
+- Photo Intelligence uses only PITCH-controlled weights via worker `/vision/detect-damage` (ONNX, CPU first); no external per-photo AI. Classes unvalidated on inspector-labeled originals return no findings.
+- Training requires independent approval/property splits; canvass originals use trusted hashes and bucket references. Rep categories aren't labels; offline retries retain originals. Uncertainty is review-only; promotion requires measured gates.

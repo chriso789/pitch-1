@@ -6,7 +6,7 @@
  * Prevents abuse and ensures fair resource distribution.
  */
 
-import { SupabaseClient } from "npm:@supabase/supabase-js@2.49.1";
+import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 
 interface RateLimitConfig {
   perMinute: number;
@@ -112,8 +112,7 @@ export async function checkRateLimit(
         tenant_id: null, // Can be populated if available
         created_at: now.toISOString(),
       })
-      .then(() => {})
-      .catch((err) => console.error('Failed to log rate limit:', err));
+      .then(() => {}, () => console.error('Failed to log rate limit'));
 
     return {
       allowed: true,

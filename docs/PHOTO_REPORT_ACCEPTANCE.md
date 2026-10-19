@@ -1,5 +1,14 @@
 # Photo Report Acceptance Criteria
 
+## Canvass review integration — 2026-10-19
+- Property and Storm Canvass galleries open a selected-photo inspection queue. Source cards distinguish unverified rep observations, inspector status and predictions (not run); approved canvass counts separate roof systems and five condition kinds.
+- Captures no longer stamp pixels. GPS, capture time, employee, property/address, category and notes remain metadata; source registration references the private original bucket without copying. Known roof type is not fabricated (source roofType remains null until an inspector assigns the system).
+- Content-addressed upload IDs recover partial/repeated uploads. Failed offline records remain indefinitely; only the selected company and employee queue is drained. Registration failure retains uploads for retry.
+- Trusted registration hashes stored bytes and reads image dimensions, validates tenant/property membership, records audit events and is service-only at the SQL boundary. Independent inspector approval remains mandatory; rep categories never create training labels. Existing label corrections still need fresh second-inspector approval.
+- New dataset snapshots preserve source-bucket metadata, reject duplicates/property leakage and exclude uncertain/not-assessable classes from COCO learning. Referenced source objects and ownership cannot be overwritten/deleted by authenticated users. Security helper implementation lives in a private schema with an invoker wrapper. Applied SQL is recorded in `canvass-training-schema.sql`.
+- Verification: 72 Photo Intelligence JS tests passed; four Deno intake/hash/auth/preflight tests passed; isolated synthetic Postgres approval/isolation/dedup/provenance tests passed. Portable image metadata reader replaced incompatible ImageScript. Harness build OK. Registration function deployed; anonymous live request returns 401.
+- **Not accepted end-to-end:** real signed-in capture → inspector label → second-inspector approval → dataset export is unavailable for this external unmanaged Supabase project. Browser review URL redirected to sign-in. No real customer accuracy, trained model, paid service, automatic inference or publication. GitHub synchronization remains platform-managed and unconfirmed. Existing condition model evaluation/promotion hardening still needs staging approval; intake changes do not certify that registry.
+
 ## Balanced conditions — 2026-10-19
 Approved report composition and PDF/preview now separate visible defects, maintenance, visually normal components and unassessed/uncertain areas. All sections retain persistent finding IDs, original evidence and inspector approval. Normal observations never add to damage severity totals. Unassessed areas trigger further inspection recommendations; no visible concern does not prove concealed defects absent.
 

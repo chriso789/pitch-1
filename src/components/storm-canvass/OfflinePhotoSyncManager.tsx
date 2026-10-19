@@ -1,10 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Cloud, CloudOff, Upload, Check, AlertCircle, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { queueForSession, retainFailedPhoto } from '@/lib/canvass/offlinePhotoRecovery';
 import { uploadCanvassPhoto } from '@/lib/canvass/canvassPhotos';
 
 interface OfflinePhoto {
@@ -14,8 +17,9 @@ interface OfflinePhoto {
   category: string;
   propertyId?: string;
   propertyAddress?: string;
-  latitude: number;
-  longitude: number;
+  latitude: number | null;
+  longitude: number | null;
+  notes?: string;
   timestamp: string;
   tenantId: string;
   userId: string;
@@ -56,13 +60,15 @@ export function OfflinePhotoSyncManager({ className, compact = false }: OfflineP
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState(0);
   const { toast } = useToast();
+  const { user } = useAuth();
+  const tenantId = useEffectiveTenantId();
+  const syncingRef = useRef(false);
 
   // Monitor online status
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
-      // Auto-sync when coming online
-      syncPhotos();
+
     };
     
     const handleOffline = () => setIsOnline(false);
@@ -76,6 +82,10 @@ export function OfflinePhotoSyncManager({ className, compact = false }: OfflineP
     };
   }, []);
 
+  useEffect(() => {
+    if (isOnline && tenantId && user?.id) void syncPhotos();
+  }, [isOnline, tenantId, user?.id]);
+
   // Load pending photos count
   useEffect(() => {
     loadPendingPhotos();
@@ -83,30 +93,33 @@ export function OfflinePhotoSyncManager({ className, compact = false }: OfflineP
     // Check for pending photos periodically
     const interval = setInterval(loadPendingPhotos, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [tenantId, user?.id]);
 
   const loadPendingPhotos = async () => {
     try {
       const database = await getDB();
       const photos = await database.getAll('offlinePhotos');
-      setPendingPhotos(photos);
+      setPendingPhotos(tenantId && user?.id ? queueForSession(photos, tenantId, user.id) : []);
     } catch (err) {
       console.error('Error loading offline photos:', err);
     }
   };
 
   const syncPhotos = async () => {
-    if (!isOnline || isSyncing || pendingPhotos.length === 0) return;
+    if (!navigator.onLine || syncingRef.current || !tenantId || !user?.id) return;
+    syncingRef.current = true;
     
     setIsSyncing(true);
     setSyncProgress(0);
     
+    try {
     const database = await getDB();
+    const queued = queueForSession(await database.getAll('offlinePhotos'), tenantId, user.id);
     let successCount = 0;
     let failCount = 0;
     
-    for (let i = 0; i < pendingPhotos.length; i++) {
-      const photo = pendingPhotos[i];
+    for (let i = 0; i < queued.length; i++) {
+      const photo = queued[i];
       
       try {
         // Upload to the private canvass-photos bucket and persist the
@@ -118,9 +131,10 @@ export function OfflinePhotoSyncManager({ className, compact = false }: OfflineP
           propertyId: photo.propertyId ?? null,
           propertyAddress: photo.propertyAddress ?? null,
           category: photo.category,
+          notes: photo.notes,
           latitude: photo.latitude ?? null,
           longitude: photo.longitude ?? null,
-          fileName: `${Date.now()}_${photo.fileName}`,
+          fileName: photo.fileName,
           takenAt: photo.timestamp,
         });
         
@@ -132,21 +146,15 @@ export function OfflinePhotoSyncManager({ className, compact = false }: OfflineP
         console.error('Failed to sync photo:', err);
         
         // Increment retry count
-        const updatedPhoto = { ...photo, retryCount: photo.retryCount + 1 };
+        const updatedPhoto = retainFailedPhoto(photo);
         
-        if (updatedPhoto.retryCount >= 3) {
-          // Remove after 3 failed attempts
-          await database.delete('offlinePhotos', photo.id);
-          failCount++;
-        } else {
-          await database.put('offlinePhotos', updatedPhoto);
-        }
+        await database.put('offlinePhotos', updatedPhoto);
+        failCount++;
       }
       
-      setSyncProgress(((i + 1) / pendingPhotos.length) * 100);
+      setSyncProgress(((i + 1) / queued.length) * 100);
     }
     
-    setIsSyncing(false);
     await loadPendingPhotos();
     
     if (successCount > 0) {
@@ -159,9 +167,15 @@ export function OfflinePhotoSyncManager({ className, compact = false }: OfflineP
     if (failCount > 0) {
       toast({
         title: 'Sync Issues',
-        description: `${failCount} photo${failCount > 1 ? 's' : ''} failed after multiple attempts`,
+        description: `${failCount} photo${failCount > 1 ? 's' : ''} retained for retry`,
         variant: 'destructive',
       });
+    }
+    } catch {
+      toast({ title: 'Sync unavailable', description: 'Photos remain on this device. Please retry.', variant: 'destructive' });
+    } finally {
+      setIsSyncing(false);
+      syncingRef.current = false;
     }
   };
 

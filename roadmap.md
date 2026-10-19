@@ -1,5 +1,12 @@
 # Roadmap
 
+## Canvass → Photo Intelligence
+- [x] Zero-copy candidates, preserved source metadata, hash deduplication and retry-safe offline uploads
+- [x] Gallery inspection actions, unlabeled review queue and approved canvass counts
+- [x] Independent approval/training eligibility tests and tracking documents — 72 JS, 4 Deno, isolated SQL passed; intake deployed; anonymous 401; real-user acceptance pending
+- [ ] Signed-in two-inspector acceptance — BLOCKED: external Supabase session unavailable
+- [ ] GitHub commit/sync confirmation — BLOCKED: Git state managed by platform
+
 ## Homeowner lookup
 - [x] Restore missing Storm lookup service; remove duplicate/speculative warning; selected-company checks; 5 authorization tests passed; deployed legacy endpoint rejects invalid tokens with 401
 - [ ] Signed-in homeowner lookup/provider results and switched-company cache persistence — BLOCKED: external managed account unavailable; cache schema/policy fixes need staging and approval

@@ -3,7 +3,8 @@ import { SafeImage } from '@/components/ui/safe-image';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useUserProfile } from '@/contexts/UserProfileContext';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { inspectCanvassPath } from '@/lib/photo-intelligence/training/canvass';
 import { fetchCanvassPhotos } from '@/lib/canvass/canvassPhotos';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -42,7 +43,7 @@ interface PhotoData {
 export function PropertyPhotoGallery() {
   const { propertyId } = useParams<{ propertyId: string }>();
   const navigate = useNavigate();
-  const { profile } = useUserProfile();
+  const tenantId = useEffectiveTenantId();
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoData | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'timeline' | 'compare'>('grid');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -51,12 +52,12 @@ export function PropertyPhotoGallery() {
 
   // Fetch photos for this property (canvass_photos records with signed URLs)
   const { data: photos = [], isLoading } = useQuery({
-    queryKey: ['property-photos', propertyId, profile?.tenant_id],
+    queryKey: ['property-photos', propertyId, tenantId],
     queryFn: async () => {
-      if (!profile?.tenant_id || !propertyId) return [];
+      if (!tenantId || !propertyId) return [];
 
       const records = await fetchCanvassPhotos({
-        tenantId: profile.tenant_id,
+        tenantId,
         propertyId,
       });
 
@@ -70,7 +71,7 @@ export function PropertyPhotoGallery() {
         created_at: r.created_at,
       })) as PhotoData[];
     },
-    enabled: !!profile?.tenant_id && !!propertyId,
+    enabled: !!tenantId && !!propertyId,
   });
 
   // Get unique categories
@@ -339,6 +340,7 @@ export function PropertyPhotoGallery() {
                     )}
                   </div>
                   <div className="flex gap-2">
+                    <Button variant="secondary" size="sm" onClick={() => navigate(inspectCanvassPath(selectedPhoto.id))}>Inspect with Photo Intelligence</Button>
                     <Button
                       variant="secondary"
                       size="sm"

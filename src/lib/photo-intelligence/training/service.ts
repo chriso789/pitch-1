@@ -4,6 +4,7 @@ import { safeStorageUpload } from '@/lib/storage/safeUpload';
 import { zipSync, strToU8 } from 'fflate';
 import { toCoco, type DatasetVersion } from './dataset';
 import { isTrainableClass } from './taxonomy';
+import { registerCanvassTrainingPhoto } from '@/lib/canvass/canvassPhotos';
 
 export type Original = Database['public']['Tables']['photo_training_originals']['Row'] & { url: string };
 export type Label = Database['public']['Tables']['photo_training_labels']['Row'];
@@ -12,6 +13,17 @@ export type SavedDataset = Database['public']['Tables']['photo_training_datasets
 export type TrainingEvent = Database['public']['Tables']['photo_training_events']['Row'];
 
 export async function loadTraining(t: string) {
+  // Recover uploads whose image/record succeeded but candidate registration did not.
+  // RLS plus the registration service validate company/property; no label is created.
+  const { data: captures, error: captureError } = await supabase.from('canvass_photos').select('id,property_id').eq('tenant_id', t).not('property_id', 'is', null).order('created_at', { ascending: false }).limit(1000);
+  const { data: registered, error: registeredError } = await supabase.from('photo_training_originals').select('source_photo_id').eq('tenant_id', t).eq('source_kind', 'live_canvass').limit(1000);
+  const registrationWarnings: string[] = [];
+  if (captureError || registeredError) registrationWarnings.push('Could not check canvassing review intake');
+  const ids = new Set((registered ?? []).map((o) => o.source_photo_id));
+  for (const capture of (captures ?? []).filter((p) => !ids.has(p.id))) {
+    try { await registerCanvassTrainingPhoto(capture.id); }
+    catch { registrationWarnings.push(capture.id); }
+  }
   const [originals, labels, datasets, models, events, deployments] = await Promise.all([
     supabase.from('photo_training_originals').select('*').eq('tenant_id', t).order('created_at', { ascending: false }).limit(1000),
     supabase.from('photo_training_labels').select('*').eq('tenant_id', t).limit(1000),
@@ -23,11 +35,12 @@ export async function loadTraining(t: string) {
   for (const result of [originals, labels, datasets, models, events, deployments]) if (result.error) throw new Error('Could not load company training records');
   const photos: Original[] = [];
   for (const original of originals.data ?? []) {
-    const { data, error } = await supabase.storage.from('photo-training-originals').createSignedUrl(original.storage_path, 900);
+    if (!['photo-training-originals', 'canvass-photos'].includes(original.storage_bucket) || !original.storage_path.startsWith(`${t}/`)) throw new Error('Original photo provenance is invalid');
+    const { data, error } = await supabase.storage.from(original.storage_bucket).createSignedUrl(original.storage_path, 900);
     if (error) throw new Error('Could not open a private original photo');
     photos.push({ ...original, url: data.signedUrl });
   }
-  return { originals: photos, labels: labels.data ?? [], datasets: datasets.data ?? [], models: models.data ?? [], events: events.data ?? [], deployments: deployments.data ?? [] };
+  return { originals: photos, labels: labels.data ?? [], datasets: datasets.data ?? [], models: models.data ?? [], events: events.data ?? [], deployments: deployments.data ?? [], registrationWarnings };
 }
 
 export async function uploadOriginal(t: string, property: string, file: File) {
@@ -64,7 +77,9 @@ export async function exportDataset(ds: SavedDataset) {
   let total = 0;
   for (const p of manifest.photos) {
     if (!p.storagePath?.startsWith(`${ds.tenant_id}/`)) throw new Error('Original photo provenance is missing');
-    const { data, error } = await supabase.storage.from('photo-training-originals').download(p.storagePath);
+    const bucket = p.storageBucket ?? 'photo-training-originals';
+    if (!['photo-training-originals', 'canvass-photos'].includes(bucket)) throw new Error('Unsupported original photo source');
+    const { data, error } = await supabase.storage.from(bucket).download(p.storagePath);
     if (error) throw new Error('Could not download an original; export stopped');
     total += data.size;
     if (total > 200 * 1024 * 1024) throw new Error('Dataset exceeds the 200 MB browser export limit');
