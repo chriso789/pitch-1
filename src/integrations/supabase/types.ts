@@ -70536,6 +70536,8 @@ export type Database = {
         | "regional_manager"
         | "sales_manager"
         | "project_manager"
+        | "platform_developer"
+        | "platform_training_reviewer"
       commission_structure_type:
         | "profit_split"
         | "sales_percentage"
@@ -70999,6 +71001,8 @@ export const Constants = {
         "regional_manager",
         "sales_manager",
         "project_manager",
+        "platform_developer",
+        "platform_training_reviewer",
       ],
       commission_structure_type: [
         "profit_split",
