@@ -175,13 +175,21 @@ export function sam2SegmentationModel(encoder: LoadedOnnxModel, decoder: LoadedO
           ((gx + 1) * SAM_INPUT) / GRID_BOXES, ((gy + 1) * SAM_INPUT) / GRID_BOXES,
         ]]);
       }
+      // The decoder ties the embedding batch dim to the prompt batch dim
+      // (validated 2026-10-19), so replicate the single-image embeddings per box.
+      const rep = (t: { data: Float32Array; dims: readonly number[] }) => {
+        const n = boxes.length;
+        const data = new Float32Array(t.data.length * n);
+        for (let i = 0; i < n; i++) data.set(t.data, i * t.data.length);
+        return new ort.Tensor('float32', data, [n, ...t.dims.slice(1)]);
+      };
       const feeds: Record<string, unknown> = {
         input_points: new ort.Tensor('float32', new Float32Array(boxes.length * 2), [boxes.length, 1, 1, 2]),
         input_labels: new ort.Tensor('int64', new BigInt64Array(boxes.length), [boxes.length, 1, 1]),
         input_boxes: new ort.Tensor('float32', new Float32Array(boxes.flat(2)), [boxes.length, boxes[0].length, 4]),
-        'image_embeddings.0': encOut['image_embeddings.0'],
-        'image_embeddings.1': encOut['image_embeddings.1'],
-        'image_embeddings.2': encOut['image_embeddings.2'],
+        'image_embeddings.0': rep(encOut['image_embeddings.0']),
+        'image_embeddings.1': rep(encOut['image_embeddings.1']),
+        'image_embeddings.2': rep(encOut['image_embeddings.2']),
       };
       const out = await dec.run(feeds);
       const masks = out['pred_masks']; // [boxes, 1, 3, 256, 256]
