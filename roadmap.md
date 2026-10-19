@@ -67,6 +67,6 @@
 - [ ] Threshold validation on real photos — BLOCKED: reference library is empty (0 approved examples); defaults 0.62/0.05 are unvalidated
 - [ ] Phase 2 condition analysis per component (broken/missing tile, displaced components vs normal exemplars) — BLOCKED: needs validated component labels first
 - [ ] Phase 3 perf: benchmark decode/embed/segment/classify timings; embedding reuse done; target <5s/photo — BLOCKED: browser model verification blocked by dev-server asset quirk; timings known only from synthetic runs
-- [ ] Phase 4 real-photo benchmark harness UI (upload originals, reviewed labels, per-material/angle metrics) — partial: scoring exists, upload/review UI not built
+- [~] Phase 4 real-photo benchmark harness: `photo_benchmark_sets`/`photo_benchmark_items` tables (tenant-scoped, DB-enforced reviewer≠labeler), Benchmark tab on the training page (set creation, original upload with property/material/scene kind, component label editor, independent review, import-predictions scoring with property + scene-kind coverage); 3 harness tests pass. Not yet verified: signed-in upload/review/scoring in the preview (external Supabase, no session here)
 - [ ] Phase 5 inspector correction UI feeding `promoteCorrectionToReference` — not wired to review screen yet
 - [ ] GitHub sync — BLOCKED: remote/main divergence noted above
