@@ -14,7 +14,7 @@
 
 import type { ComponentModel, ComponentRegion } from './componentRecognition';
 import type { GrayImage } from '../patternAnalysis';
-import dinov2SmallAsset from '../../../../public/models/photo-intelligence/dinov2-small.onnx.asset.json';
+import dinov2SmallAsset from '@/assets/dinov2-small.onnx.asset.json';
 
 /** Self-hosted weight URLs (large files live in the asset store, pointer JSON in the repo). */
 export const MODEL_URLS = {
