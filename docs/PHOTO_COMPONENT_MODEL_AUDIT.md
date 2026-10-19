@@ -30,6 +30,8 @@ self-host assets, pin JS/WASM versions).
 
 - **DINOv2-Small** (quantized ONNX, Xenova export of Meta's Apache-2.0 weights), stored in the asset store (24,451,943 bytes), served from a PITCH-controlled URL. Loaded lazily by `src/lib/photo-intelligence/components/onnxModel.ts`. **Validated by execution (2026-10-19):** input `pixel_values` [1,3,224,224], output `last_hidden_state` [1,257,384] (1 CLS + 256 patch tokens = 16×16 grid, 384-dim embeddings); a real CPU inference run succeeded. Used for feature extraction + neighbour similarity only — `dinov2SimilarityModel.segment()` returns zero regions because no verified segmentation head exists.
 
+- **SAM 2.1 Tiny** (quantized ONNX, onnx-community export of Meta's Apache-2.0 checkpoints), vision encoder (53,002,825 bytes) + prompt-encoder/mask-decoder (8,942,627 bytes) merged to single-file models in the asset store (encoder sha256 `56728e43ebc99851…`). **Validated by execution (2026-10-19):** encoder [1,3,1024,1024] → 3 embedding tensors; box-prompted decoder → iou_scores + 256×256 pred_masks; decoder requires the embedding batch dim to equal the prompt batch dim (handled in `sam2SegmentationModel`). End-to-end run via onnxruntime-web 1.30.0 (the app's runtime) on a synthetic 1024² tile texture: encoder ~14 s CPU, 16-box decode ~4.4 s, 2 stable regions (IoU ≥ 0.7). Masks are **unlabeled** — regions stay `unknown`, verifiedClasses empty. Synthetic-texture run is integration evidence, not field accuracy.
+
 ## Open before Phase 2 integration
 
 1. Download and hash chosen checkpoints; preserve LICENSE/NOTICE files.
