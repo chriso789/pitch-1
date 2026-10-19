@@ -8,6 +8,8 @@
 - Running app route `/photo-intelligence/training` redirects to `/login`; screenshot confirms sign-in screen. **Authenticated labeling/review/save/export/registry and two-company isolation not tested.** No real accuracy score exists.
 - SQL class whitelist expanded; no RLS changed, but prior staging approval was not obtained. Remaining SQL hardening is documented, not deployed. 241 pre-existing linter findings reported, not triaged as part of this condition task.
 - Material/component recognition, polygon segmentation accuracy, customer-photo training, native/ONNX parity and production switch remain unverified. Current local metric is bounding-box IoU.
+- Local CLI exercised end-to-end on a synthetic trained checkpoint's held-out predictions: 1 test photograph evaluated; no production approval. Final regression rerun: 64 passed; harness build OK.
+- GitHub API read: remote `chriso789/pitch-1` main `c8f22b35b651668bd4d0ce1e70139c7803d9d6fe`, dated 2026-10-18T17:42:37Z; local observed revision `db1e4ef9f50425d8605b88fe49d803140b39b36c`. Current changes are **not confirmed synchronized**. No manual git push performed.
 
 ## 2026-10-17 — Phase 1 (data model)
 - Migration applied: `photo_findings`, `photo_finding_evidence`, `photo_finding_reviews` with tenant RLS and grants.
