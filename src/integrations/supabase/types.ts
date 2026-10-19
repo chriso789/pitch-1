@@ -69238,6 +69238,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      has_training_access: {
+        Args: { _level?: string; _user_id: string }
+        Returns: boolean
+      }
       import_supplier_price_book: {
         Args: {
           _company_id: string
