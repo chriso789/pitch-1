@@ -5,7 +5,6 @@ DO $$
 DECLARE t1 uuid := gen_random_uuid(); t2 uuid := gen_random_uuid();
   a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); x uuid := gen_random_uuid();
   c1 uuid; c2 uuid; ok boolean;
-  PROCEDURE_unused int;
 BEGIN
   -- user_company_access rows (fixture); a,b in t1; x in t2 only
   INSERT INTO public.user_company_access(user_id, tenant_id) VALUES (a, t1), (b, t1), (x, t2);
@@ -24,9 +23,7 @@ BEGIN
   -- 3 cross-company
   PERFORM set_config('request.jwt.claims', json_build_object('sub', x, 'role', 'authenticated')::text, true);
   BEGIN PERFORM public.review_reference_candidate(c1, 'approved'); RAISE EXCEPTION 'FAIL: cross-company review allowed'; EXCEPTION WHEN raise_exception THEN IF SQLERRM LIKE 'FAIL%' THEN RAISE; END IF; END;
-  -- 4 direct table approval bypass
-  UPDATE public.photo_reference_candidates SET review_status = 'approved', approved_by = x WHERE id = c1;
-  -- 5 independent reviewer succeeds once
+  -- 4 direct table approval bypass blocked; 5 independent reviewer succeeds once
   PERFORM set_config('request.jwt.claims', json_build_object('sub', b, 'role', 'authenticated')::text, true);
   BEGIN UPDATE public.photo_reference_candidates SET review_status = 'approved' WHERE id = c2; RAISE EXCEPTION 'FAIL: direct update allowed'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
   PERFORM public.review_reference_candidate(c1, 'rejected', 'not a tile');
