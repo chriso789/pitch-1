@@ -182,6 +182,15 @@ export function ReferenceLibraryTab({ tenantId, userId }: { tenantId: string; us
             <label className="flex items-center gap-2 text-sm"><Checkbox checked={onlyRecommended} onCheckedChange={(v) => setOnlyRecommended(!!v)} />Show recommended only</label>
           </>}
         </div>
+        {!!runsQ.data?.length && <div className="border rounded overflow-x-auto">
+          <table className="w-full text-sm"><thead><tr className="text-left text-muted-foreground"><th className="p-2">Photo</th><th className="p-2">Status</th><th className="p-2">Resolution</th><th className="p-2">Outlines</th><th className="p-2">Invalid</th><th className="p-2">Time</th><th className="p-2">Error</th></tr></thead>
+          <tbody>{runsQ.data.slice(0, 50).map((r: PhotoRunResult) => { const ph = allPhotos.find((p) => p.id === r.photoId); return (
+            <tr key={r.photoId} className="border-t"><td className="p-2"><button className="underline" disabled={!ph} onClick={() => ph && setEditing(ph)}>{ph?.fileName?.split('/').pop() ?? r.photoId.slice(0, 8)}</button></td>
+            <td className="p-2"><Badge variant={r.status === 'completed' ? 'default' : r.status === 'failed' ? 'destructive' : 'secondary'}>{nice(r.status)}</Badge></td>
+            <td className="p-2">{r.widthPx ? `${r.widthPx}×${r.heightPx}` : '—'}</td><td className="p-2">{r.regionCount}</td><td className="p-2">{r.invalidRegionCount}</td>
+            <td className="p-2">{r.durationMs != null ? `${(r.durationMs / 1000).toFixed(1)} s` : '—'}</td><td className="p-2 text-muted-foreground">{r.error ?? ''}</td></tr>); })}</tbody></table>
+          <p className="text-xs text-muted-foreground p-2">Resolution is the analysed size (longest side 512 px); originals are unchanged. Open a photo to compare outlines with the original and fix boundaries.</p>
+        </div>}
         {photos.isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-6">
           {shown.map((p) => {
