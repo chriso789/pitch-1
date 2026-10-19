@@ -213,63 +213,50 @@ export function CanvassPhotoCapture({
       const blob = await response.blob();
 
       if (!isOnline) {
-        // Store offline
-        const db = await getOfflineDB();
-        await db.add(STORE_NAME, {
-          imageData: capturedImage,
+        // Queue for the offline sync manager — it uploads and records
+        // the photo automatically once the device is back online.
+        await savePhotoOffline({
+          blob,
+          fileName: `${Date.now()}.jpg`,
+          category,
+          propertyId: propertyId ?? undefined,
+          propertyAddress: propertyAddress ?? undefined,
+          latitude: gpsLocation?.lat ?? 0,
+          longitude: gpsLocation?.lng ?? 0,
+          timestamp: new Date().toISOString(),
           tenantId,
           userId: user.id,
-          propertyId,
-          category,
-          notes,
-          latitude: gpsLocation?.lat,
-          longitude: gpsLocation?.lng,
-          createdAt: new Date().toISOString(),
         });
-        
+
         setPendingCount(prev => prev + 1);
         toast.success('Photo saved offline. Will upload when online.');
         onOpenChange(false);
         return;
       }
 
-      // Upload to Supabase Storage
-      const fileName = `${tenantId}/${propertyId || 'general'}/${Date.now()}.jpg`;
-      
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      // Upload to the private canvass-photos bucket, save the photo record
+      // (canvass_photos) and log the activity.
+      const recordId = await uploadCanvassPhoto({
+        blob,
+        tenantId,
+        userId: user.id,
+        propertyId,
+        propertyAddress,
+        category,
+        notes,
+        latitude: gpsLocation?.lat ?? null,
+        longitude: gpsLocation?.lng ?? null,
+      });
+
+      const { data: { signedUrl } } = await supabase.storage
         .from('canvass-photos')
-        .upload(fileName, blob, {
-          contentType: 'image/jpeg',
-          upsert: false,
-        });
-
-      if (uploadError) throw uploadError;
-
-      // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('canvass-photos')
-        .getPublicUrl(fileName);
-
-      // Save photo record to canvassiq_properties if we have a property
-      // Note: Photos are stored in storage, activity is logged below
-      console.log('Photo uploaded to storage:', publicUrl);
-
-      // Log activity
-      await supabase.from('canvass_activity_log').insert({
-        tenant_id: tenantId,
-        user_id: user.id,
-        activity_type: 'photo_uploaded',
-        latitude: gpsLocation?.lat,
-        longitude: gpsLocation?.lng,
-        activity_data: { 
-          property_id: propertyId, 
-          category,
-          photo_url: publicUrl,
-        },
-      } as any);
+        .createSignedUrl(
+          `${tenantId}/${propertyId || 'general'}/${Date.now()}.jpg`,
+          60,
+        );
 
       toast.success('Photo uploaded successfully');
-      onPhotoUploaded?.(publicUrl);
+      onPhotoUploaded?.(signedUrl || recordId);
       onOpenChange(false);
 
     } catch (error: any) {
