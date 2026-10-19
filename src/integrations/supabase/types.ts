@@ -39024,6 +39024,54 @@ export type Database = {
         }
         Relationships: []
       }
+      photo_reference_candidates: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          cls: string
+          created_at: string
+          embedding: Json
+          embedding_model_id: string
+          id: string
+          image_hash: string
+          labeled_by: string
+          polygon: Json
+          source_photo_id: string
+          source_property_key: string
+          tenant_id: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          cls: string
+          created_at?: string
+          embedding: Json
+          embedding_model_id?: string
+          id?: string
+          image_hash: string
+          labeled_by?: string
+          polygon: Json
+          source_photo_id: string
+          source_property_key: string
+          tenant_id: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          cls?: string
+          created_at?: string
+          embedding?: Json
+          embedding_model_id?: string
+          id?: string
+          image_hash?: string
+          labeled_by?: string
+          polygon?: Json
+          source_photo_id?: string
+          source_property_key?: string
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       photo_reference_examples: {
         Row: {
           approved_at: string

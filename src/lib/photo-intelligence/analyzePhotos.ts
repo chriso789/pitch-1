@@ -21,6 +21,7 @@ import { recognizeComponents, refineWithComponents, matchAnomaliesToRegions } fr
 import { loadComponentModel, loadDinoSession, loadSimilarityModel } from './components/onnxModel';
 import { dinoFeaturesForImage } from './components/regionEmbedding';
 import { applyReferenceClassification, loadReferenceLibrary } from './components/referenceLibrary';
+import { loadTenantLibrary } from './components/referenceCandidates';
 
 /** Flipped only once the self-hosted engine is deployed with validated weights. */
 export const PITCH_VISION_ENGINE_READY = false;
@@ -198,7 +199,8 @@ export async function analyzeRecordPhotos(
               const dino = await loadDinoSession();
               if (dino) {
                 const features = await dinoFeaturesForImage(img, dino);
-                const library = await loadReferenceLibrary();
+                const tenantLib = await loadTenantLibrary(tenantId);
+                const library = tenantLib.examples.length ? tenantLib : await loadReferenceLibrary();
                 outPattern = {
                   ...pattern,
                   result: {
