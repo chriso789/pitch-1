@@ -456,15 +456,17 @@ export function PhotoAnnotationEditor({
                 <span className="text-muted-foreground">Component</span>
                 <Input value={selected.component ?? ''} placeholder="e.g. Shingles, ridge vent, flashing" onChange={(e) => updateSelected({ component: e.target.value || null })} />
               </label>
+              {conditionLabeling && <div className="flex flex-wrap gap-1" role="group" aria-label="Region condition">{CONDITION_KINDS.map((kind) => <Button key={kind} size="sm" variant={selected.damageCategory && conditionKind(selected.damageCategory) === kind ? 'default' : 'outline'} onClick={() => { const category = damageCategories.find((c) => conditionKind(c) === kind); if (category) updateSelected({ damageCategory: category }); }}>{kind.replace(/_/g, ' ')}</Button>)}</div>}
               <label className="block space-y-1">
                 <span className="text-muted-foreground">{conditionLabeling ? 'Condition category' : 'Damage category'}</span>
                 <Select value={selected.damageCategory ?? ''} onValueChange={(v) => updateSelected({ damageCategory: v || null })}>
                   <SelectTrigger><SelectValue placeholder="Choose…" /></SelectTrigger>
                   <SelectContent>
-                    {damageCategories.map((c) => <SelectItem key={c} value={c}>{c.replace(/_/g, ' ')}</SelectItem>)}
+                    {damageCategories.filter((c) => !conditionLabeling || !selected.damageCategory || conditionKind(c) === conditionKind(selected.damageCategory)).map((c) => <SelectItem key={c} value={c}>{c.replace(/_/g, ' ')}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </label>
+              {conditionLabeling && selected.damageCategory && conditionKind(selected.damageCategory) === 'normal' && <Button size="sm" variant="outline" onClick={() => commit(annotations.map((a) => a.kind === 'polygon' || a.kind === 'bbox' || a.kind === 'circle' ? { ...a, damageCategory: selected.damageCategory, component: selected.component } : a))}>Apply normal category to all regions</Button>}
               {findings.length > 0 && (
                 <label className="block space-y-1">
                   <span className="text-muted-foreground">Linked finding</span>

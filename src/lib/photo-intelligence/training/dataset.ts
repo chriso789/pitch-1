@@ -52,7 +52,7 @@ export function validatePhoto(p: TrainingPhoto): string | null {
   if (!p.approvedBy) return 'missing_approver';
   if (p.approvedBy === p.labeledBy) return 'self_approved';
   if (!p.propertyId.trim() || !p.sha256 || p.width <= 0 || p.height <= 0) return 'invalid_original';
-  if (p.noVisibleDamage && p.regions.some((r) => conditionKind(r.cls) === 'damage')) return 'negative_with_regions';
+  if (p.noVisibleDamage && p.regions.some((r) => conditionKind(r.cls) !== 'normal')) return 'negative_with_regions';
   if (!p.noVisibleDamage && !p.regions.length) return 'no_regions';
   for (const r of p.regions) {
     if (!isValidClassForSystem(p.roofSystem, r.cls)) return `class_not_in_system:${r.cls}`;
@@ -116,6 +116,7 @@ export function toCoco(ds: DatasetVersion, subset?: DatasetSplit) {
 
 /** YOLO segmentation label text for one photo ("cls x1 y1 x2 y2 ..."). Empty string for negatives. */
 export function toYoloLabel(p: TrainingPhoto): string {
+  if (!isLearningPhoto(p)) throw new Error("Uncertain photos require review before learning export");
   const classes = ALL_CONDITION_CLASSES.filter(isTrainableClass);
   return p.regions.filter((r) => isTrainableClass(r.cls)).map((r) => [classes.indexOf(r.cls), ...r.polygon.flatMap((q) => [q.x.toFixed(6), q.y.toFixed(6)])].join(' ')).join('\n');
 }
