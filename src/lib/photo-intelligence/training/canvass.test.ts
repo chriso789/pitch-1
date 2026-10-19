@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { Blob as NodeBlob } from 'node:buffer';
 import { webcrypto } from 'node:crypto';
 import { approvedCanvassCounts, canvassOriginalIdentity } from './canvass';
 import { buildDatasetVersion, toCoco, type TrainingPhoto } from './dataset';
@@ -10,7 +11,7 @@ const photo: TrainingPhoto = { photoId: 'canvass-1', sha256: 'hash1', propertyId
 describe('canvassing training rules', () => {
   it('retries the same original without changing company/property/object identity', async () => {
     vi.stubGlobal('crypto', webcrypto);
-    const blob = new Blob(['unchanged-original'], { type: 'image/jpeg' });
+    const blob = new NodeBlob(['unchanged-original'], { type: 'image/jpeg' });
     const first = await canvassOriginalIdentity(blob, 'company', 'property-1');
     expect(await canvassOriginalIdentity(blob, 'company', 'property-1')).toEqual(first);
     expect(first.path).toMatch(/^company\/property-1\/[a-f0-9]{64}\.jpg$/);

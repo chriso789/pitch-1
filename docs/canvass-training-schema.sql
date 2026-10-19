@@ -84,3 +84,9 @@ CREATE POLICY canvass_training_evidence_no_update ON storage.objects AS RESTRICT
   WITH CHECK(bucket_id<>'canvass-photos' OR NOT public.canvass_training_reference_locked(name));
 CREATE POLICY canvass_training_evidence_no_delete ON storage.objects AS RESTRICTIVE FOR DELETE TO authenticated
   USING(bucket_id<>'canvass-photos' OR NOT public.canvass_training_reference_locked(name));
+
+-- Applied live remediation: private implementation, public invoker wrapper.
+ALTER FUNCTION public.canvass_training_reference_locked(text) SET SCHEMA photo_training_internal;
+CREATE FUNCTION public.canvass_training_reference_locked(path text) RETURNS boolean LANGUAGE sql SECURITY INVOKER SET search_path=public AS $$ SELECT photo_training_internal.canvass_training_reference_locked(path) $$;
+REVOKE ALL ON FUNCTION public.canvass_training_reference_locked(text) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.canvass_training_reference_locked(text) TO authenticated,service_role;
