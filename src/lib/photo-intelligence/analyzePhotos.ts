@@ -18,6 +18,7 @@ import { validateDetections, associateCrossPhoto, type DamageProposal, type Reco
 import { persistProposals } from './findings';
 import { analyzePattern, loadImageForAnalysis } from './patternAnalysis';
 import { recognizeComponents, refineWithComponents } from './components/componentRecognition';
+import { loadComponentModel } from './components/onnxModel';
 
 /** Flipped only once the self-hosted engine is deployed with validated weights. */
 export const PITCH_VISION_ENGINE_READY = false;
@@ -157,6 +158,8 @@ export async function analyzeRecordPhotos(
   const emit = () => opts.onProgress?.({ ...progress, errors: [...progress.errors] });
 
   let noUnusualRegions = 0, notAssessable = 0;
+  // Load any installed local component model once per run; null = not installed.
+  const componentModel = await loadComponentModel();
   const allProposals: DamageProposal[] = [];
   const warnings: string[] = [];
 
@@ -176,7 +179,7 @@ export async function analyzeRecordPhotos(
         // Phase 3: component layer runs first; without a verified component
         // model it honestly reports model_not_available and refinement only
         // labels regions as unmatched — never upgrades them to damage.
-        const components = await recognizeComponents(img);
+        const components = await recognizeComponents(img, componentModel ?? undefined);
         const out = refineWithComponents(analyzePattern(img), components);
         if (out.status === 'no_unusual_regions') noUnusualRegions += 1;
         if (out.status === 'not_assessable') notAssessable += 1;
