@@ -49,7 +49,7 @@
 
 ## Component recognition milestone (2026-10-19, uploaded spec)
 - [x] Phase 1: pretrained model + weight-license audit — docs/PHOTO_COMPONENT_MODEL_AUDIT.md; chosen: DINOv2-S (Apache-2.0), SAM 2.1 Tiny (Apache-2.0), RoofSense (MIT/CC-BY-4.0); held out: YOLO (AGPL), SegFormer (noncommercial), torchvision weights (uncleared)
-- [~] Phase 2: DINOv2-Small ONNX installed + validated (real CPU run, 16×16 patch grid); loader + similarity in onnxModel.ts, 14 tests. Component recognition itself BLOCKED: no verified segmentation head — DINOv2 is a backbone; needs SAM 2.1 export/integration or RoofSense input-band check
+- [~] Phase 2: DINOv2-Small ONNX installed + validated (real CPU run, 16×16 patch grid); loader + similarity in onnxModel.ts, 14 tests. Component recognition itself BLOCKED: no verified segmentation head — DINOv2 is a backbone; needs SAM 2.1 export/integration (RoofSense rejected: aerial+LiDAR inputs don't match ground photos)
 - [ ] Phase 3: component-aware anomaly comparison (similar components only; shadows/leaves/variation suppressed; anomalies never auto-confirmed)
 - [ ] Phase 4: real-photo benchmark (damaged/undamaged/shadowed, property-separated, independent labels; no synthetic accuracy claims)
 - [ ] Phase 5: findings show component + condition + evidence + verification status; inspector confirm/correct feeds approved dataset only
