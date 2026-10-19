@@ -48,7 +48,7 @@
 - [ ] Recognition stays off until a real trained model passes acceptance
 
 ## Component recognition milestone (2026-10-19, uploaded spec)
-- [ ] Phase 1: pretrained model + weight-license audit (ONNX-runnable, commercial-compatible, no external inference APIs)
+- [x] Phase 1: pretrained model + weight-license audit — docs/PHOTO_COMPONENT_MODEL_AUDIT.md; chosen: DINOv2-S (Apache-2.0), SAM 2.1 Tiny (Apache-2.0), RoofSense (MIT/CC-BY-4.0); held out: YOLO (AGPL), SegFormer (noncommercial), torchvision weights (uncleared)
 - [ ] Phase 2: component recognition (tiles, shingles, metal, ridge, vents, flashing, penetrations, gutters/valleys, siding); unsupported → unknown
 - [ ] Phase 3: component-aware anomaly comparison (similar components only; shadows/leaves/variation suppressed; anomalies never auto-confirmed)
 - [ ] Phase 4: real-photo benchmark (damaged/undamaged/shadowed, property-separated, independent labels; no synthetic accuracy claims)
