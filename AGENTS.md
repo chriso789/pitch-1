@@ -21,4 +21,4 @@
 - Read nested `AGENTS.md`. Grouped handlers live in `_shared` for bundling.
 - Feature menus use `useEffectiveTenantId` and refresh explicit company switches; tier labels never override switches.
 - Photo Intelligence damage recognition runs only on PITCH-controlled weights via the worker `/vision/detect-damage` (ONNX, CPU first); no external AI API is called per photo, and classes not validated on inspector-labeled originals return no findings.
-- Training uses independent approval and property splits; canvass originals use trusted byte hashing and source-bucket references. Rep categories never label; retained offline queues retry idempotently. Uncertainty stays review-only; promotion requires measured gates.
+- Training requires independent approval/property splits; canvass originals use trusted hashes and bucket references. Rep categories aren't labels; offline retries retain originals. Uncertainty is review-only; promotion requires measured gates.
