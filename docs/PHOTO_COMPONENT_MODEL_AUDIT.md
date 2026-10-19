@@ -28,7 +28,7 @@ self-host assets, pin JS/WASM versions).
 
 ## Installed
 
-- **DINOv2-Small** (quantized ONNX, Xenova export of Meta's Apache-2.0 weights), stored in the asset store (sha256 starts `eb9f4214e171323e`, 24,451,943 bytes), served from a PITCH-controlled URL. Loaded lazily by `src/lib/photo-intelligence/components/onnxModel.ts`. A feature backbone alone yields **zero** component regions by design — see `backboneOnlyModel`.
+- **DINOv2-Small** (quantized ONNX, Xenova export of Meta's Apache-2.0 weights), stored in the asset store (24,451,943 bytes), served from a PITCH-controlled URL. Loaded lazily by `src/lib/photo-intelligence/components/onnxModel.ts`. **Validated by execution (2026-10-19):** input `pixel_values` [1,3,224,224], output `last_hidden_state` [1,257,384] (1 CLS + 256 patch tokens = 16×16 grid, 384-dim embeddings); a real CPU inference run succeeded. Used for feature extraction + neighbour similarity only — `dinov2SimilarityModel.segment()` returns zero regions because no verified segmentation head exists.
 
 ## Open before Phase 2 integration
 
