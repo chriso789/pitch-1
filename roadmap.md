@@ -1,9 +1,9 @@
 # Roadmap
 
 ## Canvass → Photo Intelligence
-- [ ] Zero-copy candidates, preserved source metadata, hash deduplication and retry-safe offline uploads
-- [ ] Gallery inspection actions, unlabeled review queue and approved canvass counts
-- [ ] Independent approval/training eligibility tests and tracking documents
+- [x] Zero-copy candidates, preserved source metadata, hash deduplication and retry-safe offline uploads
+- [x] Gallery inspection actions, unlabeled review queue and approved canvass counts
+- [x] Independent approval/training eligibility tests and tracking documents — 72 JS, 4 Deno, isolated SQL passed; intake deployed; anonymous 401; real-user acceptance pending
 - [ ] Signed-in two-inspector acceptance — BLOCKED: external Supabase session unavailable
 - [ ] GitHub commit/sync confirmation — BLOCKED: Git state managed by platform
 
