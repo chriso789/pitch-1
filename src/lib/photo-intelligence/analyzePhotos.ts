@@ -155,6 +155,7 @@ export async function analyzeRecordPhotos(
   };
   const emit = () => opts.onProgress?.({ ...progress, errors: [...progress.errors] });
 
+  let noUnusualRegions = 0, notAssessable = 0;
   const allProposals: DamageProposal[] = [];
   const warnings: string[] = [];
 
