@@ -12,7 +12,7 @@ import { recommendForLabeling, type TriagedPhoto } from '@/lib/photo-intelligenc
 import { proposeRegions, proposalsToAnnotations, type ProposalReport } from '@/lib/photo-intelligence/components/regionProposals';
 import { parseAnnotationSet, serializeAnnotations } from '@/lib/photo-intelligence/annotations';
 import { toast } from 'sonner';
-import { loadProposals, loadTriage, p95, runProposalBatch, runTriage as runTriageJob } from '@/lib/photo-intelligence/components/photoProcessing';
+import { loadProposals, loadRuns, loadTriage, p95, type PhotoRunResult, runProposalBatch, runTriage as runTriageJob } from '@/lib/photo-intelligence/components/photoProcessing';
 
 const pct = (v: number | null) => (v === null ? '—' : `${Math.round(v * 100)}%`);
 const nice = (c: string) => c.replace(/_/g, ' ');
@@ -39,6 +39,7 @@ export function ReferenceLibraryTab({ tenantId, userId }: { tenantId: string; us
   const proposalsQ = useQuery({ queryKey: ['ref-proposals', tenantId], queryFn: () => loadProposals(tenantId) });
   const [progress, setProgress] = useState<string>('');
   const [batchTimes, setBatchTimes] = useState<number[]>([]);
+  const runsQ = useQuery({ queryKey: ['ref-runs', tenantId], queryFn: () => loadRuns(tenantId!), enabled: !!tenantId });
   const [onlyRecommended, setOnlyRecommended] = useState(false);
   const [proposal, setProposal] = useState<ProposalReport | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -87,8 +88,10 @@ export function ReferenceLibraryTab({ tenantId, userId }: { tenantId: string; us
     if (!pick.length) { toast.info('All recommended photos already have outlines.'); return; }
     setBusy(true);
     try {
-      const times = await runProposalBatch(tenantId, pick, library, (n, t) => setProgress(`Outlining ${n}/${t}`));
-      setBatchTimes(times);
+      const assess = new Map((triageQ.data ?? []).map((t) => [t.id, t.assessable] as [string, boolean]));
+      const results = await runProposalBatch(tenantId, pick, library, (n, t) => setProgress(`Outlining ${n}/${t}`), assess);
+      setBatchTimes(results.map((r) => r.durationMs));
+      await qc.invalidateQueries({ queryKey: ['ref-runs', tenantId] });
       await qc.invalidateQueries({ queryKey: ['ref-proposals', tenantId] });
     } catch (e) { toast.error((e as Error).message); } finally { setBusy(false); setProgress(''); }
   };
@@ -179,6 +182,15 @@ export function ReferenceLibraryTab({ tenantId, userId }: { tenantId: string; us
             <label className="flex items-center gap-2 text-sm"><Checkbox checked={onlyRecommended} onCheckedChange={(v) => setOnlyRecommended(!!v)} />Show recommended only</label>
           </>}
         </div>
+        {!!runsQ.data?.length && <div className="border rounded overflow-x-auto">
+          <table className="w-full text-sm"><thead><tr className="text-left text-muted-foreground"><th className="p-2">Photo</th><th className="p-2">Status</th><th className="p-2">Resolution</th><th className="p-2">Outlines</th><th className="p-2">Invalid</th><th className="p-2">Time</th><th className="p-2">Error</th></tr></thead>
+          <tbody>{runsQ.data.slice(0, 50).map((r: PhotoRunResult) => { const ph = allPhotos.find((p) => p.id === r.photoId); return (
+            <tr key={r.photoId} className="border-t"><td className="p-2"><button className="underline" disabled={!ph} onClick={() => ph && setEditing(ph)}>{ph?.fileName?.split('/').pop() ?? r.photoId.slice(0, 8)}</button></td>
+            <td className="p-2"><Badge variant={r.status === 'completed' ? 'default' : r.status === 'failed' ? 'destructive' : 'secondary'}>{nice(r.status)}</Badge></td>
+            <td className="p-2">{r.widthPx ? `${r.widthPx}×${r.heightPx}` : '—'}</td><td className="p-2">{r.regionCount}</td><td className="p-2">{r.invalidRegionCount}</td>
+            <td className="p-2">{r.durationMs != null ? `${(r.durationMs / 1000).toFixed(1)} s` : '—'}</td><td className="p-2 text-muted-foreground">{r.error ?? ''}</td></tr>); })}</tbody></table>
+          <p className="text-xs text-muted-foreground p-2">Resolution is the analysed size (longest side 512 px); originals are unchanged. Open a photo to compare outlines with the original and fix boundaries.</p>
+        </div>}
         {photos.isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-6">
           {shown.map((p) => {

@@ -39024,6 +39024,54 @@ export type Database = {
         }
         Relationships: []
       }
+      photo_proposal_runs: {
+        Row: {
+          created_at: string
+          created_by: string
+          duration_ms: number | null
+          error: string | null
+          height_px: number | null
+          id: string
+          invalid_region_count: number
+          region_count: number
+          segmenter_model: string | null
+          source_photo_id: string
+          status: string
+          tenant_id: string
+          width_px: number | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string
+          duration_ms?: number | null
+          error?: string | null
+          height_px?: number | null
+          id?: string
+          invalid_region_count?: number
+          region_count?: number
+          segmenter_model?: string | null
+          source_photo_id: string
+          status: string
+          tenant_id: string
+          width_px?: number | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          duration_ms?: number | null
+          error?: string | null
+          height_px?: number | null
+          id?: string
+          invalid_region_count?: number
+          region_count?: number
+          segmenter_model?: string | null
+          source_photo_id?: string
+          status?: string
+          tenant_id?: string
+          width_px?: number | null
+        }
+        Relationships: []
+      }
       photo_reference_candidates: {
         Row: {
           approved_at: string | null

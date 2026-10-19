@@ -21,6 +21,7 @@ export interface RegionSuggestion {
 }
 
 export interface ProposalReport {
+  imageSize?: { width: number; height: number };
   regions: RegionSuggestion[];
   anomalies: { polygon: { x: number; y: number }[]; condition: string }[];
   timingsMs: Record<'decode' | 'segment' | 'embed' | 'classify' | 'anomaly', number>;
@@ -92,7 +93,7 @@ export async function proposeRegions(url: string, library: VersionedReferenceLib
   const anomalies = pattern.result.detections.filter((d) => d.polygonNorm).map((d) => ({ polygon: d.polygonNorm!, condition: d.condition ?? '' }));
   t.anomaly = performance.now() - t0;
 
-  return { regions, anomalies, timingsMs: t, models: { segmenter: seg?.modelId ?? null, embedder: dino?.modelId ?? null, libraryVersion: library.version, libraryExamples: library.examples.length }, warnings };
+  return { regions, anomalies, imageSize: { width: img.width, height: img.height }, timingsMs: t, models: { segmenter: seg?.modelId ?? null, embedder: dino?.modelId ?? null, libraryVersion: library.version, libraryExamples: library.examples.length }, warnings };
 }
 
 /** Convert proposals into UNLABELED editable outlines; any suggestion lives only in notes. */
