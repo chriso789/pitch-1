@@ -77,9 +77,9 @@ export function backboneOnlyModel(loaded: LoadedOnnxModel): ComponentModel {
  * Order mirrors the audit decision: a verified segmentation model first.
  */
 export async function loadComponentModel(): Promise<ComponentModel | null> {
-  const seg = await tryLoadSession(`${MODEL_BASE_PATH}/component-segmenter.onnx`);
+  const seg = await tryLoadSession(MODEL_URLS.componentSegmenter);
   if (seg) return backboneOnlyModel(seg); // replace with a real head once verified
-  const backbone = await tryLoadSession(`${MODEL_BASE_PATH}/dinov2-small.onnx`);
+  const backbone = await tryLoadSession(MODEL_URLS.dinov2Small);
   if (backbone) return backboneOnlyModel(backbone);
   return null;
 }
