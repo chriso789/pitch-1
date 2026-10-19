@@ -12,6 +12,7 @@
 
 import { supabase } from '@/integrations/supabase/client';
 import { scoreComponentClassification, type BenchmarkDetection, type BenchmarkPhoto } from './benchmark';
+import { parseAnnotationSet } from './annotations';
 
 export interface BenchmarkSet {
   id: string;
@@ -36,6 +37,56 @@ export interface BenchmarkItem {
 }
 
 const BUCKET = 'canvass-photos';
+
+/** Component classes offered in the benchmark label editor (matches the reference classifier). */
+export const BENCHMARK_COMPONENT_CLASSES = [
+  'clay_tile', 'concrete_tile', 'asphalt_shingle', 'metal_panel', 'ridge_cap', 'roof_vent',
+  'flashing', 'penetration', 'gutter', 'valley', 'siding', 'exposed_underlayment',
+  'shadow', 'debris', 'repair', 'color_variation',
+] as const;
+
+/** Convert annotation-editor geometry (normalized polygons/bboxes) into benchmark detection boxes. */
+export function annotationsToComponentDetections(json: unknown, itemId: string): BenchmarkDetection[] {
+  const out: BenchmarkDetection[] = [];
+  for (const a of parseAnnotationSet(json)) {
+    if (a.kind === 'arrow' || a.kind === 'callout' || !a.damageCategory) continue;
+    const pts = a.kind === 'polygon'
+      ? a.points
+      : a.kind === 'bbox'
+        ? [{ x: a.origin.x, y: a.origin.y }, { x: a.origin.x + a.size.x, y: a.origin.y + a.size.y }]
+        : [{ x: a.center.x - a.radius, y: a.center.y - a.radius }, { x: a.center.x + a.radius, y: a.center.y + a.radius }];
+    const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+    const x = Math.min(...xs), y = Math.min(...ys);
+    const box = { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y };
+    if (box.width <= 0 || box.height <= 0 || x < 0 || y < 0 || x + box.width > 1 || y + box.height > 1) {
+      throw new Error('A label region is outside the photo or has zero area.');
+    }
+    if (!(BENCHMARK_COMPONENT_CLASSES as readonly string[]).includes(a.damageCategory)) {
+      throw new Error(`"${a.damageCategory}" is not a benchmark component class.`);
+    }
+    out.push({ photoId: itemId, category: a.damageCategory, box });
+  }
+  return out;
+}
+
+/** Convert stored benchmark boxes back to annotation polygons for re-editing. */
+export function componentDetectionsToAnnotations(labels: BenchmarkDetection[]): unknown {
+  return {
+    version: 1,
+    annotations: labels.map((l, i) => ({
+      id: `bench-${i}`,
+      kind: 'polygon',
+      color: '#ef4444',
+      points: [
+        { x: l.box.x, y: l.box.y },
+        { x: l.box.x + l.box.width, y: l.box.y },
+        { x: l.box.x + l.box.width, y: l.box.y + l.box.height },
+        { x: l.box.x, y: l.box.y + l.box.height },
+      ],
+      damageCategory: l.category,
+    })),
+  };
+}
 
 export async function loadBenchmarkSets(tenantId: string): Promise<BenchmarkSet[]> {
   const { data, error } = await (supabase.from as any)('photo_benchmark_sets')
