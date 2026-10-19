@@ -17,6 +17,8 @@ import { createAiImageAnalyzerProvider, type AiImageAnalyzerResponse } from './p
 import { validateDetections, associateCrossPhoto, type DamageProposal, type RecognitionPhoto } from './recognition';
 import { persistProposals } from './findings';
 import { analyzePattern, loadImageForAnalysis } from './patternAnalysis';
+import { recognizeComponents, refineWithComponents, matchAnomaliesToRegions } from './components/componentRecognition';
+import { loadComponentModel, loadSimilarityModel } from './components/onnxModel';
 
 /** Flipped only once the self-hosted engine is deployed with validated weights. */
 export const PITCH_VISION_ENGINE_READY = false;
@@ -156,6 +158,9 @@ export async function analyzeRecordPhotos(
   const emit = () => opts.onProgress?.({ ...progress, errors: [...progress.errors] });
 
   let noUnusualRegions = 0, notAssessable = 0;
+  // Load any installed local component model once per run; null = not installed.
+  const componentModel = await loadComponentModel();
+  const similarityModel = await loadSimilarityModel();
   const allProposals: DamageProposal[] = [];
   const warnings: string[] = [];
 
@@ -172,7 +177,23 @@ export async function analyzeRecordPhotos(
       } else {
         const img = await loadImageForAnalysis(photo.file_url);
         recPhoto = { photoId: photo.id, imageRef: photo.file_url, widthPx: img.srcWidth, heightPx: img.srcHeight };
-        const out = analyzePattern(img);
+        // Phase 3: component layer runs first; without a verified component
+        // model it honestly reports model_not_available and refinement only
+        // labels regions as unmatched — never upgrades them to damage.
+        let dinoNote: string | null = null;
+        const components = await recognizeComponents(img, componentModel ?? undefined);
+        // DINOv2 neighbour-similarity evidence: how much each patch looks like
+        // its surroundings. Used as inspector-visible evidence only — it never
+        // suppresses an anomaly and never upgrades one to damage.
+        if (similarityModel) {
+          const sim = await similarityModel.patchSimilarity(img);
+          if (sim) {
+            const avg = sim.reduce((a, b) => a + b, 0) / sim.length;
+            dinoNote = `Surface self-similarity ${avg.toFixed(2)} (1 = perfectly uniform look); local patches that stand out from neighbours are the anomalies below. This is an algorithmic observation, not a diagnosis.`;
+          }
+        }
+        const out = matchAnomaliesToRegions(refineWithComponents(analyzePattern(img), components), components);
+        if (dinoNote) out.result.warnings = [...(out.result.warnings ?? []), dinoNote];
         if (out.status === 'no_unusual_regions') noUnusualRegions += 1;
         if (out.status === 'not_assessable') notAssessable += 1;
         result = out.result;

@@ -46,3 +46,12 @@
 - [ ] Real training + held-out evaluation — blocked: 0 canvass photos, 0 labels, 0 approvals in live data
 - [ ] Authenticated cross-company tests — blocked: no test sign-in available in this environment
 - [ ] Recognition stays off until a real trained model passes acceptance
+
+## Component recognition milestone (2026-10-19, uploaded spec)
+- [x] Phase 1: pretrained model + weight-license audit — docs/PHOTO_COMPONENT_MODEL_AUDIT.md; chosen: DINOv2-S (Apache-2.0), SAM 2.1 Tiny (Apache-2.0), RoofSense (MIT/CC-BY-4.0); held out: YOLO (AGPL), SegFormer (noncommercial), torchvision weights (uncleared)
+- [~] Phase 2: DINOv2-Small + SAM 2.1 Tiny (encoder+decoder) installed, license-audited (Apache-2.0), executed end-to-end via the app's onnxruntime-web on synthetic texture (2 stable regions)
+- [~] Phase 3: anomaly-to-SAM-region matching (evidence wording only) + DINOv2 self-similarity note wired into analysis; 22 tests pass. Named components still BLOCKED: no verified semantic head; masks stay 'unknown' until a classifier is validated on real approved photos
+- [ ] Phase 3: component-aware anomaly comparison (similar components only; shadows/leaves/variation suppressed; anomalies never auto-confirmed)
+- [ ] Phase 4: real-photo benchmark (damaged/undamaged/shadowed, property-separated, independent labels; no synthetic accuracy claims)
+- [ ] Phase 5: findings show component + condition + evidence + verification status; inspector confirm/correct feeds approved dataset only
+- [ ] Acceptance: 3-photo test (intact tile / damaged tile / shadowed) — no real photos uploaded here yet
