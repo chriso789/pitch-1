@@ -226,10 +226,6 @@ export async function analyzeRecordPhotos(
           if (dinoNote) out.result.warnings = [...(out.result.warnings ?? []), dinoNote];
           result = out.result;
         }
-        if (dinoNote) out.result.warnings = [...(out.result.warnings ?? []), dinoNote];
-        if (out.status === 'no_unusual_regions') noUnusualRegions += 1;
-        if (out.status === 'not_assessable') notAssessable += 1;
-        result = out.result;
       }
       const batch = validateDetections(result, recPhoto);
       allProposals.push(...batch.proposals);
