@@ -13,6 +13,7 @@ import { fetchCanvassPhotos, type CanvassPhotoRecord } from '@/lib/canvass/canva
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { inspectCanvassPath } from '@/lib/photo-intelligence/training/canvass';
 
 export default function StormCanvassPhotos() {
   const navigate = useNavigate();
@@ -52,7 +53,7 @@ export default function StormCanvassPhotos() {
   const filteredPhotos = useMemo(() => (photos ?? []).filter((photo) => {
     const q = searchQuery.toLowerCase();
     const matchesSearch =
-      photo.property_address?.toLowerCase().includes(q) ||
+      !q || photo.property_address?.toLowerCase().includes(q) ||
       uploaderNames?.[photo.uploaded_by ?? '']?.toLowerCase().includes(q);
     if (!matchesSearch) return false;
 
@@ -184,9 +185,11 @@ export default function StormCanvassPhotos() {
                     </p>
                   )}
                   {selected.category && selected.category !== 'other' && (
-                    <p className="capitalize text-muted-foreground">Category: {selected.category.replace('_', ' ')}</p>
+                    <p className="capitalize text-muted-foreground">Rep observation: {selected.category.replace('_', ' ')} · unverified</p>
                   )}
                   {selected.notes && <p className="text-muted-foreground">{selected.notes}</p>}
+                  <Button variant="outline" disabled={!selected.property_id} onClick={() => navigate(inspectCanvassPath(selected.id))}>Inspect with Photo Intelligence</Button>
+                  {!selected.property_id && <p className="text-muted-foreground">Property association required</p>}
                 </div>
               </div>
             )}

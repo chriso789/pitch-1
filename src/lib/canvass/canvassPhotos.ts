@@ -9,6 +9,13 @@
  */
 import { supabase } from '@/integrations/supabase/client';
 import { safeStorageUpload } from '@/lib/storage/safeUpload';
+import { canvassOriginalIdentity } from '@/lib/photo-intelligence/training/canvass';
+
+export async function registerCanvassTrainingPhoto(photoId: string): Promise<string> {
+  const { data, error } = await supabase.functions.invoke('canvass-training-register', { body: { photoId } });
+  if (error || !data?.ok || typeof data.data?.originalId !== 'string') throw new Error(data?.error ?? 'Photo saved; training review registration needs a retry');
+  return data.data.originalId;
+}
 
 export type CanvassPhotoCategory =
   | 'roof_damage'
@@ -53,8 +60,14 @@ export async function uploadCanvassPhoto(args: UploadCanvassPhotoArgs): Promise<
     category, notes, latitude, longitude,
   } = args;
 
-  const fileName = args.fileName ?? `${Date.now()}.jpg`;
-  const path = `${tenantId}/${propertyId || 'general'}/${fileName}`;
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(blob.type) || blob.size > 15 * 1024 * 1024) throw new Error('Choose JPEG, PNG or WebP photos up to 15 MB');
+  const { id, path } = await canvassOriginalIdentity(blob, tenantId, propertyId);
+  const { data: existing, error: existingError } = await supabase.from('canvass_photos').select('id').eq('tenant_id', tenantId).eq('id', id).maybeSingle();
+  if (existingError) throw existingError;
+  if (existing) {
+    if (propertyId) await registerCanvassTrainingPhoto(existing.id);
+    return existing.id;
+  }
 
   const { error: uploadError } = await safeStorageUpload({
     bucket: 'canvass-photos',
@@ -63,11 +76,12 @@ export async function uploadCanvassPhoto(args: UploadCanvassPhotoArgs): Promise<
     tenantId,
     contentType: blob.type || 'image/jpeg',
   });
-  if (uploadError) throw uploadError;
+  if (uploadError && !/already exists|duplicate/i.test(uploadError.message)) throw uploadError;
 
   const { data: record, error: insertError } = await supabase
     .from('canvass_photos')
     .insert({
+      id,
       tenant_id: tenantId,
       property_id: propertyId || null,
       property_address: propertyAddress || null,
@@ -83,7 +97,11 @@ export async function uploadCanvassPhoto(args: UploadCanvassPhotoArgs): Promise<
     })
     .select('id')
     .single();
-  if (insertError) throw insertError;
+  if (insertError) {
+    if (insertError.code !== '23505') throw insertError;
+    if (propertyId) await registerCanvassTrainingPhoto(id);
+    return id;
+  }
 
   // Keep the activity log entry so canvass stats stay accurate.
   await supabase.from('canvass_activity_log').insert({
@@ -99,6 +117,7 @@ export async function uploadCanvassPhoto(args: UploadCanvassPhotoArgs): Promise<
     },
   } as any);
 
+  if (propertyId) await registerCanvassTrainingPhoto(record.id);
   return record.id;
 }
 

@@ -22,7 +22,7 @@ app.post('*', requireAuth, requireTenant, async (c) => {
   const { data: blob, error: downloadError } = await sb.storage.from('canvass-photos').download(photo.storage_path);
   if (downloadError || !blob || blob.size > 15 * 1024 * 1024) return jsonErr(c, 'original_unavailable', 'Original photo unavailable or too large', 409);
   // Decode dimensions on the trusted server; no inference or paid service.
-  const { Image } = await import('https://deno.land/x/imagescript@1.3.0/mod.ts');
+  const { Image } = await import('npm:imagescript@1.3.0');
   const bytes = new Uint8Array(await blob.arrayBuffer());
   let width: number, height: number;
   try { const image = await Image.decode(bytes); width = image.width; height = image.height; }

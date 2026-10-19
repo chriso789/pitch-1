@@ -29,6 +29,10 @@ export interface TrainingPhoto {
   height: number;
   fileName: string;
   storagePath?: string;
+  storageBucket?: 'photo-training-originals' | 'canvass-photos';
+  sourceKind?: string;
+  sourcePhotoId?: string | null;
+  sourceMetadata?: Record<string, unknown>;
   noVisibleDamage: boolean;
   regions: LabelRegion[];
   status: LabelStatus;
@@ -76,10 +80,16 @@ export function buildDatasetVersion(version: string, photos: TrainingPhoto[], va
   const heldOut = Math.min(testFraction, 1 - valFraction);
   const excluded: DatasetVersion['excluded'] = [];
   const seen = new Map<string, string>();
+  const hashProperties = new Map<string, Set<string>>();
+  for (const p of photos) {
+    const properties = hashProperties.get(p.sha256) ?? new Set<string>();
+    properties.add(p.propertyId); hashProperties.set(p.sha256, properties);
+  }
   const kept: TrainingPhoto[] = [];
   for (const p of photos) {
     const reason = validatePhoto(p);
     if (reason) { excluded.push({ photoId: p.photoId, reason }); continue; }
+    if ((hashProperties.get(p.sha256)?.size ?? 0) > 1) { excluded.push({ photoId: p.photoId, reason: 'duplicate_property_conflict' }); continue; }
     const dup = seen.get(p.sha256);
     if (dup) { excluded.push({ photoId: p.photoId, reason: `duplicate_of:${dup}` }); continue; }
     seen.set(p.sha256, p.photoId);
