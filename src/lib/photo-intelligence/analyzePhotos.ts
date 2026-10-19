@@ -17,7 +17,7 @@ import { createAiImageAnalyzerProvider, type AiImageAnalyzerResponse } from './p
 import { validateDetections, associateCrossPhoto, type DamageProposal, type RecognitionPhoto } from './recognition';
 import { persistProposals } from './findings';
 import { analyzePattern, loadImageForAnalysis } from './patternAnalysis';
-import { recognizeComponents, refineWithComponents } from './components/componentRecognition';
+import { recognizeComponents, refineWithComponents, matchAnomaliesToRegions } from './components/componentRecognition';
 import { loadComponentModel } from './components/onnxModel';
 
 /** Flipped only once the self-hosted engine is deployed with validated weights. */
@@ -180,7 +180,7 @@ export async function analyzeRecordPhotos(
         // model it honestly reports model_not_available and refinement only
         // labels regions as unmatched — never upgrades them to damage.
         const components = await recognizeComponents(img, componentModel ?? undefined);
-        const out = refineWithComponents(analyzePattern(img), components);
+        const out = matchAnomaliesToRegions(refineWithComponents(analyzePattern(img), components), components);
         if (out.status === 'no_unusual_regions') noUnusualRegions += 1;
         if (out.status === 'not_assessable') notAssessable += 1;
         result = out.result;
