@@ -20,6 +20,6 @@
 - PDF Studio tools are switched per company in `tenant_pdf_tool_settings` (admins only) and the `documents_pdf_tool_guard` trigger refuses PDF versions/conversions whose `metadata.pdf_tool` is off, so hiding buttons is never the only control and no browser override exists.
 - Read nested `AGENTS.md`. Grouped handlers live in `_shared` for bundling.
 - Feature menus use `useEffectiveTenantId` and refresh explicit company switches; tier labels never override switches.
-- Shared photo training needs company opt-in; cross-company view is counts-only and audited.
+- Shared photo training needs company opt-in; cross-company view is counts-only, audited.
 - Photo Intelligence runs only PITCH code: pattern analysis yields pending possible-anomaly regions (never damage); component names come from the DINOv2 reference classifier (else unknown).
 - Training requires independent approval/property splits; canvass originals use trusted hashes. Rep categories aren't labels; offline retries retain originals. Uncertainty is review-only; promote via measured gates.
