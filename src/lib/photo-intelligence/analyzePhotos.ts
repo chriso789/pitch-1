@@ -160,6 +160,7 @@ export async function analyzeRecordPhotos(
   let noUnusualRegions = 0, notAssessable = 0;
   // Load any installed local component model once per run; null = not installed.
   const componentModel = await loadComponentModel();
+  const similarityModel = await loadSimilarityModel();
   const allProposals: DamageProposal[] = [];
   const warnings: string[] = [];
 
