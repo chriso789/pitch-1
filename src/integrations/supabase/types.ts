@@ -39029,6 +39029,7 @@ export type Database = {
           approved_at: string | null
           approved_by: string | null
           cls: string
+          condition: string | null
           created_at: string
           embedding: Json
           embedding_model_id: string
@@ -39036,6 +39037,7 @@ export type Database = {
           image_hash: string
           labeled_by: string
           polygon: Json
+          review_comment: string | null
           source_photo_id: string
           source_property_key: string
           tenant_id: string
@@ -39044,6 +39046,7 @@ export type Database = {
           approved_at?: string | null
           approved_by?: string | null
           cls: string
+          condition?: string | null
           created_at?: string
           embedding: Json
           embedding_model_id?: string
@@ -39051,6 +39054,7 @@ export type Database = {
           image_hash: string
           labeled_by?: string
           polygon: Json
+          review_comment?: string | null
           source_photo_id: string
           source_property_key: string
           tenant_id: string
@@ -39059,6 +39063,7 @@ export type Database = {
           approved_at?: string | null
           approved_by?: string | null
           cls?: string
+          condition?: string | null
           created_at?: string
           embedding?: Json
           embedding_model_id?: string
@@ -39066,6 +39071,7 @@ export type Database = {
           image_hash?: string
           labeled_by?: string
           polygon?: Json
+          review_comment?: string | null
           source_photo_id?: string
           source_property_key?: string
           tenant_id?: string

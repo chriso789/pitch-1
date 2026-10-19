@@ -8,7 +8,7 @@
  * A property appears in exactly one split, and test properties never
  * influence threshold choice. Small splits are labelled experimental.
  */
-import { classifyRegion, HARD_NEGATIVE_CLASSES, type ClassificationThresholds, type VersionedReferenceLibrary } from './referenceClassifier';
+import { classifyRegion, cosineSimilarity, normalizeEmbedding, HARD_NEGATIVE_CLASSES, type ClassificationThresholds, type VersionedReferenceLibrary } from './referenceClassifier';
 import { MARGIN_GRID, SIMILARITY_GRID, type CalibrationExample } from './calibration';
 
 export type SplitName = 'reference' | 'calibration' | 'test';
@@ -41,6 +41,16 @@ export interface SplitMetrics {
   precision: number | null;
   coverageAccuracy: number | null;
   perClass: { cls: string; support: number; properties: number; correct: number; predicted: number; precision: number | null; recall: number | null }[];
+}
+
+/** Drop near-identical examples (same property + class, cosine ≥ 0.98) so repeats can't inflate scores. */
+export function dedupeExamples(xs: CalibrationExample[], minSim = 0.98): CalibrationExample[] {
+  const kept: CalibrationExample[] = [];
+  for (const x of xs) {
+    const n = normalizeEmbedding(x.embedding);
+    if (!kept.some((k) => k.propertyKey === x.propertyKey && k.cls === x.cls && cosineSimilarity(normalizeEmbedding(k.embedding), n) >= minSim)) kept.push(x);
+  }
+  return kept;
 }
 
 export function evaluateSplit(library: CalibrationExample[], queries: CalibrationExample[], thresholds: ClassificationThresholds, modelId = 'dinov2-small'): SplitMetrics {
@@ -81,7 +91,8 @@ export interface HeldOutReport {
  * Choose thresholds on calibration properties only (highest coverage among
  * settings with precision ≥ minPrecision), then score test properties once.
  */
-export function heldOutEvaluation(examples: CalibrationExample[], minPrecision = 0.9): HeldOutReport {
+export function heldOutEvaluation(all: CalibrationExample[], minPrecision = 0.9): HeldOutReport {
+  const examples = dedupeExamples(all);
   const split = splitProperties(examples.map((e) => e.propertyKey));
   const by = (n: SplitName) => examples.filter((e) => split.get(e.propertyKey) === n);
   const ref = by('reference'), cal = by('calibration'), test = by('test');

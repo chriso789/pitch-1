@@ -81,3 +81,7 @@
 - Added `src/lib/photo-intelligence/training/` (taxonomy per roof system, dataset versioning, COCO/YOLO export, COCO re-import, property-grouped split, per-system evaluation with ECE and promotion gates) and `worker/training/train_detector.py` (open-source YOLO-seg, CPU default, checkpoint resume, ONNX export + manifest marked `trained_unvalidated`).
 - `npx vitest run` Photo Intelligence: 8 files, 57 passed (51 prior + 6 new), 0 failed.
 - Not done yet: database tables + labeling queue UI, dataset dashboard, evaluation CLI wiring, model registry/rollback. No model trained; no infrastructure provisioned.
+
+## 2026-10-19
+102 Photo Intelligence unit tests pass (synthetic data only). Live data: 457 photos, 41 properties, 3 companies, 0 labels, 0 approved examples. No real-photo accuracy or timing measured.
+Blocked test: open Training → Reference library as inspector A, Propose outlines on a recommended photo, assign types, save; sign in as inspector B, approve; Evaluate on held-out properties.

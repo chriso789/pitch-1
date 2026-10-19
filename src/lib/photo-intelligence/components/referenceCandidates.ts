@@ -38,12 +38,13 @@ export async function inventoryCompanyPhotos(tenantId: string, limit = 200): Pro
 }
 
 /** Embed each labeled polygon from the ORIGINAL photo with one DINOv2 pass, then store as pending candidates. */
-export async function saveReferenceCrops(tenantId: string, photo: InventoryPhoto, annotationJson: unknown): Promise<number> {
+export type ComponentCondition = 'normal' | 'possible_damage' | 'maintenance' | 'uncertain';
+export async function saveReferenceCrops(tenantId: string, photo: InventoryPhoto, annotationJson: unknown, conditions: Record<string, ComponentCondition> = {}): Promise<number> {
   if (!photo.url) throw new Error('Photo cannot be opened.');
   const regions = parseAnnotationSet(annotationJson).flatMap((a: any) => {
     if (!a.damageCategory) return [];
-    if (a.kind === 'polygon') return [{ cls: a.damageCategory, poly: a.points }];
-    if (a.kind === 'bbox') return [{ cls: a.damageCategory, poly: [a.origin, { x: a.origin.x + a.size.x, y: a.origin.y }, { x: a.origin.x + a.size.x, y: a.origin.y + a.size.y }, { x: a.origin.x, y: a.origin.y + a.size.y }] }];
+    if (a.kind === 'polygon') return [{ id: a.id, cls: a.damageCategory, poly: a.points }];
+    if (a.kind === 'bbox') return [{ id: a.id, cls: a.damageCategory, poly: [a.origin, { x: a.origin.x + a.size.x, y: a.origin.y }, { x: a.origin.x + a.size.x, y: a.origin.y + a.size.y }, { x: a.origin.x, y: a.origin.y + a.size.y }] }];
     return [];
   });
   if (!regions.length) throw new Error('Draw at least one labeled outline.');
@@ -56,25 +57,25 @@ export async function saveReferenceCrops(tenantId: string, photo: InventoryPhoto
   const rows = regions.map((r) => {
     const emb = poolRegionEmbedding(features, r.poly);
     if (!emb) throw new Error(`A ${r.cls.replace(/_/g, ' ')} outline is too small to embed — draw it larger.`);
-    return { tenant_id: tenantId, source_photo_id: photo.id, source_property_key: photo.propertyKey, cls: r.cls, polygon: r.poly, image_hash: hash, embedding: Array.from(normalizeEmbedding(emb)), embedding_model_id: MODEL };
+    return { tenant_id: tenantId, source_photo_id: photo.id, source_property_key: photo.propertyKey, cls: r.cls, polygon: r.poly, image_hash: hash, embedding: Array.from(normalizeEmbedding(emb)), embedding_model_id: MODEL, condition: conditions[r.id] ?? null };
   });
   const { error } = await (supabase.from as any)('photo_reference_candidates').insert(rows);
   if (error) throw error;
   return rows.length;
 }
 
-export interface ReferenceCandidate { id: string; source_photo_id: string; source_property_key: string; cls: string; labeled_by: string; approved_by: string | null; created_at: string }
+export interface ReferenceCandidate { id: string; source_photo_id: string; source_property_key: string; cls: string; labeled_by: string; approved_by: string | null; created_at: string; condition?: string | null }
 
 export async function loadCandidates(tenantId: string): Promise<(ReferenceCandidate & { embedding: number[] })[]> {
   const { data, error } = await (supabase.from as any)('photo_reference_candidates')
-    .select('id, source_photo_id, source_property_key, cls, labeled_by, approved_by, created_at, embedding')
+    .select('id, source_photo_id, source_property_key, cls, labeled_by, approved_by, created_at, embedding, condition')
     .eq('tenant_id', tenantId).eq('embedding_model_id', MODEL).order('created_at', { ascending: false }).limit(2000);
   if (error) throw error;
   return data ?? [];
 }
 
-export async function approveCandidate(id: string, userId: string) {
-  const { error } = await (supabase.from as any)('photo_reference_candidates').update({ approved_by: userId, approved_at: new Date().toISOString() }).eq('id', id).is('approved_by', null);
+export async function approveCandidate(id: string, userId: string, comment?: string) {
+  const { error } = await (supabase.from as any)('photo_reference_candidates').update({ approved_by: userId, approved_at: new Date().toISOString(), review_comment: comment?.trim() || null }).eq('id', id).is('approved_by', null);
   if (error) throw error;
 }
 

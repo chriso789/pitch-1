@@ -65,3 +65,12 @@ Full Photo Intelligence run (`npx vitest run tests/unit/photo-intelligence`): 7 
 - Decision: PITCH owns recognition; no OpenAI/Lovable AI per photo. App analysis is switched off until the engine has validated weights.
 - Built: worker `/vision/detect-damage` (ONNX Runtime, local weights, returns `model_not_trained` + zero detections without weights). Classes include cracked/displaced tile.
 - Next (unblocked): labeling export/import (CVAT format), dataset split tooling, training script (open-source detector), benchmark wiring. Blocked: labeled originals, worker hosting/GPU approval.
+
+| Feature (2026-10-19) | Status |
+|---|---|
+| Automatic outline proposals (SAM 2.1 Tiny, local) | Built, unverified on real photos |
+| Similar-region grouping (DINOv2) | Built |
+| Component vs condition labels kept separate | Built |
+| Held-out property evaluation (3-way) | Built; experimental under 5 test properties |
+| Reviewer reject + version history | Blocked — needs approval-rule change |
+| Peak memory measurement | Not built (browser API unreliable) |
