@@ -70,3 +70,12 @@
 - [~] Phase 4 real-photo benchmark harness: `photo_benchmark_sets`/`photo_benchmark_items` tables (tenant-scoped, DB-enforced reviewer≠labeler), Benchmark tab on the training page (set creation, original upload with property/material/scene kind, component label editor, independent review, import-predictions scoring with property + scene-kind coverage); 3 harness tests pass. Not yet verified: signed-in upload/review/scoring in the preview (external Supabase, no session here)
 - [ ] Phase 5 inspector correction UI feeding `promoteCorrectionToReference` — not wired to review screen yet
 - [ ] GitHub sync — BLOCKED: remote/main divergence noted above
+
+## Photo Intelligence — reference data preparation (2026-10-19)
+- [x] GitHub: project head matches main 9ad202d0d
+- [x] Auto-proposed outlines (SAM) + DINOv2 grouping + bulk assign; suggestions stay in notes, unverified
+- [x] Quality/duplicate triage and diverse 100-photo recommendation across properties
+- [x] Per-type property counts; bulk approve only checked items, never own labels
+- [x] Reference / calibration / test property split; experimental under 5 test properties
+- [x] Recognition report: outlines, suggestions + runner-up, unknowns, anomalies, versions, stage timings
+- [ ] Real labeling on the 457 photos — needs signed-in inspectors (blocked here)
