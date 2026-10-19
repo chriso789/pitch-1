@@ -248,15 +248,8 @@ export function CanvassPhotoCapture({
         longitude: gpsLocation?.lng ?? null,
       });
 
-      const { data: { signedUrl } } = await supabase.storage
-        .from('canvass-photos')
-        .createSignedUrl(
-          `${tenantId}/${propertyId || 'general'}/${Date.now()}.jpg`,
-          60,
-        );
-
       toast.success('Photo uploaded successfully');
-      onPhotoUploaded?.(signedUrl || recordId);
+      onPhotoUploaded?.(recordId);
       onOpenChange(false);
 
     } catch (error: any) {
