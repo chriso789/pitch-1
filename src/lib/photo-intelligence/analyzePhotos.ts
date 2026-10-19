@@ -18,7 +18,7 @@ import { validateDetections, associateCrossPhoto, type DamageProposal, type Reco
 import { persistProposals } from './findings';
 import { analyzePattern, loadImageForAnalysis } from './patternAnalysis';
 import { recognizeComponents, refineWithComponents, matchAnomaliesToRegions } from './components/componentRecognition';
-import { loadComponentModel } from './components/onnxModel';
+import { loadComponentModel, loadSimilarityModel } from './components/onnxModel';
 
 /** Flipped only once the self-hosted engine is deployed with validated weights. */
 export const PITCH_VISION_ENGINE_READY = false;
@@ -181,6 +181,16 @@ export async function analyzeRecordPhotos(
         // model it honestly reports model_not_available and refinement only
         // labels regions as unmatched — never upgrades them to damage.
         const components = await recognizeComponents(img, componentModel ?? undefined);
+        // DINOv2 neighbour-similarity evidence: how much each patch looks like
+        // its surroundings. Used as inspector-visible evidence only — it never
+        // suppresses an anomaly and never upgrades one to damage.
+        if (similarityModel) {
+          const sim = await similarityModel.patchSimilarity(img);
+          if (sim) {
+            const avg = sim.reduce((a, b) => a + b, 0) / sim.length;
+            img.evidenceNote = `Surface self-similarity ${avg.toFixed(2)} (1 = perfectly uniform look); local patches that stand out from neighbours are the anomalies below. This is an algorithmic observation, not a diagnosis.`;
+          }
+        }
         const out = matchAnomaliesToRegions(refineWithComponents(analyzePattern(img), components), components);
         if (out.status === 'no_unusual_regions') noUnusualRegions += 1;
         if (out.status === 'not_assessable') notAssessable += 1;
