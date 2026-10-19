@@ -55,9 +55,8 @@ export function CanvassPhotoCapture({
   userLocation,
   onPhotoUploaded,
 }: CanvassPhotoCaptureProps) {
-  const { profile } = useUserProfile();
   const { user } = useAuth();
-  const tenantId = profile?.tenant_id;
+  const tenantId = useEffectiveTenantId();
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
