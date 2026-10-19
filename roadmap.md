@@ -55,3 +55,18 @@
 - [ ] Phase 4: real-photo benchmark (damaged/undamaged/shadowed, property-separated, independent labels; no synthetic accuracy claims)
 - [ ] Phase 5: findings show component + condition + evidence + verification status; inspector confirm/correct feeds approved dataset only
 - [ ] Acceptance: 3-photo test (intact tile / damaged tile / shadowed) — no real photos uploaded here yet
+
+## Reference-based component recognition (2026-10-19, uploaded spec Phases 1–6)
+- [x] Phase 1 classifier: `components/referenceClassifier.ts` — cosine-similarity over DINOv2 embeddings, dual thresholds (min similarity + margin), hard negatives as first-class classes, else `unknown` with no confidence; provenance-enforced `addApprovedExample`
+- [x] One DINOv2 pass per image: `components/regionEmbedding.ts` — 16×16 patch features, polygon-centre pooling, content-hash LRU cache (32); reused for similarity + classification
+- [x] DB: `photo_reference_examples` (platform-global, versioned, JSONB embedding, CHECK labeler≠approver; read=authenticated, write=platform admin via `is_platform_admin`)
+- [x] Learning loop: `promoteCorrectionToReference` — only after independent approval; unverified predictions never enter; write path platform-admin gated by RLS
+- [x] Wiring: analyzePhotos runs pattern analysis first, DINOv2/SAM only when anomalies exist; classified regions keep evidence wording "algorithmic observation, not a diagnosis"; never upgraded to damage
+- [x] Benchmark: `scoreComponentClassification` in benchmark.ts — per-class P/R, macro P/R, unknown-rejection (correct vs missed components), marked `experimental_reference` separate from damage metrics; requires reviewed unannotated originals
+- [x] Tests: 14 new (classifier, pooling, hashing, learning-loop gates, benchmark) — synthetic embeddings only, no real-photo accuracy claims
+- [ ] Threshold validation on real photos — BLOCKED: reference library is empty (0 approved examples); defaults 0.62/0.05 are unvalidated
+- [ ] Phase 2 condition analysis per component (broken/missing tile, displaced components vs normal exemplars) — BLOCKED: needs validated component labels first
+- [ ] Phase 3 perf: benchmark decode/embed/segment/classify timings; embedding reuse done; target <5s/photo — BLOCKED: browser model verification blocked by dev-server asset quirk; timings known only from synthetic runs
+- [ ] Phase 4 real-photo benchmark harness UI (upload originals, reviewed labels, per-material/angle metrics) — partial: scoring exists, upload/review UI not built
+- [ ] Phase 5 inspector correction UI feeding `promoteCorrectionToReference` — not wired to review screen yet
+- [ ] GitHub sync — BLOCKED: remote/main divergence noted above
