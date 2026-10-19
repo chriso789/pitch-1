@@ -2,16 +2,16 @@
 -- Run as a database owner: psql -v ON_ERROR_STOP=1 -f tests/database/review-reference-candidate.sql
 BEGIN;
 DO $$
-DECLARE t1 uuid := gen_random_uuid(); t2 uuid := gen_random_uuid();
-  a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); x uuid := gen_random_uuid();
-  c1 uuid; c2 uuid; ok boolean;
+DECLARE t1 uuid; a uuid; b uuid; x uuid; c1 uuid; c2 uuid; ok boolean;
 BEGIN
-  -- user_company_access rows (fixture); a,b in t1; x in t2 only
-  INSERT INTO public.user_company_access(user_id, tenant_id) VALUES (a, t1), (b, t1), (x, t2);
-  INSERT INTO public.photo_reference_candidates(tenant_id, source_photo_id, source_property_key, cls, polygon, embedding, embedding_model_id, labeled_by)
-    VALUES (t1, gen_random_uuid(), 'lead:1', 'clay_tile', '[]', '[1]', 'dinov2-small', a) RETURNING id INTO c1;
-  INSERT INTO public.photo_reference_candidates(tenant_id, source_photo_id, source_property_key, cls, polygon, embedding, embedding_model_id, labeled_by)
-    VALUES (t1, gen_random_uuid(), 'lead:2', 'clay_tile', '[]', '[1]', 'dinov2-small', a) RETURNING id INTO c2;
+  -- Uses two existing members of one company (a labels, b reviews) and one outsider x; rolled back.
+  SELECT u1.tenant_id, u1.user_id, u2.user_id INTO t1, a, b FROM public.user_company_access u1 JOIN public.user_company_access u2 ON u2.tenant_id = u1.tenant_id AND u2.user_id <> u1.user_id LIMIT 1;
+  SELECT user_id INTO x FROM public.user_company_access WHERE user_id NOT IN (SELECT user_id FROM public.user_company_access WHERE tenant_id = t1) LIMIT 1;
+  IF t1 IS NULL OR x IS NULL THEN RAISE EXCEPTION 'FIXTURE_MISSING'; END IF;
+  INSERT INTO public.photo_reference_candidates(tenant_id, source_photo_id, source_property_key, cls, polygon, image_hash, embedding, embedding_model_id, labeled_by)
+    VALUES (t1, gen_random_uuid(), 'lead:test1', 'clay_tile', '[]', 'test', '[1]', 'dinov2-small', a) RETURNING id INTO c1;
+  INSERT INTO public.photo_reference_candidates(tenant_id, source_photo_id, source_property_key, cls, polygon, image_hash, embedding, embedding_model_id, labeled_by)
+    VALUES (t1, gen_random_uuid(), 'lead:test2', 'clay_tile', '[]', 'test', '[1]', 'dinov2-small', a) RETURNING id INTO c2;
   SET LOCAL ROLE authenticated;
 
   -- 1 unauthenticated

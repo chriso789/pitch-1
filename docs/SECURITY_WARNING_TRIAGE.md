@@ -32,3 +32,9 @@ Status re-checked against live policies on 2026-10-16. Nothing was weakened to s
 
 ## Not verifiable here
 Authenticated exploitation attempts (requires isolated test companies + accounts).
+
+## review_reference_candidate (Photo Intelligence) — 2026-10-19
+- Privileges: SECURITY DEFINER, `search_path=public`; EXECUTE revoked from PUBLIC/anon, granted to `authenticated` only. Flagged by the linter as "signed-in users can execute SECURITY DEFINER".
+- Internal checks: caller must have `user_company_access` to the label's company; labeler cannot review; only `pending` labels can be reviewed (row locked `FOR UPDATE`); reject/correction need a reason; every action logged to `photo_reference_reviews`. DB CHECK also forbids reviewer = labeler.
+- Bypass found and fixed: a direct UPDATE policy (`prc_approve`) let a company member set `review_status='approved'` on rejected rows without the function. Policy dropped and UPDATE revoked; the function is now the only write path.
+- Tested live (`tests/database/review-reference-candidate.sql`, rolled back): no-session, self-review, cross-company, direct table update, repeat review, reasonless rejection all refused; rejected label carries no approval. Verdict: warning accepted, no further remediation needed.
