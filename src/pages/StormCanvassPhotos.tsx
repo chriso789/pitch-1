@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { SafeImage } from '@/components/ui/safe-image';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
@@ -6,40 +6,63 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { GlobalLayout } from '@/shared/components/layout/GlobalLayout';
-import { ArrowLeft, Search, Download, Calendar, User, MapPin, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Search, Calendar, User, MapPin, Image as ImageIcon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { fetchCanvassPhotos, type CanvassPhotoRecord } from '@/lib/canvass/canvassPhotos';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
-
-interface CanvassPhoto {
-  id: string;
-  file_url: string;
-  thumbnail_url: string | null;
-  created_at: string;
-  property_address: string | null;
-  uploaded_by: string | null;
-  full_name?: string | null;
-}
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 
 export default function StormCanvassPhotos() {
   const navigate = useNavigate();
+  const tenantId = useEffectiveTenantId();
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState<string>('all');
+  const [selected, setSelected] = useState<CanvassPhotoRecord | null>(null);
 
-  // For now, show empty state since canvass_photos table may not exist
-  // This can be enhanced when the photo storage is implemented
   const { data: photos, isLoading } = useQuery({
-    queryKey: ['canvass-photos', dateFilter],
+    queryKey: ['canvass-photos', tenantId],
     queryFn: async () => {
-      // Return empty array for now - photos feature to be fully implemented
-      return [] as CanvassPhoto[];
-    }
+      if (!tenantId) return [];
+      return fetchCanvassPhotos({ tenantId });
+    },
+    enabled: !!tenantId,
   });
 
-  const filteredPhotos = photos?.filter(photo => 
-    photo.property_address?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    photo.full_name?.toLowerCase().includes(searchQuery.toLowerCase())
+  // Resolve uploader names (uploaded_by is a plain uuid, no FK to join on)
+  const uploaderIds = useMemo(
+    () => Array.from(new Set((photos ?? []).map((p) => p.uploaded_by).filter(Boolean) as string[])),
+    [photos],
   );
+  const { data: uploaderNames } = useQuery({
+    queryKey: ['canvass-photo-uploaders', uploaderIds.join(',')],
+    queryFn: async () => {
+      if (uploaderIds.length === 0) return {} as Record<string, string>;
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .in('id', uploaderIds);
+      if (error) throw error;
+      return Object.fromEntries((data ?? []).map((p: any) => [p.id, p.full_name])) as Record<string, string>;
+    },
+    enabled: uploaderIds.length > 0,
+  });
+
+  const filteredPhotos = useMemo(() => (photos ?? []).filter((photo) => {
+    const q = searchQuery.toLowerCase();
+    const matchesSearch =
+      photo.property_address?.toLowerCase().includes(q) ||
+      uploaderNames?.[photo.uploaded_by ?? '']?.toLowerCase().includes(q);
+    if (!matchesSearch) return false;
+
+    if (dateFilter === 'all') return true;
+    const created = new Date(photo.created_at);
+    const now = new Date();
+    if (dateFilter === 'today') return created.toDateString() === now.toDateString();
+    if (dateFilter === 'week') return now.getTime() - created.getTime() <= 7 * 24 * 60 * 60 * 1000;
+    return true;
+  }), [photos, searchQuery, dateFilter, uploaderNames]);
 
   return (
     <GlobalLayout>
@@ -57,10 +80,6 @@ export default function StormCanvassPhotos() {
               </p>
             </div>
           </div>
-          <Button variant="outline">
-            <Download className="h-4 w-4 mr-2" />
-            Export All
-          </Button>
         </div>
 
         {/* Filters */}
@@ -108,10 +127,10 @@ export default function StormCanvassPhotos() {
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
             {filteredPhotos.map((photo) => (
-              <Card key={photo.id} className="overflow-hidden group cursor-pointer hover:ring-2 hover:ring-primary transition-all">
+              <Card key={photo.id} className="overflow-hidden group cursor-pointer hover:ring-2 hover:ring-primary transition-all" onClick={() => setSelected(photo)}>
                 <div className="aspect-square bg-muted relative">
                   <SafeImage
-                    src={photo.thumbnail_url || photo.file_url}
+                    src={photo.signed_url ?? ''}
                     alt={photo.property_address || 'Canvass photo'}
                     className="w-full h-full object-cover"
                     loading="lazy"
@@ -124,10 +143,10 @@ export default function StormCanvassPhotos() {
                           <span className="truncate">{photo.property_address}</span>
                         </div>
                       )}
-                      {photo.full_name && (
+                      {photo.uploaded_by && uploaderNames?.[photo.uploaded_by] && (
                         <div className="flex items-center gap-1">
                           <User className="h-3 w-3" />
-                          <span>{photo.full_name}</span>
+                          <span>{uploaderNames[photo.uploaded_by]}</span>
                         </div>
                       )}
                       <div className="text-white/70">
@@ -140,6 +159,39 @@ export default function StormCanvassPhotos() {
             ))}
           </div>
         )}
+
+        {/* Photo detail */}
+        <Dialog open={!!selected} onOpenChange={() => setSelected(null)}>
+          <DialogContent className="max-w-3xl p-0">
+            {selected && (
+              <div className="space-y-3">
+                <SafeImage
+                  src={selected.signed_url ?? ''}
+                  alt={selected.property_address || 'Canvass photo'}
+                  className="w-full max-h-[70vh] object-contain rounded-lg"
+                />
+                <div className="px-4 pb-4 space-y-1 text-sm">
+                  {selected.property_address && (
+                    <p className="flex items-center gap-2">
+                      <MapPin className="h-4 w-4 text-muted-foreground" />
+                      {selected.property_address}
+                    </p>
+                  )}
+                  {selected.uploaded_by && uploaderNames?.[selected.uploaded_by] && (
+                    <p className="flex items-center gap-2 text-muted-foreground">
+                      <User className="h-4 w-4" />
+                      {uploaderNames[selected.uploaded_by]} · {format(new Date(selected.created_at), 'MMM d, yyyy h:mm a')}
+                    </p>
+                  )}
+                  {selected.category && selected.category !== 'other' && (
+                    <p className="capitalize text-muted-foreground">Category: {selected.category.replace('_', ' ')}</p>
+                  )}
+                  {selected.notes && <p className="text-muted-foreground">{selected.notes}</p>}
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </GlobalLayout>
   );
