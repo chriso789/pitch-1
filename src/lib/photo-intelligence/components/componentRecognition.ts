@@ -108,3 +108,43 @@ export function refineWithComponents(
   // Component-aware comparison requires a verified model; not yet active.
   return pattern;
 }
+
+/** Normalized bbox of a polygon. */
+function bboxOf(poly: { x: number; y: number }[]) {
+  const xs = poly.map((p) => p.x), ys = poly.map((p) => p.y);
+  return { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) };
+}
+
+/** Intersection-over-union of two normalized polygons' bounding boxes. */
+export function polygonIoU(a: { x: number; y: number }[], b: { x: number; y: number }[]): number {
+  const A = bboxOf(a), B = bboxOf(b);
+  const ix = Math.max(0, Math.min(A.x1, B.x1) - Math.max(A.x0, B.x0));
+  const iy = Math.max(0, Math.min(A.y1, B.y1) - Math.max(A.y0, B.y0));
+  const inter = ix * iy;
+  const area = (p: typeof A) => Math.max(0, p.x1 - p.x0) * Math.max(0, p.y1 - p.y0);
+  const union = area(A) + area(B) - inter;
+  return union > 0 ? inter / union : 0;
+}
+
+/**
+ * Phase 3 partial — match pattern-analysis anomalies against segmented
+ * regions. A mask from SAM has no label, so this only refines evidence
+ * wording: an anomaly inside a segmented region says which visual feature
+ * stood out AND that a distinct surface region underlies it. The anomaly
+ * stays `possible_anomaly` with component `Unclassified surface`; it is
+ * never upgraded to a named component or to damage.
+ */
+export function matchAnomaliesToRegions(
+  pattern: PatternOutcome,
+  components: ComponentRecognitionOutcome,
+): PatternOutcome {
+  if (components.status !== 'components_found' || !components.regions.length) return pattern;
+  const detections = pattern.result.detections.map((d: RawDetection) => {
+    if (!d.polygonNorm) return d;
+    const hit = components.regions.find((r) => polygonIoU(d.polygonNorm!, r.polygonNorm) > 0.15);
+    if (!hit) return d;
+    const note = 'This area falls inside a distinct surface region outlined by the segmentation model (region type not identified).';
+    return { ...d, condition: d.condition?.includes(note) ? d.condition : `${d.condition ?? ''} ${note}`.trim() };
+  });
+  return { ...pattern, result: { ...pattern.result, detections } };
+}
