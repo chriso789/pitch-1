@@ -109,39 +109,19 @@ export function OfflinePhotoSyncManager({ className, compact = false }: OfflineP
       const photo = pendingPhotos[i];
       
       try {
-        // Upload to Supabase Storage
-        const fileName = `${photo.tenantId}/${photo.userId}/${Date.now()}_${photo.fileName}`;
-        
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('canvass-photos')
-          .upload(fileName, photo.blob, {
-            contentType: 'image/jpeg',
-            upsert: false,
-          });
-        
-        if (uploadError) throw uploadError;
-        
-        // Get public URL
-        const { data: urlData } = supabase.storage
-          .from('canvass-photos')
-          .getPublicUrl(fileName);
-        
-        // Log activity for the photo capture
-        await supabase.from('canvass_activity_log').insert({
-          tenant_id: photo.tenantId,
-          user_id: photo.userId,
-          activity_type: 'photo_captured',
-          latitude: photo.latitude,
-          longitude: photo.longitude,
-          activity_data: {
-            file_url: urlData.publicUrl,
-            file_name: photo.fileName,
-            category: photo.category,
-            property_id: photo.propertyId,
-            property_address: photo.propertyAddress,
-            captured_at: photo.timestamp,
-            synced_at: new Date().toISOString(),
-          },
+        // Upload to the private canvass-photos bucket and persist the
+        // photo record (canvass_photos) + activity log entry.
+        await uploadCanvassPhoto({
+          blob: photo.blob,
+          tenantId: photo.tenantId,
+          userId: photo.userId,
+          propertyId: photo.propertyId ?? null,
+          propertyAddress: photo.propertyAddress ?? null,
+          category: photo.category,
+          latitude: photo.latitude ?? null,
+          longitude: photo.longitude ?? null,
+          fileName: `${Date.now()}_${photo.fileName}`,
+          takenAt: photo.timestamp,
         });
         
         // Remove from IndexedDB
@@ -287,4 +267,15 @@ export async function savePhotoOffline(photo: Omit<OfflinePhoto, 'id' | 'retryCo
   });
   
   return id;
+}
+
+// Export function to count queued offline photos (used by capture dialogs)
+export async function getPendingPhotoCount(): Promise<number> {
+  try {
+    const database = await getDB();
+    return await database.count('offlinePhotos');
+  } catch (err) {
+    console.error('Error counting pending photos:', err);
+    return 0;
+  }
 }
