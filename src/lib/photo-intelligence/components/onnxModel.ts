@@ -15,11 +15,15 @@
 import type { ComponentModel, ComponentRegion } from './componentRecognition';
 import type { GrayImage } from '../patternAnalysis';
 import dinov2SmallAsset from '@/assets/dinov2-small.onnx.asset.json';
+import sam2EncoderAsset from '@/assets/sam2.1-tiny-vision-encoder.onnx.asset.json';
+import sam2DecoderAsset from '@/assets/sam2.1-tiny-mask-decoder.onnx.asset.json';
 
 /** Self-hosted weight URLs (large files live in the asset store, pointer JSON in the repo). */
 export const MODEL_URLS = {
   componentSegmenter: '/models/photo-intelligence/component-segmenter.onnx',
   dinov2Small: dinov2SmallAsset.url,
+  sam2Encoder: sam2EncoderAsset.url,
+  sam2Decoder: sam2DecoderAsset.url,
 } as const;
 
 export interface LoadedOnnxModel {
@@ -77,11 +81,137 @@ export function backboneOnlyModel(loaded: LoadedOnnxModel): ComponentModel {
  * Order mirrors the audit decision: a verified segmentation model first.
  */
 export async function loadComponentModel(): Promise<ComponentModel | null> {
+  const [encoder, decoder] = await Promise.all([
+    tryLoadSession(MODEL_URLS.sam2Encoder),
+    tryLoadSession(MODEL_URLS.sam2Decoder),
+  ]);
+  if (encoder && decoder) return sam2SegmentationModel(encoder, decoder);
   const seg = await tryLoadSession(MODEL_URLS.componentSegmenter);
   if (seg) return backboneOnlyModel(seg); // replace with a real head once verified
   const backbone = await tryLoadSession(MODEL_URLS.dinov2Small);
   if (backbone) return dinov2SimilarityModel(backbone);
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// SAM 2.1 Tiny promptable segmentation (Apache-2.0, validated end-to-end
+// 2026-10-19: encoder [1,3,1024,1024] → 3 embedding tensors; decoder
+// box-prompted → iou_scores + pred_masks at 256×256).
+//
+// SAM produces masks WITHOUT semantic labels. Regions are therefore returned
+// with component `unknown` — the masks refine anomaly geometry for inspector
+// review, they do not identify roofing components. A region is never
+// upgraded to a named component or to damage.
+// ---------------------------------------------------------------------------
+
+const SAM_INPUT = 1024;
+const SAM_MASK = 256;
+
+/** Preprocess for the SAM 2.1 vision encoder (per onnx-community preprocessor_config). */
+export function preprocessForSam(img: GrayImage): { data: Float32Array; dims: number[] } {
+  const { width: w, height: h, data } = img;
+  const out = new Float32Array(3 * SAM_INPUT * SAM_INPUT);
+  for (let y = 0; y < SAM_INPUT; y++) for (let x = 0; x < SAM_INPUT; x++) {
+    const sx = Math.min(w - 1, Math.floor((x * w) / SAM_INPUT));
+    const sy = Math.min(h - 1, Math.floor((y * h) / SAM_INPUT));
+    const i = (sy * w + sx) * 4;
+    for (let c = 0; c < 3; c++) {
+      out[c * SAM_INPUT * SAM_INPUT + y * SAM_INPUT + x] =
+        (data[i + c] / 255 - IMAGENET_MEAN[c]) / IMAGENET_STD[c];
+    }
+  }
+  return { data: out, dims: [1, 3, SAM_INPUT, SAM_INPUT] };
+}
+
+/** Largest contour of a binary mask as a normalized polygon (marching-squares-free: boundary cells' convex hull). */
+export function maskToPolygonNorm(mask: Float32Array, side: number, threshold = 0): { x: number; y: number }[] | null {
+  const pts: { x: number; y: number }[] = [];
+  let count = 0;
+  const on = (x: number, y: number) => x >= 0 && y >= 0 && x < side && y < side && mask[y * side + x] > threshold;
+  for (let y = 0; y < side; y++) for (let x = 0; x < side; x++) {
+    if (!on(x, y)) continue;
+    count++;
+    if (!on(x - 1, y) || !on(x + 1, y) || !on(x, y - 1) || !on(x, y + 1)) {
+      pts.push({ x: x / side, y: y / side }, { x: (x + 1) / side, y: (y + 1) / side });
+    }
+  }
+  if (count < 16 || pts.length < 3) return null;
+  // Convex hull (Andrew monotone chain).
+  const p = [...pts].sort((a, b) => a.x - b.x || a.y - b.y);
+  const cross = (o: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) =>
+    (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const lower: typeof pts = [], upper: typeof pts = [];
+  for (const q of p) { while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], q) <= 0) lower.pop(); lower.push(q); }
+  for (const q of [...p].reverse()) { while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], q) <= 0) upper.pop(); upper.push(q); }
+  return [...lower.slice(0, -1), ...upper.slice(0, -1)];
+}
+
+interface OrtSession {
+  inputNames: string[];
+  run(feeds: Record<string, unknown>): Promise<Record<string, { data: Float32Array; dims: readonly number[] }>>;
+}
+
+/**
+ * SAM 2.1 segmentation model. Segment-by-box-prompt over a coarse grid;
+ * each mask is an unlabeled region. `verifiedClasses` stays empty, so the
+ * recognition layer keeps every region `unknown`.
+ */
+export function sam2SegmentationModel(encoder: LoadedOnnxModel, decoder: LoadedOnnxModel): ComponentModel {
+  const enc = encoder.session as OrtSession;
+  const dec = decoder.session as OrtSession;
+  return {
+    modelId: 'sam2.1-hiera-tiny',
+    verifiedClasses: [],
+    async segment(img: GrayImage): Promise<ComponentRegion[]> {
+      const ort = await loadOrt();
+      const { data, dims } = preprocessForSam(img);
+      const encOut = await enc.run({ pixel_values: new ort.Tensor('float32', data, dims) });
+      // Prompt with a grid of boxes so surface-scale regions are proposed.
+      const boxes: number[][][] = [];
+      const GRID_BOXES = 4;
+      for (let gy = 0; gy < GRID_BOXES; gy++) for (let gx = 0; gx < GRID_BOXES; gx++) {
+        boxes.push([[
+          (gx * SAM_INPUT) / GRID_BOXES, (gy * SAM_INPUT) / GRID_BOXES,
+          ((gx + 1) * SAM_INPUT) / GRID_BOXES, ((gy + 1) * SAM_INPUT) / GRID_BOXES,
+        ]]);
+      }
+      const feeds: Record<string, unknown> = {
+        input_points: new ort.Tensor('float32', new Float32Array(boxes.length * 2), [boxes.length, 1, 1, 2]),
+        input_labels: new ort.Tensor('int64', new BigInt64Array(boxes.length), [boxes.length, 1, 1]),
+        input_boxes: new ort.Tensor('float32', new Float32Array(boxes.flat(2)), [boxes.length, boxes[0].length, 4]),
+        'image_embeddings.0': encOut['image_embeddings.0'],
+        'image_embeddings.1': encOut['image_embeddings.1'],
+        'image_embeddings.2': encOut['image_embeddings.2'],
+      };
+      const out = await dec.run(feeds);
+      const masks = out['pred_masks']; // [boxes, 1, 3, 256, 256]
+      const ious = out['iou_scores'];   // [boxes, 1, 3]
+      if (!masks || !ious) return [];
+      const regions: ComponentRegion[] = [];
+      const seen: { x: number; y: number }[][] = [];
+      for (let b = 0; b < boxes.length; b++) {
+        // Pick the best-IoU of the 3 candidate masks for this prompt.
+        let best = 0;
+        for (let m = 1; m < 3; m++) if (ious.data[b * 3 + m] > ious.data[b * 3 + best]) best = m;
+        if (ious.data[b * 3 + best] < 0.7) continue; // low self-agreement: not a stable region
+        const offset = (b * 3 + best) * SAM_MASK * SAM_MASK;
+        const polygon = maskToPolygonNorm(masks.data.slice(offset, offset + SAM_MASK * SAM_MASK), SAM_MASK);
+        if (!polygon) continue;
+        // Drop near-duplicates of an already-returned region.
+        const dup = seen.some((s) => {
+          const xs = s.map((p) => p.x), ys = s.map((p) => p.y);
+          const nxs = polygon.map((p) => p.x), nys = polygon.map((p) => p.y);
+          return Math.max(Math.min(...xs), Math.min(...nxs)) < Math.min(Math.max(...xs), Math.max(...nxs)) &&
+                 Math.max(Math.min(...ys), Math.min(...nys)) < Math.min(Math.max(...ys), Math.max(...nys)) &&
+                 Math.abs(Math.max(...xs) - Math.min(...xs) - (Math.max(...nxs) - Math.min(...nxs))) < 0.05;
+        });
+        if (dup) continue;
+        seen.push(polygon);
+        regions.push({ polygonNorm: polygon, component: 'unknown', confidence: null });
+      }
+      return regions;
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
