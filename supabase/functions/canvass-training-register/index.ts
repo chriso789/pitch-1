@@ -1,6 +1,7 @@
 import { z } from 'npm:zod@3';
 import { createRouter, requireAuth, requireTenant, userClient, serviceClient, jsonOk, jsonErr } from '../_shared/router.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
+import { originalImageIdentity } from './image.ts';
 
 const app = createRouter('canvass-training-register');
 const Body = z.object({ photoId: z.string().uuid() }).strict();
@@ -25,13 +26,11 @@ app.post('*', requireAuth, requireTenant, async (c) => {
   const { data: blob, error: downloadError } = await sb.storage.from('canvass-photos').download(photo.storage_path);
   if (downloadError || !blob || blob.size > 15 * 1024 * 1024) return jsonErr(c, 'original_unavailable', 'Original photo unavailable or too large', 409);
   // Decode dimensions on the trusted server; no inference or paid service.
-  const { Image } = await import('npm:imagescript@1.3.0');
   const bytes = new Uint8Array(await blob.arrayBuffer());
-  let width: number, height: number;
-  try { const image = await Image.decode(bytes); width = image.width; height = image.height; }
+  let identity: Awaited<ReturnType<typeof originalImageIdentity>>;
+  try { identity = await originalImageIdentity(bytes); }
   catch { return jsonErr(c, 'invalid_image', 'Original photo could not be decoded', 400); }
-  const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))).map((v) => v.toString(16).padStart(2, '0')).join('');
-  const { data: originalId, error: registrationError } = await serviceClient().rpc('photo_training_canvass_register', { photo: photo.id, actor, hash, w: width, h: height });
+  const { data: originalId, error: registrationError } = await serviceClient().rpc('photo_training_canvass_register', { photo: photo.id, actor, ...identity });
   if (registrationError) return jsonErr(c, 'registration_refused', 'Registration refused; check original property association and duplicates', 409);
   return jsonOk(c, { originalId });
 });
