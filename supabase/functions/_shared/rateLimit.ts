@@ -6,7 +6,7 @@
  * Prevents abuse and ensures fair resource distribution.
  */
 
-import { SupabaseClient } from "npm:@supabase/supabase-js@2.49.1";
+import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 
 interface RateLimitConfig {
   perMinute: number;

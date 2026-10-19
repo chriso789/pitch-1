@@ -14,7 +14,7 @@ export function inspectCanvassPath(photoId: string) {
   return `/photo-intelligence/training?source=live_canvass&canvassPhotoId=${encodeURIComponent(photoId)}`;
 }
 
-export async function canvassOriginalIdentity(blob: Blob, tenantId: string, propertyId?: string | null) {
+export async function canvassOriginalIdentity(blob: Pick<Blob, 'arrayBuffer' | 'type'>, tenantId: string, propertyId?: string | null) {
   const bytes = await blob.arrayBuffer();
   const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))).map((b) => b.toString(16).padStart(2, '0')).join('');
   const scope = new TextEncoder().encode(`${tenantId}:${propertyId ?? 'general'}:${hash}`);
