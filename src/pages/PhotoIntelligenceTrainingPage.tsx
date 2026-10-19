@@ -26,6 +26,7 @@ import { toast } from 'sonner';
 import { useSearchParams } from 'react-router-dom';
 import { approvedCanvassCounts } from '@/lib/photo-intelligence/training/canvass';
 import { trainingReadiness } from '@/lib/photo-intelligence/training/readiness';
+import { addBenchmarkPhoto, annotationsToComponentDetections, BENCHMARK_COMPONENT_CLASSES, componentDetectionsToAnnotations, createBenchmarkSet, loadBenchmarkItems, loadBenchmarkSets, reviewBenchmarkItem, saveBenchmarkLabels, scoreBenchmarkSet, type BenchmarkItem } from '@/lib/photo-intelligence/benchmarkHarness';
 
 type Editing = { photo: Original; label?: Label };
 type Metrics = { photosEvaluated?: number; partition?: string; classes?: { key: string; tp: number; fp: number; fn: number; precision: number; recall: number }[] };
@@ -45,6 +46,22 @@ export default function PhotoIntelligenceTrainingPage() {
   const [verified, setVerified] = useState<Record<string, boolean>>({}); const [compare, setCompare] = useState<string[]>([]);
   const query = useQuery({ queryKey: ['photo-training', tenant], enabled: !!tenant, queryFn: () => { if (!tenant) throw new Error('Choose a company'); return loadTraining(tenant); }, staleTime: 30_000 });
   const data = query.data;
+  const [benchSetId, setBenchSetId] = useState(''); const [benchForm, setBenchForm] = useState({ name: '', description: '', property: '', material: 'clay_tile', scene: 'intact' });
+  const [benchEditing, setBenchEditing] = useState<BenchmarkItem | null>(null); const [benchJson, setBenchJson] = useState<unknown>({});
+  const [benchScore, setBenchScore] = useState<Record<string, unknown> | null>(null);
+  const benchSetsQuery = useQuery({ queryKey: ['photo-benchmark-sets', tenant], enabled: !!tenant, queryFn: () => loadBenchmarkSets(tenant!) });
+  const benchItemsQuery = useQuery({ queryKey: ['photo-benchmark-items', benchSetId], enabled: !!benchSetId, queryFn: async () => {
+    const items = await loadBenchmarkItems(benchSetId);
+    return Promise.all(items.map(async (i) => ({ ...i, url: (await supabase.storage.from('canvass-photos').createSignedUrl(i.storage_path, 600)).data?.signedUrl ?? null })));
+  } });
+  const benchItems = benchItemsQuery.data ?? [];
+  const refreshBench = () => { void qc.invalidateQueries({ queryKey: ['photo-benchmark-sets', tenant] }); void qc.invalidateQueries({ queryKey: ['photo-benchmark-items', benchSetId] }); };
+  const benchPerform = async (action: () => Promise<unknown>, success: string) => {
+    if (busy) return; setBusy(true);
+    try { await action(); refreshBench(); toast.success(success); }
+    catch (error) { toast.error(error instanceof Error ? error.message : 'Action failed'); }
+    finally { setBusy(false); }
+  };
   const perform = async (action: () => Promise<unknown>, success: string) => {
     if (busy) return; setBusy(true);
     try { await action(); await qc.invalidateQueries({ queryKey: ['photo-training', tenant] }); toast.success(success); }
@@ -90,7 +107,7 @@ export default function PhotoIntelligenceTrainingPage() {
     {query.isError && <p role="alert" className="text-destructive">{query.error.message}</p>}
     {!tenant && <p>Choose a company to open its training records.</p>}
     <Tabs value={tab} onValueChange={setTab}>
-      <TabsList className="flex h-auto flex-wrap justify-start"><TabsTrigger value="labeling">Labeling</TabsTrigger><TabsTrigger value="review">Approval queue ({pending.length})</TabsTrigger><TabsTrigger value="readiness">Training readiness</TabsTrigger><TabsTrigger value="models">Model registry</TabsTrigger></TabsList>
+      <TabsList className="flex h-auto flex-wrap justify-start"><TabsTrigger value="labeling">Labeling</TabsTrigger><TabsTrigger value="review">Approval queue ({pending.length})</TabsTrigger><TabsTrigger value="readiness">Training readiness</TabsTrigger><TabsTrigger value="models">Model registry</TabsTrigger><TabsTrigger value="benchmark">Benchmark</TabsTrigger></TabsList>
       <TabsContent value="labeling" className="space-y-5">
         <div className="flex flex-wrap gap-3"><Select value={source} onValueChange={setSource}><SelectTrigger className="w-52"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All photo sources</SelectItem><SelectItem value="live_canvass">Live Canvassing</SelectItem><SelectItem value="inspector_upload">Inspector uploads</SelectItem></SelectContent></Select><Select value={queue} onValueChange={setQueue}><SelectTrigger className="w-60"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="unlabeled">Awaiting labels / verification</SelectItem><SelectItem value="all">All review statuses</SelectItem></SelectContent></Select>{selectedPhotoId && <Button variant="outline" onClick={() => setParams({ source })}>All photos</Button>}</div>
         {!!data?.registrationWarnings.length && <p role="alert" className="text-destructive">{data.registrationWarnings.length} canvassing photo registrations need retry or corrected property association.</p>}
@@ -124,7 +141,35 @@ export default function PhotoIntelligenceTrainingPage() {
         <h2 className="font-medium">Training audit history</h2>{data?.events.slice(0, 30).map((e) => <div className="border-b py-2 text-sm" key={e.id}><Badge variant="outline">{e.action}</Badge> <span>{new Date(e.created_at).toLocaleString()}</span>{e.notes && <p className="text-muted-foreground">{e.notes}</p>}</div>)}
         {data?.deployments.map((d) => <p className="text-sm border-b py-2" key={d.id}>{d.action}: {data.models.find((m) => m.id === d.model_id)?.version} · {d.notes}</p>)}
       </TabsContent>
+      <TabsContent value="benchmark" className="space-y-5">
+        <p className="text-sm text-muted-foreground">Real unannotated originals with independently reviewed component labels. Scores here measure the experimental reference classifier only — never damage recognition — and require a second inspector's review before they count.</p>
+        <div className="flex flex-wrap items-end gap-3 border-b pb-4">
+          <Select value={benchSetId} onValueChange={setBenchSetId}><SelectTrigger className="w-64"><SelectValue placeholder="Choose a benchmark set" /></SelectTrigger><SelectContent>{benchSetsQuery.data?.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select>
+          <Input className="max-w-xs" placeholder="New set name" value={benchForm.name} onChange={(e) => setBenchForm({ ...benchForm, name: e.target.value })} />
+          <Button variant="outline" disabled={busy || !tenant || !benchForm.name.trim()} onClick={() => benchPerform(() => createBenchmarkSet(tenant!, benchForm.name.trim(), benchForm.description), 'Benchmark set created')}>Create set</Button>
+        </div>
+        {benchSetId && <>
+          <div className="flex flex-wrap items-end gap-3 border-b pb-4">
+            <Input className="max-w-56" placeholder="Property identifier" value={benchForm.property} onChange={(e) => setBenchForm({ ...benchForm, property: e.target.value })} />
+            <Select value={benchForm.material} onValueChange={(v) => setBenchForm({ ...benchForm, material: v })}><SelectTrigger className="w-44"><SelectValue /></SelectTrigger><SelectContent>{['clay_tile', 'concrete_tile', 'asphalt_shingle', 'metal', 'flat', 'unknown'].map((m) => <SelectItem key={m} value={m}>{m.replace(/_/g, ' ')}</SelectItem>)}</SelectContent></Select>
+            <Select value={benchForm.scene} onValueChange={(v) => setBenchForm({ ...benchForm, scene: v })}><SelectTrigger className="w-44"><SelectValue /></SelectTrigger><SelectContent>{['intact', 'damaged', 'shadowed', 'repair', 'debris', 'maintenance'].map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select>
+            <Button asChild disabled={busy || !benchForm.property.trim() || !user}><label><Upload className="h-4 w-4 mr-2" />Upload original<input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" disabled={busy || !benchForm.property.trim() || !user} onChange={(e) => { const f = e.target.files?.[0]; if (f && user) void benchPerform(() => addBenchmarkPhoto({ tenantId: tenant!, setId: benchSetId, propertyKey: benchForm.property.trim(), material: benchForm.material, sceneKind: benchForm.scene as BenchmarkItem['scene_kind'], file: f, labeledBy: user.id }), 'Original saved'); e.target.value = ''; }} /></label></Button>
+          </div>
+          {!benchItems.length && <p className="text-muted-foreground">No originals in this set yet.</p>}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{benchItems.map((i) => <article key={i.id} className="border rounded-md overflow-hidden">
+            {i.url ? <img src={i.url} alt={`${i.scene_kind} roof at ${i.property_key}`} className="aspect-[4/3] w-full object-contain bg-muted" /> : <div className="aspect-[4/3] bg-muted" />}
+            <div className="p-3 space-y-2"><p className="text-sm font-medium break-words">{i.property_key}</p><div className="flex flex-wrap gap-1"><Badge variant="outline">{i.scene_kind}</Badge><Badge variant="outline">{i.material.replace(/_/g, ' ')}</Badge><Badge variant={i.labels_reviewed ? 'secondary' : 'outline'}>{i.labels_reviewed ? 'Independently reviewed' : `${i.component_labels.length} labels · awaiting review`}</Badge></div>
+              <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={busy || i.labels_reviewed} onClick={() => { setBenchEditing(i); setBenchJson(componentDetectionsToAnnotations(i.component_labels)); }}><Pencil className="h-3 w-3 mr-2" />Label components</Button><Button size="sm" disabled={busy || i.labels_reviewed || !i.component_labels.length || i.labeled_by === user?.id} onClick={() => benchPerform(() => reviewBenchmarkItem(i.id, user!.id), 'Labels independently reviewed')}><Check className="h-3 w-3 mr-2" />Review</Button></div>
+              {i.labeled_by === user?.id && !i.labels_reviewed && <p className="text-xs text-muted-foreground">Awaiting a second inspector.</p>}
+            </div></article>)}</div>
+          <div className="flex flex-wrap items-center gap-3 border-t pt-4">
+            <Button variant="outline" asChild disabled={busy || !benchItems.some((i) => i.labels_reviewed)}><label>Import predictions JSON<input type="file" accept="application/json" className="hidden" disabled={busy || !benchItems.some((i) => i.labels_reviewed)} onChange={(e) => { const f = e.target.files?.[0]; void benchPerform(async () => { if (!f) return; const preds = JSON.parse(await f.text()); if (!Array.isArray(preds)) throw new Error('Predictions file must be a JSON array'); setBenchScore(scoreBenchmarkSet(benchItems, preds) as unknown as Record<string, unknown>); }, 'Benchmark scored'); e.target.value = ''; }} /></label></Button>
+            {benchScore && <p className="text-sm">{(benchScore.photosEvaluated as number)} reviewed photos · {(benchScore.properties as number)} properties · macro P {(Number(benchScore.macroPrecision) * 100 || 0).toFixed(1)}% · macro R {(Number(benchScore.macroRecall) * 100 || 0).toFixed(1)}% · unknown rejections {((benchScore.unknownRejection as { correct: number; total: number }).correct)}/{((benchScore.unknownRejection as { total: number }).total)}</p>}
+          </div>
+        </>}
+      </TabsContent>
     </Tabs>
+    <Dialog open={!!benchEditing} onOpenChange={(open) => { if (!open) setBenchEditing(null); }}><DialogContent className="max-w-6xl max-h-[95vh] overflow-y-auto"><DialogHeader><DialogTitle>{benchEditing?.property_key} · Component labels (benchmark)</DialogTitle></DialogHeader>{benchEditing?.url && <PhotoAnnotationEditor key={benchEditing.id} imageUrl={benchEditing.url} initialAnnotations={benchJson} damageCategories={[...BENCHMARK_COMPONENT_CLASSES]} saving={busy} onChange={setBenchJson} onSave={async (json) => { setBenchJson(json); await benchPerform(() => saveBenchmarkLabels(benchEditing.id, annotationsToComponentDetections(json, benchEditing.id)), 'Component labels saved as draft — a second inspector must review'); }} />}</DialogContent></Dialog>
     <Dialog open={!!editing} onOpenChange={(open) => { if (!open) setEditing(null); }}><DialogContent className="max-w-6xl max-h-[95vh] overflow-y-auto"><DialogHeader><DialogTitle>{editing?.photo.property_id} · {editing?.label?.status === 'pending' ? 'Independent review' : 'Photo labels'}</DialogTitle></DialogHeader><div className="flex flex-wrap gap-3 items-center"><Select value={system} onValueChange={(v) => setSystem(v as RoofSystem)} disabled={editing?.label?.status === 'pending'}><SelectTrigger className="w-48"><SelectValue /></SelectTrigger><SelectContent>{ROOF_SYSTEMS.map((s) => <SelectItem key={s} value={s}>{s.replace(/_/g, ' ')}</SelectItem>)}</SelectContent></Select><label className="flex gap-2 items-center text-sm"><Checkbox checked={negative} onCheckedChange={(c) => setNegative(c === true)} disabled={editing?.label?.status === 'pending'} />No visible concern</label><Input className="max-w-xs" placeholder="Hard-example tags, comma separated" value={tags} onChange={(e) => setTags(e.target.value)} disabled={editing?.label?.status === 'pending'} /></div>{editing && <PhotoAnnotationEditor conditionLabeling key={editing.photo.id} imageUrl={editing.photo.url} initialAnnotations={annotationJson} damageCategories={CONDITION_TAXONOMY[system]} saving={busy || editing.label?.status === 'pending'} onChange={setAnnotationJson} onSave={async (json) => { setAnnotationJson(json); await perform(() => saveLabel(json), 'Draft labels saved'); }} />}<Button disabled={busy || editing?.label?.status === 'pending'} onClick={() => perform(() => saveLabel(annotationJson, true), 'Labels submitted for independent review')}>Submit saved labels</Button></DialogContent></Dialog>
   </main>;
 }

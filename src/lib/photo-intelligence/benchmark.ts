@@ -51,6 +51,77 @@ export function boxIoU(a: BenchmarkDetection['box'], b: BenchmarkDetection['box'
   return overlap / (a.width * a.height + b.width * b.height - overlap);
 }
 
+/**
+ * Component-classification benchmark — evaluated SEPARATELY from damage
+ * recognition (a system can name 95% of tiles and still miss hairline
+ * cracks). Predictions may use category 'unknown'; unknown is scored as a
+ * rejection, never as a component claim.
+ */
+export function scoreComponentClassification(
+  photos: BenchmarkPhoto[],
+  labels: BenchmarkDetection[],
+  predictions: BenchmarkDetection[],
+  iouThreshold = 0.5,
+) {
+  if (!photos.length || photos.some((p) => !p.labelsReviewed || p.input !== 'unannotated_original')) {
+    throw new Error('Component accuracy requires unannotated originals with inspector-reviewed labels.');
+  }
+  const ids = new Set(photos.map((p) => p.photoId));
+  for (const d of [...labels, ...predictions]) if (!ids.has(d.photoId) || !validBox(d.box)) throw new Error('Unknown photograph or invalid box.');
+
+  const componentPreds = predictions.filter((p) => p.category !== 'unknown');
+  const unknownPreds = predictions.filter((p) => p.category === 'unknown');
+
+  // Component regions: match predictions to labels of the same class.
+  const usedPreds = new Set<number>(), usedLabels = new Set<number>();
+  const pairs: { p: number; l: number; overlap: number }[] = [];
+  componentPreds.forEach((p, pi) => labels.forEach((l, li) => {
+    if (p.photoId === l.photoId && p.category === l.category) {
+      const overlap = boxIoU(p.box, l.box);
+      if (overlap >= iouThreshold) pairs.push({ p: pi, l: li, overlap });
+    }
+  }));
+  pairs.sort((a, b) => b.overlap - a.overlap);
+  for (const pair of pairs) if (!usedPreds.has(pair.p) && !usedLabels.has(pair.l)) {
+    usedPreds.add(pair.p); usedLabels.add(pair.l);
+  }
+
+  const classes = [...new Set([...labels, ...componentPreds].map((d) => d.category))];
+  const perClass = classes.map((cls) => {
+    const tp = [...usedLabels].filter((i) => labels[i].category === cls).length;
+    const fp = componentPreds.filter((d, i) => d.category === cls && !usedPreds.has(i)).length;
+    const fn = labels.filter((d, i) => d.category === cls && !usedLabels.has(i)).length;
+    return {
+      cls,
+      truePositive: tp, falsePositive: fp, falseNegative: fn,
+      precision: tp + fp ? tp / (tp + fp) : null,
+      recall: tp + fn ? tp / (tp + fn) : null,
+    };
+  });
+  const defined = (v: (number | null)[]) => v.filter((x): x is number => x !== null);
+  const macroPrecision = (() => { const v = defined(perClass.map((c) => c.precision)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; })();
+  const macroRecall = (() => { const v = defined(perClass.map((c) => c.recall)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; })();
+
+  // Unknown-class rejection: an 'unknown' prediction is a CORRECT rejection
+  // only where no labeled component region exists; over a labeled region it
+  // is a missed component (already counted in that class's false negatives).
+  let correctRejections = 0;
+  for (const u of unknownPreds) {
+    const overlapsLabel = labels.some((l) => l.photoId === u.photoId && boxIoU(u.box, l.box) >= iouThreshold);
+    if (!overlapsLabel) correctRejections++;
+  }
+
+  return {
+    perClass,
+    macroPrecision,
+    macroRecall,
+    unknownRejection: { total: unknownPreds.length, correct: correctRejections, missedComponents: unknownPreds.length - correctRejections },
+    // This harness scores the experimental reference classifier only; a
+    // trained supervised model requires a separate benchmark run.
+    classifierKind: 'experimental_reference' as const,
+  };
+}
+
 /** Pairwise physical-identity accuracy; IDs must be independently adjudicated by an inspector. */
 export function scoreAssociation(expected: string[], predicted: string[]) {
   if (expected.length !== predicted.length || expected.some((x) => !x) || predicted.some((x) => !x)) throw new Error('Each observation needs both an inspector identity and a predicted identity.');

@@ -38599,6 +38599,89 @@ export type Database = {
           },
         ]
       }
+      photo_benchmark_items: {
+        Row: {
+          component_labels: Json
+          created_at: string
+          id: string
+          labeled_by: string
+          labels_reviewed: boolean
+          material: string
+          property_key: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          scene_kind: string
+          set_id: string
+          storage_path: string
+          tenant_id: string
+        }
+        Insert: {
+          component_labels?: Json
+          created_at?: string
+          id?: string
+          labeled_by: string
+          labels_reviewed?: boolean
+          material?: string
+          property_key: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          scene_kind: string
+          set_id: string
+          storage_path: string
+          tenant_id: string
+        }
+        Update: {
+          component_labels?: Json
+          created_at?: string
+          id?: string
+          labeled_by?: string
+          labels_reviewed?: boolean
+          material?: string
+          property_key?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          scene_kind?: string
+          set_id?: string
+          storage_path?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "photo_benchmark_items_set_id_fkey"
+            columns: ["set_id"]
+            isOneToOne: false
+            referencedRelation: "photo_benchmark_sets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      photo_benchmark_sets: {
+        Row: {
+          created_at: string
+          created_by: string
+          description: string | null
+          id: string
+          name: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          id?: string
+          name: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          id?: string
+          name?: string
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       photo_damage_deployments: {
         Row: {
           action: string
@@ -38938,6 +39021,51 @@ export type Database = {
           status?: string
           tenant_id?: string
           version?: number
+        }
+        Relationships: []
+      }
+      photo_reference_examples: {
+        Row: {
+          approved_at: string
+          approved_by: string
+          cls: string
+          created_at: string
+          embedding: Json
+          embedding_model_id: string
+          id: string
+          labeled_by: string
+          library_version: number
+          source_finding_id: string | null
+          source_photo_id: string
+          source_region_id: string
+        }
+        Insert: {
+          approved_at?: string
+          approved_by: string
+          cls: string
+          created_at?: string
+          embedding: Json
+          embedding_model_id?: string
+          id?: string
+          labeled_by: string
+          library_version?: number
+          source_finding_id?: string | null
+          source_photo_id: string
+          source_region_id: string
+        }
+        Update: {
+          approved_at?: string
+          approved_by?: string
+          cls?: string
+          created_at?: string
+          embedding?: Json
+          embedding_model_id?: string
+          id?: string
+          labeled_by?: string
+          library_version?: number
+          source_finding_id?: string | null
+          source_photo_id?: string
+          source_region_id?: string
         }
         Relationships: []
       }
