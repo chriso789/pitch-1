@@ -17,6 +17,7 @@ import { createAiImageAnalyzerProvider, type AiImageAnalyzerResponse } from './p
 import { validateDetections, associateCrossPhoto, type DamageProposal, type RecognitionPhoto } from './recognition';
 import { persistProposals } from './findings';
 import { analyzePattern, loadImageForAnalysis } from './patternAnalysis';
+import { recognizeComponents, refineWithComponents } from './components/componentRecognition';
 
 /** Flipped only once the self-hosted engine is deployed with validated weights. */
 export const PITCH_VISION_ENGINE_READY = false;
