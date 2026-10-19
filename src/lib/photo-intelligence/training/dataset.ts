@@ -5,6 +5,7 @@
  * property never appears in both. Original photos are referenced, never edited.
  */
 import { ALL_CONDITION_CLASSES, isTrainableClass, isValidClassForSystem, conditionKind, type RoofSystem } from './taxonomy';
+import { isLearningPhoto } from './conditions';
 
 export interface LabelRegion {
   cls: string;
@@ -100,7 +101,7 @@ function bboxOf(poly: { x: number; y: number }[]) {
 
 /** COCO export (pixel coordinates). Negatives appear as images with no annotations. */
 export function toCoco(ds: DatasetVersion, subset?: DatasetSplit) {
-  const photos = ds.photos.filter((p) => !subset || ds.split[p.photoId] === subset);
+  const photos = ds.photos.filter((p) => isLearningPhoto(p) && (!subset || ds.split[p.photoId] === subset));
   const images = photos.map((p, i) => ({ id: i + 1, file_name: p.fileName, width: p.width, height: p.height, pitch_photo_id: p.photoId, pitch_property_id: p.propertyId, roof_system: p.roofSystem }));
   const annotations: { id: number; image_id: number; category_id: number; bbox: number[]; area: number; segmentation: number[][]; iscrowd: number }[] = [];
   photos.forEach((p, i) => p.regions.filter((r) => isTrainableClass(r.cls)).forEach((r) => {
