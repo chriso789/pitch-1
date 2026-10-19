@@ -2,6 +2,7 @@ import React, { Suspense } from "react";
 import { Route, Routes } from "react-router-dom";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { FeatureProtectedRoute } from "@/components/auth/FeatureProtectedRoute";
+import { TrainingRoute } from "@/components/auth/TrainingRoute";
 
 const PitchPdfStudio = React.lazy(() => import("@/pages/PitchPdfStudio"));
 const DocumentPdfToolPage = React.lazy(() => import("@/pages/documents/DocumentPdfToolPage"));
@@ -237,7 +238,7 @@ export default function ProtectedRoutes() {
         <Route path="/marketing" element={<ProtectedRoute><MarketingAuditPage /></ProtectedRoute>} />
         <Route path="/photo-intelligence" element={<ProtectedRoute><PhotoIntelligenceReviewPage /></ProtectedRoute>} />
         <Route path="/photo-intelligence/report" element={<ProtectedRoute><PhotoIntelligenceReportPage /></ProtectedRoute>} />
-        <Route path="/photo-intelligence/training" element={<ProtectedRoute><PhotoIntelligenceTrainingPage /></ProtectedRoute>} />
+        <Route path="/photo-intelligence/training" element={<TrainingRoute><PhotoIntelligenceTrainingPage /></TrainingRoute>} />
         <Route path="/marketing-assets" element={<ProtectedRoute><MarketingAssetsPage /></ProtectedRoute>} />
         <Route path="/proposals/good-better-best" element={<ProtectedRoute><GoodBetterBestBuilderPage /></ProtectedRoute>} />
         <Route path="/reviews/automated" element={<ProtectedRoute><AutomatedReviewCollectionPage /></ProtectedRoute>} />

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { useHasTrainingAccess } from '@/hooks/useHasTrainingAccess';
 import { useAuth } from '@/contexts/AuthContext';
 import { listFindings, listEvidence, reviewFinding, groupByBuilding, saveEvidenceAnnotations, evidencePhotoUrl, type PhotoFinding, type FindingEvidence } from '@/lib/photo-intelligence/findings';
 import { loadRecordPhotos, analyzeRecordPhotos, type RecordPhoto, type AnalysisProgress } from '@/lib/photo-intelligence/analyzePhotos';
@@ -24,6 +25,7 @@ import { Check, X, Camera, AlertTriangle } from 'lucide-react';
 export default function PhotoIntelligenceReviewPage() {
   const tenantId = useEffectiveTenantId();
   const { user } = useAuth();
+  const canAccessTrainer = useHasTrainingAccess('reviewer');
   const qc = useQueryClient();
   const [searchParams] = useSearchParams();
   const leadId = searchParams.get('leadId') ?? undefined;
@@ -119,7 +121,7 @@ export default function PhotoIntelligenceReviewPage() {
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">Photo Intelligence — Inspector Review</h1>
           <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" asChild><a href="/photo-intelligence/training">Labeling &amp; model training</a></Button>
+          {canAccessTrainer.data === true && <Button variant="outline" size="sm" asChild><a href="/photo-intelligence/training">Labeling &amp; model training</a></Button>}
           <Button variant="outline" size="sm" asChild>
             <a href={`/photo-intelligence/report${projectId ? `?projectId=${projectId}` : ''}`}>View report</a>
           </Button>

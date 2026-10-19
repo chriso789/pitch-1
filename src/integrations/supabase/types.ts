@@ -69238,6 +69238,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      has_training_access: {
+        Args: { _level?: string; _user_id: string }
+        Returns: boolean
+      }
       import_supplier_price_book: {
         Args: {
           _company_id: string
@@ -70536,6 +70540,8 @@ export type Database = {
         | "regional_manager"
         | "sales_manager"
         | "project_manager"
+        | "platform_developer"
+        | "platform_training_reviewer"
       commission_structure_type:
         | "profit_split"
         | "sales_percentage"
@@ -70999,6 +71005,8 @@ export const Constants = {
         "regional_manager",
         "sales_manager",
         "project_manager",
+        "platform_developer",
+        "platform_training_reviewer",
       ],
       commission_structure_type: [
         "profit_split",

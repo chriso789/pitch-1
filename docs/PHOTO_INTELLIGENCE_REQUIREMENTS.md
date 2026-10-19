@@ -90,3 +90,25 @@ they point to. Date: 2026-10-19.
 - Untrained pattern analysis yields pending `possible_anomaly` regions only —
   never damage. Poor-quality images become not-assessable; no unusual region
   means no finding. Every anomaly requires inspector review.
+
+## 9. Image Trainer access split
+
+- The Image Trainer (labeling, independent label review, datasets, model
+  registry, benchmark sets, reference libraries, triage and region proposals)
+  is a platform-internal tool. Company users — including company owners —
+  have no route, menu link, API or database access to it.
+- Two platform roles exist in `user_roles` (roles are never stored on
+  profiles): `platform_training_reviewer` may label, review and triage;
+  `platform_developer` additionally controls dataset creation, model
+  registration, evaluation, promotion and rollback. Master users hold
+  developer-level access. Authorization is always server-side: the
+  `has_training_access` security-definer function plus RLS policies on every
+  trainer table; UI gating only hides links and is never the enforcement.
+- Company admins see exactly one training-related control: the contribution
+  opt-in (Settings → AI Training), which decides whether their independently
+  approved examples may be used in shared training. It is audit-logged and
+  withdrawable; it grants no visibility into the trainer.
+- Customer-facing Photo Intelligence (photo reports, inspector review of
+  findings) remains available to company users and is unaffected. A
+  customer's approval of a finding on a report is separate from training
+  label approval and never creates a training example by itself.
