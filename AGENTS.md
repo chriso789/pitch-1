@@ -21,5 +21,5 @@
 - Read nested `AGENTS.md`. Grouped handlers live in `_shared` for bundling.
 - Feature menus use `useEffectiveTenantId` and refresh explicit company switches; tier labels never override switches.
 - Shared photo training needs company opt-in; cross-company view is counts-only, audited.
-- Photo Intelligence runs only PITCH code: pattern analysis yields pending possible-anomaly regions (never damage); component names come from the DINOv2 reference classifier (else unknown).
+- Photo Intelligence runs only PITCH code: pattern analysis yields pending possible-anomaly regions (never damage); component names come from the DINOv2 reference classifier (or unknown).
 - Training requires independent approval/property splits; canvass originals use trusted hashes. Rep categories aren't labels; offline retries retain originals. Uncertainty is review-only; promote via measured gates.
