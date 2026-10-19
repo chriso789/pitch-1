@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { tryLoadSession, backboneOnlyModel, MODEL_BASE_PATH } from '@/lib/photo-intelligence/components/onnxModel';
+import { tryLoadSession, backboneOnlyModel, MODEL_URLS } from '@/lib/photo-intelligence/components/onnxModel';
 
 describe('local ONNX model loader', () => {
   beforeEach(() => { vi.unstubAllGlobals(); });
@@ -7,12 +7,12 @@ describe('local ONNX model loader', () => {
 
   it('returns null when the weight file is absent — model not installed is a normal state', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 404 })));
-    expect(await tryLoadSession(`${MODEL_BASE_PATH}/missing.onnx`)).toBeNull();
+    expect(await tryLoadSession("/models/photo-intelligence/missing.onnx")).toBeNull();
   });
 
   it('never throws on network failure — resolves to null instead', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
-    expect(await tryLoadSession(`${MODEL_BASE_PATH}/missing.onnx`)).toBeNull();
+    expect(await tryLoadSession("/models/photo-intelligence/missing.onnx")).toBeNull();
   });
 
   it('a feature backbone without a segmentation head reports zero regions, never guessed components', async () => {
