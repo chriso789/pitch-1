@@ -7,6 +7,7 @@ import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { queueForSession, retainFailedPhoto } from '@/lib/canvass/offlinePhotoRecovery';
 import { uploadCanvassPhoto } from '@/lib/canvass/canvassPhotos';
 
 interface OfflinePhoto {
@@ -98,7 +99,7 @@ export function OfflinePhotoSyncManager({ className, compact = false }: OfflineP
     try {
       const database = await getDB();
       const photos = await database.getAll('offlinePhotos');
-      setPendingPhotos(photos.filter((p) => p.tenantId === tenantId && p.userId === user?.id));
+      setPendingPhotos(tenantId && user?.id ? queueForSession(photos, tenantId, user.id) : []);
     } catch (err) {
       console.error('Error loading offline photos:', err);
     }
@@ -112,7 +113,7 @@ export function OfflinePhotoSyncManager({ className, compact = false }: OfflineP
     setSyncProgress(0);
     
     const database = await getDB();
-    const queued = (await database.getAll('offlinePhotos')).filter((p) => p.tenantId === tenantId && p.userId === user.id);
+    const queued = queueForSession(await database.getAll('offlinePhotos'), tenantId, user.id);
     let successCount = 0;
     let failCount = 0;
     
@@ -144,7 +145,7 @@ export function OfflinePhotoSyncManager({ className, compact = false }: OfflineP
         console.error('Failed to sync photo:', err);
         
         // Increment retry count
-        const updatedPhoto = { ...photo, retryCount: photo.retryCount + 1 };
+        const updatedPhoto = retainFailedPhoto(photo);
         
         await database.put('offlinePhotos', updatedPhoto);
         failCount++;

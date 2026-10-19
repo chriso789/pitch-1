@@ -1,5 +1,6 @@
 import { z } from 'npm:zod@3';
 import { createRouter, requireAuth, requireTenant, userClient, serviceClient, jsonOk, jsonErr } from '../_shared/router.ts';
+import { checkRateLimit } from '../_shared/rateLimit.ts';
 
 const app = createRouter('canvass-training-register');
 const Body = z.object({ photoId: z.string().uuid() }).strict();
@@ -19,6 +20,8 @@ app.post('*', requireAuth, requireTenant, async (c) => {
   if (!photo.storage_path.startsWith(`${tenant}/`)) return jsonErr(c, 'invalid_original', 'Original reference invalid', 409);
   const { data: existing } = await sb.from('photo_training_originals').select('id').eq('tenant_id', tenant).eq('source_photo_id', photo.id).maybeSingle();
   if (existing) return jsonOk(c, { originalId: existing.id });
+  const limit = await checkRateLimit(serviceClient(), actor, `canvass-training-register:${tenant}`, 'heavy');
+  if (!limit.allowed) return jsonErr(c, 'rate_limited', 'Photo review intake is busy; retry shortly', 429);
   const { data: blob, error: downloadError } = await sb.storage.from('canvass-photos').download(photo.storage_path);
   if (downloadError || !blob || blob.size > 15 * 1024 * 1024) return jsonErr(c, 'original_unavailable', 'Original photo unavailable or too large', 409);
   // Decode dimensions on the trusted server; no inference or paid service.
