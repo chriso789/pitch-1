@@ -172,7 +172,11 @@ export async function analyzeRecordPhotos(
       } else {
         const img = await loadImageForAnalysis(photo.file_url);
         recPhoto = { photoId: photo.id, imageRef: photo.file_url, widthPx: img.srcWidth, heightPx: img.srcHeight };
-        const out = analyzePattern(img);
+        // Phase 3: component layer runs first; without a verified component
+        // model it honestly reports model_not_available and refinement only
+        // labels regions as unmatched — never upgrades them to damage.
+        const components = await recognizeComponents(img);
+        const out = refineWithComponents(analyzePattern(img), components);
         if (out.status === 'no_unusual_regions') noUnusualRegions += 1;
         if (out.status === 'not_assessable') notAssessable += 1;
         result = out.result;
