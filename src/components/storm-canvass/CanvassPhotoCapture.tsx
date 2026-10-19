@@ -46,18 +46,6 @@ const PHOTO_CATEGORIES: { value: PhotoCategory; label: string; color: string }[]
   { value: 'other', label: 'Other', color: 'bg-gray-500' },
 ];
 
-const DB_NAME = 'canvass-photos-offline';
-const STORE_NAME = 'pending-photos';
-
-async function getOfflineDB(): Promise<IDBPDatabase> {
-  return openDB(DB_NAME, 1, {
-    upgrade(db) {
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
-      }
-    },
-  });
-}
 
 export function CanvassPhotoCapture({
   open,
