@@ -39269,6 +39269,66 @@ export type Database = {
         }
         Relationships: []
       }
+      photo_training_contribution_events: {
+        Row: {
+          action: string
+          actor_id: string
+          created_at: string
+          id: string
+          tenant_id: string
+          terms_version: string | null
+        }
+        Insert: {
+          action: string
+          actor_id: string
+          created_at?: string
+          id?: string
+          tenant_id: string
+          terms_version?: string | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string
+          created_at?: string
+          id?: string
+          tenant_id?: string
+          terms_version?: string | null
+        }
+        Relationships: []
+      }
+      photo_training_contributions: {
+        Row: {
+          authorized_at: string | null
+          authorized_by: string | null
+          created_at: string
+          status: string
+          tenant_id: string
+          terms_version: string | null
+          updated_at: string
+          withdrawn_at: string | null
+        }
+        Insert: {
+          authorized_at?: string | null
+          authorized_by?: string | null
+          created_at?: string
+          status?: string
+          tenant_id: string
+          terms_version?: string | null
+          updated_at?: string
+          withdrawn_at?: string | null
+        }
+        Update: {
+          authorized_at?: string | null
+          authorized_by?: string | null
+          created_at?: string
+          status?: string
+          tenant_id?: string
+          terms_version?: string | null
+          updated_at?: string
+          withdrawn_at?: string | null
+        }
+        Relationships: []
+      }
       photo_training_datasets: {
         Row: {
           created_at: string
@@ -41036,6 +41096,27 @@ export type Database = {
             referencedColumns: ["user_id"]
           },
         ]
+      }
+      platform_training_access_log: {
+        Row: {
+          action: string
+          actor_id: string
+          created_at: string
+          id: string
+        }
+        Insert: {
+          action: string
+          actor_id: string
+          created_at?: string
+          id?: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string
+          created_at?: string
+          id?: string
+        }
+        Relationships: []
       }
       portal_access_grants: {
         Row: {
@@ -69477,6 +69558,7 @@ export type Database = {
           stage_status: string
         }[]
       }
+      platform_training_overview: { Args: never; Returns: Json }
       populate_geometry_columns:
         | { Args: { tbl_oid: unknown; use_typmod?: boolean }; Returns: number }
         | { Args: { use_typmod?: boolean }; Returns: string }
@@ -69698,6 +69780,10 @@ export type Database = {
       seed_labor_order_statuses: {
         Args: { p_tenant: string }
         Returns: undefined
+      }
+      set_photo_training_contribution: {
+        Args: { _opt_in: boolean; _tenant_id: string; _terms_version: string }
+        Returns: string
       }
       set_tenant_login_access: {
         Args: { p_active: boolean; p_tenant_id: string }
