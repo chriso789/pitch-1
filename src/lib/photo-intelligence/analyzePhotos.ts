@@ -18,7 +18,9 @@ import { validateDetections, associateCrossPhoto, type DamageProposal, type Reco
 import { persistProposals } from './findings';
 import { analyzePattern, loadImageForAnalysis } from './patternAnalysis';
 import { recognizeComponents, refineWithComponents, matchAnomaliesToRegions } from './components/componentRecognition';
-import { loadComponentModel, loadSimilarityModel } from './components/onnxModel';
+import { loadComponentModel, loadDinoSession, loadSimilarityModel } from './components/onnxModel';
+import { dinoFeaturesForImage } from './components/regionEmbedding';
+import { applyReferenceClassification, loadReferenceLibrary } from './components/referenceLibrary';
 
 /** Flipped only once the self-hosted engine is deployed with validated weights. */
 export const PITCH_VISION_ENGINE_READY = false;
@@ -177,22 +179,53 @@ export async function analyzeRecordPhotos(
       } else {
         const img = await loadImageForAnalysis(photo.file_url);
         recPhoto = { photoId: photo.id, imageRef: photo.file_url, widthPx: img.srcWidth, heightPx: img.srcHeight };
-        // Phase 3: component layer runs first; without a verified component
-        // model it honestly reports model_not_available and refinement only
-        // labels regions as unmatched — never upgrades them to damage.
-        let dinoNote: string | null = null;
-        const components = await recognizeComponents(img, componentModel ?? undefined);
-        // DINOv2 neighbour-similarity evidence: how much each patch looks like
-        // its surroundings. Used as inspector-visible evidence only — it never
-        // suppresses an anomaly and never upgrades one to damage.
-        if (similarityModel) {
-          const sim = await similarityModel.patchSimilarity(img);
-          if (sim) {
-            const avg = sim.reduce((a, b) => a + b, 0) / sim.length;
-            dinoNote = `Surface self-similarity ${avg.toFixed(2)} (1 = perfectly uniform look); local patches that stand out from neighbours are the anomalies below. This is an algorithmic observation, not a diagnosis.`;
+        // Pattern analysis first — cheap; photos with no unusual regions skip
+        // every expensive model below.
+        const pattern = analyzePattern(img);
+        if (pattern.status === 'no_unusual_regions' || pattern.status === 'not_assessable') {
+          const out = pattern;
+          if (out.status === 'no_unusual_regions') noUnusualRegions += 1;
+          if (out.status === 'not_assessable') notAssessable += 1;
+          result = out.result;
+        } else {
+          // One DINOv2 pass per image, cached by content hash; its patch
+          // embeddings feed both neighbour-similarity evidence and the
+          // experimental reference classifier — never recomputed.
+          let outPattern = pattern;
+          let dinoNote: string | null = null;
+          if (similarityModel) {
+            try {
+              const dino = await loadDinoSession();
+              if (dino) {
+                const features = await dinoFeaturesForImage(img, dino);
+                const library = await loadReferenceLibrary();
+                outPattern = {
+                  ...pattern,
+                  result: {
+                    ...pattern.result,
+                    detections: applyReferenceClassification(pattern.result.detections, features, library),
+                  },
+                };
+                const avg = features.patches.length
+                  ? features.patches.reduce((a, b) => a + b[0], 0) / features.patches.length
+                  : null;
+                if (avg !== null) {
+                  dinoNote = `Surface self-similarity ${avg.toFixed(2)} (1 = perfectly uniform look); local patches that stand out from neighbours are the anomalies below. This is an algorithmic observation, not a diagnosis.`;
+                }
+              }
+            } catch {
+              // Reference classification is additive; a failure never blocks
+              // the anomaly result.
+            }
           }
+          // SAM refinement only because anomalies exist. Without a verified
+          // component model every anomaly honestly stays "Unclassified
+          // surface" — refinement never upgrades them to damage.
+          const components = await recognizeComponents(img, componentModel ?? undefined);
+          const out = matchAnomaliesToRegions(refineWithComponents(outPattern, components), components);
+          if (dinoNote) out.result.warnings = [...(out.result.warnings ?? []), dinoNote];
+          result = out.result;
         }
-        const out = matchAnomaliesToRegions(refineWithComponents(analyzePattern(img), components), components);
         if (dinoNote) out.result.warnings = [...(out.result.warnings ?? []), dinoNote];
         if (out.status === 'no_unusual_regions') noUnusualRegions += 1;
         if (out.status === 'not_assessable') notAssessable += 1;
