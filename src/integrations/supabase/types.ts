@@ -38941,6 +38941,51 @@ export type Database = {
         }
         Relationships: []
       }
+      photo_reference_examples: {
+        Row: {
+          approved_at: string
+          approved_by: string
+          cls: string
+          created_at: string
+          embedding: Json
+          embedding_model_id: string
+          id: string
+          labeled_by: string
+          library_version: number
+          source_finding_id: string | null
+          source_photo_id: string
+          source_region_id: string
+        }
+        Insert: {
+          approved_at?: string
+          approved_by: string
+          cls: string
+          created_at?: string
+          embedding: Json
+          embedding_model_id?: string
+          id?: string
+          labeled_by: string
+          library_version?: number
+          source_finding_id?: string | null
+          source_photo_id: string
+          source_region_id: string
+        }
+        Update: {
+          approved_at?: string
+          approved_by?: string
+          cls?: string
+          created_at?: string
+          embedding?: Json
+          embedding_model_id?: string
+          id?: string
+          labeled_by?: string
+          library_version?: number
+          source_finding_id?: string | null
+          source_photo_id?: string
+          source_region_id?: string
+        }
+        Relationships: []
+      }
       photo_training_datasets: {
         Row: {
           created_at: string
