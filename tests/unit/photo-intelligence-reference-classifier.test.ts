@@ -110,11 +110,22 @@ describe('component classification benchmark', () => {
       { photoId: 'p1', category: 'clay_tile', box: { x: 0.7, y: 0.1, width: 0.1, height: 0.1 } },
     ];
     const r = scoreComponentClassification(photos, labels, predictions);
-    expect(r.macroPrecision).toBeCloseTo(1); // clay_tile 1/2? no: tp=1 fp=1 → 0.5
+    // clay_tile: 1 correct, 1 spurious → precision 0.5; vent: missed.
     expect(r.macroPrecision).toBeCloseTo(0.5);
+    expect(r.macroRecall).toBeCloseTo(0.5);
+    // The unknown prediction sits on the labeled vent → a missed component,
+    // not a correct rejection.
     expect(r.unknownRejection.total).toBe(1);
-    expect(r.unknownRejection.correct).toBe(1); // vent was labelled, predicted unknown → missed, not correct rejection
     expect(r.unknownRejection.correct).toBe(0);
+    expect(r.unknownRejection.missedComponents).toBe(1);
+    expect(r.classifierKind).toBe('experimental_reference');
+  });
+
+  it('counts unknown over unlabeled background as a correct rejection', () => {
+    const labels = [{ photoId: 'p1', category: 'clay_tile', box: { x: 0, y: 0, width: 0.5, height: 0.5 } }];
+    const predictions = [{ photoId: 'p1', category: 'unknown', box: { x: 0.6, y: 0.6, width: 0.3, height: 0.3 } }];
+    const r = scoreComponentClassification(photos, labels, predictions);
+    expect(r.unknownRejection.correct).toBe(1);
   });
 
   it('requires reviewed unannotated originals', () => {
