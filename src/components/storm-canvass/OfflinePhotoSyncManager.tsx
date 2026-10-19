@@ -3,9 +3,9 @@ import { Cloud, CloudOff, Upload, Check, AlertCircle, Loader2 } from 'lucide-rea
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { supabase } from '@/integrations/supabase/client';
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { useToast } from '@/hooks/use-toast';
+import { uploadCanvassPhoto } from '@/lib/canvass/canvassPhotos';
 
 interface OfflinePhoto {
   id: string;
