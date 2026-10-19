@@ -76,3 +76,28 @@ describe('component-aware refinement', () => {
     expect(refined.result.detections).toHaveLength(0);
   });
 });
+
+describe('anomaly-to-region matching (Phase 3 partial)', () => {
+  it('adds segmentation evidence wording to an overlapping anomaly without upgrading it', async () => {
+    const { matchAnomaliesToRegions } = await import('@/lib/photo-intelligence/components/componentRecognition');
+    const w = 256, h = 256, d = new Uint8ClampedArray(w * h * 4);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      let v = 120 + ((x % 16 < 2 || y % 12 < 2) ? -60 : 40) + ((x * 7 + y * 13) % 9);
+      if (x >= 96 && x < 128 && y >= 96 && y < 128) v = 20;
+      d[i] = v * 1.1; d[i + 1] = v * 0.7; d[i + 2] = v * 0.5; d[i + 3] = 255;
+    }
+    const pattern = analyzePattern({ width: w, height: h, data: d });
+    expect(pattern.result.detections.length).toBeGreaterThan(0);
+    const refined = matchAnomaliesToRegions(pattern, {
+      status: 'components_found',
+      warnings: [],
+      regions: [{ polygonNorm: [{ x: 0.3, y: 0.3 }, { x: 0.6, y: 0.3 }, { x: 0.6, y: 0.6 }, { x: 0.3, y: 0.6 }], component: 'unknown', confidence: null }],
+    });
+    const det = refined.result.detections[0];
+    expect(det.condition).toMatch(/distinct surface region/);
+    expect(det.condition).toMatch(/region type not identified/);
+    expect(det.damageCategory).toBe('possible_anomaly');
+    expect(det.component).toBe('Unclassified surface');
+  });
+});
