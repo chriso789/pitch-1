@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "asset_id": "7a670fc5-c2fb-413f-86d2-22fc5d3040eb",
+  "project_id": "6af530d9-2698-4529-aba4-165abe9112fb",
+  "url": "/__l5e/assets-v1/7a670fc5-c2fb-413f-86d2-22fc5d3040eb/dinov2-small.onnx",
+  "r2_key": "a/v1/6af530d9-2698-4529-aba4-165abe9112fb/7a670fc5-c2fb-413f-86d2-22fc5d3040eb/dinov2-small.onnx",
+  "original_filename": "dinov2-small.onnx",
+  "size": 24451943,
+  "content_type": "application/octet-stream",
+  "created_at": "2026-10-19T15:45:57Z"
+}
