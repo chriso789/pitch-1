@@ -1,5 +1,10 @@
 # Roadmap
 
+## Canvass pins → Contacts and reopen (2026-10-20)
+- [ ] Ensure Push to CRM saves a linked Contact in the selected company/location without moving the pin
+- [ ] Ensure saved marked pins survive map reloads and parcel refreshes; add regression tests
+- [ ] Signed-in placement → CRM → reopen acceptance — BLOCKED: external Supabase session unavailable here
+
 ## Manual house pins (2026-10-20)
 - [x] Repair Drop Pin saving and selected-company handling; retain chosen house coordinates
 - [x] 13 pin/dialog/access regressions; deployed grouped route and legacy shim reject invalid tokens with 401
