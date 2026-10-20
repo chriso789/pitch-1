@@ -1,6 +1,6 @@
 # Architecture Decisions
 
-- Photo Intelligence PDF export compiles a selected approved immutable report snapshot with an embedded Unicode font; original evidence and annotation geometry remain separate, and untraceable evidence blocks export.
+- Photo report PDFs use approved immutable snapshots and Unicode fonts; evidence stays separate from annotations; untraceable evidence blocks export.
 - Photo Intelligence building maps store image-relative callouts in report versions, never geographic coordinates or quantities; cross-photo merging requires inspector-verified physical identity because matching defect categories do not prove the same occurrence.
 
 - Marketing Audit reads explicitly tenant- and location-scoped contacts and an immutable integer-cent cost ledger; company spend and location leads are not combined into CPL, currencies are never mixed, and missing source evidence stays unattributed to prevent misleading performance claims.
@@ -21,3 +21,5 @@
 - Read nested `AGENTS.md`. Shared-photo service checks current consent; browser outlines remain unverified. Grouped handlers use `_shared`.
 - Feature menus use `useEffectiveTenantId`; refresh company switches; tiers never override switches.
 - Photo Intelligence: docs/PHOTO_INTELLIGENCE_REQUIREMENTS.md — DINOv2 similarity+margin, unknown-on-uncertain, hard negatives; immutable originals, trusted hashes; second-inspector approval; audited company opt-in; counts-only overview; property-isolated evaluation, promotion gates; possible-anomaly regions only; uncertainty review-only; Image Trainer platform-role/DB enforced; company admins set opt-in.
+
+- Manual pins use `/pin/drop`: coordinate identity and read-back; lookup cannot block saves.

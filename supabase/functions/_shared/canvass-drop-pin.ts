@@ -28,6 +28,16 @@ export async function handleDropPin(c: Context<RouterEnv>) {
         return property;
       },
     });
+    if (pin.run_enrichment && result.addressAvailable) {
+      // Enrichment uses caller authorization and cannot undo a committed pin.
+      const enrichment = svc.functions.invoke('storm-public-lookup', {
+        headers: { Authorization: c.req.header('Authorization') || '', 'x-pitch-tenant': tenantId },
+        body: { tenant_id: tenantId, property_id: result.property.id, lat: pin.lat, lng: pin.lng,
+          address: result.property.address?.formatted, timeout_ms: 5000 },
+      }).then(() => {}, () => {});
+      const runtime = (globalThis as typeof globalThis & { EdgeRuntime?: { waitUntil: (task: Promise<unknown>) => void } }).EdgeRuntime;
+      runtime?.waitUntil(enrichment);
+    }
     return jsonOk(c, { success: true, ...result });
   } catch {
     return jsonErr(c, 'pin_save_failed', 'Pin was not saved. Please try again.', 500);
