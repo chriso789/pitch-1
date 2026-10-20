@@ -1,5 +1,11 @@
 # Roadmap
 
+## Existing CRM photo inventory (2026-10-20)
+- [ ] Refresh platform inventory and shared-contribution eligibility
+- [ ] Prepare diverse authorized batch of up to 100; run quality/duplicate/DINOv2/SAM preparation where permission allows
+- [ ] Expose consent-safe developer inventory and report actual results, approvals and blockers
+- [ ] Verify authorization and preparation rules
+
 ## Canvass → Photo Intelligence
 - [x] Zero-copy candidates, preserved source metadata, hash deduplication and retry-safe offline uploads
 - [x] Gallery inspection actions, unlabeled review queue and approved canvass counts
