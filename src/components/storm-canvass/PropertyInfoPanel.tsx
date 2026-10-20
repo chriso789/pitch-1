@@ -22,6 +22,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { toast } from 'sonner';
+import { useLocation } from '@/contexts/LocationContext';
+import { linkPinToContact } from '@/lib/canvass/savedPins';
 import { cn } from '@/lib/utils';
 import FastEstimateModal from './FastEstimateModal';
 import { CanvassPhotoCapture } from './CanvassPhotoCapture';
@@ -71,6 +73,8 @@ export default function PropertyInfoPanel({
 }: PropertyInfoPanelProps) {
   const { profile } = useUserProfile();
   const effectiveTenantId = useEffectiveTenantId();
+  const { currentLocationId } = useLocation();
+  const savingContactRef = useRef(false);
   const isAppMode = useIsAppFieldMode();
   const { isFieldMobileMode } = useFieldMobileMode();
   const [selectedOwner, setSelectedOwner] = useState<string | null>(null);
@@ -345,10 +349,10 @@ export default function PropertyInfoPanel({
 
 
   // Calculate property coordinates (before early return for hooks consistency)
-  const propertyLat = property?.lat || (typeof property?.address === 'string' 
+  const propertyLat = property?.lat ?? (typeof property?.address === 'string' 
     ? JSON.parse(property?.address || '{}')?.lat 
     : property?.address?.lat);
-  const propertyLng = property?.lng || (typeof property?.address === 'string' 
+  const propertyLng = property?.lng ?? (typeof property?.address === 'string' 
     ? JSON.parse(property?.address || '{}')?.lng 
     : property?.address?.lng);
 
@@ -466,7 +470,7 @@ export default function PropertyInfoPanel({
   };
 
   const handleDisposition = async (dispositionId: string) => {
-    if (!profile?.tenant_id || !property.id) return;
+    if (!effectiveTenantId || !profile?.id || !property.id) return;
 
     // Distance is logged for audit but does not block dispositions
     setCurrentDisposition(dispositionId);
@@ -479,6 +483,7 @@ export default function PropertyInfoPanel({
           disposition_updated_at: new Date().toISOString(),
           disposition_updated_by: profile.id,
         })
+        .eq('tenant_id', effectiveTenantId)
         .eq('id', property.id);
 
       if (error) throw error;
@@ -486,7 +491,7 @@ export default function PropertyInfoPanel({
       // Log the visit with distance tracking
       await supabase.from('canvassiq_visits').insert({
         property_id: property.id,
-        tenant_id: profile.tenant_id,
+        tenant_id: effectiveTenantId,
         user_id: profile.id,
         disposition: dispositionId,
         visit_type: 'door_knock',
@@ -506,13 +511,14 @@ export default function PropertyInfoPanel({
       const { data: linkedContact } = await supabase
         .from('contacts')
         .select('id')
+        .eq('tenant_id', effectiveTenantId)
         .eq('canvassiq_property_id', property.id)
         .maybeSingle();
       activityContactId = linkedContact?.id || null;
 
       await supabase.from('canvass_activity_log').insert({
         user_id: profile.id,
-        tenant_id: profile.tenant_id,
+        tenant_id: effectiveTenantId,
         activity_type: 'door_knock',
         contact_id: activityContactId,
         latitude: propertyLat,
@@ -535,7 +541,8 @@ export default function PropertyInfoPanel({
         const { data: existingContact } = await supabase
           .from('contacts')
           .select('id')
-          .eq('canvassiq_property_id', property.id)
+          .eq('tenant_id', effectiveTenantId)
+        .eq('canvassiq_property_id', property.id)
           .maybeSingle();
 
         if (!existingContact) {
@@ -549,13 +556,14 @@ export default function PropertyInfoPanel({
 
           const propData = localProperty?.property_data || {};
           const newContact = {
-            tenant_id: profile.tenant_id,
+            tenant_id: effectiveTenantId,
+            location_id: currentLocationId,
             type: 'homeowner' as const,
             first_name: resolvedFirst,
             last_name: resolvedLast,
 
-            phone: phoneNumbers?.[0] || null,
-            email: emails?.[0] || null,
+            phone: typeof phoneNumbers?.[0] === 'string' ? phoneNumbers[0] : phoneNumbers?.[0]?.number || null,
+            email: typeof emails?.[0] === 'string' ? emails[0] : emails?.[0]?.address || null,
             address_street: address?.street || address?.formatted || fullAddress,
             address_city: address?.city || null,
             address_state: address?.state || null,
@@ -593,12 +601,9 @@ export default function PropertyInfoPanel({
             .select()
             .single();
 
-          if (createdContact && !contactError) {
-            // Link property to contact
-            await supabase
-              .from('canvassiq_properties')
-              .update({ contact_id: createdContact.id })
-              .eq('id', property.id);
+          if (contactError) throw contactError;
+          if (createdContact) {
+            await linkPinToContact(effectiveTenantId, property.id, createdContact.id);
 
             // Update the activity log entry with the new contact_id
             // (the door_knock we just inserted above didn't have it yet)
@@ -637,8 +642,8 @@ export default function PropertyInfoPanel({
   };
 
   const handleNavigate = () => {
-    const lat = property?.lat || address?.lat;
-    const lng = property?.lng || address?.lng;
+    const lat = property?.lat ?? address?.lat;
+    const lng = property?.lng ?? address?.lng;
     if (lat && lng) {
       onNavigate(lat, lng, fullAddress);
       onOpenChange(false);
@@ -648,7 +653,12 @@ export default function PropertyInfoPanel({
   const handleAddCustomer = async (
     manual?: { firstName?: string; lastName?: string; phone?: string; email?: string },
   ) => {
-    if (!profile?.tenant_id || !property?.id) return;
+    if (!effectiveTenantId || !profile?.id || !property?.id || savingContactRef.current) return;
+    if (property.tenant_id && property.tenant_id !== effectiveTenantId) {
+      toast.error("Reopen this pin in its company before saving.");
+      return;
+    }
+    savingContactRef.current = true;
 
     try {
       const selectedOwnerData = enrichedOwners.find(o => o.id === selectedOwner) || displayOwners[0];
@@ -669,7 +679,8 @@ export default function PropertyInfoPanel({
 
       const propData = localProperty?.property_data || {};
       const newContact = {
-        tenant_id: profile.tenant_id,
+        tenant_id: effectiveTenantId,
+        location_id: currentLocationId,
         type: 'homeowner' as const,
         first_name: firstName,
         last_name: lastName,
@@ -721,7 +732,8 @@ export default function PropertyInfoPanel({
       const { data: linkedExisting } = await supabase
         .from('contacts')
         .select('*')
-        .eq('tenant_id', profile.tenant_id)
+        .eq('tenant_id', effectiveTenantId)
+        .eq('tenant_id', effectiveTenantId)
         .eq('canvassiq_property_id', property.id)
         .eq('is_deleted', false)
         .limit(1)
@@ -736,7 +748,7 @@ export default function PropertyInfoPanel({
         const { data: existing } = await supabase
           .from('contacts')
           .select('*')
-          .eq('tenant_id', profile.tenant_id)
+          .eq('tenant_id', effectiveTenantId)
           .ilike('first_name', newContact.first_name.trim())
           .ilike('last_name', (newContact.last_name || '').trim())
           .ilike('address_street', `${String(newContact.address_street).trim()}%`)
@@ -762,7 +774,7 @@ export default function PropertyInfoPanel({
             const { data: dup } = await supabase
               .from('contacts')
               .select('*')
-              .eq('tenant_id', profile.tenant_id)
+              .eq('tenant_id', effectiveTenantId)
               .ilike('first_name', newContact.first_name || '')
               .ilike('last_name', newContact.last_name || '')
               .ilike('address_street', `${String(newContact.address_street || '').trim()}%`)
@@ -835,8 +847,13 @@ export default function PropertyInfoPanel({
         if (!createdContact.canvassiq_property_id) {
           updates.canvassiq_property_id = property.id;
         }
-        if (!createdContact.latitude && propertyLat) updates.latitude = propertyLat;
-        if (!createdContact.longitude && propertyLng) updates.longitude = propertyLng;
+        if (createdContact.latitude == null) updates.latitude = propertyLat;
+        if (createdContact.longitude == null) updates.longitude = propertyLng;
+        if (!createdContact.location_id && currentLocationId) updates.location_id = currentLocationId;
+        if (manual?.firstName) updates.first_name = manual.firstName;
+        if (manual?.lastName) updates.last_name = manual.lastName;
+        if (manual?.phone) updates.phone = manual.phone;
+        if (manual?.email) updates.email = manual.email;
 
         const mergedMetadata = {
           ...(createdContact.metadata || {}),
@@ -849,28 +866,27 @@ export default function PropertyInfoPanel({
           const { data: updated, error: updateError } = await supabase
             .from('contacts')
             .update(updates)
+            .eq('tenant_id', effectiveTenantId)
             .eq('id', createdContact.id)
             .select()
             .single();
           if (updateError) {
-            console.error('Failed to merge enrichment into existing contact:', updateError);
+            throw updateError;
           } else if (updated) {
             createdContact = updated;
           }
         }
       }
 
-      // Link property to contact
-      await supabase
-        .from('canvassiq_properties')
-        .update({ contact_id: createdContact.id })
-        .eq('id', property.id);
-
-      toast.success(wasExisting ? 'Contact updated with enrichment data' : 'Customer added successfully!');
+      await linkPinToContact(effectiveTenantId, property.id, createdContact.id);
+      onDispositionUpdate();
+      toast.success(wasExisting ? 'Contact updated in CRM' : 'Contact saved to CRM');
       onOpenChange(false);
     } catch (err: any) {
       console.error('Error creating contact:', err);
       toast.error(err?.message || 'Failed to add customer');
+    } finally {
+      savingContactRef.current = false;
     }
   };
 
@@ -1447,9 +1463,9 @@ export default function PropertyInfoPanel({
                 </div>
               )}
               {/* Storm Intel */}
-              {profile?.tenant_id && property?.normalized_address_key && property?.storm_event_id ? (
+              {effectiveTenantId && property?.normalized_address_key && property?.storm_event_id ? (
                 <StormScoreWhyPanel
-                  tenantId={profile.tenant_id}
+                  tenantId={effectiveTenantId}
                   stormEventId={property.storm_event_id}
                   normalizedAddressKey={property.normalized_address_key}
                 />
