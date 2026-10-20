@@ -225,3 +225,12 @@ Current: **521**. Target: **<150**. Gap: **371**.
 
 Full per-function breakdown: `docs/edge-function-consolidation-audit.csv`.
 Policy: `docs/EDGE_FUNCTION_RULES.md` — **one domain = one edge function with internal routes**.
+
+## Manual pin repair — 2026-10-20
+- `canvass-api /pin/drop` is now a real authenticated tenant route in `_shared`; root dispatch uses `serveRouter`, including legacy shim requests.
+- DropPinDialog now calls the grouped route with the selected-company header; body identity is ignored. Invalid callers return 401.
+- Saves include the required address_hash and supported flags (no nonexistent manual_pin/source columns), retain clicked coordinates, tolerate lookup failure and preserve existing records on retry.
+- Assigned-area views include manual pins; newest saved pins load first. 13 pin/dialog/access regression tests passed.
+- Signed-in Chris placement and reload remain unverified: external unmanaged Supabase has no browser session here.
+- Audit: 521 folders (none added this repair), 69 grouped / 38 detected real / 31 detected scaffold, 26 shims, 292 old-name call sites, 56 delete candidates (not confirmed safe to delete). The detector still misclassifies canvass-api as scaffold despite its real routes.
+- Migrated this repair: canvass-drop-pin; legacy forwarding shim retained. No folders claimed safe to delete.

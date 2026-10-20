@@ -1,8 +1,8 @@
 # Roadmap
 
 ## Manual house pins (2026-10-20)
-- [ ] Repair Drop Pin saving and selected-company handling; retain chosen house coordinates
-- [ ] Run pin persistence and authorization regressions; verify deployed route
+- [x] Repair Drop Pin saving and selected-company handling; retain chosen house coordinates
+- [x] 13 pin/dialog/access regressions; deployed grouped route and legacy shim reject invalid tokens with 401
 - [ ] Signed-in Chris pin placement/read-back — BLOCKED: external Supabase session unavailable here
 
 ## Existing CRM photo inventory (2026-10-20)

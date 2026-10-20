@@ -76,7 +76,7 @@ canvass-area-build-membership,true,true,false,false,src/components/storm-canvass
 canvass-auth,true,false,false,false,,canvass,HIGH,false,canvass-api,/auth,DELETE_CANDIDATE,
 canvass-dispositions,true,true,false,false,src/services/offlineManager.ts|src/services/unifiedOfflineStore.ts|docs/edge-function-current-status.md,canvass,LOW,false,canvass-api,/dispositions,MIGRATE,
 canvass-document-sync,true,false,false,false,,document,LOW,false,document-api,/document-sync,DELETE_CANDIDATE,
-canvass-drop-pin,true,false,false,true,docs/edge-function-current-status.md,canvass,LOW,false,canvass-api,/drop-pin,SHIM,
+canvass-drop-pin,true,false,false,true,supabase/functions/canvass-drop-pin/index.ts,canvass,LOW,false,canvass-api,/pin/drop,SHIM,
 canvass-estimate-sync,true,false,false,false,,canvass,LOW,false,canvass-api,/estimate-sync,DELETE_CANDIDATE,
 canvass-pin-sync,true,false,false,false,,canvass,LOW,false,canvass-api,/pin-sync,DELETE_CANDIDATE,
 canvass-route-plan,true,false,false,false,,canvass,LOW,false,canvass-api,/route-plan,DELETE_CANDIDATE,
