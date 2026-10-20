@@ -1,5 +1,10 @@
 # Roadmap
 
+## Manual house pins (2026-10-20)
+- [x] Repair Drop Pin saving and selected-company handling; retain chosen house coordinates
+- [x] 13 pin/dialog/access regressions; deployed grouped route and legacy shim reject invalid tokens with 401
+- [ ] Signed-in Chris pin placement/read-back — BLOCKED: external Supabase session unavailable here
+
 ## Existing CRM photo inventory (2026-10-20)
 - [x] Refresh inventory: 457 customer photos, 41 properties, 3 companies; 234 consented photos, 11 properties, 1 company; 47 other image records
 - [x] Add property-diverse up-to-100 selection, consent refresh, protected original access and saved local quality/DINOv2/SAM preparation

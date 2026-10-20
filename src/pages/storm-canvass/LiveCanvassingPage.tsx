@@ -23,6 +23,7 @@ import { useStormCanvass } from '@/hooks/useStormCanvass';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useDeviceLayout } from '@/hooks/useDeviceLayout';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 
 // Neutral US center (geographic center of contiguous US) — only used if GPS never resolves
 const NEUTRAL_FALLBACK = { lat: 39.8283, lng: -98.5795 };
@@ -57,6 +58,7 @@ export default function LiveCanvassingPage() {
   const { toast } = useToast();
   const { getDispositions } = useStormCanvass();
   const { profile } = useUserProfile();
+  const effectiveTenantId = useEffectiveTenantId();
   const layout = useDeviceLayout();
   const { assignedArea, areaPolygon, propertyIds: areaPropertyIds, loading: areaLoading } = useAssignedArea();
 
@@ -770,14 +772,13 @@ export default function LiveCanvassingPage() {
       {!hasGPS && <GPSAcquiringOverlay />}
 
       {/* Drop Pin Dialog */}
-      {dropPinCoords && profile?.tenant_id && profile?.id && (
+      {dropPinCoords && effectiveTenantId && profile?.id && (
         <DropPinDialog
           open={!!dropPinCoords}
           onOpenChange={(open) => { if (!open) setDropPinCoords(null); }}
           lat={dropPinCoords.lat}
           lng={dropPinCoords.lng}
-          tenantId={profile.tenant_id}
-          userId={profile.id}
+          tenantId={effectiveTenantId}
           onSuccess={() => {
             setDropPinCoords(null);
             setMarkersRefreshKey(prev => prev + 1);

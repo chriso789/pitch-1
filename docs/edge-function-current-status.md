@@ -1,19 +1,19 @@
 # Edge Function Consolidation — Current Status
 
-Generated: 2026-10-03T19:02:16.513Z
+Generated: 2026-10-20T01:26:20.849Z
 
 ## Live counts
 
 | Metric | Count |
 |---|---:|
-| Function folders (excluding `_shared`) | **520** |
+| Function folders (excluding `_shared`) | **521** |
 | Grouped routed functions (`*-api` / `*-worker` / `*-webhook`) | **69** |
 | ↳ with real routes wired | **38** |
 | ↳ scaffold-only (501 not_migrated) | **31** |
 | Legacy shim functions (index.ts forwards via `_shared/shim.ts`) | **26** |
 | MIGRATE rows in audit CSV | **337** |
 | ↳ still classified `TBD` (need manual target) | **131** |
-| DELETE_CANDIDATE rows (zero references) | **21** |
+| DELETE_CANDIDATE rows (zero references) | **56** |
 | Public webhook functions that MUST stay (KEEP) | **28** |
 | Frontend call sites still pointing to OLD function names | **292** |
 
@@ -194,7 +194,7 @@ Generated: 2026-10-03T19:02:16.513Z
 - `canvass-area-build-heatmap` — src/components/storm-canvass/TerritoryManagerMap.tsx
 - `canvass-area-build-membership` — src/components/storm-canvass/TerritoryManagerMap.tsx
 - `canvass-dispositions` — src/services/offlineManager.ts, src/services/unifiedOfflineStore.ts
-- `canvass-drop-pin` — src/components/storm-canvass/DropPinDialog.tsx
+- `canvass-training-register` — src/lib/canvass/canvassPhotos.ts
 - `canvassiq-load-parcels` — src/components/storm-canvass/GooglePropertyMarkersLayer.tsx, src/components/storm-canvass/PropertyMarkersLayer.tsx
 - `canvassiq-skip-trace` — src/components/storm-canvass/PropertyInfoPanel.tsx
 - `capture-digital-signature` — src/pages/SignDocument.tsx
@@ -209,13 +209,13 @@ _…and 242 more — see CSV._
 
 ## Remaining action plan to get below 150 deployed Supabase functions
 
-Current: **520**. Target: **<150**. Gap: **370**.
+Current: **521**. Target: **<150**. Gap: **371**.
 
 1. **Phase A — Wire routes** (31 grouped functions still stubs). Port logic from the 206 MIGRATE rows with concrete targets into the matching grouped function. _No change to function count yet._
 2. **Phase B — Resolve TBD** (131 rows). Classify each into an existing domain or escalate to DELETE_CANDIDATE.
 3. **Phase C — Shim legacy** (replace 337 legacy `index.ts` files with `forward(...)` calls to their grouped target). _No change to function count yet — shims still occupy folders._
 4. **Phase D — Frontend migration**: convert the 292 old call sites to call the grouped function + route directly. Once 100% migrated, the shims have zero production traffic.
-5. **Phase E — First delete sweep**: delete the 21 DELETE_CANDIDATE folders (zero refs anywhere). Drops count to **~499**.
+5. **Phase E — First delete sweep**: delete the 56 DELETE_CANDIDATE folders (zero refs anywhere). Drops count to **~465**.
 6. **Phase F — Drop shims**: after edge-function logs show zero shim traffic for 7 days, delete the legacy folders. Drops count by ~26.
 7. **Phase G — Audit KEEP webhooks**: confirm with provider dashboards which can be consolidated under `*-webhook` grouped functions. Worst case all 28 stay.
 
@@ -225,3 +225,12 @@ Current: **520**. Target: **<150**. Gap: **370**.
 
 Full per-function breakdown: `docs/edge-function-consolidation-audit.csv`.
 Policy: `docs/EDGE_FUNCTION_RULES.md` — **one domain = one edge function with internal routes**.
+
+## Manual pin repair — 2026-10-20
+- `canvass-api /pin/drop` is now a real authenticated tenant route in `_shared`; root dispatch uses `serveRouter`, including legacy shim requests.
+- DropPinDialog now calls the grouped route with the selected-company header; body identity is ignored. Invalid callers return 401.
+- Saves include the required address_hash and supported flags (no nonexistent manual_pin/source columns), retain clicked coordinates, tolerate lookup failure and preserve existing records on retry.
+- Assigned-area views include manual pins; newest saved pins load first. 13 pin/dialog/access regression tests passed.
+- Signed-in Chris placement and reload remain unverified: external unmanaged Supabase has no browser session here.
+- Audit: 521 folders (none added this repair), 69 grouped / 38 detected real / 31 detected scaffold, 26 shims, 292 old-name call sites, 56 delete candidates (not confirmed safe to delete). The detector still misclassifies canvass-api as scaffold despite its real routes.
+- Migrated this repair: canvass-drop-pin; legacy forwarding shim retained. No folders claimed safe to delete.
