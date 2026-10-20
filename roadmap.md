@@ -1,5 +1,13 @@
 # Roadmap
 
+## Existing CRM photo inventory (2026-10-20)
+- [x] Refresh inventory: 457 customer photos, 41 properties, 3 companies; 234 consented photos, 11 properties, 1 company; 47 other image records
+- [x] Add property-diverse up-to-100 selection, consent refresh, protected original access and saved local quality/DINOv2/SAM preparation
+- [x] Developer-only inventory/report; original records remain private; unverified outlines use existing Reference library review controls
+- [x] 16 consent/diversity/geometry/run-status tests; unsigned inventory/batch/save return 401; preview build OK
+- [ ] Execute real-photo preparation and signed-in cross-company acceptance — BLOCKED: external unmanaged Supabase has no developer session here; 0 processed/regions/approved examples
+- [ ] Additional-company contribution — BLOCKED: 2 photo-owning companies have no current contribution consent
+
 ## Canvass → Photo Intelligence
 - [x] Zero-copy candidates, preserved source metadata, hash deduplication and retry-safe offline uploads
 - [x] Gallery inspection actions, unlabeled review queue and approved canvass counts

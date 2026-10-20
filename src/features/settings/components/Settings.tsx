@@ -194,6 +194,7 @@ const CompanyReferralsSection = () => {
 };
 
 export const Settings = () => {
+  const effectiveTenantId = useEffectiveTenantId();
   const { user: currentUser, loading } = useCurrentUser();
   const [tabConfig, setTabConfig] = useState<SettingsTab[]>([]);
   const [activeTab, setActiveTab] = useState<string>("general");

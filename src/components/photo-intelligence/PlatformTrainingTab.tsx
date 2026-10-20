@@ -2,6 +2,10 @@ import { useQuery } from '@tanstack/react-query';
 import { loadPlatformOverview, sharedClassReady } from '@/lib/photo-intelligence/training/platformTraining';
 import { useHasTrainingAccess } from '@/hooks/useHasTrainingAccess';
 import { CompanyTrainingContribution } from '@/components/photo-intelligence/CompanyTrainingContribution';
+import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { loadSharedInventory } from '@/lib/photo-intelligence/training/sharedInventory';
+import { prepareSharedPhotos } from '@/lib/photo-intelligence/training/sharedPreparation';
 
 /**
  * Developer-only Shared Training view (lives inside the Image Trainer).
@@ -10,11 +14,38 @@ import { CompanyTrainingContribution } from '@/components/photo-intelligence/Com
  */
 export function PlatformTrainingTab({ tenantId }: { tenantId: string | null }) {
   const developer = useHasTrainingAccess('developer');
+  const inventory = useQuery({ queryKey: ['pi-shared-inventory'], queryFn: () => loadSharedInventory(), enabled: developer.data === true, retry: false });
+  const [progress, setProgress] = useState('');
+  const [failure, setFailure] = useState('');
   const overview = useQuery({ queryKey: ['pi-platform-overview'], queryFn: loadPlatformOverview, enabled: developer.data === true, retry: false });
 
   return (
     <div className="space-y-6">
       <CompanyTrainingContribution tenantId={tenantId} />
+      {developer.data === true && <section className="space-y-3">
+        <h3 className="font-semibold">Existing photo inventory</h3>
+        {inventory.error && <p role="alert" className="text-sm text-destructive">{inventory.error.message}</p>}
+        {inventory.data && <>
+          <dl className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {[
+              ['Customer photos', inventory.data.customer_photos], ['Other image records', inventory.data.other_image_records],
+              ['Eligible photos', inventory.data.eligible_photos], ['Contributing companies', inventory.data.contributing_companies],
+              ['Eligible properties', inventory.data.properties], ['Processed photos', inventory.data.processed_photos],
+              ['Unverified outlines', inventory.data.candidate_regions], ['Companies needing consent', inventory.data.companies_without_consent],
+            ].map(([label, value]) => <div key={label}><dt className="text-xs text-muted-foreground">{label}</dt><dd className="text-xl font-semibold">{value}</dd></div>)}
+          </dl>
+          <Button disabled={!!progress || !inventory.data.eligible_photos} onClick={async () => {
+            setFailure(''); setProgress('Preparing authorized photos');
+            try { await prepareSharedPhotos(setProgress); } catch (e) { setFailure(e instanceof Error ? e.message : 'Preparation failed'); }
+            finally { setProgress(''); await inventory.refetch(); }
+          }}>Prepare up to 100 authorized photos</Button>
+          {progress && <p role="status" className="text-sm">{progress}</p>}
+          {failure && <p role="alert" className="text-sm text-destructive">{failure}</p>}
+          {inventory.data.failures.map((r) => <p key={r.reason} className="text-sm text-destructive">{r.photos}: {r.reason}</p>)}
+          {inventory.data.approved_by_component.map((r) => <p key={r.component} className="text-sm">{r.component.replace(/_/g, ' ')}: {r.examples} approved examples</p>)}
+          <p className="text-sm text-muted-foreground">Recognition results: not validated. Outlines are unverified; approved component examples require independent review.</p>
+        </>}
+      </section>}
 
       {developer.data === true && (
         <section className="rounded-lg border p-4 space-y-3">

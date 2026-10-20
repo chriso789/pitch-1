@@ -112,3 +112,11 @@ they point to. Date: 2026-10-19.
   findings) remains available to company users and is unaffected. A
   customer's approval of a finding on a report is separate from training
   label approval and never creates a training example by itself.
+
+## 10. Existing CRM shared-photo preparation
+
+- Training service inventory, batch and save routes require a verified platform developer. The inventory RPC is service-only; its cross-company implementation lives in a private schema. Access is logged.
+- Only current `pitch-photo-training-v1` opt-ins with recorded authorizer/date and no withdrawal enter the batch. Unknown terms versions are excluded; companies are never automatically enrolled.
+- The initial batch is capped at 100 and round-robins properties across authorized companies. Unassigned images are excluded. Customer photograph counts and other image records stay separate; documents can duplicate photos and not all images show roofs.
+- Five-minute original access requires tenant-prefixed storage ownership. Local quality, duplicate, DINOv2 and SAM preparation refreshes consent before each photo; saves recheck consent. Originals stay unchanged, proposals unknown/unverified. Existing company Reference library controls handle bulk labeling and independent review.
+- External Supabase provides no developer session in this sandbox. Real-photo processing and signed-in acceptance remain unverified; zero processed photos never establishes a model result.

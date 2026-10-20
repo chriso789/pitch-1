@@ -69562,6 +69562,10 @@ export type Database = {
           stage_status: string
         }[]
       }
+      platform_photo_inventory_service: {
+        Args: { _actor: string; _batch?: boolean }
+        Returns: Json
+      }
       platform_training_overview: { Args: never; Returns: Json }
       populate_geometry_columns:
         | { Args: { tbl_oid: unknown; use_typmod?: boolean }; Returns: number }
