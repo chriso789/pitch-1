@@ -18,7 +18,7 @@
 - Edited document versions are saved via `src/lib/pdf-pages/documentVersions.ts` (new `documents` row linked by `versions_root_id`); measurements carry to a new version only as drafts and only where user-space geometry is unchanged, otherwise the sheet is flagged in `metadata.measurement_reconciliation`.
 - Fill Forms writes actual AcroForm field values with read-back verification; appearance-font failures block output, and digital-signature fields remain unsupported to avoid false signing claims.
 - PDF Studio tools are switched per company in `tenant_pdf_tool_settings` (admins only) and the `documents_pdf_tool_guard` trigger refuses PDF versions/conversions whose `metadata.pdf_tool` is off, so hiding buttons is never the only control and no browser override exists.
-- Read nested `AGENTS.md`. Shared-photo service checks current consent; browser outlines remain unverified. Grouped handlers use `_shared`.
+- Read nested `AGENTS.md`. Shared-photo service checks consent; outlines remain unverified. Grouped handlers use `_shared`.
 - Feature menus use `useEffectiveTenantId`; refresh company switches; tiers never override switches.
 - Photo Intelligence: docs/PHOTO_INTELLIGENCE_REQUIREMENTS.md — DINOv2 similarity+margin, unknown-on-uncertain, hard negatives; immutable originals, trusted hashes; second-inspector approval; audited company opt-in; counts-only overview; property-isolated evaluation, promotion gates; possible-anomaly regions only; uncertainty review-only; Image Trainer platform-role/DB enforced; company admins set opt-in.
 

@@ -3,6 +3,7 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { loadSavedCanvassPins, mergeSavedPins } from '@/lib/canvass/savedPins';
 
 import { type SymbolSettings, DEFAULT_DISPOSITION_SYMBOLS } from './MapSymbolSettings';
 
@@ -31,6 +32,7 @@ interface CanvassiqProperty {
   created_at: string;
   normalized_address_key?: string | null;
   building_snapped?: boolean | null;
+  flags?: unknown;
 }
 
 interface ContactStatusFallback {
@@ -254,6 +256,7 @@ function distanceMeters(lat1: number, lng1: number, lat2: number, lng2: number):
 // Prefer: building_snapped=true, then newest created_at
 // Properties with same key but >20m apart are treated as separate lots
 function deduplicateProperties(properties: CanvassiqProperty[], contacts: ContactStatusFallback[] = []): CanvassiqProperty[] {
+  const manualPins = properties.filter(p => p.normalized_address_key?.startsWith('manual_'));
   const addressMap = new Map<string, CanvassiqProperty>();
   
   for (const property of properties) {
@@ -471,7 +474,7 @@ function deduplicateProperties(properties: CanvassiqProperty[], contacts: Contac
     }
   }
 
-  return Array.from(addressMap.values());
+  return mergeSavedPins(Array.from(addressMap.values()), manualPins);
 }
 
 export default function GooglePropertyMarkersLayer({
@@ -629,7 +632,7 @@ export default function GooglePropertyMarkersLayer({
     // Build canonical key → property map
     const currentKeys = new Map<string, CanvassiqProperty>();
     for (const p of properties) {
-      const key = getNormalizedAddressKey(p) || p.id;
+      const key = p.id;
       if (!currentKeys.has(key)) {
         currentKeys.set(key, p);
       }
@@ -642,7 +645,7 @@ export default function GooglePropertyMarkersLayer({
     
     // Add new markers or update existing ones (position + icon always)
     currentKeys.forEach((property, key) => {
-      if (!property.lat || !property.lng) return;
+      if (!Number.isFinite(property.lat) || !Number.isFinite(property.lng)) return;
       
       const existingMarker = markersRef.current.get(key);
       
@@ -699,6 +702,7 @@ export default function GooglePropertyMarkersLayer({
       // Calculate limit based on zoom
       const limit = zoom >= 17 ? 500 : zoom >= 15 ? 300 : 100;
       
+      const savedPins = await loadSavedCanvassPins(effectiveTenantId, { minLat: sw.lat(), maxLat: ne.lat(), minLng: sw.lng(), maxLng: ne.lng() });
       let rawProperties: CanvassiqProperty[] | null = null;
       let error: { message?: string } | null = null;
 
@@ -757,7 +761,7 @@ export default function GooglePropertyMarkersLayer({
       
       const contactStatusFallbacks = (contactStatusRows || []) as ContactStatusFallback[];
       const properties = rawProperties
-        ? deduplicateProperties(applyContactStatusFallbacks(rawProperties as CanvassiqProperty[], contactStatusFallbacks), contactStatusFallbacks)
+        ? mergeSavedPins(deduplicateProperties(applyContactStatusFallbacks(mergeSavedPins(rawProperties as CanvassiqProperty[], savedPins), contactStatusFallbacks), contactStatusFallbacks), savedPins)
         : [];
       
       if (error) {
@@ -777,7 +781,8 @@ export default function GooglePropertyMarkersLayer({
           const clusters: string[][] = [];
           const remaining = [...unloadedCells];
           while (remaining.length > 0 && clusters.length < MAX_CONCURRENT_LOADS) {
-            const seed = remaining.shift()!;
+            const seed = remaining.shift();
+            if (!seed) break;
             const [seedLatStr, seedLngStr] = seed.split('_');
             const seedLat = parseFloat(seedLatStr);
             const seedLng = parseFloat(seedLngStr);
@@ -842,7 +847,7 @@ export default function GooglePropertyMarkersLayer({
             }
 
             const newProperties = newRawProperties
-              ? deduplicateProperties(applyContactStatusFallbacks(newRawProperties as CanvassiqProperty[], contactStatusFallbacks), contactStatusFallbacks)
+              ? mergeSavedPins(deduplicateProperties(applyContactStatusFallbacks(mergeSavedPins(newRawProperties as CanvassiqProperty[], savedPins), contactStatusFallbacks), contactStatusFallbacks), savedPins)
               : [];
             reconcileMarkers(newProperties, zoom, thisLoadVersion);
           }

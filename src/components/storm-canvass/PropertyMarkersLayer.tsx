@@ -8,7 +8,8 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { supabase } from '@/integrations/supabase/client';
-import { useUserProfile } from '@/contexts/UserProfileContext';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { loadSavedCanvassPins, mergeSavedPins } from '@/lib/canvass/savedPins';
 import { toast } from 'sonner';
 
 interface PropertyMarkersLayerProps {
@@ -87,7 +88,7 @@ export default function PropertyMarkersLayer({
   userLocation,
   onPropertyClick,
 }: PropertyMarkersLayerProps) {
-  const { profile } = useUserProfile();
+  const effectiveTenantId = useEffectiveTenantId();
   const markersRef = useRef<mapboxgl.Marker[]>([]);
   const [currentZoom, setCurrentZoom] = useState(map.getZoom());
   const loadedBoundsRef = useRef<string | null>(null);
@@ -262,7 +263,7 @@ export default function PropertyMarkersLayer({
   }, []);
 
   const loadProperties = useCallback(async () => {
-    if (!profile?.tenant_id || !map) return;
+    if (!effectiveTenantId || !map) return;
     
     const zoom = map.getZoom();
     
@@ -284,10 +285,11 @@ export default function PropertyMarkersLayer({
     const limit = zoom >= 16 ? 200 : zoom >= 14 ? 300 : 500;
     
     try {
-      const { data: properties, error } = await supabase
+      const savedPins = await loadSavedCanvassPins(effectiveTenantId, { minLat, maxLat, minLng, maxLng });
+      const { data: previewProperties, error } = await supabase
         .from('canvassiq_properties')
         .select('id, lat, lng, address, disposition, owner_name, phone_numbers, emails, homeowner, notes, property_data')
-        .eq('tenant_id', profile.tenant_id)
+        .eq('tenant_id', effectiveTenantId)
         .gte('lat', minLat)
         .lte('lat', maxLat)
         .gte('lng', minLng)
@@ -299,6 +301,7 @@ export default function PropertyMarkersLayer({
         return;
       }
       
+      const properties = mergeSavedPins(previewProperties || [], savedPins);
       // If no properties exist around user location, try to load parcels
       if ((!properties || properties.length === 0) && zoom >= 14) {
         console.log('[PropertyMarkersLayer] No properties found, loading parcels...');
@@ -312,7 +315,7 @@ export default function PropertyMarkersLayer({
       }
       
       // Compute offsets for nearby same-number pins
-      const validProperties = (properties || []).filter((p: any) => p.lat && p.lng);
+      const validProperties = properties.filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng));
       const offsets = computeOffsets(validProperties);
 
       // ---- Fetch CRM contacts (leads + projects) in same bounds to overlay status on pins ----
@@ -328,7 +331,7 @@ export default function PropertyMarkersLayer({
               projects(id, status)
             )
           `)
-          .eq('tenant_id', profile.tenant_id)
+          .eq('tenant_id', effectiveTenantId)
           .not('latitude', 'is', null)
           .not('longitude', 'is', null)
           .gte('latitude', minLat).lte('latitude', maxLat)
@@ -400,14 +403,14 @@ export default function PropertyMarkersLayer({
     } catch (err) {
       console.error('Error in loadProperties:', err);
     }
-  }, [profile?.tenant_id, map, onPropertyClick, clearMarkers, createMarkerElement, computeOffsets]);
+  }, [effectiveTenantId, map, onPropertyClick, clearMarkers, createMarkerElement, computeOffsets]);
 
   const loadParcelsFromEdgeFunction = async (lat: number, lng: number, radius: number) => {
-    if (!profile?.tenant_id) return;
+    if (!effectiveTenantId) return;
     
     try {
       const { data, error } = await supabase.functions.invoke('canvassiq-load-parcels', {
-        body: { lat, lng, radius, tenant_id: profile.tenant_id }
+        body: { lat, lng, radius, tenant_id: effectiveTenantId }
       });
 
       if (error) {
@@ -443,7 +446,8 @@ export default function PropertyMarkersLayer({
     map.on('zoomend', handleZoomEnd);
     map.on('moveend', handleMoveEnd);
     
-    // Initial load
+    // Company changes must not reuse the prior company viewport cache.
+    loadedBoundsRef.current = null;
     loadProperties();
     
     return () => {
