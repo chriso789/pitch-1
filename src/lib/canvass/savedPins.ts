@@ -4,6 +4,10 @@ export const SAVED_PIN_FILTER = 'flags->>manual_pin.eq.true,contact_id.not.is.nu
 
 export interface PinBounds { minLat: number; maxLat: number; minLng: number; maxLng: number }
 
+export function pinContactScope(tenantId: string, locationId: string | null) {
+  return { tenant_id: tenantId, location_id: locationId };
+}
+
 // Saved work is paginated separately from the limited parcel preview.
 export async function loadSavedCanvassPins(tenantId: string, bounds: PinBounds) {
   const pins = [];

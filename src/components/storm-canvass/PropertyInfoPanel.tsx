@@ -23,7 +23,7 @@ import { useUserProfile } from '@/contexts/UserProfileContext';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { toast } from 'sonner';
 import { useLocation } from '@/contexts/LocationContext';
-import { linkPinToContact } from '@/lib/canvass/savedPins';
+import { linkPinToContact, pinContactScope } from '@/lib/canvass/savedPins';
 import { cn } from '@/lib/utils';
 import FastEstimateModal from './FastEstimateModal';
 import { CanvassPhotoCapture } from './CanvassPhotoCapture';
@@ -556,8 +556,7 @@ export default function PropertyInfoPanel({
 
           const propData = localProperty?.property_data || {};
           const newContact = {
-            tenant_id: effectiveTenantId,
-            location_id: currentLocationId,
+            ...pinContactScope(effectiveTenantId, currentLocationId),
             type: 'homeowner' as const,
             first_name: resolvedFirst,
             last_name: resolvedLast,
@@ -679,8 +678,7 @@ export default function PropertyInfoPanel({
 
       const propData = localProperty?.property_data || {};
       const newContact = {
-        tenant_id: effectiveTenantId,
-        location_id: currentLocationId,
+        ...pinContactScope(effectiveTenantId, currentLocationId),
         type: 'homeowner' as const,
         first_name: firstName,
         last_name: lastName,
@@ -732,7 +730,6 @@ export default function PropertyInfoPanel({
       const { data: linkedExisting } = await supabase
         .from('contacts')
         .select('*')
-        .eq('tenant_id', effectiveTenantId)
         .eq('tenant_id', effectiveTenantId)
         .eq('canvassiq_property_id', property.id)
         .eq('is_deleted', false)

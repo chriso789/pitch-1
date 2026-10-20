@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const { from } = vi.hoisted(() => ({ from: vi.fn() }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { from } }));
-import { linkPinToContact, loadSavedCanvassPins, mergeSavedPins } from '@/lib/canvass/savedPins';
+import { linkPinToContact, loadSavedCanvassPins, mergeSavedPins, pinContactScope } from '@/lib/canvass/savedPins';
 
 function query(result: unknown) {
   const q: Record<string, any> = {};
@@ -12,6 +12,9 @@ function query(result: unknown) {
 }
 describe('saved canvassing work', () => {
   beforeEach(() => vi.clearAllMocks());
+  it('saves pushed Contacts in the selected company and location', () => {
+    expect(pinContactScope('selected-company', 'selected-location')).toEqual({ tenant_id: 'selected-company', location_id: 'selected-location' });
+  });
   it('reloads all saved pins beyond the parcel preview limit in the selected company', async () => {
     const a = query({ data: Array.from({ length: 500 }, (_, i) => ({ id: String(i) })), error: null });
     const b = query({ data: [{ id: 'older-pin' }], error: null });
@@ -24,7 +27,7 @@ describe('saved canvassing work', () => {
     expect(a.or).toHaveBeenCalledWith('flags->>manual_pin.eq.true,contact_id.not.is.null,and(disposition.not.is.null,disposition.neq.not_contacted)');
   });
   it('keeps saved pins after parcel refresh and keeps separate dropped houses', () => {
-    expect(mergeSavedPins([{ id: 'parcel' }, { id: 'house-a' }], [{ id: 'house-a' }, { id: 'house-b' }])).map(p => p.id))
+    expect(mergeSavedPins([{ id: 'parcel' }, { id: 'house-a' }], [{ id: 'house-a' }, { id: 'house-b' }]).map(p => p.id))
       .toEqual(['parcel', 'house-a', 'house-b']);
   });
   it('confirms a pushed Contact is linked to the saved pin in the selected company', async () => {
