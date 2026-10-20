@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Loader2, MapPin } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { edgeApi } from "@/lib/edgeApi";
 import { toast } from "sonner";
 
 interface DropPinDialogProps {
@@ -19,7 +19,6 @@ interface DropPinDialogProps {
   lat: number;
   lng: number;
   tenantId: string;
-  userId: string;
   onSuccess: () => void;
 }
 
@@ -29,34 +28,34 @@ export default function DropPinDialog({
   lat,
   lng,
   tenantId,
-  userId,
   onSuccess,
 }: DropPinDialogProps) {
   const [runEnrichment, setRunEnrichment] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const handleDrop = async () => {
+    if (saving) return;
     setSaving(true);
     try {
-      const { data, error } = await supabase.functions.invoke("canvass-drop-pin", {
-        body: { tenant_id: tenantId, user_id: userId, lat, lng, run_enrichment: runEnrichment },
-      });
-
-      if (error) throw error;
+      const { data, error } = await edgeApi<{ success: boolean; property: { id: string } }>(
+        'canvass-api', '/pin/drop', { lat, lng, run_enrichment: runEnrichment },
+        { headers: { 'x-pitch-tenant': tenantId } },
+      );
+      if (error) throw new Error(error);
+      if (!data?.success || !data.property?.id) throw new Error('Pin was not saved. Please try again.');
 
       toast.success("Pin dropped successfully");
       onOpenChange(false);
       onSuccess();
-    } catch (err: any) {
-      console.error(err);
-      toast.error(err.message || "Failed to drop pin");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to drop pin");
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(next) => { if (!saving) onOpenChange(next); }}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">

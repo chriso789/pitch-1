@@ -711,7 +711,7 @@ export default function GooglePropertyMarkersLayer({
             .from('canvassiq_properties')
             .select('id, lat, lng, disposition, contact_id, address, owner_name, phone_numbers, emails, homeowner, searchbug_data, tenant_id, created_at, normalized_address_key, building_snapped')
             .eq('tenant_id', effectiveTenantId)
-            .in('id', chunk)
+            .or(`id.in.(${chunk.join(',')}),flags->>manual_pin.eq.true`)
             .gte('lat', sw.lat())
             .lte('lat', ne.lat())
             .gte('lng', sw.lng())
@@ -729,6 +729,7 @@ export default function GooglePropertyMarkersLayer({
           .lte('lat', ne.lat())
           .gte('lng', sw.lng())
           .lte('lng', ne.lng())
+          .order('created_at', { ascending: false })
           .limit(limit);
         rawProperties = res.data;
         error = res.error;
@@ -830,6 +831,7 @@ export default function GooglePropertyMarkersLayer({
               .lte('lat', ne.lat())
               .gte('lng', sw.lng())
               .lte('lng', ne.lng())
+              .order('created_at', { ascending: false })
               .limit(limit);
             
             // Final staleness + unmount check before reconciliation
