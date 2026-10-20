@@ -761,7 +761,7 @@ export default function GooglePropertyMarkersLayer({
       
       const contactStatusFallbacks = (contactStatusRows || []) as ContactStatusFallback[];
       const properties = rawProperties
-        ? deduplicateProperties(applyContactStatusFallbacks(mergeSavedPins(rawProperties as CanvassiqProperty[], savedPins), contactStatusFallbacks), contactStatusFallbacks)
+        ? mergeSavedPins(deduplicateProperties(applyContactStatusFallbacks(mergeSavedPins(rawProperties as CanvassiqProperty[], savedPins), contactStatusFallbacks), contactStatusFallbacks), savedPins)
         : [];
       
       if (error) {
@@ -847,7 +847,7 @@ export default function GooglePropertyMarkersLayer({
             }
 
             const newProperties = newRawProperties
-              ? deduplicateProperties(applyContactStatusFallbacks(mergeSavedPins(newRawProperties as CanvassiqProperty[], savedPins), contactStatusFallbacks), contactStatusFallbacks)
+              ? mergeSavedPins(deduplicateProperties(applyContactStatusFallbacks(mergeSavedPins(newRawProperties as CanvassiqProperty[], savedPins), contactStatusFallbacks), contactStatusFallbacks), savedPins)
               : [];
             reconcileMarkers(newProperties, zoom, thisLoadVersion);
           }
