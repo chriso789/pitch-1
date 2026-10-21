@@ -1,8 +1,8 @@
 # Roadmap
 
 ## Real-photo acceptance execution (2026-10-21)
-- [ ] Audit deployed model assets and browser ONNX execution separately from background workers; restore bounded browser testing if available
-- [ ] Identify centrally hosted executor integration using existing authorized infrastructure where feasible; no employee computers, provisioning or purchases
+- [x] Deployed binary assets verified on production and preview; production browser DINOv2/SAM executed successfully on synthetic texture (execution evidence only); restored separate bounded ten-photo browser action and per-photo results
+- [x] Audited central executor integration: authenticated pull runner exists; no verified centrally deployed process/scheduler. Recommended authorized container/CPU scheduled runner; no purchases or provisioning
 - [ ] Process 10 eligible CRM originals in signed-in developer browser; background hosting must not block browser testing; verify saved outlines and timings
 - [ ] Independently label/review useful components and verify approved-only, currently consented shared publication — BLOCKED: external unmanaged authentication unavailable here; requires two authorized inspectors, never agent-fabricated approval
 - [ ] Benchmark on properties excluded from references; report measured precision, recall, unknowns and timings — requires independently approved reference/test labels and executed inference
@@ -13,7 +13,7 @@
 - [x] Durable queue/API and bounded local CPU runner implemented; database leases, retries, cancellation and saved progress; hosting not operationally verified
 - [x] Shared approved-reference publisher and anonymous-handle inference distribution; direct private provenance reads revoked; no approved references yet
 - [x] 20 JS and 5 Python tests pass (synthetic); live SQL privilege/unsigned checks pass; invalid API calls return 401/403; preview build OK. Report: docs/PHOTO_INTELLIGENCE_GAP_CLOSURE.md
-- [ ] Queue transaction/signed-in flow and first 10 real photos — BLOCKED: no developer session, verified host or deliverable model binaries; local asset requests returned HTML, not ONNX
+- [ ] Queue transaction/signed-in flow — BLOCKED: no developer session or verified central executor. Browser ten-photo path is independent and assets execute on deployed origin; customer-photo save/read-back remains unverified here
 - [ ] Approved-data training, held-out accuracy, compatible export and installed-weight activation/rollback — BLOCKED: independently approved representative data and real checkpoint unavailable
 - [ ] Remote GitHub verification — BLOCKED: API credentials rejected; observed platform-managed checkpoint 031bcb9b9cf6f13a47dec4d804808d3f78f975af
 

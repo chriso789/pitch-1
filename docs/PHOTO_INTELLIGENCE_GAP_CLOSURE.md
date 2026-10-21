@@ -1,5 +1,16 @@
 # GitHub gap closure — 2026-10-21
 
+## Corrected deployed execution audit — 2026-10-21
+
+- All three exact existing asset URLs on `https://pitch-crm.ai` and the hosted preview returned binary `206 application/octet-stream` range responses with expected sizes: DINOv2 24,451,943 bytes; SAM encoder 53,002,825; SAM decoder 8,942,627. Earlier localhost HTML fallback does not establish a deployed delivery failure.
+- Executed the published application's actual ONNX module in Chromium on the production origin, without a customer session or customer-photo access. DINOv2 loaded and returned 256 finite patch similarity values; model load 5.16s, inference 0.53s. SAM loaded and executed; load 1.18s, inference 13.75s, nine unknown outlines, zero verified classes. Input was synthetic texture: this verifies deployed execution, NOT roofing recognition or customer-photo acceptance.
+- The published version currently exposes “Prepare up to 100 authorized photos”; it is foreground browser preparation, not the durable worker queue. Current source had replaced this with a queue-only action. Restored a separate “Test first 10 in browser” action, bounded before downloads and inference, with current consent/access refresh and per-photo results. Changes are preview/source only; production was not published.
+- Signed-in ten-customer-photo download → inference → save → read-back remains unverified here because external unmanaged Supabase sessions are unavailable. A signed-in platform developer can use the browser action independently of background-worker availability; company owners without platform developer permission cannot.
+- Background jobs have a real pull-executor implementation (`prepare_photos.py`) and authenticated claim/finish integration, but no verified centrally running process, scheduler, model mounts or heartbeat. Queue rows alone do not execute models. `workerConfigured: false` is a conservative hardcoded declaration, not health detection.
+- Recommended central architecture: existing authorized container/CPU compute, if available and suitable → bounded scheduled pull runner → Supabase lease claim → short-lived original → ONNX CPU execution → atomic finish. Supabase remains authority for permissions, consent, retries and progress. Existing measurement Docker configuration does not package or schedule preparation; no authorized hosting connection was established, so no deployment/provisioning was performed. Edge Functions remain the control plane, not the heavy model executor. Train checkpoints separately only with approved labels, evaluation data and authorization.
+
+The sections below describe the earlier implementation audit; localhost-only asset conclusions and employee-machine wording are superseded by this deployed audit.
+
 ## Observed live data
 
 Read-only database counts: 457 customer photos from 3 companies and 41 properties; 234 currently consented photos from 1 company and 11 properties. Two photo-owning companies have no current shared-training consent. Eligible storage references matched stored objects (0 missing references); signed download/read access remains unverified.
