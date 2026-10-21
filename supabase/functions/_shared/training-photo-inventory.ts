@@ -1,6 +1,6 @@
 import type { Context } from 'jsr:@hono/hono';
 import { jsonErr, jsonOk, serviceClient, type RouterEnv } from './router.ts';
-import { currentSharedConsent, validSharedPolygon } from './training-photo-validation.ts';
+import { currentSharedConsent } from './training-photo-validation.ts';
 
 export async function trainingPhotoInventory(c: Context<RouterEnv>, batch = false) {
   const actor = c.get('userId');
@@ -56,24 +56,4 @@ export async function saveTrainingPreparation(c: Context<RouterEnv>) {
   }
   // Browser results now require a fixed test identity and transactional read-back.
   return jsonErr(c, 'test_required', 'Use the ten-photo browser test to save outlines and processing results', 400);
-  /* Legacy outline writes are disabled; the browser-test route owns atomic persistence.
-  const report = body.report;
-  const regions = report?.regions ?? [];
-  if (!['completed', 'no_useful_regions', 'failed'].includes(body.status) || !Array.isArray(regions) || regions.length > 1000 || regions.some((r: { polygon: unknown }) => !validSharedPolygon(r.polygon))) return jsonErr(c, 'invalid_input', 'Invalid outline result', 400);
-  if (body.status !== 'failed' && (!report?.models?.segmenter?.startsWith('sam') || !report?.models?.embedder)) return jsonErr(c, 'models_required', 'Both local models must complete', 400);
-  if (body.status !== 'failed') {
-    const quality = await svc.from('photo_triage_results').select('assessable').eq('tenant_id',photo.tenantId).eq('photo_id',photo.id).maybeSingle();
-    if (quality.data?.assessable !== true) return jsonErr(c,'quality_required','Photo must pass quality review',400);
-  }
-  if (regions.length) {
-    const existing = await svc.from('photo_region_proposals').select('id').eq('tenant_id',photo.tenantId).eq('source_photo_id',photo.id).limit(1);
-    if (!existing.data?.length) {
-      const saved = await svc.from('photo_region_proposals').insert(regions.map((r: { polygon: unknown; group: number }) => ({ tenant_id: photo.tenantId, source_photo_id: photo.id, property_key: photo.propertyKey, polygon: r.polygon, group_index: Number.isInteger(r.group) ? r.group : -1, suggestion: { kind: 'unknown', cls: null, similarity: null, margin: null, runnerUp: null }, status: 'unverified', segmenter_model: report.models.segmenter, embedder_model: report.models.embedder, timings_ms: report.timingsMs, created_by: actor })));
-      if (saved.error) return jsonErr(c,'save_failed','Outlines could not be saved',500);
-    }
-  }
-  const run = await svc.from('photo_proposal_runs').insert({ tenant_id: photo.tenantId, source_photo_id: photo.id, status: body.status, width_px: report?.imageSize?.width ?? null, height_px: report?.imageSize?.height ?? null, region_count: regions.length, invalid_region_count: Math.max(0,Math.round(body.invalid || 0)), duration_ms: Math.min(2147483647,Math.max(0,Math.round(body.duration || 0))), error: body.status === 'failed' ? 'Local photo processing failed; retry in developer browser' : null, segmenter_model: report?.models?.segmenter ?? null, created_by: actor });
-  if (run.error) return jsonErr(c,'save_failed','Processing history could not be saved',500);
-  return jsonOk(c,{ saved: true });
-  */
 }
