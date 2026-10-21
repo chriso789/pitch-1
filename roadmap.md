@@ -1,8 +1,8 @@
 # Roadmap
 
 ## Real-photo acceptance execution (2026-10-21)
-- [ ] Persist browser test history with exact reopen, resolution/outline/error/save evidence, rerun safety and outline preview; disable batches over ten until visual acceptance
-- [ ] Publish only after signed-in real-photo staging acceptance; verify GitHub sync and deployment — BLOCKED: external unmanaged authentication prevents signed-in testing here
+- [x] Implement private fixed-selection browser history, transactional idempotent saves/read-back, per-photo resolution/outline/failure evidence and selectable overlays; API/DB block batches over ten; 11 simulated regressions pass, signed-out route redirects, new private table/RPC deny app roles
+- [ ] Publish only after signed-in real-photo staging acceptance; verify GitHub sync and deployment — BLOCKED: external unmanaged authentication prevents signed-in testing here; grouped result API deployed, website not published; latest observed checkpoint 2656747c47f6cf2c39eb9744f9f8e392864dfdce, remote GitHub sync unverified
 - [x] Deployed binary assets verified on production and preview; production browser DINOv2/SAM executed successfully on synthetic texture (execution evidence only); restored separate bounded ten-photo browser action and per-photo results
 - [x] Audited central executor integration: authenticated pull runner exists; no verified centrally deployed process/scheduler. Recommended authorized container/CPU scheduled runner; no purchases or provisioning
 - [ ] Process 10 eligible CRM originals in signed-in developer browser; background hosting must not block browser testing; verify saved outlines and timings
