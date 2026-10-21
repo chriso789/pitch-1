@@ -5,7 +5,7 @@ import { CompanyTrainingContribution } from '@/components/photo-intelligence/Com
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { loadSharedInventory } from '@/lib/photo-intelligence/training/sharedInventory';
-import { prepareSharedPhotos } from '@/lib/photo-intelligence/training/sharedPreparation';
+import { loadPreparationJobs, preparationAction } from '@/lib/photo-intelligence/training/preparationJobs';
 
 /**
  * Developer-only Shared Training view (lives inside the Image Trainer).
@@ -17,6 +17,7 @@ export function PlatformTrainingTab({ tenantId }: { tenantId: string | null }) {
   const inventory = useQuery({ queryKey: ['pi-shared-inventory'], queryFn: () => loadSharedInventory(), enabled: developer.data === true, retry: false });
   const [progress, setProgress] = useState('');
   const [failure, setFailure] = useState('');
+  const jobs = useQuery({ queryKey: ['pi-preparation-jobs'], queryFn: loadPreparationJobs, enabled: developer.data === true, retry: false, refetchInterval: 10000 });
   const overview = useQuery({ queryKey: ['pi-platform-overview'], queryFn: loadPlatformOverview, enabled: developer.data === true, retry: false });
 
   return (
@@ -34,11 +35,27 @@ export function PlatformTrainingTab({ tenantId }: { tenantId: string | null }) {
               ['Unverified outlines', inventory.data.candidate_regions], ['Companies needing consent', inventory.data.companies_without_consent],
             ].map(([label, value]) => <div key={label}><dt className="text-xs text-muted-foreground">{label}</dt><dd className="text-xl font-semibold">{value}</dd></div>)}
           </dl>
-          <Button disabled={!!progress || !inventory.data.eligible_photos} onClick={async () => {
-            setFailure(''); setProgress('Preparing authorized photos');
-            try { await prepareSharedPhotos(setProgress); } catch (e) { setFailure(e instanceof Error ? e.message : 'Preparation failed'); }
-            finally { setProgress(''); await inventory.refetch(); }
-          }}>Prepare up to 100 authorized photos</Button>
+          <div className="flex flex-wrap gap-2">
+            <Button disabled={!!progress || !inventory.data.eligible_photos} onClick={async () => {
+              setFailure(''); setProgress('Creating preparation job');
+              try { await preparationAction('create', { limit: 10 }); } catch (e) { setFailure(e instanceof Error ? e.message : 'Preparation failed'); }
+              finally { setProgress(''); await jobs.refetch(); }
+            }}>Queue first 10 photos</Button>
+            <Button variant="outline" disabled={!!progress} onClick={async () => {
+              setFailure(''); setProgress('Publishing approved references');
+              try { await preparationAction('publish'); await inventory.refetch(); } catch (e) { setFailure(e instanceof Error ? e.message : 'Reference publication failed'); }
+              finally { setProgress(''); }
+            }}>Publish approved references</Button>
+          </div>
+          {jobs.data?.workerConfigured === false && <p role="status" className="text-sm text-muted-foreground">Processing host: not verified. Queued photos remain pending until an authorized host runs preparation.</p>}
+          {jobs.error && <p role="alert" className="text-sm text-destructive">{jobs.error.message}</p>}
+          {jobs.data?.jobs.map((job) => <div key={job.id} className="border-t py-3 space-y-2">
+            <div className="flex flex-wrap items-center gap-3"><span className="font-medium">{job.status.replace(/_/g, ' ')}</span><span className="text-sm text-muted-foreground">{job.photo_preparation_items.filter((i) => !['pending', 'running', 'retry_wait'].includes(i.status)).length} / {job.photo_preparation_items.length} photos</span>
+              {['queued', 'running', 'blocked'].includes(job.status) && <Button size="sm" variant="outline" onClick={async () => { try { await preparationAction('manage', { jobId: job.id, action: job.status === 'blocked' ? 'resume' : 'cancel' }); await jobs.refetch(); } catch (e) { setFailure(e instanceof Error ? e.message : 'Request failed'); } }}>{job.status === 'blocked' ? 'Resume' : 'Cancel'}</Button>}
+            </div>
+            {job.blocked_reason && <p className="text-sm text-destructive">{job.blocked_reason}</p>}
+            <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left text-muted-foreground"><th>Photo</th><th>Status</th><th>Attempts</th><th>Outlines</th><th>Time</th><th>Error</th></tr></thead><tbody>{job.photo_preparation_items.map((item, i) => <tr key={item.id} className="border-t"><td>{i + 1}</td><td>{item.status.replace(/_/g, ' ')}</td><td>{item.attempts}</td><td>{item.region_count}</td><td>{item.duration_ms === null ? '—' : `${(item.duration_ms / 1000).toFixed(1)}s`}</td><td>{item.error ?? '—'}</td></tr>)}</tbody></table></div>
+          </div>)}
           {progress && <p role="status" className="text-sm">{progress}</p>}
           {failure && <p role="alert" className="text-sm text-destructive">{failure}</p>}
           {inventory.data.failures.map((r) => <p key={r.reason} className="text-sm text-destructive">{r.photos}: {r.reason}</p>)}

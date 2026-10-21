@@ -39024,6 +39024,118 @@ export type Database = {
         }
         Relationships: []
       }
+      photo_preparation_items: {
+        Row: {
+          attempts: number
+          created_at: string
+          duration_ms: number | null
+          error: string | null
+          id: string
+          job_id: string
+          lease_token: string | null
+          lease_until: string | null
+          next_attempt_at: string
+          original_sha256: string | null
+          photo_id: string
+          property_key: string
+          region_count: number
+          result: Json | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          duration_ms?: number | null
+          error?: string | null
+          id?: string
+          job_id: string
+          lease_token?: string | null
+          lease_until?: string | null
+          next_attempt_at?: string
+          original_sha256?: string | null
+          photo_id: string
+          property_key: string
+          region_count?: number
+          result?: Json | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          duration_ms?: number | null
+          error?: string | null
+          id?: string
+          job_id?: string
+          lease_token?: string | null
+          lease_until?: string | null
+          next_attempt_at?: string
+          original_sha256?: string | null
+          photo_id?: string
+          property_key?: string
+          region_count?: number
+          result?: Json | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "photo_preparation_items_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "photo_preparation_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "photo_preparation_items_photo_id_fkey"
+            columns: ["photo_id"]
+            isOneToOne: false
+            referencedRelation: "customer_photos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "photo_preparation_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      photo_preparation_jobs: {
+        Row: {
+          blocked_reason: string | null
+          created_at: string
+          created_by: string
+          id: string
+          item_limit: number
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          blocked_reason?: string | null
+          created_at?: string
+          created_by: string
+          id?: string
+          item_limit: number
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          blocked_reason?: string | null
+          created_at?: string
+          created_by?: string
+          id?: string
+          item_limit?: number
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       photo_proposal_runs: {
         Row: {
           created_at: string
@@ -39139,6 +39251,7 @@ export type Database = {
         Row: {
           approved_at: string
           approved_by: string
+          candidate_id: string | null
           cls: string
           created_at: string
           embedding: Json
@@ -39149,10 +39262,12 @@ export type Database = {
           source_finding_id: string | null
           source_photo_id: string
           source_region_id: string
+          tenant_id: string | null
         }
         Insert: {
           approved_at?: string
           approved_by: string
+          candidate_id?: string | null
           cls: string
           created_at?: string
           embedding: Json
@@ -39163,10 +39278,12 @@ export type Database = {
           source_finding_id?: string | null
           source_photo_id: string
           source_region_id: string
+          tenant_id?: string | null
         }
         Update: {
           approved_at?: string
           approved_by?: string
+          candidate_id?: string | null
           cls?: string
           created_at?: string
           embedding?: Json
@@ -39177,8 +39294,24 @@ export type Database = {
           source_finding_id?: string | null
           source_photo_id?: string
           source_region_id?: string
+          tenant_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "photo_reference_examples_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "photo_reference_candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "photo_reference_examples_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       photo_reference_reviews: {
         Row: {
@@ -39226,9 +39359,12 @@ export type Database = {
           created_at: string
           created_by: string
           embedder_model: string | null
+          embedding: Json | null
           group_index: number
           id: string
+          original_sha256: string | null
           polygon: Json
+          preparation_item_id: string | null
           property_key: string
           segmenter_model: string | null
           source_photo_id: string
@@ -39241,9 +39377,12 @@ export type Database = {
           created_at?: string
           created_by?: string
           embedder_model?: string | null
+          embedding?: Json | null
           group_index?: number
           id?: string
+          original_sha256?: string | null
           polygon: Json
+          preparation_item_id?: string | null
           property_key: string
           segmenter_model?: string | null
           source_photo_id: string
@@ -39256,9 +39395,12 @@ export type Database = {
           created_at?: string
           created_by?: string
           embedder_model?: string | null
+          embedding?: Json | null
           group_index?: number
           id?: string
+          original_sha256?: string | null
           polygon?: Json
+          preparation_item_id?: string | null
           property_key?: string
           segmenter_model?: string | null
           source_photo_id?: string
@@ -39267,7 +39409,15 @@ export type Database = {
           tenant_id?: string
           timings_ms?: Json | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "photo_region_proposals_preparation_item_id_fkey"
+            columns: ["preparation_item_id"]
+            isOneToOne: false
+            referencedRelation: "photo_preparation_items"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       photo_training_contribution_events: {
         Row: {
@@ -69498,6 +69648,19 @@ export type Database = {
         }
         Returns: undefined
       }
+      photo_preparation_claim: { Args: never; Returns: Json }
+      photo_preparation_create: { Args: { _limit?: number }; Returns: string }
+      photo_preparation_finish: {
+        Args: { _item: string; _lease: string; _result: Json }
+        Returns: undefined
+      }
+      photo_preparation_manage: {
+        Args: { _action: string; _job: string }
+        Returns: undefined
+      }
+      photo_shared_consent: { Args: { _tenant: string }; Returns: boolean }
+      photo_shared_reference_inference: { Args: never; Returns: Json }
+      photo_shared_reference_publish: { Args: never; Returns: number }
       photo_training_access: { Args: { t: string }; Returns: boolean }
       photo_training_canvass_register: {
         Args: {

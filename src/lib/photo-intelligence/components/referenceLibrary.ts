@@ -25,28 +25,26 @@ const EMBEDDING_MODEL_ID = 'dinov2-small';
 /** Load the latest reference library for the current embedding model. Empty on any failure — callers treat that as "no library", never as an error worth inventing labels over. */
 export async function loadReferenceLibrary(): Promise<VersionedReferenceLibrary> {
   try {
-    const { data, error } = await (supabase.from as any)('photo_reference_examples')
-      .select('id, cls, embedding, library_version, source_photo_id, source_region_id, approved_by')
-      .eq('embedding_model_id', EMBEDDING_MODEL_ID)
-      .order('library_version', { ascending: false })
-      .limit(2000);
-    if (error || !data?.length) return emptyLibrary(EMBEDDING_MODEL_ID);
+    const { data, error } = await (supabase.rpc as any)('photo_shared_reference_inference');
+    if (error || data?.embeddingModelId !== EMBEDDING_MODEL_ID || !Array.isArray(data.examples)) return emptyLibrary(EMBEDDING_MODEL_ID);
     const examples: ReferenceExample[] = [];
-    for (const row of data) {
+    for (const row of data.examples) {
       const raw = row.embedding;
-      if (!Array.isArray(raw) || !raw.length) continue;
+      if (!Array.isArray(raw) || raw.length !== 384 || !raw.every(Number.isFinite)) continue;
       examples.push({
         id: String(row.id),
         cls: row.cls as ReferenceClass,
         embedding: Float32Array.from(raw.map(Number)),
-        libraryVersion: Number(row.library_version) || 1,
-        sourcePhotoId: String(row.source_photo_id),
-        sourceRegionId: String(row.source_region_id),
-        approvedBy: String(row.approved_by),
+        libraryVersion: Number(row.libraryVersion) || 1,
+        // Private provenance stays on the server. These opaque handles cannot
+        // be used to discover customer photographs or inspector identities.
+        sourcePhotoId: `shared:${String(row.id)}`,
+        sourceRegionId: `shared:${String(row.id)}`,
+        approvedBy: 'server-verified-independent-review',
       });
     }
     return {
-      version: Math.max(...data.map((r: any) => Number(r.library_version) || 1)),
+      version: Number(data.version) || 0,
       embeddingModelId: EMBEDDING_MODEL_ID,
       examples,
     };
@@ -120,23 +118,7 @@ export async function promoteCorrectionToReference(input: {
     return { ok: false, error: 'A reference example needs an independent approver who is not the labeler.' };
   }
   if (!input.embedding.length) return { ok: false, error: 'Missing region embedding.' };
-  const { data: maxRow } = await (supabase.from as any)('photo_reference_examples')
-    .select('library_version')
-    .eq('embedding_model_id', EMBEDDING_MODEL_ID)
-    .order('library_version', { ascending: false })
-    .limit(1);
-  const nextVersion = (Number(maxRow?.[0]?.library_version) || 0) + 1;
-  const { error } = await (supabase.from as any)('photo_reference_examples').insert({
-    cls: input.cls,
-    embedding: Array.from(input.embedding),
-    embedding_model_id: EMBEDDING_MODEL_ID,
-    library_version: nextVersion,
-    source_photo_id: input.sourcePhotoId,
-    source_region_id: input.sourceRegionId,
-    source_finding_id: input.sourceFindingId ?? null,
-    labeled_by: input.labeledBy,
-    approved_by: input.approvedBy,
-  });
-  if (error) return { ok: false, error: error.message };
-  return { ok: true };
+  // Client-provided approver identifiers are not independent approval evidence.
+  // Only the server publisher may copy reviewed, consented candidates.
+  return { ok: false, error: 'Save this correction as a reference candidate, obtain independent review, then publish approved references in Image Trainer.' };
 }
