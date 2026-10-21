@@ -1,5 +1,12 @@
 # Roadmap
 
+## GitHub Photo Intelligence gap closure (2026-10-21)
+- [ ] Refresh live consent-gated counts and audit referenced 501 routes
+- [ ] Replace browser-only bulk preparation with durable bounded jobs, leases, retries, cancellation and saved progress
+- [ ] Centralize independently approved consented references with private provenance and safe inference distribution
+- [ ] Test queue/access/library contracts and document real execution versus infrastructure/data blockers
+- [ ] First 10 real photos, approved-data training, held-out accuracy and installed-weight activation — pending verified worker hosting, developer access and independently approved data
+
 ## Canvass pins → Contacts and reopen (2026-10-20)
 - [x] Add Customer saves/reuses a linked Contact in the selected company/location; confirms saved link and refreshes map without moving the pin
 - [x] Both map providers page saved manual/marked/CRM-linked pins separately from limited parcel previews; 13 regression checks pass; preview build OK
