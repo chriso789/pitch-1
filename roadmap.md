@@ -1,5 +1,12 @@
 # Roadmap
 
+## Real-photo acceptance execution (2026-10-21)
+- [ ] Verify an existing authorized execution host with trusted DINOv2/SAM files before claiming photo work
+- [ ] Process 10 eligible CRM originals and verify saved outlines plus interruption/resumption — requires verified host and authorized developer access
+- [ ] Independently label/review useful components and verify approved-only, currently consented shared publication — requires two authorized inspectors
+- [ ] Benchmark on properties excluded from references; report measured precision, recall, unknowns and timings — requires independently approved reference/test labels and executed inference
+- No additional infrastructure, synthetic accuracy claims, purchases or customer deployment in this phase
+
 ## GitHub Photo Intelligence gap closure (2026-10-21)
 - [x] Refresh live counts: 457 photos; 234 consented, 1 company, 11 properties; 0 processed/approved/models. Eight legacy 501 routes have no identified callers
 - [x] Durable queue/API and bounded local CPU runner implemented; database leases, retries, cancellation and saved progress; hosting not operationally verified
