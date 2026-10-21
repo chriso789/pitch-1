@@ -1,0 +1,1 @@
+CREATE POLICY photo_browser_tests_service ON public.photo_browser_tests FOR ALL TO service_role USING (true) WITH CHECK (true);

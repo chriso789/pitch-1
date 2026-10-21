@@ -38682,6 +38682,33 @@ export type Database = {
         }
         Relationships: []
       }
+      photo_browser_tests: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          results: Json
+          selection: Json
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          results?: Json
+          selection: Json
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          results?: Json
+          selection?: Json
+          updated_at?: string
+        }
+        Relationships: []
+      }
       photo_damage_deployments: {
         Row: {
           action: string
@@ -69618,6 +69645,10 @@ export type Database = {
       pdf_tool_enabled: {
         Args: { _tenant: string; _tool: string }
         Returns: boolean
+      }
+      photo_browser_result_save: {
+        Args: { _actor: string; _photo: string; _result: Json; _test: string }
+        Returns: Json
       }
       photo_damage_model_activate: {
         Args: { m: string; note: string; rollback?: boolean }

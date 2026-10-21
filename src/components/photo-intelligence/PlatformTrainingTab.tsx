@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button';
 import { loadSharedInventory } from '@/lib/photo-intelligence/training/sharedInventory';
 import { loadPreparationJobs, preparationAction } from '@/lib/photo-intelligence/training/preparationJobs';
 import { prepareSharedPhotos, type BrowserPreparationResult } from '@/lib/photo-intelligence/training/sharedPreparation';
+import { loadBrowserTest } from '@/lib/photo-intelligence/training/browserResults';
+import { BrowserTestResults } from './BrowserTestResults';
 
 /**
  * Developer-only Shared Training view (lives inside the Image Trainer).
@@ -19,6 +21,7 @@ export function PlatformTrainingTab({ tenantId }: { tenantId: string | null }) {
   const [progress, setProgress] = useState('');
   const [failure, setFailure] = useState('');
   const [browserResults, setBrowserResults] = useState<BrowserPreparationResult[]>([]);
+  const browserTest = useQuery({ queryKey: ['pi-browser-test'], queryFn: () => loadBrowserTest(), enabled: developer.data === true, retry: false });
   const jobs = useQuery({ queryKey: ['pi-preparation-jobs'], queryFn: loadPreparationJobs, enabled: developer.data === true, retry: false, refetchInterval: 10000 });
   const overview = useQuery({ queryKey: ['pi-platform-overview'], queryFn: loadPlatformOverview, enabled: developer.data === true, retry: false });
 
@@ -40,11 +43,11 @@ export function PlatformTrainingTab({ tenantId }: { tenantId: string | null }) {
           <div className="flex flex-wrap gap-2">
             <Button disabled={!!progress || !inventory.data.eligible_photos} onClick={async () => {
               setFailure(''); setBrowserResults([]); setProgress('Preparing browser test');
-              try { setBrowserResults(await prepareSharedPhotos(setProgress)); }
+              try { setBrowserResults(await prepareSharedPhotos(setProgress, (r) => setBrowserResults((previous) => [...previous.filter((p) => p.photoId !== r.photoId), r]))); }
               catch (e) { setFailure(e instanceof Error ? e.message : 'Browser preparation failed'); }
-              finally { setProgress(''); await inventory.refetch(); }
+              finally { setProgress(''); await inventory.refetch(); await browserTest.refetch(); }
             }}>Test first 10 in browser</Button>
-            <Button disabled={!!progress || !inventory.data.eligible_photos} onClick={async () => {
+            <Button disabled={!!progress || !inventory.data.eligible_photos || jobs.data?.workerConfigured !== true} onClick={async () => {
               setFailure(''); setProgress('Creating preparation job');
               try { await preparationAction('create', { limit: 10 }); } catch (e) { setFailure(e instanceof Error ? e.message : 'Preparation failed'); }
               finally { setProgress(''); await jobs.refetch(); }
@@ -56,7 +59,8 @@ export function PlatformTrainingTab({ tenantId }: { tenantId: string | null }) {
             }}>Publish approved references</Button>
           </div>
           {jobs.data?.workerConfigured === false && <p role="status" className="text-sm text-muted-foreground">Background executor: not verified. Browser testing is available separately.</p>}
-          {browserResults.length > 0 && <div className="overflow-x-auto"><table className="w-full text-sm"><caption className="text-left font-semibold py-2">Browser test results</caption><thead><tr className="text-left text-muted-foreground"><th>Photo</th><th>Status</th><th>Unverified outlines</th><th>Time</th><th>Error</th></tr></thead><tbody>{browserResults.map((item) => <tr key={item.photo} className="border-t"><td>{item.photo}</td><td>{item.status.replace(/_/g, ' ')}</td><td>{item.regions}</td><td>{(item.durationMs / 1000).toFixed(1)}s</td><td>{item.error ?? '—'}</td></tr>)}</tbody></table></div>}
+          {browserTest.error && <p role="alert" className="text-sm text-destructive">Saved test results could not be reopened.</p>}
+          {(browserResults.length > 0 || !!browserTest.data?.results.length) && <BrowserTestResults results={browserResults.length ? browserResults : browserTest.data?.results ?? []} photos={browserTest.data?.photos ?? []} />}
           {jobs.error && <p role="alert" className="text-sm text-destructive">{jobs.error.message}</p>}
           {jobs.data?.jobs.map((job) => <div key={job.id} className="border-t py-3 space-y-2">
             <div className="flex flex-wrap items-center gap-3"><span className="font-medium">{job.status.replace(/_/g, ' ')}</span><span className="text-sm text-muted-foreground">{job.photo_preparation_items.filter((i) => !['pending', 'running', 'retry_wait'].includes(i.status)).length} / {job.photo_preparation_items.length} photos</span>

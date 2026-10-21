@@ -5,6 +5,7 @@
 import { createRouter, jsonOk, jsonErr, requireAuth, requireTenant, serveRouter } from "../_shared/router.ts";
 import { trainingPhotoInventory, saveTrainingPreparation } from '../_shared/training-photo-inventory.ts';
 import { photoPreparationApi } from '../_shared/photo-preparation-api.ts';
+import { photoBrowserApi } from '../_shared/photo-browser-api.ts';
 
 const app = createRouter("training-data-api");
 
@@ -16,6 +17,10 @@ app.use("/*", requireAuth);
 app.post('/photos/inventory', (c) => trainingPhotoInventory(c));
 app.post('/photos/batch', (c) => trainingPhotoInventory(c, true));
 app.post('/photos/save', saveTrainingPreparation);
+// Auth mode: authenticated platform developer; private, consent-gated platform scope.
+app.post('/photos/browser/start', (c) => photoBrowserApi(c, 'start'));
+app.post('/photos/browser/read', (c) => photoBrowserApi(c, 'read'));
+app.post('/photos/browser/save', (c) => photoBrowserApi(c, 'save'));
 // Auth mode: authenticated platform developer; platform scope checked by RPC.
 app.post('/photos/jobs/create', (c) => photoPreparationApi(c, 'create'));
 app.post('/photos/jobs/list', (c) => photoPreparationApi(c, 'list'));

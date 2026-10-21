@@ -4,6 +4,8 @@ Generated: 2026-10-20T01:26:20.849Z
 
 ## Photo Intelligence update — 2026-10-21
 
+- `training-data-api`: `/photos/browser/start|read|save` add developer-only fixed ten-photo selections, consent-filtered original access, transactional idempotent result persistence/read-back. No new function folder; larger preparation batches are blocked pending visual acceptance.
+
 - `training-data-api`: `/photos/jobs/create|list|manage` and `/references/publish` are authenticated platform-developer routes, alongside existing inventory/batch/save. The remaining eight legacy 501 routes have no identified callers and are not Photo Intelligence blockers.
 - `ai-worker`: `/photos/claim|finish` require `INTERNAL_WORKER_SECRET`; photo/company identity comes from a database lease. No new function folder. Database owns a global single-flight lease, three-attempt backoff, consent rechecks and transactional completion.
 - Heavy DINOv2/SAM compute belongs to `worker/training/prepare_photos.py` on an existing authorized CPU host, not the Edge runtime. Hosting is NOT verified; no scheduler or paid host provisioned.
