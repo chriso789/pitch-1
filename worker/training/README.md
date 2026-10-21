@@ -1,5 +1,19 @@
 # Local roof-condition training
 
+## Durable photo preparation (existing host only)
+
+`prepare_photos.py` is a bounded command-line runner, not a new server. A developer queues ten photos in Image Trainer; the database persists progress, single-flight leases, consent checks, cancellations and delayed retries. An authorized existing CPU host can then run:
+
+```sh
+python worker/training/prepare_photos.py --models /secure/pitch-models --max-items 10
+```
+
+Install the training requirements in that host's isolated environment. Provision the three audited ONNX files named in `MODEL_FILES`; set trusted `PITCH_DINO_SHA256`, `PITCH_ENCODER_SHA256`, `PITCH_DECODER_SHA256` hashes, `PITCH_PREPARATION_CONTROL_URL` to the HTTPS `/functions/v1/ai-worker` endpoint, and `INTERNAL_WORKER_SECRET` through the host's secret manager. Never commit those secrets. The runner validates files before claiming work, uses two CPU threads, one image at a time and at most ten items per invocation. Configure an existing host scheduler to invoke it later for pending/retry work; the browser is not required after job creation. No scheduler/host has been provisioned or verified by this change.
+
+Storage references are signed only after current consent and tenant path verification. Original downloads stop at 15 MB; decoding caps images at 40 million pixels. Failures clear the lease, transient download failures get at most three database-controlled attempts with backoff; terminal errors do not retry. Missing models fail before claiming a photo. Interrupted processes are recovered after the ten-minute lease expires. Model output is feature embeddings plus unknown outlines, not roofing recognition.
+
+**Operational blocker:** the configured Supabase secrets include `INTERNAL_WORKER_SECRET` but no verified preparation host, model mounts or scheduler. Running a local synthetic test does not establish hosted processing, original-photo access, or recognition accuracy.
+
 TorchVision code uses BSD-3-Clause (https://github.com/pytorch/vision/blob/main/LICENSE). No pretrained weights are fetched: both model and backbone weights are `None`. Dataset/photo rights still require independent review. This replaces the previous AGPL Ultralytics path; no commercial license was purchased. This is not legal advice.
 
 Export an independently approved dataset from Photo Intelligence → Training readiness, unzip it, install `requirements.txt` in an isolated training environment, then run:
