@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "asset_id": "059ac284-1059-47bc-ac10-8866c41c5040",
+  "project_id": "6af530d9-2698-4529-aba4-165abe9112fb",
+  "url": "/__l5e/assets-v1/059ac284-1059-47bc-ac10-8866c41c5040/ort-wasm-simd-threaded-1.30.0.wasm",
+  "r2_key": "a/v1/6af530d9-2698-4529-aba4-165abe9112fb/059ac284-1059-47bc-ac10-8866c41c5040/ort-wasm-simd-threaded-1.30.0.wasm",
+  "original_filename": "ort-wasm-simd-threaded-1.30.0.wasm",
+  "size": 14239897,
+  "content_type": "application/wasm",
+  "created_at": "2026-10-21T15:34:18Z"
+}
