@@ -1,11 +1,13 @@
 # Roadmap
 
 ## GitHub Photo Intelligence gap closure (2026-10-21)
-- [ ] Refresh live consent-gated counts and audit referenced 501 routes
-- [ ] Replace browser-only bulk preparation with durable bounded jobs, leases, retries, cancellation and saved progress
-- [ ] Centralize independently approved consented references with private provenance and safe inference distribution
-- [ ] Test queue/access/library contracts and document real execution versus infrastructure/data blockers
-- [ ] First 10 real photos, approved-data training, held-out accuracy and installed-weight activation — pending verified worker hosting, developer access and independently approved data
+- [x] Refresh live counts: 457 photos; 234 consented, 1 company, 11 properties; 0 processed/approved/models. Eight legacy 501 routes have no identified callers
+- [x] Durable queue/API and bounded local CPU runner implemented; database leases, retries, cancellation and saved progress; hosting not operationally verified
+- [x] Shared approved-reference publisher and anonymous-handle inference distribution; direct private provenance reads revoked; no approved references yet
+- [x] 20 JS and 5 Python tests pass (synthetic); live SQL privilege/unsigned checks pass; invalid API calls return 401/403; preview build OK. Report: docs/PHOTO_INTELLIGENCE_GAP_CLOSURE.md
+- [ ] Queue transaction/signed-in flow and first 10 real photos — BLOCKED: no developer session, verified host or deliverable model binaries; local asset requests returned HTML, not ONNX
+- [ ] Approved-data training, held-out accuracy, compatible export and installed-weight activation/rollback — BLOCKED: independently approved representative data and real checkpoint unavailable
+- [ ] Remote GitHub verification — BLOCKED: API credentials rejected; observed platform-managed checkpoint 031bcb9b9cf6f13a47dec4d804808d3f78f975af
 
 ## Canvass pins → Contacts and reopen (2026-10-20)
 - [x] Add Customer saves/reuses a linked Contact in the selected company/location; confirms saved link and refreshes map without moving the pin

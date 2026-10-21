@@ -24,8 +24,12 @@ The developer-authenticated inventory endpoint could not be exercised from this 
 - Condition ONNX export, dataset-compatible model loading, native-versus-deployed parity and staged installed-weight activation/rollback remain incomplete. Existing registry controls are not a functioning weights deployment. Do not install dataset-ordered checkpoints into the legacy fixed-class worker.
 - Shared publication has no approved examples to distribute. Zero examples published is not a classifier.
 - GitHub remote verification failed with credential rejection. Observed starting checkout: `8b13e5dc2e8874452bbced94c54981a9dea235f5`; later platform-managed commit/sync not claimed.
+- Observed platform-managed implementation checkpoint: `031bcb9b9cf6f13a47dec4d804808d3f78f975af`; remote synchronization remains unverified.
+- Local ONNX asset requests returned HTTP 200 with 4,088-byte HTML, not the expected model binaries. The runner therefore did not execute DINOv2 or SAM. Asset delivery/model provisioning is an additional explicit blocker; no alternate model substituted.
 - 256 pre-existing database security findings are outside this change. New privileged operations moved behind non-definer public wrappers; the new migration warnings were resolved.
 
 ## Acceptance
 
 Automated tests check quality gating, model integrity requirement, browser-compatible normalization, region pooling, shared-library privacy, model-space isolation and rejection of caller-supplied approval. These use synthetic inputs and do not establish accuracy. Database assertions check anonymous/worker privilege boundaries and unsigned mutation rejection. Signed-in two-inspector labeling, real processing, cross-company inference and trained-model acceptance remain unverified.
+
+Executed: 20 JavaScript tests and 5 Python tests passed; live migration security assertions passed; deployed job creation rejected an invalid bearer token with 401 and internal claim rejected missing worker authorization with 403. Latest preview log showed build OK. Queue claim/finish transaction behavior with a real authorized job is not yet tested end-to-end and is not certified operational.
