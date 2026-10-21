@@ -16,7 +16,7 @@ export async function photoPreparationApi(c: Context<RouterEnv>, action: 'create
   let body;
   try { body = await c.req.json(); } catch { return jsonErr(c, 'invalid_input', 'Invalid preparation request', 400); }
   const result = action === 'create'
-    ? (Number.isInteger(body.limit) && body.limit >= 1 && body.limit <= 100 ? await client.rpc('photo_preparation_create', { _limit: body.limit }) : { data: null, error: true })
+    ? (Number.isInteger(body.limit) && body.limit >= 1 && body.limit <= 10 ? await client.rpc('photo_preparation_create', { _limit: body.limit }) : { data: null, error: true })
     : action === 'publish'
       ? await client.rpc('photo_shared_reference_publish')
       : (/^[a-f0-9-]{36}$/i.test(body.jobId ?? '') && ['cancel', 'resume'].includes(body.action) ? await client.rpc('photo_preparation_manage', { _job: body.jobId, _action: body.action }) : { data: null, error: true });
