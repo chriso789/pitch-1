@@ -1,7 +1,7 @@
 # Roadmap
 
 ## Real-photo acceptance execution (2026-10-21)
-- [ ] Repair preview ONNX binary loading shown by the user's ten-photo run (9 execution failures, 1 dark/unassessable; all ten report verified saves); verify runtime execution, then repeat real-photo acceptance without replacing prior results
+- [x] Repair preview ONNX binary loading shown by user's ten-photo run (9 execution failures, 1 dark/unassessable; all ten report verified saves). Bundled WASM returns correct MIME/magic; browser identity inference and DINOv2/SAM synthetic execution pass (256 patch embeddings, 6 unknown outlines); 12 regressions pass. Real-photo rerun still requires signed-in user acceptance; no prior results replaced or website published
 - [x] Implement private fixed-selection browser history, transactional idempotent saves/read-back, per-photo resolution/outline/failure evidence and selectable overlays; API/DB block batches over ten; 11 simulated regressions pass, signed-out route redirects, new private table/RPC deny app roles
 - [ ] Publish only after signed-in real-photo staging acceptance; verify GitHub sync and deployment — BLOCKED: external unmanaged authentication prevents signed-in testing here; grouped result API deployed, website not published; latest observed checkpoint 2656747c47f6cf2c39eb9744f9f8e392864dfdce, remote GitHub sync unverified
 - [x] Deployed binary assets verified on production and preview; production browser DINOv2/SAM executed successfully on synthetic texture (execution evidence only); restored separate bounded ten-photo browser action and per-photo results
