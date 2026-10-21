@@ -1,9 +1,8 @@
 import { assessQuality, loadImageForAnalysis } from '../patternAnalysis';
-import { differenceHash, markDuplicates, recommendForLabeling, type TriagedPhoto } from '../components/photoTriage';
+import { differenceHash, markDuplicates, type TriagedPhoto } from '../components/photoTriage';
 import { proposeRegions } from '../components/regionProposals';
 import { isValidPolygon } from '../components/photoProcessing';
 import { edgeApi } from '@/lib/edgeApi';
-import { loadSharedInventory } from './sharedInventory';
 import { loadBrowserTest, type BrowserPreparationResult, type BrowserTest } from './browserResults';
 export type { BrowserPreparationResult } from './browserResults';
 
