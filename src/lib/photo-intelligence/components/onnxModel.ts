@@ -17,7 +17,7 @@ import type { GrayImage } from '../patternAnalysis';
 import dinov2SmallAsset from '@/assets/dinov2-small.onnx.asset.json';
 import sam2EncoderAsset from '@/assets/sam2.1-tiny-vision-encoder.onnx.asset.json';
 import sam2DecoderAsset from '@/assets/sam2.1-tiny-mask-decoder.onnx.asset.json';
-import ortWasmUrl from 'onnxruntime-web/ort-wasm-simd-threaded.wasm?url';
+import ortWasmAsset from '@/assets/ort-wasm-simd-threaded-1.30.0.wasm.asset.json';
 
 /** Self-hosted weight URLs (large files live in the asset store, pointer JSON in the repo). */
 export const MODEL_URLS = {
@@ -38,10 +38,11 @@ export interface LoadedOnnxModel {
 type OrtModule = typeof import('onnxruntime-web/wasm');
 
 let ortPromise: Promise<OrtModule> | null = null;
-/** Bundle the matching binary explicitly; Vite dependency URLs otherwise return SPA HTML. */
+/** Load only in the browser; the matching large binary lives in hosted asset storage. */
 export function loadOrt(): Promise<OrtModule> {
+  if (typeof window === 'undefined') return Promise.reject(new Error('Photo inference requires a browser'));
   ortPromise ??= import('onnxruntime-web/wasm').then((ort) => {
-    ort.env.wasm.wasmPaths = { wasm: ortWasmUrl };
+    ort.env.wasm.wasmPaths = { wasm: ortWasmAsset.url };
     // Preview frames do not guarantee cross-origin isolation or worker support.
     ort.env.wasm.numThreads = 1;
     ort.env.wasm.proxy = false;
