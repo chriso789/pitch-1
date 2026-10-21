@@ -1,4 +1,5 @@
 # src/lib rules
+- Photo ONNX runtime loads client-only from the WASM-only entry, with a version-matched hosted asset pointer and single-thread execution; never source-import binaries or rely on dependency-relative URLs that can return SPA HTML.
 - Browser photo preparation uses private test selections and transactional result saves; reload reads persisted outlines, never labels, so retries preserve independently reviewed evidence.
 - Canvass savedPins pages saved work separately from parcel previews, confirms CRM links, and scopes new Contacts to selected company/location; old pins must survive reloads.
 - Existing-text editing goes through `src/lib/pdf-engine/contentTextEdit.ts`: in-place edits splice only the real Tj/TJ operator in the original font's own codes (glyphs proven present); move/restyle replaces that operator with an advance-preserving empty TJ and writes a new real text object, so the old text is removed, never covered. Outputs are reopened and checked, plus a pdf.js check that no other text moved; anything unproven stays read-only with a reason.

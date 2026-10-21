@@ -1,9 +1,25 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { tryLoadSession, backboneOnlyModel, MODEL_URLS } from '@/lib/photo-intelligence/components/onnxModel';
+import { tryLoadSession, backboneOnlyModel, loadOrt } from '@/lib/photo-intelligence/components/onnxModel';
+import ortWasmAsset from '@/assets/ort-wasm-simd-threaded-1.30.0.wasm.asset.json';
+
+vi.mock('onnxruntime-web/wasm', () => ({ env: { wasm: {} } }));
 
 describe('local ONNX model loader', () => {
   beforeEach(() => { vi.unstubAllGlobals(); });
   afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('uses the hosted matching WASM binary without frame-dependent workers', async () => {
+    const ort = await loadOrt();
+    expect(ort.env.wasm.wasmPaths).toEqual({ wasm: ortWasmAsset.url });
+    expect(ort.env.wasm.numThreads).toBe(1);
+    expect(ort.env.wasm.proxy).toBe(false);
+    expect(await loadOrt()).toBe(ort);
+  });
+
+  it('refuses runtime initialization outside the browser', async () => {
+    vi.stubGlobal('window', undefined);
+    await expect(loadOrt()).rejects.toThrow('Photo inference requires a browser');
+  });
 
   it('returns null when the weight file is absent — model not installed is a normal state', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 404 })));
