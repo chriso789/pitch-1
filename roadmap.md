@@ -1,8 +1,9 @@
 # Roadmap
 
 ## Real-photo acceptance execution (2026-10-21)
-- [ ] Verify an existing authorized execution host — BLOCKED: no host/scheduler connection identified; execution preflight rejects absent verified model files/hashes; sandbox also lacks httpx and HTTPS control URL
-- [ ] Process 10 eligible CRM originals and verify saved outlines plus interruption/resumption — requires verified host and authorized developer access
+- [ ] Audit deployed model assets and browser ONNX execution separately from background workers; restore bounded browser testing if available
+- [ ] Identify centrally hosted executor integration using existing authorized infrastructure where feasible; no employee computers, provisioning or purchases
+- [ ] Process 10 eligible CRM originals in signed-in developer browser; background hosting must not block browser testing; verify saved outlines and timings
 - [ ] Independently label/review useful components and verify approved-only, currently consented shared publication — BLOCKED: external unmanaged authentication unavailable here; requires two authorized inspectors, never agent-fabricated approval
 - [ ] Benchmark on properties excluded from references; report measured precision, recall, unknowns and timings — requires independently approved reference/test labels and executed inference
 - No additional infrastructure, synthetic accuracy claims, purchases or customer deployment in this phase
