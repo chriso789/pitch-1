@@ -12,6 +12,7 @@ export async function trainingPhotoInventory(c: Context<RouterEnv>, batch = fals
   if (result.error) return jsonErr(c, 'inventory_failed', 'Photo inventory could not be loaded', 500);
   const inventory = result.data;
   if (batch) {
+    inventory.photos = (inventory.photos ?? []).slice(0, 10);
     for (const photo of inventory.photos ?? []) {
       photo.url = null;
       try {
@@ -42,7 +43,7 @@ export async function saveTrainingPreparation(c: Context<RouterEnv>) {
   try { body = await c.req.json(); } catch { return jsonErr(c, 'invalid_input', 'Invalid preparation result', 400); }
   if (typeof body.photoId !== 'string' || !/^[a-f0-9-]{36}$/i.test(body.photoId)) return jsonErr(c, 'invalid_input', 'Invalid photo identifier', 400);
   const inventory = await svc.rpc('platform_photo_inventory_service', { _actor: actor, _batch: true });
-  const photo = inventory.data?.photos?.find((p: { id: string }) => p.id === body.photoId);
+  const photo = inventory.data?.photos?.slice(0, 10).find((p: { id: string }) => p.id === body.photoId);
   if (inventory.error || !photo) return jsonErr(c, 'not_eligible', 'Photo is not in the authorized initial batch', 403);
   const consent = await svc.from('photo_training_contributions').select('*').eq('tenant_id', photo.tenantId).maybeSingle();
   if (!currentSharedConsent(consent.data)) return jsonErr(c, 'consent_required', 'Current company training consent is required', 403);
@@ -53,6 +54,9 @@ export async function saveTrainingPreparation(c: Context<RouterEnv>) {
     if (saved.error) return jsonErr(c, 'save_failed', 'Quality result could not be saved', 500);
     return jsonOk(c, { saved: true });
   }
+  // Browser results now require a fixed test identity and transactional read-back.
+  return jsonErr(c, 'test_required', 'Use the ten-photo browser test to save outlines and processing results', 400);
+  /* Legacy outline writes are disabled; the browser-test route owns atomic persistence.
   const report = body.report;
   const regions = report?.regions ?? [];
   if (!['completed', 'no_useful_regions', 'failed'].includes(body.status) || !Array.isArray(regions) || regions.length > 1000 || regions.some((r: { polygon: unknown }) => !validSharedPolygon(r.polygon))) return jsonErr(c, 'invalid_input', 'Invalid outline result', 400);
@@ -71,4 +75,5 @@ export async function saveTrainingPreparation(c: Context<RouterEnv>) {
   const run = await svc.from('photo_proposal_runs').insert({ tenant_id: photo.tenantId, source_photo_id: photo.id, status: body.status, width_px: report?.imageSize?.width ?? null, height_px: report?.imageSize?.height ?? null, region_count: regions.length, invalid_region_count: Math.max(0,Math.round(body.invalid || 0)), duration_ms: Math.min(2147483647,Math.max(0,Math.round(body.duration || 0))), error: body.status === 'failed' ? 'Local photo processing failed; retry in developer browser' : null, segmenter_model: report?.models?.segmenter ?? null, created_by: actor });
   if (run.error) return jsonErr(c,'save_failed','Processing history could not be saved',500);
   return jsonOk(c,{ saved: true });
+  */
 }
