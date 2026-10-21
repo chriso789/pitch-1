@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { tryLoadSession, backboneOnlyModel, loadOrt } from '@/lib/photo-intelligence/components/onnxModel';
+import { tryLoadSession, backboneOnlyModel, loadOrt, loadDinoSession, MODEL_URLS } from '@/lib/photo-intelligence/components/onnxModel';
 import ortWasmAsset from '@/assets/ort-wasm-simd-threaded-1.30.0.wasm.asset.json';
 
-vi.mock('onnxruntime-web/wasm', () => ({ env: { wasm: {} } }));
+const mocks = vi.hoisted(() => ({ create: vi.fn() }));
+vi.mock('onnxruntime-web/wasm', () => ({ env: { wasm: {} }, InferenceSession: { create: mocks.create } }));
 
 describe('local ONNX model loader', () => {
   beforeEach(() => { vi.unstubAllGlobals(); });
@@ -29,6 +30,15 @@ describe('local ONNX model loader', () => {
   it('never throws on network failure — resolves to null instead', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
     expect(await tryLoadSession("/models/photo-intelligence/missing.onnx")).toBeNull();
+  });
+
+  it('loads the hosted DINOv2 asset but reports the canonical save-contract model identity', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true })));
+    const session = { inputNames: ['pixel_values'] };
+    mocks.create.mockResolvedValue(session);
+    const loaded = await loadDinoSession();
+    expect(mocks.create).toHaveBeenCalledWith(MODEL_URLS.dinov2Small, { executionProviders: ['wasm'] });
+    expect(loaded).toMatchObject({ modelId: 'dinov2-small', session, inputName: 'pixel_values' });
   });
 
   it('a feature backbone without a segmentation head reports zero regions, never guessed components', async () => {

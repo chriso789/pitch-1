@@ -1,6 +1,7 @@
 # Roadmap
 
 ## Real-photo acceptance execution (2026-10-21)
+- [ ] Repair successful real-photo outline saves: browser telemetry rejects the hosted DINOv2 asset URL as a model ID; verify canonical identity and persistence contract without weakening model/consent gates
 - [x] Repair preview ONNX binary loading shown by user's ten-photo run (9 execution failures, 1 dark/unassessable; all ten report verified saves). Version-matched runtime binary is hosted via an asset pointer, never source-imported or committed as an oversized binary; browser-only initialization. Real-photo rerun still requires signed-in user acceptance; no prior results replaced or website published
 - [x] Implement private fixed-selection browser history, transactional idempotent saves/read-back, per-photo resolution/outline/failure evidence and selectable overlays; API/DB block batches over ten; 11 simulated regressions pass, signed-out route redirects, new private table/RPC deny app roles
 - [ ] Publish only after signed-in real-photo staging acceptance; verify GitHub sync and deployment — BLOCKED: external unmanaged authentication prevents signed-in testing here; grouped result API deployed, website not published; latest observed checkpoint 2656747c47f6cf2c39eb9744f9f8e392864dfdce, remote GitHub sync unverified

@@ -54,7 +54,11 @@ export async function prepareSharedPhotos(onProgress: (message: string) => void,
       const saved = await edgeApi<{ result: BrowserPreparationResult }>('training-data-api', '/photos/browser/save', { testId, photoId: original.id, result });
       if (saved.error || !saved.data?.result) throw new Error(saved.error ?? 'Save/read-back failed');
       result = saved.data.result;
-    } catch { result.saveStatus = 'failed'; result.error = [result.error, 'Save/read-back failed; result is not confirmed persisted'].filter(Boolean).join('; '); }
+    } catch (error) {
+      result.saveStatus = 'failed';
+      const detail = error instanceof Error ? error.message : 'Save/read-back failed';
+      result.error = [result.error, `${detail}; result is not confirmed persisted`].filter(Boolean).join('; ');
+    }
     results.push(result); onResult?.(result);
   }
   return results;

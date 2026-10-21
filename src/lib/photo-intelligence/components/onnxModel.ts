@@ -96,7 +96,8 @@ export async function loadSimilarityModel(): Promise<ReturnType<typeof dinov2Sim
 
 /** Load the raw DINOv2 session for single-pass feature extraction (region pooling + similarity). */
 export async function loadDinoSession(): Promise<LoadedOnnxModel | null> {
-  return tryLoadSession(MODEL_URLS.dinov2Small);
+  const loaded = await tryLoadSession(MODEL_URLS.dinov2Small);
+  return loaded ? { ...loaded, modelId: 'dinov2-small' } : null;
 }
 
 export async function loadComponentModel(): Promise<ComponentModel | null> {
