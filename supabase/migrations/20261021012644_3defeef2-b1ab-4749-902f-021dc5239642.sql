@@ -1,0 +1,1 @@
+REVOKE ALL ON public.photo_browser_tests FROM PUBLIC,anon,authenticated; GRANT ALL ON public.photo_browser_tests TO service_role;
