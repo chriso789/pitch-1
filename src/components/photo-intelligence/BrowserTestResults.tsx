@@ -27,7 +27,7 @@ export function BrowserTestResults({ results, photos }: { results: BrowserPrepar
       {state === 'loading' && <p role="status" className="text-sm text-muted-foreground">Loading photo…</p>}
       {state === 'ready' && url && <div className="relative max-w-3xl">
         <img src={url} alt={`Photo ${item.photo}`} className="block w-full h-auto" onError={() => setState('unavailable')} />
-        <svg viewBox="0 0 1 1" preserveAspectRatio="none" className="absolute inset-0 h-full w-full text-primary pointer-events-none" aria-label="Generated unverified outlines">{item.outlines.map((outline, i) => <polygon key={i} points={outline.polygon.map((p) => `${p.x},${p.y}`).join(' ')} fill="none" stroke="currentColor" strokeWidth="0.003" vectorEffect="non-scaling-stroke" />)}</svg>
+        <svg viewBox="0 0 1 1" preserveAspectRatio="none" className="absolute inset-0 h-full w-full text-primary pointer-events-none" aria-label="Generated unverified outlines">{item.outlines.map((outline, i) => <polygon key={i} points={outline.polygon.map((p) => `${p.x},${p.y}`).join(' ')} fill="none" stroke="currentColor" strokeWidth="2" vectorEffect="non-scaling-stroke" />)}</svg>
       </div>}
       {state === 'unavailable' && <div className="flex items-center gap-2"><p role="status" className="text-sm text-muted-foreground">Current photo access unavailable.</p><Button variant="outline" size="sm" onClick={() => void refresh(item.photoId)}>Retry</Button></div>}
     </figure>}
