@@ -91,16 +91,28 @@ const serializeStoredLineItem = (item: LineItem) => ({
   emphasize: item.emphasize,
 });
 
+// Keep the first copy of each line item id. Guards against the same template
+// item being merged twice (e.g. from a recovered draft plus a trade section).
+export const dedupeLineItemsById = <T extends { id: string }>(items: T[]): T[] => {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    if (!item?.id) return true;
+    if (seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
+};
+
 const buildStoredLineItems = (
   materialItems: LineItem[],
   laborItems: LineItem[],
   turnkeyItems: LineItem[],
   changeOrderItems: LineItem[],
 ) => ({
-  materials: materialItems.map(serializeStoredLineItem),
-  labor: laborItems.map(serializeStoredLineItem),
-  turnkey: turnkeyItems.map(serializeStoredLineItem),
-  change_orders: changeOrderItems.map(serializeStoredLineItem),
+  materials: dedupeLineItemsById(materialItems).map(serializeStoredLineItem),
+  labor: dedupeLineItemsById(laborItems).map(serializeStoredLineItem),
+  turnkey: dedupeLineItemsById(turnkeyItems).map(serializeStoredLineItem),
+  change_orders: dedupeLineItemsById(changeOrderItems).map(serializeStoredLineItem),
 });
 
 interface CompanyInfo {
@@ -463,10 +475,14 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         setTradeSections(snapshot!.tradeSections as any);
       }
       if (snapshot!.tradeLineItems && typeof snapshot!.tradeLineItems === 'object') {
-        setTradeLineItems(snapshot!.tradeLineItems as any);
+        const restored: Record<string, LineItem[]> = {};
+        for (const [k, v] of Object.entries(snapshot!.tradeLineItems as Record<string, LineItem[]>)) {
+          restored[k] = Array.isArray(v) ? dedupeLineItemsById(v) : [];
+        }
+        setTradeLineItems(restored);
       }
       if (Array.isArray(snapshot!.lineItems) && snapshot!.lineItems.length > 0) {
-        setLineItems(snapshot!.lineItems as LineItem[]);
+        setLineItems(dedupeLineItemsById(snapshot!.lineItems as LineItem[]));
       }
       if (snapshot!.config) setConfig(snapshot!.config);
       if (typeof snapshot!.fixedPrice === 'number') setFixedPrice(snapshot!.fixedPrice);
@@ -850,7 +866,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     if (isEditingLoadedEstimate && Object.keys(tradeLineItems).length === 0) return;
     const mergedTradeItems = Object.values(tradeLineItems).flat();
     const standaloneItems = lineItems.filter(item => item.item_type === 'change_order');
-    const merged = [...mergedTradeItems, ...standaloneItems];
+    const merged = dedupeLineItemsById([...mergedTradeItems, ...standaloneItems]);
     if (merged.length > 0 || lineItems.length > 0) {
       setLineItems(merged);
     }
@@ -903,7 +919,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         const turnkey = lineItemsData.turnkey || [];
         const changeOrders = lineItemsData.change_orders || lineItemsData.changeOrders || [];
         
-        const allItems: LineItem[] = [
+        const allItems: LineItem[] = dedupeLineItemsById([
           ...materials.map((item: any) => ({
             ...item,
             item_type: 'material' as const,
@@ -920,7 +936,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
             ...item,
             item_type: 'change_order' as const,
           })),
-        ];
+        ]);
 
         if (allItems.length > 0) {
           setLineItems(allItems);
