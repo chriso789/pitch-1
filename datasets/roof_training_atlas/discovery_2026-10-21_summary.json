@@ -1,0 +1,95 @@
+{
+  "project": "PITCH Roof Image Acquisition",
+  "run_date": "2026-10-21",
+  "collected_from": "Wikimedia Commons file-level MediaWiki metadata API",
+  "discovery_batches": 10,
+  "source_records_unique": 344,
+  "source_license_metadata_checked": 344,
+  "source_sha1_duplicates_merged": 2,
+  "originals_downloaded": 0,
+  "bytes_downloaded": 0,
+  "visually_verified_roof_photos": 0,
+  "approved_training_examples": 0,
+  "target": 252000,
+  "categories_target": 252,
+  "files_not_yet_licensed_for_release": 344,
+  "search_batches": [
+    {
+      "category": "Roof ventilation",
+      "pages_returned": 10,
+      "commercial_metadata_candidates": 10,
+      "excluded": 0,
+      "has_more": false
+    },
+    {
+      "category": "Ridge tiles",
+      "pages_returned": 40,
+      "commercial_metadata_candidates": 39,
+      "excluded": 1,
+      "has_more": false
+    },
+    {
+      "category": "Concrete roof tiles",
+      "pages_returned": 17,
+      "commercial_metadata_candidates": 17,
+      "excluded": 0,
+      "has_more": false
+    },
+    {
+      "category": "Roof construction",
+      "pages_returned": 50,
+      "commercial_metadata_candidates": 47,
+      "excluded": 3,
+      "has_more": true
+    },
+    {
+      "category": "Roofers",
+      "pages_returned": 50,
+      "commercial_metadata_candidates": 48,
+      "excluded": 2,
+      "has_more": true
+    },
+    {
+      "category": "Roof ridges",
+      "pages_returned": 44,
+      "commercial_metadata_candidates": 41,
+      "excluded": 3,
+      "has_more": false
+    },
+    {
+      "category": "Hail damage",
+      "pages_returned": 50,
+      "commercial_metadata_candidates": 1,
+      "excluded": 49,
+      "has_more": true
+    },
+    {
+      "category": "Roof elements",
+      "pages_returned": 50,
+      "commercial_metadata_candidates": 49,
+      "excluded": 1,
+      "has_more": true
+    },
+    {
+      "category": "Tiled roofs",
+      "pages_returned": 50,
+      "commercial_metadata_candidates": 50,
+      "excluded": 0,
+      "has_more": true
+    },
+    {
+      "category": "Roof tiles",
+      "pages_returned": 50,
+      "commercial_metadata_candidates": 44,
+      "excluded": 6,
+      "has_more": true
+    }
+  ],
+  "excluded_unusable_license_count": 9,
+  "notes": [
+    "File-level license claims were read from Commons metadata; actual legal reusability and attribution obligations remain subject to human review.",
+    "Remote image URLs and source-side SHA-1 hashes are present; local image bytes and SHA-256 have not been fetched.",
+    "Category membership is discovery evidence, not a verified component/damage label.",
+    "Some categories may contain off-topic images; manual visual review is required."
+  ]
+}
