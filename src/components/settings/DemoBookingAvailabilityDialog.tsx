@@ -56,7 +56,7 @@ export function DemoBookingAvailabilityDialog({ recipient, busy, onClose, onSend
                 <Input id={`demo-end-${index}`} type="time" value={window.endTime} disabled={busy} onChange={e => update(index, { endTime: e.target.value })} /></div>
             </div>
           </div>
-          <Button variant="ghost" size="icon" title="Remove meeting time" aria-label="Remove meeting time" disabled={busy || times.length === 1}
+          <Button variant="ghost" size="icon" title="Remove availability range" aria-label="Remove availability range" disabled={busy || windows.length === 1}
             onClick={() => setWindows(old => old.filter((_, i) => i !== index))}><Trash2 className="h-4 w-4" /></Button>
         </div>)}
         <Button variant="outline" disabled={busy || windows.length >= 500} onClick={() => setWindows(old => [...old, { startTime: '09:00', endTime: '17:00' }])}><Plus className="h-4 w-4 mr-2" />Add another range</Button>
