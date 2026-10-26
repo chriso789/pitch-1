@@ -23,3 +23,4 @@
 - Photo Intelligence: docs/PHOTO_INTELLIGENCE_REQUIREMENTS.md — DINOv2 similarity+margin, unknown-on-uncertain, hard negatives; immutable originals, trusted hashes; second-inspector approval; audited company opt-in; counts-only overview; property-isolated evaluation, promotion gates; possible-anomaly regions only; uncertainty review-only; Image Trainer platform-role/DB enforced; company admins set opt-in.
 
 - Pins use `/pin/drop`: coordinate identity/read-back; lookup cannot block saves.
+- Demo booking availability is stored as explicit UTC instants per invitation; the protected sender sets the host, and service-only RPCs recheck offered times and host conflicts under a transaction lock before confirmation.
