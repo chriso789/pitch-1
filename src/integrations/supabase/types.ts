@@ -17058,6 +17058,7 @@ export type Database = {
         Row: {
           appointment_id: string | null
           assigned_to: string | null
+          booking_available_slots: string[] | null
           booking_confirmed_at: string | null
           booking_token: string | null
           booking_token_sent_at: string | null
@@ -17090,6 +17091,7 @@ export type Database = {
         Insert: {
           appointment_id?: string | null
           assigned_to?: string | null
+          booking_available_slots?: string[] | null
           booking_confirmed_at?: string | null
           booking_token?: string | null
           booking_token_sent_at?: string | null
@@ -17122,6 +17124,7 @@ export type Database = {
         Update: {
           appointment_id?: string | null
           assigned_to?: string | null
+          booking_available_slots?: string[] | null
           booking_confirmed_at?: string | null
           booking_token?: string | null
           booking_token_sent_at?: string | null
@@ -68788,6 +68791,10 @@ export type Database = {
         Args: { _slot: string; _token: string }
         Returns: string
       }
+      confirm_demo_slot_internal: {
+        Args: { _slot: string; _token: string }
+        Returns: string
+      }
       create_demo_appointment_for_request: {
         Args: { _demo_id: string }
         Returns: string
@@ -69245,6 +69252,12 @@ export type Database = {
         }[]
       }
       get_default_brand_id: { Args: { _tenant_id: string }; Returns: string }
+      get_demo_available_slots: {
+        Args: { _token: string }
+        Returns: {
+          slot: string
+        }[]
+      }
       get_demo_request_by_token: {
         Args: { _token: string }
         Returns: {
@@ -69983,6 +69996,12 @@ export type Database = {
         Args: { p_tenant: string }
         Returns: undefined
       }
+      set_demo_booking_availability:
+        | { Args: { _demo_id: string; _slots: string[] }; Returns: undefined }
+        | {
+            Args: { _demo_id: string; _host: string; _slots: string[] }
+            Returns: undefined
+          }
       set_photo_training_contribution: {
         Args: { _opt_in: boolean; _tenant_id: string; _terms_version: string }
         Returns: string

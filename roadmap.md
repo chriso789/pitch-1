@@ -1,5 +1,10 @@
 # Roadmap
 
+## Demo booking availability (2026-10-26)
+- [x] Add explicit sender-selected meeting dates/times before demo invite emails; store UTC slots and host, enforce offered future times and host conflicts through service-only booking RPCs
+- [x] Four availability regressions pass; preview build OK; deployed invite rejects unsigned callers with 401, direct public confirmation/host override denied; public UI fixture selects only offered times and confirms, real invalid token rejected
+- [ ] Signed-in availability → invite email → real public confirmation/read-back — BLOCKED: external unmanaged authentication unavailable; no customer email or meeting created during testing
+
 ## Real-photo acceptance execution (2026-10-21)
 - [x] Repair successful real-photo outline save mismatch: telemetry showed `models_required` because DINOv2 returned its asset URL. Canonical session identity and executed-feature evidence restored; model/consent gates unchanged; 18 targeted tests pass and real hosted-model session loads with canonical identity in browser (localhost assets routed to production CDN). Signed-in ten-photo persistence rerun remains unverified
 - [x] Repair preview ONNX binary loading shown by user's ten-photo run (9 execution failures, 1 dark/unassessable; all ten report verified saves). Version-matched runtime binary is hosted via an asset pointer, never source-imported or committed as an oversized binary; browser-only initialization. Real-photo rerun still requires signed-in user acceptance; no prior results replaced or website published

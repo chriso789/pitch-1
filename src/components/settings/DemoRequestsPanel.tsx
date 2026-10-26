@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { CreateCompanyFromDemoDialog } from "./CreateCompanyFromDemoDialog";
+import { DemoBookingAvailabilityDialog } from './DemoBookingAvailabilityDialog';
 
 interface DemoRequest {
   id: string;
@@ -79,13 +80,14 @@ export const DemoRequestsPanel: React.FC = () => {
   const [createCompanyDialogOpen, setCreateCompanyDialogOpen] = useState(false);
   const [selectedForConversion, setSelectedForConversion] = useState<DemoRequest | null>(null);
   const [sendingInviteId, setSendingInviteId] = useState<string | null>(null);
+  const [bookingRequest, setBookingRequest] = useState<DemoRequest | null>(null);
   const { toast } = useToast();
 
-  const sendBookingInvite = async (request: DemoRequest) => {
+  const sendBookingInvite = async (request: DemoRequest, availableSlots: string[]) => {
     setSendingInviteId(request.id);
     try {
       const { data, error } = await supabase.functions.invoke('send-booking-invite', {
-        body: { demo_request_id: request.id },
+        body: { demo_request_id: request.id, available_slots: availableSlots },
       });
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Failed to send invite');
@@ -94,6 +96,7 @@ export const DemoRequestsPanel: React.FC = () => {
         description: `Email sent to ${request.email}. They can pick a video meeting time.`,
       });
       loadDemoRequests();
+      setBookingRequest(null);
     } catch (e: any) {
       console.error('Send booking invite error:', e);
       toast({
@@ -459,7 +462,7 @@ export const DemoRequestsPanel: React.FC = () => {
                                   </DropdownMenuItem>
                                 )}
                                 <DropdownMenuItem
-                                  onClick={() => sendBookingInvite(request)}
+                                  onClick={() => setBookingRequest(request)}
                                   disabled={sendingInviteId === request.id}
                                 >
                                   <Send className="h-4 w-4 mr-2" />
@@ -522,6 +525,12 @@ export const DemoRequestsPanel: React.FC = () => {
       </Card>
 
       {/* Notes Dialog */}
+      {bookingRequest && <DemoBookingAvailabilityDialog
+        recipient={`${bookingRequest.first_name} ${bookingRequest.last_name}`}
+        busy={sendingInviteId !== null}
+        onClose={() => setBookingRequest(null)}
+        onSend={slots => sendBookingInvite(bookingRequest, slots)}
+      />}
       <Dialog open={notesDialogOpen} onOpenChange={setNotesDialogOpen}>
         <DialogContent>
           <DialogHeader>

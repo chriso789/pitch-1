@@ -3,6 +3,7 @@
  * Emails a prospect a public booking link so they can pick a video meeting time.
  */
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
+import { z } from 'npm:zod@3.25.76';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -26,13 +27,20 @@ Deno.serve(async (req) => {
   try {
     if (!RESEND_API_KEY) throw new Error("RESEND_API_KEY not configured");
 
-    const { demo_request_id } = await req.json();
-    if (!demo_request_id) throw new Error("demo_request_id is required");
-
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    );
+    const url = Deno.env.get('SUPABASE_URL');
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    if (!url || !serviceKey) throw new Error('Booking service unavailable');
+    const supabase = createClient(url, serviceKey);
+    const auth = req.headers.get('Authorization');
+    const { data: identity, error: authError } = await supabase.auth.getUser(auth?.replace(/^Bearer\s+/i, '') || '');
+    if (authError || !identity.user) return new Response(JSON.stringify({ error: 'Sign in required' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    const { data: role } = await supabase.from('user_roles').select('role').eq('user_id', identity.user.id).eq('role', 'master').maybeSingle();
+    if (!role) return new Response(JSON.stringify({ error: 'Platform administrator access required' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    const parsed = z.object({ demo_request_id: z.string().uuid(), available_slots: z.array(z.string().datetime()).min(1).max(500) }).safeParse(await req.json());
+    if (!parsed.success) throw new Error('Choose available meeting times before sending');
+    const { demo_request_id, available_slots } = parsed.data;
+    const { error: availabilityError } = await supabase.rpc('set_demo_booking_availability', { _demo_id: demo_request_id, _slots: available_slots, _host: identity.user.id });
+    if (availabilityError) throw availabilityError;
 
     const { data: demo, error: demoError } = await supabase
       .from("demo_requests")
