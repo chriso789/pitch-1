@@ -16,4 +16,5 @@ SELECT count(*) FILTER (WHERE conflicts)=2 AS same_host_overlaps_blocked,
  (SELECT pg_get_functiondef('public.get_demo_available_slots(text)'::regprocedure)
    LIKE '%other.assigned_to=d.assigned_to%') AS live_cross_invitation_guard,
  (SELECT pg_get_functiondef('public.confirm_demo_slot_by_token(text,timestamptz)'::regprocedure)
-   LIKE '%pg_advisory_xact_lock%') AS live_host_lock;
+   LIKE '%pg_advisory_xact_lock%') AS live_host_lock
+FROM results;
