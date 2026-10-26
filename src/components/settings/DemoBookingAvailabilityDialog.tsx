@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Plus, Trash2, Send, Loader2 } from 'lucide-react';
+import { offeredMeetingSlots } from '@/lib/demoBookingAvailability';
 
 export function DemoBookingAvailabilityDialog({ recipient, busy, onClose, onSend }: {
   recipient: string; busy: boolean; onClose: () => void; onSend: (slots: string[]) => Promise<void>;
@@ -12,12 +13,11 @@ export function DemoBookingAvailabilityDialog({ recipient, busy, onClose, onSend
   const [error, setError] = useState('');
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   async function submit() {
-    const dates = times.map(t => new Date(t));
-    if (dates.some(d => !Number.isFinite(d.getTime()) || d.getTime() <= Date.now())) {
-      setError('Choose a future date and time for every meeting.'); return;
-    }
-    setError('');
-    await onSend([...new Set(dates.map(d => d.toISOString()))]);
+    try {
+      const slots = offeredMeetingSlots(times);
+      setError('');
+      await onSend(slots);
+    } catch (e) { setError(e instanceof Error ? e.message : 'Could not send booking link.'); }
   }
   return <Dialog open onOpenChange={open => { if (!open && !busy) onClose(); }}>
     <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
