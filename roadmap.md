@@ -1,6 +1,7 @@
 # Roadmap
 
 ## Demo booking availability (2026-10-26)
+- [ ] Replace individual meeting entry with calendar date ranges and daily time windows; verify range expansion and dialog interaction
 - [x] Add explicit sender-selected meeting dates/times before demo invite emails; store UTC slots and host, enforce offered future times and host conflicts through service-only booking RPCs
 - [x] Four availability regressions pass; preview build OK; deployed invite rejects unsigned callers with 401, direct public confirmation/host override denied; public UI fixture selects only offered times and confirms, real invalid token rejected
 - [ ] Signed-in availability → invite email → real public confirmation/read-back — BLOCKED: external unmanaged authentication unavailable; no customer email or meeting created during testing
