@@ -69996,10 +69996,12 @@ export type Database = {
         Args: { p_tenant: string }
         Returns: undefined
       }
-      set_demo_booking_availability: {
-        Args: { _demo_id: string; _slots: string[] }
-        Returns: undefined
-      }
+      set_demo_booking_availability:
+        | { Args: { _demo_id: string; _slots: string[] }; Returns: undefined }
+        | {
+            Args: { _demo_id: string; _host: string; _slots: string[] }
+            Returns: undefined
+          }
       set_photo_training_contribution: {
         Args: { _opt_in: boolean; _tenant_id: string; _terms_version: string }
         Returns: string
