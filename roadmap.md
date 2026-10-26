@@ -1,6 +1,7 @@
 # Roadmap
 
 ## Demo booking availability (2026-10-26)
+- [ ] Refresh availability across all open booking links after bookings; verify cross-invitation host overlap protection
 - [x] Replace individual meeting entry with calendar date ranges and daily time windows; 11 unit checks pass including New York DST; browser dialog fixture selects Oct 27–29, 9–11 AM and submits 12 UTC slots. Build OK. Real signed-in email/booking flow remains blocked below
 - [x] Add explicit sender-selected meeting dates/times before demo invite emails; store UTC slots and host, enforce offered future times and host conflicts through service-only booking RPCs
 - [x] Four availability regressions pass; preview build OK; deployed invite rejects unsigned callers with 401, direct public confirmation/host override denied; public UI fixture selects only offered times and confirms, real invalid token rejected
