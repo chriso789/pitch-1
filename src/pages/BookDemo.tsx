@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -32,21 +32,44 @@ const BookDemo: React.FC = () => {
 
   const tz = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, []);
 
-  useEffect(() => {
+  const [availabilityError, setAvailabilityError] = useState(false);
+  const refreshAvailability = useCallback(async () => {
     if (!token) return;
-    (async () => {
-      const { data, error } = await supabase.functions.invoke('demo-booking', { body: { action: 'read', token } });
-      if (error || !data?.info) {
-        setError('This booking link is invalid or has expired.');
-      } else {
-        const row = data.info as DemoInfo;
-        setSlots(data.slots || []);
-        setInfo(row);
-        if (row.confirmed_slot) setConfirmed(new Date(row.confirmed_slot));
+    try {
+      const { data, error: readError } = await supabase.functions.invoke('demo-booking', { body: { action: 'read', token } });
+      if (readError || !data?.info) {
+        setAvailabilityError(true);
+        setSlots([]);
+        setTime('');
+        return;
       }
-      setLoading(false);
-    })();
+      const row = data.info as DemoInfo;
+      const available: string[] = data.slots || [];
+      setAvailabilityError(false);
+      setSlots(available);
+      setTime(selected => selected && !available.includes(selected) ? '' : selected);
+      setInfo(row);
+      if (row.confirmed_slot) setConfirmed(new Date(row.confirmed_slot));
+    } catch {
+      setAvailabilityError(true);
+      setSlots([]);
+      setTime('');
+    } finally { setLoading(false); }
   }, [token]);
+
+  useEffect(() => {
+    void refreshAvailability();
+    if (confirmed) return;
+    const refresh = () => { if (document.visibilityState === 'visible') void refreshAvailability(); };
+    const timer = window.setInterval(refresh, 15_000);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [refreshAvailability, confirmed]);
 
   const handleConfirm = async () => {
     if (!date || !token || !time || !slots.includes(time)) {
@@ -61,7 +84,9 @@ const BookDemo: React.FC = () => {
     });
 
     if (rpcError || !result?.success) {
-      setError(result?.error || 'This time is no longer available. Please reload and choose another offered time.');
+      setError('This time could not be booked. Availability has been refreshed; please choose another available time.');
+      setTime('');
+      await refreshAvailability();
       setSubmitting(false);
       return;
     }
@@ -83,13 +108,13 @@ const BookDemo: React.FC = () => {
     );
   }
 
-  if (error && !info) {
+  if ((error || availabilityError) && !info) {
     return (
       <div className="min-h-screen flex items-center justify-center gradient-hero p-4">
         <Card className="max-w-md w-full">
           <CardHeader>
             <CardTitle>Link Unavailable</CardTitle>
-            <CardDescription>{error}</CardDescription>
+            <CardDescription>{error || 'This booking link is unavailable or could not be loaded.'}</CardDescription>
           </CardHeader>
         </Card>
       </div>
@@ -181,9 +206,9 @@ const BookDemo: React.FC = () => {
                 </div>
               </div>
 
-              {error && (
+              {(error || availabilityError) && (
                 <Alert variant="destructive">
-                  <AlertDescription>{error}</AlertDescription>
+                  <AlertDescription>{availabilityError ? 'Could not refresh availability. Please try again.' : error}</AlertDescription>
                 </Alert>
               )}
 
@@ -197,7 +222,7 @@ const BookDemo: React.FC = () => {
 
               <Button
                 onClick={handleConfirm}
-                disabled={!date || !time || submitting}
+                disabled={!date || !time || !slots.includes(time) || availabilityError || submitting}
                 className="w-full h-12"
                 size="lg"
               >
