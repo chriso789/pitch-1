@@ -24,3 +24,4 @@
 
 - Pins use `/pin/drop`: coordinate identity/read-back; lookup cannot block saves.
 - Demo booking availability is stored as explicit UTC instants per invitation; the protected sender sets the host, and service-only RPCs recheck offered times and host conflicts under a transaction lock before confirmation.
+- Booking date ranges expand in the sender's local calendar into complete 30-minute meetings, deduplicated and bounded by the existing invitation slot limit; the invitation/confirmation security contract remains unchanged.
