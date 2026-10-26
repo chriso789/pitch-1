@@ -1,5 +1,9 @@
 # Roadmap
 
+## Demo booking availability (2026-10-26)
+- [ ] Add sender availability choices to demo booking links and enforce offered times when booking
+- [ ] Run booking availability regressions and verify the public booking flow; authenticated sending may require user verification
+
 ## Real-photo acceptance execution (2026-10-21)
 - [x] Repair successful real-photo outline save mismatch: telemetry showed `models_required` because DINOv2 returned its asset URL. Canonical session identity and executed-feature evidence restored; model/consent gates unchanged; 18 targeted tests pass and real hosted-model session loads with canonical identity in browser (localhost assets routed to production CDN). Signed-in ten-photo persistence rerun remains unverified
 - [x] Repair preview ONNX binary loading shown by user's ten-photo run (9 execution failures, 1 dark/unassessable; all ten report verified saves). Version-matched runtime binary is hosted via an asset pointer, never source-imported or committed as an oversized binary; browser-only initialization. Real-photo rerun still requires signed-in user acceptance; no prior results replaced or website published
