@@ -1,5 +1,7 @@
 # Architecture Decisions
 
+- Customer estimate narrative pages reserve room for investment after the final scope chunk; legal terms paginate independently so long fine print cannot orphan pricing.
+
 - Photo report PDFs use approved immutable snapshots and Unicode fonts; evidence stays separate from annotations; untraceable evidence blocks export.
 - Photo Intelligence building maps store image-relative callouts in report versions, never geographic coordinates or quantities; cross-photo merging requires inspector-verified physical identity because matching defect categories do not prove the same occurrence.
 
