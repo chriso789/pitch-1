@@ -667,123 +667,112 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     // --- Estimate Content section (first page + continuations + change orders) ---
     const estimateNodes: React.ReactNode[] = [];
     let estimateSignatureRelIdx: number | undefined = undefined;
-    // Reserve space for pricing after the scope. Legal text has its own
-    // overflow decision and must never displace the investment from the scope.
     const useNarrativeSplit = !!(opts.useScopeNarrative && opts.scopeNarrative && !opts.showOnlyTotal);
-    const pcoReserve = changeOrderItems.length > 0 ? 900 + changeOrderItems.length * 120 : 0;
-    // Newlines consume vertical space too; each scope page leaves room for price.
-    const narrativeChunks = useNarrativeSplit
-      ? chunkNarrative(opts.scopeNarrative || '', Math.max(1000, 4000 - pcoReserve), Math.max(1000, 4000 - pcoReserve))
-      : [];
-    // When the narrative is short enough to co-exist with the pricing summary,
-    // terms & conditions, fine print, and the signature block on ONE page, do
-    // that instead of forcing a dedicated summary page. Threshold chosen to
-    // leave room for a moderately long terms block + signature lines.
-    // A Potential Change Orders table eats a large chunk of vertical space, so
-    // the narrative + PCO table + totals + terms + signature no longer fit on a
-    // single page — the pricing summary would be clipped by the page's
-    // overflow:hidden. Reserve room for it, and fall back to a dedicated
-    // summary page when there isn't enough.
-    // Long custom fine print (e.g. state cancellation notices) must also fit on
-    // the same page; otherwise it gets crushed into tiny overlapping text.
-    const finePrintLen = opts.showCustomFinePrint && finePrintContent ? finePrintContent.length : 0;
-    const finePrintReserve = finePrintLen > 600 ? 99999 : finePrintLen;
-    const inlineNarrativeBudget = Math.max(0, 2000 - pcoReserve - finePrintReserve);
-    const narrativeFitsInline =
-      useNarrativeSplit &&
-      narrativeChunks.length === 1 &&
-      (narrativeChunks[0]?.length ?? 0) <= inlineNarrativeBudget;
-    const firstPageHasTerms =
-      (!useNarrativeSplit && itemChunks.length <= 1 && opts.showTermsAndConditions && !skipWarrantyAndTerms) ||
-      (narrativeFitsInline && opts.showTermsAndConditions && !skipWarrantyAndTerms);
-    if (firstPageHasTerms && opts.showSignatureBlock) {
-      estimateSignatureRelIdx = estimateNodes.length;
-    }
-    estimateNodes.push(
-      <FirstPage
-        key="page-1"
-        customerName={customerName}
-        customerAddress={customerAddress}
-        customerPhone={customerPhone}
-        customerEmail={customerEmail}
-        items={itemChunks[0] || []}
-        blocks={blockChunks[0] || []}
-        isOnlyChunk={!useNarrativeSplit ? itemChunks.length <= 1 : narrativeChunks.length === 1}
-        breakdown={breakdown}
-        config={config}
-        opts={opts}
-        showTerms={firstPageHasTerms}
-        finePrintContent={firstPageHasTerms && opts.showCustomFinePrint ? finePrintContent : undefined}
-        estimateName={estimateName}
-        narrativeOverride={useNarrativeSplit ? narrativeChunks[0] : undefined}
-        narrativeContinues={useNarrativeSplit && narrativeChunks.length > 1}
-        compactSignature={false}
-      />
-    );
-    for (let i = 1; i < itemChunks.length; i++) {
-      const isLastItemPage = i === itemChunks.length - 1;
-      const showTerms = isLastItemPage && opts.showTermsAndConditions && !skipWarrantyAndTerms;
-      if (showTerms && opts.showSignatureBlock) {
-        estimateSignatureRelIdx = estimateNodes.length;
-      }
-      estimateNodes.push(
-        <ItemsContinuationPage
-          key={`items-page-${i + 1}`}
-          items={itemChunks[i]}
-          blocks={blockChunks[i]}
-          isLastPage={isLastItemPage}
-          breakdown={isLastItemPage ? breakdown : undefined}
-          config={isLastItemPage ? config : undefined}
-          opts={opts}
-          showTerms={showTerms}
-          finePrintContent={isLastItemPage && showTerms && opts.showCustomFinePrint ? finePrintContent : undefined}
-        />
-      );
-    }
+    const pcoHeight = changeOrderItems.length > 0 ? 100 + changeOrderItems.length * 30 : 0;
+    let pricingPageIdx = 0;
 
-    // Pricing follows the final scope chunk; only terms/signatures overflow.
-    if (useNarrativeSplit && !narrativeFitsInline) {
-      for (let i = 1; i < narrativeChunks.length; i++) {
+    if (useNarrativeSplit) {
+      // Flow legal text into unused scope-page space; reserve the complete
+      // signing block with the final legal chunk rather than orphaning it.
+      const contentBudget = 870;
+      const scopeChunks = splitTextToHeight(opts.scopeNarrative || '', contentBudget - 110 - pcoHeight);
+      const legalEnabled = !skipWarrantyAndTerms;
+      let remainingTerms = legalEnabled && opts.showCustomFinePrint ? (finePrintContent || '').trim() : '';
+      let standardTermsPending = legalEnabled && opts.showTermsAndConditions;
+      let signaturePending = legalEnabled && opts.showSignatureBlock;
+      scopeChunks.forEach((text, i) => {
+        const lastScope = i === scopeChunks.length - 1;
+        let legal: React.ReactNode = null;
+        if (lastScope) {
+          pricingPageIdx = estimateNodes.length;
+          const available = contentBudget - textHeight(text) - 110 - pcoHeight;
+          const result = takeLegal(available);
+          legal = result.node;
+          if (result.signature) estimateSignatureRelIdx = estimateNodes.length;
+        }
         estimateNodes.push(
-          <NarrativeContinuationPage
-            key={`narrative-page-${i + 1}`}
-            text={narrativeChunks[i]}
-            continues={i < narrativeChunks.length - 1}
-            breakdown={i === narrativeChunks.length - 1 ? breakdown : undefined}
-            config={config}
-            opts={opts}
-          />
+          <div key={`scope-flow-${i}`} className="space-y-2">
+            {i === 0 ? (
+              <FirstPage customerName={customerName} customerAddress={customerAddress}
+                items={[]} blocks={[]} isOnlyChunk={lastScope} breakdown={breakdown}
+                config={config} opts={opts} showTerms={false} estimateName={estimateName}
+                narrativeOverride={text} narrativeContinues={!lastScope}
+                changeOrdersBlock={lastScope && changeOrderItems.length > 0 ? <ChangeOrdersBlock items={changeOrderItems} /> : undefined} />
+            ) : (
+              <NarrativeContinuationPage text={text} continues={!lastScope}
+                breakdown={lastScope ? breakdown : undefined} config={config} opts={opts}
+                changeOrdersBlock={lastScope && changeOrderItems.length > 0 ? <ChangeOrdersBlock items={changeOrderItems} /> : undefined} />
+            )}
+            {legal}
+          </div>
+        );
+      });
+      while (remainingTerms || standardTermsPending || signaturePending) {
+        const result = takeLegal(contentBudget);
+        if (result.signature) estimateSignatureRelIdx = estimateNodes.length;
+        estimateNodes.push(<React.Fragment key={`legal-flow-${estimateNodes.length}`}>{result.node}</React.Fragment>);
+      }
+
+      function takeLegal(available: number): { node: React.ReactNode; signature: boolean } {
+        const standardHeight = standardTermsPending ? 75 : 0;
+        const signatureHeight = signaturePending ? 155 : 0;
+        const fineHeight = remainingTerms ? textHeight(remainingTerms, false) + 24 : 0;
+        const allFit = standardHeight + fineHeight + signatureHeight + 20 <= available;
+        if (allFit) {
+          const node = <TermsSection finePrintContent={remainingTerms || undefined} breakdown={breakdown}
+            opts={{ ...opts, showTermsAndConditions: standardTermsPending, showSignatureBlock: signaturePending }} />;
+          const signature = signaturePending;
+          remainingTerms = '';
+          standardTermsPending = false;
+          signaturePending = false;
+          return { node, signature };
+        }
+        // Fill the current page, but leave a meaningful final legal chunk with
+        // signatures. All text is retained in order, including long notices.
+        const budget = available - standardHeight - 44;
+        if (budget < 54 || (!remainingTerms && !standardTermsPending)) return { node: null, signature: false };
+        const chunks = splitTextToHeight(remainingTerms, Math.max(54, budget), false);
+        let text = chunks.shift() || '';
+        if (text && chunks.length === 0 && signaturePending) {
+          const tailChunks = splitTextToHeight(text, Math.max(18, textHeight(text, false) - 72), false);
+          text = tailChunks.shift() || '';
+          chunks.push(...tailChunks);
+        }
+        const node = <TermsSection finePrintContent={text || undefined}
+          opts={{ ...opts, showTermsAndConditions: standardTermsPending, showSignatureBlock: false }} />;
+        remainingTerms = chunks.join(' ');
+        standardTermsPending = false;
+        return { node, signature: false };
+      }
+    } else {
+      const firstPageHasTerms = itemChunks.length <= 1 && !skipWarrantyAndTerms;
+      if (firstPageHasTerms && opts.showSignatureBlock) estimateSignatureRelIdx = estimateNodes.length;
+      estimateNodes.push(
+        <FirstPage key="page-1" customerName={customerName} customerAddress={customerAddress}
+          customerPhone={customerPhone} customerEmail={customerEmail} items={itemChunks[0] || []}
+          blocks={blockChunks[0] || []} isOnlyChunk={itemChunks.length <= 1} breakdown={breakdown}
+          config={config} opts={opts} showTerms={firstPageHasTerms}
+          finePrintContent={firstPageHasTerms ? finePrintContent : undefined} estimateName={estimateName} />
+      );
+      for (let i = 1; i < itemChunks.length; i++) {
+        const isLastItemPage = i === itemChunks.length - 1;
+        const showTerms = isLastItemPage && !skipWarrantyAndTerms;
+        if (showTerms && opts.showSignatureBlock) estimateSignatureRelIdx = estimateNodes.length;
+        estimateNodes.push(
+          <ItemsContinuationPage key={`items-page-${i + 1}`} items={itemChunks[i]} blocks={blockChunks[i]}
+            isLastPage={isLastItemPage} breakdown={isLastItemPage ? breakdown : undefined}
+            config={isLastItemPage ? config : undefined} opts={opts} showTerms={showTerms}
+            finePrintContent={showTerms ? finePrintContent : undefined} />
         );
       }
-      const showTerms = opts.showTermsAndConditions && !skipWarrantyAndTerms;
-      if (showTerms && opts.showSignatureBlock) {
-        estimateSignatureRelIdx = estimateNodes.length;
-      }
-      if (showTerms) {
-        const termsChunks = opts.showCustomFinePrint && finePrintContent
-          ? chunkNarrative(finePrintContent, 3600, 3600)
-          : [''];
-        termsChunks.forEach((text, i) => {
-          const isLast = i === termsChunks.length - 1;
-          if (isLast && opts.showSignatureBlock) estimateSignatureRelIdx = estimateNodes.length;
-          estimateNodes.push(
-            <TermsSection
-              key={`terms-page-${i}`}
-              breakdown={breakdown}
-              opts={{ ...opts, showTermsAndConditions: i === 0 && opts.showTermsAndConditions, showSignatureBlock: isLast && opts.showSignatureBlock }}
-              finePrintContent={text}
-            />
-          );
-        });
-      }
+      pricingPageIdx = estimateNodes.length - 1;
     }
 
-
-    if (changeOrderItems.length > 0) {
+    if (changeOrderItems.length > 0 && !useNarrativeSplit) {
       const changeOrdersBlock = <ChangeOrdersBlock items={changeOrderItems} />;
       // Inject into the page rendering the PricingSummary (last items page or
       // the dedicated summary page in narrative mode), above the totals.
-      const targetIdx = useNarrativeSplit ? narrativeChunks.length - 1 : estimateNodes.length - 1;
+      const targetIdx = pricingPageIdx;
       const target = estimateNodes[targetIdx] as React.ReactElement;
       if (target) {
         estimateNodes[targetIdx] = React.cloneElement(target, { changeOrdersBlock });
@@ -1057,6 +1046,55 @@ function renderNarrativeText(text: string) {
       </div>
     )
   );
+}
+
+// Measure with the same width/font/line spacing used by the actual PDF body.
+// This avoids character-count cutoffs that forced short scopes and long legal
+// text onto almost-empty separate pages.
+function textHeight(text: string, narrative = true): number {
+  if (!text) return 0;
+  if (typeof document === 'undefined') return Math.ceil(text.length / 100) * 18;
+  const probe = document.createElement('div');
+  Object.assign(probe.style, {
+    position: 'fixed', left: '-10000px', top: '0', width: narrative ? '776px' : '760px',
+    fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+    fontSize: '12px', lineHeight: narrative ? '19.5px' : '16px',
+    whiteSpace: 'normal', overflowWrap: 'anywhere', visibility: 'hidden',
+  });
+  if (narrative) {
+    text.split('\n').forEach(line => {
+      const block = document.createElement('div');
+      if (!line.trim()) block.style.height = '9px';
+      else block.textContent = line.replace(/\*\*/g, '');
+      probe.appendChild(block);
+    });
+  } else probe.textContent = text;
+  document.body.appendChild(probe);
+  const height = probe.getBoundingClientRect().height;
+  probe.remove();
+  return height;
+}
+
+function splitTextToHeight(text: string, maxHeight: number, narrative = true): string[] {
+  const chunks: string[] = [];
+  let remaining = text.trim();
+  while (remaining) {
+    if (textHeight(remaining, narrative) <= maxHeight) { chunks.push(remaining); break; }
+    let low = 1;
+    let high = remaining.length;
+    while (low < high) {
+      const mid = Math.ceil((low + high) / 2);
+      if (textHeight(remaining.slice(0, mid), narrative) <= maxHeight) low = mid;
+      else high = mid - 1;
+    }
+    const window = remaining.slice(0, low);
+    const paragraph = window.lastIndexOf('\n');
+    const word = window.lastIndexOf(' ');
+    const cut = paragraph > low * 0.65 ? paragraph : word > 0 ? word : low;
+    chunks.push(remaining.slice(0, cut).trim());
+    remaining = remaining.slice(cut).trim();
+  }
+  return chunks;
 }
 
 // Split a long AI narrative into safely-sized chunks so it never pushes the
@@ -1486,7 +1524,7 @@ const TermsSection: React.FC<{
                 <div>
                   <p className="text-xs text-gray-500 mb-10">Customer Signature</p>
                   <div className="h-5 border-b border-gray-400" data-signature-line="customer"></div>
-                  <p className="text-xs text-gray-500 mt-10 flex items-end gap-1">
+                  <p className="text-xs text-gray-500 mt-2 flex items-end gap-1">
                     <span>Date:</span>
                     <span className="inline-block border-b border-gray-400 flex-1 h-4" data-date-line="customer"></span>
                   </p>
@@ -1494,7 +1532,7 @@ const TermsSection: React.FC<{
                 <div>
                   <p className="text-xs text-gray-500 mb-10">Company Representative</p>
                   <div className="h-5 border-b border-gray-400" data-signature-line="company"></div>
-                  <p className="text-xs text-gray-500 mt-10 flex items-end gap-1">
+                  <p className="text-xs text-gray-500 mt-2 flex items-end gap-1">
                     <span>Date:</span>
                     <span className="inline-block border-b border-gray-400 flex-1 h-4" data-date-line="company"></span>
                   </p>
