@@ -674,8 +674,8 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     if (useNarrativeSplit) {
       // Flow legal text into unused scope-page space; reserve the complete
       // signing block with the final legal chunk rather than orphaning it.
-      const contentBudget = 820;
-      const scopeChunks = splitTextToHeight(opts.scopeNarrative || '', contentBudget - 130 - pcoHeight);
+      const contentBudget = 870;
+      const scopeChunks = splitTextToHeight(opts.scopeNarrative || '', contentBudget - 110 - pcoHeight);
       const legalEnabled = !skipWarrantyAndTerms;
       let remainingTerms = legalEnabled && opts.showCustomFinePrint ? (finePrintContent || '').trim() : '';
       let standardTermsPending = legalEnabled && opts.showTermsAndConditions;
@@ -685,7 +685,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
         let legal: React.ReactNode = null;
         if (lastScope) {
           pricingPageIdx = estimateNodes.length;
-          const available = contentBudget - textHeight(text) - 130 - pcoHeight;
+          const available = contentBudget - textHeight(text) - 110 - pcoHeight;
           const result = takeLegal(available);
           legal = result.node;
           if (result.signature) estimateSignatureRelIdx = estimateNodes.length;
@@ -714,8 +714,8 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
       }
 
       function takeLegal(available: number): { node: React.ReactNode; signature: boolean } {
-        const standardHeight = standardTermsPending ? 90 : 0;
-        const signatureHeight = signaturePending ? 180 : 0;
+        const standardHeight = standardTermsPending ? 75 : 0;
+        const signatureHeight = signaturePending ? 155 : 0;
         const fineHeight = remainingTerms ? textHeight(remainingTerms, false) + 24 : 0;
         const allFit = standardHeight + fineHeight + signatureHeight + 20 <= available;
         if (allFit) {
