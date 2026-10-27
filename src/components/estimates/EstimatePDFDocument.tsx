@@ -670,14 +670,10 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     // Reserve space for pricing after the scope. Legal text has its own
     // overflow decision and must never displace the investment from the scope.
     const useNarrativeSplit = !!(opts.useScopeNarrative && opts.scopeNarrative && !opts.showOnlyTotal);
-    // Chunk narrative by character length so a very long AI explanation can never
-    // push the totals or signature block off the page. First page has less room
-    // (header + customer + banner); continuation pages get more.
-    // Fit the entire scope narrative on the first page whenever possible so the
-    // document stays at 2 pages (narrative page + summary page). Only very long
-    // narratives will spill into a continuation page.
+    const pcoReserve = changeOrderItems.length > 0 ? 900 + changeOrderItems.length * 120 : 0;
+    // Newlines consume vertical space too; each scope page leaves room for price.
     const narrativeChunks = useNarrativeSplit
-      ? chunkNarrative(opts.scopeNarrative || '', 4000, 4000)
+      ? chunkNarrative(opts.scopeNarrative || '', Math.max(1000, 4000 - pcoReserve), Math.max(1000, 4000 - pcoReserve))
       : [];
     // When the narrative is short enough to co-exist with the pricing summary,
     // terms & conditions, fine print, and the signature block on ONE page, do
@@ -688,7 +684,6 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     // single page — the pricing summary would be clipped by the page's
     // overflow:hidden. Reserve room for it, and fall back to a dedicated
     // summary page when there isn't enough.
-    const pcoReserve = changeOrderItems.length > 0 ? 900 + changeOrderItems.length * 120 : 0;
     // Long custom fine print (e.g. state cancellation notices) must also fit on
     // the same page; otherwise it gets crushed into tiny overlapping text.
     const finePrintLen = opts.showCustomFinePrint && finePrintContent ? finePrintContent.length : 0;
@@ -1070,20 +1065,27 @@ function renderNarrativeText(text: string) {
 function chunkNarrative(text: string, firstMax: number, contMax: number): string[] {
   const clean = (text || '').trim();
   if (!clean) return [];
-  if (clean.length <= firstMax) return [clean];
+  const weight = (value: string) => value.length + (value.match(/\n/g)?.length || 0) * 100;
+  if (weight(clean) <= firstMax) return [clean];
 
   const chunks: string[] = [];
   let remaining = clean;
   let limit = firstMax;
-  while (remaining.length > limit) {
-    const window = remaining.slice(0, limit);
+  while (weight(remaining) > limit) {
+    let end = 0;
+    let used = 0;
+    while (end < remaining.length && used + (remaining[end] === '\n' ? 101 : 1) <= limit) {
+      used += remaining[end] === '\n' ? 101 : 1;
+      end++;
+    }
+    const window = remaining.slice(0, Math.max(1, end));
     let cut = window.lastIndexOf('\n\n');
-    if (cut < limit * 0.5) {
+    if (cut < window.length * 0.5) {
       const sentenceMatch = window.match(/[.!?]\s(?=[^.!?]*$)/);
       cut = sentenceMatch ? (sentenceMatch.index ?? -1) + 2 : -1;
     }
-    if (cut < limit * 0.5) cut = window.lastIndexOf(' ');
-    if (cut < limit * 0.5) cut = limit;
+    if (cut < window.length * 0.5) cut = window.lastIndexOf(' ');
+    if (cut < window.length * 0.5) cut = window.length;
     chunks.push(remaining.slice(0, cut).trim());
     remaining = remaining.slice(cut).trim();
     limit = contMax;
