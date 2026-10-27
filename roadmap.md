@@ -1,7 +1,7 @@
 # Roadmap
 
 ## Estimate scope and pricing layout (2026-10-27)
-- [ ] Keep signatures and price with final estimate details; move all legal text to following pages when insufficient space.
+- [x] Keep signatures and price with final estimate details; move all legal text to following pages when insufficient space. Four browser fixtures confirm signature/price/scope grouping and no clipping; overflow PDF visually reviewed. Existing PDFs require regeneration; signed-in export remains unverified.
 - [x] Remove forced narrative/terms/signature separation using rendered-height pagination and tighter signature/date spacing. Four browser fixtures verify combined sections, long scopes and legal overflow without clipping/errors; PDF visual review corrected excessive reserved space. Real signed-in export remains unavailable with external unmanaged authentication; existing PDFs require regeneration.
 - [x] Keep investment directly after the final scope chunk; paginate long legal terms separately and account for paragraph spacing. Browser fixtures verify short/long scopes, price placement, signatures and no clipping/errors; build OK. Existing customer PDF must be regenerated; real signed-in estimate export remains unavailable with external unmanaged authentication.
 
