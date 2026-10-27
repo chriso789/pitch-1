@@ -43,7 +43,7 @@ Deno.serve(async (req: Request) => {
     const { data: link } = await supabase
       .from("quote_tracking_links")
       .select(
-        `id, tenant_id, sent_by, estimate_id, contact_id, recipient_name, email_opened_at,
+        `id, tenant_id, sent_by, estimate_id, contact_id, recipient_name, email_opened_at, sent_at, created_at,
          enhanced_estimates ( estimate_number ),
          contacts ( first_name, last_name )`
       )
@@ -51,6 +51,18 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (!link) return pixelResponse();
+
+    // Mail servers, security scanners and Apple Mail Privacy Protection fetch
+    // tracking images automatically the moment an email is delivered. Those
+    // are not real opens, so ignore anything within 2 minutes of sending and
+    // known automated fetchers.
+    const sentAtMs = Date.parse((link as any).sent_at || (link as any).created_at || "");
+    const ua = (req.headers.get("user-agent") || "").toLowerCase();
+    const automatedUa = /(bot|crawler|spider|scanner|preview|proofpoint|mimecast|barracuda|safelinks|python|curl|wget|headless)/.test(ua);
+    if ((Number.isFinite(sentAtMs) && Date.now() - sentAtMs < 120_000) || automatedUa) {
+      console.log("[track-quote-open] ignored automated/prefetch open", { ageMs: Date.now() - sentAtMs, ua });
+      return pixelResponse();
+    }
 
     // Only notify on the first open of this email
     const alreadyOpened = !!link.email_opened_at;
