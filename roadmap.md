@@ -1,5 +1,8 @@
 # Roadmap
 
+## Estimate scope and pricing layout (2026-10-27)
+- [ ] Keep investment directly after scope; separate long legal terms instead of displacing pricing; verify short and long descriptions.
+
 ## Demo booking availability (2026-10-26)
 - [x] Refresh open booking pages every 15 seconds/on tab return; clear unavailable selections and refresh after conflicting confirmations. 14 tests pass; live service-only host lock/cross-invitation overlap checks verified, host fallback guarded by migration. Real simultaneous customer booking remains unverified
 - [x] Replace individual meeting entry with calendar date ranges and daily time windows; 11 unit checks pass including New York DST; browser dialog fixture selects Oct 27–29, 9–11 AM and submits 12 UTC slots. Build OK. Real signed-in email/booking flow remains blocked below
