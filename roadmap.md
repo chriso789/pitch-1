@@ -1,7 +1,7 @@
 # Roadmap
 
 ## Estimate scope and pricing layout (2026-10-27)
-- [ ] Keep investment directly after scope; separate long legal terms instead of displacing pricing; verify short and long descriptions.
+- [x] Keep investment directly after the final scope chunk; paginate long legal terms separately and account for paragraph spacing. Browser fixtures verify short/long scopes, price placement, signatures and no clipping/errors; build OK. Existing customer PDF must be regenerated; real signed-in estimate export remains unavailable with external unmanaged authentication.
 
 ## Demo booking availability (2026-10-26)
 - [x] Refresh open booking pages every 15 seconds/on tab return; clear unavailable selections and refresh after conflicting confirmations. 14 tests pass; live service-only host lock/cross-invitation overlap checks verified, host fallback guarded by migration. Real simultaneous customer booking remains unverified
