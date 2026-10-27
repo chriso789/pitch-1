@@ -672,11 +672,12 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     let pricingPageIdx = 0;
 
     if (useNarrativeSplit) {
-      // Flow legal text into unused scope-page space; reserve the complete
-      // signing block with the final legal chunk rather than orphaning it.
+      // Price and signatures belong to the final scope page. Legal text can
+      // follow on separate pages, but must never displace those signatures.
       const contentBudget = 870;
-      const scopeChunks = splitTextToHeight(opts.scopeNarrative || '', contentBudget - 110 - pcoHeight);
       const legalEnabled = !skipWarrantyAndTerms;
+      const signingHeight = legalEnabled && opts.showSignatureBlock ? 175 : 0;
+      const scopeChunks = splitTextToHeight(opts.scopeNarrative || '', Math.max(100, contentBudget - 110 - pcoHeight - signingHeight));
       let remainingTerms = legalEnabled && opts.showCustomFinePrint ? (finePrintContent || '').trim() : '';
       let standardTermsPending = legalEnabled && opts.showTermsAndConditions;
       let signaturePending = legalEnabled && opts.showSignatureBlock;
@@ -686,9 +687,17 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
         if (lastScope) {
           pricingPageIdx = estimateNodes.length;
           const available = contentBudget - textHeight(text) - 110 - pcoHeight;
-          const result = takeLegal(available);
-          legal = result.node;
-          if (result.signature) estimateSignatureRelIdx = estimateNodes.length;
+          const fullLegalHeight = (standardTermsPending ? 75 : 0) +
+            (remainingTerms ? textHeight(remainingTerms, false) + 24 : 0) + signingHeight + 20;
+          if (fullLegalHeight <= available) {
+            const result = takeLegal(available);
+            legal = result.node;
+          } else if (signaturePending) {
+            legal = <TermsSection breakdown={breakdown}
+              opts={{ ...opts, showTermsAndConditions: false, showCustomFinePrint: false, showSignatureBlock: true }} />;
+          }
+          if (signaturePending || (legal && opts.showSignatureBlock)) estimateSignatureRelIdx = estimateNodes.length;
+          signaturePending = false;
         }
         estimateNodes.push(
           <div key={`scope-flow-${i}`} className="space-y-2">
