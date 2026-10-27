@@ -1,6 +1,7 @@
 # Roadmap
 
 ## Estimate scope and pricing layout (2026-10-27)
+- [ ] Remove forced separation of description, pricing, legal terms and signatures; verify continuous pagination with short and long terms.
 - [x] Keep investment directly after the final scope chunk; paginate long legal terms separately and account for paragraph spacing. Browser fixtures verify short/long scopes, price placement, signatures and no clipping/errors; build OK. Existing customer PDF must be regenerated; real signed-in estimate export remains unavailable with external unmanaged authentication.
 
 ## Demo booking availability (2026-10-26)
