@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
+import { clampStoredProfitPercent } from "./profit.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -230,7 +231,7 @@ Deno.serve(async (req) => {
       rep_commission_amount: Math.round(repCommissionAmount * 100) / 100,
       selling_price: Math.round(finalSellingPrice * 100) / 100,
       actual_profit_amount: Math.round(profitAmount * 100) / 100,
-      actual_profit_percent: Math.round(profitPercent * 100) / 100,
+      actual_profit_percent: clampStoredProfitPercent(profitPercent),
       updated_at: new Date().toISOString(),
       calculation_metadata: {
         ...((estimate.calculation_metadata as object) || {}),
