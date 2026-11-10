@@ -6,7 +6,8 @@
  */
 import { safeText } from '@/lib/safeText';
 import { formatLicenseLine, parseLicenses } from "@/lib/companyLicenses";
-import React, { useMemo } from 'react';
+import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { findClippedSignatureLine } from '@/lib/estimates/signatureFit';
 import { type LineItem } from '@/hooks/useEstimatePricing';
 import { type PDFComponentOptions, getDefaultOptions } from './PDFComponentOptions';
 import { AttachmentPagesRenderer } from './AttachmentPagesRenderer';
@@ -508,7 +509,7 @@ const PageShell: React.FC<{
       )}
       
       {/* Content */}
-      <div className="flex-1 px-5 py-2 overflow-hidden">
+      <div className="flex-1 px-5 py-2 overflow-hidden" data-page-content>
         {children}
       </div>
       
@@ -583,6 +584,43 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
         day: 'numeric' 
       });
 
+  // Layout fit passes: if a rendered signature/date line falls outside its
+  // page, re-paginate with more room (fine print moves to following pages,
+  // then fewer rows/scope text share the signing page) until it fits.
+  const MAX_FIT_PASS = 6;
+  const layoutKey = [
+    materialItems.length, laborItems.length, turnkeyItems.length, changeOrderItems.length,
+    (finePrintContent || '').length, (opts.scopeNarrative || '').length, opts.useScopeNarrative,
+    opts.showCustomFinePrint, opts.showTermsAndConditions, opts.showSignatureBlock, opts.showOnlyTotal,
+    opts.showUnifiedItems, skipWarrantyAndTerms, templateStyle, (additionalEstimates || []).length,
+  ].join('|');
+  const [fit, setFit] = useState({ key: layoutKey, pass: 0 });
+  if (fit.key !== layoutKey) setFit({ key: layoutKey, pass: 0 });
+  const fitPass = fit.key === layoutKey ? fit.pass : 0;
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [measureTick, setMeasureTick] = useState(0);
+
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root || fitPass >= MAX_FIT_PASS) return;
+    if (findClippedSignatureLine(root)) {
+      setFit((f) => (f.key === layoutKey ? { key: layoutKey, pass: Math.min(MAX_FIT_PASS, f.pass + 1) } : f));
+    }
+  });
+
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const bump = () => setMeasureTick((t) => t + 1);
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(bump) : null;
+    ro?.observe(root);
+    if (typeof document !== 'undefined' && (document as any).fonts?.ready) {
+      (document as any).fonts.ready.then(bump).catch(() => undefined);
+    }
+    return () => ro?.disconnect();
+  }, []);
+  void measureTick;
+
   // Build pages
   const pages = useMemo(() => {
     // In unified mode, combine materials + labor so all trades appear in scope
@@ -608,7 +646,13 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
         })()
       : [...materialItems, ...turnkeyItems];
 
-    const { itemChunks, blockChunks } = chunkItems(scopeItems, MAX_ROWS_FIRST_PAGE, MAX_ROWS_CONTINUATION, opts);
+    const rowTrim = Math.max(0, fitPass - 1) * 6;
+    const { itemChunks, blockChunks } = chunkItems(
+      scopeItems,
+      Math.max(4, MAX_ROWS_FIRST_PAGE - rowTrim),
+      Math.max(6, MAX_ROWS_CONTINUATION - rowTrim),
+      opts,
+    );
 
     // Resolve which extra sections are enabled. skipExtraPages overrides everything for appended estimates.
     const showCover = !skipExtraPages && !skipCoverPage && opts.showCoverPage && sectionEnabled('cover_page');
@@ -674,7 +718,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     if (useNarrativeSplit) {
       // Price and signatures belong to the final scope page. Legal text can
       // follow on separate pages, but must never displace those signatures.
-      const contentBudget = 870;
+      const contentBudget = 870 - fitPass * 50;
       const legalEnabled = !skipWarrantyAndTerms;
       const signingHeight = legalEnabled && opts.showSignatureBlock ? 175 : 0;
       const scopeChunks = splitTextToHeight(opts.scopeNarrative || '', Math.max(100, contentBudget - 110 - pcoHeight - signingHeight));
@@ -689,7 +733,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
           const available = contentBudget - textHeight(text) - 110 - pcoHeight;
           const fullLegalHeight = (standardTermsPending ? 75 : 0) +
             (remainingTerms ? textHeight(remainingTerms, false) + 24 : 0) + signingHeight + 20;
-          if (fullLegalHeight <= available) {
+          if (fitPass === 0 && fullLegalHeight <= available) {
             const result = takeLegal(available);
             legal = result.node;
           } else if (signaturePending) {
@@ -754,14 +798,21 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
         return { node, signature: false };
       }
     } else {
+      // Price and signatures stay on the last scope page. When the full legal
+      // text cannot share that page (detected from the rendered layout), only
+      // the signing block stays and the terms/fine print follow on new pages.
+      const legalSeparate = fitPass >= 1 && !skipWarrantyAndTerms;
+      const signingOpts: PDFComponentOptions = legalSeparate
+        ? { ...opts, showTermsAndConditions: false, showCustomFinePrint: false }
+        : opts;
       const firstPageHasTerms = itemChunks.length <= 1 && !skipWarrantyAndTerms;
       if (firstPageHasTerms && opts.showSignatureBlock) estimateSignatureRelIdx = estimateNodes.length;
       estimateNodes.push(
         <FirstPage key="page-1" customerName={customerName} customerAddress={customerAddress}
           customerPhone={customerPhone} customerEmail={customerEmail} items={itemChunks[0] || []}
           blocks={blockChunks[0] || []} isOnlyChunk={itemChunks.length <= 1} breakdown={breakdown}
-          config={config} opts={opts} showTerms={firstPageHasTerms}
-          finePrintContent={firstPageHasTerms ? finePrintContent : undefined} estimateName={estimateName} />
+          config={config} opts={opts} termsOpts={signingOpts} showTerms={firstPageHasTerms}
+          finePrintContent={firstPageHasTerms && !legalSeparate ? finePrintContent : undefined} estimateName={estimateName} />
       );
       for (let i = 1; i < itemChunks.length; i++) {
         const isLastItemPage = i === itemChunks.length - 1;
@@ -770,11 +821,28 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
         estimateNodes.push(
           <ItemsContinuationPage key={`items-page-${i + 1}`} items={itemChunks[i]} blocks={blockChunks[i]}
             isLastPage={isLastItemPage} breakdown={isLastItemPage ? breakdown : undefined}
-            config={isLastItemPage ? config : undefined} opts={opts} showTerms={showTerms}
-            finePrintContent={showTerms ? finePrintContent : undefined} />
+            config={isLastItemPage ? config : undefined} opts={opts} termsOpts={signingOpts} showTerms={showTerms}
+            finePrintContent={showTerms && !legalSeparate ? finePrintContent : undefined} />
         );
       }
-      pricingPageIdx = estimateNodes.length - 1;
+      if (legalSeparate && (opts.showTermsAndConditions || (opts.showCustomFinePrint && (finePrintContent || '').trim()))) {
+        const legalBudget = 870 - Math.max(0, fitPass - 1) * 40;
+        let standardPending = opts.showTermsAndConditions;
+        const fineChunks = opts.showCustomFinePrint && (finePrintContent || '').trim()
+          ? splitTextToHeight((finePrintContent || '').trim(), Math.max(120, legalBudget - 140), false)
+          : [];
+        if (fineChunks.length === 0 && standardPending) fineChunks.push('');
+        fineChunks.forEach((text, idx) => {
+          estimateNodes.push(
+            <TermsSection key={`items-legal-${idx}`} finePrintContent={text || undefined}
+              opts={{ ...opts, showTermsAndConditions: standardPending, showSignatureBlock: false }} />
+          );
+          standardPending = false;
+        });
+      }
+      pricingPageIdx = estimateSignatureRelIdx ?? Math.max(0, itemChunks.length - 1);
+      if (false) {
+      }
     }
 
     if (changeOrderItems.length > 0 && !useNarrativeSplit) {
@@ -933,7 +1001,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
       signaturePageIdx,
       standaloneFlags,
     };
-  }, [materialItems, laborItems, turnkeyItems, changeOrderItems, opts, measurementSummary, jobPhotos, breakdown, config, customerName, customerAddress, customerPhone, customerEmail, finePrintContent, skipCoverPage, skipWarrantyAndTerms, skipExtraPages, effectivePageOrder, warrantyTerms, templateAttachments, additionalEstimates]);
+  }, [materialItems, laborItems, turnkeyItems, changeOrderItems, opts, measurementSummary, jobPhotos, breakdown, config, customerName, customerAddress, customerPhone, customerEmail, finePrintContent, skipCoverPage, skipWarrantyAndTerms, skipExtraPages, effectivePageOrder, warrantyTerms, templateAttachments, additionalEstimates, fitPass]);
 
 
   const commonProps = {
@@ -950,7 +1018,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
   };
 
   return (
-    <div data-estimate-pages className="flex flex-col gap-4 pdf-render-container" style={{
+    <div ref={rootRef} data-estimate-pages data-signature-fit-pass={fitPass} className="flex flex-col gap-4 pdf-render-container" style={{
       fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
       WebkitFontSmoothing: 'antialiased',
       MozOsxFontSmoothing: 'grayscale',
@@ -1159,6 +1227,7 @@ const FirstPage: React.FC<{
   narrativeOverride?: string;
   narrativeContinues?: boolean;
   compactSignature?: boolean;
+  termsOpts?: PDFComponentOptions;
 }> = ({
   customerName,
   customerAddress,
@@ -1177,6 +1246,7 @@ const FirstPage: React.FC<{
   narrativeOverride,
   narrativeContinues,
   compactSignature,
+  termsOpts,
 }) => {
   const narrativeText = narrativeOverride ?? opts.scopeNarrative;
   return (
@@ -1237,7 +1307,7 @@ const FirstPage: React.FC<{
       )}
 
       {/* Terms & Fine Print (only if fits on first page) */}
-      {showTerms && <TermsSection finePrintContent={finePrintContent} opts={opts} breakdown={breakdown} compact={compactSignature} />}
+      {showTerms && <TermsSection finePrintContent={finePrintContent} opts={termsOpts ?? opts} breakdown={breakdown} compact={compactSignature} />}
     </div>
   );
 };
@@ -1253,7 +1323,8 @@ const ItemsContinuationPage: React.FC<{
   showTerms: boolean;
   finePrintContent?: string;
   changeOrdersBlock?: React.ReactNode;
-}> = ({ items, blocks, isLastPage, breakdown, config, opts, showTerms, finePrintContent, changeOrdersBlock }) => {
+  termsOpts?: PDFComponentOptions;
+}> = ({ items, blocks, isLastPage, breakdown, config, opts, showTerms, finePrintContent, changeOrdersBlock, termsOpts }) => {
   return (
     <div className="space-y-3">
       <ItemsTable blocks={blocks} opts={opts} continued markupFactor={breakdown ? (breakdown.directCost > 0 ? breakdown.sellingPrice / breakdown.directCost : 1) : 1} />
@@ -1264,7 +1335,7 @@ const ItemsContinuationPage: React.FC<{
         <PricingSummary breakdown={breakdown} config={config} opts={opts} />
       )}
 
-      {showTerms && <TermsSection finePrintContent={finePrintContent} opts={opts} breakdown={breakdown} />}
+      {showTerms && <TermsSection finePrintContent={finePrintContent} opts={termsOpts ?? opts} breakdown={breakdown} />}
     </div>
   );
 };
