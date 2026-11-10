@@ -62,6 +62,22 @@ Deno.serve(async (req: Request) => {
       return errorResponse('NOT_FOUND', 'Envelope not found', 404);
     }
 
+    // Rebuilding an already-signed envelope replaces its signed copy, so only
+    // the signing service or a member of the envelope's company may request it.
+    if (body.force_rebuild) {
+      const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+      const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+      let allowed = !!token && !!serviceKey && token === serviceKey;
+      if (!allowed && token) {
+        const { data: userData } = await supabase.auth.getUser(token);
+        if (userData?.user) {
+          const { data: profile } = await supabase.from('profiles').select('tenant_id').eq('id', userData.user.id).maybeSingle();
+          allowed = profile?.tenant_id === envelope.tenant_id;
+        }
+      }
+      if (!allowed) return errorResponse('FORBIDDEN', 'Not allowed to rebuild this envelope', 403);
+    }
+
     // Check if already finalized or completed
     if (!body.force_rebuild && (envelope.status === 'completed' || envelope.status === 'awaiting_countersignature')) {
       return successResponse({
