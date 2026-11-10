@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
+import { anchorFromStored, isBoxOnPage } from "../_shared/signature-placement/index.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -121,7 +122,7 @@ Deno.serve(async (req) => {
     } else if (document_type === 'estimate') {
       const { data, error: estError } = await supabase
         .from("enhanced_estimates")
-        .select("id, pdf_url, pipeline_entry_id, estimate_number, display_name")
+        .select("id, pdf_url, pipeline_entry_id, estimate_number, display_name, signature_anchor")
         .eq("id", document_id)
         .single();
       if (estError || !data) {
@@ -130,6 +131,21 @@ Deno.serve(async (req) => {
           status: 404,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
+      }
+      // Never send an estimate whose saved signature lines are cut off the page:
+      // the customer would have nowhere visible to sign.
+      const anchor = anchorFromStored((data as any).signature_anchor);
+      if (anchor) {
+        const w = anchor.pageWidthPt || 612;
+        const h = anchor.pageHeightPt || 792;
+        const boxes = [anchor.customerSig ?? { xPt: anchor.xPt, yPt: anchor.yPt, widthPt: anchor.widthPt }, anchor.customerDate, anchor.companySig, anchor.companyDate]
+          .filter(Boolean);
+        if (!boxes.every((b) => isBoxOnPage(b as any, w, h))) {
+          return new Response(JSON.stringify({
+            error: "This estimate's signature lines are cut off the page. Open the estimate, save it again to rebuild the PDF, then send.",
+            code: "SIGNATURE_PLACEMENT",
+          }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
       }
       pdfPath = data.pdf_url;
       resolvedPipelineEntryId = resolvedPipelineEntryId || data.pipeline_entry_id;

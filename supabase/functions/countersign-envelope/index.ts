@@ -1,4 +1,4 @@
-import { PDFDocument, rgb, StandardFonts } from "npm:pdf-lib@1.17.1";
+import { PDFDocument, StandardFonts } from "npm:pdf-lib@1.17.1";
 import {
   createServiceClient,
   hashToken,
@@ -9,6 +9,17 @@ import {
   handleCors,
   getClientInfo,
 } from '../_shared/utils.ts';
+import {
+  anchorFromStored,
+  appendSignaturePage,
+  dataUrlToBytes,
+  embedSignatureImage,
+  formatUsd,
+  stampSignature,
+  validateAnchor,
+  type Box,
+  type SignatureAnchor,
+} from '../_shared/signature-placement/index.ts';
 
 // ============================================================================
 // COUNTERSIGN ENVELOPE
@@ -126,114 +137,43 @@ Deno.serve(async (req: Request) => {
       return errorResponse('INVALID_STATE', 'Envelope has no signed PDF yet', 400);
     }
 
-    const { data: pdfBlob, error: dlErr } = await supabase.storage
-      .from('documents')
-      .download(signedPath);
-    if (dlErr || !pdfBlob) {
-      console.error('Could not download client-signed PDF:', dlErr);
+    const downloadPdf = async (path: string): Promise<Uint8Array | null> => {
+      for (const bucket of ['documents', 'smartdoc-renditions']) {
+        const { data, error } = await supabase.storage.from(bucket).download(path);
+        if (data && !error) return new Uint8Array(await data.arrayBuffer());
+      }
+      return null;
+    };
+
+    const clientSignedBytes = await downloadPdf(signedPath);
+    if (!clientSignedBytes) {
+      console.error('Could not download client-signed PDF:', signedPath);
       return errorResponse('STORAGE_ERROR', 'Could not load signed PDF', 500);
     }
-    const pdfBytes = new Uint8Array(await pdfBlob.arrayBuffer());
 
     // Load signature anchor from the linked estimate (same source finalize-envelope uses)
-    type Box = { xPt: number; yPt: number; widthPt: number };
-    let anchor: {
-      pageIndex: number; xPt: number; yPt: number; widthPt: number;
-      customerSig?: Box; customerDate?: Box;
-      companySig?: Box; companyDate?: Box;
-    } | null = null;
+    let storedAnchor: SignatureAnchor | null = null;
+    let linkedEstimateRow: { id: string; estimate_number?: string | null; selling_price?: number | null; total_with_tax?: number | null } | null = null;
     try {
       const { data: linkedEstimate } = await supabase
         .from('enhanced_estimates')
-        .select('id, signature_anchor')
+        .select('id, estimate_number, selling_price, total_with_tax, signature_anchor')
         .eq('signature_envelope_id', envelope.id)
         .maybeSingle();
-      if (linkedEstimate?.signature_anchor && typeof linkedEstimate.signature_anchor === 'object') {
-        anchor = linkedEstimate.signature_anchor as any;
+      if (linkedEstimate) {
+        linkedEstimateRow = linkedEstimate as any;
+        storedAnchor = anchorFromStored((linkedEstimate as any).signature_anchor);
       }
     } catch (e) {
       console.warn('Could not load signature_anchor:', e);
     }
 
-    // Open PDF and stamp rep signature
-    const pdfDoc = await PDFDocument.load(pdfBytes);
-    const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const helveticaBoldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-
-    const pageCount = pdfDoc.getPageCount();
-    // ALWAYS target the same page the customer signed on so the rep signature
-    // lands in the right-hand "Company Representative" column next to it.
-    // Previously, force_rebuild bypassed both anchor and signature_page_index
-    // and fell through to `pageCount - 1`, which dropped the rep stamp onto
-    // the last (terms continuation) page instead of the customer's page.
-    const targetPageIdx =
-      anchor && anchor.pageIndex != null && anchor.pageIndex < pageCount
-        ? anchor.pageIndex
-        : envelope.signature_page_index != null && envelope.signature_page_index < pageCount
-        ? envelope.signature_page_index
-        : pageCount - 1;
-    const page = pdfDoc.getPage(targetPageIdx);
-    console.log(`Countersign targeting page ${targetPageIdx} (signature_page_index=${envelope.signature_page_index}, pageCount=${pageCount}, anchorPage=${anchor?.pageIndex ?? 'null'}, force_rebuild=${!!body.force_rebuild})`);
-    const { height: pageH, width: pageW } = page.getSize();
-
-    // Prefer the precise company-side anchors. If not present (legacy
-    // estimates), derive the rep block from the legacy single anchor by
-    // taking the right half of the signature block area.
-    const anchorValid =
-      !!anchor &&
-      anchor.yPt > 20 &&
-      anchor.yPt < pageH - 10 &&
-      anchor.xPt > 0 &&
-      anchor.xPt < pageW;
-
-    const fallbackBlockBottomY = anchorValid ? anchor!.yPt : Math.max(80, pageH * 0.18);
-    const fallbackBlockLeftX = anchorValid ? anchor!.xPt : 60;
-    // NOTE: anchor.widthPt is the CUSTOMER signature column width (~half of
-    // the signature block), NOT the full block width. The old fallback
-    // treated it as the full block and divided again, which placed the rep
-    // signature roughly under the page center — directly on top of the
-    // "Your Investment / $XX,XXX" total. Mirror the customer column to the
-    // right side of the page so the rep signature lands in the right-hand
-    // "Company Representative" column.
-    const customerColWidth = anchorValid ? anchor!.widthPt : (pageW - 120) / 2;
-    const mirroredRightX = anchorValid
-      ? Math.max(
-          fallbackBlockLeftX + customerColWidth + 24,
-          pageW - fallbackBlockLeftX - customerColWidth,
-        )
-      : fallbackBlockLeftX + customerColWidth + 24;
-
-    const rawCompanySigBox: Box = anchor?.companySig ?? {
-      xPt: mirroredRightX,
-      yPt: fallbackBlockBottomY,
-      widthPt: customerColWidth,
+    let pdfDoc = await PDFDocument.load(clientSignedBytes);
+    let fonts = {
+      regular: await pdfDoc.embedFont(StandardFonts.Helvetica),
+      bold: await pdfDoc.embedFont(StandardFonts.HelveticaBold),
     };
-    // Some already-generated estimates stored a missing or centered company
-    // anchor, which placed the rep signature over the "Your Investment" total.
-    // Force the rep stamp into the far-right side of the page and keep the
-    // stamped image compact so the audit text and line remain inside the page.
-    const farRightInset = 34;
-    const repColumnWidth = Math.min(rawCompanySigBox.widthPt, 140);
-    const rightColumnX = Math.max(pageW * 0.70, pageW - farRightInset - repColumnWidth);
-    const companySigBox: Box = {
-      ...rawCompanySigBox,
-      xPt: Math.max(rawCompanySigBox.xPt, rightColumnX),
-      widthPt: repColumnWidth,
-    };
-    const rawCompanyDateBox: Box | null = anchor?.companyDate ?? null;
-    const companyDateBox: Box | null = rawCompanyDateBox
-      ? {
-          ...rawCompanyDateBox,
-          xPt: Math.max(rawCompanyDateBox.xPt, companySigBox.xPt + 24),
-          widthPt: Math.min(rawCompanyDateBox.widthPt, Math.max(40, pageW - companySigBox.xPt - farRightInset)),
-        }
-      : null;
-
-    const repSigX = companySigBox.xPt;
-    const repSigY = companySigBox.yPt;
-    const repMaxSigWidth = companySigBox.widthPt;
-    const repGapToDate = companyDateBox ? (repSigY - companyDateBox.yPt - 6) : 60;
-    const repMaxSigHeight = Math.max(40, Math.min(60, repGapToDate));
+    let anchor = validateAnchor(storedAnchor, pdfDoc.getPageCount(), (i) => pdfDoc.getPage(i).getSize());
 
     // Tenant name for label
     let tenantName = 'Authorized Representative';
@@ -246,6 +186,106 @@ Deno.serve(async (req: Request) => {
       if (tenant?.name) tenantName = tenant.name;
     } catch { /* noop */ }
 
+    // Repair: older estimates stored signature lines that were clipped below
+    // the page, so the customer signature was stamped over the fine print and
+    // the company line was never visible. Rebuild from the original unsigned
+    // estimate, add a real signature page and place every signature on it.
+    let repairedPlacement = false;
+    if (!anchor && storedAnchor && envelope.generated_pdf_path) {
+      const originalBytes = await downloadPdf(envelope.generated_pdf_path);
+      const { data: signatures } = await supabase
+        .from('digital_signatures')
+        .select('*, recipient:signature_recipients(recipient_name)')
+        .eq('envelope_id', envelope.id);
+      if (originalBytes && signatures && signatures.length > 0) {
+        pdfDoc = await PDFDocument.load(originalBytes);
+        fonts = {
+          regular: await pdfDoc.embedFont(StandardFonts.Helvetica),
+          bold: await pdfDoc.embedFont(StandardFonts.HelveticaBold),
+        };
+        anchor = appendSignaturePage(pdfDoc, fonts, {
+          title: envelope.title,
+          reference: linkedEstimateRow?.estimate_number ?? null,
+          totalText: formatUsd(linkedEstimateRow?.selling_price ?? linkedEstimateRow?.total_with_tax),
+          companyName: tenantName,
+        });
+        const sigPage = pdfDoc.getPage(anchor.pageIndex);
+        for (const sig of signatures) {
+          const meta = (sig.signature_metadata || {}) as Record<string, unknown>;
+          const recipientName = (sig.recipient as any)?.recipient_name || 'Customer';
+          const dateText = sig.signed_at ? new Date(sig.signed_at).toLocaleDateString() : new Date().toLocaleDateString();
+          const auditText = `${recipientName}  •  IP: ${sig.ip_address || 'N/A'}`;
+          let imageBytes: Uint8Array | null = null;
+          if (typeof meta.image_path === 'string') {
+            const { data: img } = await supabase.storage.from('signatures').download(meta.image_path);
+            if (img) imageBytes = new Uint8Array(await img.arrayBuffer());
+          } else if (typeof sig.signature_data === 'string' && sig.signature_data.startsWith('data:image')) {
+            imageBytes = dataUrlToBytes(sig.signature_data);
+          }
+          const target = { sig: anchor.customerSig!, date: anchor.customerDate ?? null };
+          if (imageBytes) {
+            stampSignature(sigPage, fonts, target, { image: await embedSignatureImage(pdfDoc, imageBytes), dateText, auditText });
+          } else if (sig.signature_data) {
+            stampSignature(sigPage, fonts, target, { typed: sig.signature_data, dateText, auditText });
+          }
+        }
+        repairedPlacement = true;
+        console.warn(`Rebuilt envelope ${envelope.id} with signature page ${anchor.pageIndex}; stored anchor was off page.`);
+      }
+    }
+    if (!anchor && storedAnchor) {
+      return errorResponse(
+        'SIGNATURE_PLACEMENT',
+        'The signature lines on this estimate are not visible on the page, and the original could not be rebuilt. Regenerate and resend the estimate.',
+        409,
+      );
+    }
+
+    const pageCount = pdfDoc.getPageCount();
+    // ALWAYS target the same page the customer signed on so the rep signature
+    // lands in the right-hand "Company Representative" column next to it.
+    const targetPageIdx =
+      anchor
+        ? anchor.pageIndex
+        : envelope.signature_page_index != null && envelope.signature_page_index < pageCount
+        ? envelope.signature_page_index
+        : pageCount - 1;
+    const page = pdfDoc.getPage(targetPageIdx);
+    console.log(`Countersign targeting page ${targetPageIdx} (signature_page_index=${envelope.signature_page_index}, pageCount=${pageCount}, anchorPage=${anchor?.pageIndex ?? 'null'}, repaired=${repairedPlacement}, force_rebuild=${!!body.force_rebuild})`);
+    const { height: pageH, width: pageW } = page.getSize();
+
+    const fallbackBlockBottomY = anchor ? anchor.yPt : Math.max(80, pageH * 0.18);
+    const fallbackBlockLeftX = anchor ? anchor.xPt : 60;
+    // anchor.widthPt is the CUSTOMER column width; mirror it to the right
+    // half when an older anchor has no company line recorded.
+    const customerColWidth = anchor ? anchor.widthPt : (pageW - 120) / 2;
+    const mirroredRightX = anchor
+      ? Math.max(fallbackBlockLeftX + customerColWidth + 24, pageW - fallbackBlockLeftX - customerColWidth)
+      : fallbackBlockLeftX + customerColWidth + 24;
+
+    let companySigBox: Box = anchor?.companySig ?? {
+      xPt: mirroredRightX,
+      yPt: fallbackBlockBottomY,
+      widthPt: customerColWidth,
+    };
+    let companyDateBox: Box | null = anchor?.companyDate ?? null;
+    // Some older estimates stored a missing or centered company line, which
+    // put the rep signature over the "Your Investment" total. Only those are
+    // pushed to the far right; a verified right-hand company line is used as is.
+    if (!anchor?.companySig || companySigBox.xPt < pageW * 0.5) {
+      const farRightInset = 34;
+      const repColumnWidth = Math.min(companySigBox.widthPt, 140);
+      const rightColumnX = Math.max(pageW * 0.70, pageW - farRightInset - repColumnWidth);
+      companySigBox = { ...companySigBox, xPt: Math.max(companySigBox.xPt, rightColumnX), widthPt: repColumnWidth };
+      if (companyDateBox) {
+        companyDateBox = {
+          ...companyDateBox,
+          xPt: Math.max(companyDateBox.xPt, companySigBox.xPt + 24),
+          widthPt: Math.min(companyDateBox.widthPt, Math.max(40, pageW - companySigBox.xPt - farRightInset)),
+        };
+      }
+    }
+
     const repName = [repProfile.first_name, repProfile.last_name].filter(Boolean).join(' ').trim() || repProfile.email || 'Representative';
     const today = new Date();
     const signedDateStr = today.toLocaleDateString();
@@ -257,10 +297,7 @@ Deno.serve(async (req: Request) => {
     try {
       if (rawSig.startsWith('data:image')) {
         isPng = rawSig.startsWith('data:image/png');
-        const base64 = rawSig.split(',')[1];
-        const bin = atob(base64);
-        sigBytes = new Uint8Array(bin.length);
-        for (let i = 0; i < bin.length; i++) sigBytes[i] = bin.charCodeAt(i);
+        sigBytes = dataUrlToBytes(rawSig);
       } else {
         const { data: imgBlob } = await supabase.storage.from('documents').download(rawSig);
         if (imgBlob) {
@@ -276,79 +313,17 @@ Deno.serve(async (req: Request) => {
       return errorResponse('NO_SIGNATURE', 'Saved signature could not be loaded', 400);
     }
 
-    let embeddedImg;
-    try {
-      embeddedImg = isPng
-        ? await pdfDoc.embedPng(sigBytes)
-        : await pdfDoc.embedJpg(sigBytes);
-    } catch {
-      embeddedImg = await pdfDoc.embedJpg(sigBytes);
+    const embeddedImg = await embedSignatureImage(pdfDoc, sigBytes, isPng);
+    stampSignature(page, fonts, { sig: companySigBox, date: companyDateBox }, {
+      image: embeddedImg,
+      dateText: signedDateStr,
+      auditText: `${repName} — ${tenantName}  •  IP: ${ip || 'N/A'}`,
+    });
+
+    if (repairedPlacement && anchor && linkedEstimateRow?.id) {
+      await supabase.from('enhanced_estimates').update({ signature_anchor: anchor }).eq('id', linkedEstimateRow.id);
+      await supabase.from('signature_envelopes').update({ signature_page_index: anchor.pageIndex }).eq('id', envelope.id);
     }
-
-    const dims = embeddedImg.scale(1);
-    const scale = Math.min(repMaxSigWidth / dims.width, repMaxSigHeight / dims.height);
-    const drawW = dims.width * scale;
-    const drawH = dims.height * scale;
-
-    // Mask only the company signature column above its line
-    page.drawRectangle({
-      x: repSigX,
-      y: repSigY + 1,
-      width: repMaxSigWidth,
-      height: drawH + 2,
-      color: rgb(1, 1, 1),
-    });
-
-    // Image bottom sits just above the signature line; redraw the line after
-    // stamping because the white mask can hide the original HTML underline.
-    page.drawImage(embeddedImg, {
-      x: repSigX,
-      y: repSigY + 1,
-      width: drawW,
-      height: drawH,
-    });
-    page.drawLine({
-      start: { x: repSigX, y: repSigY },
-      end: { x: repSigX + repMaxSigWidth, y: repSigY },
-      thickness: 0.6,
-      color: rgb(0.55, 0.55, 0.55),
-    });
-
-    // Stamp date on the date line
-    if (companyDateBox) {
-      page.drawRectangle({
-        x: companyDateBox.xPt,
-        y: companyDateBox.yPt + 1,
-        width: companyDateBox.widthPt,
-        height: 14,
-        color: rgb(1, 1, 1),
-      });
-      page.drawText(signedDateStr, {
-        x: companyDateBox.xPt + 2,
-        y: companyDateBox.yPt + 2,
-        size: 10,
-        font: helveticaFont,
-        color: rgb(0, 0, 0),
-      });
-      page.drawLine({
-        start: { x: companyDateBox.xPt, y: companyDateBox.yPt },
-        end: { x: companyDateBox.xPt + companyDateBox.widthPt, y: companyDateBox.yPt },
-        thickness: 0.5,
-        color: rgb(0.55, 0.55, 0.55),
-      });
-    }
-
-    // Small audit line (name + tenant) below the date line / signature line
-    const auditY = (companyDateBox ? companyDateBox.yPt : repSigY) - 12;
-    const auditText = `${repName} — ${tenantName}  •  IP: ${ip || 'N/A'}`;
-    const auditSize = auditText.length > 56 ? 5 : 6;
-    page.drawText(auditText, {
-      x: repSigX,
-      y: auditY,
-      size: auditSize,
-      font: helveticaFont,
-      color: rgb(0.55, 0.55, 0.55),
-    });
 
     const finalBytes = await pdfDoc.save();
     const finalPath = `${envelope.tenant_id}/${envelope.id}/countersigned_${Date.now()}.pdf`;
@@ -550,6 +525,7 @@ Deno.serve(async (req: Request) => {
 
     await logAuditEvent(supabase, {
       tenant_id: envelope.tenant_id,
+      actor_type: 'user',
       actor_user_id: callerId,
       action: 'envelope.countersigned',
       target_type: 'signature_envelope',

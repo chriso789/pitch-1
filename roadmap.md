@@ -1,5 +1,10 @@
 # Roadmap
 
+## Estimate signature placement (2026-11-10)
+- [x] Keep price and both signature lines visible on the signing page; long fine print follows on later pages. Six browser layouts verified, 3 unit + 5 placement checks pass
+- [x] Block PDF creation/sending with cut-off signature lines; signing/countersigning use a dedicated signature page instead of stamping over terms
+- [ ] Standing seam (OBR-00122) reopened for company signature; rebuild runs when the rep clicks Apply Signature — needs the signed-in rep, not verified here
+
 ## Estimate scope and pricing layout (2026-10-27)
 - [x] Keep signatures and price with final estimate details; move all legal text to following pages when insufficient space. Four browser fixtures confirm signature/price/scope grouping and no clipping; overflow PDF visually reviewed. Existing PDFs require regeneration; signed-in export remains unverified.
 - [x] Remove forced narrative/terms/signature separation using rendered-height pagination and tighter signature/date spacing. Four browser fixtures verify combined sections, long scopes and legal overflow without clipping/errors; PDF visual review corrected excessive reserved space. Real signed-in export remains unavailable with external unmanaged authentication; existing PDFs require regeneration.

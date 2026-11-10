@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { findClippedSignatureLine, SIGNATURE_FIT_ERROR } from '@/lib/estimates/signatureFit';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { supabase } from '@/integrations/supabase/client';
@@ -155,6 +156,7 @@ export function useMultiPagePDFGeneration() {
       // mm -> pt for PDF anchor coords (1 inch = 72pt = 25.4mm)
       const MM_TO_PT = 72 / 25.4;
       let signatureAnchor: SignatureAnchor | null = null;
+      let clippedSignature = findClippedSignatureLine(container) !== null;
 
       for (let i = 0; i < pageElements.length; i++) {
         const pageElement = pageElements[i] as HTMLElement;
@@ -217,6 +219,9 @@ export function useMultiPagePDFGeneration() {
                 }
               });
             }
+
+            // A signature/date line clipped by the page cannot be signed on.
+            if (findClippedSignatureLine(clonedElement)) clippedSignature = true;
 
             // Measure signature anchors against the post-styled clone.
             if (!signatureAnchor) {
@@ -301,6 +306,10 @@ export function useMultiPagePDFGeneration() {
 
         setProgress(((i + 1) / pageElements.length) * 90 + 5);
         console.log(`📄 Page ${i + 1}/${pageElements.length} captured (${isImageHeavy ? 'JPEG' : 'PNG'}, scale:${captureScale})`);
+      }
+
+      if (clippedSignature) {
+        throw new Error(SIGNATURE_FIT_ERROR);
       }
 
       // Generate blob
