@@ -71,7 +71,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
   const { profile } = useActiveTenantId();
   const effectiveTenantId = useEffectiveTenantId();
   const userRole = (profile as any)?.role as string | undefined;
-  const canDeleteInvoices = ['master', 'owner', 'corporate', 'admin', 'office_staff'].includes(userRole || '');
+  const canDeleteInvoices = ['master', 'owner', 'corporate', 'office_admin', 'regional_manager', 'admin', 'office_staff'].includes(userRole || '');
   const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
   const [renamingInvoiceId, setRenamingInvoiceId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
@@ -524,14 +524,19 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
     if (!window.confirm('Delete this imported invoice? This cannot be undone.')) return;
     setDeletingInvoiceId(invoiceId);
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('project_cost_invoices')
         .delete()
         .eq('id', invoiceId)
-        .eq('tenant_id', effectiveTenantId);
+        .eq('tenant_id', effectiveTenantId)
+        .select('id');
       if (error) throw error;
+      if (!data || data.length === 0) {
+        throw new Error("This invoice couldn't be deleted. You may not have permission for this company.");
+      }
       toast.success('Invoice deleted');
       queryClient.invalidateQueries({ queryKey: ['pipeline-invoices', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-other-charges', pipelineEntryId] });
       queryClient.invalidateQueries({ queryKey: ['pipeline-invoices-totals', pipelineEntryId] });
       window.dispatchEvent(new CustomEvent('invoice-updated', { detail: { pipelineEntryId } }));
       window.dispatchEvent(new CustomEvent('invoice-deleted', { detail: { pipelineEntryId, invoiceType } }));
@@ -1082,6 +1087,24 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                                 <Eye className="mr-1.5 h-3.5 w-3.5" />
                                 View
                               </Button>
+                              {canDeleteInvoices && isValidUuid(invoice.id) && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                  onClick={() => handleDeleteInvoice(invoice.id!, invoice.invoice_type)}
+                                  disabled={deletingInvoiceId === invoice.id}
+                                  title="Delete invoice"
+                                  aria-label={`Delete ${invoiceName}`}
+                                >
+                                  {deletingInvoiceId === invoice.id ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  )}
+                                </Button>
+                              )}
                             </div>
                           </div>
                         );
