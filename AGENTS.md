@@ -1,6 +1,6 @@
 # Architecture Decisions
 
-- Customer estimate narrative pages measure text at PDF body width and reserve investment/signatures with the final scope chunk; legal text stays inline only when it all fits, otherwise the complete legal section follows on separate pages; signature anchors remain intact.
+- Customer estimate pages keep investment and both signature lines with the final scope chunk; rendered-layout fit passes move legal text to following pages, then shrink the signing page, because clipped lines produce unusable anchors. PDF generation, sending, and signing stamps reject off-page anchors; signing appends a signature page instead of guessing positions over text.
 
 - Photo report PDFs use approved immutable snapshots and Unicode fonts; evidence stays separate from annotations; untraceable evidence blocks export.
 - Photo Intelligence building maps store image-relative callouts in report versions, never geographic coordinates or quantities; cross-photo merging requires inspector-verified physical identity because matching defect categories do not prove the same occurrence.
