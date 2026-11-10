@@ -9,6 +9,17 @@ import {
   handleCors,
   getClientInfo,
 } from '../_shared/utils.ts';
+import {
+  anchorFromStored,
+  appendSignaturePage,
+  dataUrlToBytes,
+  embedSignatureImage,
+  formatUsd,
+  stampSignature,
+  validateAnchor,
+  type Box,
+  type SignatureAnchor,
+} from '../_shared/signature-placement/index.ts';
 
 // ============================================================================
 // FINALIZE ENVELOPE - Generate final PDF with signatures and complete envelope
@@ -121,224 +132,92 @@ Deno.serve(async (req: Request) => {
           const pdfDoc = await PDFDocument.load(pdfBytes);
           
           // ============================================================
-          // STEP 1: Embed signature images on the LAST page of the
-          //         estimate (the "signature block" area at the bottom)
+          // STEP 1: Stamp customer signatures on the estimate's own
+          //         signature line. A stored anchor is only used when every
+          //         line is visible on the page; otherwise a dedicated
+          //         signature page is appended instead of guessing a spot
+          //         over the fine print.
           // ============================================================
           const pageCount = pdfDoc.getPageCount();
           if (pageCount > 0 && signatures && signatures.length > 0) {
-            // Use signature_page_index if set, otherwise fallback to last page.
-            // Rebuild requests intentionally target the current PDF's last page:
-            // legacy estimates often stored a stale signature_page_index pointing
-            // to an earlier page after the PDF was regenerated.
-            const targetPageIdx = (!body.force_rebuild && envelope.signature_page_index != null && envelope.signature_page_index < pageCount)
-              ? envelope.signature_page_index
-              : pageCount - 1;
-            console.log(`Targeting page ${targetPageIdx} for signature (signature_page_index=${envelope.signature_page_index}, pageCount=${pageCount})`);
-            let lastPage = pdfDoc.getPage(targetPageIdx);
-            const { width: pageWidth, height: pageHeight } = lastPage.getSize();
+            const fonts = {
+              regular: await pdfDoc.embedFont(StandardFonts.Helvetica),
+              bold: await pdfDoc.embedFont(StandardFonts.HelveticaBold),
+            };
 
-            // Place signatures on the signature block area of the last page
-            const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
-            const helveticaBoldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-
-            // Try to use a stored signature anchor (captured at PDF generation time)
-            // so the signature image lands precisely on the printed signature line —
-            // regardless of how long the terms-and-conditions text is.
-            type Box = { xPt: number; yPt: number; widthPt: number };
-            let anchor: {
-              pageIndex: number; xPt: number; yPt: number; widthPt: number;
-              pageHeightPt?: number; pageWidthPt?: number;
-              customerSig?: Box; customerDate?: Box;
-              companySig?: Box; companyDate?: Box;
-            } | null = null;
-            try {
-              if (envelope.estimate_id) {
+            let storedAnchor: SignatureAnchor | null = null;
+            let estimateRow: { id: string; estimate_number?: string | null; selling_price?: number | null; total_with_tax?: number | null } | null = null;
+            if (envelope.estimate_id) {
+              try {
                 const { data: est } = await supabase
                   .from('enhanced_estimates')
-                  .select('signature_anchor')
+                  .select('id, estimate_number, selling_price, total_with_tax, signature_anchor')
                   .eq('id', envelope.estimate_id)
                   .maybeSingle();
-                if (est?.signature_anchor && typeof est.signature_anchor === 'object') {
-                  anchor = est.signature_anchor as any;
+                if (est) {
+                  estimateRow = est as any;
+                  storedAnchor = anchorFromStored((est as any).signature_anchor);
                 }
-              }
-            } catch (e) {
-              console.warn('Could not load signature_anchor:', e);
-            }
-
-            // Sanity-check the anchor: if it's off-page (negative y, beyond page,
-            // or pointing to a non-existent page), discard it and fall back to a
-            // safe placement near the bottom of the last page.
-            if (anchor) {
-              const validPage = Number.isInteger(anchor.pageIndex) && anchor.pageIndex >= 0 && anchor.pageIndex < pageCount;
-              const probePage = validPage ? pdfDoc.getPage(anchor.pageIndex) : null;
-              const probeH = probePage ? probePage.getSize().height : pageHeight;
-              const probeW = probePage ? probePage.getSize().width : pageWidth;
-              const yOk = anchor.yPt > 20 && anchor.yPt < probeH - 10;
-              const xOk = anchor.xPt >= 0 && anchor.xPt < probeW - 20;
-              if (!validPage || !yOk || !xOk) {
-                console.warn(`Discarding off-page signature_anchor (page=${anchor.pageIndex} x=${anchor.xPt} y=${anchor.yPt} pageH=${probeH}); falling back to last-page default.`);
-                anchor = null;
+              } catch (e) {
+                console.warn('Could not load signature_anchor:', e);
               }
             }
 
-            // If anchor specifies a different page, switch to it for drawing.
-            const effectivePageIdx = anchor && anchor.pageIndex < pageCount ? anchor.pageIndex : targetPageIdx;
-            if (effectivePageIdx !== targetPageIdx) {
-              lastPage = pdfDoc.getPage(effectivePageIdx);
+            let anchor = validateAnchor(storedAnchor, pageCount, (i) => pdfDoc.getPage(i).getSize());
+            let anchorChanged = false;
+            if (!anchor && (storedAnchor || estimateRow)) {
+              const { data: tenantRow } = await supabase.from('tenants').select('name').eq('id', envelope.tenant_id).maybeSingle();
+              anchor = appendSignaturePage(pdfDoc, fonts, {
+                title: envelope.title,
+                reference: estimateRow?.estimate_number ?? null,
+                totalText: formatUsd(estimateRow?.selling_price ?? estimateRow?.total_with_tax),
+                companyName: (tenantRow as any)?.name ?? null,
+              });
+              anchorChanged = true;
+              console.warn(`Stored signature anchor not visible on page (stored=${JSON.stringify(storedAnchor)}); appended signature page ${anchor.pageIndex}.`);
             }
 
-            const { height: effPageH } = lastPage.getSize();
-            // Precise per-field anchors (preferred); fallback to legacy single anchor.
-            const customerSigBox: Box = anchor?.customerSig ?? (anchor
-              ? { xPt: anchor.xPt, yPt: anchor.yPt, widthPt: anchor.widthPt }
-              : { xPt: 60, yPt: Math.max(80, effPageH * 0.18), widthPt: 200 });
-            const customerDateBox: Box | null = anchor?.customerDate ?? null;
-
-            let sigX = customerSigBox.xPt;
-            const signatureLineY = customerSigBox.yPt;
-            // Use the full width of the signature line and a taller box so
-            // captured signatures render at a legible size rather than getting
-            // squashed into ~28pt of height.
-            const maxSigWidth = customerSigBox.widthPt;
-            const gapToDate = customerDateBox ? (signatureLineY - customerDateBox.yPt - 6) : 60;
-            const maxSigHeight = Math.max(40, Math.min(60, gapToDate));
-            console.log(`Signature placement: anchor=${!!anchor} page=${effectivePageIdx} sig=(${sigX},${signatureLineY},${maxSigWidth}) date=${customerDateBox ? `(${customerDateBox.xPt},${customerDateBox.yPt},${customerDateBox.widthPt})` : 'none'}`);
+            // Documents with no estimate anchor (e.g. uploaded contracts) keep
+            // the previous bottom-of-page placement.
+            const legacyPageIdx = (!body.force_rebuild && envelope.signature_page_index != null && envelope.signature_page_index < pdfDoc.getPageCount())
+              ? envelope.signature_page_index
+              : pdfDoc.getPageCount() - 1;
+            const pageIdx = anchor ? anchor.pageIndex : legacyPageIdx;
+            const page = pdfDoc.getPage(pageIdx);
+            const legacyH = page.getSize().height;
+            const sigBox: Box = anchor?.customerSig ?? { xPt: 60, yPt: Math.max(80, legacyH * 0.18), widthPt: 200 };
+            const dateBox: Box | null = anchor?.customerDate ?? null;
+            console.log(`Signature placement: page=${pageIdx} appended=${anchorChanged} sig=(${sigBox.xPt},${sigBox.yPt},${sigBox.widthPt})`);
 
             for (const sig of signatures) {
               const meta = (sig.signature_metadata || {}) as Record<string, unknown>;
               const sigImagePath = meta.image_path as string | undefined;
               const recipientName = (sig.recipient as any)?.recipient_name || 'Unknown';
               const signedDate = sig.signed_at ? new Date(sig.signed_at).toLocaleDateString() : new Date().toLocaleDateString();
-
-              // Helper: embed signature image bytes on the page
-              const embedSigImage = async (imgBytes: Uint8Array) => {
-                let embeddedImg;
-                try {
-                  embeddedImg = await pdfDoc.embedPng(imgBytes);
-                } catch {
-                  embeddedImg = await pdfDoc.embedJpg(imgBytes);
-                }
-
-                const dims = embeddedImg.scale(1);
-                const scale = Math.min(maxSigWidth / dims.width, maxSigHeight / dims.height);
-                const drawW = dims.width * scale;
-                const drawH = dims.height * scale;
-
-                // Mask only the customer column above its signature line so the
-                // image doesn't collide with any pre-printed text in that column.
-                lastPage.drawRectangle({
-                  x: sigX,
-                  y: signatureLineY + 1,
-                  width: maxSigWidth,
-                  height: drawH + 2,
-                  color: rgb(1, 1, 1),
-                });
-
-                // Place image just above the signature line and redraw the line;
-                // otherwise the white mask can make the customer signature line
-                // disappear in the final signed estimate.
-                lastPage.drawImage(embeddedImg, {
-                  x: sigX,
-                  y: signatureLineY + 1,
-                  width: drawW,
-                  height: drawH,
-                });
-                lastPage.drawLine({
-                  start: { x: sigX, y: signatureLineY },
-                  end: { x: sigX + maxSigWidth, y: signatureLineY },
-                  thickness: 0.6,
-                  color: rgb(0.55, 0.55, 0.55),
-                });
-
-                console.log(`Embedded signature image for ${recipientName} at (${sigX},${signatureLineY})`);
-              };
-
-              // Helper: stamp the signed date on the date line.
-              const stampDate = () => {
-                if (!customerDateBox) return;
-                // Mask the date line area (clear underline + any placeholder)
-                lastPage.drawRectangle({
-                  x: customerDateBox.xPt,
-                  y: customerDateBox.yPt + 1,
-                  width: customerDateBox.widthPt,
-                  height: 14,
-                  color: rgb(1, 1, 1),
-                });
-                lastPage.drawText(signedDate, {
-                  x: customerDateBox.xPt + 2,
-                  y: customerDateBox.yPt + 2,
-                  size: 10,
-                  font: helveticaFont,
-                  color: rgb(0, 0, 0),
-                });
-                lastPage.drawLine({
-                  start: { x: customerDateBox.xPt, y: customerDateBox.yPt },
-                  end: { x: customerDateBox.xPt + customerDateBox.widthPt, y: customerDateBox.yPt },
-                  thickness: 0.5,
-                  color: rgb(0.55, 0.55, 0.55),
-                });
-              };
-
-              // Helper: stamp small audit line (name + IP) below the signature line.
-              const stampAudit = () => {
-                const auditY = (customerDateBox ? customerDateBox.yPt : signatureLineY) - 12;
-                lastPage.drawText(`${recipientName}  •  IP: ${sig.ip_address || 'N/A'}`, {
-                  x: sigX,
-                  y: auditY,
-                  size: 6,
-                  font: helveticaFont,
-                  color: rgb(0.55, 0.55, 0.55),
-                });
-              };
-
+              const auditText = `${recipientName}  •  IP: ${sig.ip_address || 'N/A'}`;
               try {
+                let imageBytes: Uint8Array | null = null;
                 if (sigImagePath) {
-                  const { data: sigImgBlob } = await supabase.storage
-                    .from('signatures')
-                    .download(sigImagePath);
-                  if (sigImgBlob) {
-                    const sigImgBytes = new Uint8Array(await sigImgBlob.arrayBuffer());
-                    await embedSigImage(sigImgBytes);
-                    stampDate();
-                    stampAudit();
-                  }
+                  const { data: sigImgBlob } = await supabase.storage.from('signatures').download(sigImagePath);
+                  if (sigImgBlob) imageBytes = new Uint8Array(await sigImgBlob.arrayBuffer());
                 } else if (sig.signature_data && sig.signature_data.startsWith('data:image')) {
-                  const base64Data = sig.signature_data.split(',')[1];
-                  const binaryStr = atob(base64Data);
-                  const imgBytes = new Uint8Array(binaryStr.length);
-                  for (let i = 0; i < binaryStr.length; i++) imgBytes[i] = binaryStr.charCodeAt(i);
-                  await embedSigImage(imgBytes);
-                  stampDate();
-                  stampAudit();
+                  imageBytes = dataUrlToBytes(sig.signature_data);
+                }
+                if (imageBytes) {
+                  const image = await embedSignatureImage(pdfDoc, imageBytes);
+                  stampSignature(page, fonts, { sig: sigBox, date: dateBox }, { image, dateText: signedDate, auditText });
                 } else if (sig.signature_data) {
-                  // Typed text signature — render on the signature line.
-                  lastPage.drawRectangle({
-                    x: sigX,
-                    y: signatureLineY + 1,
-                    width: maxSigWidth,
-                    height: 20,
-                    color: rgb(1, 1, 1),
-                  });
-                  lastPage.drawText(sig.signature_data, {
-                    x: sigX + 2,
-                    y: signatureLineY + 4,
-                    size: 16,
-                    font: helveticaBoldFont,
-                    color: rgb(0, 0, 0.4),
-                  });
-                  lastPage.drawLine({
-                    start: { x: sigX, y: signatureLineY },
-                    end: { x: sigX + maxSigWidth, y: signatureLineY },
-                    thickness: 0.6,
-                    color: rgb(0.55, 0.55, 0.55),
-                  });
-                  stampDate();
-                  stampAudit();
+                  stampSignature(page, fonts, { sig: sigBox, date: dateBox }, { typed: sig.signature_data, dateText: signedDate, auditText });
                 }
               } catch (embedErr) {
-                console.error('Could not embed signature on last page:', embedErr);
+                console.error('Could not embed signature:', embedErr);
               }
+            }
+
+            // Keep the company countersignature on the same verified page.
+            if (anchorChanged && anchor && estimateRow?.id) {
+              await supabase.from('enhanced_estimates').update({ signature_anchor: anchor }).eq('id', estimateRow.id);
+              await supabase.from('signature_envelopes').update({ signature_page_index: anchor.pageIndex }).eq('id', envelope.id);
             }
           }
 
