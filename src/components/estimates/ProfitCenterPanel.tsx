@@ -536,6 +536,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
       }
       toast.success('Invoice deleted');
       queryClient.invalidateQueries({ queryKey: ['pipeline-invoices', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-other-charges', pipelineEntryId] });
       queryClient.invalidateQueries({ queryKey: ['pipeline-invoices-totals', pipelineEntryId] });
       window.dispatchEvent(new CustomEvent('invoice-updated', { detail: { pipelineEntryId } }));
       window.dispatchEvent(new CustomEvent('invoice-deleted', { detail: { pipelineEntryId, invoiceType } }));
