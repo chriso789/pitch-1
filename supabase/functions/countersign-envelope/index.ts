@@ -525,6 +525,7 @@ Deno.serve(async (req: Request) => {
 
     await logAuditEvent(supabase, {
       tenant_id: envelope.tenant_id,
+      actor_type: 'user',
       actor_user_id: callerId,
       action: 'envelope.countersigned',
       target_type: 'signature_envelope',
