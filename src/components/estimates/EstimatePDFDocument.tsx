@@ -840,9 +840,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
           standardPending = false;
         });
       }
-      pricingPageIdx = estimateSignatureRelIdx ?? Math.max(0, itemChunks.length - 1);
-      if (false) {
-      }
+      pricingPageIdx = Math.max(0, itemChunks.length - 1);
     }
 
     if (changeOrderItems.length > 0 && !useNarrativeSplit) {
