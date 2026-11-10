@@ -9,7 +9,8 @@ const items = Array.from({ length: rows }, (_, i) => ({
   id: `i${i}`, item_name: `Standing seam panel section ${i + 1}`, qty: 10, unit: 'SQ', unit_cost: 100, line_total: 1000,
   item_type: 'material', trade_type: 'roofing', sort_order: i,
 })) as any[];
-const fine = Array.from({ length: 28 }, (_, i) => `Clause ${i + 1}: The contractor warrants workmanship for the stated period; customer agrees to provide site access, and any hidden damage discovered during tear-off will be documented with photos and priced separately before work continues.`).join(' ');
+const fineLong = Array.from({ length: 28 }, (_, i) => `Clause ${i + 1}: The contractor warrants workmanship for the stated period; customer agrees to provide site access, and any hidden damage discovered during tear-off will be documented with photos and priced separately before work continues.`).join(' ');
+const fine = new URLSearchParams(location.search).get('short') ? 'Payment is due on completion.' : fineLong;
 const narrative = Array.from({ length: 14 }, (_, i) => `**Step ${i + 1}.** We will remove the existing roofing down to the deck, inspect and replace damaged decking, install ice and water shield in valleys and eaves, and install the new standing seam panels with matching trim.`).join('\n\n');
 
 createRoot(document.getElementById('root')!).render(
