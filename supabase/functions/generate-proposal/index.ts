@@ -3,6 +3,7 @@
 // ============================================================================
 
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
+import { verifyTenantMembership } from "../_shared/supabase.ts";
 import { calculateTierPricing, PricingInput, TierPricing } from './pricing-engine.ts';
 import { generateProposalHTML, generatePreviewHTML, ProposalData } from './pdf-generator.ts';
 
@@ -51,7 +52,16 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const body: GenerateRequest = await req.json();
-    const { action, tenantId } = body;
+    const { action } = body;
+    let tenantId = body.tenantId;
+    if (['generate', 'send', 'finalize', 'preview'].includes(action)) {
+      const token = (req.headers.get('Authorization') || '').replace(/^Bearer /, '');
+      const { data: { user }, error } = await supabase.auth.getUser(token);
+      if (error || !user) throw new Error('Authentication required');
+      const { data: profile } = await supabase.from('profiles').select('tenant_id, active_tenant_id').eq('id', user.id).single();
+      tenantId = req.headers.get('x-pitch-tenant') || profile?.active_tenant_id || profile?.tenant_id;
+      if (!tenantId || !await verifyTenantMembership(user.id, tenantId)) throw new Error('Company access denied');
+    }
 
     console.log(`[generate-proposal] Action: ${action}, Tenant: ${tenantId}`);
 
@@ -299,6 +309,7 @@ Deno.serve(async (req) => {
           .from('enhanced_estimates')
           .select('*')
           .eq('id', estimateId)
+          .eq('tenant_id', tenantId)
           .single();
         
         if (!estimate) {
@@ -487,6 +498,7 @@ Deno.serve(async (req) => {
           .from('enhanced_estimates')
           .select('*, tenants(*)')
           .eq('id', estimateId)
+          .eq('tenant_id', tenantId)
           .single();
         
         if (!estimate) {
@@ -494,25 +506,7 @@ Deno.serve(async (req) => {
         }
         
         // Generate shareable link
-        const shareUrl = `${Deno.env.get('PUBLIC_URL') || 'https://app.pitchcrm.com'}/proposal/${estimate.share_token}`;
-        
-        // Update estimate status
-        await supabase
-          .from('enhanced_estimates')
-          .update({ 
-            status: 'sent',
-            sent_to_customer_at: new Date().toISOString()
-          })
-          .eq('id', estimateId);
-        
-        // Log tracking
-        await supabase.from('proposal_tracking').insert({
-          tenant_id: tenantId,
-          estimate_id: estimateId,
-          event_type: 'sent',
-          viewer_email: recipientEmail,
-          metadata: { recipient_name: recipientName, custom_message: customMessage }
-        });
+        const shareUrl = `${Deno.env.get('PUBLIC_URL') || 'https://pitch-crm.ai'}/proposal/${estimate.share_token}`;
         
         // Send proposal email
         const emailHtml = `
@@ -582,18 +576,38 @@ Deno.serve(async (req) => {
             }
           );
 
-          if (!emailResponse.ok) {
-            console.error('[generate-proposal] Email send failed:', await emailResponse.text());
+          const delivery = await emailResponse.json();
+          if (!emailResponse.ok || delivery.success !== true || !delivery.message_id) {
+            throw new Error('Proposal email delivery failed');
           } else {
             console.log(`[generate-proposal] Email sent to ${recipientEmail}`);
           }
         } catch (emailError) {
-          console.error('[generate-proposal] Email error:', emailError);
+          throw emailError;
         }
+
+        // Update estimate status
+        await supabase
+          .from('enhanced_estimates')
+          .update({
+            status: 'sent',
+            sent_to_customer_at: new Date().toISOString()
+          })
+          .eq('id', estimateId);
+
+        // Log tracking
+        await supabase.from('proposal_tracking').insert({
+          tenant_id: tenantId,
+          estimate_id: estimateId,
+          event_type: 'sent',
+          viewer_email: recipientEmail,
+          metadata: { recipient_name: recipientName, custom_message: customMessage }
+        });
+
         
         return new Response(JSON.stringify({
           ok: true,
-          data: { shareUrl, sentTo: recipientEmail }
+          data: { shareUrl, sentTo: recipientEmail, sent: true }
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });

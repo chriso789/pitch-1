@@ -20,7 +20,7 @@ interface FloatingChatWidgetProps {
   contactName: string;
   contactPhone: string;
   messages?: Message[];
-  onSendMessage?: (message: string) => void;
+  onSendMessage?: (message: string) => void | Promise<void>;
 }
 
 export const FloatingChatWidget: React.FC<FloatingChatWidgetProps> = ({
@@ -43,11 +43,14 @@ export const FloatingChatWidget: React.FC<FloatingChatWidgetProps> = ({
     scrollToBottom();
   }, [messages]);
 
-  const handleSendMessage = () => {
-    if (newMessage.trim() && onSendMessage) {
-      onSendMessage(newMessage.trim());
-      setNewMessage("");
-    }
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const handleSendMessage = async () => {
+    if (!newMessage.trim() || !onSendMessage || sending) return;
+    setSending(true); setSendError(null);
+    try { await onSendMessage(newMessage.trim()); setNewMessage(''); }
+    catch (error) { setSendError(error instanceof Error ? error.message : 'Message delivery failed'); }
+    finally { setSending(false); }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -69,7 +72,8 @@ export const FloatingChatWidget: React.FC<FloatingChatWidgetProps> = ({
     >
       <div className="flex flex-col h-full">
         {/* Messages */}
-        <ScrollArea className="flex-1 p-4">
+        {sendError && <p role="alert" className="text-destructive p-2">{sendError}</p>}
+      <ScrollArea className="flex-1 p-4">
           <div className="space-y-4">
             {messages.map((message) => (
               <div
@@ -138,7 +142,7 @@ export const FloatingChatWidget: React.FC<FloatingChatWidgetProps> = ({
             </div>
             <Button 
               onClick={handleSendMessage}
-              disabled={!newMessage.trim()}
+              disabled={sending || !newMessage.trim()}
               size="sm"
               className="h-8 w-8 p-0 rounded-full bg-blue-500 hover:bg-blue-600"
             >

@@ -1,4 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { supabase } from '@/integrations/supabase/client';
 
 export interface TierPricing {
@@ -33,6 +34,7 @@ export interface PricingInput {
   wastePercentage?: number;
   overheadPercentage?: number;
   profitMargins?: { good: number; better: number; best: number };
+  linearMeasurements?: Partial<Record<'ridge' | 'hip' | 'valley' | 'eave' | 'rake', number>>;
 }
 
 export interface ProposalData {
@@ -53,16 +55,23 @@ export function useCalculatePricing() {
   return useMutation({
     mutationFn: async (input: PricingInput) => {
       const { data, error } = await supabase.functions.invoke('generate-proposal', {
-        body: { action: 'get-pricing', pricingInput: input },
+        body: { action: 'get-pricing', pricingInput: pricingPayload(input) },
       });
 
       if (error) throw error;
-      return data as { good: TierPricing; better: TierPricing; best: TierPricing };
+      if (!data?.ok || !data?.data?.tiers) throw new Error(data?.error || 'Pricing failed');
+      return Object.fromEntries(Object.entries(data.data.tiers).map(([key, tier]: [string, any]) => [tier.tier, {
+        tierName: tier.tier, materialCost: tier.materialSubtotal, laborCost: tier.laborSubtotal, overhead: tier.overhead,
+        profit: tier.profitAmount, subtotal: tier.subtotal, tax: 0, total: tier.totalPrice, pricePerSquare: tier.pricePerSquare,
+        warranty: tier.warranty, financing: (tier.financing || []).map((f: any) => ({ name: f.provider, termMonths: f.termMonths,
+          apr: f.aprPercent, monthlyPayment: f.monthlyPayment, downPayment: f.downPayment, totalCost: f.totalFinanced })),
+      }])) as { good: TierPricing; better: TierPricing; best: TierPricing };
     },
   });
 }
 
 export function useGenerateProposal() {
+  const tenantId = useEffectiveTenantId();
   return useMutation({
     mutationFn: async ({
       projectId,
@@ -75,40 +84,49 @@ export function useGenerateProposal() {
       scopeOfWork?: string;
       coverPhotoUrl?: string;
     }) => {
+      const { data: project, error: projectError } = await supabase.from('projects').select('pipeline_entry_id').eq('id', projectId).eq('tenant_id', tenantId).single();
+      if (projectError || !project?.pipeline_entry_id) throw new Error('Project must be linked to a lead');
       const { data, error } = await supabase.functions.invoke('generate-proposal', {
         body: {
           action: 'generate',
-          projectId,
-          pricingInput,
+          tenantId,
+          pipelineEntryId: project.pipeline_entry_id,
+          pricingInput: pricingPayload(pricingInput),
           scopeOfWork,
           coverPhotoUrl,
         },
+        headers: { 'x-pitch-tenant': tenantId },
       });
 
       if (error) throw error;
-      return data as ProposalData;
+      if (!data?.ok || !data?.data?.estimateId) throw new Error(data?.error || "Proposal generation failed");
+      return data.data as ProposalData;
     },
   });
 }
 
 export function useProposalPreview(estimateId: string | undefined) {
+  const tenantId = useEffectiveTenantId();
   return useQuery({
-    queryKey: ['proposal-preview', estimateId],
+    queryKey: ['proposal-preview', tenantId, estimateId],
     queryFn: async () => {
       if (!estimateId) throw new Error('No estimate ID');
 
       const { data, error } = await supabase.functions.invoke('generate-proposal', {
         body: { action: 'preview', estimateId },
+        headers: { 'x-pitch-tenant': tenantId },
       });
 
       if (error) throw error;
-      return data as { html: string };
+      if (!data?.ok || !data?.data?.html) throw new Error("Preview was not generated");
+      return data.data as { html: string };
     },
     enabled: !!estimateId,
   });
 }
 
 export function useSendProposal() {
+  const tenantId = useEffectiveTenantId();
   return useMutation({
     mutationFn: async ({
       estimateId,
@@ -124,15 +142,18 @@ export function useSendProposal() {
       const { data, error } = await supabase.functions.invoke('generate-proposal', {
         body: {
           action: 'send',
+          tenantId,
           estimateId,
           recipientEmail,
           recipientName,
           customMessage,
         },
+        headers: { 'x-pitch-tenant': tenantId },
       });
 
       if (error) throw error;
-      return data as { shareUrl: string; sent: boolean };
+      if (!data?.ok || !data?.data?.sent) throw new Error(data?.error || 'Proposal delivery was not accepted');
+      return data.data as { shareUrl: string; sent: boolean };
     },
   });
 }
@@ -248,4 +269,14 @@ export function useAcceptProposal() {
       };
     },
   });
+}
+
+function pricingPayload(input: PricingInput) {
+  const keys = ['ridge', 'hip', 'valley', 'eave', 'rake'] as const;
+  if (!keys.every(key => Number.isFinite(input.linearMeasurements?.[key]) && input.linearMeasurements[key] >= 0)) {
+    throw new Error('Enter all five roof edge measurements in feet; use 0 where an edge is absent');
+  }
+  return { roofAreaSqFt: input.roofArea, pitch: input.pitch, complexity: input.complexity,
+    wastePercent: input.wastePercentage ?? 10, overhead: (input.overheadPercentage ?? 15) / 100,
+    linearMeasurements: input.linearMeasurements };
 }

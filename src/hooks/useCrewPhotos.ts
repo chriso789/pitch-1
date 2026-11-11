@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useCrewAuth } from './useCrewAuth';
 import { toast } from 'sonner';
@@ -101,8 +101,7 @@ export function useCrewPhotos(jobId: string | null) {
       });
 
       if (insertError) {
-        console.error('[useCrewPhotos] Insert error:', insertError);
-        // Photo is in storage but record failed - still success for user
+        throw insertError;
       }
 
       toast.success('Photo uploaded successfully');
@@ -116,6 +115,8 @@ export function useCrewPhotos(jobId: string | null) {
       setUploading(false);
     }
   };
+
+  useEffect(() => { setPhotos([]); void fetchPhotos(); }, [fetchPhotos]);
 
   const getPhotosByBucket = (bucketId: string) => photos.filter(p => p.bucketId === bucketId);
 
