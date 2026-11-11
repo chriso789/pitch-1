@@ -53,13 +53,15 @@ async function createTask(admin: SupabaseClient, p: any, run: any): Promise<Acti
     assignedTo = data.user_id;
   }
   if (!assignedTo && p.assignee_field) {
-    const field = String(p.assignee_field).split('.').pop();
+    const field = String(p.assignee_field).split('.').pop() || '';
     if (!['assigned_to', 'created_by', 'project_manager_id'].includes(field)) throw new Error('Unsupported assignee field');
     const table = entityTable(run.entity_type);
     if (!table) throw new Error('Cannot resolve task assignee');
     const { data, error } = await admin.from(table).select(field).eq('id', run.entity_id).eq('tenant_id', run.company_id).single();
-    if (error || !data?.[field]) throw error || new Error('The related record has no assignee');
-    assignedTo = data[field];
+    const row = data as unknown as Record<string, unknown> | null;
+    const assignee = row?.[field];
+    if (error || typeof assignee !== 'string' || !assignee) throw error || new Error('The related record has no assignee');
+    assignedTo = assignee;
   }
   if (assignedTo) {
     const { data, error } = await admin.from('user_roles').select('user_id').eq('tenant_id', run.company_id).eq('user_id', assignedTo).limit(1).maybeSingle();
@@ -236,8 +238,8 @@ async function actionContact(admin: SupabaseClient, run: any) {
     const { data, error } = await admin.from(table).select(directContact ? 'contact_id' : 'pipeline_entry_id')
       .eq('id', run.entity_id).eq('tenant_id', run.company_id).single();
     if (error) throw error;
-    if (directContact) contactId = data?.contact_id;
-    else if (data?.pipeline_entry_id) {
+    if (directContact && data && 'contact_id' in data) contactId = data.contact_id;
+    else if (data && 'pipeline_entry_id' in data && data.pipeline_entry_id) {
       const { data: lead, error: leadError } = await admin.from('pipeline_entries').select('contact_id')
         .eq('id', data.pipeline_entry_id).eq('tenant_id', run.company_id).single();
       if (leadError) throw leadError;
@@ -270,7 +272,7 @@ async function sendTemplate(admin: SupabaseClient, p: any, run: any, channel: 'e
   const { data: template, error } = await admin.from('message_templates').select('content, subject').eq('tenant_id', run.company_id)
     .eq('name', p.template_slug).eq('template_type', channel).single();
   if (error || !template) throw error || new Error('Company template not found');
-  const render = (text: string) => text.replace(/\{\{?\s*contact\.(first_name|last_name|email|phone)\s*\}?\}/g, (_: string, key: string) => String(contact[key] || ''));
+  const render = (text: string) => text.replace(/\{\{?\s*contact\.(first_name|last_name|email|phone)\s*\}?\}/g, (_: string, key: string) => String(contact[key as 'first_name' | 'last_name' | 'email' | 'phone'] || ''));
   const body = render(template.content); const subject = render(template.subject || 'Project update');
   if (/\{\{?[^{}]+\}?\}/.test(body + subject)) throw new Error('Template has unresolved smart tags');
   if (p.to_field && p.to_field !== `contact.${channel === 'email' ? 'email' : 'phone'}`) throw new Error('Recipient must be the linked customer');

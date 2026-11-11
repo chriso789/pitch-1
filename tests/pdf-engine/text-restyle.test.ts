@@ -5,6 +5,7 @@ import { writeFileSync, readFileSync, mkdtempSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { readPageText, replaceSegmentText, rewriteSegment, checkRestyle } from '@/lib/pdf-engine/contentTextEdit';
+import { qpdfRun } from '@/lib/pdf-protect/protect';
 import { openForEditing } from '@/lib/pdf-engine/decrypt';
 
 const dir = mkdtempSync(join(tmpdir(), 'restyle-'));
@@ -73,17 +74,18 @@ describe('restyle / move existing text (no overlay)', () => {
   });
 
   it('owner-protected PDF (no open password) is unlocked locally and becomes editable; password-protected stays blocked', async () => {
-    const plain = join(dir, 'plain.pdf'), prot = join(dir, 'prot.pdf'), pw = join(dir, 'pw.pdf');
-    writeFileSync(plain, await chainedFixture());
-    execFileSync('qpdf', ['--allow-weak-crypto', '--encrypt', '', 'owner123', '128', '--use-aes=n', '--modify=none', '--', plain, prot]);
-    execFileSync('qpdf', ['--encrypt', 'user1', 'owner123', '256', '--', plain, pw]);
-    const enc = Uint8Array.from(readFileSync(prot));
+    const source = await chainedFixture();
+    const protectedResult = await qpdfRun(['--allow-weak-crypto', '--encrypt', '', 'owner123', '128', '--use-aes=n', '--modify=none', '--', '$IN', '$OUT'], source, wasmPath);
+    const passwordResult = await qpdfRun(['--encrypt', 'user1', 'owner123', '256', '--', '$IN', '$OUT'], source, wasmPath);
+    expect(protectedResult.code).toBe(0); expect(passwordResult.code).toBe(0);
+    const enc = protectedResult.out!;
+    expect((await PDFDocument.load(enc, { ignoreEncryption: true })).isEncrypted).toBe(true);
     const opened = await openForEditing(enc, { wasmPath });
     expect(opened.decrypted).toBe(true);
     const pt = readPageText(await PDFDocument.load(opened.bytes), 0);
     const seg = pt.segments.find(s => s.text === 'Other line')!;
     const out = await replaceSegmentText(opened.bytes, 0, seg.id, 'Line other');
     expect(words(bbox(out)).map(w => w.w)).toContain('other');
-    await expect(openForEditing(Uint8Array.from(readFileSync(pw)), { wasmPath })).rejects.toThrow(/password/);
+    await expect(openForEditing(passwordResult.out!, { wasmPath })).rejects.toThrow(/password/);
   }, 60000);
 });

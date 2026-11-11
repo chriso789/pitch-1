@@ -97,8 +97,8 @@ Deno.serve(async (req) => {
         if (output === 'APPLICATION_PDF') {
           const pdfBytes = await fillPermitPdf({
           supabase: adminSb,
-            template_pdf_bucket: context.meta.template_pdf_bucket || output_plan?.application_pdf?.input_pdf_storage?.bucket,
-            template_pdf_path: context.meta.template_pdf_path || output_plan?.application_pdf?.input_pdf_storage?.path,
+            template_pdf_bucket: context.meta.template_pdf_bucket || output_plan?.application_pdf?.input_pdf_storage?.bucket || null,
+            template_pdf_path: context.meta.template_pdf_path || output_plan?.application_pdf?.input_pdf_storage?.path || null,
             field_values: application_field_values,
             field_map: output_plan?.application_pdf?.field_map || [],
           });
