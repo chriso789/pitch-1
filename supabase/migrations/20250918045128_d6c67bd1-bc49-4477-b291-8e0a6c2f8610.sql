@@ -14,6 +14,13 @@ CREATE TABLE public.calls (
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );
 
+-- Add campaign_id to existing calls table
+ALTER TABLE public.calls ADD COLUMN campaign_id UUID REFERENCES public.dialer_campaigns(id);
+ALTER TABLE public.calls ADD COLUMN list_item_id UUID REFERENCES public.dialer_list_items(id);
+ALTER TABLE public.calls ADD COLUMN disposition_id UUID REFERENCES public.dialer_dispositions(id);
+
+CREATE INDEX idx_calls_campaign_id ON public.calls(campaign_id);
+
 -- Enable RLS on calls table
 ALTER TABLE public.calls ENABLE ROW LEVEL SECURITY;
 

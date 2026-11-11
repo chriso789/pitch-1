@@ -16,6 +16,9 @@ beforeAll(async () => {
     '20250918013409_13804517-6975-47f4-8407-597bfe73c49d.sql',
     '20250918013502_8190c539-1d51-4e8a-9a27-e2ea64e4b3ca.sql',
     '20250918013547_a4532217-ff8e-4739-9ff2-c024e887aabd.sql',
+    '20250918013954_80e4ea59-68ac-4e38-b5d0-beee6874f727.sql',
+    '20250918045028_d2370a71-1b48-4476-ac41-fb6a64b61b35.sql',
+    '20250918045128_d6c67bd1-bc49-4477-b291-8e0a6c2f8610.sql',
   ]) await db.exec(readFileSync(`supabase/migrations/${file}`, 'utf8'));
   await db.exec('GRANT SELECT, UPDATE ON public.tenant_settings TO authenticated;');
   await db.query('INSERT INTO tenants(id,name) VALUES($1,\'A\'),($2,\'B\')',[tenantA,tenantB]);
@@ -37,4 +40,11 @@ it('bootstrap fixes preserve admin company boundaries and refuse rep setting upd
     await db.query("SELECT set_config('test.user_id',$1,false)",[rep]);
     expect((await db.query('UPDATE tenant_settings SET portal_show_photos=true WHERE tenant_id=$1 RETURNING id',[tenantA])).rows).toHaveLength(0);
   } finally { await db.exec('RESET ROLE'); }
+});
+
+it('calls are created before their campaign, list-item and disposition references', async () => {
+  const result = await db.query<{count:number}>("SELECT count(*)::integer AS count FROM pg_constraint WHERE conrelid='public.calls'::regclass AND contype='f'");
+  expect(result.rows[0].count).toBe(4);
+  const policies = await db.query<{count:number}>("SELECT count(*)::integer AS count FROM pg_policies WHERE schemaname='public' AND tablename='calls'");
+  expect(policies.rows[0].count).toBe(4);
 });
