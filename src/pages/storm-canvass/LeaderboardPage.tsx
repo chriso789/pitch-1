@@ -1,3 +1,5 @@
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import Papa from 'papaparse';
 import React, { useState, useEffect, useRef } from 'react';
 import { GlobalLayout } from '@/shared/components/layout';
 import { Card, CardContent } from '@/components/ui/card';
@@ -18,6 +20,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import confetti from 'canvas-confetti';
 
 export default function LeaderboardPage() {
+  const tenantId = useEffectiveTenantId();
+  const [claiming, setClaiming] = useState<string | null>(null);
   const [selectedTab, setSelectedTab] = useState<'competitions' | 'achievements' | 'rewards'>('competitions');
   const [selectedCompetitionId, setSelectedCompetitionId] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -119,10 +123,10 @@ export default function LeaderboardPage() {
 
   // Fetch rewards
   const { data: rewardsData } = useQuery({
-    queryKey: ['user-rewards', currentUserId],
+    queryKey: ['user-rewards', tenantId, currentUserId],
     queryFn: async () => {
       if (!currentUserId) return { all: [], pending: [], processing: [], sent: [], claimed: [], totalValue: 0 };
-      return await stormCanvass.getRewardHistory(currentUserId);
+      return await stormCanvass.getRewardHistory(currentUserId, tenantId);
     },
     enabled: !!currentUserId,
   });
@@ -137,19 +141,24 @@ export default function LeaderboardPage() {
   };
 
   const handleClaimReward = async (rewardId: string) => {
-    toast({
-      title: 'Claiming reward...',
-      description: 'Processing your reward claim',
-    });
-    // TODO: Implement claim logic
+    if (!tenantId || claiming) return;
+    setClaiming(rewardId);
+    try {
+      const { data, error } = await supabase.rpc('claim_canvass_reward' as any, { p_reward_id: rewardId, p_tenant_id: tenantId });
+      if (error || !(data as any)?.success) throw error || new Error('Claim was not saved');
+      await queryClient.invalidateQueries({ queryKey: ['user-rewards', tenantId, currentUserId] });
+      toast({ title: 'Reward claimed' });
+    } catch (error) { toast({ title: 'Unable to claim reward', description: error instanceof Error ? error.message : String((error as any)?.message || error), variant: 'destructive' }); }
+    finally { setClaiming(null); }
   };
 
   const handleExportRewards = () => {
-    toast({
-      title: 'Exporting...',
-      description: 'Downloading reward history',
-    });
-    // TODO: Implement export logic
+    if (!rewardsData) return;
+    const csv = Papa.unparse(rewardsData.all.map(reward => ({ id: reward.id, type: reward.reward_type,
+      value: reward.reward_value, status: reward.status, created_at: reward.created_at })), { escapeFormulae: true });
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'canvass-rewards.csv';
+    anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   const selectedCompetition = competitions.find(c => c.id === selectedCompetitionId);

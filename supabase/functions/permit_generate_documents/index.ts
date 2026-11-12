@@ -4,13 +4,13 @@
 // Generates or regenerates documents for an existing permit case
 // ============================================
 
-import { z } from 'https://deno.land/x/zod@v3.23.8/mod.ts';
+import { z } from 'npm:zod@3.23.8';
 
 import { supabaseAuth, getAuthUser, supabaseService } from '../_shared/supabase.ts';
 import { jsonOK, jsonErr, handleCors } from '../_shared/response.ts';
 import { buildPermitContext } from '../_shared/context_builder.ts';
 import { evalTemplate } from '../_shared/template_eval.ts';
-import { fillPermitPdfStub, generateChecklistPdf } from '../_shared/pdf_fill.ts';
+import { generatePermitPacket, permitAttachments, fillPermitPdf, generateChecklistPdf } from '../_shared/pdf_fill.ts';
 import { uploadBytes, signedUrlForPath } from '../_shared/storage.ts';
 import { versionedDocPath, nowIso } from '../_shared/util.ts';
 import type { PermitDocumentOutput } from '../_shared/permit_types.ts';
@@ -70,7 +70,7 @@ Deno.serve(async (req) => {
     }
 
     // Build context
-    const { context } = await buildPermitContext(adminSb, {
+    const { context, missing } = await buildPermitContext(adminSb, {
       tenant_id: tenantId,
       permit_case_id,
       job_id: permitCase.job_id,
@@ -79,22 +79,28 @@ Deno.serve(async (req) => {
     });
 
     // Evaluate template
-    const { application_field_values, output_plan } = evalTemplate({
+    const { application_field_values, output_plan, validation_errors, template_missing_items } = evalTemplate({
       context,
       template_json: context.meta.template_json,
     });
 
+    const blockers = [...missing, ...template_missing_items].filter(item => item.severity === 'error');
+    if (blockers.length || validation_errors.length) return jsonErr(412, 'PERMIT_INCOMPLETE', 'Resolve required permit fields before generating', { blockers, validation_errors });
+    const attachments = await permitAttachments(adminSb, tenantId, permit_case_id);
     const documents: PermitDocumentOutput[] = [];
     const bucket = 'permits';
 
     // Generate requested outputs
-    for (const output of outputs) {
+    const orderedOutputs = [...new Set(outputs)].sort((a, b) => Number(a === 'PACKET_ZIP') - Number(b === 'PACKET_ZIP'));
+    for (const output of orderedOutputs) {
       try {
         if (output === 'APPLICATION_PDF') {
-          const pdfBytes = await fillPermitPdfStub({
-            template_pdf_bucket: context.meta.template_pdf_bucket,
-            template_pdf_path: context.meta.template_pdf_path,
+          const pdfBytes = await fillPermitPdf({
+          supabase: adminSb,
+            template_pdf_bucket: context.meta.template_pdf_bucket || output_plan?.application_pdf?.input_pdf_storage?.bucket || null,
+            template_pdf_path: context.meta.template_pdf_path || output_plan?.application_pdf?.input_pdf_storage?.path || null,
             field_values: application_field_values,
+            field_map: output_plan?.application_pdf?.field_map || [],
           });
 
           const path = versionedDocPath({
@@ -136,7 +142,7 @@ Deno.serve(async (req) => {
             permit_case_id,
             authority_name: context.authority?.county_name || 'Unknown Authority',
             required_attachments: context.authority?.default_required_attachments || [],
-            available_attachments: [], // TODO: Get actual available attachments
+            available_attachments: attachments.flatMap((doc: any) => [doc.kind, doc.title]),
           });
 
           const path = versionedDocPath({
@@ -174,20 +180,16 @@ Deno.serve(async (req) => {
         }
 
         if (output === 'PACKET_ZIP') {
-          // Generate manifest for now (stub)
-          const manifest = new TextEncoder().encode(JSON.stringify({
-            generated_at: nowIso(),
-            permit_case_id,
-            include: output_plan?.packet_zip?.include ?? [],
-          }, null, 2));
+          // Assemble verified attachment bytes
+          const manifest = await generatePermitPacket(adminSb, tenantId, permit_case_id, output_plan?.packet_zip?.include ?? []);
 
           const path = versionedDocPath({
             tenant_id: tenantId,
             permit_case_id,
-            filename: 'packet_manifest.json',
+            filename: 'permit_packet.zip',
           });
 
-          await uploadBytes(adminSb, { bucket, path, bytes: manifest, contentType: 'application/json' });
+          await uploadBytes(adminSb, { bucket, path, bytes: manifest, contentType: 'application/zip' });
           const signed_url = await signedUrlForPath(adminSb, { bucket, path, expiresInSec: 3600 });
 
           const { data: docRow } = await adminSb
@@ -196,7 +198,7 @@ Deno.serve(async (req) => {
               tenant_id: tenantId,
               permit_case_id,
               kind: 'PERMIT_PACKET',
-              title: 'Permit Packet (Manifest)',
+              title: 'Permit Packet',
               storage_bucket: bucket,
               storage_path: path,
               created_by: user.id,
@@ -207,15 +209,15 @@ Deno.serve(async (req) => {
           documents.push({
             id: docRow?.id || '',
             kind: 'PERMIT_PACKET',
-            title: 'Permit Packet (Manifest)',
+            title: 'Permit Packet',
             bucket,
             path,
             signed_url,
-            content_type: 'application/json',
+            content_type: 'application/zip',
           });
         }
       } catch (err) {
-        console.error(`Failed to generate ${output}:`, err);
+        throw err;
       }
     }
 

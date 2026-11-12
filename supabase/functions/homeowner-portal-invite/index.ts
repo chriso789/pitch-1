@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
+import { verifyTenantMembership } from "../_shared/supabase.ts";
 import { getPublicAppUrl } from "../_shared/public-app-url.ts";
 
 Deno.serve(async (req) => {
@@ -31,6 +32,9 @@ Deno.serve(async (req) => {
       .eq("id", contact_id)
       .single();
     if (contactErr || !contact) throw new Error("Contact not found");
+    const selectedTenant = req.headers.get('x-pitch-tenant');
+    if ((selectedTenant && selectedTenant !== contact.tenant_id) ||
+        !await verifyTenantMembership(user.id, contact.tenant_id)) throw new Error('Forbidden');
     if (!contact.email) throw new Error("Contact has no email");
 
     // Fetch tenant for branding
@@ -40,15 +44,14 @@ Deno.serve(async (req) => {
       .eq("id", contact.tenant_id)
       .single();
 
-    // Latest project for this contact
-    const { data: project } = await supabase
-      .from("projects")
-      .select("id, name")
-      .eq("tenant_id", contact.tenant_id)
-      .eq("contact_id", contact_id)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const { data: leads, error: leadsError } = await supabase.from('pipeline_entries').select('id').eq('tenant_id', contact.tenant_id).eq('contact_id', contact_id);
+    if (leadsError) throw leadsError;
+    let project: { id: string; name: string } | null = null;
+    if (leads?.length) {
+      const { data, error } = await supabase.from('projects').select('id, name').eq('tenant_id', contact.tenant_id)
+        .in('pipeline_entry_id', leads.map(lead => lead.id)).order('created_at', { ascending: false }).limit(1).maybeSingle();
+      if (error) throw error; project = data;
+    }
 
     // Generate a customer portal token for the homeowner setup/login flow.
     const tokenBytes = new Uint8Array(32);

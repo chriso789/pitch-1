@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
+import { verifyTenantMembership } from "../_shared/supabase.ts";
 import { Resend } from "npm:resend@2.0.0";
 
 const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
@@ -59,6 +60,19 @@ const handler = async (req: Request): Promise<Response> => {
       .select("first_name, last_name, email, company_name, tenant_id")
       .eq("id", user.id)
       .single();
+
+    const selectedTenant = req.headers.get('x-pitch-tenant') || profile?.tenant_id;
+    if (!selectedTenant || !await verifyTenantMembership(user.id, selectedTenant)) throw new Error('Company access denied');
+    if (contactId) {
+      const { data: contact, error } = await supabase.from('contacts').select('id').eq('id', contactId).eq('tenant_id', selectedTenant).single();
+      if (error || !contact) throw new Error('Contact is not in the selected company');
+    }
+    if (profile) {
+      const { data: company, error } = await supabase.from('tenants').select('name').eq('id', selectedTenant).single();
+      if (error || !company) throw new Error('Selected company not found');
+      profile.tenant_id = selectedTenant;
+      profile.company_name = company.name;
+    }
 
     // Fetch and prepare document attachments if requested
     const attachments: Array<{ filename: string; content: string }> = Array.isArray(inlineAttachments) ? [...inlineAttachments] : [];

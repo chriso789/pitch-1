@@ -85,10 +85,7 @@ CREATE TABLE public.dialer_campaign_members (
     UNIQUE(campaign_id, list_item_id)
 );
 
--- Add campaign_id to existing calls table
-ALTER TABLE public.calls ADD COLUMN campaign_id UUID REFERENCES public.dialer_campaigns(id);
-ALTER TABLE public.calls ADD COLUMN list_item_id UUID REFERENCES public.dialer_list_items(id);
-ALTER TABLE public.calls ADD COLUMN disposition_id UUID REFERENCES public.dialer_dispositions(id);
+-- Calls are created by the next migration; its foreign keys/index are added there.
 
 -- Enable RLS
 ALTER TABLE public.dialer_lists ENABLE ROW LEVEL SECURITY;
@@ -191,4 +188,3 @@ CREATE INDEX idx_dialer_list_items_contact_id ON public.dialer_list_items(contac
 CREATE INDEX idx_dialer_list_items_phone ON public.dialer_list_items(e164_phone);
 CREATE INDEX idx_dialer_campaign_members_campaign_id ON public.dialer_campaign_members(campaign_id);
 CREATE INDEX idx_dialer_campaign_members_state ON public.dialer_campaign_members(state);
-CREATE INDEX idx_calls_campaign_id ON public.calls(campaign_id);

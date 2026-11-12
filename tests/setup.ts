@@ -3,6 +3,7 @@
  * Phase 1 - Week 1-2: Testing Infrastructure
  */
 
+import './offline-network';
 import '@testing-library/jest-dom';
 import { cleanup } from '@testing-library/react';
 import { afterEach } from 'vitest';
