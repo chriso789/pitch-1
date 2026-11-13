@@ -62,6 +62,15 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Documents are records only: invoices count toward project costs only
+    // when added in the Profit section (submit-project-invoice). Refuse to
+    // create cost records from Documents uploads, including from old tabs.
+    return new Response(
+      JSON.stringify({ error: "Invoices uploaded to Documents are saved as records only. Add the invoice in the Profit section to include it in project costs." }),
+      { status: 410, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+
+    // deno-lint-ignore no-unreachable
     const body: LinkDocumentInvoiceRequest = await req.json();
     const { 
       document_id, 

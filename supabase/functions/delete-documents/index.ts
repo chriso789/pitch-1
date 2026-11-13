@@ -78,8 +78,9 @@ Deno.serve(async (req) => {
     // Log user context for debugging
     console.log(`[delete-documents] User context: id=${user.id}, role=${profile.role}, tenant_id=${profile.tenant_id}`);
 
-    // Enforce role-based access (manager, admin, master, owner can delete)
-    const allowedRoles = ["manager", "admin", "master", "owner"];
+    // Enforce role-based access. Office admins, regional managers and corporate
+    // may delete documents, matching who may delete project cost invoices.
+    const allowedRoles = ["manager", "admin", "master", "owner", "corporate", "office_admin", "regional_manager"];
     if (!allowedRoles.includes(profile.role)) {
       console.log(`[delete-documents] Access denied: role '${profile.role}' not in allowed roles`);
       return new Response(
@@ -117,7 +118,7 @@ Deno.serve(async (req) => {
     // Step 1: Fetch documents and verify they belong to the caller's tenant
     const { data: documents, error: docsError } = await adminClient
       .from("documents")
-      .select("id, file_path, tenant_id, filename, document_type")
+      .select("id, file_path, tenant_id, filename, document_type, linked_invoice_id, created_at")
       .in("id", document_ids);
 
     if (docsError) {
@@ -293,6 +294,40 @@ Deno.serve(async (req) => {
       } else {
         result.docs_deleted = count || docIdsToDelete.length;
         console.log(`[delete-documents] Deleted ${result.docs_deleted} document rows`);
+
+        // Step 4b: Remove project costs that were created FROM these documents
+        // (legacy Documents-tab invoice uploads). A cost created from a document
+        // is recognisable because the document existed before the cost record.
+        // Costs added in the Profit section create their document afterwards and
+        // stay in place; they are managed from the Profit section.
+        const linked = docsToDelete.filter((d: any) => d.linked_invoice_id);
+        if (linked.length > 0) {
+          const { data: invoices } = await adminClient
+            .from("project_cost_invoices")
+            .select("id, tenant_id, created_at")
+            .in("id", linked.map((d: any) => d.linked_invoice_id));
+          const byId = new Map((invoices || []).map((i: any) => [i.id, i]));
+          const costIds = linked
+            .filter((d: any) => {
+              const inv: any = byId.get(d.linked_invoice_id);
+              return inv && inv.tenant_id === d.tenant_id &&
+                new Date(d.created_at).getTime() < new Date(inv.created_at).getTime();
+            })
+            .map((d: any) => d.linked_invoice_id);
+          if (costIds.length > 0) {
+            const { error: costErr } = await adminClient
+              .from("project_cost_invoices")
+              .delete()
+              .in("id", costIds);
+            if (costErr) {
+              console.error("Error removing document-created costs:", costErr);
+              result.errors.push(`Document deleted but its cost could not be removed: ${costErr.message}`);
+            } else {
+              (result as any).costs_removed = costIds.length;
+              console.log(`[delete-documents] Removed ${costIds.length} document-created cost records`);
+            }
+          }
+        }
       }
     }
 
