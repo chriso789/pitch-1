@@ -19,6 +19,7 @@ import {
   needsInsuranceScopeVisionCompletenessFallback,
   parseXactimateInsuranceScopeText,
 } from "./xactimate-parser.ts";
+import { detectProvider, parseRoofr } from "./roofr-parser.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -68,85 +69,6 @@ function normalizeText(t: string): string {
     .replace(/\u00A0/g, " ")
     .replace(/[ \t]+/g, " ")
     .replace(/\r/g, "\n");
-}
-
-type Provider = "roofr" | "eagleview" | "roofscope" | "hover" | "google" | "xactimate" | "generic";
-
-function detectProvider(text: string): Provider {
-  const t = text.toLowerCase();
-
-  // Enhanced Xactimate detection with scoring system
-  // Xactimate / insurance scopes can reference EagleView as the roof-data source,
-  // so this must run BEFORE the EagleView branded-report check.
-  const xactimatePatterns = [
-    'xactimate',
-    'xactanalysis',
-    'xactware',
-    'citizens claims',
-    'claim number',
-    'claim #',
-    'policy number',
-    'policy #',
-    'covered damages',
-    'price list:',
-    'rcv',
-    'acv',
-    'depreciation',
-    'replacement cost value',
-    'actual cash value',
-    'quantity',
-    'unit tax',
-    'sketch1',
-    'number of squares',
-    'surface area',
-    'surface are',             // OCR often drops the final "a"
-    'total perimeter length',
-    'total ridge length',
-    'total hip length',
-    'total valley length',
-    'job_',
-    'slide insurance',
-    'independent adjuster',
-    'insured:',
-    'adjuster:',
-    'estimator:',
-    'date of loss',
-    'xact estimate',
-    'xact analysis',
-    'f1\n',
-    'f2\n',
-    'f3\n',
-    'hip / ridge cap',
-    'hip & ridge cap',
-    'drip edge',
-    'starter',
-    'remove 3 tab',
-    'r&r',                     // "Remove & Replace" line items
-  ];
-  
-  // Count matching patterns
-  let xactimateScore = 0;
-  for (const pattern of xactimatePatterns) {
-    if (t.includes(pattern)) {
-      xactimateScore++;
-      console.log("roof-report-ingest: Xactimate pattern matched:", pattern);
-    }
-  }
-  
-  // If 2+ patterns match, it's likely Xactimate
-  if (xactimateScore >= 2) {
-    console.log(`roof-report-ingest: Xactimate detected (${xactimateScore} patterns matched)`);
-    return "xactimate";
-  }
-  
-  // Early returns for clearly branded measurement reports
-  if (t.includes("this report was prepared by roofr")) return "roofr";
-  if (t.includes("eagle view technologies") || t.includes("eagleview")) return "eagleview";
-  if (t.includes("roofscope")) return "roofscope";
-  if (t.includes("hover.to") || t.includes("hover inc")) return "hover";
-  if (t.includes("google maps") || t.includes("imagery ©") || t.includes("map data ©")) return "google";
-  
-  return "generic";
 }
 
 function extractAllPagesText(pdfBytes: Uint8Array): Promise<string> {
@@ -406,6 +328,9 @@ Return ONLY a valid JSON object (no markdown, no explanation) with these fields.
   "eaves_ft": number or null,
   "step_flashing_ft": number or null,
   "wall_flashing_ft": number or null,
+  "transitions_ft": number or null,
+  "parapet_walls_ft": number or null,
+  "unspecified_ft": number or null,
   "drip_edge_ft": number or null,
   "squares": number or null
 }
@@ -423,6 +348,10 @@ EXAMPLES of what to look for on each page:
 - "Total Hip Length 94.58" (Xactimate) → hips_ft: 94.58
 - "Valleys: 0 ft" or "Valley: 0'" → valleys_ft: 0
 - "Rakes: 0 ft" → rakes_ft: 0
+- Roofr "Total step flashing 44ft 9in" → step_flashing_ft: 44.75 (convert inches to decimal feet)
+- Roofr "Total wall flashing 11ft 7in" → wall_flashing_ft: 11.58
+- Roofr "Total unspecified 69ft 8in" → unspecified_ft: 69.67
+- Roofr "Eaves + rakes 328ft 7in" → perimeter_ft: 328.58
 
 Be thorough - check ALL pages for data.`;
 
@@ -493,6 +422,9 @@ Be thorough - check ALL pages for data.`;
       drip_edge_ft: visionResult.drip_edge_ft,
       step_flashing_ft: visionResult.step_flashing_ft,
       wall_flashing_ft: visionResult.wall_flashing_ft,
+      transitions_ft: visionResult.transitions_ft ?? null,
+      parapet_walls_ft: visionResult.parapet_walls_ft ?? null,
+      unspecified_ft: visionResult.unspecified_ft ?? null,
       perimeter_ft: visionResult.perimeter_ft,
       pitches: null,
       waste_table: null,
@@ -767,124 +699,6 @@ async function convertPdfToImages(pdfBytes: Uint8Array): Promise<string[]> {
     console.error("roof-report-ingest: PDF to images conversion failed:", err);
     return [];
   }
-}
-
-// -----------------------------
-// Roofr parser
-// -----------------------------
-function parseRoofr(textRaw: string) {
-  const text = normalizeText(textRaw);
-
-  const addrMatch =
-    text.match(/Report summary\s*\n([^\n]+)\n/i) ||
-    text.match(/\n([^\n]*,\s*[A-Z]{2}\s*\d{5}(?:-\d{4})?)\s*\n/);
-  const address = addrMatch?.[1]?.trim() ?? null;
-
-  // Roofr reports contain BOTH whole-property pages ("Area measurement report",
-  // "Length measurement report") and per-structure summaries ("Structure #1 summary").
-  // The whole-property pages are authoritative — a per-structure block can be a tiny
-  // detached shed and must never be mistaken for the roof total.
-  const num = (re: RegExp) => parseIntSafe(text.match(re)?.[1]);
-  const ftIn = (re: RegExp) => {
-    const m = text.match(re);
-    return m ? feetInchesToFeet(m[1], m[2]) : null;
-  };
-  // Sum every per-structure occurrence, so multi-structure reports still add up.
-  const sumAll = (re: RegExp): number | null => {
-    const rx = new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g");
-    let m: RegExpExecArray | null;
-    let total: number | null = null;
-    while ((m = rx.exec(text)) !== null) {
-      const v = m[2] !== undefined
-        ? feetInchesToFeet(m[1], m[2])
-        : parseFloatSafe(m[1]);
-      if (v !== null) total = (total ?? 0) + v;
-    }
-    return total;
-  };
-
-  // Whole-property area page (colon form), then cover page, then structure sum.
-  const totalRoofArea =
-    num(/Total roof area:\s*([\d,]+)\s*sqft/i) ??
-    num(/Roof Report\s*\n+\s*([\d,]+)\s*sqft/i) ??
-    sumAll(/Total roof area\s*\n?\s*([\d,]+)\s*sqft/i);
-  const totalPitchedArea =
-    num(/Pitched roof area:\s*([\d,]+)\s*sqft/i) ??
-    sumAll(/Total pitched area\s*\n?\s*([\d,]+)\s*sqft/i);
-  const totalFlatArea =
-    num(/Flat roof area:\s*([\d,]+)\s*sqft/i) ??
-    sumAll(/Total flat area\s*\n?\s*([\d,]+)\s*sqft/i);
-  const facetCount =
-    num(/([\d,]+)\s*facets\s*\n+\s*Predominant pitch/i) ??
-    num(/Total roof facets\s*\n?\s*([\d,]+)\s*facets/i);
-  const predominantPitch =
-    text.match(/Predominant pitch:?\s*\n?\s*(\d+\/\d+)/i)?.[1] ?? null;
-
-  // Length measurement page uses "Eaves: 242ft 11in"; structure summaries use "Total eaves".
-  function lengthFor(label: string) {
-    const main = ftIn(new RegExp(`(?:^|\\n)\\s*${label}:\\s*(\\d+)\\s*ft\\s*(\\d+)\\s*in`, "i"));
-    if (main !== null) return main;
-    return sumAll(new RegExp(`Total ${label}\\s*\\n?\\s*(\\d+)\\s*ft\\s*(\\d+)\\s*in`, "i"));
-  }
-
-  const eaves = lengthFor("eaves");
-  const valleys = lengthFor("valleys");
-  const hips = lengthFor("hips");
-  const ridges = lengthFor("ridges");
-  const rakes = lengthFor("rakes");
-  const wallFlashing = lengthFor("wall flashing");
-  const stepFlashing = lengthFor("step flashing");
-  const transitions = lengthFor("transitions");
-  const parapetWall = lengthFor("parapet wall");
-  const unspecified = lengthFor("unspecified");
-
-  const pitchRows: Array<{ pitch: string; area_sqft: number }> = [];
-  const pitchRe = /Pitch\s+(\d+\/\d+)\s+Area\s+\(sqft\)\s+([\d,]+)/gi;
-  let m: RegExpExecArray | null;
-  while ((m = pitchRe.exec(text)) !== null) {
-    const pitch = m[1];
-    const area = parseIntSafe(m[2]);
-    if (pitch && area !== null) pitchRows.push({ pitch, area_sqft: area });
-  }
-
-  const wastePercents = [0, 10, 12, 15, 17, 20, 22];
-  const wasteAreaLine = text.match(/Area\s+\(sqft\)\s+([\d,\s]+)/i);
-  const wasteSquaresLine = text.match(/Squares\s+([\d\.\s]+)/i);
-
-  const wasteAreas = wasteAreaLine
-    ? wasteAreaLine[1].trim().split(/\s+/).map((x) => parseIntSafe(x)).filter((x): x is number => x !== null)
-    : [];
-  const wasteSquares = wasteSquaresLine
-    ? wasteSquaresLine[1].trim().split(/\s+/).map((x) => parseFloatSafe(x)).filter((x): x is number => x !== null)
-    : [];
-
-  const wasteTable = wastePercents.map((pct, i) => ({
-    waste_pct: pct,
-    area_sqft: wasteAreas[i] ?? null,
-    squares: wasteSquares[i] ?? null,
-  }));
-
-  return {
-    provider: "roofr",
-    address,
-    total_area_sqft: totalRoofArea,
-    pitched_area_sqft: totalPitchedArea ?? totalRoofArea,
-    flat_area_sqft: totalFlatArea,
-    facet_count: facetCount,
-    predominant_pitch: predominantPitch,
-    ridges_ft: ridges,
-    hips_ft: hips,
-    valleys_ft: valleys,
-    rakes_ft: rakes,
-    eaves_ft: eaves,
-    wall_flashing_ft: wallFlashing,
-    step_flashing_ft: stepFlashing,
-    transitions_ft: transitions,
-    parapet_walls_ft: parapetWall,
-    unspecified_ft: unspecified,
-    pitches: pitchRows.length ? pitchRows : null,
-    waste_table: wasteTable,
-  };
 }
 
 // -----------------------------

@@ -36,6 +36,7 @@ import { DSMDebugOverlay } from '@/components/measurements/DSMDebugOverlay';
 import { EvidenceSourcesPanel } from '@/components/measurements/EvidenceSourcesPanel';
 
 import { useDeviceLayout } from '@/hooks/useDeviceLayout';
+import { buildImportedReportTags } from '@/lib/measurements/importedReportTags';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -1645,8 +1646,15 @@ function MeasurementCard({
   const valleyLf = tags['lf.valley'] || tags['xactimate.valley_lf'] || 0;
   
   // Additional linear measurements from Xactimate
-  const perimeterLf = tags['lf.perimeter'] || tags['xactimate.perimeter_lf'] || 0;
   const eaveLf = tags['lf.eave'] || tags['xactimate.eave_lf'] || 0;
+  const rakeLf = tags['lf.rake'] || tags['xactimate.rake_lf'] || 0;
+  // Older imports never stored a perimeter; eaves + rakes is the roof edge total.
+  const perimeterLf = tags['lf.perimeter'] || tags['xactimate.perimeter_lf'] ||
+    (Number(eaveLf) + Number(rakeLf)) || 0;
+  const stepLf = tags['lf.step'] || tags['lf.step_flashing'] || 0;
+  const wallLf = tags['lf.wall'] || tags['lf.wall_flashing'] || 0;
+  const unspecifiedLf = tags['lf.unspecified'] || 0;
+  const facets = tags['roof.faces_count'] || 0;
 
   return (
     <div
@@ -1717,6 +1725,30 @@ function MeasurementCard({
           <span className="text-muted-foreground text-xs">Eave</span>
           <p className="font-semibold">{formatValue(eaveLf)} ft</p>
         </div>
+
+        {/* Row 3: Edges and flashing */}
+        <div>
+          <span className="text-muted-foreground text-xs">Rake</span>
+          <p className="font-semibold">{formatValue(rakeLf)} ft</p>
+        </div>
+        <div>
+          <span className="text-muted-foreground text-xs">Step Flashing</span>
+          <p className="font-semibold">{formatValue(stepLf)} ft</p>
+        </div>
+        <div>
+          <span className="text-muted-foreground text-xs">Wall Flashing</span>
+          <p className="font-semibold">{formatValue(wallLf)} ft</p>
+        </div>
+        <div>
+          <span className="text-muted-foreground text-xs">Facets</span>
+          <p className="font-semibold">{formatValue(facets)}</p>
+        </div>
+        {Number(unspecifiedLf) > 0 && (
+          <div>
+            <span className="text-muted-foreground text-xs">Unspecified</span>
+            <p className="font-semibold">{formatValue(unspecifiedLf)} ft</p>
+          </div>
+        )}
       </div>
 
       {/* Notes if any */}
@@ -1986,22 +2018,12 @@ function MeasurementHistorySection({
       if (!entry?.tenant_id) throw new Error('No tenant found');
 
       const parsed = report.parsed || {};
-      const totalSquares = parsed.total_area_sqft ? parsed.total_area_sqft / 100 : 0;
 
-      const savedTags = {
-        'roof.plan_area': parsed.total_area_sqft || 0,
-        'roof.total_sqft': parsed.total_area_sqft || 0,
-        'roof.squares': totalSquares,
-        'roof.predominant_pitch': parsed.predominant_pitch || '6/12',
-        'roof.faces_count': parsed.facet_count || 0,
-        'lf.ridge': parsed.ridges_ft || 0,
-        'lf.hip': parsed.hips_ft || 0,
-        'lf.valley': parsed.valleys_ft || 0,
-        'lf.rake': parsed.rakes_ft || 0,
-        'lf.eave': parsed.eaves_ft || 0,
-        'source': `imported_${report.provider || 'unknown'}`,
-        'imported_at': report.created_at,
-      };
+      const savedTags = buildImportedReportTags(parsed, {
+        provider: report.provider,
+        importedAt: report.created_at,
+        originalReportId: report.id,
+      });
 
       const { data: insertedApproval, error: approvalError } = await supabase
         .from('measurement_approvals')

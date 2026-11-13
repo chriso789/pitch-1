@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { buildImportedReportTags } from '@/lib/measurements/importedReportTags';
 
 interface ParsedMeasurements {
   provider: string;
@@ -210,26 +211,10 @@ export function ImportMeasurementReport({
 
       // 2. Create saved_tags for estimate template integration
       const savedTags = {
-        'roof.plan_area': parsedData.total_area_sqft || 0,
-        'roof.total_sqft': parsedData.total_area_sqft || 0,
-        'roof.squares': totalSquares,
-        'roof.predominant_pitch': parsedData.predominant_pitch || '6/12',
-        'roof.faces_count': parsedData.facet_count || 0,
-        'lf.ridge': parsedData.ridges_ft || 0,
-        'lf.hip': parsedData.hips_ft || 0,
-        'lf.valley': parsedData.valleys_ft || 0,
-        'lf.rake': parsedData.rakes_ft || 0,
-        'lf.eave': parsedData.eaves_ft || 0,
-        'lf.drip_edge': parsedData.drip_edge_ft || 0,
-        'lf.perimeter': parsedData.perimeter_ft || 0,
-        'lf.step_flashing': parsedData.step_flashing_ft || 0,
-        'lf.ridge_hip_total': (parsedData.ridges_ft || 0) + (parsedData.hips_ft || 0),
+        ...buildImportedReportTags(parsedData, { provider: parsedData.provider }),
         // Xactimate-specific
         'xactimate.squares': parsedData.squares || totalSquares,
         'xactimate.hip_ridge_cap_lf': parsedData.hip_ridge_cap_lf || 0,
-        // Source tracking
-        'source': `imported_${parsedData.provider}`,
-        'imported_at': new Date().toISOString(),
       };
 
       // 3. Create measurement_approvals entry (enables template integration)

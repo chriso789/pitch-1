@@ -27,6 +27,7 @@ export interface MeasurementContext {
     hip: number;
     valley: number;
     step: number;
+    wall: number;
   };
   pen: {
     pipe_vent: number;
@@ -74,6 +75,7 @@ function buildContextFromTags(tags: Record<string, any>): MeasurementContext {
   const hip = Number(tags['lf.hip'] || tags['lf.hips'] || 0);
   const valley = Number(tags['lf.valley'] || tags['lf.valleys'] || 0);
   const step = Number(tags['lf.step'] || tags['lf.step_flashing'] || 0);
+  const wall = Number(tags['lf.wall'] || tags['lf.wall_flashing'] || 0);
   const pipeVent = Number(tags['pen.pipe_vent'] || tags['pen.pipe_vents'] || tags['penetrations'] || 3);
 
   return {
@@ -102,6 +104,7 @@ function buildContextFromTags(tags: Record<string, any>): MeasurementContext {
       hip,
       valley,
       step,
+      wall,
     },
     pen: {
       pipe_vent: pipeVent,
@@ -119,6 +122,7 @@ function buildContextFromRoofMeasurements(data: any): MeasurementContext {
   const hip = data?.total_hip_length || 0;
   const valley = data?.total_valley_length || 0;
   const step = data?.total_step_flashing_length || 0;
+  const wall = data?.total_wall_flashing_length || 0;
 
   return {
     roof: {
@@ -137,6 +141,7 @@ function buildContextFromRoofMeasurements(data: any): MeasurementContext {
       hip,
       valley,
       step,
+      wall,
     },
     pen: {
       pipe_vent: data?.penetration_count || 3,
@@ -205,6 +210,7 @@ export function evaluateFormula(formula: string, ctx: MeasurementContext): numbe
       'lf.hip': ctx.lf.hip,
       'lf.valley': ctx.lf.valley,
       'lf.step': ctx.lf.step,
+      'lf.wall': ctx.lf.wall,
       'pen.pipe_vent': ctx.pen.pipe_vent,
       // Compound convenience keys for common calculations
       'lf.ridge_hip': ctx.lf.ridge + ctx.lf.hip,    // Ridge cap coverage (ridge + hip)

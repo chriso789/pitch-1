@@ -12,8 +12,13 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { useQueryClient } from '@tanstack/react-query';
+import {
+  buildImportedComprehensiveMeasurements,
+  buildImportedReportTags,
+  type ImportedReportParsed,
+} from '@/lib/measurements/importedReportTags';
 
-interface ParsedMeasurements {
+interface ParsedMeasurements extends ImportedReportParsed {
   provider: string;
   address?: string | null;
   total_area_sqft?: number | null;
@@ -198,22 +203,10 @@ export const ImportReportButton: React.FC<ImportReportButtonProps> = ({
 
         const totalSquares = parsed.total_area_sqft ? parsed.total_area_sqft / 100 : 0;
         
-        const savedTags = {
-          'roof.plan_area': parsed.total_area_sqft || 0,
-          'roof.total_sqft': parsed.total_area_sqft || 0,
-          'roof.squares': totalSquares,
-          'roof.predominant_pitch': parsed.predominant_pitch || '6/12',
-          'roof.faces_count': parsed.facet_count || 0,
-          'lf.ridge': parsed.ridges_ft || 0,
-          'lf.hip': parsed.hips_ft || 0,
-          'lf.valley': parsed.valleys_ft || 0,
-          'lf.rake': parsed.rakes_ft || 0,
-          'lf.eave': parsed.eaves_ft || 0,
-          'lf.ridge_hip_total': (parsed.ridges_ft || 0) + (parsed.hips_ft || 0),
-          'source': `imported_${existingReport.provider || parsed.provider}`,
-          'imported_at': new Date().toISOString(),
-          'original_report_id': existingReport.id,
-        };
+        const savedTags = buildImportedReportTags(parsed, {
+          provider: existingReport.provider || parsed.provider,
+          originalReportId: existingReport.id,
+        });
 
         const { data: newApproval, error: approvalError } = await supabase
           .from('measurement_approvals')
@@ -241,15 +234,7 @@ export const ImportReportButton: React.FC<ImportReportButtonProps> = ({
               selected_measurement_approval_id: newApproval.id,
               comprehensive_measurements: {
                 ...existingMetadata.comprehensive_measurements,
-                roof_area_sq_ft: parsed.total_area_sqft,
-                total_area_sqft: parsed.total_area_sqft,
-                predominant_pitch: parsed.predominant_pitch,
-                ridges_lf: parsed.ridges_ft,
-                hips_lf: parsed.hips_ft,
-                valleys_lf: parsed.valleys_ft,
-                source: `imported_${existingReport.provider}`,
-                imported_at: new Date().toISOString(),
-                roof_squares: totalSquares,
+                ...buildImportedComprehensiveMeasurements(parsed, existingReport.provider),
               },
               imported_report_provider: existingReport.provider,
             },
@@ -296,21 +281,7 @@ export const ImportReportButton: React.FC<ImportReportButtonProps> = ({
       const totalSquares = parsed.total_area_sqft ? parsed.total_area_sqft / 100 : 0;
       
       // Create saved_tags for estimate template integration
-      const savedTags = {
-        'roof.plan_area': parsed.total_area_sqft || 0,
-        'roof.total_sqft': parsed.total_area_sqft || 0,
-        'roof.squares': totalSquares,
-        'roof.predominant_pitch': parsed.predominant_pitch || '6/12',
-        'roof.faces_count': parsed.facet_count || 0,
-        'lf.ridge': parsed.ridges_ft || 0,
-        'lf.hip': parsed.hips_ft || 0,
-        'lf.valley': parsed.valleys_ft || 0,
-        'lf.rake': parsed.rakes_ft || 0,
-        'lf.eave': parsed.eaves_ft || 0,
-        'lf.ridge_hip_total': (parsed.ridges_ft || 0) + (parsed.hips_ft || 0),
-        'source': `imported_${parsed.provider}`,
-        'imported_at': new Date().toISOString(),
-      };
+      const savedTags = buildImportedReportTags(parsed, { provider: parsed.provider });
 
       // Create measurement_approvals entry
       const { data: newApproval, error: approvalError } = await supabase
@@ -339,22 +310,7 @@ export const ImportReportButton: React.FC<ImportReportButtonProps> = ({
             selected_measurement_approval_id: newApproval.id,
             comprehensive_measurements: {
               ...existingMetadata.comprehensive_measurements,
-              roof_area_sq_ft: parsed.total_area_sqft,
-              total_area_sqft: parsed.total_area_sqft,
-              pitched_area_sqft: parsed.pitched_area_sqft,
-              predominant_pitch: parsed.predominant_pitch,
-              facet_count: parsed.facet_count,
-              ridges_lf: parsed.ridges_ft,
-              hips_lf: parsed.hips_ft,
-              valleys_lf: parsed.valleys_ft,
-              rakes_lf: parsed.rakes_ft,
-              eaves_lf: parsed.eaves_ft,
-              drip_edge_lf: parsed.drip_edge_ft,
-              waste_table: parsed.waste_table,
-              source: `imported_${parsed.provider}`,
-              imported_at: new Date().toISOString(),
-              roof_squares: totalSquares,
-              total_squares: totalSquares,
+              ...buildImportedComprehensiveMeasurements(parsed, parsed.provider),
             },
             imported_report_provider: parsed.provider,
             imported_report_address: parsed.address,
@@ -451,21 +407,7 @@ export const ImportReportButton: React.FC<ImportReportButtonProps> = ({
       console.log('Saving imported report to measurement_approvals...');
 
       // 2. Create saved_tags for estimate template integration
-      const savedTags = {
-        'roof.plan_area': importParsedData.total_area_sqft || 0,
-        'roof.total_sqft': importParsedData.total_area_sqft || 0,
-        'roof.squares': totalSquares,
-        'roof.predominant_pitch': importParsedData.predominant_pitch || '6/12',
-        'roof.faces_count': importParsedData.facet_count || 0,
-        'lf.ridge': importParsedData.ridges_ft || 0,
-        'lf.hip': importParsedData.hips_ft || 0,
-        'lf.valley': importParsedData.valleys_ft || 0,
-        'lf.rake': importParsedData.rakes_ft || 0,
-        'lf.eave': importParsedData.eaves_ft || 0,
-        'lf.ridge_hip_total': (importParsedData.ridges_ft || 0) + (importParsedData.hips_ft || 0),
-        'source': `imported_${importParsedData.provider}`,
-        'imported_at': new Date().toISOString(),
-      };
+      const savedTags = buildImportedReportTags(importParsedData, { provider: importParsedData.provider });
 
       // 3. Create measurement_approvals entry
       const { data: insertedApproval, error: approvalError } = await supabase
@@ -488,22 +430,7 @@ export const ImportReportButton: React.FC<ImportReportButtonProps> = ({
       // 4. Also update pipeline entry metadata for backward compatibility
       const comprehensiveMeasurements = {
         ...existingMetadata.comprehensive_measurements,
-        roof_area_sq_ft: importParsedData.total_area_sqft,
-        total_area_sqft: importParsedData.total_area_sqft,
-        pitched_area_sqft: importParsedData.pitched_area_sqft,
-        predominant_pitch: importParsedData.predominant_pitch,
-        facet_count: importParsedData.facet_count,
-        ridges_lf: importParsedData.ridges_ft,
-        hips_lf: importParsedData.hips_ft,
-        valleys_lf: importParsedData.valleys_ft,
-        rakes_lf: importParsedData.rakes_ft,
-        eaves_lf: importParsedData.eaves_ft,
-        drip_edge_lf: importParsedData.drip_edge_ft,
-        waste_table: importParsedData.waste_table,
-        source: `imported_${importParsedData.provider}`,
-        imported_at: new Date().toISOString(),
-        roof_squares: totalSquares,
-        total_squares: totalSquares,
+        ...buildImportedComprehensiveMeasurements(importParsedData, importParsedData.provider),
       };
 
       await supabase

@@ -1,0 +1,278 @@
+Roof Report
+ 
+4000 sqft
+Prepared by Roofr
+16 facets
+Predominant pitch 6/12
+100 Sample Street, Bradenton, FL 34203
+
+Nearmap May 16, 2025
+
+This report was prepared by Roofr. Copyright © 2025 Roofr.com | All rights reserved.
+ 
+1
+Prepared by
+
+Diagram
+
+100 Sample Street, Bradenton, FL 34203
+
+This report was prepared by Roofr. Copyright © 2025 Roofr.com | All rights reserved.
+ 
+2
+Prepared by
+
+Length measurement report
+
+100 Sample Street, Bradenton, FL 34203
+
+Eaves: 236ft 4in
+ 
+Valleys: 92ft 10in
+ 
+Hips: 154ft 7in
+Ridges: 73ft 10in
+ 
+Rakes: 92ft 3in
+ 
+Wall flashing: 11ft 7in
+Step flashing: 44ft 9in
+ 
+Transitions: 0ft 0in
+ 
+Parapet wall: 0ft 0in
+Unspecified: 69ft 8in
+
+22
+22
+13
+12
+15
+25
+13
+36
+14
+ 
+11
+26
+27
+28
+52
+18
+12
+25
+35
+13
+33
+49
+22
+11
+15
+15
+13
+
+Measurements in diagram are rounded up for display. Some edge lengths may be hidden from diagram to avoid overcrowding.
+This report was prepared by Roofr. Copyright © 2025 Roofr.com | All rights reserved.
+ 
+3
+Prepared by
+
+Area measurement report
+
+100 Sample Street, Bradenton, FL 34203
+
+Total roof area: 4000 sqft
+ 
+Predominant pitch: 6/12
+Pitched roof area: 4000 sqft
+ 
+Predominant pitch area: 4000 sqft
+Flat roof area: 0 sqft
+ 
+Unspecified pitch area: 0 sqft
+Two story area: 0 sqft
+Two layer area: 0 sqft
+
+5
+ 
+5
+5
+253
+5
+313
+560
+1,058
+82
+149
+238
+412
+612
+87
+138
+ 
+84
+
+Area measurements in diagram are rounded. The totals at the top of the page are the sums of the exact measurements, which are
+then rounded. Deleted facets (skylights, chimneys, etc.) are designated with a dashed line and are excluded from the calculations.
+This report was prepared by Roofr. Copyright © 2025 Roofr.com | All rights reserved.
+ 
+4
+Prepared by
+
+Pitch & direction measurement report
+
+100 Sample Street, Bradenton, FL 34203
+
+6
+ 
+6
+6
+6
+6
+6
+6
+6
+6
+6
+6
+6
+6
+6
+6
+ 
+6
+
+Deleted facets are designated with a dashed line and do not have a pitch.
+This report was prepared by Roofr. Copyright © 2025 Roofr.com | All rights reserved.
+ 
+5
+Prepared by
+
+Report summary
+
+100 Sample Street, Bradenton, FL 34203
+
+Measurements
+Total roof area
+ 
+4000 sqft
+Total pitched area
+ 
+4000 sqft
+Total flat area
+ 
+0 sqft
+Total roof facets
+ 
+16 facets
+Predominant pitch
+ 
+6/12
+Total eaves
+ 
+236ft 4in
+Total valleys
+ 
+92ft 10in
+Total hips
+ 
+154ft 7in
+Total ridges
+ 
+73ft 10in
+Total rakes
+ 
+92ft 3in
+Total wall flashing
+ 
+11ft 7in
+Total step flashing
+ 
+44ft 9in
+Total transitions
+ 
+0ft 0in
+Total parapet wall
+ 
+0ft 0in
+Total unspecified
+ 
+69ft 8in
+Hips + ridges
+ 
+228ft 5in
+Eaves + rakes
+ 
+328ft 7in
+Pitch
+ 
+6/12
+Area (sqft)
+ 
+4,000
+Squares
+ 
+40.0
+
+Recommended
+
+Waste %
+ 
+0%
+ 
+10%
+ 
+12%
+ 
+13%
+ 
+15%
+ 
+17%
+ 
+20%
+Area (sqft)
+ 
+4,000
+ 
+4,400
+ 
+4,480
+ 
+4,520
+ 
+4,600
+ 
+4,680
+ 
+4,800
+Squares
+ 
+40.0
+ 
+44.0
+ 
+44.8
+ 
+45.2
+ 
+46.0
+ 
+46.8
+ 
+48.0
+
+Recommended waste is based on an asphalt shingle roof with a closed valley system (if applicable). Several other factors are involved
+in determining which waste percentage to use, including the complexity of the roof and individual roof application style. You will also
+need to calculate the post-waste quantity of other materials needed (hip and ridge caps, starter shingle, etc.).
+This report was prepared by Roofr. Copyright © 2025 Roofr.com | All rights reserved.
+ 
+6
+Prepared by
+
+Material calculations
+Product
+Unit
+Starter
+Drip edge
+Quantity
