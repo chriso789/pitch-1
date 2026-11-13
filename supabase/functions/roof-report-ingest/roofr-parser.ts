@@ -195,33 +195,53 @@ export function parseRoofr(textRaw: string) {
     const area = parseIntSafe(m[2]);
     if (pitch && area !== null) pitchRows.push({ pitch, area_sqft: area });
   }
+  // Multi-building reports can print pitch rows for only some structures. Keep the
+  // breakdown only when it adds up to the whole roof; otherwise leave it out.
+  const pitchSum = pitchRows.reduce((s, r) => s + r.area_sqft, 0);
+  const pitchesMatchTotal = !totalRoofArea || Math.abs(pitchSum - totalRoofArea) / totalRoofArea <= 0.03;
 
   // Waste table: "Waste %" row, then "Area (sqft)" row, then "Squares" row.
   // Read the percentages from the report itself — Roofr varies them per roof.
-  let wasteTable: Array<{ waste_pct: number; area_sqft: number | null; squares: number | null }> | null = null;
-  const wasteBlock = text.match(
-    /Waste %\s+((?:\d+(?:\.\d+)?%\s+)+)Area \(sqft\)\s+((?:[\d,]+\s+)+)Squares\s+((?:\d+(?:\.\d+)?\s*)+)/i,
-  );
-  if (wasteBlock) {
-    const pcts = wasteBlock[1].match(/\d+(?:\.\d+)?/g)?.map(Number) ?? [];
-    const areas = wasteBlock[2].trim().split(/\s+/).map((x) => parseIntSafe(x));
-    const squares = wasteBlock[3].trim().split(/\s+/).map((x) => parseFloatSafe(x));
+  // Multi-building reports print one table per structure plus one for the whole
+  // property; use the table whose 0% row matches the whole-property roof area.
+  type WasteRow = { waste_pct: number; area_sqft: number | null; squares: number | null };
+  const wasteTables: WasteRow[][] = [];
+  const wasteRe =
+    /Waste %\s+((?:\d+(?:\.\d+)?%\s+)+)Area \(sqft\)\s+((?:[\d,]+\s+)+)Squares\s+((?:\d+(?:\.\d+)?\s*)+)/gi;
+  let wm: RegExpExecArray | null;
+  while ((wm = wasteRe.exec(text)) !== null) {
+    const pcts = wm[1].match(/\d+(?:\.\d+)?/g)?.map(Number) ?? [];
+    const areas = wm[2].trim().split(/\s+/).map((x) => parseIntSafe(x));
+    const squares = wm[3].trim().split(/\s+/).map((x) => parseFloatSafe(x));
     if (pcts.length) {
-      wasteTable = pcts.map((pct, i) => ({
+      wasteTables.push(pcts.map((pct, i) => ({
         waste_pct: pct,
         area_sqft: areas[i] ?? null,
         squares: squares[i] ?? null,
-      }));
+      })));
     }
   }
+  const baseArea = (t: WasteRow[]) => t.find((r) => r.waste_pct === 0)?.area_sqft ?? null;
+  let wasteTable: WasteRow[] | null = wasteTables[0] ?? null;
+  if (wasteTables.length > 1 && totalRoofArea) {
+    wasteTable = wasteTables.reduce((best, t) =>
+      Math.abs((baseArea(t) ?? 0) - totalRoofArea) < Math.abs((baseArea(best) ?? 0) - totalRoofArea) ? t : best
+    );
+  }
+  // Never keep a per-building table as if it were the whole roof.
+  const chosenBase = wasteTable ? baseArea(wasteTable) : null;
+  if (wasteTable && totalRoofArea && chosenBase && Math.abs(chosenBase - totalRoofArea) / totalRoofArea > 0.03) {
+    wasteTable = null;
+  }
 
-  // Roofr prints the combined edge totals; use them when present, else add up.
+  // Add up the whole-property lengths. Roofr's printed "Eaves + rakes" lines
+  // repeat per building, so they are only a fallback when lengths are missing.
   const combined = (label: string) =>
     ftIn(new RegExp(`${label}\\s*\\n?\\s*(\\d+)\\s*ft\\s*(\\d+)\\s*in`, "i"));
   const eavesPlusRakes =
-    combined("Eaves \\+ rakes") ?? (eaves !== null && rakes !== null ? eaves + rakes : null);
+    eaves !== null && rakes !== null ? eaves + rakes : combined("Eaves \\+ rakes");
   const hipsPlusRidges =
-    combined("Hips \\+ ridges") ?? (hips !== null && ridges !== null ? hips + ridges : null);
+    hips !== null && ridges !== null ? hips + ridges : combined("Hips \\+ ridges");
 
   return {
     provider: "roofr",
@@ -243,7 +263,7 @@ export function parseRoofr(textRaw: string) {
     unspecified_ft: unspecified,
     perimeter_ft: eavesPlusRakes,
     hips_ridges_ft: hipsPlusRidges,
-    pitches: pitchRows.length ? pitchRows : null,
+    pitches: pitchRows.length && pitchesMatchTotal ? pitchRows : null,
     waste_table: wasteTable,
   };
 }
