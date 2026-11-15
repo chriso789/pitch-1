@@ -45,7 +45,7 @@ interface FloatingEmailComposerProps {
     body: string;
     attachments?: File[];
     document_ids?: string[];
-  }) => void;
+  }) => void | Promise<void>;
 }
 
 export const FloatingEmailComposer: React.FC<FloatingEmailComposerProps> = ({
@@ -78,9 +78,14 @@ export const FloatingEmailComposer: React.FC<FloatingEmailComposerProps> = ({
     }
   }, [defaultRecipient]);
 
-  const handleSendEmail = () => {
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const handleSendEmail = async () => {
     if (to.length > 0 && subject.trim() && body.trim() && onSendEmail) {
-      onSendEmail({
+      if (sending) return;
+      setSending(true); setSendError(null);
+      try {
+      await onSendEmail({
         to,
         cc: cc.length > 0 ? cc : undefined,
         bcc: bcc.length > 0 ? bcc : undefined,
@@ -98,6 +103,8 @@ export const FloatingEmailComposer: React.FC<FloatingEmailComposerProps> = ({
       setAttachments([]);
       setSelectedDocIds(new Set());
       onClose();
+      } catch (error) { setSendError(error instanceof Error ? error.message : 'Email delivery failed'); }
+      finally { setSending(false); }
     }
   };
 
@@ -485,11 +492,12 @@ export const FloatingEmailComposer: React.FC<FloatingEmailComposerProps> = ({
           </div>
         </ScrollArea>
 
+        {sendError && <p role="alert" className="px-4 text-destructive">{sendError}</p>}
         {/* Send button */}
         <div className="p-4 border-t border-border">
           <Button 
             onClick={handleSendEmail}
-            disabled={!to.length || !subject.trim() || !body.trim()}
+            disabled={sending || !to.length || !subject.trim() || !body.trim()}
             className="w-full"
           >
             <Send className="mr-2 h-4 w-4" />

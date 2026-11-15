@@ -1,3 +1,4 @@
+import { calculateJobFinancials, type FinancialSummary } from '@/features/jobs/financialSummary';
 import { RecordScanDocuments } from '@/components/documents/RecordScanDocuments';
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -8,7 +9,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { BudgetTracker } from "@/features/projects";
 import { JobInvoiceTracker, JobPhotoGallery, JobDocumentManager, JobTimelineTracker } from "@/features/jobs";
-import PaymentForm from "@/features/payments/components/PaymentForm";
+import { RecordPaymentDialog } from "@/components/payments/RecordPaymentDialog";
+import { useQuery } from "@tanstack/react-query";
+import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
 import { ContactCommunicationTab } from "@/components/contact-profile/ContactCommunicationTab";
 import { JobActivityTimeline } from "@/components/JobActivityTimeline";
 import { ProductionTimeline } from "@/components/job-details/ProductionTimeline";
@@ -37,6 +40,8 @@ interface JobDetailsData {
   description?: string;
   status: string;
   tenant_id?: string;
+  project_id?: string;
+  pipeline_entry_id?: string;
   contact?: {
     id: string;
     first_name: string;
@@ -51,20 +56,12 @@ interface JobDetailsData {
   project?: {
     id: string;
     project_number: string;
+    pipeline_entry_id?: string;
     start_date: string;
     estimated_completion_date?: string;
   };
   created_at: string;
   updated_at: string;
-}
-
-interface FinancialSummary {
-  totalBudget: number;
-  actualCosts: number;
-  totalPaid: number;
-  remainingBalance: number;
-  profitMargin: number;
-  salesRepCommission: number;
 }
 
 const JobDetails = () => {
@@ -77,13 +74,31 @@ const JobDetails = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [showSmartDocs, setShowSmartDocs] = useState(false);
   const [showCostConfirmation, setShowCostConfirmation] = useState(false);
-  const [financials, setFinancials] = useState<FinancialSummary>({
-    totalBudget: 0,
-    actualCosts: 0,
-    totalPaid: 0,
-    remainingBalance: 0,
-    profitMargin: 0,
-    salesRepCommission: 0
+  const tenantId = useEffectiveTenantId();
+  const [recordPaymentOpen, setRecordPaymentOpen] = useState(false);
+  const projectId = job?.project_id || job?.project?.id;
+  const pipelineEntryId = job?.pipeline_entry_id || job?.project?.pipeline_entry_id;
+  const { data: financials, error: financialError, refetch: refreshFinancials } = useQuery({
+    queryKey: ['job-financials', tenantId, id, projectId, pipelineEntryId],
+    enabled: !!tenantId && !!job && job.tenant_id === tenantId,
+    refetchInterval: 30000,
+    queryFn: async (): Promise<FinancialSummary> => {
+      if (!projectId || !pipelineEntryId) throw new Error('Link this job to its project and lead to load financials');
+      const results = await Promise.all([
+        supabase.rpc('api_estimate_hyperlink_bar', { p_pipeline_entry_id: pipelineEntryId }),
+        supabase.from('project_scopes').select('current_contract_amount_cents').eq('tenant_id', tenantId).eq('project_id', projectId).neq('status', 'cancelled'),
+        supabase.from('project_costs').select('total_cost').eq('tenant_id', tenantId).eq('project_id', projectId),
+        supabase.from('project_payments').select('amount').eq('tenant_id', tenantId).eq('pipeline_entry_id', pipelineEntryId),
+        supabase.from('commission_calculations').select('commission_amount, status').eq('tenant_id', tenantId).eq('project_id', projectId),
+      ]);
+      for (const result of results) if (result.error) throw result.error;
+      const estimate = results[0].data as { sale_price?: number } | null;
+      const scopes = results[1].data || [];
+      const totalBudget = scopes.length ? scopes.reduce((sum, row) => sum + Number(row.current_contract_amount_cents), 0) / 100 : Number(estimate?.sale_price);
+      if (!Number.isFinite(totalBudget)) throw new Error('No priced estimate or contract is available');
+      return calculateJobFinancials({ contractValue: totalBudget, costs: results[2].data || [],
+        payments: results[3].data || [], commissions: results[4].data || [] });
+    },
   });
 
   // Safety guard: handle invalid IDs like "new"
@@ -100,17 +115,18 @@ const JobDetails = () => {
   }, [id, navigate]);
 
   useEffect(() => {
-    if (id && id !== 'new') {
+    if (id && id !== 'new' && tenantId) {
       fetchJobDetails();
-      fetchBudgetItems();
-      fetchFinancialSummary();
-      fetchProductionStage();
     }
-  }, [id]);
+  }, [id, tenantId]);
+
+  useEffect(() => {
+    if (projectId && tenantId && job?.tenant_id === tenantId) { void fetchBudgetItems(); void fetchProductionStage(); }
+  }, [projectId, tenantId, job?.tenant_id]);
 
   // Set up real-time listener for production workflow changes
   useEffect(() => {
-    if (!id) return;
+    if (!projectId) return;
 
     const channel = supabase
       .channel(`job-production-${id}`)
@@ -120,7 +136,7 @@ const JobDetails = () => {
           event: '*',
           schema: 'public',
           table: 'production_workflows',
-          filter: `project_id=eq.${id}`
+          filter: `project_id=eq.${projectId}`
         },
         (payload) => {
           if (payload.new && 'current_stage' in payload.new) {
@@ -133,14 +149,15 @@ const JobDetails = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [id]);
+  }, [projectId]);
 
   const fetchProductionStage = async () => {
     try {
       const { data: workflow } = await supabase
         .from('production_workflows')
         .select('current_stage')
-        .eq('project_id', id)
+        .eq('project_id', projectId)
+        .eq('tenant_id', tenantId)
         .maybeSingle();
 
       if (workflow) {
@@ -161,6 +178,7 @@ const JobDetails = () => {
           project:projects(*)
         `)
         .eq('id', id)
+        .eq('tenant_id', tenantId)
         .maybeSingle();
 
       if (error) throw error;
@@ -184,34 +202,13 @@ const JobDetails = () => {
       const { data, error } = await supabase
         .from('project_budget_items')
         .select('*')
-        .eq('project_id', id);
+        .eq('project_id', projectId)
+        .eq('tenant_id', tenantId);
 
       if (error) throw error;
       setBudgetItems(data || []);
     } catch (error) {
       console.error('Error fetching budget items:', error);
-    }
-  };
-
-  const fetchFinancialSummary = async () => {
-    try {
-      // Fetch financial data - this would integrate with existing tables
-      // For now using mock data, but would pull from:
-      // - estimates table for budget
-      // - payments table for paid amounts  
-      // - project_costs for actual costs
-      // - commission_calculations for rep commission
-
-      setFinancials({
-        totalBudget: 45000,
-        actualCosts: 38000,
-        totalPaid: 30000,
-        remainingBalance: 15000,
-        profitMargin: 18.5,
-        salesRepCommission: 2250
-      });
-    } catch (error) {
-      console.error('Error fetching financial summary:', error);
     }
   };
 
@@ -301,7 +298,7 @@ const JobDetails = () => {
     return colors[status as keyof typeof colors] || 'bg-muted';
   };
 
-  if (loading) {
+  if (loading || (job && job.tenant_id !== tenantId)) {
     return (
       <GlobalLayout>
         <div className="flex items-center justify-center min-h-[60vh]">
@@ -458,7 +455,7 @@ const JobDetails = () => {
       <CostConfirmationDialog
         open={showCostConfirmation}
         onOpenChange={setShowCostConfirmation}
-        projectId={id!}
+        projectId={projectId!}
         onSuccess={() => {
           // Budgets will auto-refresh via their query refetch interval
         }}
@@ -467,17 +464,19 @@ const JobDetails = () => {
       {/* Budget Tracking (Pre-Cap vs Cap-Out) */}
       {id && (
         <div className="mb-6">
-          <BudgetChips projectId={id} targetMarginPercent={30} />
+          <BudgetChips projectId={projectId} targetMarginPercent={30} />
         </div>
       )}
 
       {/* Financial Dashboard */}
+      {!financials && <Card className="p-4">{financialError ? String(financialError.message) : 'Loading financials…'}</Card>}
+      {financials && <>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <Card className="gradient-primary text-white">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-white/80 text-sm">Total Budget</p>
+                <p className="text-white/80 text-sm">Contract / Estimate Value</p>
                 <p className="text-2xl font-bold">${financials.totalBudget.toLocaleString()}</p>
               </div>
               <Target className="h-8 w-8 text-white/60" />
@@ -525,7 +524,7 @@ const JobDetails = () => {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-muted-foreground text-sm">Profit Margin</p>
+                <p className="text-muted-foreground text-sm">Recorded Margin</p>
                 <p className="text-2xl font-bold text-primary">{financials.profitMargin}%</p>
               </div>
               {financials.profitMargin >= 15 ? 
@@ -542,7 +541,7 @@ const JobDetails = () => {
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <TrendingUp className="h-5 w-5 text-primary" />
-            <span>Live Profit & Loss</span>
+            <span>Recorded Cash Flow</span>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -575,6 +574,7 @@ const JobDetails = () => {
         </CardContent>
       </Card>
 
+      </>}
       {/* Main Content Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="relative">
@@ -701,25 +701,18 @@ const JobDetails = () => {
         </TabsContent>
 
         <TabsContent value="payments">
-          <PaymentForm 
-            selectedJob={{
-              id: job.id,
-              customer: job.contact ? `${job.contact.first_name} ${job.contact.last_name}` : 'Unknown',
-              email: job.contact?.email,
-              address: job.contact?.address_street ? 
-                `${job.contact.address_street}, ${job.contact.address_city}` : 
-                'No address',
-              totalAmount: financials.totalBudget,
-              paidAmount: financials.totalPaid,
-              remainingBalance: financials.remainingBalance,
-              projectType: job.name
-            }}
-          />
+          {financials && pipelineEntryId && tenantId ? <>
+            <Button onClick={() => setRecordPaymentOpen(true)}>Record payment</Button>
+            <RecordPaymentDialog open={recordPaymentOpen} onOpenChange={(open) => {
+              setRecordPaymentOpen(open); if (!open) void refreshFinancials();
+            }} pipelineEntryId={pipelineEntryId} tenantId={tenantId} projectName={job.name}
+              sellingPrice={financials.totalBudget} totalPaid={financials.totalPaid} />
+          </> : <p>Financials must be available before recording a payment.</p>}
         </TabsContent>
 
         <TabsContent value="quickbooks">
           <QuickBooksInvoiceManager
-            projectId={id!}
+            projectId={projectId!}
             tenantId={job.tenant_id!}
           />
         </TabsContent>

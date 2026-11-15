@@ -567,12 +567,14 @@ export const useStormCanvass = () => {
     }
   };
 
-  const getRewardHistory = async (userId: string) => {
+  const getRewardHistory = async (userId: string, tenantId: string) => {
+    if (!tenantId) throw new Error("Select a company to load rewards");
     try {
       const { data, error } = await supabase
         .from('achievement_rewards')
         .select('*')
         .eq('user_id', userId)
+        .eq('tenant_id', tenantId)
         .order('created_at', { ascending: false });
       
       if (error) throw error;

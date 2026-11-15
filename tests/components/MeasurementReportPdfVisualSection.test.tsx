@@ -81,6 +81,8 @@ describe('MeasurementReportPdfVisualSection', () => {
     expect(root).not.toBeNull();
     const panels = root!.querySelectorAll('[data-pdf-overlay-panel="true"]');
     expect(panels.length).toBe(1);
-    expect(root!.textContent).toContain('aerial unavailable in export');
+    expect(root!.textContent).toContain('Aerial image unavailable in PDF export');
+    expect(root!.querySelector('img')).toBeNull();
+    expect(root!.textContent).toContain('Diagnostic export only — not customer-ready');
   });
 });

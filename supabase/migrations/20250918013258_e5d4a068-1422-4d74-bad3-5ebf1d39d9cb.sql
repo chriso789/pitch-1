@@ -38,7 +38,7 @@ CREATE POLICY "Admins can view and update their tenant settings" ON public.tenan
 FOR SELECT USING (tenant_id = public.get_user_tenant_id());
 
 CREATE POLICY "Admins can update their tenant settings" ON public.tenant_settings
-FOR UPDATE USING (tenant_id = public.get_user_tenant_id() AND public.has_any_role(ARRAY['admin', 'master']));
+FOR UPDATE USING (tenant_id = public.get_user_tenant_id() AND public.has_any_role(ARRAY['admin', 'master']::public.app_role[]));
 
 -- Profiles policies
 CREATE POLICY "Users can view profiles in their tenant" ON public.profiles
@@ -48,7 +48,7 @@ CREATE POLICY "Users can update their own profile" ON public.profiles
 FOR UPDATE USING (id = auth.uid());
 
 CREATE POLICY "Admins can manage profiles in their tenant" ON public.profiles
-FOR ALL USING (tenant_id = public.get_user_tenant_id() AND public.has_any_role(ARRAY['admin', 'master']));
+FOR ALL USING (tenant_id = public.get_user_tenant_id() AND public.has_any_role(ARRAY['admin', 'master']::public.app_role[]));
 
 CREATE POLICY "Masters can access all profiles" ON public.profiles
 FOR ALL USING (public.has_role('master'));
@@ -64,7 +64,7 @@ CREATE POLICY "Users can update contacts in their tenant" ON public.contacts
 FOR UPDATE USING (tenant_id = public.get_user_tenant_id());
 
 CREATE POLICY "Admins can delete contacts in their tenant" ON public.contacts
-FOR DELETE USING (tenant_id = public.get_user_tenant_id() AND public.has_any_role(ARRAY['admin', 'manager', 'master']));
+FOR DELETE USING (tenant_id = public.get_user_tenant_id() AND public.has_any_role(ARRAY['admin', 'manager', 'master']::public.app_role[]));
 
 -- Pipeline entries policies
 CREATE POLICY "Users can view pipeline entries in their tenant" ON public.pipeline_entries
@@ -77,7 +77,7 @@ CREATE POLICY "Users can update pipeline entries in their tenant" ON public.pipe
 FOR UPDATE USING (tenant_id = public.get_user_tenant_id());
 
 CREATE POLICY "Admins can delete pipeline entries in their tenant" ON public.pipeline_entries
-FOR DELETE USING (tenant_id = public.get_user_tenant_id() AND public.has_any_role(ARRAY['admin', 'manager', 'master']));
+FOR DELETE USING (tenant_id = public.get_user_tenant_id() AND public.has_any_role(ARRAY['admin', 'manager', 'master']::public.app_role[]));
 
 -- Projects policies
 CREATE POLICY "Users can view projects in their tenant" ON public.projects
@@ -90,21 +90,21 @@ CREATE POLICY "Users can update projects in their tenant" ON public.projects
 FOR UPDATE USING (tenant_id = public.get_user_tenant_id());
 
 CREATE POLICY "Admins can delete projects in their tenant" ON public.projects
-FOR DELETE USING (tenant_id = public.get_user_tenant_id() AND public.has_any_role(ARRAY['admin', 'manager', 'master']));
+FOR DELETE USING (tenant_id = public.get_user_tenant_id() AND public.has_any_role(ARRAY['admin', 'manager', 'master']::public.app_role[]));
 
 -- Supplier pricebooks policies
 CREATE POLICY "Users can view pricebooks in their tenant" ON public.supplier_pricebooks
 FOR SELECT USING (tenant_id = public.get_user_tenant_id());
 
 CREATE POLICY "Admins can manage pricebooks in their tenant" ON public.supplier_pricebooks
-FOR ALL USING (tenant_id = public.get_user_tenant_id() AND public.has_any_role(ARRAY['admin', 'manager', 'master']));
+FOR ALL USING (tenant_id = public.get_user_tenant_id() AND public.has_any_role(ARRAY['admin', 'manager', 'master']::public.app_role[]));
 
 -- Estimate templates policies
 CREATE POLICY "Users can view templates in their tenant" ON public.estimate_templates
 FOR SELECT USING (tenant_id = public.get_user_tenant_id());
 
 CREATE POLICY "Admins can manage templates in their tenant" ON public.estimate_templates
-FOR ALL USING (tenant_id = public.get_user_tenant_id() AND public.has_any_role(ARRAY['admin', 'manager', 'master']));
+FOR ALL USING (tenant_id = public.get_user_tenant_id() AND public.has_any_role(ARRAY['admin', 'manager', 'master']::public.app_role[]));
 
 -- Estimates policies
 CREATE POLICY "Users can view estimates in their tenant" ON public.estimates
@@ -117,7 +117,7 @@ CREATE POLICY "Users can update estimates in their tenant" ON public.estimates
 FOR UPDATE USING (tenant_id = public.get_user_tenant_id());
 
 CREATE POLICY "Admins can delete estimates in their tenant" ON public.estimates
-FOR DELETE USING (tenant_id = public.get_user_tenant_id() AND public.has_any_role(ARRAY['admin', 'manager', 'master']));
+FOR DELETE USING (tenant_id = public.get_user_tenant_id() AND public.has_any_role(ARRAY['admin', 'manager', 'master']::public.app_role[]));
 
 -- Project budget snapshots policies (read-only after creation)
 CREATE POLICY "Users can view budget snapshots in their tenant" ON public.project_budget_snapshots
@@ -137,21 +137,21 @@ CREATE POLICY "Users can update project costs in their tenant" ON public.project
 FOR UPDATE USING (tenant_id = public.get_user_tenant_id());
 
 CREATE POLICY "Admins can delete project costs in their tenant" ON public.project_costs
-FOR DELETE USING (tenant_id = public.get_user_tenant_id() AND public.has_any_role(ARRAY['admin', 'manager', 'master']));
+FOR DELETE USING (tenant_id = public.get_user_tenant_id() AND public.has_any_role(ARRAY['admin', 'manager', 'master']::public.app_role[]));
 
 -- Rep overhead rules policies
 CREATE POLICY "Users can view overhead rules in their tenant" ON public.rep_overhead_rules
 FOR SELECT USING (tenant_id = public.get_user_tenant_id());
 
 CREATE POLICY "Admins can manage overhead rules in their tenant" ON public.rep_overhead_rules
-FOR ALL USING (tenant_id = public.get_user_tenant_id() AND public.has_any_role(ARRAY['admin', 'manager', 'master']));
+FOR ALL USING (tenant_id = public.get_user_tenant_id() AND public.has_any_role(ARRAY['admin', 'manager', 'master']::public.app_role[]));
 
 -- Commission plans policies
 CREATE POLICY "Users can view commission plans in their tenant" ON public.commission_plans
 FOR SELECT USING (tenant_id = public.get_user_tenant_id());
 
 CREATE POLICY "Admins can manage commission plans in their tenant" ON public.commission_plans
-FOR ALL USING (tenant_id = public.get_user_tenant_id() AND public.has_any_role(ARRAY['admin', 'manager', 'master']));
+FOR ALL USING (tenant_id = public.get_user_tenant_id() AND public.has_any_role(ARRAY['admin', 'manager', 'master']::public.app_role[]));
 
 -- User commission plan assignments policies
 CREATE POLICY "Users can view commission assignments in their tenant" ON public.user_commission_plans
@@ -161,7 +161,7 @@ CREATE POLICY "Users can view their own commission assignment" ON public.user_co
 FOR SELECT USING (user_id = auth.uid());
 
 CREATE POLICY "Admins can manage commission assignments in their tenant" ON public.user_commission_plans
-FOR ALL USING (tenant_id = public.get_user_tenant_id() AND public.has_any_role(ARRAY['admin', 'manager', 'master']));
+FOR ALL USING (tenant_id = public.get_user_tenant_id() AND public.has_any_role(ARRAY['admin', 'manager', 'master']::public.app_role[]));
 
 -- Outbox events policies (system internal)
 CREATE POLICY "System can manage outbox events in tenant" ON public.outbox_events
@@ -179,7 +179,7 @@ CREATE POLICY "Users can create payments in their tenant" ON public.payments
 FOR INSERT WITH CHECK (tenant_id = public.get_user_tenant_id());
 
 CREATE POLICY "Admins can manage payments in their tenant" ON public.payments
-FOR ALL USING (tenant_id = public.get_user_tenant_id() AND public.has_any_role(ARRAY['admin', 'manager', 'master']));
+FOR ALL USING (tenant_id = public.get_user_tenant_id() AND public.has_any_role(ARRAY['admin', 'manager', 'master']::public.app_role[]));
 
 -- Portal access grants policies
 CREATE POLICY "Users can view portal grants in their tenant" ON public.portal_access_grants
@@ -192,7 +192,7 @@ CREATE POLICY "Users can update portal grants in their tenant" ON public.portal_
 FOR UPDATE USING (tenant_id = public.get_user_tenant_id());
 
 CREATE POLICY "Admins can delete portal grants in their tenant" ON public.portal_access_grants
-FOR DELETE USING (tenant_id = public.get_user_tenant_id() AND public.has_any_role(ARRAY['admin', 'manager', 'master']));
+FOR DELETE USING (tenant_id = public.get_user_tenant_id() AND public.has_any_role(ARRAY['admin', 'manager', 'master']::public.app_role[]));
 
 -- Documents policies
 CREATE POLICY "Users can view documents in their tenant" ON public.documents
@@ -205,11 +205,11 @@ CREATE POLICY "Users can update documents in their tenant" ON public.documents
 FOR UPDATE USING (tenant_id = public.get_user_tenant_id());
 
 CREATE POLICY "Admins can delete documents in their tenant" ON public.documents
-FOR DELETE USING (tenant_id = public.get_user_tenant_id() AND public.has_any_role(ARRAY['admin', 'manager', 'master']));
+FOR DELETE USING (tenant_id = public.get_user_tenant_id() AND public.has_any_role(ARRAY['admin', 'manager', 'master']::public.app_role[]));
 
 -- Audit log policies (admins and masters only)
 CREATE POLICY "Admins can view audit log in their tenant" ON public.audit_log
-FOR SELECT USING (tenant_id = public.get_user_tenant_id() AND public.has_any_role(ARRAY['admin', 'master']));
+FOR SELECT USING (tenant_id = public.get_user_tenant_id() AND public.has_any_role(ARRAY['admin', 'master']::public.app_role[]));
 
 CREATE POLICY "System can insert audit entries" ON public.audit_log
 FOR INSERT WITH CHECK (tenant_id = public.get_user_tenant_id());

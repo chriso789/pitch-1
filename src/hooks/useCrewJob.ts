@@ -15,6 +15,7 @@ interface PhotoBucket {
 }
 
 interface ChecklistItem {
+  checklistId: string;
   id: string;
   sortOrder: number;
   label: string;
@@ -70,7 +71,8 @@ export function useCrewJob(jobId: string | null) {
         throw new Error('Job not found or not assigned to you');
       }
 
-      const a = assignmentData as any;
+      const a = (Array.isArray(assignmentData) ? assignmentData[0] : assignmentData) as any;
+      if (!a) throw new Error("Job not found");
       const assignment: CrewJobAssignment = {
         id: a.id,
         companyId: a.company_id,
@@ -103,14 +105,15 @@ export function useCrewJob(jobId: string | null) {
 
       setJob(assignment);
       
-      // For now, set simplified completion status
-      setCompletionStatus({
-        docsValid: true,
-        photosComplete: true,
-        checklistComplete: true,
-        canComplete: !assignment.isLocked,
-        blockingReasons: assignment.isLocked ? [assignment.lockReason || 'Job is locked'] : [],
-      });
+      const { data: requirements, error: requirementsError } = await supabase.rpc('get_crew_job_requirements' as any,
+        { p_job_id: jobId, p_company_id: activeCompanyId });
+      if (requirementsError) throw requirementsError;
+      const reqs = requirements as any;
+      setPhotoBuckets(reqs.photoBuckets);
+      setChecklistItems(reqs.checklistItems);
+      setCompletionStatus({ docsValid: a.docs_valid === true, photosComplete: a.photos_complete === true,
+        checklistComplete: a.checklist_complete === true, canComplete: a.can_complete === true && !a.is_locked,
+        blockingReasons: [a.blocked_reason, a.is_locked ? a.lock_reason || 'Job is locked' : null].filter(Boolean) });
     } catch (err) {
       console.error('[useCrewJob] Error:', err);
       setError(err instanceof Error ? err.message : 'Failed to load job');
@@ -129,6 +132,7 @@ export function useCrewJob(jobId: string | null) {
       );
 
       if (updateError) throw updateError;
+      if (!(data as any)?.success) throw new Error((data as any)?.error || "Status was not saved");
 
       toast.success(`Status updated to ${newStatus.replace('_', ' ')}`);
       await fetchJob();
@@ -139,7 +143,18 @@ export function useCrewJob(jobId: string | null) {
   };
 
   const toggleChecklistItem = async (itemId: string, checked: boolean, proofPhotoId?: string) => {
-    toast.info('Checklist functionality coming soon');
+    if (!jobId || !activeCompanyId) return;
+    const item = checklistItems.find(i => i.id === itemId);
+    if (!item) return;
+    try {
+      const { error } = await supabase.rpc('save_crew_checklist_response' as any, {
+        p_job_id: jobId, p_company_id: activeCompanyId, p_checklist_id: item.checklistId,
+        p_item_id: itemId, p_checked: checked, p_proof_photo_id: proofPhotoId || item.proofPhotoId || null,
+      });
+      if (error) throw error;
+      await fetchJob();
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Checklist could not be saved'); }
+
   };
 
   useEffect(() => {

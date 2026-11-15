@@ -104,26 +104,11 @@ export function HomeownerPortalAccess({ contact, onUpdate }: HomeownerPortalAcce
 
     setIsSendingEmail(true);
     try {
-      // Generate session token
-      const token = crypto.randomUUID();
-      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(); // 7 days
-
-      // Create portal session
-      const { error: sessionError } = await supabase
-        .from('homeowner_portal_sessions')
-        .insert({
-          tenant_id: contact.tenant_id,
-          contact_id: contact.id,
-          token,
-          email: contact.email,
-          expires_at: expiresAt,
-          auth_method: 'email_invite'
-        });
-
-      if (sessionError) throw sessionError;
-
-      // TODO: Send actual email via edge function
-      // For now, just show success
+      const { data, error } = await supabase.functions.invoke('homeowner-portal-invite', {
+        body: { contact_id: contact.id },
+        headers: { 'x-pitch-tenant': contact.tenant_id },
+      });
+      if (error || !data?.success) throw error || new Error(data?.error || 'Invitation was not accepted');
       toast({
         title: "Invitation Sent",
         description: `Portal access email sent to ${contact.email}`,

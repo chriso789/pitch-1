@@ -50,7 +50,7 @@ export function CrewJobDetail({ jobId, onBack }: CrewJobDetailProps) {
     refetch
   } = useCrewJob(jobId);
   
-  const { uploadPhotoWithGPS, uploading } = useCrewPhotos(jobId);
+  const { photos, uploadPhotoWithGPS, uploading } = useCrewPhotos(jobId);
   const [selectedBucket, setSelectedBucket] = useState<string | null>(null);
   const [updatingStatus, setUpdatingStatus] = useState(false);
 
@@ -359,6 +359,11 @@ export function CrewJobDetail({ jobId, onBack }: CrewJobDetailProps) {
                       </Badge>
                     )}
                   </label>
+                  {item.requiresPhoto && <select aria-label={`Proof photo for ${item.label}`} className="block text-sm border rounded p-1 mt-2"
+                    value={item.proofPhotoId || ''} onChange={event => { if (event.target.value) void toggleChecklistItem(item.id, item.isChecked, event.target.value); }}>
+                    <option value="">Select an uploaded proof photo</option>
+                    {photos.map((photo, index) => <option key={photo.id} value={photo.id}>Photo {index + 1}</option>)}
+                  </select>}
                   {item.helpText && (
                     <p className="text-xs text-muted-foreground mt-0.5">{item.helpText}</p>
                   )}

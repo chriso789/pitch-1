@@ -3,13 +3,13 @@
 // POST /functions/v1/permit_build_case
 // ============================================
 
-import { z } from 'https://deno.land/x/zod@v3.23.8/mod.ts';
+import { z } from 'npm:zod@3.23.8';
 
 import { supabaseAuth, getAuthUser, supabaseService } from '../_shared/supabase.ts';
 import { jsonOK, jsonErr, handleCors } from '../_shared/response.ts';
 import { buildPermitContext } from '../_shared/context_builder.ts';
 import { evalTemplate } from '../_shared/template_eval.ts';
-import { fillPermitPdfStub } from '../_shared/pdf_fill.ts';
+import { generateChecklistPdf, generatePermitPacket, permitAttachments, fillPermitPdf } from '../_shared/pdf_fill.ts';
 import { uploadBytes, signedUrlForPath } from '../_shared/storage.ts';
 import { nowIso, versionedDocPath } from '../_shared/util.ts';
 import type {
@@ -152,12 +152,14 @@ Deno.serve(async (req) => {
     // Step 7: Generate outputs (if enabled and not dry_run)
     const documents: PermitDocumentOutput[] = [];
 
-    if (!options.dry_run && options.generate_application_pdf !== false) {
+    if (!options.dry_run && status === 'DRAFT_BUILT' && options.generate_application_pdf !== false) {
       try {
-        const appPdfBytes = await fillPermitPdfStub({
-          template_pdf_bucket: context.meta.template_pdf_bucket,
-          template_pdf_path: context.meta.template_pdf_path,
+        const appPdfBytes = await fillPermitPdf({
+          supabase: adminSb,
+          template_pdf_bucket: context.meta.template_pdf_bucket || output_plan?.application_pdf?.input_pdf_storage?.bucket || null,
+          template_pdf_path: context.meta.template_pdf_path || output_plan?.application_pdf?.input_pdf_storage?.path || null,
           field_values: application_field_values,
+          field_map: output_plan?.application_pdf?.field_map || [],
         });
 
         const bucket = 'permits';
@@ -200,34 +202,46 @@ Deno.serve(async (req) => {
         });
       } catch (err) {
         console.error('PDF generation failed:', err);
-        // Don't fail the whole request for PDF generation errors
+        throw err;
       }
     }
 
-    // Generate packet manifest (stub)
-    if (!options.dry_run && options.generate_packet_zip) {
+    if (!options.dry_run && status === 'DRAFT_BUILT' && options.include_checklist_pdf) {
+      const attachments = await permitAttachments(adminSb, tenantId, permitCase.id);
+      const bytes = await generateChecklistPdf({ permit_case_id: permitCase.id,
+        authority_name: context.authority?.county_name || 'Permitting authority',
+        required_attachments: context.authority?.default_required_attachments || [],
+        available_attachments: attachments.flatMap((doc: any) => [doc.kind, doc.title]),
+      });
+      const bucket = 'permits';
+      const path = versionedDocPath({ tenant_id: tenantId, permit_case_id: permitCase.id, filename: 'checklist.pdf' });
+      await uploadBytes(adminSb, { bucket, path, bytes, contentType: 'application/pdf' });
+      const row = await insertPermitDocument(adminSb, { tenant_id: tenantId, permit_case_id: permitCase.id,
+        kind: 'CHECKLIST', title: 'Submission Checklist', bucket, path, created_by: user.id });
+      documents.push({ id: row.id, kind: 'CHECKLIST', title: 'Submission Checklist', bucket, path,
+        signed_url: await signedUrlForPath(adminSb, { bucket, path, expiresInSec: 3600 }), content_type: 'application/pdf' });
+    }
+
+    // Assemble actual attachment bytes into a ZIP
+    if (!options.dry_run && status === 'DRAFT_BUILT' && options.generate_packet_zip) {
       try {
-        const manifest = new TextEncoder().encode(JSON.stringify({
-          generated_at: nowIso(),
-          permit_case_id: permitCase.id,
-          include: output_plan?.packet_zip?.include ?? [],
-        }, null, 2));
+        const manifest = await generatePermitPacket(adminSb, tenantId, permitCase.id, output_plan?.packet_zip?.include ?? []);
 
         const bucket = 'permits';
         const path = versionedDocPath({
           tenant_id: tenantId,
           permit_case_id: permitCase.id,
-          filename: 'packet_manifest.json',
+          filename: 'permit_packet.zip',
         });
 
-        await uploadBytes(adminSb, { bucket, path, bytes: manifest, contentType: 'application/json' });
+        await uploadBytes(adminSb, { bucket, path, bytes: manifest, contentType: 'application/zip' });
         const signed_url = await signedUrlForPath(adminSb, { bucket, path, expiresInSec: 3600 });
 
         const docRow = await insertPermitDocument(adminSb, {
           tenant_id: tenantId,
           permit_case_id: permitCase.id,
           kind: 'PERMIT_PACKET',
-          title: 'Permit Packet (Manifest)',
+          title: 'Permit Packet',
           bucket,
           path,
           created_by: user.id,
@@ -236,23 +250,23 @@ Deno.serve(async (req) => {
         documents.push({
           id: docRow.id,
           kind: 'PERMIT_PACKET',
-          title: 'Permit Packet (Manifest)',
+          title: 'Permit Packet',
           bucket,
           path,
           signed_url,
-          content_type: 'application/json',
+          content_type: 'application/zip',
         });
 
         await emitPermitEvent(adminSb, {
           tenant_id: tenantId,
           permit_case_id: permitCase.id,
           event_type: 'PACKET_GENERATED',
-          message: 'Packet manifest generated',
+          message: 'Permit packet generated',
           details: { bucket, path },
           created_by: user.id,
         });
       } catch (err) {
-        console.error('Packet generation failed:', err);
+        throw err;
       }
     }
 

@@ -1,20 +1,12 @@
 // Shared action executors for automation-worker.
 // Returns: { status: 'success'|'skipped'|'failed', detail?, error? }
-import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
+import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.49.1';
 
 type ActionResult = {
   status: 'success' | 'skipped' | 'failed';
   detail?: Record<string, unknown>;
   error?: string;
 };
-
-const STUBBED = new Set([
-  'send_email_template',
-  'send_sms_template',
-  'request_document',
-  'escalate_to_manager',
-  'create_followup_reminder',
-]);
 
 export async function runAction(
   admin: SupabaseClient,
@@ -23,11 +15,16 @@ export async function runAction(
 ): Promise<ActionResult> {
   const params = action.params ?? {};
   try {
-    if (STUBBED.has(action.type)) {
-      return { status: 'skipped', detail: { reason: 'not_implemented_phase2' } };
-    }
-
     switch (action.type) {
+      case 'send_email_template': return await sendTemplate(admin, params, run, 'email');
+      case 'send_sms_template': return await sendTemplate(admin, params, run, 'sms');
+      case 'create_followup_reminder': {
+        const due_at = dueAt(params);
+        if (!due_at) throw new Error('Set a reminder date or delay');
+        return await createTask(admin, { ...params, due_at }, run);
+      }
+      case 'request_document': return await requestDocument(admin, params, run);
+      case 'escalate_to_manager': return await escalate(admin, params, run);
       case 'create_task': return await createTask(admin, params, run);
       case 'create_internal_note': return await createInternalNote(admin, params, run);
       case 'assign_user': return await assignUser(admin, params, run);
@@ -48,14 +45,35 @@ export async function runAction(
 // --- Executors ---------------------------------------------------------------
 
 async function createTask(admin: SupabaseClient, p: any, run: any): Promise<ActionResult> {
+  let assignedTo = p.assigned_to ?? null;
+  if (!assignedTo && p.assignee_role) {
+    const { data, error } = await admin.from('user_roles').select('user_id').eq('tenant_id', run.company_id)
+      .eq('role', p.assignee_role).order('user_id').limit(1).maybeSingle();
+    if (error || !data) throw error || new Error('No user has the requested company role');
+    assignedTo = data.user_id;
+  }
+  if (!assignedTo && p.assignee_field) {
+    const field = String(p.assignee_field).split('.').pop() || '';
+    if (!['assigned_to', 'created_by', 'project_manager_id'].includes(field)) throw new Error('Unsupported assignee field');
+    const table = entityTable(run.entity_type);
+    if (!table) throw new Error('Cannot resolve task assignee');
+    const { data, error } = await admin.from(table).select(field).eq('id', run.entity_id).eq('tenant_id', run.company_id).single();
+    const row = data as unknown as Record<string, unknown> | null;
+    const assignee = row?.[field];
+    if (error || typeof assignee !== 'string' || !assignee) throw error || new Error('The related record has no assignee');
+    assignedTo = assignee;
+  }
+  if (assignedTo) {
+    const { data, error } = await admin.from('user_roles').select('user_id').eq('tenant_id', run.company_id).eq('user_id', assignedTo).limit(1).maybeSingle();
+    if (error || !data) throw error || new Error('Task assignee is not in this company');
+  }
   const insert = {
     tenant_id: run.company_id,
-    title: p.title ?? 'Automation task',
+    task_name: p.title ?? 'Automation task',
     description: p.description ?? null,
-    assigned_to: p.assigned_to ?? null,
-    due_date: p.due_at ?? null,
-    related_entity_type: run.entity_type,
-    related_entity_id: run.entity_id,
+    assigned_to: assignedTo,
+    due_date: p.due_at ?? dueAt(p),
+    ai_context: { entity_type: run.entity_type, entity_id: run.entity_id, automation_run_id: run.id },
     priority: p.priority ?? 'medium',
     status: 'pending',
   };
@@ -88,8 +106,8 @@ async function assignUser(admin: SupabaseClient, p: any, run: any): Promise<Acti
   if (!userId) return { status: 'failed', error: 'user_id required' };
   const table = entityTable(run.entity_type);
   if (!table) return { status: 'skipped', detail: { reason: 'entity_not_assignable' } };
-  const col = p.field ?? 'assigned_to';
-  const { error } = await admin.from(table).update({ [col]: userId }).eq('id', run.entity_id);
+  const col = p.field ?? p.assignee_field?.split('.').pop() ?? 'assigned_to';
+  const { error } = await admin.from(table).update({ [col]: userId }).eq('id', run.entity_id).eq('tenant_id', run.company_id);
   if (error) return { status: 'failed', error: error instanceof Error ? error.message : String(error) };
   return { status: 'success', detail: { table, field: col, user_id: userId } };
 }
@@ -98,8 +116,9 @@ async function changeStatus(admin: SupabaseClient, p: any, run: any): Promise<Ac
   const table = entityTable(run.entity_type);
   if (!table) return { status: 'skipped', detail: { reason: 'no_table' } };
   const col = p.field ?? 'status';
+  p.value = p.value ?? p.status;
   if (!p.value) return { status: 'failed', error: 'value required' };
-  const { error } = await admin.from(table).update({ [col]: p.value }).eq('id', run.entity_id);
+  const { error } = await admin.from(table).update({ [col]: p.value }).eq('id', run.entity_id).eq('tenant_id', run.company_id);
   if (error) return { status: 'failed', error: error instanceof Error ? error.message : String(error) };
   return { status: 'success', detail: { table, field: col, value: p.value } };
 }
@@ -108,7 +127,7 @@ async function updateField(admin: SupabaseClient, p: any, run: any): Promise<Act
   const table = entityTable(run.entity_type);
   if (!table) return { status: 'skipped', detail: { reason: 'no_table' } };
   if (!p.field) return { status: 'failed', error: 'field required' };
-  const { error } = await admin.from(table).update({ [p.field]: p.value ?? null }).eq('id', run.entity_id);
+  const { error } = await admin.from(table).update({ [p.field]: p.value ?? null }).eq('id', run.entity_id).eq('tenant_id', run.company_id);
   if (error) return { status: 'failed', error: error instanceof Error ? error.message : String(error) };
   return { status: 'success', detail: { table, field: p.field } };
 }
@@ -200,4 +219,80 @@ async function trackGenerated(admin: SupabaseClient, run: any, table: string, id
     record_id: id,
   });
   if (error) console.warn('automation_generated_records insert failed:', error.message);
+}
+
+function dueAt(p: Record<string, any>): string | null {
+  if (p.due_at) { const date = new Date(p.due_at); if (!Number.isFinite(date.getTime())) throw new Error('Invalid due date'); return date.toISOString(); }
+  const minutes = p.due_in_minutes ?? (p.due_in_hours == null ? null : Number(p.due_in_hours) * 60);
+  if (minutes == null) return null;
+  if (!Number.isFinite(Number(minutes)) || Number(minutes) < 0) throw new Error('Invalid reminder delay');
+  return new Date(Date.now() + Number(minutes) * 60000).toISOString();
+}
+
+async function actionContact(admin: SupabaseClient, run: any) {
+  let contactId = run.entity_type === 'contact' ? run.entity_id : null;
+  if (!contactId) {
+    const table = entityTable(run.entity_type);
+    if (!table) throw new Error('Action requires a linked customer');
+    const directContact = run.entity_type === 'job' || run.entity_type === 'pipeline_entry';
+    const { data, error } = await admin.from(table).select(directContact ? 'contact_id' : 'pipeline_entry_id')
+      .eq('id', run.entity_id).eq('tenant_id', run.company_id).single();
+    if (error) throw error;
+    if (directContact && data && 'contact_id' in data) contactId = data.contact_id;
+    else if (data && 'pipeline_entry_id' in data && data.pipeline_entry_id) {
+      const { data: lead, error: leadError } = await admin.from('pipeline_entries').select('contact_id')
+        .eq('id', data.pipeline_entry_id).eq('tenant_id', run.company_id).single();
+      if (leadError) throw leadError;
+      contactId = lead?.contact_id;
+    }
+    if (!contactId) throw new Error('The automation record has no linked customer');
+  }
+  const { data, error } = await admin.from('contacts').select('id, email, phone, first_name, last_name').eq('id', contactId).eq('tenant_id', run.company_id).single();
+  if (error || !data) throw error || new Error('Customer not found');
+  return data;
+}
+
+async function deliver(run: any, contact: any, channel: 'email' | 'sms', content: string, subject?: string): Promise<ActionResult> {
+  const to = channel === 'email' ? contact.email : contact.phone;
+  if (!to) throw new Error(`Customer has no ${channel === 'email' ? 'email' : 'phone'}`);
+  const response = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/${channel === 'email' ? 'email-send' : 'telnyx-send-sms'}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}` },
+    body: JSON.stringify(channel === 'email' ? { to, subject, html: content, tenant_id: run.company_id, contact_id: contact.id, metadata: { automation_run_id: run.id } }
+      : { to, message: content, tenant_id: run.company_id, contactId: contact.id }),
+  });
+  const data = await response.json();
+  if (!response.ok || data.success !== true) throw new Error(data.error || 'Delivery failed');
+  return { status: 'success', detail: { contact_id: contact.id, message_id: data.message_id || data.messageId } };
+}
+
+async function sendTemplate(admin: SupabaseClient, p: any, run: any, channel: 'email' | 'sms'): Promise<ActionResult> {
+  if (!p.template_slug) throw new Error('Choose a template name');
+  const contact = await actionContact(admin, run);
+  // Existing company template names are the UI's template identifier.
+  const { data: template, error } = await admin.from('message_templates').select('content, subject').eq('tenant_id', run.company_id)
+    .eq('name', p.template_slug).eq('template_type', channel).single();
+  if (error || !template) throw error || new Error('Company template not found');
+  const render = (text: string) => text.replace(/\{\{?\s*contact\.(first_name|last_name|email|phone)\s*\}?\}/g, (_: string, key: string) => String(contact[key as 'first_name' | 'last_name' | 'email' | 'phone'] || ''));
+  const body = render(template.content); const subject = render(template.subject || 'Project update');
+  if (/\{\{?[^{}]+\}?\}/.test(body + subject)) throw new Error('Template has unresolved smart tags');
+  if (p.to_field && p.to_field !== `contact.${channel === 'email' ? 'email' : 'phone'}`) throw new Error('Recipient must be the linked customer');
+  return deliver(run, contact, channel, body, subject);
+}
+
+async function requestDocument(admin: SupabaseClient, p: any, run: any): Promise<ActionResult> {
+  if (!p.document_type) throw new Error('Document type is required');
+  const contact = await actionContact(admin, run);
+  const text = String(p.message || `Please provide your ${p.document_type}. Reply to this email with your document.`);
+  return deliver(run, contact, 'email', text.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!)), `Document requested: ${p.document_type}`);
+}
+
+async function escalate(admin: SupabaseClient, p: any, run: any): Promise<ActionResult> {
+  const { data: managers, error } = await admin.from('user_roles').select('user_id').eq('tenant_id', run.company_id).in('role', ['owner', 'office_admin', 'regional_manager', 'sales_manager', 'project_manager']);
+  if (error) throw error;
+  if (!managers?.length) throw new Error('No company manager is configured');
+  for (const manager of [...new Map(managers.map(manager => [manager.user_id, manager])).values()]) {
+    const result = await createTask(admin, { title: 'Manager escalation', description: p.reason || 'Review required', assigned_to: manager.user_id, priority: 'high' }, run);
+    if (result.status !== 'success') return result;
+  }
+  return { status: 'success', detail: { managers_notified: managers.length } };
 }

@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query';
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -176,6 +177,21 @@ export const EnhancedClientList = () => {
   // Enhanced messaging and mapping state
   const [activeChatContact, setActiveChatContact] = useState<{ id: string; name: string; phone: string } | null>(null);
   const [activeEmailContact, setActiveEmailContact] = useState<{ id: string; name: string; email: string } | null>(null);
+  const { data: chatMessages = [], refetch: refreshChatMessages } = useQuery({
+    queryKey: ['client-list-chat', effectiveTenantId, activeChatContact?.id],
+    enabled: !!effectiveTenantId && !!activeChatContact,
+    refetchInterval: activeChatContact ? 15000 : false,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('communication_history')
+        .select('id, content, direction, created_at, delivery_status').eq('tenant_id', effectiveTenantId)
+        .eq('contact_id', activeChatContact.id).eq('communication_type', 'sms')
+        .order('created_at', { ascending: false }).limit(100);
+      if (error) throw error;
+      return (data || []).reverse().map(row => ({ id: row.id, content: row.content || '',
+        sender: row.direction === 'outbound' ? 'user' as const : 'contact' as const,
+        timestamp: new Date(row.created_at) }));
+    },
+  });
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number; address: string } | null>(null);
   
   // Import dialog state
@@ -1754,9 +1770,14 @@ export const EnhancedClientList = () => {
           onClose={() => setActiveChatContact(null)}
           contactName={activeChatContact.name}
           contactPhone={activeChatContact.phone}
-          onSendMessage={(message) => {
-            console.log('Sending message:', message, 'to:', activeChatContact.phone);
-            // TODO: Implement iMessage sending via edge function
+          messages={chatMessages}
+          onSendMessage={async (message) => {
+            const { data, error } = await supabase.functions.invoke('messaging-api', {
+              body: { __route: '/sms/send', to: activeChatContact.phone, message, contactId: activeChatContact.id },
+              headers: { 'x-route': '/sms/send', 'x-pitch-tenant': effectiveTenantId },
+            });
+            if (error || data?.error || data?.success === false) throw error || new Error(data?.error || 'SMS was not accepted');
+            await refreshChatMessages();
           }}
         />
       )}
@@ -1772,10 +1793,17 @@ export const EnhancedClientList = () => {
             email: activeEmailContact.email,
             type: 'contact'
           }}
-          onSendEmail={(emailData) => {
-            console.log('Sending email:', emailData);
-            // TODO: Implement email sending via edge function
-            setActiveEmailContact(null);
+          onSendEmail={async (emailData) => {
+            const attachments = await Promise.all((emailData.attachments || []).map(async (file) => {
+              const bytes = new Uint8Array(await file.arrayBuffer());
+              let binary = ''; for (const byte of bytes) binary += String.fromCharCode(byte);
+              return { filename: file.name, content: btoa(binary) };
+            }));
+            const { data, error } = await supabase.functions.invoke('email-api', {
+              body: { ...emailData, attachments, __route: '/send', contactId: activeEmailContact.id },
+              headers: { 'x-route': '/send', 'x-pitch-tenant': effectiveTenantId },
+            });
+            if (error || data?.error || data?.success === false) throw error || new Error(data?.error || 'Email was not accepted');
           }}
         />
       )}

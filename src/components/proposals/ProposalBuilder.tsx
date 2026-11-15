@@ -1,3 +1,4 @@
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -61,6 +62,7 @@ export const ProposalBuilder = ({
   onComplete,
 }: ProposalBuilderProps) => {
   const navigate = useNavigate();
+  const tenantId = useEffectiveTenantId();
   const { toast } = useToast();
   const [currentStep, setCurrentStep] = useState(0);
   const [selectedTier, setSelectedTier] = useState<'good' | 'better' | 'best'>('better');
@@ -103,7 +105,7 @@ export const ProposalBuilder = ({
     } catch (error) {
       toast({
         title: 'Error',
-        description: 'Failed to calculate pricing',
+        description: error instanceof Error ? error.message : 'Failed to calculate pricing',
         variant: 'destructive',
       });
     }
@@ -131,16 +133,24 @@ export const ProposalBuilder = ({
     if (!estimateId) return;
 
     try {
-      await sendProposal.mutateAsync({
-        estimateId,
-        recipientEmail: 'customer@example.com', // TODO: Get from contact
-      });
+      const { data: project, error: projectError } = await supabase.from('projects')
+        .select('pipeline_entry_id, tenant_id').eq('id', projectId).eq('tenant_id', tenantId).single();
+      if (projectError || !project?.pipeline_entry_id) throw new Error('Project customer is missing');
+      const { data: lead, error: leadError } = await supabase.from('pipeline_entries').select('contact_id').eq('id', project.pipeline_entry_id).eq('tenant_id', project.tenant_id).single();
+      if (leadError || !lead?.contact_id) throw new Error('Project customer is missing');
+      const { data: contact, error: contactError } = await supabase.from('contacts')
+        .select('email, first_name, last_name').eq('id', lead.contact_id).eq('tenant_id', project.tenant_id).single();
+      if (contactError || !contact?.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email)) {
+        throw new Error('Add a valid email to the project customer before sending');
+      }
+      await sendProposal.mutateAsync({ estimateId, recipientEmail: contact.email,
+        recipientName: [contact.first_name, contact.last_name].filter(Boolean).join(' ') });
       toast({ title: 'Proposal Sent', description: 'The proposal has been sent to the customer.' });
       onComplete?.(estimateId);
     } catch (error) {
       toast({
         title: 'Error',
-        description: 'Failed to send proposal',
+        description: error instanceof Error ? error.message : 'Failed to send proposal',
         variant: 'destructive',
       });
     }
@@ -290,6 +300,14 @@ export const ProposalBuilder = ({
               </div>
             </div>
 
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              {(['ridge', 'hip', 'valley', 'eave', 'rake'] as const).map(edge => <div key={edge}>
+                <Label htmlFor={`proposal-${edge}`}>{edge.charAt(0).toUpperCase() + edge.slice(1)} (ft)</Label>
+                <Input id={`proposal-${edge}`} type="number" min={0} value={formData.linearMeasurements?.[edge] ?? ''}
+                  onChange={event => updateFormData('linearMeasurements', { ...formData.linearMeasurements,
+                    [edge]: event.target.value === '' ? undefined : Number(event.target.value) })} />
+              </div>)}
+            </div>
             {/* Language & Scope of Work */}
             <div className="space-y-2">
               <Label>Proposal Language</Label>
@@ -362,6 +380,7 @@ export const ProposalBuilder = ({
           <ProposalPreview
             estimateId={estimateId}
             onSend={handleSendProposal}
+            sending={sendProposal.isPending}
             onDownload={async () => {
               if (!estimateId || downloading) return;
               
@@ -370,15 +389,16 @@ export const ProposalBuilder = ({
                 // Fetch the HTML preview
                 const { data: previewData, error } = await supabase.functions.invoke('generate-proposal', {
                   body: { action: 'preview', estimateId },
+                  headers: { 'x-pitch-tenant': tenantId },
                 });
                 
-                if (error || !previewData?.html) {
+                if (error || !previewData?.data?.html) {
                   throw new Error('Failed to fetch proposal preview');
                 }
                 
                 // Generate and download PDF
                 await downloadProposalPdf(
-                  previewData.html,
+                  previewData.data.html,
                   `Proposal-${estimateId}.pdf`
                 );
                 

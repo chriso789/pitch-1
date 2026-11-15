@@ -1,3 +1,4 @@
+import { verifyTenantMembership } from '../_shared/supabase.ts';
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
@@ -113,6 +114,11 @@ Deno.serve(async (req) => {
       tenantId = profile?.active_tenant_id || profile?.tenant_id;
     }
 
+    if (!isServiceCall) {
+      const selectedTenant = req.headers.get('x-pitch-tenant') || tenantId;
+      if (!selectedTenant || !userId || !await verifyTenantMembership(userId, selectedTenant)) throw new Error('Company access denied');
+      tenantId = selectedTenant;
+    }
     // Parse request body - now accepts locationId + blast linkage + MMS mediaUrls
     const { to, message: rawMessage, contactId, jobId, fromNumber, locationId, blast_id, blast_item_id, mediaUrls } = await req.json();
     let message = rawMessage;
@@ -132,6 +138,7 @@ Deno.serve(async (req) => {
         .eq('id', contactId)
         .eq('tenant_id', tenantId)
         .maybeSingle();
+      if (!contactForGreeting) throw new Error('Contact is not in the selected company');
       message = stripJunkGreetingName(message, contactForGreeting);
     }
 

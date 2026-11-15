@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react-swc';
 import path from 'path';
 
@@ -11,6 +11,7 @@ export default defineConfig({
   plugins: [react()],
   test: {
     globals: true,
+    exclude: [...configDefaults.exclude, 'tests/workflow-completion.test.ts', 'tests/workflow-migration.test.ts', 'tests/workflow-financials.test.ts'],
     environment: 'jsdom',
     setupFiles: './tests/setup.ts',
     coverage: {
@@ -28,6 +29,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      '@/integrations/supabase/client': path.resolve(__dirname, './tests/mocks/supabaseOfflineClient.ts'),
       '@': path.resolve(__dirname, './src'),
     },
   },

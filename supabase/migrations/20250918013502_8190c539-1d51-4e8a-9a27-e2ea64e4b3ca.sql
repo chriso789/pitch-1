@@ -31,6 +31,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Create trigger for profit validation
+DROP TRIGGER IF EXISTS estimate_profit_validation ON public.estimates;
 CREATE TRIGGER estimate_profit_validation
 BEFORE UPDATE ON public.estimates
 FOR EACH ROW
@@ -85,10 +86,15 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Create audit triggers for key tables
+DROP TRIGGER IF EXISTS audit_contacts ON public.contacts;
 CREATE TRIGGER audit_contacts AFTER INSERT OR UPDATE OR DELETE ON public.contacts FOR EACH ROW EXECUTE FUNCTION public.audit_trigger();
+DROP TRIGGER IF EXISTS audit_pipeline_entries ON public.pipeline_entries;
 CREATE TRIGGER audit_pipeline_entries AFTER INSERT OR UPDATE OR DELETE ON public.pipeline_entries FOR EACH ROW EXECUTE FUNCTION public.audit_trigger();
+DROP TRIGGER IF EXISTS audit_projects ON public.projects;
 CREATE TRIGGER audit_projects AFTER INSERT OR UPDATE OR DELETE ON public.projects FOR EACH ROW EXECUTE FUNCTION public.audit_trigger();
+DROP TRIGGER IF EXISTS audit_estimates ON public.estimates;
 CREATE TRIGGER audit_estimates AFTER INSERT OR UPDATE OR DELETE ON public.estimates FOR EACH ROW EXECUTE FUNCTION public.audit_trigger();
+DROP TRIGGER IF EXISTS audit_payments ON public.payments;
 CREATE TRIGGER audit_payments AFTER INSERT OR UPDATE OR DELETE ON public.payments FOR EACH ROW EXECUTE FUNCTION public.audit_trigger();
 
 -- Function to create project from approved estimate (business logic)
@@ -177,6 +183,7 @@ $$ LANGUAGE plpgsql;
 CREATE SEQUENCE IF NOT EXISTS project_number_seq START 1;
 
 -- Create trigger for automatic project creation
+DROP TRIGGER IF EXISTS estimate_approved_create_project ON public.estimates;
 CREATE TRIGGER estimate_approved_create_project
 AFTER UPDATE ON public.estimates
 FOR EACH ROW
@@ -192,18 +199,33 @@ END;
 $$ language 'plpgsql';
 
 -- Create update timestamp triggers for all relevant tables
+DROP TRIGGER IF EXISTS update_tenants_updated_at ON public.tenants;
 CREATE TRIGGER update_tenants_updated_at BEFORE UPDATE ON public.tenants FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+DROP TRIGGER IF EXISTS update_tenant_settings_updated_at ON public.tenant_settings;
 CREATE TRIGGER update_tenant_settings_updated_at BEFORE UPDATE ON public.tenant_settings FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+DROP TRIGGER IF EXISTS update_profiles_updated_at ON public.profiles;
 CREATE TRIGGER update_profiles_updated_at BEFORE UPDATE ON public.profiles FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+DROP TRIGGER IF EXISTS update_contacts_updated_at ON public.contacts;
 CREATE TRIGGER update_contacts_updated_at BEFORE UPDATE ON public.contacts FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+DROP TRIGGER IF EXISTS update_pipeline_entries_updated_at ON public.pipeline_entries;
 CREATE TRIGGER update_pipeline_entries_updated_at BEFORE UPDATE ON public.pipeline_entries FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+DROP TRIGGER IF EXISTS update_projects_updated_at ON public.projects;
 CREATE TRIGGER update_projects_updated_at BEFORE UPDATE ON public.projects FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+DROP TRIGGER IF EXISTS update_estimates_updated_at ON public.estimates;
 CREATE TRIGGER update_estimates_updated_at BEFORE UPDATE ON public.estimates FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+DROP TRIGGER IF EXISTS update_project_costs_updated_at ON public.project_costs;
 CREATE TRIGGER update_project_costs_updated_at BEFORE UPDATE ON public.project_costs FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+DROP TRIGGER IF EXISTS update_rep_overhead_rules_updated_at ON public.rep_overhead_rules;
 CREATE TRIGGER update_rep_overhead_rules_updated_at BEFORE UPDATE ON public.rep_overhead_rules FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+DROP TRIGGER IF EXISTS update_commission_plans_updated_at ON public.commission_plans;
 CREATE TRIGGER update_commission_plans_updated_at BEFORE UPDATE ON public.commission_plans FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+DROP TRIGGER IF EXISTS update_user_commission_plans_updated_at ON public.user_commission_plans;
 CREATE TRIGGER update_user_commission_plans_updated_at BEFORE UPDATE ON public.user_commission_plans FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+DROP TRIGGER IF EXISTS update_outbox_events_updated_at ON public.outbox_events;
 CREATE TRIGGER update_outbox_events_updated_at BEFORE UPDATE ON public.outbox_events FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+DROP TRIGGER IF EXISTS update_payments_updated_at ON public.payments;
 CREATE TRIGGER update_payments_updated_at BEFORE UPDATE ON public.payments FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+DROP TRIGGER IF EXISTS update_portal_access_grants_updated_at ON public.portal_access_grants;
 CREATE TRIGGER update_portal_access_grants_updated_at BEFORE UPDATE ON public.portal_access_grants FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+DROP TRIGGER IF EXISTS update_documents_updated_at ON public.documents;
 CREATE TRIGGER update_documents_updated_at BEFORE UPDATE ON public.documents FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();

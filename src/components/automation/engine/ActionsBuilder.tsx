@@ -21,15 +21,15 @@ const PARAM_FIELDS: Record<ActionType, { key: string; label: string; type: 'text
   create_followup_reminder: [
     { key: 'title', label: 'Title', type: 'text' },
     { key: 'due_in_minutes', label: 'Due in (minutes)', type: 'number' },
-    { key: 'assignee_field', label: 'Assignee field (e.g. job.owner_user_id)', type: 'text' },
+    { key: 'assignee_field', label: 'Assignee field (e.g. job.assigned_to)', type: 'text' },
   ],
   create_internal_note: [{ key: 'body', label: 'Note body', type: 'textarea' }],
   send_email_template: [
-    { key: 'template_slug', label: 'Email template slug', type: 'text' },
+    { key: 'template_slug', label: 'Email template name', type: 'text' },
     { key: 'to_field', label: 'Recipient field (e.g. contact.email)', type: 'text' },
   ],
   send_sms_template: [
-    { key: 'template_slug', label: 'SMS template slug', type: 'text' },
+    { key: 'template_slug', label: 'SMS template name', type: 'text' },
     { key: 'to_field', label: 'Recipient field (e.g. contact.phone)', type: 'text' },
   ],
   assign_user: [

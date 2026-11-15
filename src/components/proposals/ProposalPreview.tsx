@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 interface ProposalPreviewProps {
   estimateId: string;
   onSend?: () => void;
+  sending?: boolean;
   onDownload?: () => void;
   downloading?: boolean;
   className?: string;
@@ -16,6 +17,7 @@ interface ProposalPreviewProps {
 export const ProposalPreview = ({
   estimateId,
   onSend,
+  sending = false,
   onDownload,
   downloading = false,
   className,
@@ -66,7 +68,7 @@ export const ProposalPreview = ({
             </Button>
           )}
           {onSend && (
-            <Button size="sm" onClick={onSend}>
+            <Button size="sm" onClick={onSend} disabled={sending}>
               <Send className="h-4 w-4 mr-2" />
               Send Proposal
             </Button>
