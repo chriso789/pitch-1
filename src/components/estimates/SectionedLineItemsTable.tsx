@@ -654,6 +654,122 @@ export function SectionedLineItemsTable({
     </TableRow>
   );
 
+  // "Add … Item" button rendered directly under the list it belongs to,
+  // so each category's button sits with that category instead of in a
+  // shared row at the bottom of the table.
+  const renderAddItemButton = (
+    itemType: 'material' | 'labor' | 'turnkey',
+    tradeType?: string
+  ) => {
+    if (!editable) return null;
+    const onClick =
+      tradeType !== undefined
+        ? onAddTradeItem && (() => onAddTradeItem(tradeType, itemType))
+        : onAddItem && (() => onAddItem(itemType));
+    if (!onClick) return null;
+    const label =
+      itemType === 'material'
+        ? 'Add Material Item'
+        : itemType === 'turnkey'
+          ? 'Add Turnkey Item'
+          : 'Add Labor Item';
+    return (
+      <TableRow className="hover:bg-muted/30">
+        <TableCell colSpan={totalCols} className="py-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onClick}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            {label}
+          </Button>
+        </TableCell>
+      </TableRow>
+    );
+  };
+
+  const renderInlineAddForm = (
+    itemType: 'material' | 'labor' | 'turnkey',
+    opts: {
+      tradeType?: string;
+      nameLabel: string;
+      namePlaceholder: string;
+      notesLabel: string;
+      notesPlaceholder: string;
+    }
+  ) => {
+    if (!isAddingItem || !newItem || !onNewItemChange) return null;
+    if (addingItemType !== itemType) return null;
+    if (opts.tradeType !== undefined && addingTradeType !== opts.tradeType) return null;
+    return (
+      <TableRow className="bg-primary/5 border-2 border-primary/30">
+        <TableCell colSpan={totalCols} className="py-3">
+          <div className="flex items-end gap-2 flex-wrap">
+            <div className="flex-1 min-w-[200px]">
+              <Label className="text-xs">{opts.nameLabel}</Label>
+              <MaterialAutocomplete
+                value={newItem.item_name}
+                onChange={(value) => onNewItemChange({ ...newItem, item_name: value })}
+                onSelectMaterial={(material) => {
+                  onNewItemChange({
+                    ...newItem,
+                    item_name: material.name,
+                    unit: material.uom,
+                    unit_cost: material.base_cost,
+                    material_id: material.id,
+                  });
+                }}
+                placeholder={opts.namePlaceholder}
+                autoFocus
+              />
+            </div>
+            <div className="w-32">
+              <Label className="text-xs">{opts.notesLabel}</Label>
+              <Input
+                value={newItem.notes || ''}
+                onChange={(e) => onNewItemChange({ ...newItem, notes: e.target.value })}
+                placeholder={opts.notesPlaceholder}
+              />
+            </div>
+            <div className="w-20">
+              <Label className="text-xs">Qty</Label>
+              <Input
+                type="number"
+                value={newItem.qty}
+                onChange={(e) => onNewItemChange({ ...newItem, qty: parseFloat(e.target.value) || 0 })}
+              />
+            </div>
+            <div className="w-16">
+              <Label className="text-xs">Unit</Label>
+              <Input
+                value={newItem.unit}
+                onChange={(e) => onNewItemChange({ ...newItem, unit: e.target.value })}
+                placeholder="ea"
+              />
+            </div>
+            <div className="w-24">
+              <Label className="text-xs">Unit Cost</Label>
+              <NumberInput
+                step="0.01"
+                value={newItem.unit_cost}
+                onChange={(v) => onNewItemChange({ ...newItem, unit_cost: v })} allowNegative
+              />
+            </div>
+            <Button onClick={onSaveNewItem} size="sm">
+              <Check className="h-4 w-4 mr-1" />
+              Add
+            </Button>
+            <Button variant="ghost" size="sm" onClick={onCancelAddItem}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </TableCell>
+      </TableRow>
+    );
+  };
+
   return (
     <div className={className}>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleGlobalDragEnd}>
@@ -677,8 +793,8 @@ export function SectionedLineItemsTable({
                 <React.Fragment key={group.type}>
                   {renderTradeHeader(group.type, group.label)}
                   
-                  {/* Materials for this trade */}
-                  {group.materials.length > 0 && (
+                  {/* Materials for this trade — add button sits under the material list */}
+                  {(group.materials.length > 0 || editable) && (
                     <>
                       {renderSectionHeader(
                         'MATERIALS',
@@ -686,15 +802,23 @@ export function SectionedLineItemsTable({
                         group.materials.length
                       )}
                       {renderSortableItems(group.materials)}
-                      {renderSectionSubtotal(
+                      {renderAddItemButton('material', group.type)}
+                      {renderInlineAddForm('material', {
+                        tradeType: group.type,
+                        nameLabel: 'Item Name (Material)',
+                        namePlaceholder: 'Search materials...',
+                        notesLabel: 'Notes',
+                        notesPlaceholder: 'e.g. details',
+                      })}
+                      {group.materials.length > 0 && renderSectionSubtotal(
                         'Materials Subtotal',
                         group.materials.filter(i => !i.exclude_from_overhead).reduce((sum, i) => sum + i.line_total, 0)
                       )}
                     </>
                   )}
 
-                  {/* Labor for this trade */}
-                  {group.labor.length > 0 && (
+                  {/* Labor for this trade — add button sits under the labor list */}
+                  {(group.labor.length > 0 || editable) && (
                     <>
                       {renderSectionHeader(
                         'LABOR',
@@ -702,15 +826,23 @@ export function SectionedLineItemsTable({
                         group.labor.length
                       )}
                       {renderSortableItems(group.labor)}
-                      {renderSectionSubtotal(
+                      {renderAddItemButton('labor', group.type)}
+                      {renderInlineAddForm('labor', {
+                        tradeType: group.type,
+                        nameLabel: 'Item Name (Labor)',
+                        namePlaceholder: 'Search items...',
+                        notesLabel: 'Notes',
+                        notesPlaceholder: 'e.g. details',
+                      })}
+                      {group.labor.length > 0 && renderSectionSubtotal(
                         'Labor Subtotal',
                         group.labor.filter(i => !i.exclude_from_overhead).reduce((sum, i) => sum + i.line_total, 0)
                       )}
                     </>
                   )}
 
-                  {/* Turnkey for this trade */}
-                  {group.turnkey.length > 0 && (
+                  {/* Turnkey for this trade — add button sits under the turnkey list */}
+                  {(group.turnkey.length > 0 || editable) && (
                     <>
                       {renderSectionHeader(
                         'TURNKEY',
@@ -718,116 +850,21 @@ export function SectionedLineItemsTable({
                         group.turnkey.length
                       )}
                       {renderSortableItems(group.turnkey)}
-                      {renderSectionSubtotal(
+                      {renderAddItemButton('turnkey', group.type)}
+                      {renderInlineAddForm('turnkey', {
+                        tradeType: group.type,
+                        nameLabel: 'Item Name (Turnkey)',
+                        namePlaceholder: 'Search items...',
+                        notesLabel: 'Notes',
+                        notesPlaceholder: 'e.g. details',
+                      })}
+                      {group.turnkey.length > 0 && renderSectionSubtotal(
                         'Turnkey Subtotal',
                         group.turnkey.filter(i => !i.exclude_from_overhead).reduce((sum, i) => sum + i.line_total, 0)
                       )}
                     </>
                   )}
 
-                  {/* Per-trade Add Item buttons */}
-                  {editable && onAddTradeItem && (
-                    <TableRow className="hover:bg-muted/30">
-                      <TableCell colSpan={totalCols} className="py-2">
-                        <div className="flex gap-2 flex-wrap">
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            onClick={() => onAddTradeItem(group.type, 'material')}
-                            className="text-muted-foreground hover:text-foreground"
-                          >
-                            <Plus className="h-4 w-4 mr-2" />
-                            Add Material Item
-                          </Button>
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            onClick={() => onAddTradeItem(group.type, 'labor')}
-                            className="text-muted-foreground hover:text-foreground"
-                          >
-                            <Plus className="h-4 w-4 mr-2" />
-                            Add Labor Item
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => onAddTradeItem(group.type, 'turnkey')}
-                            className="text-muted-foreground hover:text-foreground"
-                          >
-                            <Plus className="h-4 w-4 mr-2" />
-                            Add Turnkey Item
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  )}
-
-                  {/* Inline Add Form for this trade */}
-                  {isAddingItem && addingTradeType === group.type && newItem && onNewItemChange && (
-                    <TableRow className="bg-primary/5 border-2 border-primary/30">
-                      <TableCell colSpan={totalCols} className="py-3">
-                        <div className="flex items-end gap-2 flex-wrap">
-                          <div className="flex-1 min-w-[200px]">
-                            <Label className="text-xs">Item Name ({addingItemType === 'material' ? 'Material' : addingItemType === 'turnkey' ? 'Turnkey' : 'Labor'})</Label>
-                            <MaterialAutocomplete
-                              value={newItem.item_name}
-                              onChange={(value) => onNewItemChange({ ...newItem, item_name: value })}
-                              onSelectMaterial={(material) => {
-                                onNewItemChange({
-                                  ...newItem,
-                                  item_name: material.name,
-                                  unit: material.uom,
-                                  unit_cost: material.base_cost,
-                                  material_id: material.id,
-                                });
-                              }}
-                              placeholder="Search items..."
-                              autoFocus
-                            />
-                          </div>
-                          <div className="w-32">
-                            <Label className="text-xs">Notes</Label>
-                            <Input
-                              value={newItem.notes || ''}
-                              onChange={(e) => onNewItemChange({ ...newItem, notes: e.target.value })}
-                              placeholder="e.g. details"
-                            />
-                          </div>
-                          <div className="w-20">
-                            <Label className="text-xs">Qty</Label>
-                            <Input
-                              type="number"
-                              value={newItem.qty}
-                              onChange={(e) => onNewItemChange({ ...newItem, qty: parseFloat(e.target.value) || 0 })}
-                            />
-                          </div>
-                          <div className="w-16">
-                            <Label className="text-xs">Unit</Label>
-                            <Input
-                              value={newItem.unit}
-                              onChange={(e) => onNewItemChange({ ...newItem, unit: e.target.value })}
-                              placeholder="ea"
-                            />
-                          </div>
-                          <div className="w-24">
-                            <Label className="text-xs">Unit Cost</Label>
-                            <NumberInput
-                              step="0.01"
-                              value={newItem.unit_cost}
-                              onChange={(v) => onNewItemChange({ ...newItem, unit_cost: v })} allowNegative
-                            />
-                          </div>
-                          <Button onClick={onSaveNewItem} size="sm">
-                            <Check className="h-4 w-4 mr-1" />
-                            Add
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={onCancelAddItem}>
-                            <X className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  )}
                 </React.Fragment>
               ))}
             </>
