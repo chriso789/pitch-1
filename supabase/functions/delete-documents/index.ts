@@ -115,65 +115,125 @@ Deno.serve(async (req) => {
       return 'documents';
     }
 
-    // Step 1: Fetch documents and verify they belong to the caller's tenant
-    const { data: documents, error: docsError } = await adminClient
-      .from("documents")
-      .select("id, file_path, tenant_id, filename, document_type, linked_invoice_id, created_at")
-      .in("id", document_ids);
-
-    if (docsError) {
-      console.error("Error fetching documents:", docsError);
+    // The Documents tab also lists Profit-section cost invoices that have no
+    // documents row, using the id "invoice-<uuid>". Those entries are the cost
+    // invoice itself, so deleting one deletes that project_cost_invoices row.
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const invoiceIds: string[] = [];
+    const realDocIds: string[] = [];
+    const invalidIds: string[] = [];
+    for (const raw of document_ids) {
+      const id = String(raw ?? "");
+      if (id.startsWith("invoice-") && UUID_RE.test(id.slice("invoice-".length))) {
+        invoiceIds.push(id.slice("invoice-".length));
+      } else if (UUID_RE.test(id)) {
+        realDocIds.push(id);
+      } else {
+        invalidIds.push(id);
+      }
+    }
+    if (invalidIds.length > 0) {
       return new Response(
-        JSON.stringify({ error: "Failed to fetch documents" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: "Invalid document id", errors: ["One or more selected items could not be identified. Refresh and try again."] }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+    document_ids.length = 0;
+    document_ids.push(...realDocIds);
 
-    if (!documents || documents.length === 0) {
+    // Tenancy: callers act within their own company. Master can act anywhere;
+    // owner can act in companies granted through user_company_access.
+    async function findForbiddenTenants(tenantIds: string[]): Promise<string[]> {
+      const foreign = Array.from(new Set(tenantIds.filter(t => t !== profile!.tenant_id)));
+      if (foreign.length === 0) return [];
+      if (profile!.role === "master") return [];
+      if (profile!.role !== "owner") return foreign;
+      const { data: accessRows } = await adminClient
+        .from("user_company_access")
+        .select("tenant_id")
+        .eq("user_id", user!.id)
+        .in("tenant_id", foreign);
+      const ok = new Set((accessRows || []).map((r: any) => r.tenant_id));
+      return foreign.filter(t => !ok.has(t));
+    }
+
+    // Step 1: Fetch documents and verify they belong to the caller's tenant
+    let documents: any[] = [];
+    if (realDocIds.length > 0) {
+      const { data, error: docsError } = await adminClient
+        .from("documents")
+        .select("id, file_path, tenant_id, filename, document_type, linked_invoice_id, created_at")
+        .in("id", realDocIds);
+      if (docsError) {
+        console.error("Error fetching documents:", docsError);
+        return new Response(
+          JSON.stringify({ error: "Failed to fetch documents", errors: ["Couldn't load the selected documents. Please try again."] }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      documents = data || [];
+    }
+
+    let invoices: any[] = [];
+    if (invoiceIds.length > 0) {
+      const { data, error: invError } = await adminClient
+        .from("project_cost_invoices")
+        .select("id, tenant_id, pipeline_entry_id")
+        .in("id", invoiceIds);
+      if (invError) {
+        console.error("Error fetching invoices:", invError);
+        return new Response(
+          JSON.stringify({ error: "Failed to fetch invoices", errors: ["Couldn't load the selected invoice. Please try again."] }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      invoices = data || [];
+    }
+
+    if (documents.length === 0 && invoices.length === 0) {
       return new Response(
-        JSON.stringify({ error: "No documents found" }),
+        JSON.stringify({ error: "No documents found", errors: ["This item was already deleted. Refresh the page."] }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Verify document tenancy. Master/owner roles can operate across tenants
-    // they have access to via user_company_access (used by the company switcher).
-    const crossTenantRoles = ["master", "owner"];
-    const unauthorizedDocs = documents.filter(d => d.tenant_id !== profile.tenant_id);
-    if (unauthorizedDocs.length > 0) {
-      if (!crossTenantRoles.includes(profile.role)) {
-        return new Response(
-          JSON.stringify({ error: "Some documents do not belong to your organization" }),
-          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+    const forbidden = await findForbiddenTenants([
+      ...documents.map(d => d.tenant_id),
+      ...invoices.map(i => i.tenant_id),
+    ]);
+    if (forbidden.length > 0) {
+      console.log(`[delete-documents] ${profile.role} blocked from tenants:`, forbidden);
+      return new Response(
+        JSON.stringify({ error: "Some documents do not belong to your organization", errors: ["Some selected items belong to a company you don't have access to."] }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Step 1b: Delete invoice-only entries (cost invoices without a file row)
+    let invoicesDeleted = 0;
+    const invoiceErrors: string[] = [];
+    if (invoices.length > 0 && !dry_run) {
+      const { data: removed, error: delInvErr } = await adminClient
+        .from("project_cost_invoices")
+        .delete()
+        .in("id", invoices.map(i => i.id))
+        .select("id");
+      if (delInvErr) {
+        console.error("Error deleting invoices:", delInvErr);
+        invoiceErrors.push(`Invoice could not be deleted: ${delInvErr.message}`);
+      } else {
+        invoicesDeleted = removed?.length || 0;
+        console.log(`[delete-documents] Deleted ${invoicesDeleted} invoice-only cost records`);
       }
-      // For master/owner, verify they have access to each document's tenant
-      const foreignTenantIds = Array.from(new Set(unauthorizedDocs.map(d => d.tenant_id)));
-      const { data: accessRows } = await adminClient
-        .from("user_company_access")
-        .select("tenant_id")
-        .eq("user_id", user.id)
-        .in("tenant_id", foreignTenantIds);
-      const accessibleTenantIds = new Set((accessRows || []).map((r: any) => r.tenant_id));
-      // Master role: allow all tenants (platform-wide admin)
-      const stillUnauthorized = profile.role === "master"
-        ? []
-        : unauthorizedDocs.filter(d => !accessibleTenantIds.has(d.tenant_id));
-      if (stillUnauthorized.length > 0) {
-        console.log(`[delete-documents] ${profile.role} blocked from tenants:`, stillUnauthorized.map(d => d.tenant_id));
-        return new Response(
-          JSON.stringify({ error: "Some documents belong to organizations you don't have access to" }),
-          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      console.log(`[delete-documents] Cross-tenant delete by ${profile.role}: ${unauthorizedDocs.length} foreign docs allowed`);
     }
 
     // Step 2: Find approvals referencing these documents
-    const { data: linkedApprovals, error: approvalsError } = await adminClient
-      .from("measurement_approvals")
-      .select("id, report_document_id")
-      .in("report_document_id", document_ids);
+    const { data: linkedApprovals, error: approvalsError } = document_ids.length === 0
+      ? { data: [] as any[], error: null }
+      : await adminClient
+        .from("measurement_approvals")
+        .select("id, report_document_id")
+        .in("report_document_id", document_ids);
 
     if (approvalsError) {
       console.error("Error checking approvals:", approvalsError);
@@ -207,7 +267,7 @@ Deno.serve(async (req) => {
       storage_deleted: 0,
       storage_skipped: 0,
       blocked_ids: [],
-      errors: [],
+      errors: [...invoiceErrors],
       referenced_docs: dry_run ? referenced_docs : undefined
     };
 
@@ -233,7 +293,7 @@ Deno.serve(async (req) => {
         
         // Only delete non-referenced docs
         const nonReferencedDocIds = document_ids.filter(id => !referencedDocIds.includes(id));
-        if (nonReferencedDocIds.length === 0) {
+        if (nonReferencedDocIds.length === 0 && invoicesDeleted === 0) {
           // Return 200 with success:false to avoid FunctionsHttpError on client
           // The blocked_ids and errors fields indicate which docs couldn't be deleted
           result.success = false;
@@ -379,7 +439,9 @@ Deno.serve(async (req) => {
       }
     }
 
-    result.success = result.errors.length === 0 || result.docs_deleted > 0;
+    (result as any).invoices_deleted = invoicesDeleted;
+
+    result.success = result.errors.length === 0 || result.docs_deleted > 0 || invoicesDeleted > 0;
 
     console.log(`[delete-documents] Complete:`, result);
 

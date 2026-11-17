@@ -611,9 +611,16 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
         console.warn('Partial errors during delete:', data.errors);
       }
 
-      const deletedCount = data.docs_deleted || 0;
+      const invoicesDeleted = data.invoices_deleted || 0;
+      const deletedCount = (data.docs_deleted || 0) + invoicesDeleted;
       if (deletedCount > 0) {
-        let description = `${deletedCount} document(s) deleted`;
+        const parts: string[] = [];
+        if (data.docs_deleted > 0) parts.push(`${data.docs_deleted} document(s) deleted`);
+        if (invoicesDeleted > 0) {
+          parts.push(`${invoicesDeleted} invoice(s) deleted and removed from the project cost`);
+          window.dispatchEvent(new CustomEvent('invoice-updated', { detail: { pipelineEntryId } }));
+        }
+        let description = parts.join(', ');
         if (data.approvals_detached > 0) {
           description += `, ${data.approvals_detached} approval(s) detached`;
         }
@@ -673,7 +680,11 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
   };
 
   const handleDelete = async (docId: string, _filePath: string) => {
-    if (!confirm('Are you sure you want to delete this document?')) return;
+    const isInvoiceEntry = docId.startsWith('invoice-');
+    const prompt = isInvoiceEntry
+      ? 'Delete this invoice? Its cost will also be removed from the project. This cannot be undone.'
+      : 'Are you sure you want to delete this document?';
+    if (!confirm(prompt)) return;
 
     const result = await handleDeleteDocuments([docId]);
     if (result.success) {
@@ -689,7 +700,11 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
 
   const handleBulkDelete = async () => {
     if (selectedDocs.size === 0) return;
-    if (!confirm(`Delete ${selectedDocs.size} document(s)? This cannot be undone.`)) return;
+    const invoiceEntries = Array.from(selectedDocs).filter(id => id.startsWith('invoice-')).length;
+    const costNote = invoiceEntries > 0
+      ? ` ${invoiceEntries} of them ${invoiceEntries === 1 ? 'is an invoice' : 'are invoices'} whose cost will also be removed from the project.`
+      : '';
+    if (!confirm(`Delete ${selectedDocs.size} document(s)?${costNote} This cannot be undone.`)) return;
 
     const result = await handleDeleteDocuments(Array.from(selectedDocs));
     if (result.success || (result.deleted && result.deleted > 0)) {
