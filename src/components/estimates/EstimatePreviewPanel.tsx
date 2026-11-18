@@ -54,6 +54,8 @@ import {
   getDefaultOptions,
 } from './PDFComponentOptions';
 import { EstimatePDFDocument } from './EstimatePDFDocument';
+import { AerialDragPreview } from './AerialDragPreview';
+import { clampAerialPan } from '@/lib/estimates/aerialDrag';
 import { AttachmentPagesRenderer } from './AttachmentPagesRenderer';
 import { EstimateAttachmentsManager, type TemplateAttachment } from './EstimateAttachmentsManager';
 import { PageOrderManager, DEFAULT_PAGE_ORDER, type PageOrderItem } from './PageOrderManager';
@@ -300,8 +302,8 @@ export function EstimatePreviewPanel({
   const [streetSideOffset, setStreetSideOffset] = useState<number>(0);
   const [streetDistOffset, setStreetDistOffset] = useState<number>(0);
   const [aerialZoom, setAerialZoom] = useState<number>(19);
-  const [aerialPanX, setAerialPanX] = useState<number>(0); // -100..100 fraction-of-tile east(+)/west(-), scales with zoom
-  const [aerialPanY, setAerialPanY] = useState<number>(0); // -100..100 fraction-of-tile north(+)/south(-), scales with zoom
+  const [aerialPanX, setAerialPanX] = useState<number>(0); // pan units (100 = 4 tile widths) east(+)/west(-), set by dragging the preview
+  const [aerialPanY, setAerialPanY] = useState<number>(0); // pan units south(+)/north(-), set by dragging the preview
   const [aerialRotation, setAerialRotation] = useState<number>(0); // degrees, applied client-side via canvas
   const [propertyCoords, setPropertyCoords] = useState<{ lat: number; lng: number } | null>(null);
   const { apiKey: googleMapsApiKey } = useGoogleMapsToken();
@@ -1483,21 +1485,25 @@ export function EstimatePreviewPanel({
                               <Slider value={[aerialZoom]} min={17} max={21} step={1} onValueChange={(v) => setAerialZoom(v[0])} />
                             </div>
                             <div>
-                              <div className="flex justify-between text-[10px] text-muted-foreground"><span>Pan ←→</span><span>{aerialPanX}</span></div>
-                              <Slider value={[aerialPanX]} min={-100} max={100} step={2} onValueChange={(v) => setAerialPanX(v[0])} />
-                            </div>
-                            <div>
-                              <div className="flex justify-between text-[10px] text-muted-foreground"><span>Pan ↑↓</span><span>{aerialPanY}</span></div>
-                              <Slider value={[aerialPanY]} min={-100} max={100} step={2} onValueChange={(v) => setAerialPanY(v[0])} />
-                            </div>
-                            <div>
                               <div className="flex justify-between text-[10px] text-muted-foreground"><span>Rotate</span><span>{aerialRotation}°</span></div>
                               <Slider value={[aerialRotation]} min={0} max={360} step={5} onValueChange={(v) => setAerialRotation(v[0])} />
                             </div>
                           </div>
                         )}
 
-                        {coverPhotoSource !== 'none' && options.coverPagePropertyPhoto && (
+                        {coverPhotoSource === 'aerial' && propertyCoords && googleMapsApiKey && options.coverPagePropertyPhoto && (
+                          <AerialDragPreview
+                            src={options.coverPagePropertyPhoto}
+                            rotationDeg={aerialRotation}
+                            lat={propertyCoords.lat}
+                            onPanBy={(dx, dy) => {
+                              setAerialPanX((v) => clampAerialPan(v + dx));
+                              setAerialPanY((v) => clampAerialPan(v + dy));
+                            }}
+                          />
+                        )}
+
+                        {coverPhotoSource !== 'none' && options.coverPagePropertyPhoto && !(coverPhotoSource === 'aerial' && propertyCoords && googleMapsApiKey) && (
                           <div className="rounded overflow-hidden border border-border">
                             <SafeImage
                               src={options.coverPagePropertyPhoto}
