@@ -68624,6 +68624,10 @@ export type Database = {
         Args: { project_id_param: string; sales_rep_id_param: string }
         Returns: Json
       }
+      can_edit_profile: {
+        Args: { _target_id: string; _target_tenant_id: string }
+        Returns: boolean
+      }
       can_view_all_tenants: { Args: never; Returns: boolean }
       can_view_hidden_users: { Args: never; Returns: boolean }
       canvass_photo_tenant_allowed: {

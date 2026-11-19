@@ -252,7 +252,7 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
       }
       
       // Update profiles table
-      const { error } = await supabase
+      const { data: savedRows, error } = await supabase
         .from('profiles')
         .update({
           first_name: user.first_name,
@@ -264,9 +264,13 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
           company_name: companyName,
           tenant_id: newTenantId
         })
-        .eq('id', userId);
+        .eq('id', userId)
+        .select('id');
 
       if (error) throw error;
+      if (!savedRows || savedRows.length === 0) {
+        throw new Error("You don't have permission to edit this person's profile.");
+      }
 
       // If role was changed, call the edge function
       if (selectedRole && selectedRole !== user.role) {
@@ -348,9 +352,10 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
       loadUserProfile();
     } catch (error) {
       console.error('Error updating user:', error);
+      const message = error instanceof Error ? error.message : (error as { message?: string })?.message;
       toast({
         title: "Error",
-        description: "Failed to update user profile.",
+        description: message ? `Failed to update user profile: ${message}` : "Failed to update user profile.",
         variant: "destructive",
       });
     }
