@@ -1,6 +1,7 @@
 import { createOpenAI } from 'npm:@ai-sdk/openai';
 import { streamText } from 'npm:ai';
 import { createLovableAiGatewayRunIdFetch } from '../_shared/lovable-ai-run-id.ts';
+import { buildScopeOutline, formatScopeOutline, missingPhases } from './scope-outline.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -65,6 +66,8 @@ Deno.serve(async (req: Request) => {
     }).join('\n');
 
     const itemSummary = formatItems(items as IncomingItem[]);
+    const outline = buildScopeOutline(items as IncomingItem[]);
+    const outlineText = formatScopeOutline(outline);
     const hasChangeOrders = Array.isArray(change_order_items) && change_order_items.length > 0;
     const changeOrderSummary = hasChangeOrders ? formatItems(change_order_items as IncomingItem[]) : '';
 
@@ -96,6 +99,7 @@ Rules:
 - Return plain text only: one short heading-style sentence naming the completed system, followed by one compact paragraph of 3–5 sentences.
 - Cover every major phase present in the estimate, in order: permits/approvals, tear-off and removal of the old roof, deck preparation, new underlayment installation, installation of the new roofing system and its components, and final cleanup/disposal. Do NOT focus only on tear-off and removal — the installation of the new roof and underlayment must be described with at least as much weight as the removal.
 - If the estimate includes permits, state that all required permits were obtained and included in the contract price.
+- Follow the phase outline you are given: the labor items describe the work performed and the materials describe what was installed. If the outline has a REMOVAL / TEAR-OFF phase, explicitly state what existing materials were torn off or removed, then describe the installation of the new materials (naming the system/brand at a high level).
 - Do not include bullets, SKUs, quantities, prices, job number, estimate number, customer name, or address.
 - Do not invent work not supported by the estimate.
 - Keep the complete description under 140 words.
@@ -104,10 +108,14 @@ ${extra_instructions ? `\nAdditional instructions: ${extra_instructions}` : ''}`
 
 Turn the technical line-item list into a clean, bulletin-style scope the customer can skim. No SKUs, quantities, or unit pricing.
 
+Merge labor and materials schematically: the labor items say what work is done, the materials say what is installed. You are given a phase outline — follow its order exactly:
+1. If there is a REMOVAL / TEAR-OFF phase, the FIRST bullet(s) must clearly state what existing materials are torn off or removed (e.g. "Tear off and remove the existing tile roof down to the deck"). Never skip or merge away a removal labor item.
+2. Then, for each installation phase, describe the installation work from the labor items together with the specific materials being installed (system/brand at a high level, e.g. "Install new GAF Timberline HDZ architectural shingles over synthetic underlayment"). Every labor item must be reflected in a bullet; materials are described as part of the installation, not as a separate shopping list.
+
 Required structure (in this exact order, use these exact headings on their own line):
 
 Scope of Work
-A bulleted list of 6–12 concise bullets covering the work in logical order (e.g. Tear-Off & Prep, Decking & Repairs, Underlayment & Ice/Water Shield, Flashings & Penetrations, Main System Installation, Ventilation, Ridge & Detailing, Cleanup & Final Walkthrough). Each bullet: one tight sentence starting with a strong verb. Reference material brand/system at a high level when relevant. Use a leading "- " for each bullet. No numbered lists. Do NOT include separate bullets or detail about permits or debris removal/trash hauling — those are covered in the Closing. A "Cleanup & Final Walkthrough" bullet should focus on jobsite broom-clean condition and final inspection only, not on hauling or disposal.${turnkeySection}
+A bulleted list of 6–12 concise bullets covering the work in logical order (e.g. Tear-Off & Prep, Decking & Repairs, Underlayment & Ice/Water Shield, Flashings & Penetrations, Main System Installation, Ventilation, Ridge & Detailing, Cleanup & Final Walkthrough). Each bullet: one tight sentence starting with a strong verb. Reference material brand/system at a high level when relevant. Use a leading "- " for each bullet. No numbered lists. Do NOT include separate bullets or detail about permits or debris removal/trash hauling (dumpsters, haul-away) — those are covered in the Closing. This does NOT apply to tear-off/removal of existing materials, which must always have its own bullet. A "Cleanup & Final Walkthrough" bullet should focus on jobsite broom-clean condition and final inspection only, not on hauling or disposal.${turnkeySection}
 ${changeOrderSection}
 Closing
 One short paragraph (2–4 sentences) that introduces the overall system/approach being installed and reassures the customer about quality, cleanup, warranty-readiness, and next steps. This paragraph MUST explicitly state that all required permits and debris removal / trash hauling are included in the total cost — the customer will not be billed separately for these. State it once here; do NOT repeat it in the Scope of Work bullets. Do NOT mention the property address or the customer/homeowner name anywhere in the narrative.
@@ -123,7 +131,10 @@ ${extra_instructions ? `\nAdditional instructions: ${extra_instructions}` : ''}`
 
     const userPrompt = `Project: ${project_title || 'Roofing project'}
 
-Line items from the estimate:
+Phase outline (labor merged with the materials it installs — follow this order):
+${outlineText}
+
+Original line items (for reference):
 ${itemSummary}
 ${hasChangeOrders ? `\nPotential Change Order items (optional/conditional add-ons — include them in a dedicated "Potential Change Orders" section):\n${changeOrderSummary}\n` : ''}
 ${isFinalInvoice
@@ -140,24 +151,36 @@ ${isFinalInvoice
       },
       fetch: runIdFetch.fetch,
     });
-    const result = streamText({
-      model: provider.responses('openai/gpt-6-astra'),
-      instructions: systemPrompt,
-      messages: [
-        { role: 'user', content: userPrompt },
-      ],
-      abortSignal: req.signal,
-      providerOptions: {
-        openai: {
-          forceReasoning: true,
-          reasoningEffort: 'low',
-          reasoningSummary: 'auto',
-          store: false,
-          include: ['reasoning.encrypted_content'],
+    const generate = async (prompt: string) => {
+      const result = streamText({
+        model: provider.responses('openai/gpt-6-astra'),
+        instructions: systemPrompt,
+        messages: [
+          { role: 'user', content: prompt },
+        ],
+        abortSignal: req.signal,
+        providerOptions: {
+          openai: {
+            forceReasoning: true,
+            reasoningEffort: 'low',
+            reasoningSummary: 'auto',
+            store: false,
+            include: ['reasoning.encrypted_content'],
+          },
         },
-      },
-    });
-    const narrative = (await result.text).trim();
+      });
+      return (await result.text).trim();
+    };
+    let narrative = await generate(userPrompt);
+    const missing = narrative ? missingPhases(narrative, outline) : [];
+    if (narrative && missing.length > 0) {
+      // One corrective pass when the scope dropped the removal or install phase.
+      const fix = missing.map((m) => m === 'removal'
+        ? 'explicitly state the tear-off/removal of the existing materials listed in the REMOVAL / TEAR-OFF phase'
+        : 'explicitly describe the installation of the new materials').join(' and ');
+      const retried = await generate(`${userPrompt}\n\nYour previous draft failed to ${fix}. Rewrite it so it does.`);
+      if (retried) narrative = retried;
+    }
     if (!narrative) throw new Error('Lovable AI returned an empty work description.');
 
     return new Response(JSON.stringify({ narrative }), {

@@ -905,7 +905,15 @@ export function EstimatePreviewPanel({
 
   // Generate an AI customer-friendly Project Scope narrative from the line items
   const handleGenerateScopeNarrative = async () => {
-    const combined = [...materialItems, ...laborItems, ...turnkeyItems];
+    // Tag each item with its list so the AI can merge labor (tear-off,
+    // installation) with the materials being installed.
+    const withType = (list: any[], itemType: string) =>
+      (list || []).map((it: any) => ({ ...it, item_type: it.item_type || itemType }));
+    const combined = [
+      ...withType(laborItems, 'labor'),
+      ...withType(materialItems, 'material'),
+      ...withType(turnkeyItems, 'turnkey'),
+    ];
     if (combined.length === 0) {
       toast({
         title: 'No line items',
@@ -944,7 +952,11 @@ export function EstimatePreviewPanel({
     Array.from(selectedAdditionalIds).forEach((estId) => {
       const fetched = fetchedEstimates.get(estId);
       if (!fetched) return;
-      const addCombined = [...fetched.materialItems, ...fetched.laborItems, ...(fetched.turnkeyItems || [])];
+      const addCombined = [
+        ...withType(fetched.laborItems, 'labor'),
+        ...withType(fetched.materialItems, 'material'),
+        ...withType(fetched.turnkeyItems || [], 'turnkey'),
+      ];
       if (addCombined.length === 0) return;
       tasks.push({
         key: estId,

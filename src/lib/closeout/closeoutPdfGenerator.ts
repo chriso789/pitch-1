@@ -214,11 +214,17 @@ export interface CloseoutResult {
 function normalizeEstimateItems(lineItems: unknown): Array<Record<string, unknown>> {
   if (!lineItems || typeof lineItems !== 'object' || Array.isArray(lineItems)) return [];
   const sections = lineItems as Record<string, unknown>;
+  // Tag each item with the section it came from so the work summary can
+  // merge labor (removal, installation) with the materials it installs.
+  const tagged = (list: unknown, itemType: string) =>
+    (Array.isArray(list) ? list : [])
+      .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
+      .map((item) => ({ ...item, item_type: typeof item.item_type === 'string' ? item.item_type : itemType }));
   return [
-    ...(Array.isArray(sections.labor) ? sections.labor : []),
-    ...(Array.isArray(sections.materials) ? sections.materials : []),
-    ...(Array.isArray(sections.turnkey) ? sections.turnkey : []),
-  ].filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'));
+    ...tagged(sections.labor, 'labor'),
+    ...tagged(sections.materials, 'material'),
+    ...tagged(sections.turnkey, 'turnkey'),
+  ];
 }
 
 async function generateAiWorkSummary(
