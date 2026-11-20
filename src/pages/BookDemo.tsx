@@ -17,6 +17,7 @@ interface DemoInfo {
   company_name: string;
   confirmed_slot: string | null;
   booking_confirmed_at: string | null;
+  meeting_link?: string | null;
 }
 
 const BookDemo: React.FC = () => {
@@ -29,6 +30,7 @@ const BookDemo: React.FC = () => {
   const [time, setTime] = useState<string>('');
   const [slots, setSlots] = useState<string[]>([]);
   const [confirmed, setConfirmed] = useState<Date | null>(null);
+  const [meetingLink, setMeetingLink] = useState<string | null>(null);
 
   const tz = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, []);
 
@@ -50,6 +52,7 @@ const BookDemo: React.FC = () => {
       setTime(selected => selected && !available.includes(selected) ? '' : selected);
       setInfo(row);
       if (row.confirmed_slot) setConfirmed(new Date(row.confirmed_slot));
+      if (row.meeting_link) setMeetingLink(row.meeting_link);
     } catch {
       setAvailabilityError(true);
       setSlots([]);
@@ -91,11 +94,8 @@ const BookDemo: React.FC = () => {
       return;
     }
 
-    // Best-effort push to the PITCH Google Calendar (never blocks confirmation)
-    void supabase.functions
-      .invoke('google-calendar-demo-sync', { body: { token } })
-      .catch(() => {});
-
+    // The booking service adds the meeting to the PITCH calendar and emails the Google Meet invite.
+    if (typeof result.meeting_link === 'string') setMeetingLink(result.meeting_link);
     setConfirmed(slot);
     setSubmitting(false);
   };
@@ -130,7 +130,7 @@ const BookDemo: React.FC = () => {
               <CheckCircle className="h-6 w-6 text-primary-foreground" />
             </div>
             <CardTitle className="text-2xl">You're booked!</CardTitle>
-            <CardDescription>We'll send a Google Meet calendar invite to <strong>{info?.email}</strong>.</CardDescription>
+            <CardDescription>A Google Calendar invite with the Google Meet link is on its way to <strong>{info?.email}</strong>.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 text-center">
             <div className="p-4 bg-muted/40 rounded-lg">
@@ -138,9 +138,17 @@ const BookDemo: React.FC = () => {
               <div className="text-lg font-semibold">{format(confirmed, 'EEEE, MMM d, yyyy')}</div>
               <div className="text-base">{format(confirmed, 'h:mm a')} ({tz})</div>
             </div>
-            <p className="text-sm text-muted-foreground flex items-center justify-center gap-2">
-              <Video className="h-4 w-4" /> Video meeting via Google Meet
-            </p>
+            {meetingLink && /^https:\/\/meet\.google\.com\//.test(meetingLink) ? (
+              <Button asChild className="w-full">
+                <a href={meetingLink} target="_blank" rel="noopener noreferrer">
+                  <Video className="h-4 w-4 mr-2" /> Join Google Meet
+                </a>
+              </Button>
+            ) : (
+              <p className="text-sm text-muted-foreground flex items-center justify-center gap-2">
+                <Video className="h-4 w-4" /> Video meeting via Google Meet
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>

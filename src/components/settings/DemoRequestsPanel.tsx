@@ -56,6 +56,15 @@ interface DemoRequest {
   notes?: string;
   contacted_at?: string;
   converted_to_company_id?: string | null;
+  booking_token_sent_at?: string | null;
+  booking_link_opened_at?: string | null;
+  booking_link_last_opened_at?: string | null;
+  booking_link_open_count?: number | null;
+  confirmed_slot?: string | null;
+  google_event_id?: string | null;
+  google_event_link?: string | null;
+  meeting_link?: string | null;
+  calendar_sync_error?: string | null;
 }
 
 type StatusType = 'all' | 'new' | 'contacted' | 'scheduled' | 'converted' | 'declined';
@@ -436,6 +445,7 @@ export const DemoRequestsPanel: React.FC = () => {
                             <div className="text-muted-foreground">
                               {format(new Date(request.created_at), 'h:mm a')}
                             </div>
+                            <BookingLinkStatus request={request} />
                           </div>
                         </TableCell>
                         <TableCell className="text-right">
@@ -578,3 +588,29 @@ export const DemoRequestsPanel: React.FC = () => {
 };
 
 export default DemoRequestsPanel;
+
+const BookingLinkStatus: React.FC<{ request: DemoRequest }> = ({ request }) => {
+  if (!request.booking_token_sent_at) return null;
+  if (request.confirmed_slot) {
+    return (
+      <div className="mt-2 space-y-1 text-xs">
+        <div className="font-medium text-primary">Booked {format(new Date(request.confirmed_slot), 'MMM d, h:mm a')}</div>
+        {request.google_event_id ? (
+          <div className="text-muted-foreground">On support calendar{request.meeting_link ? ' · Meet link sent' : ''}</div>
+        ) : (
+          <div className="text-destructive">Not on calendar{request.calendar_sync_error ? ' — calendar error' : ''}</div>
+        )}
+        {request.meeting_link && (
+          <a href={request.meeting_link} target="_blank" rel="noopener noreferrer" className="text-primary underline">Google Meet</a>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div className="mt-2 text-xs text-muted-foreground">
+      {request.booking_link_opened_at
+        ? `Link opened ${format(new Date(request.booking_link_last_opened_at || request.booking_link_opened_at), 'MMM d, h:mm a')}${(request.booking_link_open_count ?? 0) > 1 ? ` · ${request.booking_link_open_count} visits` : ''}`
+        : `Link sent ${format(new Date(request.booking_token_sent_at), 'MMM d, h:mm a')} · not opened yet`}
+    </div>
+  );
+};

@@ -60,15 +60,16 @@ export async function notifySenderEngagement(args: NotifyArgs): Promise<void> {
 
   // 1) In-app notification
   try {
-    await supabase.from("user_notifications").insert({
+    // user_notifications has no priority column; sending one made every in-app alert fail silently.
+    const { error: insertError } = await supabase.from("user_notifications").insert({
       tenant_id: tenantId,
       user_id: userId,
       title,
-      message,
+      message: message.replace(/<[^>]*>/g, ""),
       type,
-      priority: "high",
       metadata,
     });
+    if (insertError) console.error("[engagement-notify] in-app insert failed", insertError.message);
   } catch (e) {
     console.error("[engagement-notify] in-app insert failed", e);
   }

@@ -17060,8 +17060,12 @@ export type Database = {
           assigned_to: string | null
           booking_available_slots: string[] | null
           booking_confirmed_at: string | null
+          booking_link_last_opened_at: string | null
+          booking_link_open_count: number
+          booking_link_opened_at: string | null
           booking_token: string | null
           booking_token_sent_at: string | null
+          calendar_sync_error: string | null
           calendar_synced_at: string | null
           company_name: string
           confirmed_slot: string | null
@@ -17093,8 +17097,12 @@ export type Database = {
           assigned_to?: string | null
           booking_available_slots?: string[] | null
           booking_confirmed_at?: string | null
+          booking_link_last_opened_at?: string | null
+          booking_link_open_count?: number
+          booking_link_opened_at?: string | null
           booking_token?: string | null
           booking_token_sent_at?: string | null
+          calendar_sync_error?: string | null
           calendar_synced_at?: string | null
           company_name: string
           confirmed_slot?: string | null
@@ -17126,8 +17134,12 @@ export type Database = {
           assigned_to?: string | null
           booking_available_slots?: string[] | null
           booking_confirmed_at?: string | null
+          booking_link_last_opened_at?: string | null
+          booking_link_open_count?: number
+          booking_link_opened_at?: string | null
           booking_token?: string | null
           booking_token_sent_at?: string | null
+          calendar_sync_error?: string | null
           calendar_synced_at?: string | null
           company_name?: string
           confirmed_slot?: string | null
@@ -69845,6 +69857,14 @@ export type Database = {
       recalculate_change_order_totals: {
         Args: { _co_id: string }
         Returns: undefined
+      }
+      record_demo_booking_open: {
+        Args: { _token: string }
+        Returns: {
+          first_open: boolean
+          id: string
+          open_count: number
+        }[]
       }
       referral_submission_has_blocking_flags: {
         Args: { _referral_submission_id: string }
