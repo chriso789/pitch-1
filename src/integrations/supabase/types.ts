@@ -68636,6 +68636,10 @@ export type Database = {
         Args: { project_id_param: string; sales_rep_id_param: string }
         Returns: Json
       }
+      caller_belongs_to_tenant: {
+        Args: { _tenant_id: string }
+        Returns: boolean
+      }
       can_edit_profile: {
         Args: { _target_id: string; _target_tenant_id: string }
         Returns: boolean

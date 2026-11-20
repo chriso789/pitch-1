@@ -135,3 +135,8 @@
 - [x] Reference / calibration / test property split; experimental under 5 test properties
 - [x] Recognition report: outlines, suggestions + runner-up, unknowns, anomalies, versions, stage timings
 - [ ] Real labeling on the 457 photos — needs signed-in inspectors (blocked here)
+
+## Signed-in database actions company checks (2026-11-20)
+- [x] Reviewed 25 signed-in actions that save data: 18 now server-only, 4 check the caller's company (template items, calc-template catalog link, canvass property → contact, measurements), 3 already safe. Undone live checks: other-company calls blocked, own/granted-company calls and server calls still work, contact numbering trigger still works
+- [x] Fixed Fast Estimate canvass property → contact action that always failed on the street address
+- [ ] Public (no sign-in) actions still need review: presentation completion/slide tracking and demo time-slot updates accept only an id
