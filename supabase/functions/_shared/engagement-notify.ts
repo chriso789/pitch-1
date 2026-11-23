@@ -18,6 +18,8 @@ interface NotifyArgs {
   actionUrl?: string | null;
   type: string;
   metadata?: Record<string, unknown>;
+  /** Send the email alert to this inbox instead of the rep's login email (in-app and SMS still go to the rep). */
+  emailTo?: string;
 }
 
 async function resolveRepContact(supabase: any, userId: string) {
@@ -50,7 +52,7 @@ async function resolveRepContact(supabase: any, userId: string) {
 export async function notifySenderEngagement(args: NotifyArgs): Promise<void> {
   const {
     supabase, tenantId, userId, title, message,
-    emailSubject, detailLines = [], actionUrl, type, metadata = {},
+    emailSubject, detailLines = [], actionUrl, type, metadata = {}, emailTo,
   } = args;
 
   if (!userId) return;
@@ -74,7 +76,10 @@ export async function notifySenderEngagement(args: NotifyArgs): Promise<void> {
     console.error("[engagement-notify] in-app insert failed", e);
   }
 
-  const { phone, email, firstName } = await resolveRepContact(supabase, userId);
+  const rep = await resolveRepContact(supabase, userId);
+  const { phone } = rep;
+  const email = emailTo || rep.email;
+  const firstName = emailTo ? null : rep.firstName;
 
   // 2) SMS from the company's number (telnyx-send-sms resolves the tenant number)
   if (phone) {

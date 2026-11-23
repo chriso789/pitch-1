@@ -3,6 +3,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.49.1';
 import { z } from 'npm:zod@3.25.76';
 import { notifySenderEngagement } from '../_shared/engagement-notify.ts';
+import { DEMO_ALERT_EMAIL } from '../_shared/demo-booking/alerts.ts';
 import { createDemoEvent, fetchBusy, overlapsBusy, type DemoRow } from '../_shared/demo-booking/calendar.ts';
 
 const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-pitch-tenant', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
@@ -27,7 +28,7 @@ async function notifyHost(db: any, demo: any, title: string, message: string, de
     if (!tenantId) { console.log('[demo-booking] no host tenant, notification skipped', demo.id); return; }
     await notifySenderEngagement({
       supabase: db, tenantId, userId: demo.assigned_to, title, message,
-      detailLines, actionUrl: ADMIN_URL, type, metadata: { demo_request_id: demo.id },
+      detailLines, actionUrl: ADMIN_URL, type, metadata: { demo_request_id: demo.id }, emailTo: DEMO_ALERT_EMAIL,
     });
   } catch (e) { console.error('[demo-booking] host notification failed', e); }
 }
