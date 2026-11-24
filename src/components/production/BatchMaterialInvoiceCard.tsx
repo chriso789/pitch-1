@@ -359,7 +359,7 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
   };
 
   const submitManualForm = async () => {
-    if (!manualForm.invoice_amount) {
+    if (!(Number(manualForm.invoice_amount) > 0)) {
       toast({
         title: 'Validation Error',
         description: 'Total amount is required',
@@ -454,7 +454,7 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
     setSubmittingAll(true);
     try {
       // Manual entry (if filled) is submitted alongside uploaded invoices.
-      if (manualForm.invoice_amount) {
+      if (Number(manualForm.invoice_amount) > 0) {
         await submitManualForm();
       }
 
@@ -482,7 +482,7 @@ export const BatchMaterialInvoiceCard: React.FC<Props> = ({
   };
 
   const parsedCount = rows.filter(r => r.status === 'parsed').length;
-  const manualReadyCount = manualForm.invoice_amount ? 1 : 0;
+  const manualReadyCount = Number(manualForm.invoice_amount) > 0 ? 1 : 0;
   const submitAllCount = parsedCount + manualReadyCount;
   const savedCount = rows.filter(r => r.status === 'saved').length;
   const duplicateCount = rows.filter(r => r.status === 'duplicate').length;
